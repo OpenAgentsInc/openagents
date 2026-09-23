@@ -1,0 +1,119 @@
+{
+  "schema": "openagents.tbench.episode-manifest.v1",
+  "attempt": {
+    "id": "10249151-fad6-4edc-b155-f216c20ef43d",
+    "job": "extended--coder-one-tunable-luna-v2--log-summary-date-ranges",
+    "trial": "log-summary-date-ranges__8j6Nis3",
+    "arm": "coder-one-tunable-luna-v2",
+    "profile": "extended",
+    "auth_mode": "subscription-oauth",
+    "kind": "fresh"
+  },
+  "task": {
+    "name": "terminal-bench/log-summary-date-ranges",
+    "path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench/archive/log-summary-date-ranges",
+    "git_url": null,
+    "git_commit_id": null,
+    "checksum": "f661ef345f023ef5a2dcdd056c353a1a2bbce29a70b04765c615c25e91b6b662",
+    "source": null,
+    "pin": {
+      "git_url": "https://github.com/harbor-framework/terminal-bench.git",
+      "git_commit_id": "3b5caaa4863d64dda7f0957bf4fc2d4f019202d4"
+    }
+  },
+  "agent": {
+    "selector": "tbench.coder_one:CoderOneTunable",
+    "requested_model": "free",
+    "observed_name": "coder-one-tunable",
+    "observed_version": "pinned-artifact",
+    "observed_model": "free",
+    "observed_provider": null,
+    "artifact_sha256": "4f2a41bc909bd8a6aedf9ecb531cfc9d491a334fbf6adebbfc72d609824de176"
+  },
+  "outcome": {
+    "reward": 1.0,
+    "verifier_rewards": {
+      "reward": 1.0
+    },
+    "terminal_status": "completed",
+    "exception": null,
+    "verifier_environment_mode": "shared"
+  },
+  "timing": {
+    "started_at": "2026-09-23T06:38:45.028100Z",
+    "finished_at": "2026-09-23T06:39:40.771824Z",
+    "environment_setup_ms": 2339,
+    "agent_setup_ms": 5251,
+    "agent_execution_ms": 24297,
+    "verifier_ms": 11818,
+    "total_ms": 55743
+  },
+  "usage": {
+    "input_tokens": 70328,
+    "cache_tokens": 23040,
+    "output_tokens": 472,
+    "input_includes_cache": true,
+    "coverage": "full"
+  },
+  "cost": {
+    "amount_usd": 0.0027516020000000006,
+    "provenance": "mixed",
+    "note": "A subscription reference price or a pricing-registry estimate is not an observed incremental bill."
+  },
+  "task_notes": [
+    "Runs natively on the x86_64 Linux host."
+  ],
+  "evidence": {
+    "trial_result": {
+      "kind": "trial-result",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-tunable-luna-v2--log-summary-date-ranges/log-summary-date-ranges__8j6Nis3/result.json",
+      "sha256": "dcbaa8b871ee98d8cc116f27707644e9c27ad680ba6c71247771fedc928fef92",
+      "bytes": 5141
+    },
+    "trajectory": {
+      "kind": "trajectory",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-tunable-luna-v2--log-summary-date-ranges/log-summary-date-ranges__8j6Nis3/agent/trajectory.json",
+      "sha256": "98f5cf772f966d454b16d2bb9080ff02b606c364ac56249f2e35ee93c6a7f02c",
+      "bytes": 336556
+    },
+    "native_traces": [],
+    "collection_failure": {
+      "kind": "collection-failure",
+      "resolved": false,
+      "path": null,
+      "sha256": null
+    },
+    "verifier_reward": {
+      "kind": "verifier-reward",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-tunable-luna-v2--log-summary-date-ranges/log-summary-date-ranges__8j6Nis3/verifier/reward.txt",
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+      "bytes": 2
+    },
+    "verifier_report": {
+      "kind": "verifier-report",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-tunable-luna-v2--log-summary-date-ranges/log-summary-date-ranges__8j6Nis3/verifier/ctrf.json",
+      "sha256": "c29e07c5b2843e462b0ea594ca501e1d125a001f9359746ee48966b781b713b9",
+      "bytes": 1115
+    },
+    "artifacts": [
+      {
+        "kind": "artifact",
+        "resolved": true,
+        "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-tunable-luna-v2--log-summary-date-ranges/log-summary-date-ranges__8j6Nis3/artifacts/manifest.json",
+        "sha256": "c1db653f487fb773c4f9247162ab3314e7f0584a486914b9874c4b3d6949e42d",
+        "bytes": 159
+      }
+    ],
+    "attempt_record": {
+      "kind": "attempt-record",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-tunable-luna-v2--log-summary-date-ranges/tbench/attempts/log-summary-date-ranges__8j6Nis3.json",
+      "sha256": "165c51a823a8d78300c561453da50e28c1d2ae1049bd00808d4efd3c19660b89"
+    }
+  },
+  "collected_at": "2026-09-23T08:39:41.332+00:00"
+}

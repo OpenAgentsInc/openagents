@@ -1,0 +1,56 @@
+{
+  "schema": "openagents.tbench.toolchain-setup.v1",
+  "mode": "prebuilt",
+  "cache": "warm",
+  "platform": "linux-x64",
+  "layers": [
+    {
+      "key": "node-22.23.2-linux-x64",
+      "cache": "warm",
+      "build_ms": 0,
+      "tree_sha256": "603e24bc237608787ac6b4d0d3841694b584639bb5c11415f673356882d5dd84",
+      "bytes": 196775086
+    },
+    {
+      "key": "claude-code-2.1.280-linux-x64",
+      "cache": "warm",
+      "build_ms": 0,
+      "tree_sha256": "cd65d17e1398eb07ac7d530b4b410ca1e1a6c1345f4b2bf620b47225d0f04937",
+      "bytes": 233709640
+    },
+    {
+      "key": "node-22.23.2-linux-x64",
+      "cache": "warm",
+      "build_ms": 0,
+      "tree_sha256": "603e24bc237608787ac6b4d0d3841694b584639bb5c11415f673356882d5dd84",
+      "bytes": 196775086
+    },
+    {
+      "key": "codex-0.155.1-linux-x64",
+      "cache": "warm",
+      "build_ms": 0,
+      "tree_sha256": "33faca7a8ba6cba69274da06c46469dae8b3b1a7830748e4b0bda5a9e4dcf169",
+      "bytes": 370498796
+    }
+  ],
+  "phases_ms": {
+    "claude-code,node:probe": 80,
+    "claude-code,node:host_layers": 0,
+    "claude-code,node:copy": 1044,
+    "claude-code,node:link": 91,
+    "claude-code,node:verify": 240,
+    "codex,node:probe": 75,
+    "codex,node:host_layers": 0,
+    "codex,node:copy": 1077,
+    "codex,node:link": 75,
+    "codex,node:verify": 254
+  },
+  "install_ms": 2936,
+  "versions": {
+    "node": "v22.23.2",
+    "claude-code": "2.1.280",
+    "codex": "0.155.1"
+  },
+  "boundary": "install_ms covers the toolchain only (host layer build or reuse, copy, link, and version checks); Harbor's agent_setup phase also covers the Coder One artifact upload and the episode doctor.",
+  "note": null
+}

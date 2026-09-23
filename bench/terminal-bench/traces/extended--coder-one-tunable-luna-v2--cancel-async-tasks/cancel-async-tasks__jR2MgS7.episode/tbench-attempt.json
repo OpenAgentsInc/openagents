@@ -1,0 +1,111 @@
+{
+  "schema": "openagents.tbench.attempt.v1",
+  "attempt": {
+    "id": "ba5b9146-5f2e-4c54-ab98-317e26101906",
+    "job": "extended--coder-one-tunable-luna-v2--cancel-async-tasks",
+    "trial": "cancel-async-tasks__jR2MgS7",
+    "arm": "coder-one-tunable-luna-v2",
+    "profile": "extended",
+    "auth_mode": "subscription-oauth",
+    "kind": "fresh"
+  },
+  "task": {
+    "name": "terminal-bench/cancel-async-tasks",
+    "path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench/archive/cancel-async-tasks",
+    "git_url": null,
+    "git_commit_id": null,
+    "checksum": "1566331f6913b8a4f9af6779e90cabbb79edf1b15c126b6bc544912df3f14de5",
+    "source": null,
+    "pin": {
+      "git_url": "https://github.com/harbor-framework/terminal-bench.git",
+      "git_commit_id": "3b5caaa4863d64dda7f0957bf4fc2d4f019202d4"
+    }
+  },
+  "agent": {
+    "selector": "tbench.coder_one:CoderOneTunable",
+    "requested_model": "free",
+    "observed_name": "coder-one-tunable",
+    "observed_version": "pinned-artifact",
+    "observed_model": "free",
+    "observed_provider": null,
+    "artifact_sha256": "4f2a41bc909bd8a6aedf9ecb531cfc9d491a334fbf6adebbfc72d609824de176"
+  },
+  "outcome": {
+    "reward": 1.0,
+    "verifier_rewards": {
+      "reward": 1.0
+    },
+    "terminal_status": "completed",
+    "exception": null,
+    "verifier_environment_mode": "shared"
+  },
+  "timing": {
+    "started_at": "2026-09-23T06:37:42.962929Z",
+    "finished_at": "2026-09-23T06:39:42.923629Z",
+    "environment_setup_ms": 1132,
+    "agent_setup_ms": 3874,
+    "agent_execution_ms": 76356,
+    "verifier_ms": 27113,
+    "total_ms": 119960
+  },
+  "setup": {
+    "mode": "prebuilt",
+    "cache": "warm",
+    "install_ms": 2562,
+    "agent_setup_ms": 3874,
+    "layers": [
+      "node-22.23.2-linux-x64",
+      "claude-code-2.1.280-linux-x64",
+      "node-22.23.2-linux-x64",
+      "codex-0.155.1-linux-x64"
+    ],
+    "failed": false,
+    "boundaries": {
+      "agent_setup_ms": "Harbor's agent_setup phase: the toolchain install, the artifact upload, and the episode doctor",
+      "install_ms": "the toolchain alone, from the adapter's toolchain-setup.json",
+      "agent_execution_ms": "Harbor's agent_execution phase",
+      "total_ms": "the trial's started_at to finished_at"
+    }
+  },
+  "environment": {
+    "image": "alexgshaw/cancel-async-tasks:20251031",
+    "image_source": "prebuilt",
+    "image_state": "warm",
+    "image_action": "reused",
+    "image_state_method": "trial.log: Harbor's docker inspect before compose up found the image in the local cache"
+  },
+  "usage": {
+    "input_tokens": 92233,
+    "cache_tokens": 60615,
+    "output_tokens": 3459,
+    "input_includes_cache": true,
+    "coverage": "full"
+  },
+  "cost": {
+    "amount_usd": 0.12121963000000001,
+    "provenance": "mixed",
+    "note": "A subscription reference price or a pricing-registry estimate is not an observed incremental bill."
+  },
+  "counts": {
+    "semantics": "atif-v1-steps-and-calls",
+    "atif_steps": 164,
+    "model_invocations": 17,
+    "typed_decisions": 0,
+    "tool_calls": 16,
+    "shell_commands": 0,
+    "retries": 0,
+    "subagent_steps": 0
+  },
+  "evidence": {
+    "trial_result": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-tunable-luna-v2--cancel-async-tasks/cancel-async-tasks__jR2MgS7/result.json",
+    "trial_dir": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-tunable-luna-v2--cancel-async-tasks/cancel-async-tasks__jR2MgS7",
+    "manifest": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-tunable-luna-v2--cancel-async-tasks/tbench/manifests/cancel-async-tasks__jR2MgS7.json"
+  },
+  "completeness": {
+    "trace": "present",
+    "usage": "full",
+    "cost": "reported",
+    "artifacts": "present",
+    "bundle": "present"
+  }
+}

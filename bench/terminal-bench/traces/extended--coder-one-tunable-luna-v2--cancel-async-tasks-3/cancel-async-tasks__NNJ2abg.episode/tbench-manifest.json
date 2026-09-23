@@ -1,0 +1,117 @@
+{
+  "schema": "openagents.tbench.episode-manifest.v1",
+  "attempt": {
+    "id": "98d2d24d-5138-4996-aeac-e0f17795e65b",
+    "job": "extended--coder-one-tunable-luna-v2--cancel-async-tasks-3",
+    "trial": "cancel-async-tasks__NNJ2abg",
+    "arm": "coder-one-tunable-luna-v2",
+    "profile": "extended",
+    "auth_mode": "subscription-oauth",
+    "kind": "fresh"
+  },
+  "task": {
+    "name": "terminal-bench/cancel-async-tasks",
+    "path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench/archive/cancel-async-tasks",
+    "git_url": null,
+    "git_commit_id": null,
+    "checksum": "1566331f6913b8a4f9af6779e90cabbb79edf1b15c126b6bc544912df3f14de5",
+    "source": null,
+    "pin": {
+      "git_url": "https://github.com/harbor-framework/terminal-bench.git",
+      "git_commit_id": "3b5caaa4863d64dda7f0957bf4fc2d4f019202d4"
+    }
+  },
+  "agent": {
+    "selector": "tbench.coder_one:CoderOneTunable",
+    "requested_model": "free",
+    "observed_name": "coder-one-tunable",
+    "observed_version": "pinned-artifact",
+    "observed_model": "free",
+    "observed_provider": null,
+    "artifact_sha256": "4f2a41bc909bd8a6aedf9ecb531cfc9d491a334fbf6adebbfc72d609824de176"
+  },
+  "outcome": {
+    "reward": 1.0,
+    "verifier_rewards": {
+      "reward": 1.0
+    },
+    "terminal_status": "completed",
+    "exception": null,
+    "verifier_environment_mode": "shared"
+  },
+  "timing": {
+    "started_at": "2026-09-23T08:47:29.206583Z",
+    "finished_at": "2026-09-23T08:49:15.118565Z",
+    "environment_setup_ms": 1325,
+    "agent_setup_ms": 4291,
+    "agent_execution_ms": 62084,
+    "verifier_ms": 23605,
+    "total_ms": 105911
+  },
+  "usage": {
+    "input_tokens": 65330,
+    "cache_tokens": 46710,
+    "output_tokens": 2903,
+    "input_includes_cache": true,
+    "coverage": "full"
+  },
+  "cost": {
+    "amount_usd": 0.07418845,
+    "provenance": "mixed",
+    "note": "A subscription reference price or a pricing-registry estimate is not an observed incremental bill."
+  },
+  "task_notes": [],
+  "evidence": {
+    "trial_result": {
+      "kind": "trial-result",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-tunable-luna-v2--cancel-async-tasks-3/cancel-async-tasks__NNJ2abg/result.json",
+      "sha256": "ca9a9e1a30c8b62a2843a4ad72c7df98a1f83878c6243bf90933f0f0d68c30d8",
+      "bytes": 5095
+    },
+    "trajectory": {
+      "kind": "trajectory",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-tunable-luna-v2--cancel-async-tasks-3/cancel-async-tasks__NNJ2abg/agent/trajectory.json",
+      "sha256": "a2a20f400e863411211b59b238b717455b468ff96894bb8a870181034845496c",
+      "bytes": 247990
+    },
+    "native_traces": [],
+    "collection_failure": {
+      "kind": "collection-failure",
+      "resolved": false,
+      "path": null,
+      "sha256": null
+    },
+    "verifier_reward": {
+      "kind": "verifier-reward",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-tunable-luna-v2--cancel-async-tasks-3/cancel-async-tasks__NNJ2abg/verifier/reward.txt",
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+      "bytes": 2
+    },
+    "verifier_report": {
+      "kind": "verifier-report",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-tunable-luna-v2--cancel-async-tasks-3/cancel-async-tasks__NNJ2abg/verifier/ctrf.json",
+      "sha256": "c29b17c65476600de7ca846c951d93fae8965d78e94f1f738e05f5e3d138e1e7",
+      "bytes": 2537
+    },
+    "artifacts": [
+      {
+        "kind": "artifact",
+        "resolved": true,
+        "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-tunable-luna-v2--cancel-async-tasks-3/cancel-async-tasks__NNJ2abg/artifacts/manifest.json",
+        "sha256": "c1db653f487fb773c4f9247162ab3314e7f0584a486914b9874c4b3d6949e42d",
+        "bytes": 159
+      }
+    ],
+    "attempt_record": {
+      "kind": "attempt-record",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-tunable-luna-v2--cancel-async-tasks-3/tbench/attempts/cancel-async-tasks__NNJ2abg.json",
+      "sha256": "47ca10bd577a064789733c93cdbe13b13f0643485f4352350a153356f6a4dc94"
+    }
+  },
+  "collected_at": "2026-09-23T08:49:15.847+00:00"
+}

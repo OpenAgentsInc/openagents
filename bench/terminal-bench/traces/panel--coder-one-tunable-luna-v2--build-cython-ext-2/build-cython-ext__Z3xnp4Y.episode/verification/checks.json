@@ -1,0 +1,398 @@
+{
+  "schema": "openagents.coder-one.checks.v1",
+  "implementation": {
+    "name": "admitted scenario catalog, deterministic selector",
+    "digest": "b81f1d8b5c4ccef58702fffbdf222f8543355c36adf06fe66208be128cf5ac32"
+  },
+  "candidate": {
+    "label": "terminal-bench task",
+    "origin": "workspace",
+    "digest": "a07b1092e65b708921644325d3afc413e625ff6a805f68a5b7d5eacf1b3335be",
+    "files": [
+      "pyknotid/.gitignore",
+      "pyknotid/.projectile",
+      "pyknotid/LICENSE.txt",
+      "pyknotid/README.rst",
+      "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/__init__.py",
+      "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/catalogue/__init__.py",
+      "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/catalogue/build.py",
+      "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/catalogue/converters.py",
+      "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/catalogue/database.py",
+      "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/catalogue/getdb.py",
+      "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/catalogue/identify.py",
+      "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/catalogue/improve.py",
+      "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/cinvariants.pyx",
+      "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/cli/__init__.py",
+      "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/cli/analyse_knot_file.py",
+      "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/cli/plot_knot.py",
+      "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/invariants.py",
+      "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/io.py",
+      "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/make/__init__.py",
+      "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/make/named.py",
+      "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/make/periodic_knot.py",
+      "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/make/torus.py",
+      "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/representations/__init__.py",
+      "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/representations/dtnotation.py",
+      "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/representations/gausscode.py",
+      "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/representations/gaussdiagram.py",
+      "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/representations/planardiagram.py",
+      "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/representations/representation.py",
+      "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/simplify/__init__.py",
+      "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/simplify/coctree.pyx",
+      "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/simplify/octree.py",
+      "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/__init__.py",
+      "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/ccomplexity.pyx",
+      "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/chelpers.pyx",
+      "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/complexity.py",
+      "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/geometry.py",
+      "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/helpers.py",
+      "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/knot.py",
+      "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/link.py",
+      "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/openknot.py",
+      "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/periodic.py",
+      "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/periodiccell.py",
+      "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/periodicline.py",
+      "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/rotation.py",
+      "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/setup.py",
+      "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/smooth.py",
+      "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/spacecurve.py",
+      "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/utils.py",
+      "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/visualcollection.py",
+      "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/visualise.py",
+      "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/writhes.py",
+      "pyknotid/build/lib/pyknotid/__init__.py",
+      "pyknotid/build/lib/pyknotid/cinvariants.pyx",
+      "pyknotid/build/lib/pyknotid/invariants.py",
+      "pyknotid/build/lib/pyknotid/io.py",
+      "pyknotid/build/lib/pyknotid/spacecurves/__init__.py",
+      "pyknotid/build/lib/pyknotid/spacecurves/ccomplexity.pyx",
+      "pyknotid/build/lib/pyknotid/spacecurves/chelpers.pyx",
+      "pyknotid/build/lib/pyknotid/spacecurves/complexity.py",
+      "pyknotid/build/lib/pyknotid/spacecurves/geometry.py",
+      "pyknotid/build/lib/pyknotid/spacecurves/helpers.py",
+      "pyknotid/build/lib/pyknotid/spacecurves/knot.py",
+      "pyknotid/build/lib/pyknotid/spacecurves/link.py",
+      "pyknotid/build/lib/pyknotid/spacecurves/openknot.py",
+      "pyknotid/build/lib/pyknotid/spacecurves/periodic.py",
+      "pyknotid/build/lib/pyknotid/spacecurves/periodiccell.py",
+      "pyknotid/build/lib/pyknotid/spacecurves/periodicline.py",
+      "pyknotid/build/lib/pyknotid/spacecurves/rotation.py",
+      "pyknotid/build/lib/pyknotid/spacecurves/setup.py",
+      "pyknotid/build/lib/pyknotid/spacecurves/smooth.py",
+      "pyknotid/build/lib/pyknotid/utils.py",
+      "pyknotid/build/lib/pyknotid/visualcollection.py",
+      "pyknotid/build/lib/pyknotid/visualise.py",
+      "pyknotid/build/lib/pyknotid/writhes.py",
+      "pyknotid/doc/Makefile",
+      "pyknotid/doc/conf.py",
+      "pyknotid/doc/ext/docscrape.py",
+      "pyknotid/doc/ext/docscrape_sphinx.py",
+      "pyknotid/doc/ext/sphinx_rtd_theme/.gitignore",
+      "pyknotid/doc/ext/sphinx_rtd_theme/Gemfile",
+      "pyknotid/doc/ext/sphinx_rtd_theme/Gemfile.lock",
+      "pyknotid/doc/ext/sphinx_rtd_theme/Gruntfile.js",
+      "pyknotid/doc/ext/sphinx_rtd_theme/LICENSE",
+      "pyknotid/doc/ext/sphinx_rtd_theme/MANIFEST.in",
+      "pyknotid/doc/ext/sphinx_rtd_theme/README.rst",
+      "pyknotid/doc/ext/sphinx_rtd_theme/bower.json",
+      "pyknotid/doc/ext/sphinx_rtd_theme/demo_docs/Makefile",
+      "pyknotid/doc/ext/sphinx_rtd_theme/demo_docs/source/__init__.py",
+      "pyknotid/doc/ext/sphinx_rtd_theme/demo_docs/source/conf.py",
+      "pyknotid/doc/ext/sphinx_rtd_theme/demo_docs/source/demo.rst",
+      "pyknotid/doc/ext/sphinx_rtd_theme/demo_docs/source/index.rst",
+      "pyknotid/doc/ext/sphinx_rtd_theme/demo_docs/source/list.rst",
+      "pyknotid/doc/ext/sphinx_rtd_theme/demo_docs/source/test_py_module/__init__.py",
+      "pyknotid/doc/ext/sphinx_rtd_theme/demo_docs/source/test_py_module/test.py",
+      "pyknotid/doc/ext/sphinx_rtd_theme/package.json",
+      "pyknotid/doc/ext/sphinx_rtd_theme/requirements.txt",
+      "pyknotid/doc/ext/sphinx_rtd_theme/sass/_theme_badge.sass",
+      "pyknotid/doc/ext/sphinx_rtd_theme/sass/_theme_badge_fa.sass",
+      "pyknotid/doc/ext/sphinx_rtd_theme/sass/_theme_breadcrumbs.sass",
+      "pyknotid/doc/ext/sphinx_rtd_theme/sass/_theme_font_awesome_compatability.sass",
+      "pyknotid/doc/ext/sphinx_rtd_theme/sass/_theme_layout.sass",
+      "pyknotid/doc/ext/sphinx_rtd_theme/sass/_theme_mathjax.sass",
+      "pyknotid/doc/ext/sphinx_rtd_theme/sass/_theme_rst.sass",
+      "pyknotid/doc/ext/sphinx_rtd_theme/sass/_theme_variables.sass",
+      "pyknotid/doc/ext/sphinx_rtd_theme/sass/badge_only.sass",
+      "pyknotid/doc/ext/sphinx_rtd_theme/sass/theme.sass",
+      "pyknotid/doc/ext/sphinx_rtd_theme/setup.py",
+      "pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/__init__.py",
+      "pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/breadcrumbs.html",
+      "pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/footer.html",
+      "pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/layout.html",
+      "pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/layout_old.html",
+      "pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/search.html",
+      "pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/searchbox.html",
+      "pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/static/css/badge_only.css",
+      "pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/static/css/theme.css",
+      "pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/static/fonts/fontawesome-webfont.svg",
+      "pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/static/js/theme.js",
+      "pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/theme.conf",
+      "pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/versions.html",
+      "pyknotid/doc/index.rst",
+      "pyknotid/doc/make.bat",
+      "pyknotid/doc/sources/about.rst",
+      "pyknotid/doc/sources/catalogue/database.rst",
+      "pyknotid/doc/sources/catalogue/getdb.rst",
+      "pyknotid/doc/sources/catalogue/identify.rst",
+      "pyknotid/doc/sources/catalogue/index.rst",
+      "pyknotid/doc/sources/invariants.rst",
+      "pyknotid/doc/sources/overview.rst",
+      "pyknotid/doc/sources/representations/dtnotation.rst",
+      "pyknotid/doc/sources/representations/gausscode.rst",
+      "pyknotid/doc/sources/representations/gaussdiagram.rst",
+      "pyknotid/doc/sources/representations/index.rst",
+      "pyknotid/doc/sources/representations/planardiagram.rst",
+      "pyknotid/doc/sources/representations/representation.rst",
+      "pyknotid/doc/sources/spacecurves/index.rst",
+      "pyknotid/doc/sources/spacecurves/knot.rst",
+      "pyknotid/doc/sources/spacecurves/link.rst",
+      "pyknotid/doc/sources/spacecurves/openknot.rst",
+      "pyknotid/doc/sources/spacecurves/periodiccell.rst",
+      "pyknotid/doc/sources/spacecurves/spacecurve.rst",
+      "pyknotid/doc/sources/visualise.rst",
+      "pyknotid/pyknotid.egg-info/PKG-INFO",
+      "pyknotid/pyknotid.egg-info/SOURCES.txt",
+      "pyknotid/pyknotid.egg-info/dependency_links.txt",
+      "pyknotid/pyknotid.egg-info/entry_points.txt",
+      "pyknotid/pyknotid.egg-info/requires.txt",
+      "pyknotid/pyknotid.egg-info/top_level.txt",
+      "pyknotid/pyknotid/__init__.py",
+      "pyknotid/pyknotid/catalogue/__init__.py",
+      "pyknotid/pyknotid/catalogue/build.py",
+      "pyknotid/pyknotid/catalogue/converters.py",
+      "pyknotid/pyknotid/catalogue/database.py",
+      "pyknotid/pyknotid/catalogue/getdb.py",
+      "pyknotid/pyknotid/catalogue/identify.py",
+      "pyknotid/pyknotid/catalogue/improve.py",
+      "pyknotid/pyknotid/cinvariants.pyx",
+      "pyknotid/pyknotid/cli/__init__.py",
+      "pyknotid/pyknotid/cli/analyse_knot_file.py",
+      "pyknotid/pyknotid/cli/plot_knot.py",
+      "pyknotid/pyknotid/invariants.py",
+      "pyknotid/pyknotid/io.py",
+      "pyknotid/pyknotid/make/__init__.py",
+      "pyknotid/pyknotid/make/named.py",
+      "pyknotid/pyknotid/make/periodic_knot.py",
+      "pyknotid/pyknotid/make/torus.py",
+      "pyknotid/pyknotid/representations/__init__.py",
+      "pyknotid/pyknotid/representations/dtnotation.py",
+      "pyknotid/pyknotid/representations/gausscode.py",
+      "pyknotid/pyknotid/representations/gaussdiagram.py",
+      "pyknotid/pyknotid/representations/planardiagram.py",
+      "pyknotid/pyknotid/representations/representation.py",
+      "pyknotid/pyknotid/simplify/__init__.py",
+      "pyknotid/pyknotid/simplify/coctree.pyx",
+      "pyknotid/pyknotid/simplify/octree.py",
+      "pyknotid/pyknotid/spacecurves/__init__.py",
+      "pyknotid/pyknotid/spacecurves/ccomplexity.pyx",
+      "pyknotid/pyknotid/spacecurves/chelpers.pyx",
+      "pyknotid/pyknotid/spacecurves/complexity.py",
+      "pyknotid/pyknotid/spacecurves/geometry.py",
+      "pyknotid/pyknotid/spacecurves/helpers.py",
+      "pyknotid/pyknotid/spacecurves/knot.py",
+      "pyknotid/pyknotid/spacecurves/link.py",
+      "pyknotid/pyknotid/spacecurves/openknot.py",
+      "pyknotid/pyknotid/spacecurves/periodic.py",
+      "pyknotid/pyknotid/spacecurves/periodiccell.py",
+      "pyknotid/pyknotid/spacecurves/periodicline.py",
+      "pyknotid/pyknotid/spacecurves/rotation.py",
+      "pyknotid/pyknotid/spacecurves/setup.py",
+      "pyknotid/pyknotid/spacecurves/smooth.py",
+      "pyknotid/pyknotid/spacecurves/spacecurve.py",
+      "pyknotid/pyknotid/utils.py",
+      "pyknotid/pyknotid/visualcollection.py",
+      "pyknotid/pyknotid/visualise.py",
+      "pyknotid/pyknotid/writhes.py",
+      "pyknotid/setup.py",
+      "pyknotid/tests/test_catalogue.py",
+      "pyknotid/tests/test_knot.py",
+      "pyknotid/tests/test_random_curves.py",
+      "pyknotid/tests/test_spacecurve.py"
+    ],
+    "programs": 0
+  },
+  "requirements_method": "jev",
+  "ineligible": [
+    {
+      "kind": "data",
+      "why": "the instruction shows no CSV rows to fill"
+    },
+    {
+      "kind": "interactive",
+      "why": "the instruction asks for no interactive behavior"
+    },
+    {
+      "kind": "cancellation",
+      "why": "the instruction asks for no cleanup on cancellation"
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "generic.claimed-command:1",
+      "kind": "generic.claimed-command",
+      "requirements": [
+        "R2"
+      ],
+      "spans": [
+        {
+          "requirement": "R2",
+          "span": "s5",
+          "start": 591,
+          "end": 696,
+          "text": "At the very least the following code snippet from README.md should run with Numpy (2.3.0) without errors:"
+        }
+      ],
+      "applies": [
+        "the executor ran `pytest -q --ignore=tests/test_random_curves.py --ignore=tests/test_catalogue.py` and saw exit 0"
+      ],
+      "interface": "the command `pytest -q --ignore=tests/test_random_curves.py --ignore=tests/test_catalogue.py`",
+      "bounds": {
+        "seconds": 60,
+        "processes": 1
+      },
+      "effects": [
+        "runs the command in the task's working directory, as the executor did, without the episode's credentials"
+      ],
+      "candidate": "a07b1092e65b708921644325d3afc413e625ff6a805f68a5b7d5eacf1b3335be",
+      "input": "088336f19aa8913b6c42142479429dd4162cc2d57d5e9a5fbaf349ebe3fe056c",
+      "expected": {
+        "statement": "`pytest -q --ignore=tests/test_random_curves.py --ignore=tests/test_catalogue.py` still exits as the executor saw it, 0, on the final state.",
+        "derivation": "The executor ran this test during its session; its result is the executor's own claim about the work."
+      },
+      "params": {
+        "command": "pytest -q --ignore=tests/test_random_curves.py --ignore=tests/test_catalogue.py",
+        "source": "executor",
+        "session_exit_code": 0
+      }
+    }
+  ],
+  "selection": {
+    "selector": "deterministic",
+    "admitted": 1,
+    "selected": [
+      "generic.claimed-command:1"
+    ],
+    "skipped": [],
+    "bound_seconds": 60,
+    "budget": {
+      "max_scenarios": 12,
+      "seconds": 180
+    }
+  },
+  "verdicts": [
+    {
+      "scenario": "generic.claimed-command:1",
+      "verdict": "failed",
+      "observations": [
+        {
+          "command": "pytest -q --ignore=tests/test_random_curves.py --ignore=tests/test_catalogue.py",
+          "exit_code": 2,
+          "killed": false,
+          "milliseconds": 665,
+          "output_tail": "==================================== ERRORS ====================================\n______________ ERROR collecting pyknotid/tests/test_catalogue.py _______________\npyknotid/tests/test_catalogue.py:16: in <module>\n    test_knots = from_invariants(max_crossings=9)\n                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n/usr/local/lib/python3.13/site-packages/pyknotid/catalogue/getdb.py:131: in new_func\n    find_database()\n/usr/local/lib/python3.13/site-packages/pyknotid/catalogue/getdb.py:57: in find_database\n    raise IOError('Could not find a knots database file. You can '\nE   OSError: Could not find a knots database file. You can download one using `pyknotid.catalogue.download_database()`.\n____________ ERROR collecting pyknotid/tests/test_random_curves.py _____________\nImportError while importing test module '/app/pyknotid/tests/test_random_curves.py'.\nHint: make sure your test modules/packages have valid Python names.\nTraceback:\n/usr/local/lib/python3.13/importlib/__init__.py:88: in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\npyknotid/tests/test_random_curves.py:4: in <module>\n    import pyknotid.make.randomwalks.quaternionic as rw\nE   ModuleNotFoundError: No module named 'pyknotid.make.randomwalks'\n=========================== short test summary info ============================\nERROR pyknotid/tests/test_catalogue.py - OSError: Could not find a knots data...\nERROR pyknotid/tests/test_random_curves.py\n!!!!!!!!!!!!!!!!!!! Interrupted: 2 errors during collection !!!!!!!!!!!!!!!!!!!!\n2 errors in 0.45s"
+        }
+      ],
+      "coverage": [
+        "a passing test shows only what the test covers"
+      ],
+      "hypotheses": [
+        "a later change broke what this test covers",
+        "the test depends on state the session had and the final workspace doesn't"
+      ]
+    }
+  ],
+  "coverage": [
+    {
+      "id": "R1",
+      "text": "Can you help me compile extensions, install pyknotid from source to system's global python environment, while fixing any Numpy compatibility issues so it works with my existing Numpy (2.3.0) versions?",
+      "kind": "deliverable",
+      "state": "unobserved",
+      "scenarios": []
+    },
+    {
+      "id": "R2",
+      "text": "At the very least the following code snippet from README.md should run with Numpy (2.3.0) without errors:",
+      "kind": "check",
+      "state": "contradicted",
+      "scenarios": [
+        {
+          "id": "generic.claimed-command:1",
+          "verdict": "failed",
+          "scenario_verdict": "failed",
+          "coverage": [
+            "a passing test shows only what the test covers"
+          ],
+          "candidate": "a07b1092e65b708921644325d3afc413e625ff6a805f68a5b7d5eacf1b3335be"
+        }
+      ]
+    },
+    {
+      "id": "R3",
+      "text": "```python\nimport pyknotid\nfrom pyknotid.spacecurves import chelpers, ccomplexity\nfrom pyknotid import cinvariants\nimport pyknotid.make as mk\nimport pyknotid.spacecurves as sp\n\nk = sp.Knot(mk.three_twist(num_points=100))\nout = k.alexander_polynomial(-1)\n```",
+      "kind": "check",
+      "state": "unobserved",
+      "scenarios": []
+    },
+    {
+      "id": "R4",
+      "text": "You should clone the source code with `git clone --depth 1 --branch 0.5.3 https://github.com/SPOCKnots/pyknotid.git` to `/app/pyknotid`.",
+      "kind": "constraint",
+      "state": "unobserved",
+      "scenarios": []
+    },
+    {
+      "id": "R5",
+      "text": "There is no need to change the original structure of the package.",
+      "kind": "constraint",
+      "state": "unobserved",
+      "scenarios": []
+    },
+    {
+      "id": "R6",
+      "text": "The repository contains tests/ to help you verify core functionality of the package.",
+      "kind": "check",
+      "state": "unobserved",
+      "scenarios": []
+    },
+    {
+      "id": "R7",
+      "text": "They should still pass after fixing compatibility issues, except for /app/pyknotid/tests/test_random_curves.py (dead code) and /app/pyknotid/tests/test_catalogue.py.",
+      "kind": "check",
+      "state": "unobserved",
+      "scenarios": []
+    },
+    {
+      "id": "R8",
+      "text": "The compiled extensions (chelpers, ccomplexity, and cinvariants) should work in their original context from Python side.",
+      "kind": "behavior",
+      "state": "unobserved",
+      "scenarios": []
+    }
+  ],
+  "packets": [
+    {
+      "requirement": "R2",
+      "requirement_text": "At the very least the following code snippet from README.md should run with Numpy (2.3.0) without errors:",
+      "candidate": "a07b1092e65b708921644325d3afc413e625ff6a805f68a5b7d5eacf1b3335be",
+      "scenario": "generic.claimed-command:1",
+      "expected": {
+        "statement": "`pytest -q --ignore=tests/test_random_curves.py --ignore=tests/test_catalogue.py` still exits as the executor saw it, 0, on the final state.",
+        "derivation": "The executor ran this test during its session; its result is the executor's own claim about the work."
+      },
+      "observations": [
+        {
+          "command": "pytest -q --ignore=tests/test_random_curves.py --ignore=tests/test_catalogue.py",
+          "exit_code": 2,
+          "killed": false,
+          "milliseconds": 665,
+          "output_tail": "==================================== ERRORS ====================================\n______________ ERROR collecting pyknotid/tests/test_catalogue.py _______________\npyknotid/tests/test_catalogue.py:16: in <module>\n    test_knots = from_invariants(max_crossings=9)\n                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n/usr/local/lib/python3.13/site-packages/pyknotid/catalogue/getdb.py:131: in new_func\n    find_database()\n/usr/local/lib/python3.13/site-packages/pyknotid/catalogue/getdb.py:57: in find_database\n    raise IOError('Could not find a knots database file. You can '\nE   OSError: Could not find a knots database file. You can download one using `pyknotid.catalogue.download_database()`.\n____________ ERROR collecting pyknotid/tests/test_random_curves.py _____________\nImportError while importing test module '/app/pyknotid/tests/test_random_curves.py'.\nHint: make sure your test modules/packages have valid Python names.\nTraceback:\n/usr/local/lib/python3.13/importlib/__init__.py:88: in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\npyknotid/tests/test_random_curves.py:4: in <module>\n    import pyknotid.make.randomwalks.quaternionic as rw\nE   ModuleNotFoundError: No module named 'pyknotid.make.randomwalks'\n=========================== short test summary info ============================\nERROR pyknotid/tests/test_catalogue.py - OSError: Could not find a knots data...\nERROR pyknotid/tests/test_random_curves.py\n!!!!!!!!!!!!!!!!!!! Interrupted: 2 errors during collection !!!!!!!!!!!!!!!!!!!!\n2 errors in 0.45s"
+        }
+      ],
+      "hypotheses": [
+        "a later change broke what this test covers",
+        "the test depends on state the session had and the final workspace doesn't"
+      ]
+    }
+  ]
+}

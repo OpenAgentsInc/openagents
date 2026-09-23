@@ -605,6 +605,16 @@ shadow mode and escalates only on a failed check, a contradicted
 requirement, or no answer. Escalations on `cancel-async-tasks` were real:
 Luna's candidate failed a cancellation check, and Opus fixed it.
 
+**Turning those stops off made the arm worse.** `coder-one-tunable-luna-v2`
+(artifact `753a17ed975f`; monitor in shadow, repair only on an observed
+failure) passed 22 of 24 for $0.1907 and 456.9 s. Without the monitor's
+early handoffs, Luna ran alone to the end and failed one `fix-git` and one
+`fix-code-vulnerability` trial, and no check caught either: no scenario
+applies to a git recovery, and the vulnerability checks passed a wrong fix.
+The false stops had been a crude hedge, trading Opus's cost for its
+reliability. The fix is check coverage for these task families, not the
+monitor.
+
 ### The `extended` tasks, cheapest first
 
 Arm means over three trials each, from the Jev-probe runs above.

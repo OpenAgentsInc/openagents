@@ -1,0 +1,295 @@
+{
+  "schema": "openagents.coder-one.requirements.v1",
+  "instruction_sha256": "004ac3efa98dd4c564f3888fe199962772d23de405c96ec9232c1eab1a2089e8",
+  "method": "jev",
+  "spans": [
+    {
+      "id": "s1",
+      "start": 0,
+      "end": 48,
+      "form": "sentence",
+      "text": "Implement the provided `BaseTerminal` interface.",
+      "requirement": "R1",
+      "kind": "deliverable",
+      "kinds": {
+        "behavior": 0.13,
+        "check": 0.0,
+        "constraint": 0.06,
+        "context": 0.01,
+        "deliverable": 0.8
+      },
+      "answered": true
+    },
+    {
+      "id": "s2",
+      "start": 49,
+      "end": 123,
+      "form": "sentence",
+      "text": "It provides a simple python interface to send keys to a headless terminal.",
+      "requirement": "R2",
+      "kind": "behavior",
+      "kinds": {
+        "behavior": 0.74,
+        "check": 0.0,
+        "constraint": 0.0,
+        "context": 0.23,
+        "deliverable": 0.03
+      },
+      "answered": true
+    },
+    {
+      "id": "s3",
+      "start": 125,
+      "end": 175,
+      "form": "sentence",
+      "text": "Make sure it supports the following functionality.",
+      "requirement": "R3",
+      "kind": "behavior",
+      "kinds": {
+        "behavior": 0.61,
+        "check": 0.01,
+        "constraint": 0.04,
+        "context": 0.33,
+        "deliverable": 0.01
+      },
+      "answered": true
+    },
+    {
+      "id": "s4",
+      "start": 177,
+      "end": 327,
+      "form": "list_item",
+      "text": "- Mimics a terminal, where the process starts as an interactive bash shell and commands are typically executed by typing characters and hitting Enter.",
+      "requirement": "R4",
+      "kind": "behavior",
+      "kinds": {
+        "behavior": 1.0,
+        "check": 0.0,
+        "constraint": 0.0,
+        "context": 0.0,
+        "deliverable": 0.0
+      },
+      "answered": true
+    },
+    {
+      "id": "s5",
+      "start": 328,
+      "end": 359,
+      "form": "list_item",
+      "text": "- Supports interactive programs",
+      "requirement": "R5",
+      "kind": "behavior",
+      "kinds": {
+        "behavior": 1.0,
+        "check": 0.0,
+        "constraint": 0.0,
+        "context": 0.0,
+        "deliverable": 0.0
+      },
+      "answered": true
+    },
+    {
+      "id": "s6",
+      "start": 361,
+      "end": 426,
+      "form": "list_item",
+      "text": "- Has support for modifier keys like `\"\\x03\"` for control C, etc.",
+      "requirement": "R6",
+      "kind": "behavior",
+      "kinds": {
+        "behavior": 1.0,
+        "check": 0.0,
+        "constraint": 0.0,
+        "context": 0.0,
+        "deliverable": 0.0
+      },
+      "answered": true
+    },
+    {
+      "id": "s7",
+      "start": 427,
+      "end": 514,
+      "form": "list_item",
+      "text": "- Because the shell is interactive, it should source the startup files (e.g. ~/.bashrc)",
+      "requirement": "R7",
+      "kind": "behavior",
+      "kinds": {
+        "behavior": 0.97,
+        "check": 0.0,
+        "constraint": 0.02,
+        "context": 0.01,
+        "deliverable": 0.0
+      },
+      "answered": true
+    },
+    {
+      "id": "s8",
+      "start": 516,
+      "end": 709,
+      "form": "sentence",
+      "text": "Call your implementation `HeadlessTerminal(BaseTerminal)` and put it in a file called `/app/headless_terminal.py` so that it can be imported as `from headless_terminal import HeadlessTerminal`.",
+      "requirement": "R8",
+      "kind": "constraint",
+      "kinds": {
+        "behavior": 0.0,
+        "check": 0.0,
+        "constraint": 0.55,
+        "context": 0.0,
+        "deliverable": 0.45
+      },
+      "answered": true
+    },
+    {
+      "id": "s9",
+      "start": 710,
+      "end": 754,
+      "form": "sentence",
+      "text": "Install dependencies into the system python.",
+      "requirement": "R9",
+      "kind": "deliverable",
+      "kinds": {
+        "behavior": 0.0,
+        "check": 0.0,
+        "constraint": 0.17,
+        "context": 0.0,
+        "deliverable": 0.82
+      },
+      "answered": true
+    }
+  ],
+  "requirements": [
+    {
+      "id": "R1",
+      "spans": [
+        "s1"
+      ],
+      "kind": "deliverable",
+      "binding": "yes",
+      "state": "unobserved",
+      "p": 0.99,
+      "text": "Implement the provided `BaseTerminal` interface.",
+      "extracted": {
+        "constants": [
+          "BaseTerminal"
+        ]
+      }
+    },
+    {
+      "id": "R2",
+      "spans": [
+        "s2"
+      ],
+      "kind": "behavior",
+      "binding": "yes",
+      "state": "unobserved",
+      "p": 0.77,
+      "text": "It provides a simple python interface to send keys to a headless terminal."
+    },
+    {
+      "id": "R3",
+      "spans": [
+        "s3"
+      ],
+      "kind": "behavior",
+      "binding": "yes",
+      "state": "unobserved",
+      "p": 0.67,
+      "text": "Make sure it supports the following functionality."
+    },
+    {
+      "id": "R4",
+      "spans": [
+        "s4"
+      ],
+      "kind": "behavior",
+      "binding": "yes",
+      "state": "unobserved",
+      "p": 1.0,
+      "text": "- Mimics a terminal, where the process starts as an interactive bash shell and commands are typically executed by typing characters and hitting Enter."
+    },
+    {
+      "id": "R5",
+      "spans": [
+        "s5"
+      ],
+      "kind": "behavior",
+      "binding": "yes",
+      "state": "unobserved",
+      "p": 1.0,
+      "text": "- Supports interactive programs"
+    },
+    {
+      "id": "R6",
+      "spans": [
+        "s6"
+      ],
+      "kind": "behavior",
+      "binding": "yes",
+      "state": "unobserved",
+      "p": 1.0,
+      "text": "- Has support for modifier keys like `\"\\x03\"` for control C, etc.",
+      "extracted": {
+        "constants": [
+          "\"\\x03\""
+        ]
+      }
+    },
+    {
+      "id": "R7",
+      "spans": [
+        "s7"
+      ],
+      "kind": "behavior",
+      "binding": "yes",
+      "state": "unobserved",
+      "p": 0.99,
+      "exhaustive": 0.15,
+      "text": "- Because the shell is interactive, it should source the startup files (e.g. ~/.bashrc)",
+      "extracted": {
+        "paths": [
+          "~/.bashrc"
+        ]
+      }
+    },
+    {
+      "id": "R8",
+      "spans": [
+        "s8"
+      ],
+      "kind": "constraint",
+      "binding": "yes",
+      "state": "unobserved",
+      "p": 1.0,
+      "text": "Call your implementation `HeadlessTerminal(BaseTerminal)` and put it in a file called `/app/headless_terminal.py` so that it can be imported as `from headless_terminal import HeadlessTerminal`.",
+      "extracted": {
+        "paths": [
+          "/app/headless_terminal.py"
+        ],
+        "constants": [
+          "HeadlessTerminal(BaseTerminal)",
+          "from headless_terminal import HeadlessTerminal"
+        ]
+      }
+    },
+    {
+      "id": "R9",
+      "spans": [
+        "s9"
+      ],
+      "kind": "deliverable",
+      "binding": "yes",
+      "state": "unobserved",
+      "p": 1.0,
+      "text": "Install dependencies into the system python."
+    }
+  ],
+  "coverage": {
+    "chars": 643,
+    "covered": 643,
+    "fraction": 1.0,
+    "spans": 9,
+    "requirement_spans": 9,
+    "context_spans": 0,
+    "unanswered_spans": 0
+  }
+}

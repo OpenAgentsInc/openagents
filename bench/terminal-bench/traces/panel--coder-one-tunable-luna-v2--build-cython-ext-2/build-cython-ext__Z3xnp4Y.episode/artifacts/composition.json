@@ -1,0 +1,168 @@
+{
+  "schema": "openagents.coder-one.composition.v1",
+  "route": null,
+  "first": {
+    "start": "manifest",
+    "tier": {
+      "agent": "codex",
+      "model": "gpt-6-luna",
+      "version": "0.155.1"
+    },
+    "reason": "no control.route: the manifest's executor starts"
+  },
+  "horizon": {
+    "policy": {
+      "first_share": 0.55,
+      "later_share": 0.75,
+      "min_dispatch_sec": 300,
+      "check_share": 0.05,
+      "long_after_sec": 3600,
+      "long_effort": "medium",
+      "long_command_sec": 3600
+    },
+    "episode_deadline_sec": 775,
+    "long": false,
+    "first_dispatch_sec": 410,
+    "check_budget": {
+      "max_scenarios": 12,
+      "seconds": 180
+    },
+    "command_sec": 60
+  },
+  "planner": null,
+  "handoffs": [
+    {
+      "pattern": "escalate",
+      "action": "escalate",
+      "from": "codex/gpt-6-luna",
+      "to": "claude-code/claude-opus-5-5",
+      "trigger": "a check failed",
+      "brief_chars": 5248,
+      "requested_sec": 465,
+      "remaining_ms": 620253
+    }
+  ],
+  "escalated": true,
+  "branches": [
+    {
+      "role": "primary",
+      "tier": {
+        "agent": "codex",
+        "model": "gpt-6-luna",
+        "version": "0.155.1"
+      },
+      "status": "answered",
+      "milliseconds": 122552,
+      "requested_sec": 410,
+      "usd": 0.007609899999999999,
+      "charge": "priced",
+      "turns": 1,
+      "stopped_by": null,
+      "session_id": "01a0cd6d-ec7a-76f0-89f9-8f0aabfc119d"
+    },
+    {
+      "role": "escalation",
+      "tier": {
+        "agent": "claude-code",
+        "model": "claude-opus-5-5",
+        "effort": "low",
+        "tools": "Bash,Read,Edit,Write,Glob,Grep",
+        "prompt_cache_ttl": "5m",
+        "version": "2.1.280"
+      },
+      "status": "answered",
+      "milliseconds": 25345,
+      "requested_sec": 465,
+      "usd": 0.097035,
+      "charge": "priced",
+      "turns": 4,
+      "stopped_by": null,
+      "session_id": "7cedae63-5b15-4e23-836c-e17ae6f41331"
+    }
+  ],
+  "checks": [
+    {
+      "after": "primary",
+      "file": "verification/checks.json",
+      "summary": {
+        "candidate": "a07b1092e65b708921644325d3afc413e625ff6a805f68a5b7d5eacf1b3335be",
+        "scenarios": 1,
+        "verdicts": {
+          "failed": 1
+        },
+        "requirements": {
+          "contradicted": 1,
+          "unobserved": 7
+        },
+        "packets": 1
+      }
+    },
+    {
+      "after": "escalation",
+      "file": "verification/checks-escalated.json",
+      "summary": {
+        "candidate": "1f4ce93ae1674e570c7ce1c082b8412eebf09cbd4dabea806ef47f7fc29851e3",
+        "scenarios": 1,
+        "verdicts": {
+          "failed": 1
+        },
+        "requirements": {
+          "contradicted": 1,
+          "unobserved": 7
+        },
+        "packets": 1
+      }
+    }
+  ],
+  "support": null,
+  "repair": {
+    "tier": {
+      "agent": "claude-code",
+      "model": "claude-opus-5-5",
+      "effort": "low",
+      "tools": "Bash,Read,Edit,Write,Glob,Grep",
+      "prompt_cache_ttl": "5m",
+      "version": "2.1.280"
+    },
+    "triggered": true,
+    "ran": true,
+    "changed": true,
+    "skipped": null,
+    "session": {
+      "fresh": true,
+      "resumes": null,
+      "previous_session": "7cedae63-5b15-4e23-836c-e17ae6f41331",
+      "session_id": "862a62c8-577e-4895-83c8-603c9ff3054b",
+      "agent": "claude-code",
+      "model": "claude-opus-5-5",
+      "status": "answered",
+      "turns": 3,
+      "milliseconds": 13816,
+      "cost_usd": 0.0420348,
+      "cost_provenance": "provider_reported",
+      "result": "I fixed the failing check, and the test command now passes from both `/app` and `/app/pyknotid`.\n\n**Cause:** the check ran the command from `/app`, not from `/app/pyknotid`. From there the test files live at `pyknotid/tests/...`, so the flags `--ignore=tests/test_random_curves.py` and `--ignore=tests/test_catalogue.py` didn't match anything. Pytest then tried to load both files, and they failed as the task says they will:\n- `test_random_curves.py` imports a module that doesn't exist (the dead co…"
+    },
+    "recheck": {
+      "file": "verification/checks-repaired.json",
+      "summary": {
+        "candidate": "97b12b284c28a5ab247d31e3ef2ff2b994de34689b9806ac5d5408485e105a4e",
+        "scenarios": 0,
+        "verdicts": {},
+        "requirements": {
+          "unobserved": 8
+        },
+        "packets": 0
+      },
+      "gaps": []
+    },
+    "cost_usd": 0.0420348
+  },
+  "verify": {
+    "checks": true,
+    "support": false,
+    "repair": {
+      "brief": "packet",
+      "trigger": "checked"
+    }
+  }
+}

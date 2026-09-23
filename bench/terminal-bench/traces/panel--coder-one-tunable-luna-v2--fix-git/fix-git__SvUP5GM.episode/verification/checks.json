@@ -1,0 +1,105 @@
+{
+  "schema": "openagents.coder-one.checks.v1",
+  "implementation": {
+    "name": "admitted scenario catalog, deterministic selector",
+    "digest": "b81f1d8b5c4ccef58702fffbdf222f8543355c36adf06fe66208be128cf5ac32"
+  },
+  "candidate": {
+    "label": "terminal-bench task",
+    "origin": "workspace",
+    "digest": "63599fdcd47a9118ba8dde0d824a7652cdacb311ee6b5e68bb87c089998ba1fe",
+    "files": [
+      ".gitignore",
+      "CNAME",
+      "Gemfile",
+      "_config.yml",
+      "_includes/about.md",
+      "_includes/contact.md",
+      "_includes/interests.md",
+      "_layouts/default.html",
+      "_posters/frank2016sensing.md",
+      "_posters/frank2017sensing.md",
+      "_publications/ben-zeev_crosscheck_2017.md",
+      "_publications/guBLADEBenchmarkingLanguage2024a.md",
+      "_publications/merrill2021multiverse.md",
+      "_publications/merrill2023selfsupervised.md",
+      "_publications/merrillHomekit2020BenchmarkTime2023.md",
+      "_publications/merrillLanguageModelsStill2024.md",
+      "_publications/merrillTransformingWearableData2024a.md",
+      "_publications/tanAreLanguageModels2024.md",
+      "_publications/tseng2016ubicomp.md",
+      "_publications/wang_crosscheck_2016.md",
+      "_publications/xu2022GLOBEM.md",
+      "_publications/zhang2022coral.md",
+      "biblib/__init__.py",
+      "biblib/algo.py",
+      "biblib/bib.py",
+      "biblib/messages.py",
+      "biblib/test.py",
+      "css/bootstrap-grid.css",
+      "css/bootstrap-grid.css.map",
+      "css/bootstrap-grid.min.css",
+      "css/bootstrap-grid.min.css.map",
+      "css/bootstrap-reboot.css",
+      "css/bootstrap-reboot.css.map",
+      "css/bootstrap-reboot.min.css",
+      "css/bootstrap-reboot.min.css.map",
+      "css/bootstrap.css",
+      "css/bootstrap.css.map",
+      "css/bootstrap.min.css",
+      "css/bootstrap.min.css.map",
+      "css/style.css",
+      "fonts/glyphicons-halflings-regular.svg",
+      "index.md",
+      "js/bootstrap.min.js",
+      "js/jquery.min.js",
+      "js/popper.min.js",
+      "js/scripts.js",
+      "make_pubs.py",
+      "me.bib"
+    ],
+    "programs": 0
+  },
+  "requirements_method": "jev",
+  "ineligible": [
+    {
+      "kind": "data",
+      "why": "the instruction shows no CSV rows to fill"
+    },
+    {
+      "kind": "interactive",
+      "why": "the instruction asks for no interactive behavior"
+    },
+    {
+      "kind": "cancellation",
+      "why": "the instruction asks for no cleanup on cancellation"
+    },
+    {
+      "kind": "generic.claimed-command",
+      "why": "the executor ran no test command a check can rerun"
+    }
+  ],
+  "scenarios": [],
+  "selection": {
+    "selector": "deterministic",
+    "admitted": 0,
+    "selected": [],
+    "skipped": [],
+    "bound_seconds": 0,
+    "budget": {
+      "max_scenarios": 12,
+      "seconds": 180
+    }
+  },
+  "verdicts": [],
+  "coverage": [
+    {
+      "id": "R1",
+      "text": "Please help me find them and merge them into master.",
+      "kind": "deliverable",
+      "state": "unobserved",
+      "scenarios": []
+    }
+  ],
+  "packets": []
+}

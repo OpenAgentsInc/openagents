@@ -1,0 +1,438 @@
+{
+  "record": {
+    "schema": "openagents.coder-one.briefing-pack.v1",
+    "implementation": "3a10f6d6afc0fe5e1459ec0203f830e6b6efa4a03586c77f60df2942fc8d819d",
+    "cap": 12000,
+    "chars": 3275,
+    "items": [
+      {
+        "id": "e3",
+        "source": "probe",
+        "label": "$ git -C /app/repo reflog -n 40",
+        "p": 0.87,
+        "selected": true,
+        "original_chars": 251,
+        "delivered_chars": 251,
+        "state": "complete",
+        "informs": [
+          "R4"
+        ],
+        "duplicate_lines": 0
+      },
+      {
+        "id": "e1",
+        "source": "probe",
+        "label": "$ list /app (depth 3)",
+        "p": 0.91,
+        "selected": true,
+        "original_chars": 43,
+        "delivered_chars": 43,
+        "state": "complete",
+        "informs": [],
+        "duplicate_lines": 0
+      },
+      {
+        "id": "e2",
+        "source": "probe",
+        "label": "$ git -C /app/repo log --oneline --graph --all -n 40",
+        "p": 0.91,
+        "selected": true,
+        "original_chars": 117,
+        "delivered_chars": 117,
+        "state": "complete",
+        "informs": [],
+        "duplicate_lines": 0
+      },
+      {
+        "id": "e4",
+        "source": "probe",
+        "label": "$ git -C /app/repo branch -a -vv",
+        "p": 0.84,
+        "selected": true,
+        "original_chars": 65,
+        "delivered_chars": 65,
+        "state": "complete",
+        "informs": [],
+        "duplicate_lines": 0
+      },
+      {
+        "id": "e5",
+        "source": "probe",
+        "label": "$ git -C /app/repo status",
+        "p": 0.83,
+        "selected": true,
+        "original_chars": 54,
+        "delivered_chars": 54,
+        "state": "complete",
+        "informs": [],
+        "duplicate_lines": 0
+      },
+      {
+        "id": "e6",
+        "source": "probe",
+        "label": "$ list /app/repo",
+        "p": 0.72,
+        "selected": true,
+        "original_chars": 32,
+        "delivered_chars": 0,
+        "state": "duplicate",
+        "reason": "every entry is already listed by `$ list /app (depth 3)`",
+        "informs": [],
+        "duplicate_lines": 3
+      }
+    ],
+    "bytes_per_requirement": {
+      "R1": 0,
+      "R2": 0,
+      "R3": 0,
+      "R4": 251,
+      "R5": 0
+    },
+    "uncovered": [
+      "R1",
+      "R2",
+      "R3",
+      "R5"
+    ],
+    "instruction_trimmed": false
+  },
+  "coverage": {
+    "e1": {
+      "R1": 0.17,
+      "R2": 0.26,
+      "R3": 0.46,
+      "R4": 0.37,
+      "R5": 0.09
+    },
+    "e2": {
+      "R1": 0.18,
+      "R2": 0.26,
+      "R3": 0.36,
+      "R4": 0.44,
+      "R5": 0.08
+    },
+    "e3": {
+      "R1": 0.28,
+      "R2": 0.46,
+      "R3": 0.47,
+      "R4": 0.51,
+      "R5": 0.12
+    },
+    "e4": {
+      "R1": 0.12,
+      "R2": 0.22,
+      "R3": 0.34,
+      "R4": 0.37,
+      "R5": 0.07
+    },
+    "e5": {
+      "R1": 0.1,
+      "R2": 0.11,
+      "R3": 0.23,
+      "R4": 0.23,
+      "R5": 0.05
+    },
+    "e6": {
+      "R1": 0.18,
+      "R2": 0.21,
+      "R3": 0.36,
+      "R4": 0.36,
+      "R5": 0.08
+    }
+  },
+  "requirements": {
+    "schema": "openagents.coder-one.requirements.v1",
+    "instruction_sha256": "54ac693fd26a4c003f610d62c4b2671f1d1d04ac5b1286f780605e385a9a5861",
+    "method": "jev",
+    "spans": [
+      {
+        "id": "s1",
+        "start": 0,
+        "end": 101,
+        "form": "sentence",
+        "text": "A secret was accidentally committed to this repository in /app and then removed by rewriting history.",
+        "requirement": null,
+        "kind": "context",
+        "kinds": {
+          "behavior": 0.01,
+          "check": 0.0,
+          "constraint": 0.0,
+          "context": 0.99,
+          "deliverable": 0.0
+        },
+        "answered": true
+      },
+      {
+        "id": "s2",
+        "start": 102,
+        "end": 108,
+        "form": "sentence",
+        "text": "Please",
+        "requirement": "R1",
+        "kind": "deliverable",
+        "kinds": {
+          "behavior": 0.14,
+          "check": 0.0,
+          "constraint": 0.01,
+          "context": 0.68,
+          "deliverable": 0.16
+        },
+        "answered": true
+      },
+      {
+        "id": "s3",
+        "start": 111,
+        "end": 172,
+        "form": "list_item",
+        "text": "1. recover the secret and write it to a /app/secret.txt file.",
+        "requirement": "R2",
+        "kind": "deliverable",
+        "kinds": {
+          "behavior": 0.0,
+          "check": 0.0,
+          "constraint": 0.0,
+          "context": 0.0,
+          "deliverable": 1.0
+        },
+        "answered": true
+      },
+      {
+        "id": "s4",
+        "start": 175,
+        "end": 265,
+        "form": "list_item",
+        "text": "2. clean up the secret in that repo to make sure it cannot be found anywhere in that repo.",
+        "requirement": "R3",
+        "kind": "behavior",
+        "kinds": {
+          "behavior": 0.54,
+          "check": 0.01,
+          "constraint": 0.18,
+          "context": 0.0,
+          "deliverable": 0.27
+        },
+        "answered": true
+      },
+      {
+        "id": "s5",
+        "start": 267,
+        "end": 334,
+        "form": "list_item",
+        "text": "3. make sure irrelevant files and commit messages remain untouched.",
+        "requirement": "R4",
+        "kind": "constraint",
+        "kinds": {
+          "behavior": 0.0,
+          "check": 0.0,
+          "constraint": 1.0,
+          "context": 0.0,
+          "deliverable": 0.0
+        },
+        "answered": true
+      },
+      {
+        "id": "s6",
+        "start": 335,
+        "end": 340,
+        "form": "line",
+        "text": "Hint:",
+        "requirement": null,
+        "kind": "context",
+        "kinds": {
+          "behavior": 0.0,
+          "check": 0.0,
+          "constraint": 0.0,
+          "context": 1.0,
+          "deliverable": 0.0
+        },
+        "answered": true
+      },
+      {
+        "id": "s7",
+        "start": 343,
+        "end": 369,
+        "form": "list_item",
+        "text": "- The repo is in /app/repo",
+        "requirement": null,
+        "kind": "context",
+        "kinds": {
+          "behavior": 0.0,
+          "check": 0.0,
+          "constraint": 0.02,
+          "context": 0.98,
+          "deliverable": 0.0
+        },
+        "answered": true
+      },
+      {
+        "id": "s8",
+        "start": 372,
+        "end": 407,
+        "form": "list_item",
+        "text": "- The secret format is secret[...].",
+        "requirement": "R5",
+        "kind": "constraint",
+        "kinds": {
+          "behavior": 0.0,
+          "check": 0.0,
+          "constraint": 0.34,
+          "context": 0.65,
+          "deliverable": 0.01
+        },
+        "answered": true
+      },
+      {
+        "id": "s9",
+        "start": 410,
+        "end": 473,
+        "form": "list_item",
+        "text": "- There is only one string in the repo with secret[...] format.",
+        "requirement": null,
+        "kind": "context",
+        "kinds": {
+          "behavior": 0.0,
+          "check": 0.0,
+          "constraint": 0.14,
+          "context": 0.86,
+          "deliverable": 0.0
+        },
+        "answered": true
+      }
+    ],
+    "requirements": [
+      {
+        "id": "R1",
+        "spans": [
+          "s2"
+        ],
+        "kind": "deliverable",
+        "binding": "uncertain",
+        "state": "unobserved",
+        "p": 0.32,
+        "text": "Please"
+      },
+      {
+        "id": "R2",
+        "spans": [
+          "s3"
+        ],
+        "kind": "deliverable",
+        "binding": "yes",
+        "state": "unobserved",
+        "p": 1.0,
+        "text": "1. recover the secret and write it to a /app/secret.txt file.",
+        "extracted": {
+          "paths": [
+            "/app/secret.txt"
+          ]
+        }
+      },
+      {
+        "id": "R3",
+        "spans": [
+          "s4"
+        ],
+        "kind": "behavior",
+        "binding": "yes",
+        "state": "unobserved",
+        "p": 1.0,
+        "text": "2. clean up the secret in that repo to make sure it cannot be found anywhere in that repo."
+      },
+      {
+        "id": "R4",
+        "spans": [
+          "s5"
+        ],
+        "kind": "constraint",
+        "binding": "yes",
+        "state": "unobserved",
+        "p": 1.0,
+        "text": "3. make sure irrelevant files and commit messages remain untouched."
+      },
+      {
+        "id": "R5",
+        "spans": [
+          "s8"
+        ],
+        "kind": "constraint",
+        "binding": "uncertain",
+        "state": "unobserved",
+        "p": 0.35,
+        "exhaustive": 0.28,
+        "text": "- The secret format is secret[...]."
+      }
+    ],
+    "coverage": {
+      "chars": 381,
+      "covered": 381,
+      "fraction": 1.0,
+      "spans": 9,
+      "requirement_spans": 5,
+      "context_spans": 4,
+      "unanswered_spans": 0
+    }
+  },
+  "inputs": {
+    "instruction": "A secret was accidentally committed to this repository in /app and then removed by rewriting history.\nPlease \n 1. recover the secret and write it to a /app/secret.txt file. \n 2. clean up the secret in that repo to make sure it cannot be found anywhere in that repo.\n 3. make sure irrelevant files and commit messages remain untouched.\nHint:\n  - The repo is in /app/repo\n  - The secret format is secret[...].\n  - There is only one string in the repo with secret[...] format.\n",
+    "requirements": [
+      [
+        "Please",
+        null
+      ],
+      [
+        "1. recover the secret and write it to a /app/secret.txt file.",
+        null
+      ],
+      [
+        "2. clean up the secret in that repo to make sure it cannot be found anywhere in that repo.",
+        null
+      ],
+      [
+        "3. make sure irrelevant files and commit messages remain untouched.",
+        null
+      ],
+      [
+        "- The secret format is secret[...].",
+        null
+      ]
+    ],
+    "files": [
+      [
+        "$ list /app (depth 3)",
+        0.91,
+        "/app:\nrepo/\nrepo/.git/\nrepo/README.md  26 B"
+      ],
+      [
+        "$ git -C /app/repo log --oneline --graph --all -n 40",
+        0.91,
+        "* c6d9997 chore: init e665d1a2-04a7-4e61-b523-e897e231d9cc\n* 7a2420e chore: init e665d1a2-04a7-4e61-b523-e897e231d9cc"
+      ],
+      [
+        "$ git -C /app/repo reflog -n 40",
+        0.87,
+        "c6d9997 HEAD@{0}: commit: chore: init e665d1a2-04a7-4e61-b523-e897e231d9cc\n7a2420e HEAD@{1}: reset: moving to HEAD~1\n6b4c75c HEAD@{2}: commit: feat: add scratch notes\n7a2420e HEAD@{3}: commit (initial): chore: init e665d1a2-04a7-4e61-b523-e897e231d9cc"
+      ],
+      [
+        "$ git -C /app/repo branch -a -vv",
+        0.84,
+        "* master c6d9997 chore: init e665d1a2-04a7-4e61-b523-e897e231d9cc"
+      ],
+      [
+        "$ git -C /app/repo status",
+        0.83,
+        "On branch master\nnothing to commit, working tree clean"
+      ],
+      [
+        "$ list /app/repo",
+        0.72,
+        "/app/repo:\n.git/\nREADME.md  26 B"
+      ]
+    ],
+    "spans": [],
+    "commands": [],
+    "last_output": null,
+    "conclusion": "The explorer reached its 0-step bound without a conclusion.",
+    "directions": "Complete the task in the current working directory. Nobody answers questions, so decide from the task and the environment. An automated checker grades the final state of the environment against the task, so verify every requirement, including exact paths, names, and formats, before you stop. The files, command outputs, and setup results in this briefing were gathered just before you started and are complete and current: do not list, read, or run them again. Work in few, large steps: write each file whole in one command, and chain related commands (installs, builds) with && in one call. Before you stop, run the checks the task names and exercise every code path you changed, not only the example the task gives. After a bulk find-and-replace, search the result for occurrences it missed or changed twice. End with a short summary of what you changed and how you checked it."
+  },
+  "schema": "openagents.coder-one.briefing-pack.v1"
+}

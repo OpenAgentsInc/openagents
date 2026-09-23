@@ -1,0 +1,65 @@
+{
+  "schema": "openagents.coder-one.repair.v1",
+  "implementation": {
+    "name": "one fresh session from a delta brief",
+    "digest": "14482826ca0dc5f63b55b1f01cf8035d6feaf3e632dd5bde7d3a60aaf62472f2"
+  },
+  "trigger": "checked",
+  "triggered": true,
+  "gaps": [
+    {
+      "requirement": "R2",
+      "scenarios": [
+        "generic.claimed-command:1"
+      ],
+      "support": null
+    }
+  ],
+  "candidate_before": "1f4ce93ae1674e570c7ce1c082b8412eebf09cbd4dabea806ef47f7fc29851e3",
+  "brief": {
+    "kind": "packet",
+    "sha256": "b5a27e2a2c76bb124e3e501ab6ee366064087e0baccf327c788377bf4dd4036e",
+    "chars": 6120,
+    "candidate": "1f4ce93ae1674e570c7ce1c082b8412eebf09cbd4dabea806ef47f7fc29851e3",
+    "requirements": [
+      "R2"
+    ],
+    "scenarios": [
+      "generic.claimed-command:1"
+    ],
+    "path": "artifacts/repair-1.brief.md"
+  },
+  "granted_ms": 594000,
+  "session": {
+    "fresh": true,
+    "resumes": null,
+    "previous_session": "7cedae63-5b15-4e23-836c-e17ae6f41331",
+    "session_id": "862a62c8-577e-4895-83c8-603c9ff3054b",
+    "agent": "claude-code",
+    "model": "claude-opus-5-5",
+    "status": "answered",
+    "turns": 3,
+    "milliseconds": 13816,
+    "cost_usd": 0.0420348,
+    "cost_provenance": "provider_reported",
+    "result": "I fixed the failing check, and the test command now passes from both `/app` and `/app/pyknotid`.\n\n**Cause:** the check ran the command from `/app`, not from `/app/pyknotid`. From there the test files live at `pyknotid/tests/...`, so the flags `--ignore=tests/test_random_curves.py` and `--ignore=tests/test_catalogue.py` didn't match anything. Pytest then tried to load both files, and they failed as the task says they will:\n- `test_random_curves.py` imports a module that doesn't exist (the dead co…"
+  },
+  "candidate_after": "97b12b284c28a5ab247d31e3ef2ff2b994de34689b9806ac5d5408485e105a4e",
+  "changed": true,
+  "invalidated": [
+    "R2"
+  ],
+  "recheck": {
+    "file": "verification/checks-repaired.json",
+    "summary": {
+      "candidate": "97b12b284c28a5ab247d31e3ef2ff2b994de34689b9806ac5d5408485e105a4e",
+      "scenarios": 0,
+      "verdicts": {},
+      "requirements": {
+        "unobserved": 8
+      },
+      "packets": 0
+    },
+    "gaps": []
+  }
+}

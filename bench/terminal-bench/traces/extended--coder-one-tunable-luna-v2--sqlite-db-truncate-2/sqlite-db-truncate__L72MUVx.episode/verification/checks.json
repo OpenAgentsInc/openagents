@@ -1,0 +1,189 @@
+{
+  "schema": "openagents.coder-one.checks.v1",
+  "implementation": {
+    "name": "admitted scenario catalog, deterministic selector",
+    "digest": "b81f1d8b5c4ccef58702fffbdf222f8543355c36adf06fe66208be128cf5ac32"
+  },
+  "candidate": {
+    "label": "terminal-bench task",
+    "origin": "workspace",
+    "digest": "3a6edd5a2444808bf8f798cb9e447ed08bb796f51c7088fe3f1e3b91cc1f47eb",
+    "files": [
+      "recover.json"
+    ],
+    "programs": 0
+  },
+  "requirements_method": "jev",
+  "ineligible": [
+    {
+      "kind": "data",
+      "why": "the instruction shows no CSV rows to fill"
+    },
+    {
+      "kind": "interactive",
+      "why": "the instruction asks for no interactive behavior"
+    },
+    {
+      "kind": "cancellation",
+      "why": "the instruction asks for no cleanup on cancellation"
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "generic.output:/app/recover.json",
+      "kind": "generic.output",
+      "requirements": [
+        "R1"
+      ],
+      "spans": [
+        {
+          "requirement": "R1",
+          "span": "s2",
+          "start": 88,
+          "end": 173,
+          "text": "Recover as many of the rows as possible, and create a JSON file in /app/recover.json."
+        }
+      ],
+      "applies": [
+        "R1 names the output /app/recover.json"
+      ],
+      "interface": "the file /app/recover.json",
+      "bounds": {
+        "seconds": 1,
+        "processes": 1
+      },
+      "effects": [
+        "reads the file in the task's working directory"
+      ],
+      "candidate": "3a6edd5a2444808bf8f798cb9e447ed08bb796f51c7088fe3f1e3b91cc1f47eb",
+      "input": "389459002e3e64d906c436b92f5706de2a8ff5373990fcf752d0664da8e5bdfd",
+      "expected": {
+        "statement": "/app/recover.json exists and isn't empty.",
+        "derivation": "R1 asks for /app/recover.json to be written."
+      },
+      "params": {
+        "path": "/app/recover.json",
+        "resolved": "/app/recover.json"
+      }
+    },
+    {
+      "id": "generic.parse:/app/recover.json",
+      "kind": "generic.parse",
+      "requirements": [
+        "R1"
+      ],
+      "spans": [
+        {
+          "requirement": "R1",
+          "span": "s2",
+          "start": 88,
+          "end": 173,
+          "text": "Recover as many of the rows as possible, and create a JSON file in /app/recover.json."
+        }
+      ],
+      "applies": [
+        "/app/recover.json has the structured format json"
+      ],
+      "interface": "the file /app/recover.json",
+      "bounds": {
+        "seconds": 10,
+        "processes": 1
+      },
+      "effects": [
+        "reads the file in the task's working directory"
+      ],
+      "candidate": "3a6edd5a2444808bf8f798cb9e447ed08bb796f51c7088fe3f1e3b91cc1f47eb",
+      "input": "e6536f0dbc11a7d23cbdfc1de4cd9125261bd58b38647e40e700fa372c9db847",
+      "expected": {
+        "statement": "/app/recover.json parses as json.",
+        "derivation": "The task names /app/recover.json; its extension says its format."
+      },
+      "params": {
+        "path": "/app/recover.json",
+        "resolved": "/app/recover.json",
+        "format": "json",
+        "header": null
+      }
+    }
+  ],
+  "selection": {
+    "selector": "deterministic",
+    "admitted": 2,
+    "selected": [
+      "generic.output:/app/recover.json",
+      "generic.parse:/app/recover.json"
+    ],
+    "skipped": [],
+    "bound_seconds": 11,
+    "budget": {
+      "max_scenarios": 12,
+      "seconds": 180
+    }
+  },
+  "verdicts": [
+    {
+      "scenario": "generic.output:/app/recover.json",
+      "verdict": "passed",
+      "observations": [
+        {
+          "path": "/app/recover.json",
+          "exists": true,
+          "bytes": 515
+        }
+      ],
+      "coverage": [
+        "checks that the file is there, not what it holds"
+      ]
+    },
+    {
+      "scenario": "generic.parse:/app/recover.json",
+      "verdict": "passed",
+      "observations": [
+        {
+          "path": "/app/recover.json",
+          "format": "json",
+          "problem": null
+        }
+      ],
+      "coverage": [
+        "checks the format, not the values"
+      ]
+    }
+  ],
+  "coverage": [
+    {
+      "id": "R1",
+      "text": "Recover as many of the rows as possible, and create a JSON file in /app/recover.json.",
+      "kind": "deliverable",
+      "state": "observed",
+      "scenarios": [
+        {
+          "id": "generic.output:/app/recover.json",
+          "verdict": "passed",
+          "scenario_verdict": "passed",
+          "coverage": [
+            "checks that the file is there, not what it holds"
+          ],
+          "candidate": "3a6edd5a2444808bf8f798cb9e447ed08bb796f51c7088fe3f1e3b91cc1f47eb"
+        },
+        {
+          "id": "generic.parse:/app/recover.json",
+          "verdict": "passed",
+          "scenario_verdict": "passed",
+          "coverage": [
+            "checks the format, not the values"
+          ],
+          "candidate": "3a6edd5a2444808bf8f798cb9e447ed08bb796f51c7088fe3f1e3b91cc1f47eb"
+        }
+      ]
+    },
+    {
+      "id": "R2",
+      "text": "The output should have the format [{\"word\": \"testwordXY\", \"value\": M}, {\"word\": \"testwordZZ\",\"value\": N}, ...]",
+      "kind": "constraint",
+      "state": "unobserved",
+      "scenarios": []
+    }
+  ],
+  "packets": []
+}

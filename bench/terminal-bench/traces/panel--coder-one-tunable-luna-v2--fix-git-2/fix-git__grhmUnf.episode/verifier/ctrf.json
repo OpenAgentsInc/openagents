@@ -1,0 +1,44 @@
+{
+    "results": {
+        "tool": {
+            "name": "pytest",
+            "version": "8.4.1"
+        },
+        "summary": {
+            "tests": 2,
+            "passed": 0,
+            "failed": 2,
+            "skipped": 0,
+            "pending": 0,
+            "other": 0,
+            "start": 1790152855.937025,
+            "stop": 1790152855.9828463
+        },
+        "tests": [
+            {
+                "name": "test_outputs.py::test_about_file",
+                "status": "failed",
+                "raw_status": "call_failed",
+                "duration": 0.00045978400157764554,
+                "start": 1790152855.9755623,
+                "stop": 1790152855.9811478,
+                "retries": 0,
+                "file_path": "test_outputs.py",
+                "trace": "def test_about_file():\n        \"\"\"\n        Test that the about file content is correct\n        \"\"\"\n>       check_file_hash(\n            \"/app/personal-site/_includes/about.md\", \"0273104059c6bf524e767b8847b22946\"\n        )\n\n/tests/test_outputs.py:28: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nfile_path = '/app/personal-site/_includes/about.md'\nexpected_hash = '0273104059c6bf524e767b8847b22946'\n\n    def check_file_hash(file_path, expected_hash):\n>       assert hash_file(file_path) == expected_hash, (\n            f\"File {file_path} is not in the correct state\"\n        )\nE       AssertionError: File /app/personal-site/_includes/about.md is not in the correct state\nE       assert '096fe24fd18a...67f56aabc009d' == '0273104059c6...67b8847b22946'\nE         \nE         - 0273104059c6bf524e767b8847b22946\nE         + 096fe24fd18af4611e667f56aabc009d\n\n/tests/test_outputs.py:13: AssertionError",
+                "message": "The test failed in the call phase due to an assertion error"
+            },
+            {
+                "name": "test_outputs.py::test_layout_file",
+                "status": "failed",
+                "raw_status": "call_failed",
+                "duration": 0.0003526899963617325,
+                "start": 1790152855.9812808,
+                "stop": 1790152855.9827528,
+                "retries": 0,
+                "file_path": "test_outputs.py",
+                "trace": "def test_layout_file():\n        \"\"\"\n        Test that the layout file content is correct\n        \"\"\"\n>       check_file_hash(\n            \"/app/personal-site/_layouts/default.html\", \"0f879389f66640f45316e393a71c5f2f\"\n        )\n\n/tests/test_outputs.py:37: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nfile_path = '/app/personal-site/_layouts/default.html'\nexpected_hash = '0f879389f66640f45316e393a71c5f2f'\n\n    def check_file_hash(file_path, expected_hash):\n>       assert hash_file(file_path) == expected_hash, (\n            f\"File {file_path} is not in the correct state\"\n        )\nE       AssertionError: File /app/personal-site/_layouts/default.html is not in the correct state\nE       assert 'bb4020cc8369...cdd2b313832c4' == '0f879389f666...6e393a71c5f2f'\nE         \nE         - 0f879389f66640f45316e393a71c5f2f\nE         + bb4020cc8369a2af7e8cdd2b313832c4\n\n/tests/test_outputs.py:13: AssertionError",
+                "message": "The test failed in the call phase due to an assertion error"
+            }
+        ]
+    }
+}

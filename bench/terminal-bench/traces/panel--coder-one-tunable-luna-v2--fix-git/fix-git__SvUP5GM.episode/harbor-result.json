@@ -1,0 +1,36 @@
+{
+  "trial_name": "fix-git__SvUP5GM",
+  "task_name": "terminal-bench/fix-git",
+  "started_at": "2026-09-23T06:36:40.291547Z",
+  "finished_at": "2026-09-23T06:37:49.797091Z",
+  "environment_setup": {
+    "started_at": "2026-09-23T06:36:40.343015Z",
+    "finished_at": "2026-09-23T06:36:41.600930Z"
+  },
+  "agent_setup": {
+    "started_at": "2026-09-23T06:36:41.601001Z",
+    "finished_at": "2026-09-23T06:36:46.435292Z"
+  },
+  "agent_execution": {
+    "started_at": "2026-09-23T06:36:46.435442Z",
+    "finished_at": "2026-09-23T06:37:29.816322Z"
+  },
+  "verifier": {
+    "started_at": "2026-09-23T06:37:30.086903Z",
+    "finished_at": "2026-09-23T06:37:36.746607Z"
+  },
+  "verifier_result": {
+    "rewards": {
+      "reward": 1.0
+    }
+  },
+  "agent_result": {
+    "n_input_tokens": 125301,
+    "n_cache_tokens": 87296,
+    "n_output_tokens": 918,
+    "cost_usd": 0.003782858,
+    "rollout_details": null,
+    "metadata": null
+  },
+  "exception_info": null
+}

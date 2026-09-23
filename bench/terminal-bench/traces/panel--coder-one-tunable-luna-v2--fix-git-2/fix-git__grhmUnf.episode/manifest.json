@@ -1,0 +1,431 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "policy": {
+    "schema": "openagents.coder-one.policy.v1",
+    "name": "coder-one-tunable-luna-v2",
+    "digest": "1945283cd971826795b53c54c48c20cd8601d7f5fb10f0eadbbcb18bea868bcd",
+    "source": "inline",
+    "overrides": [
+      {
+        "source": "CODER_ONE_EPISODE_DEADLINE",
+        "field": "protected.ceilings.episode_deadline_sec",
+        "value": "780"
+      }
+    ],
+    "notes": [],
+    "manifest": {
+      "schema": "openagents.coder-one.policy.v1",
+      "name": "coder-one-tunable-luna-v2",
+      "note": "Codex on GPT-6 Luna with the headless core system prompt, verify.checks on the live workspace, escalation to lean Claude Code on Opus 5.5 on a stall, a failed check, or no answer, and one verify.repair from the diagnostic packets. control.horizon sizes every dispatch from the task's own timeout. The briefing uses the coverage packer with Jev coverage judgments (brief.packer coverage-jev), which fixed Luna on log-summary-date-ranges. v2: the monitor judges in shadow only (control.handoff.on is empty), because its stall flags stopped four working Luna sessions after 12 to 30 seconds in the first run; escalation comes from a failed check, a contradicted requirement, or no answer. verify.repair runs only on an observed scenario failure (trigger checked).",
+      "policy": {
+        "jev": {
+          "mode": "deep",
+          "model": "jev-1.13.0",
+          "question_sets": "builtin-v1"
+        },
+        "evidence": {
+          "probes": "v2",
+          "survey_files": 40
+        },
+        "control": {
+          "delegate": "always",
+          "explore_steps": 0,
+          "max_steps": 50,
+          "command_timeout_sec": 300,
+          "lane": "free",
+          "error_streak": 3,
+          "unchanged_steps": 6,
+          "monitor": {
+            "on_operation": true,
+            "on_artifact": true,
+            "on_claim": true,
+            "silence_ms": 300000,
+            "window": 8,
+            "event_chars": 300,
+            "requirements": 10,
+            "threshold": 0.5,
+            "jev": true,
+            "stall_commands": 12,
+            "latency_ms": 800
+          },
+          "handoff": {
+            "pattern": "escalate",
+            "to": {
+              "agent": "claude-code",
+              "model": "claude-opus-5-5",
+              "effort": "low",
+              "tools": "Bash,Read,Edit,Write,Glob,Grep",
+              "prompt_cache_ttl": "5m",
+              "version": "2.1.280"
+            },
+            "on": [],
+            "after": 3,
+            "max_handoffs": 1,
+            "brief": {
+              "requirements": true,
+              "diff": true,
+              "errors": true,
+              "packets": true
+            },
+            "monitor": {
+              "on_operation": true,
+              "on_artifact": true,
+              "on_claim": true,
+              "silence_ms": 300000,
+              "window": 8,
+              "event_chars": 300,
+              "requirements": 10,
+              "threshold": 0.5,
+              "jev": true,
+              "stall_commands": 12,
+              "latency_ms": 800
+            }
+          },
+          "horizon": {
+            "first_share": 0.55,
+            "later_share": 0.75,
+            "min_dispatch_sec": 300,
+            "check_share": 0.05,
+            "long_after_sec": 3600,
+            "long_effort": "medium",
+            "long_command_sec": 3600
+          }
+        },
+        "brief": {
+          "cap": 12000,
+          "directions": "batch-checked",
+          "packer": "coverage-jev"
+        },
+        "executor": {
+          "agent": "codex",
+          "version": "0.155.1",
+          "model": "gpt-6-luna",
+          "effort": null,
+          "tools": null,
+          "prompt_cache_ttl": null,
+          "deadline_sec": 600,
+          "system": {
+            "mode": "replace",
+            "sections": [
+              "role",
+              "security",
+              "authority",
+              "verify",
+              "report",
+              "code-style"
+            ]
+          }
+        },
+        "verify": {
+          "checks": true,
+          "support": false,
+          "repair": {
+            "brief": "packet",
+            "trigger": "checked"
+          }
+        }
+      },
+      "protected": {
+        "isolation": "task-container",
+        "effect_policy": "executor-bypasses-its-own-sandbox",
+        "acceptance": "task-verifier",
+        "ceilings": {
+          "episode_deadline_sec": 780,
+          "reserve_sec": 30,
+          "spend_soft_usd": null,
+          "spend_hard_usd": null
+        }
+      }
+    },
+    "text_digests": {
+      "directions": "fea432bfc839af266ebfde909c2c0d9240b05206b815c2254c4849fee9757a1e",
+      "episode_instructions": "968529ff8c30adc54aeed0ed420a6108c23cf9157cc9bc034a9bae2af1ce9a2f",
+      "explore_prompt": "e00d4aa84650903e0b9174be59e0f5118f89c56fa7c878b2717632c4ff3c9e24",
+      "system": "295d575f2830763a5663487ddbb04b7f0b6dd2ea852926122eef893a6edc3607"
+    }
+  },
+  "delegate": {
+    "mode": "always",
+    "agent": "codex",
+    "model": "gpt-6-luna",
+    "version": "0.155.1",
+    "effort": null,
+    "tools": null,
+    "prompt_cache_ttl": null,
+    "system": {
+      "mode": "replace",
+      "sections": [
+        "role",
+        "security",
+        "authority",
+        "verify",
+        "report",
+        "code-style"
+      ]
+    },
+    "executor_path": "/usr/local/bin/codex",
+    "credential": "codex_auth_json",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "directions": "batch-checked",
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "8a5ddb95433d9bf299b80ec88c5ff18eceafe5eb077619944871dd94fb8bef5c",
+        "chars": 7147,
+        "bytes": 7147,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "file $ git log --oneline --graph --all -n 40",
+          "file $ git reflog -n 40",
+          "file $ git branch -a -vv",
+          "file $ git status",
+          "file $ list /app/personal-site (depth 3)"
+        ],
+        "omitted": []
+      },
+      "packer": "coverage",
+      "uncovered_requirements": [],
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 1,
+      "api_calls": null,
+      "completed_items": 5,
+      "charge": "priced",
+      "total_cost_usd": 0.00198538,
+      "milliseconds": 39932,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 12645,
+        "kept_bytes": 12645,
+        "truncated": false,
+        "sha256": "ecc316e8546d427c2c2f1dac4de5829b84987d488487b674163631ffe24ea1c2",
+        "gaps": [],
+        "retention": "first 8388608 bytes written as they arrive; past that, the first and last halves"
+      },
+      "system": {
+        "schema": "openagents.coder-one.system-prompt.v1",
+        "variant": "manifest",
+        "agent": "codex",
+        "mode": "replace",
+        "setting": "model_instructions_file",
+        "digest": "295d575f2830763a5663487ddbb04b7f0b6dd2ea852926122eef893a6edc3607",
+        "chars": 1542,
+        "default": "codex 0.155.1 (gpt-6-luna)",
+        "default_chars": 18037,
+        "protected": true,
+        "sections": [
+          {
+            "id": "role",
+            "status": "core",
+            "chars": 214,
+            "by": "manifest"
+          },
+          {
+            "id": "security",
+            "status": "protected",
+            "chars": 461,
+            "by": "manifest"
+          },
+          {
+            "id": "authority",
+            "status": "core",
+            "chars": 334,
+            "by": "manifest"
+          },
+          {
+            "id": "verify",
+            "status": "core",
+            "chars": 258,
+            "by": "manifest"
+          },
+          {
+            "id": "report",
+            "status": "core",
+            "chars": 176,
+            "by": "manifest"
+          },
+          {
+            "id": "code-style",
+            "status": "core",
+            "chars": 95,
+            "by": "manifest"
+          }
+        ],
+        "asked": []
+      },
+      "close": {
+        "done": 0.86,
+        "criteria": [
+          {
+            "requirement": "Please help me find them and merge them into master.",
+            "p": 0.9
+          }
+        ],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (753a17ed975f)",
+    "sha256": "4f2a41bc909bd8a6aedf9ecb531cfc9d491a334fbf6adebbfc72d609824de176"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline_sec": 780,
+    "reserve_sec": 30
+  },
+  "spend": {
+    "soft_usd": null,
+    "hard_usd": null,
+    "enforcement": "soft: checked before each dispatch starts; a running dispatch can pass it",
+    "hard_note": "no hard dollar cap: no executor adapter reserves a known maximum charge before a model call",
+    "known_usd": 0.002883886,
+    "unknown_calls": 0
+  },
+  "generation": 2,
+  "started_at": "2026-09-23T08:40:01.291Z",
+  "updated_at": "2026-09-23T08:40:45.863Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app/personal-site",
+  "git_base": "d7d3e4ba9350f634d92d39ace2b471433ee57d50",
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 262338,
+      "sha256": "1e87145b0e142269fb95b57c49e6a06a93c284bf535d8f0b1d553acb782a66d3"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 9663,
+      "sha256": "26140dc46e5ee5546d1b1579b3918bf9aa0103a64763d9cc9ab8ca305fa64b45"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 6395,
+      "sha256": "f8a840912f5179e5741be92fb89ac33b07874171525b38b548808e54cd354af3"
+    },
+    "diff": {
+      "path": "artifacts/diff.patch",
+      "bytes": 654025,
+      "sha256": "cd8e3a8c8df07517dad812d75c65a2941c32b0f36d8c65ec4e06638d1effe490"
+    },
+    "collection": {
+      "path": "artifacts/collection.json",
+      "bytes": 569,
+      "sha256": "97655af9aa09bb30da9c76b3f3fdf0600415b0a6f798c2d9d8e548305fb650e0"
+    },
+    "briefing_pack": {
+      "path": "artifacts/briefing-pack.json",
+      "bytes": 10801,
+      "sha256": "a3a935062ba02240cfe82d65c40e65a2e4c69fa0e7941dec102b011d0559b78b"
+    },
+    "composition": {
+      "path": "artifacts/composition.json",
+      "bytes": 1976,
+      "sha256": "16d2c7dcb67b8cd059ade689f8c9ed6d11e19c1e8bdb4547729eb38f86ea9e68"
+    },
+    "requirements": {
+      "path": "artifacts/requirements.json",
+      "bytes": 1457,
+      "sha256": "c1323cac19180ee92c507ccba2f211cf5470d3fb103d89ae683b946264895b77"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 7147,
+      "sha256": "8a5ddb95433d9bf299b80ec88c5ff18eceafe5eb077619944871dd94fb8bef5c"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 12645,
+      "sha256": "ecc316e8546d427c2c2f1dac4de5829b84987d488487b674163631ffe24ea1c2"
+    },
+    "delegate-1_system_md": {
+      "path": "artifacts/delegate-1.system.md",
+      "bytes": 1542,
+      "sha256": "d2ccda88e4b9fc3119b2db881f7eb463cf86e6557cef6cc4f75a0aca389b9aec"
+    },
+    "invocation_log": {
+      "path": "episode.atif.jsonl",
+      "bytes": 166992,
+      "sha256": "37321c3616588596c91a63f7d99be47137c12a7a814d2c4339cca60623958583",
+      "ended": true,
+      "faults": 0
+    }
+  },
+  "deadline": {
+    "kind": "hard",
+    "total_ms": 780000,
+    "reserve_ms": 30000,
+    "elapsed_ms": 45028,
+    "remaining_ms": 734971,
+    "used_fraction": 0.05772896175769231,
+    "cuts": [],
+    "note": "one monotonic deadline from the episode's start; every dispatch, Jev request, retry, wait, setup command, probe, and check is granted at most what is left after the reserve"
+  },
+  "verification": {
+    "note": "The composition's checks observe requirements; the task's verifier is still the only grader.",
+    "checks": [
+      {
+        "after": "primary",
+        "file": "verification/checks.json",
+        "summary": {
+          "candidate": "cbe82db9d8c050caa08c2f1a68d19e0729194fe2d894b77ad502f1456d05513e",
+          "scenarios": 0,
+          "verdicts": {},
+          "requirements": {
+            "unobserved": 1
+          },
+          "packets": 0
+        }
+      }
+    ],
+    "support": null,
+    "repair": {
+      "tier": {
+        "agent": "codex",
+        "model": "gpt-6-luna",
+        "version": "0.155.1"
+      },
+      "triggered": false,
+      "ran": false,
+      "changed": false,
+      "skipped": "no check contradicted a requirement",
+      "session": null,
+      "recheck": null,
+      "cost_usd": 0.0
+    }
+  },
+  "result": {
+    "title": "I just made some changes to my personal site and checked out master, but now I can't find those chan…",
+    "summary": "Recovered the lost changes from commit `19b5d10` and fast-forwarded `master` to include them. The changes add Terminal-Bench and update the site’s publications, role, contact details, interests, and headshot.\n\nVerified that `master` now points to `19b5d10` and the working tree is clean.",
+    "delegate_status": "answered"
+  }
+}

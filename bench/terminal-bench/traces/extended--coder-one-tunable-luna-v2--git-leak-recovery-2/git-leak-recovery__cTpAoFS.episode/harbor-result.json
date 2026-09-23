@@ -1,0 +1,36 @@
+{
+  "trial_name": "git-leak-recovery__cTpAoFS",
+  "task_name": "terminal-bench/git-leak-recovery",
+  "started_at": "2026-09-23T08:43:09.298148Z",
+  "finished_at": "2026-09-23T08:44:31.334329Z",
+  "environment_setup": {
+    "started_at": "2026-09-23T08:43:09.342965Z",
+    "finished_at": "2026-09-23T08:43:20.050527Z"
+  },
+  "agent_setup": {
+    "started_at": "2026-09-23T08:43:20.050566Z",
+    "finished_at": "2026-09-23T08:43:23.797500Z"
+  },
+  "agent_execution": {
+    "started_at": "2026-09-23T08:43:23.797625Z",
+    "finished_at": "2026-09-23T08:44:00.631872Z"
+  },
+  "verifier": {
+    "started_at": "2026-09-23T08:44:00.913579Z",
+    "finished_at": "2026-09-23T08:44:20.137589Z"
+  },
+  "verifier_result": {
+    "rewards": {
+      "reward": 1.0
+    }
+  },
+  "agent_result": {
+    "n_input_tokens": 63210,
+    "n_cache_tokens": 40960,
+    "n_output_tokens": 466,
+    "cost_usd": 0.0019226640000000001,
+    "rollout_details": null,
+    "metadata": null
+  },
+  "exception_info": null
+}

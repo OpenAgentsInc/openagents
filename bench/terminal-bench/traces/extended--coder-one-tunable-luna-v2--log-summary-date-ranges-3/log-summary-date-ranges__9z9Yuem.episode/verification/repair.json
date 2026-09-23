@@ -1,0 +1,12 @@
+{
+  "schema": "openagents.coder-one.repair.v1",
+  "implementation": {
+    "name": "one fresh session from a delta brief",
+    "digest": "14482826ca0dc5f63b55b1f01cf8035d6feaf3e632dd5bde7d3a60aaf62472f2"
+  },
+  "trigger": "checked",
+  "triggered": false,
+  "gaps": [],
+  "candidate_before": "c28a1b7f112998fdc4c9415e494e4fb61f21453d2bc73cdec70bdc3cab07fc5c",
+  "skipped": "no check contradicted a requirement"
+}

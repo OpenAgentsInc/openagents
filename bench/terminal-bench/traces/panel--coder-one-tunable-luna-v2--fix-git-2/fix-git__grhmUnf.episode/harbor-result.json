@@ -1,0 +1,36 @@
+{
+  "trial_name": "fix-git__grhmUnf",
+  "task_name": "terminal-bench/fix-git",
+  "started_at": "2026-09-23T08:39:40.555018Z",
+  "finished_at": "2026-09-23T08:41:07.426275Z",
+  "environment_setup": {
+    "started_at": "2026-09-23T08:39:40.606108Z",
+    "finished_at": "2026-09-23T08:39:57.403088Z"
+  },
+  "agent_setup": {
+    "started_at": "2026-09-23T08:39:57.403136Z",
+    "finished_at": "2026-09-23T08:40:01.199161Z"
+  },
+  "agent_execution": {
+    "started_at": "2026-09-23T08:40:01.199240Z",
+    "finished_at": "2026-09-23T08:40:46.768431Z"
+  },
+  "verifier": {
+    "started_at": "2026-09-23T08:40:47.054287Z",
+    "finished_at": "2026-09-23T08:40:56.023852Z"
+  },
+  "verifier_result": {
+    "rewards": {
+      "reward": 0.0
+    }
+  },
+  "agent_result": {
+    "n_input_tokens": 94264,
+    "n_cache_tokens": 62208,
+    "n_output_tokens": 594,
+    "cost_usd": 0.002883886,
+    "rollout_details": null,
+    "metadata": null
+  },
+  "exception_info": null
+}

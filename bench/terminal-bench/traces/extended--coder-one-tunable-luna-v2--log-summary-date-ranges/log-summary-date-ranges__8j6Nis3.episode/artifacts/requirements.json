@@ -1,0 +1,471 @@
+{
+  "schema": "openagents.coder-one.requirements.v1",
+  "instruction_sha256": "c1d4516ad4ec2238209740eaf01291df9ab48b0028a3fc5df383c6f831453484",
+  "method": "jev",
+  "spans": [
+    {
+      "id": "s1",
+      "start": 0,
+      "end": 53,
+      "form": "sentence",
+      "text": "You are given multiple log files stored in /app/logs.",
+      "requirement": null,
+      "kind": "context",
+      "kinds": {
+        "behavior": 0.0,
+        "check": 0.0,
+        "constraint": 0.0,
+        "context": 1.0,
+        "deliverable": 0.0
+      },
+      "answered": true
+    },
+    {
+      "id": "s2",
+      "start": 54,
+      "end": 193,
+      "form": "sentence",
+      "text": "Each log file name follows the pattern YYYY-MM-DD_<source>.log (e.g., 2025-08-10_db.log), indicating the date of the logs and their source.",
+      "requirement": null,
+      "kind": "context",
+      "kinds": {
+        "behavior": 0.0,
+        "check": 0.0,
+        "constraint": 0.13,
+        "context": 0.87,
+        "deliverable": 0.0
+      },
+      "answered": true
+    },
+    {
+      "id": "s3",
+      "start": 194,
+      "end": 248,
+      "form": "sentence",
+      "text": "Each log line contains an event with a severity level.",
+      "requirement": null,
+      "kind": "context",
+      "kinds": {
+        "behavior": 0.03,
+        "check": 0.0,
+        "constraint": 0.0,
+        "context": 0.97,
+        "deliverable": 0.0
+      },
+      "answered": true
+    },
+    {
+      "id": "s4",
+      "start": 249,
+      "end": 362,
+      "form": "sentence",
+      "text": "Your task is to analyze all logs and count how many times each severity appears within the following date ranges:",
+      "requirement": "R1",
+      "kind": "behavior",
+      "kinds": {
+        "behavior": 0.99,
+        "check": 0.0,
+        "constraint": 0.0,
+        "context": 0.01,
+        "deliverable": 0.0
+      },
+      "answered": true
+    },
+    {
+      "id": "s5",
+      "start": 363,
+      "end": 387,
+      "form": "line",
+      "text": "Today (the current date)",
+      "requirement": "R2",
+      "kind": "behavior",
+      "kinds": {
+        "behavior": 0.89,
+        "check": 0.0,
+        "constraint": 0.07,
+        "context": 0.02,
+        "deliverable": 0.02
+      },
+      "answered": true
+    },
+    {
+      "id": "s6",
+      "start": 388,
+      "end": 417,
+      "form": "line",
+      "text": "Last 7 days (including today)",
+      "requirement": "R3",
+      "kind": "behavior",
+      "kinds": {
+        "behavior": 0.89,
+        "check": 0.0,
+        "constraint": 0.09,
+        "context": 0.01,
+        "deliverable": 0.01
+      },
+      "answered": true
+    },
+    {
+      "id": "s7",
+      "start": 418,
+      "end": 448,
+      "form": "line",
+      "text": "Last 30 days (including today)",
+      "requirement": "R4",
+      "kind": "behavior",
+      "kinds": {
+        "behavior": 0.91,
+        "check": 0.0,
+        "constraint": 0.07,
+        "context": 0.01,
+        "deliverable": 0.01
+      },
+      "answered": true
+    },
+    {
+      "id": "s8",
+      "start": 449,
+      "end": 537,
+      "form": "line",
+      "text": "Current month to date (from the 1st date of the current month up to and including today)",
+      "requirement": "R5",
+      "kind": "behavior",
+      "kinds": {
+        "behavior": 0.92,
+        "check": 0.0,
+        "constraint": 0.06,
+        "context": 0.01,
+        "deliverable": 0.01
+      },
+      "answered": true
+    },
+    {
+      "id": "s9",
+      "start": 538,
+      "end": 588,
+      "form": "line",
+      "text": "Total (all log files combined, regardless of date)",
+      "requirement": "R6",
+      "kind": "behavior",
+      "kinds": {
+        "behavior": 0.96,
+        "check": 0.0,
+        "constraint": 0.03,
+        "context": 0.01,
+        "deliverable": 0.0
+      },
+      "answered": true
+    },
+    {
+      "id": "s10",
+      "start": 590,
+      "end": 657,
+      "form": "sentence",
+      "text": "The severity levels to count are exactly: ERROR, WARNING, and INFO.",
+      "requirement": "R7",
+      "kind": "constraint",
+      "kinds": {
+        "behavior": 0.32,
+        "check": 0.0,
+        "constraint": 0.68,
+        "context": 0.0,
+        "deliverable": 0.0
+      },
+      "answered": true
+    },
+    {
+      "id": "s11",
+      "start": 658,
+      "end": 744,
+      "form": "sentence",
+      "text": "Write a CSV file /app/summary.csv with the following structure (including the header):",
+      "requirement": "R8",
+      "kind": "deliverable",
+      "kinds": {
+        "behavior": 0.0,
+        "check": 0.0,
+        "constraint": 0.06,
+        "context": 0.0,
+        "deliverable": 0.94
+      },
+      "answered": true
+    },
+    {
+      "id": "s12",
+      "start": 745,
+      "end": 1134,
+      "form": "block",
+      "text": "period,severity,count\ntoday,ERROR,<count>\ntoday,WARNING,<count>\ntoday,INFO,<count>\nlast_7_days,ERROR,<count>\nlast_7_days,WARNING,<count>\nlast_7_days,INFO,<count>\nlast_30_days,ERROR,<count>\nlast_30_days,WARNING,<count>\nlast_30_days,INFO,<count>\nmonth_to_date,ERROR,<count>\nmonth_to_date,WARNING,<count>\nmonth_to_date,INFO,<count>\ntotal,ERROR,<count>\ntotal,WARNING,<count>\ntotal,INFO,<count>",
+      "requirement": "R9",
+      "kind": "deliverable",
+      "kinds": {
+        "behavior": 0.02,
+        "check": 0.0,
+        "constraint": 0.38,
+        "context": 0.0,
+        "deliverable": 0.6
+      },
+      "answered": true
+    },
+    {
+      "id": "s13",
+      "start": 1136,
+      "end": 1225,
+      "form": "sentence",
+      "text": "Each row should report the total count of each severity for the corresponding date range.",
+      "requirement": "R10",
+      "kind": "behavior",
+      "kinds": {
+        "behavior": 0.92,
+        "check": 0.0,
+        "constraint": 0.05,
+        "context": 0.0,
+        "deliverable": 0.03
+      },
+      "answered": true
+    },
+    {
+      "id": "s14",
+      "start": 1226,
+      "end": 1257,
+      "form": "sentence",
+      "text": "The current date is 2025-08-12.",
+      "requirement": "R11",
+      "kind": "constraint",
+      "kinds": {
+        "behavior": 0.08,
+        "check": 0.0,
+        "constraint": 0.38,
+        "context": 0.54,
+        "deliverable": 0.0
+      },
+      "answered": true
+    },
+    {
+      "id": "s15",
+      "start": 1258,
+      "end": 1310,
+      "form": "sentence",
+      "text": "Use this as the reference date for all calculations.",
+      "requirement": "R12",
+      "kind": "constraint",
+      "kinds": {
+        "behavior": 0.33,
+        "check": 0.0,
+        "constraint": 0.55,
+        "context": 0.12,
+        "deliverable": 0.0
+      },
+      "answered": true
+    },
+    {
+      "id": "s16",
+      "start": 1311,
+      "end": 1390,
+      "form": "sentence",
+      "text": "You can assume log filenames always follow the YYYY-MM-DD_<source>.log pattern.",
+      "requirement": "R13",
+      "kind": "constraint",
+      "kinds": {
+        "behavior": 0.01,
+        "check": 0.0,
+        "constraint": 0.35,
+        "context": 0.64,
+        "deliverable": 0.0
+      },
+      "answered": true
+    }
+  ],
+  "requirements": [
+    {
+      "id": "R1",
+      "spans": [
+        "s4"
+      ],
+      "kind": "behavior",
+      "binding": "yes",
+      "state": "unobserved",
+      "p": 0.99,
+      "text": "Your task is to analyze all logs and count how many times each severity appears within the following date ranges:"
+    },
+    {
+      "id": "R2",
+      "spans": [
+        "s5"
+      ],
+      "kind": "behavior",
+      "binding": "yes",
+      "state": "unobserved",
+      "p": 0.98,
+      "text": "Today (the current date)"
+    },
+    {
+      "id": "R3",
+      "spans": [
+        "s6"
+      ],
+      "kind": "behavior",
+      "binding": "yes",
+      "state": "unobserved",
+      "p": 0.99,
+      "text": "Last 7 days (including today)"
+    },
+    {
+      "id": "R4",
+      "spans": [
+        "s7"
+      ],
+      "kind": "behavior",
+      "binding": "yes",
+      "state": "unobserved",
+      "p": 0.99,
+      "text": "Last 30 days (including today)"
+    },
+    {
+      "id": "R5",
+      "spans": [
+        "s8"
+      ],
+      "kind": "behavior",
+      "binding": "yes",
+      "state": "unobserved",
+      "p": 0.99,
+      "text": "Current month to date (from the 1st date of the current month up to and including today)"
+    },
+    {
+      "id": "R6",
+      "spans": [
+        "s9"
+      ],
+      "kind": "behavior",
+      "binding": "yes",
+      "state": "unobserved",
+      "p": 0.99,
+      "text": "Total (all log files combined, regardless of date)"
+    },
+    {
+      "id": "R7",
+      "spans": [
+        "s10"
+      ],
+      "kind": "constraint",
+      "binding": "yes",
+      "state": "unobserved",
+      "p": 1.0,
+      "text": "The severity levels to count are exactly: ERROR, WARNING, and INFO.",
+      "extracted": {
+        "constants": [
+          "ERROR",
+          "WARNING",
+          "INFO"
+        ]
+      }
+    },
+    {
+      "id": "R8",
+      "spans": [
+        "s11"
+      ],
+      "kind": "deliverable",
+      "binding": "yes",
+      "state": "unobserved",
+      "p": 1.0,
+      "exhaustive": 0.82,
+      "text": "Write a CSV file /app/summary.csv with the following structure (including the header):",
+      "extracted": {
+        "paths": [
+          "/app/summary.csv"
+        ],
+        "constants": [
+          "CSV"
+        ]
+      }
+    },
+    {
+      "id": "R9",
+      "spans": [
+        "s12"
+      ],
+      "kind": "deliverable",
+      "binding": "yes",
+      "state": "unobserved",
+      "p": 1.0,
+      "exhaustive": 0.92,
+      "text": "period,severity,count\ntoday,ERROR,<count>\ntoday,WARNING,<count>\ntoday,INFO,<count>\nlast_7_days,ERROR,<count>\nlast_7_days,WARNING,<count>\nlast_7_days,INFO,<count>\nlast_30_days,ERROR,<count>\nlast_30_days,WARNING,<count>\nlast_30_days,INFO,<count>\nmonth_to_date,ERROR,<count>\nmonth_to_date,WARNING,<count>\nmonth_to_date,INFO,<count>\ntotal,ERROR,<count>\ntotal,WARNING,<count>\ntotal,INFO,<count>",
+      "extracted": {
+        "formats": [
+          "<count>",
+          "period,severity,count"
+        ],
+        "constants": [
+          "ERROR",
+          "WARNING",
+          "INFO"
+        ]
+      }
+    },
+    {
+      "id": "R10",
+      "spans": [
+        "s13"
+      ],
+      "kind": "behavior",
+      "binding": "yes",
+      "state": "unobserved",
+      "p": 1.0,
+      "text": "Each row should report the total count of each severity for the corresponding date range."
+    },
+    {
+      "id": "R11",
+      "spans": [
+        "s14"
+      ],
+      "kind": "constraint",
+      "binding": "uncertain",
+      "state": "unobserved",
+      "p": 0.46,
+      "text": "The current date is 2025-08-12.",
+      "extracted": {
+        "constants": [
+          "2025-08-12"
+        ]
+      }
+    },
+    {
+      "id": "R12",
+      "spans": [
+        "s15"
+      ],
+      "kind": "constraint",
+      "binding": "yes",
+      "state": "unobserved",
+      "p": 0.88,
+      "text": "Use this as the reference date for all calculations."
+    },
+    {
+      "id": "R13",
+      "spans": [
+        "s16"
+      ],
+      "kind": "constraint",
+      "binding": "uncertain",
+      "state": "unobserved",
+      "p": 0.36,
+      "text": "You can assume log filenames always follow the YYYY-MM-DD_<source>.log pattern.",
+      "extracted": {
+        "paths": [
+          "YYYY-MM-DD_<source>.log"
+        ]
+      }
+    }
+  ],
+  "coverage": {
+    "chars": 1214,
+    "covered": 1214,
+    "fraction": 1.0,
+    "spans": 16,
+    "requirement_spans": 13,
+    "context_spans": 3,
+    "unanswered_spans": 0
+  }
+}

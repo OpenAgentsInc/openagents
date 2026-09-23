@@ -1,0 +1,454 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "policy": {
+    "schema": "openagents.coder-one.policy.v1",
+    "name": "coder-one-tunable-luna-v2",
+    "digest": "1945283cd971826795b53c54c48c20cd8601d7f5fb10f0eadbbcb18bea868bcd",
+    "source": "inline",
+    "overrides": [
+      {
+        "source": "CODER_ONE_EPISODE_DEADLINE",
+        "field": "protected.ceilings.episode_deadline_sec",
+        "value": "780"
+      }
+    ],
+    "notes": [],
+    "manifest": {
+      "schema": "openagents.coder-one.policy.v1",
+      "name": "coder-one-tunable-luna-v2",
+      "note": "Codex on GPT-6 Luna with the headless core system prompt, verify.checks on the live workspace, escalation to lean Claude Code on Opus 5.5 on a stall, a failed check, or no answer, and one verify.repair from the diagnostic packets. control.horizon sizes every dispatch from the task's own timeout. The briefing uses the coverage packer with Jev coverage judgments (brief.packer coverage-jev), which fixed Luna on log-summary-date-ranges. v2: the monitor judges in shadow only (control.handoff.on is empty), because its stall flags stopped four working Luna sessions after 12 to 30 seconds in the first run; escalation comes from a failed check, a contradicted requirement, or no answer. verify.repair runs only on an observed scenario failure (trigger checked).",
+      "policy": {
+        "jev": {
+          "mode": "deep",
+          "model": "jev-1.13.0",
+          "question_sets": "builtin-v1"
+        },
+        "evidence": {
+          "probes": "v2",
+          "survey_files": 40
+        },
+        "control": {
+          "delegate": "always",
+          "explore_steps": 0,
+          "max_steps": 50,
+          "command_timeout_sec": 300,
+          "lane": "free",
+          "error_streak": 3,
+          "unchanged_steps": 6,
+          "monitor": {
+            "on_operation": true,
+            "on_artifact": true,
+            "on_claim": true,
+            "silence_ms": 300000,
+            "window": 8,
+            "event_chars": 300,
+            "requirements": 10,
+            "threshold": 0.5,
+            "jev": true,
+            "stall_commands": 12,
+            "latency_ms": 800
+          },
+          "handoff": {
+            "pattern": "escalate",
+            "to": {
+              "agent": "claude-code",
+              "model": "claude-opus-5-5",
+              "effort": "low",
+              "tools": "Bash,Read,Edit,Write,Glob,Grep",
+              "prompt_cache_ttl": "5m",
+              "version": "2.1.280"
+            },
+            "on": [],
+            "after": 3,
+            "max_handoffs": 1,
+            "brief": {
+              "requirements": true,
+              "diff": true,
+              "errors": true,
+              "packets": true
+            },
+            "monitor": {
+              "on_operation": true,
+              "on_artifact": true,
+              "on_claim": true,
+              "silence_ms": 300000,
+              "window": 8,
+              "event_chars": 300,
+              "requirements": 10,
+              "threshold": 0.5,
+              "jev": true,
+              "stall_commands": 12,
+              "latency_ms": 800
+            }
+          },
+          "horizon": {
+            "first_share": 0.55,
+            "later_share": 0.75,
+            "min_dispatch_sec": 300,
+            "check_share": 0.05,
+            "long_after_sec": 3600,
+            "long_effort": "medium",
+            "long_command_sec": 3600
+          }
+        },
+        "brief": {
+          "cap": 12000,
+          "directions": "batch-checked",
+          "packer": "coverage-jev"
+        },
+        "executor": {
+          "agent": "codex",
+          "version": "0.155.1",
+          "model": "gpt-6-luna",
+          "effort": null,
+          "tools": null,
+          "prompt_cache_ttl": null,
+          "deadline_sec": 600,
+          "system": {
+            "mode": "replace",
+            "sections": [
+              "role",
+              "security",
+              "authority",
+              "verify",
+              "report",
+              "code-style"
+            ]
+          }
+        },
+        "verify": {
+          "checks": true,
+          "support": false,
+          "repair": {
+            "brief": "packet",
+            "trigger": "checked"
+          }
+        }
+      },
+      "protected": {
+        "isolation": "task-container",
+        "effect_policy": "executor-bypasses-its-own-sandbox",
+        "acceptance": "task-verifier",
+        "ceilings": {
+          "episode_deadline_sec": 780,
+          "reserve_sec": 30,
+          "spend_soft_usd": null,
+          "spend_hard_usd": null
+        }
+      }
+    },
+    "text_digests": {
+      "directions": "fea432bfc839af266ebfde909c2c0d9240b05206b815c2254c4849fee9757a1e",
+      "episode_instructions": "968529ff8c30adc54aeed0ed420a6108c23cf9157cc9bc034a9bae2af1ce9a2f",
+      "explore_prompt": "e00d4aa84650903e0b9174be59e0f5118f89c56fa7c878b2717632c4ff3c9e24",
+      "system": "295d575f2830763a5663487ddbb04b7f0b6dd2ea852926122eef893a6edc3607"
+    }
+  },
+  "delegate": {
+    "mode": "always",
+    "agent": "codex",
+    "model": "gpt-6-luna",
+    "version": "0.155.1",
+    "effort": null,
+    "tools": null,
+    "prompt_cache_ttl": null,
+    "system": {
+      "mode": "replace",
+      "sections": [
+        "role",
+        "security",
+        "authority",
+        "verify",
+        "report",
+        "code-style"
+      ]
+    },
+    "executor_path": "/usr/local/bin/codex",
+    "credential": "codex_auth_json",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "directions": "batch-checked",
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "fff6760fbd0451d3783a781429e38e30c01921add304cb7309c0c4ddd3daa5b1",
+        "chars": 11064,
+        "bytes": 11080,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "file $ list /app (depth 3)",
+          "file $ clone https://github.com/SPOCKnots/pyknotid.git at 0.5.3 into /app/pyknotid   (setup the host already ran: exit 0)",
+          "file pyknotid/setup.py",
+          "file $ pip list",
+          "file $ git -C /app/pyknotid reflog -n 40",
+          "file $ git -C /app/pyknotid status",
+          "file pyknotid/pyknotid/spacecurves/periodic.py"
+        ],
+        "omitted": [
+          "file $ list /app/pyknotid (duplicate listing)",
+          "file $ list test files under /app (depth 4) (duplicate listing)"
+        ]
+      },
+      "packer": "coverage",
+      "uncovered_requirements": [],
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 1,
+      "api_calls": null,
+      "completed_items": 11,
+      "charge": "priced",
+      "total_cost_usd": 0.00434912,
+      "milliseconds": 105171,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 26764,
+        "kept_bytes": 26764,
+        "truncated": false,
+        "sha256": "699b481178f25c65e93147a299d1f0b47565532128d3242fa69bcb66f5cd24c2",
+        "gaps": [],
+        "retention": "first 8388608 bytes written as they arrive; past that, the first and last halves"
+      },
+      "system": {
+        "schema": "openagents.coder-one.system-prompt.v1",
+        "variant": "manifest",
+        "agent": "codex",
+        "mode": "replace",
+        "setting": "model_instructions_file",
+        "digest": "295d575f2830763a5663487ddbb04b7f0b6dd2ea852926122eef893a6edc3607",
+        "chars": 1542,
+        "default": "codex 0.155.1 (gpt-6-luna)",
+        "default_chars": 18037,
+        "protected": true,
+        "sections": [
+          {
+            "id": "role",
+            "status": "core",
+            "chars": 214,
+            "by": "manifest"
+          },
+          {
+            "id": "security",
+            "status": "protected",
+            "chars": 461,
+            "by": "manifest"
+          },
+          {
+            "id": "authority",
+            "status": "core",
+            "chars": 334,
+            "by": "manifest"
+          },
+          {
+            "id": "verify",
+            "status": "core",
+            "chars": 258,
+            "by": "manifest"
+          },
+          {
+            "id": "report",
+            "status": "core",
+            "chars": 176,
+            "by": "manifest"
+          },
+          {
+            "id": "code-style",
+            "status": "core",
+            "chars": 95,
+            "by": "manifest"
+          }
+        ],
+        "asked": []
+      },
+      "close": {
+        "done": 0.75,
+        "criteria": [
+          {
+            "requirement": "Can you help me compile extensions, install pyknotid from source to system's global python environment, while fixing any Numpy compatibility issues so it works with my existing Numpy (2.3.0) versions?",
+            "p": 0.88
+          },
+          {
+            "requirement": "At the very least the following code snippet from README.md should run with Numpy (2.3.0) without errors:",
+            "p": 0.84
+          },
+          {
+            "requirement": "```python import pyknotid from pyknotid.spacecurves import chelpers, ccomplexity from pyknotid import cinvariants import pyknotid.make as mk import pyknotid.spacecurves as sp k = sp.Knot(mk.three_twist(num_points=100)) out = k.alexander_polynomial(-1) ```",
+            "p": 0.76
+          },
+          {
+            "requirement": "You should clone the source code with `git clone --depth 1 --branch 0.5.3 https://github.com/SPOCKnots/pyknotid.git` to `/app/pyknotid`.",
+            "p": 0.5
+          },
+          {
+            "requirement": "There is no need to change the original structure of the package.",
+            "p": 0.6
+          },
+          {
+            "requirement": "The repository contains tests/ to help you verify core functionality of the package.",
+            "p": 0.62
+          },
+          {
+            "requirement": "They should still pass after fixing compatibility issues, except for /app/pyknotid/tests/test_random_curves.py (dead code) and /app/pyknotid/tests/test_catalogue.py.",
+            "p": 0.81
+          },
+          {
+            "requirement": "The compiled extensions (chelpers, ccomplexity, and cinvariants) should work in their original context from Python side.",
+            "p": 0.81
+          }
+        ],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (753a17ed975f)",
+    "sha256": "4f2a41bc909bd8a6aedf9ecb531cfc9d491a334fbf6adebbfc72d609824de176"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline_sec": 780,
+    "reserve_sec": 30
+  },
+  "spend": {
+    "soft_usd": null,
+    "hard_usd": null,
+    "enforcement": "soft: checked before each dispatch starts; a running dispatch can pass it",
+    "hard_note": "no hard dollar cap: no executor adapter reserves a known maximum charge before a model call",
+    "known_usd": 0.006813511999999999,
+    "unknown_calls": 0
+  },
+  "generation": 2,
+  "started_at": "2026-09-23T06:36:56.472Z",
+  "updated_at": "2026-09-23T06:38:47.039Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 538683,
+      "sha256": "53d5bd6b54fa6b972041efbac2bbbc5153ec52e9b1d9fb19a0d30b13965508ea"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 13664,
+      "sha256": "9321fb29b3064e6c5ba9d2bb74139653babedb76e45d3f5da637221085642fcc"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 18503,
+      "sha256": "55a468d270ea647c3f8f09b09b8673bfaac8e3987698a76ace973a7d05443c92"
+    },
+    "briefing_pack": {
+      "path": "artifacts/briefing-pack.json",
+      "bytes": 36284,
+      "sha256": "4e0e693f359993c8057b15133a15949f3a79a3b449979125dd75fed7a1b40d0f"
+    },
+    "composition": {
+      "path": "artifacts/composition.json",
+      "bytes": 1977,
+      "sha256": "e66b0666e7313f05e863bb93dba4554a97b22c8c6740425934c9c487f74fd1a9"
+    },
+    "requirements": {
+      "path": "artifacts/requirements.json",
+      "bytes": 9444,
+      "sha256": "77df33658a35e612f8791cdf0f9d8be964e5a6a6cd76cd9fb14089bdcde4a04f"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 11080,
+      "sha256": "fff6760fbd0451d3783a781429e38e30c01921add304cb7309c0c4ddd3daa5b1"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 26764,
+      "sha256": "699b481178f25c65e93147a299d1f0b47565532128d3242fa69bcb66f5cd24c2"
+    },
+    "delegate-1_system_md": {
+      "path": "artifacts/delegate-1.system.md",
+      "bytes": 1542,
+      "sha256": "d2ccda88e4b9fc3119b2db881f7eb463cf86e6557cef6cc4f75a0aca389b9aec"
+    },
+    "invocation_log": {
+      "path": "episode.atif.jsonl",
+      "bytes": 364691,
+      "sha256": "7cf0f651b5bf3fc054ee4eeeb9184ba77c96bb743632f25075c4fb7f567bb16d",
+      "ended": true,
+      "faults": 0
+    }
+  },
+  "deadline": {
+    "kind": "hard",
+    "total_ms": 780000,
+    "reserve_ms": 30000,
+    "elapsed_ms": 110641,
+    "remaining_ms": 669358,
+    "used_fraction": 0.14184849287564102,
+    "cuts": [],
+    "note": "one monotonic deadline from the episode's start; every dispatch, Jev request, retry, wait, setup command, probe, and check is granted at most what is left after the reserve"
+  },
+  "verification": {
+    "note": "The composition's checks observe requirements; the task's verifier is still the only grader.",
+    "checks": [
+      {
+        "after": "primary",
+        "file": "verification/checks.json",
+        "summary": {
+          "candidate": "982a191a47789b4a40e8824f84417132dae1fe613d800d6649f0623716c3df1f",
+          "scenarios": 0,
+          "verdicts": {},
+          "requirements": {
+            "unobserved": 8
+          },
+          "packets": 0
+        }
+      }
+    ],
+    "support": null,
+    "repair": {
+      "tier": {
+        "agent": "codex",
+        "model": "gpt-6-luna",
+        "version": "0.155.1"
+      },
+      "triggered": false,
+      "ran": false,
+      "changed": false,
+      "skipped": "no check contradicted a requirement",
+      "session": null,
+      "recheck": null,
+      "cost_usd": 0.0
+    }
+  },
+  "result": {
+    "title": "pyknotid is a Python package for computational topology and knot theory.",
+    "summary": "Built and installed pyknotid from `/app/pyknotid` into the global Python environment with NumPy 2.3.0. Updated deprecated NumPy aliases throughout the package and fixed the removed `fractions.gcd` import.\n\nVerified the README example runs and imports the compiled `chelpers`, `ccomplexity`, and `cinvariants` extensions. The remaining tests passed: **18 passed**, excluding `test_random_curves.py` and `test_catalogue.py`.",
+    "delegate_status": "answered"
+  }
+}
