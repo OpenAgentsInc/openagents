@@ -27,7 +27,7 @@
   "cache_ttl": "5m",
   "harbor_agent_timeout_sec": 1800,
   "episode_allowance_sec": 1680,
-  "max_claude_concurrent": 5,
+  "max_claude_concurrent": 6,
   "min_free_disk_gib": 55,
   "artifact_commit": "756500c1f9",
   "artifact_sha256": "178e3db41660e16e73d8904a69aab334640a481ac2de49eaf8f470a264260f03",
@@ -44,5 +44,6 @@
     "total reported/estimated USD including controller",
     "native model turns and tool calls",
     "controller calls and repair dispatches"
-  ]
+  ],
+  "admission_amendment": "Before any experiment inference, reserve a sixth Claude slot for this serial schedule. Five existing long-running jobs occupy the host slots, while observed CPU and memory usage leave capacity for one additional 2-CPU, 4-GiB trial. Keep the 55-GiB disk floor and stop on provider usage limits."
 }

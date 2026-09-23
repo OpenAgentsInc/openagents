@@ -14,7 +14,7 @@ python -m tbench.matched --artifact /path/to/the/pinned/coder-one --run
 ```
 
 The first command materializes all 12 jobs without inference. The second runs
-one trial at a time, sharing the existing host's five Claude slots and requiring
+one trial at a time, using at most six host-wide Claude slots and requiring
 55 GiB of free disk before admission. Existing trials keep running. The runner
 uses the existing Claude login without refreshing it. Credentials remain in
 memory and go through Harbor's environment redaction.
