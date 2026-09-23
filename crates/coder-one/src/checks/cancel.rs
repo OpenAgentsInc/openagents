@@ -20,13 +20,23 @@ use crate::minitask::process;
 /// The concurrency limit the scenarios pass: a host choice.
 pub const LIMIT: usize = 3;
 
+/// How long each task runs unless cancelled: long enough that the
+/// interrupt always comes first, short enough that a runner that lets
+/// started tasks finish, rather than cancelling them, also ends within the
+/// exit bound. The instruction allows either.
+pub const TASK_SECONDS: f64 = 1.5;
+
+/// How long the process may take to exit after the interrupt.
+const EXIT_SECONDS: u64 = 6;
+
 /// The task counts: below, at, and above the limit.
 pub const SIZES: [(&str, usize); 3] = [("below", LIMIT - 1), ("at", LIMIT), ("above", LIMIT + 2)];
 
 /// The driver: runs the candidate's function on recording tasks and
 /// writes one event per line.
 const DRIVER: &str = r#"import asyncio, json, os, sys, time
-work, module, func, events, n, limit, mode = sys.argv[1:8]
+work, module, func, events, n, limit, mode, seconds = sys.argv[1:9]
+TASK_SECONDS = float(seconds)
 n, limit = int(n), int(limit)
 sys.path.insert(0, work)
 os.chdir(work)
@@ -42,7 +52,7 @@ def make(i):
     async def task():
         emit("start", i)
         try:
-            await asyncio.sleep(3600)
+            await asyncio.sleep(TASK_SECONDS)
         finally:
             emit("cleanup_begin", i)
             await asyncio.sleep(0.05)
@@ -187,7 +197,7 @@ pub fn build(context: &Context<'_>) -> Result<Vec<Scenario>, Vec<Ineligible>> {
                 },
             ],
             candidate: candidate.clone(),
-            input: atif::digest(&json!({ "tasks": n, "limit": LIMIT, "how": how, "driver": DRIVER })),
+            input: atif::digest(&json!({ "tasks": n, "limit": LIMIT, "how": how, "seconds": TASK_SECONDS, "driver": DRIVER })),
             seed: None,
             expected: Relation {
                 statement: format!(
@@ -197,7 +207,7 @@ pub fn build(context: &Context<'_>) -> Result<Vec<Scenario>, Vec<Ineligible>> {
                 derivation: "The instruction asks for a limit on concurrent tasks and for the tasks' cleanup to still run when a run is cancelled by a keyboard interrupt.".to_string(),
             },
             params: json!({
-                "tasks": n, "limit": LIMIT, "size": size, "how": how,
+                "tasks": n, "limit": LIMIT, "size": size, "how": how, "task_seconds": TASK_SECONDS,
                 "cleanup_requirements": cleanup_ids, "limit_requirements": bounded,
                 "derived_from": "host choices around the instruction's concurrency limit",
             }),
@@ -241,6 +251,16 @@ pub async fn run(context: &Context<'_>, scenario: &Scenario, scratch: &Path) -> 
         let _ = std::fs::write(work.join(base_name(path)), text);
     }
     let events_path = scratch.join("events.jsonl");
+    let missing = super::missing_executables(context.candidate);
+    if !missing.is_empty() {
+        return Verdict::unavailable(
+            &scenario.id,
+            &format!(
+                "the candidate names {}, which this host lacks, and an interrupt can't be forwarded through a mount namespace",
+                missing.join(", ")
+            ),
+        );
+    }
     let mut command = Command::new(python);
     command
         .arg("-c")
@@ -252,6 +272,7 @@ pub async fn run(context: &Context<'_>, scenario: &Scenario, scratch: &Path) -> 
         .arg(n.to_string())
         .arg(LIMIT.to_string())
         .arg(&how)
+        .arg(TASK_SECONDS.to_string())
         .current_dir(&work)
         .env("PYTHONDONTWRITEBYTECODE", "1");
     let want = n.min(LIMIT);
@@ -267,7 +288,7 @@ pub async fn run(context: &Context<'_>, scenario: &Scenario, scratch: &Path) -> 
             scratch,
             &ready,
             Duration::from_secs(5),
-            Duration::from_secs(5),
+            Duration::from_secs(EXIT_SECONDS),
         )
         .await;
         (done.ran, done.ready, done.interrupted_at_ms.is_some())
@@ -282,6 +303,9 @@ pub async fn run(context: &Context<'_>, scenario: &Scenario, scratch: &Path) -> 
         .collect();
     let mut verdict = Verdict::new(&scenario.id, "passed");
     verdict.coverage.push("Tasks still queued when the interrupt came aren't checked: the instruction doesn't say whether they may start.".to_string());
+    verdict.coverage.push(format!(
+        "Each task runs {TASK_SECONDS} s unless cancelled, so a runner that lets started tasks finish instead of cancelling them also passes."
+    ));
     verdict
         .coverage
         .push("One interrupt; a second one during cleanup isn't sent.".to_string());

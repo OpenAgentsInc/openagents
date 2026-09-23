@@ -12,9 +12,10 @@
 //! [`writes`] recovers the files a stream wrote in full: a Claude Code
 //! `Write` tool call, or a shell here-document redirected into a file, such
 //! as `cat > /app/run.py <<'PY'`. [`programs`] recovers the here-documents
-//! fed to an interpreter, such as `python3 - <<'PY'`. A file changed by an
-//! edit, a patch, or a program is named but not recovered: the stream
-//! doesn't hold its content.
+//! fed to an interpreter, such as `python3 - <<'PY'`. A Claude Code `Edit`
+//! replays onto content the stream wrote in full. A file changed by a
+//! patch, a program, or an edit to content the stream doesn't hold is named
+//! but not recovered: its last write is marked [`UNKNOWN`].
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -399,6 +400,58 @@ pub fn writes(format: Format, stream: &str) -> Vec<Write> {
                                 write
                             }));
                         }
+                        Some(name @ ("Edit" | "MultiEdit")) => {
+                            let Some(path) = text_of(input, "file_path") else {
+                                continue;
+                            };
+                            let edits: Vec<Value> = if name == "Edit" {
+                                vec![input.clone()]
+                            } else {
+                                input
+                                    .get("edits")
+                                    .and_then(Value::as_array)
+                                    .cloned()
+                                    .unwrap_or_default()
+                            };
+                            let before = out.iter().rev().find(|w| w.path == path);
+                            let edited = before
+                                .filter(|w| w.how != UNKNOWN)
+                                .map(|w| w.content.clone())
+                                .and_then(|mut content| {
+                                    for edit in &edits {
+                                        let old = text_of(edit, "old_string")?;
+                                        let new = text_of(edit, "new_string").unwrap_or_default();
+                                        if old.is_empty() || !content.contains(&old) {
+                                            return None;
+                                        }
+                                        content =
+                                            if edit.get("replace_all").and_then(Value::as_bool)
+                                                == Some(true)
+                                            {
+                                                content.replace(&old, &new)
+                                            } else {
+                                                content.replacen(&old, &new, 1)
+                                            };
+                                    }
+                                    Some(content)
+                                });
+                            out.push(match edited {
+                                Some(content) => Write {
+                                    line: i + 1,
+                                    path,
+                                    content,
+                                    how: "edit_replayed".to_string(),
+                                },
+                                // An edit to content the stream doesn't
+                                // hold leaves the file unknown from here on.
+                                None => Write {
+                                    line: i + 1,
+                                    path,
+                                    content: String::new(),
+                                    how: UNKNOWN.to_string(),
+                                },
+                            });
+                        }
                         _ => {}
                     }
                 }
@@ -407,6 +460,10 @@ pub fn writes(format: Format, stream: &str) -> Vec<Write> {
     }
     out
 }
+
+/// How a [`Write`] marks a file an edit changed in a way the stream can't
+/// replay: its content is unknown from that point.
+pub const UNKNOWN: &str = "unknown";
 
 /// The last full write to each path, in first-write order.
 #[must_use]
@@ -422,8 +479,8 @@ pub fn final_files(writes: &[Write]) -> Vec<Write> {
     out
 }
 
-/// Every here-document a Codex stream fed to an interpreter, with the
-/// command's output.
+/// Every here-document a stream fed to an interpreter: a Codex command
+/// with its output, or a Claude Code `Bash` call.
 #[must_use]
 pub fn programs(stream: &str) -> Vec<Program> {
     let mut out = Vec::new();
@@ -431,28 +488,54 @@ pub fn programs(stream: &str) -> Vec<Program> {
         let Ok(event) = serde_json::from_str::<Value>(text) else {
             continue;
         };
-        if event.get("type").and_then(Value::as_str) != Some("item.completed")
-            || event.pointer("/item/type").and_then(Value::as_str) != Some("command_execution")
+        // Each command the line carries, with its output when known.
+        let mut commands: Vec<(String, Option<String>, Option<i64>)> = Vec::new();
+        if event.get("type").and_then(Value::as_str) == Some("item.completed")
+            && event.pointer("/item/type").and_then(Value::as_str) == Some("command_execution")
         {
-            continue;
+            let item = &event["item"];
+            commands.push((
+                text_of(item, "command").unwrap_or_default(),
+                text_of(item, "aggregated_output"),
+                item.get("exit_code").and_then(Value::as_i64),
+            ));
         }
-        let item = &event["item"];
-        let script = unwrap_shell(&text_of(item, "command").unwrap_or_default());
-        for doc in heredocs(&script) {
-            let head = doc.head.trim();
-            let interpreter = head.split("<<").next().unwrap_or_default().trim();
-            let program = interpreter.split_whitespace().next().unwrap_or_default();
-            if ["python", "python3", "bash", "sh", "node", "ruby", "perl"]
-                .iter()
-                .any(|name| program == *name || program.ends_with(&format!("/{name}")))
+        if event.get("type").and_then(Value::as_str) == Some("assistant") {
+            for block in event
+                .pointer("/message/content")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
             {
-                out.push(Program {
-                    line: i + 1,
-                    interpreter: interpreter.to_string(),
-                    source: doc.body,
-                    output: text_of(item, "aggregated_output"),
-                    exit_code: item.get("exit_code").and_then(Value::as_i64),
-                });
+                if block.get("type").and_then(Value::as_str) == Some("tool_use")
+                    && block.get("name").and_then(Value::as_str) == Some("Bash")
+                {
+                    commands.push((
+                        text_of(&block["input"], "command").unwrap_or_default(),
+                        None,
+                        None,
+                    ));
+                }
+            }
+        }
+        for (command, output, exit_code) in commands {
+            let script = unwrap_shell(&command);
+            for doc in heredocs(&script) {
+                let head = doc.head.trim();
+                let interpreter = head.split("<<").next().unwrap_or_default().trim();
+                let program = interpreter.split_whitespace().next().unwrap_or_default();
+                if ["python", "python3", "bash", "sh", "node", "ruby", "perl"]
+                    .iter()
+                    .any(|name| program == *name || program.ends_with(&format!("/{name}")))
+                {
+                    out.push(Program {
+                        line: i + 1,
+                        interpreter: interpreter.to_string(),
+                        source: doc.body,
+                        output: output.clone(),
+                        exit_code,
+                    });
+                }
             }
         }
     }
@@ -754,6 +837,33 @@ mod tests {
         );
         let written = writes(Format::Claude, &claude);
         assert_eq!(written[0].content, "print(2)\n");
+    }
+
+    #[test]
+    fn an_edit_replays_on_content_the_stream_holds_and_otherwise_is_unknown() {
+        let call = |name: &str, input: Value| {
+            json!({"type":"assistant","message":{"content":[{"type":"tool_use","name":name,"input":input}]}}).to_string()
+        };
+        let stream = [
+            call(
+                "Write",
+                json!({"file_path":"/app/a.py","content":"x = 1\ny = 2\n"}),
+            ),
+            call(
+                "Edit",
+                json!({"file_path":"/app/a.py","old_string":"y = 2","new_string":"y = 3"}),
+            ),
+            call(
+                "Edit",
+                json!({"file_path":"/app/b.py","old_string":"z","new_string":"w"}),
+            ),
+        ]
+        .join("\n");
+        let files = final_files(&writes(Format::Claude, &stream));
+        assert_eq!(files[0].content, "x = 1\ny = 3\n");
+        assert_eq!(files[0].how, "edit_replayed");
+        assert_eq!(files[1].path, "/app/b.py");
+        assert_eq!(files[1].how, UNKNOWN);
     }
 
     #[test]

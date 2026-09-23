@@ -151,6 +151,31 @@ fn samples(job_dir: &Path) -> Vec<String> {
     out
 }
 
+/// The trajectory's tool calls as a Claude Code stream, for an agent that
+/// kept no native stream: `Write`, `Edit`, `MultiEdit`, and `Bash` calls
+/// in order.
+fn trajectory_calls(job_dir: &Path) -> Option<(PathBuf, String)> {
+    let path = std::fs::read_dir(job_dir)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .find(|p| p.extension().is_some_and(|x| x == "json"))?;
+    let value: Value = serde_json::from_str(&std::fs::read_to_string(&path).ok()?).ok()?;
+    let mut lines = Vec::new();
+    for step in value["steps"].as_array()? {
+        for call in step["tool_calls"].as_array().into_iter().flatten() {
+            let name = call["function_name"].as_str().unwrap_or_default();
+            if matches!(name, "Write" | "Edit" | "MultiEdit" | "Bash") {
+                lines.push(
+                    json!({ "type": "assistant", "message": { "content": [{ "type": "tool_use", "name": name, "input": call["arguments"] }] } })
+                        .to_string(),
+                );
+            }
+        }
+    }
+    (!lines.is_empty()).then(|| (path, lines.join("\n")))
+}
+
 /// The content of `name` as a `cat` in a stream printed it.
 fn catted(stream_text: &str, name: &str) -> Option<String> {
     let format = Format::detect(stream_text)?;
@@ -278,29 +303,55 @@ pub fn recover_tree(traces: &Path, arm: &str) -> Result<Vec<Recovered>, String> 
             out.push(recovered);
             continue;
         };
-        let paths = streams(&episode);
+        let mut paths = streams(&episode);
+        let mut texts: Vec<String> = paths
+            .iter()
+            .map(|path| std::fs::read_to_string(path).unwrap_or_default())
+            .collect();
         if paths.is_empty() {
-            recovered.unavailable = Some("no native executor stream was retained".to_string());
-            out.push(recovered);
-            continue;
+            // A direct agent keeps no delegate stream, but its trajectory
+            // holds its tool calls.
+            match trajectory_calls(job) {
+                Some((path, text)) => {
+                    paths.push(path);
+                    texts.push(text);
+                }
+                None => {
+                    recovered.unavailable = Some(
+                        "no native executor stream was retained, and the trajectory holds no tool calls".to_string(),
+                    );
+                    out.push(recovered);
+                    continue;
+                }
+            }
         }
         let mut writes = Vec::new();
         let mut programs = Vec::new();
-        for path in &paths {
-            let text = std::fs::read_to_string(path).unwrap_or_default();
+        for text in &texts {
+            let text = text.clone();
             let format = Format::detect(&text).unwrap_or(Format::Codex);
             writes.extend(stream::writes(format, &text));
-            if format == Format::Codex {
-                programs.extend(stream::programs(&text).into_iter().map(|p| InlineProgram {
-                    interpreter: p.interpreter,
-                    source: p.source,
-                }));
-            }
+            programs.extend(stream::programs(&text).into_iter().map(|p| InlineProgram {
+                interpreter: p.interpreter,
+                source: p.source,
+            }));
         }
-        let files: BTreeMap<String, String> = stream::final_files(&writes)
-            .into_iter()
-            .map(|w| (w.path, w.content))
+        let finals = stream::final_files(&writes);
+        let unknown: Vec<String> = finals
+            .iter()
+            .filter(|w| w.how == stream::UNKNOWN)
+            .map(|w| w.path.clone())
             .collect();
+        if !unknown.is_empty() {
+            recovered.unavailable = Some(format!(
+                "the stream edits {} in a way it doesn't hold the content to replay",
+                unknown.join(", ")
+            ));
+            out.push(recovered);
+            continue;
+        }
+        let files: BTreeMap<String, String> =
+            finals.into_iter().map(|w| (w.path, w.content)).collect();
         if files.is_empty() && programs.is_empty() {
             recovered.unavailable = Some(
                 "the stream names the agent's files but holds none of their content".to_string(),

@@ -20,7 +20,7 @@ scenario type here.
 | `data.date-boundaries` | The instruction also states a reference date, dated file names, and date periods | Each period counts exactly the files its rule includes, on both sides of each boundary. |
 | `interactive.program` | The instruction asks for interactive programs through a `from MODULE import CLASS` interface | A raw-mode program started through the interface reads staged keys and writes them reversed. |
 | `interactive.interrupt` | A requirement names control C | After control C interrupts a foreground command, the shell runs the next command. Control C is sent 0.05, 0.3, and 1 second after the command. |
-| `cancel.signal.below`, `.at`, `.above`, `cancel.internal.above` | The instruction asks that cleanup still runs when a run is cancelled, with a concurrency limit | Once the tasks have started, an interrupt leaves every started task's cleanup finished before the call returns. No more tasks than the limit ever run at once, and the process exits. |
+| `cancel.signal.below`, `.at`, `.above`, `cancel.internal.above` | The instruction asks that cleanup still runs when a run is cancelled, with a concurrency limit | Once the tasks have started, an interrupt leaves every started task's cleanup finished before the call returns. No more tasks than the limit ever run at once, and the process exits. Each task runs 1.5 seconds unless cancelled, so a runner that lets started tasks finish also passes; the instruction allows either. |
 
 Every parameter comes from the public instruction (paths, rows, periods,
 and the interface), the observed input (the record format), or a
@@ -53,6 +53,14 @@ and its verdict with coverage limits. A packet names the requirement, the
 candidate digest, the scenario, the expected relation, the observations,
 and the hypotheses the observations leave open.
 
+Each interactive scenario first types a plain `echo`. When even that
+doesn't run, the verdict is `inconclusive`: the host may differ from the
+task's environment, and the scenario says nothing about interactive
+behavior. When a candidate names an absolute executable the host lacks,
+such as `/bin/bash`, the check provides the host's own binary at that path
+in a `bwrap` mount namespace and records that it did. When it can't, the
+verdict is `unavailable`.
+
 The requirement map comes from `task.requirements`. When the input doesn't
 carry one, the check uses the rule-only map of the instruction. Scenarios
 run the candidate with `python3`; without it, the verdict is `unavailable`.
@@ -84,8 +92,10 @@ coder-one checks recover --traces bench/terminal-bench/traces --arm all
 ```
 
 `recover` rebuilds each candidate from its retained native stream: a file
-written in full by a here-document or a `Write` call, or a program fed to
-`python3` inline. The observed samples come from the probe outputs in the
+written in full by a here-document or a `Write` call, an `Edit` replayed
+onto such a file, or a program fed to `python3` inline. An agent that ran
+directly, with no delegate stream, is rebuilt from the tool calls in its
+trajectory. The observed samples come from the probe outputs in the
 trajectory. A task-provided file, such as `base_terminal.py`, comes from a
 `cat` of it in any trial of the task. Harbor didn't retain files the agent
 left in `/app`, so a candidate the stream only names is reported as

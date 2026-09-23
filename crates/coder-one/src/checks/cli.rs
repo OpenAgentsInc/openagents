@@ -280,16 +280,26 @@ pub async fn recover_and_check(traces: &Path, arm: &str, out: &Path) -> Result<V
                 passed_recovered += usize::from(passing);
                 detected += usize::from(failing && caught);
                 false_alarms += usize::from(passing && caught);
-            } else {
+            } else if report.verdicts.is_empty() {
                 entry["unavailable"] = json!(format!(
-                    "no scenario ran to a verdict: {}",
+                    "no scenario applies: {}",
                     report
-                        .verdicts
+                        .ineligible
                         .iter()
-                        .flat_map(|v| v.coverage.clone())
+                        .map(|i| format!("{}: {}", i.kind, i.why))
                         .collect::<Vec<_>>()
                         .join("; ")
                 ));
+            } else {
+                // Each scenario's last limit is the one that says why.
+                let mut why: Vec<String> = report
+                    .verdicts
+                    .iter()
+                    .filter_map(|v| v.coverage.last().cloned())
+                    .collect();
+                why.dedup();
+                entry["unavailable"] =
+                    json!(format!("no scenario ran to a verdict: {}", why.join("; ")));
             }
             entry["verdicts"] = json!(line(&report));
             entry["detected"] = json!(caught);

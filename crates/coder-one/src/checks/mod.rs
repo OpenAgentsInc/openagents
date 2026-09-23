@@ -783,6 +783,100 @@ pub async fn check_workspace(
     report
 }
 
+/// The absolute executable paths a candidate's text names, such as
+/// `/bin/bash`, that this host lacks.
+#[must_use]
+pub fn missing_executables(candidate: &Candidate) -> Vec<String> {
+    let mut found: Vec<String> = Vec::new();
+    let texts = candidate
+        .files
+        .values()
+        .chain(candidate.programs.iter().map(|p| &p.source));
+    for text in texts {
+        for quote in ['"', '\''] {
+            for piece in text.split(quote).skip(1).step_by(2) {
+                let path = piece.split_whitespace().next().unwrap_or_default();
+                let executable = ["/bin/", "/usr/bin/", "/usr/local/bin/", "/sbin/"]
+                    .iter()
+                    .any(|dir| {
+                        path.starts_with(dir)
+                            && path.len() > dir.len()
+                            && !path[dir.len()..].contains('/')
+                    });
+                if executable && !Path::new(path).exists() && !found.iter().any(|f| f == path) {
+                    found.push(path.to_string());
+                }
+            }
+        }
+    }
+    found.sort();
+    found
+}
+
+/// A command for `program` that sees the executables the candidate
+/// names: the plain command when the host has them all, or one run
+/// through `bwrap` in a mount namespace that puts the host's own binary of
+/// the same name at each missing path. The note says what was provided.
+///
+/// # Errors
+///
+/// Returns why the candidate can't run here: an executable with no host
+/// equivalent, or no `bwrap` to provide one.
+pub fn host_command(
+    candidate: &Candidate,
+    program: &Path,
+) -> Result<(std::process::Command, Option<String>), String> {
+    let missing = missing_executables(candidate);
+    if missing.is_empty() {
+        return Ok((std::process::Command::new(program), None));
+    }
+    let mut provided = Vec::new();
+    for path in &missing {
+        let host = crate::minitask::process::which(base_name(path))
+            .and_then(|p| std::fs::canonicalize(p).ok())
+            .ok_or_else(|| format!("the candidate runs {path}, which this host lacks"))?;
+        provided.push((path.clone(), host));
+    }
+    let bwrap = crate::minitask::process::which("bwrap").ok_or_else(|| {
+        format!(
+            "the candidate runs {}, which this host lacks at that path, and there is no bwrap to provide it",
+            missing.join(", ")
+        )
+    })?;
+    let mut command = std::process::Command::new(bwrap);
+    command.args(["--dev-bind", "/", "/"]);
+    let mut dirs: Vec<String> = provided
+        .iter()
+        .map(|(path, _)| path[..path.rfind('/').unwrap_or(0)].to_string())
+        .collect();
+    dirs.sort();
+    dirs.dedup();
+    for dir in &dirs {
+        // A fresh directory holds the host's own entries and the missing
+        // ones, so nothing is written to the host.
+        command.args(["--tmpfs", dir]);
+        for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+            if let Ok(real) = std::fs::canonicalize(entry.path()) {
+                command.arg("--ro-bind").arg(real).arg(entry.path());
+            }
+        }
+        for (path, host) in provided
+            .iter()
+            .filter(|(p, _)| p.starts_with(&format!("{dir}/")))
+        {
+            command.arg("--ro-bind").arg(host).arg(path);
+        }
+    }
+    command.arg(program);
+    Ok((
+        command,
+        Some(format!(
+            "The candidate names {}, which this host lacks; the check provided the host's own binary at that path in a mount namespace, and doesn't otherwise reproduce the task's environment.",
+            missing.join(", ")
+        )),
+    ))
+}
+
 /// Days since 1970-01-01 of a civil date.
 #[must_use]
 pub fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {

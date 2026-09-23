@@ -9,7 +9,6 @@
 //!   a command that writes a marker. The shell must still run it.
 
 use std::path::Path;
-use std::process::Command;
 use std::time::Duration;
 
 use serde_json::{Value, json};
@@ -101,6 +100,17 @@ def wait_file(path, seconds, want=None):
                 return text
         time.sleep(0.05)
     return open(path).read() if os.path.exists(path) else None
+# A plain command first: without it, nothing below says anything about
+# interactive behavior.
+canary = result + ".canary"
+keys("echo ready > " + canary + "\n", 0.5)
+seen = wait_file(canary, 3, "ready") is not None
+obs.append({"step": "canary", "seen": seen})
+if not seen:
+    close = getattr(terminal, "close", None)
+    if close is not None:
+        bounded(close, seconds=2)
+    done()
 if mode == "program":
     keys("python3 " + program + " " + result + "\n", 0.5)
     ready = wait_file(result + ".ready", 3)
@@ -325,7 +335,10 @@ pub async fn run(context: &Context<'_>, scenario: &Scenario, scratch: &Path) -> 
     let _ = std::fs::write(&program, PROGRAM);
     let result = scratch.join("result.txt");
     let program_mode = scenario.kind == "interactive.program";
-    let mut command = Command::new(python);
+    let (mut command, shim) = match super::host_command(context.candidate, &python) {
+        Ok(found) => found,
+        Err(why) => return Verdict::unavailable(&scenario.id, &why),
+    };
     command
         .arg("-c")
         .arg(DRIVER)
@@ -356,6 +369,7 @@ pub async fn run(context: &Context<'_>, scenario: &Scenario, scratch: &Path) -> 
         .unwrap_or_default();
     let mut verdict = Verdict::new(&scenario.id, "passed");
     verdict.observations = observations.clone();
+    verdict.coverage.extend(shim);
     if observations.is_empty() {
         verdict.verdict = "inconclusive".to_string();
         verdict.coverage.push(format!(
@@ -393,6 +407,11 @@ pub async fn run(context: &Context<'_>, scenario: &Scenario, scratch: &Path) -> 
         verdict
             .hypotheses
             .push("The interface can't be constructed, or construction blocks.".to_string());
+        return verdict;
+    }
+    if step("canary").next().is_some_and(|o| o["seen"] != true) {
+        verdict.verdict = "inconclusive".to_string();
+        verdict.coverage.push("The terminal didn't run a plain `echo`, the scenario's precondition. The host may differ from the task's environment, such as in its shell's version, so this says nothing about interactive behavior.".to_string());
         return verdict;
     }
     let blocked = step("send").any(|o| o["status"] == "blocked");

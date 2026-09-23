@@ -15,7 +15,6 @@
 
 use std::collections::BTreeMap;
 use std::path::Path;
-use std::process::Command;
 use std::time::Duration;
 
 use serde_json::json;
@@ -627,6 +626,7 @@ fn boundary_inputs(rule: &Rule, format: &Format, pattern: &str, days: &[(i64, St
 
 /// Runs the candidate on `files` and reads its CSV.
 async fn produce(
+    candidate: &super::Candidate,
     rule: &Rule,
     program: &Program,
     files: &Files,
@@ -644,7 +644,7 @@ async fn produce(
             .map_err(|e| e.to_string())?;
     }
     let output = dir.join("output.csv");
-    let mut command = Command::new(python);
+    let (mut command, _) = super::host_command(candidate, &python)?;
     command
         .current_dir(&dir)
         .env("PYTHONDONTWRITEBYTECODE", "1");
@@ -713,6 +713,9 @@ pub async fn run(context: &Context<'_>, scenario: &Scenario, scratch: &Path) -> 
         Err(why) => return Verdict::unavailable(&scenario.id, &why),
     };
     let mut verdict = Verdict::new(&scenario.id, "passed");
+    if let Ok((_, Some(note))) = super::host_command(context.candidate, Path::new("python3")) {
+        verdict.coverage.push(note);
+    }
     if let Program::Rebound { origin, .. } = &program {
         verdict.coverage.push(format!(
             "The candidate's paths were rebound by replacing their text in {origin}; a program that builds the path another way reads the task's own directory instead."
@@ -721,13 +724,23 @@ pub async fn run(context: &Context<'_>, scenario: &Scenario, scratch: &Path) -> 
     if scenario.kind == "data.message-severity" {
         let base = message_inputs(&rule, &format);
         let changed = variant(&rule, &format, &base);
-        let before = match produce(&rule, &program, &base, scratch, "base").await {
+        let before = match produce(context.candidate, &rule, &program, &base, scratch, "base").await
+        {
             Ok(counts) => counts,
             Err(why) => {
                 return Verdict::unavailable(&scenario.id, &format!("on the base input, {why}"));
             }
         };
-        let after = match produce(&rule, &program, &changed, scratch, "variant").await {
+        let after = match produce(
+            context.candidate,
+            &rule,
+            &program,
+            &changed,
+            scratch,
+            "variant",
+        )
+        .await
+        {
             Ok(counts) => counts,
             Err(why) => {
                 let mut v = Verdict::new(&scenario.id, "failed");
@@ -785,7 +798,16 @@ pub async fn run(context: &Context<'_>, scenario: &Scenario, scratch: &Path) -> 
         .collect();
     let days = boundary_days(reference, &windows);
     let files = boundary_inputs(&rule, &format, &pattern, &days);
-    let got = match produce(&rule, &program, &files, scratch, "boundaries").await {
+    let got = match produce(
+        context.candidate,
+        &rule,
+        &program,
+        &files,
+        scratch,
+        "boundaries",
+    )
+    .await
+    {
         Ok(counts) => counts,
         Err(why) => return Verdict::unavailable(&scenario.id, &why),
     };
