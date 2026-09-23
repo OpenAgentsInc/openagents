@@ -1139,6 +1139,27 @@ pub fn text(
     transcript: bool,
     expand: bool,
 ) -> Vec<String> {
+    text_with_notes(
+        detail,
+        now,
+        width,
+        transcript,
+        expand,
+        &std::collections::BTreeMap::new(),
+    )
+}
+
+/// [`text`], with `notes` printed under the transcript steps they name,
+/// counted from 1: a person's mark on a step, for example.
+#[must_use]
+pub fn text_with_notes(
+    detail: &Detail,
+    now: i64,
+    width: usize,
+    transcript: bool,
+    expand: bool,
+    notes: &std::collections::BTreeMap<usize, String>,
+) -> Vec<String> {
     let run = &detail.run;
     let mut lines = vec![headline(run), byline(run, now), String::new()];
     for paragraph in summary(detail, now) {
@@ -1153,7 +1174,7 @@ pub fn text(
     if transcript {
         lines.push("Transcript".to_owned());
         let start = detail.transcript.blocks.iter().find_map(|b| b.at);
-        for block in &detail.transcript.blocks {
+        for (index, block) in detail.transcript.blocks.iter().enumerate() {
             let time = clock(block.at, start);
             let mut head = format!("  {time:>8}  {}", block.headline());
             if let Some(note) = margin_note(block) {
@@ -1162,6 +1183,9 @@ pub fn text(
             lines.push(head);
             for line in block.body(expand) {
                 lines.push(format!("{:12}│ {line}", ""));
+            }
+            if let Some(note) = notes.get(&(index + 1)) {
+                lines.push(format!("{:12}{note}", ""));
             }
         }
         if detail.transcript.blocks.is_empty() {

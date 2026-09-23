@@ -168,6 +168,83 @@ lists per group; `--json` lists them all.
 reason, not only the reasons above the threshold. Each transcript step
 carries its `step` number, which is what a citation of a step names.
 
+## Mark bad runs and steps
+
+When you read a run and see the agent do something wrong, mark it. A mark
+says that a run, or one step of its transcript, is bad. It can carry a
+one-line note and the judgment IDs that name what went wrong, so the mark
+can say "this is `unearned_success`." When you read a run and find nothing
+wrong, clear it.
+
+```sh
+gym runs mark wal-recovery-ordering --tag unearned_success --note "said the tests passed; two failed"
+gym runs mark coq-block-bound/12 --tag looped         # step 12 of the transcript
+gym runs mark cancel-async-tasks --clear              # read it; nothing wrong
+gym runs unmark coq-block-bound/12
+gym runs marks                                        # every mark, newest first
+gym runs marks --json
+gym runs --marked                                     # only the marked runs
+```
+
+`RUN` names a run the way `show` does. `/STEP` counts transcript steps from
+1, the way `gym runs show RUN --json` numbers them. `--tag` repeats, and
+takes the IDs listed in the previous section. A new mark on the same run or
+step replaces the old one, and `unmark` removes it. Only a whole run can be
+cleared, and a cleared run takes no tags. `--author NAME` names who marked;
+it defaults to `$USER`.
+
+Marks are appended to `~/.openagents/gym/marks/marks.jsonl`, one
+`openagents.gym.runs-mark.v1` record per line. Each record names the run,
+the step, the verdict, the tags, the note, the author, the time, and the
+digest of the evidence Jev reads for the run as it stood when you marked
+it: the key its answer is stored under. Each record carries its own digest
+and the digest of the line before it. Removing a mark appends an `unmark`
+record, so no line is rewritten, and a mark never edits a run's records.
+`gym runs marks` reports a line whose digest or chain doesn't hold.
+`--marks-dir PATH` keeps the marks elsewhere.
+
+The list prints each mark under its run, `gym runs show RUN` prints a
+**Marks** section, and `--transcript` prints a step's mark under the step.
+`--json` output carries a `marks` array on each run.
+
+## Measure Jev against the marks
+
+`gym runs agreement` builds a suite from the marks and scores Jev's stored
+answers against it. It asks Jev nothing.
+
+```sh
+gym runs agreement
+gym runs agreement --json      # schema openagents.gym.runs-agreement.v1
+```
+
+A tag on a bad mark, on the run or on any of its steps, is a positive label
+for that judgment on that run. A cleared run is a negative label for every
+judgment. A run marked bad is not a negative for the judgments it wasn't
+tagged with, because a person marking one fault hasn't said the others are
+absent. Jev says yes when a judgment's probability is 0.5 or above. The
+`any_reason` row asks whether Jev gives any reason at all: every run marked
+bad is a positive, and every cleared run a negative, tagged or not.
+
+For each judgment, the report gives the positive and negative labels,
+agreement, precision, and recall, each as a value, its numerator and
+denominator, and a 95% Wilson interval. A share with no denominator is
+unknown, never zero. A judgment needs 5 positive and 5 negative labels
+whose runs have Jev answers before the text gives its numbers; below that,
+the row says **too few labels**, and the report's first line says how many
+rows lack them. JSON always carries the counts, with `supported` and
+`too_few` on each row.
+
+Jev's answer for a marked run is its answer to the evidence you saw when
+you marked it, when the store has one. Otherwise it's the run's current
+answer, and the report counts those as `changed_evidence`. Labeled runs
+with no answer count as `unjudged` and in no denominator; `gym runs rank`
+asks about them.
+
+When a judgment's agreement is low, reword its question. A reworded
+question is a new question set with its own digest, and the same marks
+measure it: the report names the question set and its digest, so two
+reports on different wording are comparable.
+
 ## Read a Terminal-Bench 4.0 suite
 
 Attempts of the `tb4` profile ran Terminal-Bench 4.0 at tag `v4.0.0`. Some

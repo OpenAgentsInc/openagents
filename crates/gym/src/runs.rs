@@ -1305,6 +1305,10 @@ Usage:
   gym runs group --by reason|task|agent|policy|outcome [filters] [--members N] [--json]
   gym runs show RUN [--transcript] [--expand] [--json | --evidence]
   gym runs rank [--limit N] [--recorded FILE] [--record FILE] [--no-jev] [--json]
+  gym runs mark RUN[/STEP] [--tag ID]... [--note TEXT] [--clear]
+  gym runs unmark RUN[/STEP]
+  gym runs marks [--json]
+  gym runs agreement [--json]
 
 RUN is a job name, job/trial, a trial name, or a piece of a job name that
 only one job has. --agent takes coder-one, claude-code, codex, or reference;
@@ -1330,7 +1334,14 @@ the exact state Jev reads for a run. It reads the TypeSafe key from
 TYPESAFE_API_KEY or `api_key` in ~/.openagents/jev.json. --recorded FILE
 replays answers instead, --record FILE writes the answers used, and
 --learning-dir PATH keeps the answers somewhere other than
-~/.openagents/gym/learning. --no-reference leaves the leaderboard out.";
+~/.openagents/gym/learning. --no-reference leaves the leaderboard out.
+
+`mark` records a person's word that a run, or one step of its transcript,
+is bad, with judgment IDs as tags and a note; --clear records that the run
+is fine. --marked keeps only marked runs, and the list, `show`, and the
+transcript show each mark. `agreement` measures Jev's judgments against the
+marks. `gym runs mark --help` says more. --marks-dir PATH keeps the marks
+somewhere other than ~/.openagents/gym/marks.";
 
 /// `gym runs`: the list, or one run's summary and transcript.
 ///
@@ -1339,7 +1350,15 @@ replays answers instead, --record FILE writes the answers used, and
 /// Returns the usage text when the arguments do not parse, and a message
 /// when the named run is not found.
 pub fn command(args: &[String], out: &mut impl Write) -> Result<i32, String> {
+    if args
+        .first()
+        .is_some_and(|word| crate::runs_marks::handles(word))
+    {
+        return crate::runs_marks::command(args, out);
+    }
     let mut sources = Sources::standard();
+    let mut marks_dir = crate::runs_marks::default_dir();
+    let mut marked_only = false;
     let mut filter = Filter::default();
     let mut limit = 40usize;
     let (mut json_out, mut transcript, mut expand) = (false, false, false);
@@ -1404,6 +1423,11 @@ pub fn command(args: &[String], out: &mut impl Write) -> Result<i32, String> {
                 index += 1;
             }
             "--no-jev" => no_jev = true,
+            "--marked" => marked_only = true,
+            "--marks-dir" => {
+                marks_dir = Some(PathBuf::from(value(index)?));
+                index += 1;
+            }
             "--evidence" => evidence = true,
             "--no-reference" => reference = false,
             "--transcript" => transcript = true,
@@ -1552,6 +1576,16 @@ pub fn command(args: &[String], out: &mut impl Write) -> Result<i32, String> {
     }
     let answers = crate::runs_learning::answers(&catalog, &store, &context);
     let rarity = crate::runs_learning::Rarity::of(answers.values().copied());
+    let marks = crate::runs_marks::Marks::open(marks_dir);
+    let marks_json = |run: &str| {
+        Value::Array(
+            marks
+                .of_run(run)
+                .into_iter()
+                .map(crate::runs_marks::Mark::to_json)
+                .collect(),
+        )
+    };
     if let Some(name) = show {
         let run = catalog
             .find(&name)
@@ -1573,13 +1607,20 @@ pub fn command(args: &[String], out: &mut impl Write) -> Result<i32, String> {
         if json_out {
             let mut value = crate::runs_story::detail_json(&detail, now);
             value["learning"] = answer.map_or(Value::Null, |answer| answer.to_json(&rarity));
+            value["marks"] = marks_json(&run.id());
             write(
                 out,
                 &serde_json::to_string_pretty(&value).map_err(|e| e.to_string())?,
             )?;
             return Ok(0);
         }
-        let lines = crate::runs_story::text(&detail, now, 100, transcript, expand);
+        let notes = marks
+            .steps(&run.id())
+            .into_iter()
+            .map(|(step, mark)| (step, format!("{} {}", mark.verdict.flag(), mark.describe())))
+            .collect();
+        let lines =
+            crate::runs_story::text_with_notes(&detail, now, 100, transcript, expand, &notes);
         let details = lines
             .iter()
             .position(|line| line == "Details")
@@ -1600,6 +1641,14 @@ pub fn command(args: &[String], out: &mut impl Write) -> Result<i32, String> {
             )?,
         }
         write(out, "")?;
+        let marked = crate::runs_marks::story_lines(&marks, &run.id());
+        if !marked.is_empty() {
+            write(out, "Marks")?;
+            for line in marked {
+                write(out, &format!("  {line}"))?;
+            }
+            write(out, "")?;
+        }
         for line in &lines[details..] {
             write(out, line)?;
         }
@@ -1609,6 +1658,7 @@ pub fn command(args: &[String], out: &mut impl Write) -> Result<i32, String> {
         .runs
         .iter()
         .filter(|run| filter.admits(run) && filter.judged(answers.get(&run.id()).copied()))
+        .filter(|run| !marked_only || marks.is_marked(&run.id()))
         .collect();
     if let Some(by) = group_by {
         let groups = crate::runs_group::group(&admitted, &answers, &rarity, by, &filter.reasons);
@@ -1652,11 +1702,14 @@ pub fn command(args: &[String], out: &mut impl Write) -> Result<i32, String> {
             "unranked": unranked,
             "shown": runs.len(),
             "filter": filter.describe(),
+            "marked_only": marked_only,
+            "marked": catalog.runs.iter().filter(|run| marks.is_marked(&run.id())).count(),
             "runs": runs.iter().map(|run| {
                 let mut value = run_json(run, now);
                 value["learning"] = answers
                     .get(&run.id())
                     .map_or(Value::Null, |answer| answer.to_json(&rarity));
+                value["marks"] = marks_json(&run.id());
                 value
             }).collect::<Vec<_>>(),
         });
@@ -1701,6 +1754,9 @@ pub fn command(args: &[String], out: &mut impl Write) -> Result<i32, String> {
     if let Some(filter) = filter.describe() {
         write(out, &format!("Showing: {filter}"))?;
     }
+    if marked_only {
+        write(out, "Showing: marked runs only")?;
+    }
     write(out, "")?;
     for run in runs {
         let [when, outcome, task, agent, tests, cost, time] = columns(run, now);
@@ -1713,6 +1769,12 @@ pub fn command(args: &[String], out: &mut impl Write) -> Result<i32, String> {
         )?;
         if let Outcome::NotGraded(why) = &run.outcome {
             write(out, &format!("{:<15}not graded: {why}", ""))?;
+        }
+        for mark in marks.of_run(&run.id()) {
+            write(
+                out,
+                &format!("{:<15}{} {}", "", mark.verdict.flag(), mark.describe()),
+            )?;
         }
         if learning_order && let Some(answer) = answers.get(&run.id()) {
             let tags = answer.tags(&rarity, 3);
