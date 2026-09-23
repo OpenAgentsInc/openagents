@@ -1,0 +1,71 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "task.profile",
+  "source": {
+    "trace": {
+      "trace": "panel--coder-one-jevprobe3-luna--fix-git",
+      "trial": "fix-git__c2MR9Lx",
+      "task": "fix-git",
+      "reward": 1.0
+    },
+    "executors": "gym coder matrix --no-jobs over the retained traces, leaving this task out"
+  },
+  "input": {
+    "task": {
+      "title": "I just made some changes to my personal site and checked out master, but now I can't find those changes. Please help me \u2026",
+      "body": "I just made some changes to my personal site and checked out master, but now I can't find those changes. Please help me find them and merge them into master.\n"
+    },
+    "executors": [
+      {
+        "name": "luna-direct",
+        "description": "Codex CLI on GPT-6 Luna with the task text alone: no Jev briefing.",
+        "key": "codex-gpt-6-luna",
+        "measured": {
+          "tasks": 7,
+          "passes": 12,
+          "trials": 15,
+          "mean_cost_usd": 0.005419,
+          "mean_agent_seconds": 73.2,
+          "failed_tasks": [
+            "cancel-async-tasks",
+            "git-leak-recovery"
+          ],
+          "excludes": "fix-git"
+        }
+      },
+      {
+        "name": "luna-briefed",
+        "description": "Jev probes and a file survey build a briefing; Codex on GPT-6 Luna runs it.",
+        "key": "coder-one-jevprobe2-luna",
+        "measured": {
+          "tasks": 7,
+          "passes": 14,
+          "trials": 21,
+          "mean_cost_usd": 0.003985,
+          "mean_agent_seconds": 54.2,
+          "failed_tasks": [
+            "build-cython-ext",
+            "cancel-async-tasks",
+            "log-summary-date-ranges"
+          ],
+          "excludes": "fix-git"
+        }
+      },
+      {
+        "name": "opus-lean",
+        "description": "The same briefing; Claude Code on Opus 5.5 at low effort with six tools and a five-minute cache.",
+        "key": "coder-one-jevprobe2-opus-lean-low-5m",
+        "measured": {
+          "tasks": 7,
+          "passes": 21,
+          "trials": 21,
+          "mean_cost_usd": 0.055204,
+          "mean_agent_seconds": 25.3,
+          "failed_tasks": [],
+          "excludes": "fix-git"
+        }
+      }
+    ]
+  },
+  "retained": null
+}

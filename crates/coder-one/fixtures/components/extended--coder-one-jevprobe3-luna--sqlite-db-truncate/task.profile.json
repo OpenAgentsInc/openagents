@@ -1,0 +1,71 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "task.profile",
+  "source": {
+    "trace": {
+      "trace": "extended--coder-one-jevprobe3-luna--sqlite-db-truncate",
+      "trial": "sqlite-db-truncate__rgzhtVQ",
+      "task": "sqlite-db-truncate",
+      "reward": 1.0
+    },
+    "executors": "gym coder matrix --no-jobs over the retained traces, leaving this task out"
+  },
+  "input": {
+    "task": {
+      "title": "I have a sqlite database in /app/trunc.db that was corrupted through binary truncation. Recover as many of the rows as p\u2026",
+      "body": "I have a sqlite database in /app/trunc.db that was corrupted through binary truncation. Recover as many of the rows as possible, and create a JSON file in /app/recover.json. The output should have the format [{\"word\": \"testwordXY\", \"value\": M}, {\"word\": \"testwordZZ\",\"value\": N}, ...]\n"
+    },
+    "executors": [
+      {
+        "name": "luna-direct",
+        "description": "Codex CLI on GPT-6 Luna with the task text alone: no Jev briefing.",
+        "key": "codex-gpt-6-luna",
+        "measured": {
+          "tasks": 7,
+          "passes": 10,
+          "trials": 13,
+          "mean_cost_usd": 0.005664,
+          "mean_agent_seconds": 72.9,
+          "failed_tasks": [
+            "cancel-async-tasks",
+            "git-leak-recovery"
+          ],
+          "excludes": "sqlite-db-truncate"
+        }
+      },
+      {
+        "name": "luna-briefed",
+        "description": "Jev probes and a file survey build a briefing; Codex on GPT-6 Luna runs it.",
+        "key": "coder-one-jevprobe2-luna",
+        "measured": {
+          "tasks": 7,
+          "passes": 14,
+          "trials": 21,
+          "mean_cost_usd": 0.003821,
+          "mean_agent_seconds": 50.4,
+          "failed_tasks": [
+            "build-cython-ext",
+            "cancel-async-tasks",
+            "log-summary-date-ranges"
+          ],
+          "excludes": "sqlite-db-truncate"
+        }
+      },
+      {
+        "name": "opus-lean",
+        "description": "The same briefing; Claude Code on Opus 5.5 at low effort with six tools and a five-minute cache.",
+        "key": "coder-one-jevprobe2-opus-lean-low-5m",
+        "measured": {
+          "tasks": 7,
+          "passes": 21,
+          "trials": 21,
+          "mean_cost_usd": 0.05478,
+          "mean_agent_seconds": 25.1,
+          "failed_tasks": [],
+          "excludes": "sqlite-db-truncate"
+        }
+      }
+    ]
+  },
+  "retained": null
+}

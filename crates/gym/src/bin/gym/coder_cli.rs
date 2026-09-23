@@ -39,7 +39,10 @@ gym coder prompt [ATTEMPT] [--json]
                            sections; see gym coder prompt --help
 gym coder briefing [QUERY] [--json]
                            what each briefing delivered, trimmed, and left out,
-                           and the packer replay's before and after";
+                           and the packer replay's before and after
+gym coder matrix [--json]  the outcome matrix: task by policy, frontiers, oracles
+gym coder router [--json]  task features, router picks, and leave-one-task-out
+                           regret against fixed and hand-written baselines";
 
 const SCHEMA: &str = "openagents.gym.coder-policy.v1";
 
@@ -129,6 +132,12 @@ fn execute(args: &[String], out: &mut impl Write) -> Result<i32, String> {
     }
     if args.first().map(String::as_str) == Some("prompt") {
         return gym::coder_prompt::command(&args[1..], out);
+    }
+    if args.first().map(String::as_str) == Some("matrix") {
+        return gym::coder_matrix::command(&args[1..], out);
+    }
+    if args.first().map(String::as_str) == Some("router") {
+        return gym::coder_router::command(&args[1..], out);
     }
     let (Some("policy"), Some(command)) = (
         args.first().map(String::as_str),

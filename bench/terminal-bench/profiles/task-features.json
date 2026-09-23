@@ -1,0 +1,227 @@
+{
+  "schema": "openagents.coder-one.component-export.v1",
+  "component": "task.profile",
+  "implementation": {
+    "name": "fixed Jev feature battery",
+    "digest": "49ddde6d1a949f7543ffaafbb450ae94843f7e4f2056d1bcd2bc2f2d637337d5"
+  },
+  "jev_mode": "recorded",
+  "fixtures": [
+    {
+      "fixture": "extended--coder-one-jevprobe3-luna--cancel-async-tasks",
+      "task": "cancel-async-tasks",
+      "input_digest": "bb5c1bcfc1b235a4e18e1df8c8ff656334f70174a4df0769c9c0173e26cebd52",
+      "output": {
+        "features": {
+          "builds_code": 0.05,
+          "concurrency": 0.98,
+          "installs_packages": 0.09,
+          "parses_data": 0.03,
+          "recovers_git": 0.02
+        },
+        "difficulty": 0.285,
+        "executor": "luna-briefed",
+        "executor_probabilities": {
+          "luna-briefed": 0.53,
+          "luna-direct": 0.15,
+          "opus-lean": 0.32
+        }
+      },
+      "jev": {
+        "recorded": 1
+      },
+      "cost_usd": 0.0,
+      "recorded_live_cost_usd": 0.000056658,
+      "error": null
+    },
+    {
+      "fixture": "extended--coder-one-jevprobe3-luna--git-leak-recovery",
+      "task": "git-leak-recovery",
+      "input_digest": "6474b04de41ee7b1d5da6bab9df2c6d0e79c857dce3db15894ddf147083a6cdc",
+      "output": {
+        "features": {
+          "builds_code": 0.04,
+          "concurrency": 0.11,
+          "installs_packages": 0.1,
+          "parses_data": 0.62,
+          "recovers_git": 0.98
+        },
+        "difficulty": 0.72,
+        "executor": "luna-briefed",
+        "executor_probabilities": {
+          "luna-briefed": 0.52,
+          "luna-direct": 0.05,
+          "opus-lean": 0.43
+        }
+      },
+      "jev": {
+        "recorded": 1
+      },
+      "cost_usd": 0.0,
+      "recorded_live_cost_usd": 0.000055776,
+      "error": null
+    },
+    {
+      "fixture": "extended--coder-one-jevprobe3-luna--log-summary-date-ranges",
+      "task": "log-summary-date-ranges",
+      "input_digest": "c693227d65d81f4c2851ac1f3beb018726258403f92e455f60733f0c93220737",
+      "output": {
+        "features": {
+          "builds_code": 0.04,
+          "concurrency": 0.06,
+          "installs_packages": 0.08,
+          "parses_data": 0.97,
+          "recovers_git": 0.01
+        },
+        "difficulty": 0.573,
+        "executor": "luna-briefed",
+        "executor_probabilities": {
+          "luna-briefed": 0.52,
+          "luna-direct": 0.03,
+          "opus-lean": 0.45
+        }
+      },
+      "jev": {
+        "recorded": 1
+      },
+      "cost_usd": 0.0,
+      "recorded_live_cost_usd": 0.00006699,
+      "error": null
+    },
+    {
+      "fixture": "extended--coder-one-jevprobe3-luna--sqlite-db-truncate",
+      "task": "sqlite-db-truncate",
+      "input_digest": "b283d3d3484a8fb510ab48bf0ab14f6a170d7a2d41a1de955b92baa14f2c9b48",
+      "output": {
+        "features": {
+          "builds_code": 0.07,
+          "concurrency": 0.09,
+          "installs_packages": 0.31,
+          "parses_data": 0.96,
+          "recovers_git": 0.02
+        },
+        "difficulty": 0.9,
+        "executor": "luna-briefed",
+        "executor_probabilities": {
+          "luna-briefed": 0.56,
+          "luna-direct": 0.02,
+          "opus-lean": 0.42
+        }
+      },
+      "jev": {
+        "recorded": 1
+      },
+      "cost_usd": 0.0,
+      "recorded_live_cost_usd": 0.000054894,
+      "error": null
+    },
+    {
+      "fixture": "panel--coder-one-jevprobe3-luna--build-cython-ext",
+      "task": "build-cython-ext",
+      "input_digest": "01c41e626867c5bc7cc184877af4a8bbaedc2ee4f2145fb4d6987ca8dc82b9dc",
+      "output": {
+        "features": {
+          "builds_code": 0.98,
+          "concurrency": 0.09,
+          "installs_packages": 0.78,
+          "parses_data": 0.17,
+          "recovers_git": 0.03
+        },
+        "difficulty": 0.778,
+        "executor": "luna-briefed",
+        "executor_probabilities": {
+          "luna-briefed": 0.49,
+          "luna-direct": 0.04,
+          "opus-lean": 0.47
+        }
+      },
+      "jev": {
+        "recorded": 1
+      },
+      "cost_usd": 0.0,
+      "recorded_live_cost_usd": 0.000068334,
+      "error": null
+    },
+    {
+      "fixture": "panel--coder-one-jevprobe3-luna--fix-code-vulnerability",
+      "task": "fix-code-vulnerability",
+      "input_digest": "a574e19760952765ac0adb8a647acdf2301c1304e7ee1e4cf0260bfb3bf62a83",
+      "output": {
+        "features": {
+          "builds_code": 0.06,
+          "concurrency": 0.09,
+          "installs_packages": 0.29,
+          "parses_data": 0.1,
+          "recovers_git": 0.03
+        },
+        "difficulty": 0.673,
+        "executor": "opus-lean",
+        "executor_probabilities": {
+          "luna-briefed": 0.46,
+          "luna-direct": 0.04,
+          "opus-lean": 0.5
+        }
+      },
+      "jev": {
+        "recorded": 1
+      },
+      "cost_usd": 0.0,
+      "recorded_live_cost_usd": 0.00009177,
+      "error": null
+    },
+    {
+      "fixture": "panel--coder-one-jevprobe3-luna--fix-git",
+      "task": "fix-git",
+      "input_digest": "0ea1589aaa120b0c13d092db7e6bdb92a677c4576a7adb93b7da39b3e407344c",
+      "output": {
+        "features": {
+          "builds_code": 0.05,
+          "concurrency": 0.1,
+          "installs_packages": 0.09,
+          "parses_data": 0.2,
+          "recovers_git": 0.84
+        },
+        "difficulty": 0.758,
+        "executor": "luna-briefed",
+        "executor_probabilities": {
+          "luna-briefed": 0.6,
+          "luna-direct": 0.11,
+          "opus-lean": 0.29
+        }
+      },
+      "jev": {
+        "recorded": 1
+      },
+      "cost_usd": 0.0,
+      "recorded_live_cost_usd": 0.000052878,
+      "error": null
+    },
+    {
+      "fixture": "panel--coder-one-jevprobe3-luna--headless-terminal",
+      "task": "headless-terminal",
+      "input_digest": "d6488532b4227b9b4f55694a04da5d4328094ed823afb1b1e7ba52a5e625d4e1",
+      "output": {
+        "features": {
+          "builds_code": 0.08,
+          "concurrency": 0.79,
+          "installs_packages": 0.85,
+          "parses_data": 0.04,
+          "recovers_git": 0.02
+        },
+        "difficulty": 0.793,
+        "executor": "luna-briefed",
+        "executor_probabilities": {
+          "luna-briefed": 0.53,
+          "luna-direct": 0.05,
+          "opus-lean": 0.42
+        }
+      },
+      "jev": {
+        "recorded": 1
+      },
+      "cost_usd": 0.0,
+      "recorded_live_cost_usd": 0.000058338,
+      "error": null
+    }
+  ]
+}

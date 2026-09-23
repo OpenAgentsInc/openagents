@@ -11,13 +11,15 @@ pub const USAGE: &str = "usage: coder-one component list [--json]
        coder-one component run ID --fixture DIR [--jev recorded|live|off] [--save-jev]
                                [--out DIR | --no-record] [--json]
        coder-one component suite ID [--fixtures DIR] [--jev recorded|live|off] [--save-jev]
-                                 [--out DIR | --no-record] [--json]
+                                 [--out DIR | --no-record] [--export FILE] [--json]
        coder-one component extract --traces DIR --arm TEXT --out DIR
        coder-one component replay evidence.pack [--traces DIR] [--out FILE] [--json]
 
 --jev defaults to recorded: answers replay from each fixture's jev-recorded.json,
 and a changed state or question set misses. live calls Jev with TYPESAFE_API_KEY;
 --save-jev adds its answers to the fixture. off leaves every judgment unknown.
+--export writes each fixture's task and output to FILE, such as the task features
+the Gym's router reads: bench/terminal-bench/profiles/task-features.json.
 Runs record their invocations under ~/.openagents/coder-one/components unless
 --out names another directory or --no-record is given.";
 
@@ -28,6 +30,7 @@ struct Flags {
     traces: Option<PathBuf>,
     arm: Option<String>,
     out: Option<PathBuf>,
+    export: Option<PathBuf>,
     jev: String,
     save_jev: bool,
     record: bool,
@@ -43,6 +46,7 @@ impl Flags {
             traces: None,
             arm: None,
             out: None,
+            export: None,
             jev: "recorded".to_string(),
             save_jev: false,
             record: true,
@@ -61,6 +65,7 @@ impl Flags {
                 "--traces" => flags.traces = Some(value("--traces")?.into()),
                 "--arm" => flags.arm = Some(value("--arm")?),
                 "--out" => flags.out = Some(value("--out")?.into()),
+                "--export" => flags.export = Some(value("--export")?.into()),
                 "--jev" => flags.jev = value("--jev")?,
                 "--save-jev" => flags.save_jev = true,
                 "--no-record" => flags.record = false,
@@ -173,6 +178,14 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
                 flags.save_jev,
             )
             .await?;
+            if let Some(path) = &flags.export {
+                let text = format!(
+                    "{}\n",
+                    serde_json::to_string_pretty(&super::export(&suite, &dirs)?)
+                        .map_err(|error| error.to_string())?
+                );
+                crate::record::write_atomic(path, text.as_bytes())?;
+            }
             if flags.json {
                 print_json(&suite.report())?;
             } else {

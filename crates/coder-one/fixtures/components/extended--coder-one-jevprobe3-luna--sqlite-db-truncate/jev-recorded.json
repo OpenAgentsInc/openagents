@@ -85,6 +85,65 @@
       "milliseconds": 150,
       "source": "sqlite-db-truncate__rgzhtVQ#jev-3"
     },
+    "6f286a9dca03922e12cd16fb27b33dbcc804602ac1892e5827bc2a4e35c40f25": {
+      "name": "jev_profile",
+      "model": "jev-1.13.0",
+      "answers": {
+        "builds_code": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "installs_packages": {
+          "type": "noul",
+          "noul": 0.31
+        },
+        "parses_data": {
+          "type": "noul",
+          "noul": 0.96
+        },
+        "recovers_git": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "concurrency": {
+          "type": "noul",
+          "noul": 0.09
+        },
+        "difficulty": {
+          "type": "score",
+          "score": 3.6,
+          "confidence": 0.67,
+          "legend": {
+            "0": "A single, direct change: one command or a few lines in one file, with the exact result stated.",
+            "1": "A small change in one place that needs a little investigation or one check.",
+            "2": "Several related changes, or one change that needs careful reading of existing code or data, and tests to confirm.",
+            "3": "A multi-step job across files or tools, with build, environment, or format details that are easy to get wrong.",
+            "4": "An open-ended job that needs diagnosis, several interacting components, and edge cases the task text doesn't spell out."
+          },
+          "probabilities": {
+            "0": 0.0,
+            "1": 0.01,
+            "2": 0.03,
+            "3": 0.3,
+            "4": 0.66
+          }
+        },
+        "executor": {
+          "type": "choice",
+          "choice": "luna-briefed",
+          "confidence": 0.34,
+          "probabilities": {
+            "luna-briefed": 0.56,
+            "luna-direct": 0.02,
+            "opus-lean": 0.42
+          }
+        }
+      },
+      "input_tokens": 1307,
+      "output_tokens": 154,
+      "milliseconds": 206,
+      "source": "live component run of task.profile#jev_profile-1"
+    },
     "b0fb4c0b07c367b0430b8aecff6fac6b37a946713dd690d48bb0e1617b5a0167": {
       "name": "jev_probe",
       "model": "jev-1.13.0",

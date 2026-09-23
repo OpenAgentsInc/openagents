@@ -81,6 +81,65 @@
       "milliseconds": 178,
       "source": "cancel-async-tasks__Eu23An4#jev-2"
     },
+    "7b240898e1e643edd1ce1e4ebdf3a5544e6ba9511af11db3d37ea405b8563f25": {
+      "name": "jev_profile",
+      "model": "jev-1.13.0",
+      "answers": {
+        "builds_code": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "installs_packages": {
+          "type": "noul",
+          "noul": 0.09
+        },
+        "parses_data": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "recovers_git": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "concurrency": {
+          "type": "noul",
+          "noul": 0.98
+        },
+        "difficulty": {
+          "type": "score",
+          "score": 1.14,
+          "confidence": 0.44,
+          "legend": {
+            "0": "A single, direct change: one command or a few lines in one file, with the exact result stated.",
+            "1": "A small change in one place that needs a little investigation or one check.",
+            "2": "Several related changes, or one change that needs careful reading of existing code or data, and tests to confirm.",
+            "3": "A multi-step job across files or tools, with build, environment, or format details that are easy to get wrong.",
+            "4": "An open-ended job that needs diagnosis, several interacting components, and edge cases the task text doesn't spell out."
+          },
+          "probabilities": {
+            "0": 0.27,
+            "1": 0.41,
+            "2": 0.26,
+            "3": 0.04,
+            "4": 0.02
+          }
+        },
+        "executor": {
+          "type": "choice",
+          "choice": "luna-briefed",
+          "confidence": 0.29,
+          "probabilities": {
+            "luna-direct": 0.15,
+            "opus-lean": 0.32,
+            "luna-briefed": 0.53
+          }
+        }
+      },
+      "input_tokens": 1349,
+      "output_tokens": 154,
+      "milliseconds": 431,
+      "source": "live component run of task.profile#jev_profile-1"
+    },
     "80dab3d987e0bcc96339b3bc1ff0199342a00e3291f30b1dfb41551d016ba82e": {
       "name": "jev_system",
       "model": "jev-1.13.0",

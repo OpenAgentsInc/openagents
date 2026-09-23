@@ -73,6 +73,7 @@ Keys:
                  evidence, history, runbooks, Coder One components,
                  requirement maps, mini-task runs, or the selected
                  attempt's executor system prompt.
+  b, m, r        Open the briefings, the outcome matrix, or the router.
   tab, h, l      Walk the views.
   j, k, arrows   Move the cursor.
   g, G           Jump to the first or last item.

@@ -217,6 +217,65 @@
       "milliseconds": 330,
       "source": "live component run of evidence.pack#jev_coverage-e3"
     },
+    "95db3def83c75750a247ff832d38f50fbba80259c66ebe28a7a2af26e1295a80": {
+      "name": "jev_profile",
+      "model": "jev-1.13.0",
+      "answers": {
+        "builds_code": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "installs_packages": {
+          "type": "noul",
+          "noul": 0.1
+        },
+        "parses_data": {
+          "type": "noul",
+          "noul": 0.62
+        },
+        "recovers_git": {
+          "type": "noul",
+          "noul": 0.98
+        },
+        "concurrency": {
+          "type": "noul",
+          "noul": 0.11
+        },
+        "difficulty": {
+          "type": "score",
+          "score": 2.88,
+          "confidence": 0.62,
+          "legend": {
+            "0": "A single, direct change: one command or a few lines in one file, with the exact result stated.",
+            "1": "A small change in one place that needs a little investigation or one check.",
+            "2": "Several related changes, or one change that needs careful reading of existing code or data, and tests to confirm.",
+            "3": "A multi-step job across files or tools, with build, environment, or format details that are easy to get wrong.",
+            "4": "An open-ended job that needs diagnosis, several interacting components, and edge cases the task text doesn't spell out."
+          },
+          "probabilities": {
+            "0": 0.0,
+            "1": 0.06,
+            "2": 0.15,
+            "3": 0.62,
+            "4": 0.17
+          }
+        },
+        "executor": {
+          "type": "choice",
+          "choice": "luna-briefed",
+          "confidence": 0.27,
+          "probabilities": {
+            "luna-direct": 0.05,
+            "opus-lean": 0.43,
+            "luna-briefed": 0.52
+          }
+        }
+      },
+      "input_tokens": 1328,
+      "output_tokens": 154,
+      "milliseconds": 194,
+      "source": "live component run of task.profile#jev_profile-1"
+    },
     "c4279095219ac99dedfb329412432bce12244d0ab815bba72c7725e44ea30196": {
       "name": "jev_coverage",
       "model": "jev-1.13.0",

@@ -22,10 +22,12 @@ pub enum View {
     MiniTasks,
     Prompt,
     Briefing,
+    Matrix,
+    Router,
 }
 
 impl View {
-    pub const ALL: [Self; 11] = [
+    pub const ALL: [Self; 13] = [
         Self::Overview,
         Self::Comparison,
         Self::Attempt,
@@ -37,6 +39,8 @@ impl View {
         Self::MiniTasks,
         Self::Prompt,
         Self::Briefing,
+        Self::Matrix,
+        Self::Router,
     ];
     pub fn title(self) -> &'static str {
         match self {
@@ -51,6 +55,8 @@ impl View {
             Self::MiniTasks => "mini-tasks",
             Self::Prompt => "prompt",
             Self::Briefing => "briefing",
+            Self::Matrix => "outcome matrix",
+            Self::Router => "router",
         }
     }
     fn index(self) -> usize {
@@ -66,15 +72,19 @@ impl View {
             Self::MiniTasks => 8,
             Self::Prompt => 9,
             Self::Briefing => 10,
+            Self::Matrix => 11,
+            Self::Router => 12,
         }
     }
-    /// The view a digit opens: `1` to `9` open the first nine, `0` the
-    /// tenth.
+    /// The view a key opens: `1` to `9` open the first nine, `0` the
+    /// tenth, `b` the briefings, `m` the outcome matrix, and `r` the router.
     pub fn from_digit(digit: char) -> Option<Self> {
         let index = match digit {
             '1'..='9' => digit as usize - '1' as usize,
             '0' => 9,
             'b' => 10,
+            'm' => 11,
+            'r' => 12,
             _ => return None,
         };
         Self::ALL.get(index).copied()
@@ -102,6 +112,10 @@ pub struct App {
     prompts: crate::coder_prompt::Comparison,
     /// Coder One's briefings.
     briefing: Option<crate::coder_briefing::Report>,
+    /// `control.route`: the development tasks' outcome matrix, and the
+    /// router's leave-one-task-out evaluation on it.
+    matrix: crate::coder_matrix::Matrix,
+    router: crate::coder_router::Evaluation,
 }
 
 impl App {
@@ -116,7 +130,19 @@ impl App {
         let library = crate::coder_prompt::Library::load(&crate::coder_prompt::default_paths().0)
             .unwrap_or_default();
         let prompts = crate::coder_prompt::comparison(&records);
+        let development = crate::coder_matrix::DEVELOPMENT
+            .iter()
+            .map(|task| (*task).to_owned())
+            .collect();
+        let matrix = crate::coder_matrix::Matrix::from_records(
+            &records,
+            crate::coder_matrix::Params::default(),
+            Some(&development),
+        );
+        let router = crate::coder_router::from_checkout(&matrix);
         Self {
+            matrix,
+            router,
             library,
             prompts,
             records,
@@ -210,6 +236,8 @@ impl App {
             View::MiniTasks => self.minitasks.0.len(),
             View::Prompt => self.prompt().len(),
             View::Briefing => self.briefing().len(),
+            View::Matrix => self.matrix.lines().len(),
+            View::Router => self.router.lines().len(),
         }
     }
     pub fn inspect(&mut self) {
@@ -244,7 +272,9 @@ impl App {
             | View::Requirements
             | View::MiniTasks
             | View::Prompt
-            | View::Briefing => {}
+            | View::Briefing
+            | View::Matrix
+            | View::Router => {}
         }
     }
     fn current(&self) -> Option<&Attempt> {
@@ -315,7 +345,7 @@ impl App {
                 self.ladder.style(Intensity::Half),
             )),
         );
-        let keys = "1-9,0,b view  tab/h/l switch  j/k move  enter inspect  q quit";
+        let keys = "1-9,0,b,m,r view  tab/h/l switch  j/k move  enter inspect  q quit";
         rail(
             box_area,
             buf,
@@ -368,9 +398,12 @@ impl App {
             View::History => Some(3 + self.cursor()),
             View::Evidence => Some(2 + self.cursor()),
             View::Attempt | View::Guide => None,
-            View::Components | View::Requirements | View::Prompt | View::Briefing => {
-                Some(self.cursor())
-            }
+            View::Components
+            | View::Requirements
+            | View::Prompt
+            | View::Briefing
+            | View::Matrix
+            | View::Router => Some(self.cursor()),
             View::MiniTasks => (!self.minitasks.0.is_empty()).then(|| 2 + self.cursor()),
         }
     }
@@ -392,6 +425,8 @@ impl App {
             ),
             View::Prompt => self.prompt(),
             View::Briefing => self.briefing(),
+            View::Matrix => self.matrix.lines(),
+            View::Router => self.router.lines(),
         }
     }
 
@@ -974,6 +1009,24 @@ mod tests {
         assert!(text.contains("(core)"), "{text}");
         assert_eq!(View::from_digit('0'), Some(View::Prompt));
         assert_eq!(View::from_digit('b'), Some(View::Briefing));
+    }
+
+    #[test]
+    fn the_matrix_and_router_views_show_frontiers_oracles_and_regret() {
+        let traces = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../bench/terminal-bench/traces");
+        let records = Records::load(None, Some(&traces), None);
+        let mut app = App::new(records);
+        app.open(View::from_digit('m').unwrap());
+        assert_eq!(app.view(), View::Matrix);
+        let text = app.lines().join("\n");
+        assert!(text.contains("oracle: cheapest reliable cell"), "{text}");
+        assert!(text.contains("$0.0716"), "{text}");
+        assert!(text.contains("◆"), "{text}");
+        app.open(View::from_digit('r').unwrap());
+        let text = app.lines().join("\n");
+        assert!(text.contains("fitted without it"), "{text}");
+        assert!(text.contains("fixed opus"), "{text}");
     }
 
     #[test]

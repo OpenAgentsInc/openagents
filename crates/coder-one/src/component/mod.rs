@@ -127,6 +127,7 @@ pub trait Component {
 #[must_use]
 pub fn registry() -> Vec<Box<dyn Component>> {
     vec![
+        Box::new(TaskProfile),
         Box::new(Requirements),
         Box::new(SetupGate),
         Box::new(Planner),
@@ -704,6 +705,66 @@ impl Component for Pack {
     }
 }
 
+/// `task.profile`: Jev's feature battery over the task text, and, when the
+/// input carries the executors' measured behavior, the executor it names.
+struct TaskProfile;
+
+#[derive(Deserialize)]
+struct ProfileInput {
+    task: Task,
+    #[serde(default)]
+    executors: Vec<crate::profile::Executor>,
+}
+
+impl Component for TaskProfile {
+    fn id(&self) -> &'static str {
+        "task.profile"
+    }
+    fn implementation(&self) -> Implementation {
+        crate::profile::implementation()
+    }
+    fn about(&self) -> &'static str {
+        "Jev's task features for the router; a Choice of executor only with their measured behavior."
+    }
+    fn run<'a>(
+        &'a self,
+        fixture: &'a Fixture,
+        jev: &'a JevMode,
+        recorder: &'a Recorder,
+    ) -> LocalBoxFuture<'a, Result<Ran, String>> {
+        Box::pin(async move {
+            let input: ProfileInput = input(fixture)?;
+            let request = crate::profile::request(&input.task.state(), &input.executors)?;
+            let asked = ask_one(jev, recorder, self.id(), "jev_profile", request).await;
+            let profile = crate::profile::read(asked.answers.as_ref());
+            let mut metrics = Map::new();
+            for (id, p) in &profile.features {
+                metrics.insert(id.clone(), json!(p));
+            }
+            metrics.insert("difficulty".to_string(), json!(profile.difficulty));
+            metrics.insert(
+                "unknown".to_string(),
+                json!(
+                    profile.features.values().filter(|p| p.is_none()).count()
+                        + usize::from(profile.difficulty.is_none())
+                ),
+            );
+            if !input.executors.is_empty() {
+                // Whether the Choice named an executor at all; the name is
+                // in the output, since a summary can't average it.
+                metrics.insert(
+                    "executor_named".to_string(),
+                    json!(profile.executor.is_some()),
+                );
+            }
+            Ok(Ran {
+                output: serde_json::to_value(&profile).unwrap_or(Value::Null),
+                metrics,
+            })
+        })
+    }
+}
+
 /// `exec.system`: the executor's system prompt, with the optional sections
 /// Jev reads the task as needing.
 struct SystemSelect;
@@ -1225,6 +1286,59 @@ pub async fn suite(
     Ok(suite)
 }
 
+/// The schema of a suite's export.
+pub const EXPORT_SCHEMA: &str = "openagents.coder-one.component-export.v1";
+
+/// A suite's outputs by task, for a reader outside this crate, such as the
+/// Gym's router reading `task.profile` features. Deterministic: no times
+/// and no paths.
+///
+/// # Errors
+///
+/// Returns a message when a fixture no longer reads.
+pub fn export(suite: &Suite, dirs: &[PathBuf]) -> Result<Value, String> {
+    let mut fixtures = Vec::new();
+    for (run, dir) in suite.runs.iter().zip(dirs) {
+        let fixture = Fixture::load(dir, &suite.component)?;
+        let task = fixture
+            .source
+            .pointer("/trace/task")
+            .or_else(|| fixture.source.get("task"))
+            .cloned()
+            .unwrap_or(Value::Null);
+        // What the recorded answers cost when they were asked live, so a
+        // reader can charge the component even when this run replayed them.
+        let recorded = Recorded::load(&dir.join(RECORDED_FILE))?;
+        let live = format!("live component run of {}", suite.component);
+        let tokens: Option<u64> = recorded
+            .entries
+            .values()
+            .filter(|entry| entry.source.starts_with(&live))
+            .map(|entry| entry.input_tokens)
+            .sum();
+        fixtures.push(json!({
+            "fixture": run.fixture,
+            "task": task,
+            "input_digest": run.input_digest,
+            "output": run.output,
+            "jev": run.jev,
+            "cost_usd": run.cost_usd,
+            "recorded_live_cost_usd": tokens.map(|tokens| {
+                // Whole nanodollars, so the file carries no float noise.
+                (tokens as f64 * jev::USD_PER_MILLION_INPUT * 1_000.0).round() / 1e9
+            }),
+            "error": run.error,
+        }));
+    }
+    Ok(json!({
+        "schema": EXPORT_SCHEMA,
+        "component": suite.component,
+        "implementation": suite.implementation,
+        "jev_mode": suite.jev_mode,
+        "fixtures": fixtures,
+    }))
+}
+
 /// The fixture root this checkout ships.
 #[must_use]
 pub fn default_fixtures() -> PathBuf {
@@ -1309,6 +1423,38 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&first.result()).unwrap(),
             serde_json::to_string(&second.result()).unwrap()
+        );
+    }
+
+    /// The Gym's router reads this export; it must be what the recorded
+    /// answers give today.
+    #[tokio::test]
+    async fn the_checked_in_task_features_are_current() {
+        let component = find("task.profile").unwrap();
+        let dirs = fixtures_for(&fixtures(), component.id());
+        assert_eq!(dirs.len(), 8);
+        let suite = suite(
+            component.as_ref(),
+            &dirs,
+            &JevChoice::Recorded,
+            &Recorder::default(),
+            false,
+        )
+        .await
+        .unwrap();
+        assert!(suite.runs.iter().all(|run| run.jev.get("miss").is_none()));
+        let fresh = format!(
+            "{}\n",
+            serde_json::to_string_pretty(&export(&suite, &dirs).unwrap()).unwrap()
+        );
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../bench/terminal-bench/profiles/task-features.json");
+        let kept = std::fs::read_to_string(&path).unwrap_or_default();
+        assert!(
+            fresh == kept,
+            "{} is stale: run `coder-one component suite task.profile --no-record --export {}`",
+            path.display(),
+            path.display()
         );
     }
 

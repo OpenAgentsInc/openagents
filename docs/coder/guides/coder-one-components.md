@@ -12,6 +12,7 @@ The design is in [Coder as a tunable system](../../optimization/coder-components
 
 | ID | What it decides | Jev |
 | --- | --- | --- |
+| `task.profile` | Jev's task features for the router: five Nouls, a difficulty Score, and, with the executors' measured behavior in state, a Choice of executor. | One request |
 | `task.requirements` | The requirement map: each span of the instruction as a deliverable, behavior, constraint, check, or context. | One request per 20 spans |
 | `evidence.setup` | Which setup commands the task names should run first. The isolated run judges only; it never runs a command. | One request |
 | `evidence.probes.planner` | Which typed, read-only operations the host runs before the work. The isolated run plans only; it never runs an operation. | None |
@@ -285,3 +286,26 @@ their sizes, the variant digest, and Jev's answers; an attempt that
 recorded no variant shows its executor's default, marked inferred. The
 Components view compares the variants on the captured first request, pass
 rate, mean cost, and delegate turns.
+
+## Route each task
+
+`task.profile` gives the router its input: one Jev request per task asks
+five Nouls (builds code, installs packages, parses data, recovers Git
+history, concurrency) and a difficulty Score. When the fixture carries each
+executor's measured behavior, the same request asks a Choice of executor;
+without that behavior, the request refuses the Choice, because task text
+alone says nothing about which executor is cheapest and still reliable.
+Each fixture's measured behavior leaves its own task out.
+
+The Gym reads the features from an export that a test keeps current:
+
+```sh
+coder-one component suite task.profile --no-record \
+  --export bench/terminal-bench/profiles/task-features.json
+gym coder matrix       # task by policy: Wilson intervals, frontiers, oracles
+gym coder router       # features, picks, and leave-one-task-out regret
+```
+
+[Route each task](../../terminal-bench/2026-09-22-routing.md) has the
+measured matrix, the router's regret against fixed Luna, fixed Opus, and a
+hand-written rule, and the frozen larger task pool.
