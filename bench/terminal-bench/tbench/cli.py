@@ -650,6 +650,94 @@ def cmd_looptime(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_replay(args: argparse.Namespace) -> int:
+    """Rerun checks, the repair brief, or the verifier on trials' workspaces."""
+    import time
+
+    from . import replay
+
+    try:
+        trials = [replay.find_trial(ref) for ref in args.trial or []]
+        if args.failing:
+            trials += replay.failing_trials(args.failing, args.limit)
+    except replay.ReplayError as exc:
+        print(f"replay: {exc}", file=sys.stderr)
+        return 1
+    if not trials:
+        print("replay: name trials, or --failing MATCH to pick them", file=sys.stderr)
+        return 1
+    artifact = Path(args.artifact).expanduser() if args.artifact else None
+    started = time.monotonic()
+    echo = (lambda _line: None) if args.json else print
+    results = replay.replay_many(
+        trials, args.stage, artifact=artifact, jobs=args.jobs, echo=echo
+    )
+    summary = replay.summary(results, time.monotonic() - started)
+    if args.json:
+        print(
+            json.dumps(
+                {"summary": summary, "replays": [r.record() for r in results]},
+                indent=2,
+            )
+        )
+    else:
+        print(
+            f"\nreplay: {summary['replays']} {args.stage} replays in "
+            f"{summary['wall_sec']} s, {summary['errors']} errors"
+            + (
+                f"; checks detected {summary['failing_detected']} of "
+                f"{summary['failing']} failing trials and flagged "
+                f"{summary['passing_flagged']} of {summary['passing']} passing"
+                if args.stage != "verify"
+                else ""
+            )
+        )
+        for result in results:
+            if result.out:
+                print(f"  {result.trial}: {result.out / 'replay.json'}")
+    return 1 if summary["errors"] else 0
+
+
+def cmd_verify(args: argparse.Namespace) -> int:
+    """Run a task's verifier on a candidate directory or a trial."""
+    import tempfile
+    import time
+
+    from . import replay
+    from .panel import load_panel
+
+    started = time.monotonic()
+    try:
+        if args.trial:
+            result = replay.replay(replay.find_trial(args.trial), "verify")
+            print(replay.line(result))
+            print(f"verify: {result.out / 'replay.json'}")
+            return 1 if result.error else 0
+        panel = load_panel(catalog=args.catalog)
+        task = panel.checkout() / panel.task(args.task).path
+        out = replay.replays_dir() / (
+            f"{args.task}--candidate--{time.strftime('%Y%m%dT%H%M%S')}"
+        )
+        with tempfile.TemporaryDirectory(prefix="tbench-verify-") as scratch:
+            workspace = replay.candidate_workspace(
+                Path(args.candidate).expanduser(), args.mount, Path(scratch)
+            )
+            result = replay.run_verifier(task, workspace, out)
+    except (replay.ReplayError, KeyError, ValueError) as exc:
+        print(f"verify: {exc}", file=sys.stderr)
+        return 1
+    result["seconds"] = round(time.monotonic() - started, 1)
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "verify.json").write_text(json.dumps(result, indent=2) + "\n")
+    print(
+        f"verify {args.task}: reward {result['reward']} in {result['seconds']} s"
+        + (f" ({result['exception']})" if result.get("exception") else "")
+        + f"; verifier image {result.get('image_cache') or '?'}"
+    )
+    print(f"verify: {result['trial_dir']}")
+    return 0 if result["reward"] is not None else 1
+
+
 def cmd_images(args: argparse.Namespace) -> int:
     """List or remove the task images tbench.warm_docker keeps."""
     from .warm_docker import remove_warm_images, warm_images
@@ -954,6 +1042,54 @@ def build_parser() -> argparse.ArgumentParser:
     )
     looptime_parser.add_argument("--json", action="store_true", help="print JSON")
     looptime_parser.set_defaults(func=cmd_looptime)
+
+    replay_parser = sub.add_parser(
+        "replay",
+        help="rerun checks, the repair brief, or the verifier on trials' "
+        "workspaces, with no model call",
+    )
+    replay_parser.add_argument(
+        "trial", nargs="*", help="trial dirs, <job>/<trial>, or trial names"
+    )
+    replay_parser.add_argument(
+        "--stage", choices=("checks", "repair", "verify"), default="checks"
+    )
+    replay_parser.add_argument(
+        "--artifact",
+        help="the Coder One build to run the checks with (default: the trial's own)",
+    )
+    replay_parser.add_argument(
+        "--failing",
+        metavar="MATCH",
+        help="also replay graded Coder One trials with reward 0 from jobs whose "
+        "name contains MATCH",
+    )
+    replay_parser.add_argument(
+        "--limit", type=int, default=10, help="most --failing trials (default 10)"
+    )
+    replay_parser.add_argument(
+        "--jobs", type=int, default=4, help="replays at once (default 4)"
+    )
+    replay_parser.add_argument("--json", action="store_true", help="print JSON")
+    replay_parser.set_defaults(func=cmd_replay)
+
+    verify_parser = sub.add_parser(
+        "verify", help="run a task's verifier on a candidate directory or a trial"
+    )
+    verify_parser.add_argument("--task", help="task id")
+    verify_parser.add_argument(
+        "--candidate", help="a directory holding what --mount should hold"
+    )
+    verify_parser.add_argument(
+        "--mount", default="/app", help="where the candidate goes (default /app)"
+    )
+    verify_parser.add_argument(
+        "--trial", help="verify this trial's workspace instead"
+    )
+    verify_parser.add_argument(
+        "--catalog", default="tb4", help="the task catalog (default tb4)"
+    )
+    verify_parser.set_defaults(func=cmd_verify)
 
     images_parser = sub.add_parser(
         "images", help="list or remove the task images kept between trials"

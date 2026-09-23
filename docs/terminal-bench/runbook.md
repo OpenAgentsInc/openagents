@@ -328,6 +328,81 @@ Every figure comes from what the trial recorded: Harbor's `result.json`,
 the episode's invocation log, and the environment start records in
 `tbench-environment.jsonl`.
 
+### Replay checks, repair briefs, and the verifier
+
+Everything after the executor session reads only the workspace the
+session left, so you can rerun it in seconds without a model call:
+
+```sh
+uv run tbench replay <trial> --stage checks --artifact <coder-one build>
+uv run tbench replay <trial> --stage repair
+uv run tbench replay <trial> --stage verify
+uv run tbench replay --failing tb4--coder-one-tunable --limit 10 --stage checks \
+  --artifact <coder-one build>
+```
+
+A trial is a trial directory, `<job>/<trial>`, or a trial name.
+`--failing MATCH` adds the newest graded Coder One trials with reward 0
+from jobs whose names contain `MATCH`. Replays run four at a time
+(`--jobs`).
+
+- `--stage checks` starts a container from the task's kept image, restores
+  the workspace, and runs `coder-one snapshot checks` with the trial's own
+  check subject. It prints whether the checks detect a failure next to the
+  episode's own first check and the verifier's reward. `--artifact` runs a
+  changed build of Coder One, from `./scripts/build-coder-one-linux.sh`;
+  without it the replay uses the build the trial ran, which must already
+  have the `snapshot` command.
+- `--stage repair` also writes the repair brief the episode's policy would
+  send, with the trial's retained support report, and says whether the
+  repair trigger fires.
+- `--stage verify` runs the task's verifier through
+  `harbor trial regrade` on the workspace's declared artifacts, in the
+  task's kept verifier image.
+
+The workspace is the trial's post-executor snapshot when its policy has
+`verify.snapshot`, such as the `coder-one-tunable-luna-snapshot` canary.
+Otherwise it is the artifacts Harbor collected when the trial ended: the
+final state after any repair, and only the paths the task declares, over
+the task image's own files. Each result names its source. A trial without
+a snapshot also gets a check subject rebuilt from its bundle, and the
+result says `reconstructed`.
+
+Each replay writes `replay.json`, with its result and the seconds each
+step took, under `~/.openagents/terminal-bench/replays/`.
+
+### Snapshot the workspace after the executor
+
+Add `verify.snapshot` to a policy manifest to save the workspace right
+after the first executor, before any check runs:
+
+```json
+"verify": { "checks": true, "snapshot": { "max_mb": 256, "max_files": 50000 } }
+```
+
+The episode writes `snapshot/workspace.tar.gz` (the workdir and the
+outputs the requirements name outside it, with paths relative to `/`),
+`snapshot/subject.json` (the first check's whole input except the files),
+and `snapshot/snapshot.json` (size, digest, and time) into its bundle. A
+workspace over either bound keeps only its subject. The snapshot runs
+nothing in the task and changes nothing an executor sees. Retention keeps
+the subject and the record and leaves the archive in the job directory.
+
+### Run a verifier on any directory
+
+`tbench verify` runs a task's verifier on a directory that holds what the
+task's working directory should hold:
+
+```sh
+uv run tbench verify --task cargo-flight-dispatch --candidate ./candidate
+uv run tbench verify --trial <trial>
+```
+
+It copies the task's declared artifacts from the candidate into a source
+trial that `harbor trial regrade` accepts and runs the verifier in the
+kept verifier image. A declared artifact the candidate lacks is missing
+for the verifier too.
+
 ### Keep and prune task images
 
 Kept images take disk: most TB4 task images are 0.2 to 2 GB, and a task
