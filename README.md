@@ -12,6 +12,21 @@ bridge for Apple's on-device model. The [general agent architecture](docs/agents
 separates reusable contracts from domain adapters and records what remains
 before other specializations can claim support.
 
+## Coder One on Terminal-Bench 4.0
+
+Coder One wraps a frontier coding agent in typed Jev judgments: it probes the
+task environment, packs a briefing, checks the result, and repairs what a
+check shows is wrong. On the 26 Terminal-Bench 4.0 tasks with a valid trial
+on both sides, on the same host and the same model (Claude Opus 5.5), Coder
+One passed **11 tasks for $32.87** where Claude Code alone passed **9 for
+$59.27**: as many or more passes for 45% less money and 38% less time.
+One attempt per task, so the cost result is strong and the accuracy
+difference is small.
+
+Read the [assessment](docs/terminal-bench/2026-09-23-coder-one-vs-claude-code-tb4.md),
+the [Terminal-Bench status](docs/terminal-bench/README.md), and the
+[tunable Coder design](docs/optimization/coder-components.md).
+
 ## Programming and improving agents
 
 The target architecture separates semantic task contracts, replaceable AI

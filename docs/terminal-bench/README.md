@@ -32,11 +32,14 @@ Counts come from `tools/tb4_scoreboard.py`, which leaves out every trial
 whose Claude or Codex session hit a usage or rate limit (#9564), so they
 are reconciled for the incident above.
 
-**Same host, same model, same tasks.** On the 27 TB4 tasks both have
-graded, Coder One v2 passed 12 for $35.56 and Claude Code on Opus 5.5
-passed 10 for $61.69: two more passes for 42% less. Coder One alone passed
-`kv-live-surgery`, `roy-polymorph-cn`, and `session-window-debug`; Claude
-Code alone passed `risk-scorer-replay`. One attempt per task.
+**Same host, same model, same tasks.** On the 26 TB4 tasks with a valid
+trial on both sides, Coder One v2 passed 11 for $32.87 and 182 minutes of
+agent time, and Claude Code on Opus 5.5 passed 9 for $59.27 and 295
+minutes: two more passes for 45% less money and 38% less time. Coder One
+was cheaper on 24 of the 26 tasks. The cost result is strong; the accuracy
+difference is two tasks, one of them plausibly chance. Two trials are
+excluded, one per side, because they didn't measure the agent. See the
+[full assessment](2026-09-23-coder-one-vs-claude-code-tb4.md).
 
 **Against the leaderboard on v2's 45 tasks**, matched per task: GPT-6 Astra
 at max expects 23.6 passes at $6.99 a trial, and Fable 5.1 at max 24.0 at
@@ -81,6 +84,7 @@ still need the quota audit. See [harness validation](tb4-results.md#harness-vali
 
 | Document | Contents |
 | --- | --- |
+| [Coder One against Claude Code on TB4](2026-09-23-coder-one-vs-claude-code-tb4.md) | The same-host, same-model comparison on 26 tasks: per-task results, where the two extra passes and the cost gap come from, and how strong each claim is. |
 | [TB4 results](tb4-results.md) | Full matrix, arm versions, matched comparisons, harness checks, and refresh limits. |
 | [Coder One's task-level wins](2026-09-23-task-win-analysis.md) | Detailed reconstruction of ten wins, local and public failures, controller gaps, costs, conditional completion scenarios, and an upgrade plan. Includes a complete evidence index. |
 | [TB4 leaderboard](tb4-leaderboard.md) | Retained public reference: 27 rows, five trials per task, source inconsistencies. |
