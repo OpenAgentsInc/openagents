@@ -91,6 +91,7 @@ pub mod spread;
 pub mod store;
 pub mod suite;
 pub mod terminal_bench;
+pub mod terminal_bench_experiment;
 pub mod terminal_bench_reference;
 pub mod timeline;
 pub mod views;

@@ -43,9 +43,21 @@ Harness commands (forward remaining flags to the pinned tbench package):
   inspect-job JOB         show one job's trial results
   collect JOB             rebuild one job's attempt records
   report                  write the harness comparison report
+  experiment run|plan|status|stop --id ID ...
+                          run a targeted experiment: two or more --arm, --tasks,
+                          3 interleaved attempts per task per arm by default,
+                          an optional --quota-usd Claude budget, and the
+                          long-lived Claude token
 
-  --uv PATH               uv executable (default: uv)
+  --uv PATH              uv executable (default: uv)
   --harness-dir PATH      tbench package directory (default: this checkout)
+
+Experiment report (read-only):
+  experiment report ID|PATH  each arm's passes with 95% Wilson intervals, the
+                          paired comparison (exact McNemar and sign tests),
+                          attempts lost to credentials, quota, or
+                          infrastructure, and the Claude quota used;
+                          --json or --markdown; --experiments-dir PATH
 
 Run and resume can start containers and reach providers. Credentials come
 from the harness's environment, never CLI flags. See
@@ -182,9 +194,13 @@ fn execute(args: &[String], out: &mut impl Write, err: &mut impl Write) -> Resul
         writeln!(out, "{HELP}").map_err(|error| error.to_string())?;
         return Ok(0);
     }
+    if command == "experiment" && rest.first().is_some_and(|verb| verb == "report") {
+        return experiment_report(&rest[1..], out);
+    }
     if matches!(
         command.as_str(),
         "doctor"
+            | "experiment"
             | "tasks"
             | "profiles"
             | "materialize"
@@ -996,6 +1012,46 @@ fn range_text(value: &Value) -> String {
     })
 }
 
+fn experiment_report(args: &[String], out: &mut impl Write) -> Result<i32, String> {
+    use gym::terminal_bench_experiment::{self as experiment, Report};
+
+    let mut format = "text";
+    let mut dir = experiment::default_dir();
+    let mut query = None;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--json" => format = "json",
+            "--markdown" => format = "markdown",
+            "--experiments-dir" => {
+                index += 1;
+                dir = args
+                    .get(index)
+                    .ok_or("--experiments-dir needs a path")?
+                    .into();
+            }
+            flag if flag.starts_with('-') => return Err(format!("unknown option {flag}")),
+            value if query.is_none() => query = Some(value.to_owned()),
+            value => return Err(format!("unexpected argument {value}")),
+        }
+        index += 1;
+    }
+    let query = query.ok_or("experiment report needs an experiment id or a status file")?;
+    let report = Report::read(&experiment::status_path(&query, &dir))?;
+    let written = match format {
+        "json" => serde_json::to_writer_pretty(&mut *out, &report.to_json())
+            .map_err(|error| error.to_string())
+            .and_then(|()| writeln!(out).map_err(|error| error.to_string())),
+        "markdown" => write!(out, "{}", report.markdown()).map_err(|error| error.to_string()),
+        _ => report
+            .lines()
+            .iter()
+            .try_for_each(|line| writeln!(out, "{line}"))
+            .map_err(|error| error.to_string()),
+    };
+    written.map(|()| 0)
+}
+
 fn harness(command: &str, args: &[String], err: &mut impl Write) -> Result<i32, String> {
     let mut uv = PathBuf::from("uv");
     let mut directory = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../bench/terminal-bench");
@@ -1015,7 +1071,9 @@ fn harness(command: &str, args: &[String], err: &mut impl Write) -> Result<i32, 
                 }
                 index += 1;
             }
-            "--json" => return Err("--json applies only to evidence commands".to_owned()),
+            "--json" if command != "experiment" => {
+                return Err("--json applies only to evidence commands".to_owned());
+            }
             _ => forwarded.push(args[index].clone()),
         }
         index += 1;
@@ -1396,5 +1454,55 @@ mod tests {
                 "fix-git"
             ]
         );
+    }
+
+    #[test]
+    fn experiment_report_reads_a_status_file_and_other_verbs_reach_the_harness() {
+        let temp = tempfile::tempdir().unwrap();
+        let dir = temp.path().join("experiments/x1");
+        std::fs::create_dir_all(&dir).unwrap();
+        let trial = |arm: &str, attempt: u64, reward: f64| {
+            json!({"arm": arm, "task": "a", "attempt": attempt, "state": "finished",
+                   "reward": reward, "job": format!("tb4--{arm}--a--x1-r{attempt}"),
+                   "claude_usage": {"usd": 0.5}, "losses": []})
+        };
+        let status = json!({
+            "schema": gym::terminal_bench_experiment::STATUS_SCHEMA,
+            "experiment": "x1", "profile": "tb4", "state": "done",
+            "arms": [{"id": "plain"}, {"id": "coder"}], "tasks": ["a"], "attempts": 3,
+            "credential_source": "setup-token",
+            "quota": {"budget_usd": 10.0, "used": {"usd": 3.0, "unpriced": 0}},
+            "trials": (1..=3).flat_map(|n| [trial("plain", n, 0.0), trial("coder", n, 1.0)])
+                .collect::<Vec<_>>(),
+        });
+        std::fs::write(dir.join("status.json"), status.to_string()).unwrap();
+        let experiments = temp.path().join("experiments");
+        let mut out = Vec::new();
+        let args = strings(&[
+            "experiment",
+            "report",
+            "x1",
+            "--experiments-dir",
+            experiments.to_str().unwrap(),
+            "--json",
+        ]);
+        assert_eq!(execute(&args, &mut out, &mut Vec::new()).unwrap(), 0);
+        let value: Value = serde_json::from_slice(&out).unwrap();
+        assert_eq!(value["schema"], gym::terminal_bench_experiment::SCHEMA);
+        assert_eq!(value["arm_results"][1]["passes"], 3);
+        assert_eq!(value["complete"], true);
+        let mut text = Vec::new();
+        let args = strings(&["experiment", "report", dir.to_str().unwrap()]);
+        execute(&args, &mut text, &mut Vec::new()).unwrap();
+        let text = String::from_utf8(text).unwrap();
+        assert!(text.contains("exact McNemar p = 0.250"), "{text}");
+        // Any other verb goes to the harness.
+        let error = execute(
+            &strings(&["experiment", "plan", "--harness-dir", "/nonexistent"]),
+            &mut Vec::new(),
+            &mut Vec::new(),
+        )
+        .unwrap_err();
+        assert!(error.contains("no tbench package"), "{error}");
     }
 }
