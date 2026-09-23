@@ -13,7 +13,7 @@ use crate::policy::Manifest;
 /// The proposal commands' usage.
 pub const USAGE: &str = "\
 usage: coder-one proposal run ID [--live --quota-usd USD [--task TASK]...
-                                  --artifact PATH [--profile tb4] [--base-arm AGENT]
+                                  --artifact PATH [--profile ID] [--base-arm AGENT]
                                   [--min-free-disk-gb N] [--plan]]
                                  [--dir DIR] [--repo DIR] [--json]
        coder-one proposal issue ID [--dir DIR]
@@ -28,7 +28,9 @@ mini-task, the grader on the good and bad candidates. With --live, a policy
 or check whose mini stage didn't regress then starts a targeted
 `tbench experiment` from bench/terminal-bench: the base manifest's agent
 profile against the proposal's manifest, 3 attempts per task, on the tasks
-the proposal expects to change and never others. --task narrows them.
+the proposal expects to change and never others. --task narrows them. The
+job profile is the one the source runs' job names start with, such as
+panel, when they share one; otherwise tb4, and --profile names another.
 --quota-usd is required and budgets the Claude quota. --artifact names the
 Coder One build both arms run, such as ./scripts/build-coder-one-linux.sh
 prints. --plan prints the schedule and checks credentials without starting
@@ -55,7 +57,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
     let mut live = false;
     let mut quota = None;
     let mut tasks = Vec::new();
-    let mut profile = "tb4".to_string();
+    let mut profile = None;
     let mut base_arm = None;
     let mut disk = None;
     let mut plan_only = false;
@@ -80,7 +82,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
                 );
             }
             "--task" => tasks.push(value("--task")?),
-            "--profile" => profile = value("--profile")?,
+            "--profile" => profile = Some(value("--profile")?),
             "--base-arm" => base_arm = Some(value("--base-arm")?),
             "--min-free-disk-gb" => {
                 disk = Some(
@@ -150,7 +152,9 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
                 }
                 Some(stage::Live {
                     repo: repo.clone(),
-                    profile,
+                    profile: profile
+                        .clone()
+                        .unwrap_or_else(|| stage::profile_of(&repo, &proposal)),
                     quota_usd: quota,
                     tasks: if tasks.is_empty() { expected } else { tasks },
                     base_arm,

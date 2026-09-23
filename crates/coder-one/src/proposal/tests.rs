@@ -373,6 +373,10 @@ fn the_live_stage_runs_the_cited_tasks_against_the_base_policys_arm() {
         "coder-one-tunable-luna-v2"
     );
     assert!(stage::base_arm(&repo, "no-such-policy").is_err());
+    let from = |runs: &[&str]| stage::profile_of(&repo, &json!({ "source_runs": runs }));
+    assert_eq!(from(&["panel--a--fix-git-2/fix-git__x"]), "panel");
+    assert_eq!(from(&["try--a--20260923/t__x"]), "tb4");
+    assert_eq!(from(&["panel--a/x__1", "tb4--b/y__2"]), "tb4");
     let live = stage::Live {
         repo,
         profile: "tb4".to_string(),

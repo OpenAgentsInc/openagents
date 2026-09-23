@@ -335,6 +335,29 @@ pub fn sha256_file(path: &Path) -> Result<String, String> {
         .collect())
 }
 
+/// The job profile the proposal's source runs share, such as `panel` for
+/// `panel--…` jobs, when `bench/terminal-bench/profiles/jobs.json` has it;
+/// `tb4` otherwise.
+#[must_use]
+pub fn profile_of(repo: &Path, proposal: &Value) -> String {
+    let path = repo.join("bench/terminal-bench/profiles/jobs.json");
+    let known: Value = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or(Value::Null);
+    let prefixes: std::collections::BTreeSet<&str> = proposal["source_runs"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .filter_map(|run| run.split("--").next())
+        .collect();
+    match prefixes.into_iter().collect::<Vec<_>>().as_slice() {
+        [one] if known["profiles"].get(*one).is_some() => (*one).to_string(),
+        _ => "tb4".to_string(),
+    }
+}
+
 /// The agent profile whose policy is `crates/coder-one/policies/<base>.json`.
 ///
 /// # Errors
