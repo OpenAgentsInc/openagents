@@ -303,3 +303,19 @@ def test_inspect_job_reads_refusals(tmp_path):
     state = inspect_job(tmp_path / "job")
     assert (state.kind, state.reason) == ("refused", "no credentials")
     assert inspect_job(tmp_path / "missing").kind == "new"
+
+
+def test_each_job_gets_the_current_claude_token(tmp_path):
+    from tbench.suite import fresh_environment
+
+    creds = tmp_path / "creds.json"
+    creds.write_text('{"claudeAiOauth": {"accessToken": "fresh"}}')
+    env = fresh_environment({"CLAUDE_CODE_OAUTH_TOKEN": "stale", "X": "1"}, creds)
+    assert env == {"CLAUDE_CODE_OAUTH_TOKEN": "fresh", "X": "1"}
+    # No token in the scheduler's environment: nothing is added.
+    assert fresh_environment({"X": "1"}, creds) == {"X": "1"}
+    # An unreadable file keeps the scheduler's token.
+    creds.write_text("not json")
+    assert fresh_environment({"CLAUDE_CODE_OAUTH_TOKEN": "stale"}, creds) == {
+        "CLAUDE_CODE_OAUTH_TOKEN": "stale"
+    }

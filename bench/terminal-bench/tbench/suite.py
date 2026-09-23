@@ -40,7 +40,7 @@ import signal
 import subprocess
 import sys
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -294,6 +294,32 @@ class Host:
         )
 
 
+CLAUDE_CREDENTIALS = Path.home() / ".claude" / ".credentials.json"
+
+
+def fresh_environment(
+    base: Mapping[str, str], credentials: Path = CLAUDE_CREDENTIALS
+) -> dict[str, str]:
+    """The environment for one job, with a current Claude access token.
+
+    A suite runs for many hours, and a subscription access token lasts
+    about eight. When the scheduler's environment carries
+    `CLAUDE_CODE_OAUTH_TOKEN`, each job gets the token the Claude CLI's
+    credential file holds now, which the CLI refreshes, rather than the one
+    the scheduler started with. The value is never logged.
+    """
+    env = dict(base)
+    if "CLAUDE_CODE_OAUTH_TOKEN" not in env:
+        return env
+    try:
+        token = json.loads(credentials.read_text())["claudeAiOauth"]["accessToken"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return env
+    if isinstance(token, str) and token:
+        env["CLAUDE_CODE_OAUTH_TOKEN"] = token
+    return env
+
+
 class Launcher:
     """Starts ``tbench run``/``tbench resume`` for one job, detached."""
 
@@ -344,6 +370,7 @@ class Launcher:
             stdin=subprocess.DEVNULL,
             start_new_session=True,
             cwd=paths.PACKAGE_DIR,
+            env=fresh_environment(os.environ),
         )
         log.close()
         self.children[process.pid] = process
