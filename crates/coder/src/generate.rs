@@ -976,6 +976,11 @@ pub enum Door {
     /// An approved local executor, such as the Devin CLI, run through
     /// `delegate` under its boundary.
     Executor(Box<crate::executor_door::ExecutorDoor>),
+    /// Claude Code or Codex from a Jev briefing, the door a terminal turn
+    /// prefers. See [`crate::delegate_door`]. Only
+    /// [`crate::delegate_door::open`] builds it; [`Door::from_env`] never
+    /// does, so `coder-worker` keeps the door it had.
+    Delegate(std::sync::Arc<crate::delegate_door::DelegateDoor>),
     /// The canned answer.
     Stub(StubGenerate),
 }
@@ -1052,6 +1057,12 @@ impl Door {
                  {} runs the turn and picks its own.",
                 door.slug()
             )),
+            Door::Delegate(door) => Err(format!(
+                "{model} is named for the delegate door, which runs {}: \
+                 name its model with {}.",
+                door.label(),
+                crate::delegate_door::MODEL_VAR
+            )),
             Door::Stub(_) => Err(format!(
                 "{model} is named and no door key is set, so the stub door \
                  would answer instead. Set {} or {}.",
@@ -1072,6 +1083,7 @@ impl Door {
             Door::Live(door) => &door.model,
             Door::Relay(_) => UNKNOWN_MODEL,
             Door::Executor(door) => door.slug(),
+            Door::Delegate(door) => door.label(),
             Door::Stub(_) => "stub",
         }
     }
@@ -1093,6 +1105,7 @@ impl Door {
             Door::Live(_) => "live",
             Door::Relay(_) => "relay",
             Door::Executor(_) => "executor",
+            Door::Delegate(_) => crate::delegate_door::NAME,
             Door::Stub(_) => "stub",
         }
     }
@@ -1110,6 +1123,7 @@ impl Generate for Door {
             Door::Live(door) => door.generate(instructions, input, sink, meta).await,
             Door::Relay(door) => door.generate(instructions, input, sink, meta).await,
             Door::Executor(door) => door.generate(instructions, input, sink, meta).await,
+            Door::Delegate(door) => door.generate(instructions, input, sink, meta).await,
             Door::Stub(stub) => stub.generate(instructions, input, sink, meta).await,
         }
     }

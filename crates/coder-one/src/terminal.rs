@@ -241,11 +241,24 @@ pub fn boundary(
             home.join(".local/share/claude"),
         ]
     });
+    let workdir = workdir
+        .canonicalize()
+        .unwrap_or_else(|_| workdir.to_path_buf());
     for path in state
         .chain([std::env::temp_dir()])
         .filter(|path| path.exists())
     {
+        // A read-only turn's workspace stays read-only even when it sits
+        // inside a path the executor may otherwise write, such as a
+        // checkout under the temporary directory: that path is left out.
+        let resolved = path.canonicalize().unwrap_or_else(|_| path.clone());
+        if read_only && (workdir.starts_with(&resolved) || resolved.starts_with(&workdir)) {
+            continue;
+        }
         spec = spec.writable(path);
+    }
+    if read_only {
+        spec = spec.protecting(&workdir);
     }
     spec.build()
         .map_err(|error| format!("cannot bound the executor: {error}"))
@@ -298,7 +311,6 @@ pub async fn answer(request: &Request, on: Rc<dyn Fn(Progress)>) -> Answer {
     let recorder = Recorder::default();
     let policy = policy();
     let words = instruction(&request.request, &request.earlier);
-    recorder.push(Step::said(Source::User, &words));
 
     let first_line = request
         .request

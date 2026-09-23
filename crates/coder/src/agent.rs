@@ -149,6 +149,10 @@ pub struct Turned {
     pub exhausted: Option<Exhausted>,
     /// How many commands ran on this turn, in all.
     pub commands: usize,
+    /// What the turn cost in dollars, when the door says: the delegate
+    /// door reports Jev and the executor together. `None` is unknown,
+    /// never zero.
+    pub cost_usd: Option<f64>,
 }
 
 /// The read Classify made and where it sent the turn, for the transcript's
@@ -213,6 +217,9 @@ pub struct Agent {
     /// named any — merged with `CODER_PROGRAMS` each time a program runs,
     /// so a grant withdrawn between turns is not handed out anyway.
     program_grant: Option<String>,
+    /// Why this session answers through the door it does, as the session
+    /// header and the trace say it.
+    door_reason: String,
 }
 
 impl Agent {
@@ -253,7 +260,7 @@ impl Agent {
     /// environment, the trace where `path` says or where the environment
     /// does.
     fn opening(path: Option<&Path>) -> Result<Self, String> {
-        let generate = Door::from_env()?;
+        let (generate, door_reason) = crate::delegate_door::open()?;
         let working_directory = env::current_dir().unwrap_or_default();
         let repo = Repo::discover(&working_directory);
         let about = About::observe(&working_directory, repo.as_ref().map(|repo| repo.root()));
@@ -267,10 +274,13 @@ impl Agent {
             }
             None => Recorder::start(generate.model(), generate.name(), &where_it_ran),
         };
-        let (trace, trace_error) = match opened {
+        let (mut trace, trace_error) = match opened {
             Ok(recorder) => (recorder, None),
             Err(error) => (None, Some(error)),
         };
+        if let Some(trace) = &mut trace {
+            trace.door(generate.name(), generate.model(), &door_reason);
+        }
         let decision_profile = crate::decision::profile_from_env()?;
         let classify = decision_profile
             .as_ref()
@@ -289,6 +299,7 @@ impl Agent {
             trace_error,
             survey: None,
             program_grant: None,
+            door_reason,
         })
     }
 
@@ -307,6 +318,7 @@ impl Agent {
             trace_error: None,
             survey: None,
             program_grant: None,
+            door_reason: String::new(),
         }
     }
 
@@ -457,9 +469,11 @@ impl Agent {
         // still runs the program, and the `delegate` step refuses by name
         // rather than by silence.
         let survey = runtime.survey();
+        // The same variable turns the delegate door on or off; a mode
+        // word names no capability.
         let executor = env::var(DELEGATE_VAR)
             .ok()
-            .filter(|slug| !slug.is_empty())
+            .filter(|slug| !slug.is_empty() && crate::delegate_door::Mode::parse(slug).is_none())
             .unwrap_or_else(|| {
                 survey
                     .options()
@@ -527,6 +541,18 @@ impl Agent {
     /// What the composer's location rail shows for this door.
     pub fn label(&self) -> &str {
         self.generate.label()
+    }
+
+    /// Which kind of door answers this session's turns, such as
+    /// `delegate` or `live`.
+    pub fn door(&self) -> &str {
+        self.generate.name()
+    }
+
+    /// Why this session answers through the door it does. Empty for an
+    /// agent built over explicit parts.
+    pub fn door_reason(&self) -> &str {
+        &self.door_reason
     }
 
     /// Whether a classifier is configured.
@@ -792,6 +818,12 @@ impl Agent {
             true => permit.withdrawn(),
             false => permit,
         };
+        if let Door::Delegate(door) = &self.generate {
+            let door = std::sync::Arc::clone(door);
+            return self
+                .delegated(&door, clarify, permit, sink, meta, shell)
+                .await;
+        }
         loop {
             // A turn that runs nothing is on its last word, so it is told
             // so — except while clarifying, where the one question it is
@@ -844,6 +876,7 @@ impl Agent {
                         ending: Ending::Answered,
                         exhausted,
                         commands: ran.len(),
+                        cost_usd: None,
                     });
                 }
                 Reply::Refused { text, why } => {
@@ -875,6 +908,7 @@ impl Agent {
                         },
                         exhausted,
                         commands: ran.len(),
+                        cost_usd: None,
                     });
                 }
             };
@@ -923,6 +957,92 @@ impl Agent {
                 permit = permit.withdrawn();
             }
         }
+    }
+
+    /// A turn the delegate door answers: Coder One's probes, Jev's
+    /// judgments, a briefing, and an executor, streamed as this turn's own
+    /// events and recorded to this session's trace.
+    ///
+    /// The permit decides the boundary. A turn that runs no commands runs
+    /// the executor read-only, and nothing the executor says widens that.
+    async fn delegated(
+        &mut self,
+        door: &crate::delegate_door::DelegateDoor,
+        clarify: bool,
+        permit: Permit,
+        sink: &mut (dyn FnMut(&str) + Send),
+        meta: &mut (dyn FnMut(Meta) + Send),
+        shell: &mut (dyn FnMut(ShellEvent) + Send),
+    ) -> Result<Turned, GenerateError> {
+        use crate::delegate_door::Update;
+        let read_only = !permit.executes();
+        let earlier = crate::delegate_door::earlier(&self.transcript);
+        let request = self.task.clone();
+        if let Some(trace) = &mut self.trace {
+            trace.note(&format!(
+                "delegating to {} in a {} boundary{}",
+                door.label(),
+                if read_only {
+                    "read-only"
+                } else {
+                    "workspace-writable"
+                },
+                door.session()
+                    .map(|id| format!(", resuming session {id}"))
+                    .unwrap_or_default()
+            ));
+        }
+        let started = Instant::now();
+        let mut said = false;
+        let done = door
+            .answer(
+                &request,
+                &earlier,
+                read_only,
+                clarify,
+                &mut |update| match update {
+                    Update::Line(line) => meta(Meta::Judgment(line)),
+                    Update::Text(text) => {
+                        if said {
+                            sink("\n\n");
+                        }
+                        said = true;
+                        sink(&text);
+                    }
+                    Update::Proposed(proposal) => shell(ShellEvent::Proposed(proposal)),
+                    Update::Ran(outcome) => shell(ShellEvent::Ran(outcome)),
+                },
+            )
+            .await?;
+        let milliseconds = started.elapsed().as_millis() as u64;
+        let turn = self
+            .transcript
+            .iter()
+            .filter(|message| message.role == Role::User)
+            .count();
+        if let Some(trace) = &mut self.trace {
+            trace.external(done.steps.clone(), &format!("turn-{turn}/"));
+            trace.delegated(&done.summary);
+        }
+        if let Some(failure) = done.failure {
+            return Err(failure);
+        }
+        meta(Meta::Model(done.model.clone()));
+        if let Some(trace) = &mut self.trace {
+            trace.answer(&done.text, done.usage, milliseconds, Some(&done.model));
+        }
+        self.transcript.push(Message {
+            role: Role::Assistant,
+            text: done.text.clone(),
+        });
+        Ok(Turned {
+            text: done.text,
+            usage: done.usage,
+            ending: Ending::Answered,
+            exhausted: None,
+            commands: done.commands,
+            cost_usd: done.cost_usd,
+        })
     }
 
     /// The instructions for one generation: the base text, the clarify,

@@ -26,6 +26,11 @@ pub enum Invocation {
     },
     /// Run one turn without a terminal.
     Print(Print),
+    /// Say which Coder this is: the repository, the commit, and whether
+    /// the tree was dirty.
+    Version,
+    /// Report which door a turn would use and why.
+    Doctor,
     /// Say what the flags are.
     Help,
 }
@@ -52,6 +57,8 @@ coder — the Coder agent, in a terminal or in a script.
 Usage:
   coder                       Draw the terminal and talk.
   coder -p <PROMPT>           Run one turn, write the reply to stdout, exit.
+  coder doctor                Report which door a turn would use and why.
+  coder --version             Name the repository, commit, and tree state.
 
 Options:
   -p, --print <PROMPT>   Run one turn without a terminal.
@@ -70,6 +77,7 @@ Options:
                          or `all`. With neither set, a program a turn
                          selects is refused rather than run — see
                          docs/coder/guides/program-authority.md.
+  -V, --version          Show the repository, commit, and tree state.
   -h, --help             Show this text.
 
 Exit codes with --print:
@@ -78,7 +86,12 @@ Exit codes with --print:
   2   The turn finished and the router declined it.
   64  The command line was wrong.
 
-The environment picks the door. CODER_DECISION_PROFILE and the
+The environment picks the door. A turn is delegated to Claude Code or
+Codex from a Jev briefing when either is installed and authenticated;
+CODER_DELEGATE=auto (the default), always, or off overrides that,
+CODER_DELEGATE_AGENT names claude-code or codex, and
+CODER_DELEGATE_MODEL names its model. With no target, the Open Responses
+door below is the fallback. CODER_DECISION_PROFILE and the
 CODER_DECISION_* settings name the decision profile classify asks
 through, falling back to the hosted door TYPESAFE_API_KEY opens;
 CODER_DOOR_KEY, CODER_DOOR_URL, and CODER_MODEL name an own-key door;
@@ -97,6 +110,13 @@ gemini or glm — or any model id the gateway serves.";
 /// Returns a sentence naming what is wrong with the arguments. The caller
 /// should print it, print [`USAGE`], and exit [`EXIT_USAGE`].
 pub fn parse(arguments: &[String]) -> Result<Invocation, String> {
+    // `doctor` is a subcommand only as the whole command line, so a prompt
+    // that happens to be the word still reaches a turn with `-p`.
+    if let [only] = arguments
+        && only == "doctor"
+    {
+        return Ok(Invocation::Doctor);
+    }
     let mut print = false;
     let mut json = false;
     let mut json_deltas = false;
@@ -134,6 +154,7 @@ pub fn parse(arguments: &[String]) -> Result<Invocation, String> {
         };
         match flag {
             "-h" | "--help" => return Ok(Invocation::Help),
+            "-V" | "--version" => return Ok(Invocation::Version),
             "-p" | "--print" => {
                 print = true;
                 if let Some(attached) = attached.clone()
@@ -215,6 +236,19 @@ mod tests {
     fn parse_of(arguments: &[&str]) -> Result<Invocation, String> {
         let arguments: Vec<String> = arguments.iter().map(|a| (*a).to_string()).collect();
         parse(&arguments)
+    }
+
+    /// `doctor` alone is the subcommand, and a version flag anywhere
+    /// answers with the version.
+    #[test]
+    fn doctor_and_version_are_their_own_invocations() {
+        assert_eq!(parse_of(&["doctor"]).unwrap(), Invocation::Doctor);
+        assert_eq!(parse_of(&["--version"]).unwrap(), Invocation::Version);
+        assert_eq!(parse_of(&["-V"]).unwrap(), Invocation::Version);
+        assert!(matches!(
+            parse_of(&["-p", "doctor"]).unwrap(),
+            Invocation::Print(Print { prompt, .. }) if prompt == "doctor"
+        ));
     }
 
     /// No arguments draws the terminal.

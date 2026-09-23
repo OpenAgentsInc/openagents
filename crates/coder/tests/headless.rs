@@ -35,9 +35,21 @@ const CREDENTIALS: [&str; 17] = [
     "CODER_RELAY",
 ];
 
+/// The binary with delegation off. An installed and signed-in Claude Code
+/// or Codex on the machine running these tests would otherwise answer the
+/// turn, and these tests measure the stub door.
+fn binary() -> Command {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_coder"));
+    command
+        .env("CODER_DELEGATE", "off")
+        .env_remove("CODER_DELEGATE_AGENT")
+        .env_remove("CODER_DELEGATE_MODEL");
+    command
+}
+
 /// Runs the binary with `arguments`, recording into `traces`.
 fn coder(arguments: &[&str], traces: &Path) -> Output {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_coder"));
+    let mut command = binary();
     for name in CREDENTIALS {
         command.env_remove(name);
     }
@@ -76,24 +88,33 @@ fn a_headless_turn_prints_a_reply_and_records_it() {
     assert!(stub_answer(&reply), "{reply:?}");
 
     // The trace is read back, and it is the same record the terminal
-    // writes: the person's turn, the note about the missing classifier,
-    // the instructions, and the answer.
+    // writes: which door answers and why, the person's turn, the note
+    // about the missing classifier, the instructions, and the answer.
     let recording = atif::log::read(&trace).expect("the trace reads back");
     assert_eq!(recording.session.state, atif::log::ENDED);
+    assert_eq!(recording.session.door, "stub");
     let document = recording.document();
     let steps = document["steps"].as_array().unwrap();
-    assert_eq!(steps.len(), 4, "{document:#}");
-    assert_eq!(steps[0]["source"], "user");
-    assert_eq!(steps[0]["message"], "what crates are here");
+    assert_eq!(steps.len(), 5, "{document:#}");
+    assert_eq!(steps[0]["extra"]["kind"], "door");
+    assert_eq!(steps[0]["extra"]["door"]["name"], "stub");
     assert!(
-        steps[1]["message"]
+        steps[0]["extra"]["door"]["reason"]
+            .as_str()
+            .unwrap()
+            .contains("CODER_DELEGATE=off")
+    );
+    assert_eq!(steps[1]["source"], "user");
+    assert_eq!(steps[1]["message"], "what crates are here");
+    assert!(
+        steps[2]["message"]
             .as_str()
             .unwrap()
             .contains("decision door")
     );
-    assert_eq!(steps[2]["extra"]["kind"], "instructions");
-    assert_eq!(steps[3]["source"], "agent");
-    assert_eq!(steps[3]["message"], reply.trim_end());
+    assert_eq!(steps[3]["extra"]["kind"], "instructions");
+    assert_eq!(steps[4]["source"], "agent");
+    assert_eq!(steps[4]["message"], reply.trim_end());
     assert_eq!(document["extra"]["directive"], "what crates are here");
 }
 
@@ -121,7 +142,7 @@ fn a_headless_turn_reports_one_json_object() {
     let recording = atif::log::read(Path::new(trace)).expect("the trace reads back");
     assert_eq!(recording.session.directive, "count the crates");
     assert_eq!(recording.session.state, atif::log::ENDED);
-    assert_eq!(recording.document()["steps"][3]["message"], report["reply"]);
+    assert_eq!(recording.document()["steps"][4]["message"], report["reply"]);
 }
 
 /// A prompt with newlines comes from a file, without shell quoting.
@@ -142,7 +163,7 @@ fn a_prompt_reads_from_a_file() {
     let trace = report["trace"].as_str().expect("a trace path");
     let recording = atif::log::read(Path::new(trace)).unwrap();
     assert_eq!(
-        recording.document()["steps"][0]["message"],
+        recording.document()["steps"][1]["message"],
         "count the crates\nthen name them\n"
     );
 }
@@ -234,7 +255,7 @@ fn help_says_what_the_flags_are() {
 #[test]
 fn two_configured_doors_end_the_run_rather_than_measuring_one() {
     let dir = tempfile::tempdir().unwrap();
-    let mut command = Command::new(env!("CARGO_BIN_EXE_coder"));
+    let mut command = binary();
     for name in CREDENTIALS {
         command.env_remove(name);
     }
@@ -264,7 +285,7 @@ fn two_configured_doors_end_the_run_rather_than_measuring_one() {
 #[test]
 fn malformed_decision_profiles_stop_headless_startup() {
     let dir = tempfile::tempdir().unwrap();
-    let output = Command::new(env!("CARGO_BIN_EXE_coder"))
+    let output = binary()
         .env_clear()
         .current_dir(dir.path())
         .env("HOME", dir.path())
@@ -337,7 +358,7 @@ fn local_profile_routes_a_headless_turn_without_sending_a_provider_key() {
         .unwrap();
     });
     let dir = tempfile::tempdir().unwrap();
-    let output = Command::new(env!("CARGO_BIN_EXE_coder"))
+    let output = binary()
         .env_clear()
         .current_dir(dir.path())
         .env("HOME", dir.path())
@@ -393,7 +414,7 @@ fn a_routed_turn_records_the_functions_provenance() {
     });
     let dir = tempfile::tempdir().unwrap();
     let trace = dir.path().join("turn.atif.jsonl");
-    let output = Command::new(env!("CARGO_BIN_EXE_coder"))
+    let output = binary()
         .env_clear()
         .current_dir(dir.path())
         .env("HOME", dir.path())
@@ -492,7 +513,7 @@ fn hosted_profile_forwards_its_key_and_model() {
         .unwrap();
     });
     let dir = tempfile::tempdir().unwrap();
-    let output = Command::new(env!("CARGO_BIN_EXE_coder"))
+    let output = binary()
         .env_clear()
         .current_dir(dir.path())
         .env("HOME", dir.path())
@@ -548,7 +569,7 @@ fn a_door_refusing_permission_degrades_visibly() {
         .unwrap();
     });
     let dir = tempfile::tempdir().unwrap();
-    let output = Command::new(env!("CARGO_BIN_EXE_coder"))
+    let output = binary()
         .env_clear()
         .current_dir(dir.path())
         .env("HOME", dir.path())
@@ -577,5 +598,79 @@ fn a_door_refusing_permission_degrades_visibly() {
     assert!(
         recording.contains("403"),
         "the trace does not name the door's answer: {recording}"
+    );
+}
+
+/// With a target installed and signed in, `coder -p` takes the delegate
+/// door: the trace's header names it, `--json` streams the delegation's
+/// progress, and the summary carries what the turn spent. The target here
+/// is a stand-in Claude Code, so the test spends nothing.
+#[test]
+fn a_turn_with_a_target_is_delegated_and_streams_its_progress() {
+    if coder_boundary::Boundary::readonly().build().is_err() {
+        eprintln!("skipped: this host cannot enforce a boundary");
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path().join("home");
+    let work = dir.path().join("work");
+    std::fs::create_dir_all(&home).unwrap();
+    std::fs::create_dir_all(&work).unwrap();
+    let claude = coder_one::adapter::standin::install(
+        &dir.path().join("bin"),
+        "claude",
+        coder_one::adapter::standin::CLAUDE,
+    );
+    let trace = dir.path().join("delegated.atif.jsonl");
+    let mut command = Command::new(env!("CARGO_BIN_EXE_coder"));
+    for name in CREDENTIALS {
+        command.env_remove(name);
+    }
+    let output = command
+        .current_dir(&work)
+        .env("HOME", &home)
+        .env("CODER_DELEGATE", "always")
+        .env("CODER_DELEGATE_AGENT", "claude-code")
+        .env_remove("CODER_DELEGATE_MODEL")
+        .env("CODER_ONE_CLAUDE_BIN", &claude)
+        .env("CLAUDE_CODE_OAUTH_TOKEN", "stand-in")
+        .env("CODER_SHELL", "off")
+        .args(["-p", "--json", "what is here?", "--trace"])
+        .arg(&trace)
+        .output()
+        .expect("the binary runs");
+
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("door → delegate"), "{stderr}");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let objects: Vec<Value> = stdout
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    let report = objects.last().unwrap();
+    assert_eq!(report["reply"], "heard briefing");
+    assert_eq!(report["outcome"], "answered");
+    assert_eq!(report["cost_usd"], 0.01);
+    assert!(
+        objects.iter().any(|object| object["event"] == "judgment"
+            && object["line"]
+                .as_str()
+                .is_some_and(|line| line.starts_with("brief ▸"))),
+        "{stdout}"
+    );
+
+    let recording = atif::log::read(&trace).expect("the trace reads back");
+    assert_eq!(recording.session.door, "delegate");
+    assert_eq!(recording.session.model, "claude-code/claude-opus-5-5");
+    let document = recording.document();
+    let steps = document["steps"].as_array().unwrap();
+    assert_eq!(steps[0]["extra"]["kind"], "door");
+    assert!(
+        steps
+            .iter()
+            .any(|step| step["extra"]["kind"] == "delegation"
+                && step["extra"]["delegation"]["boundary"] == "read-only"),
+        "{document:#}"
     );
 }

@@ -148,6 +148,10 @@ pub struct Finished {
     pub reply: String,
     /// What the turn cost, when the door reports it.
     pub usage: Option<Usage>,
+    /// What the turn cost in dollars, when the door reports it. The
+    /// delegate door reports Jev and the executor together; the other
+    /// doors report tokens only, so this is `None` for them.
+    pub cost_usd: Option<f64>,
     /// Where Classify sent the turn, and `None` when the turn ran a
     /// program instead. A turn that runs a program takes no classify
     /// route, and reporting one it did not take would put a route in the
@@ -237,27 +241,29 @@ pub async fn run(
                     if let Ending::Refused { .. } = turned.ending {
                         completion = Completion::Refused;
                     }
-                    (turned.text, turned.usage)
+                    (turned.text, turned.usage, turned.cost_usd)
                 })
                 .map_err(|error| Failure::from(&error))
         }
-        Route::End => Ok(("goodbye.".to_string(), None)),
+        Route::End => Ok(("goodbye.".to_string(), None, None)),
         Route::Halt(_) => Ok((
             "I don't have a confident next step for that.".to_string(),
+            None,
             None,
         )),
     };
     // A canned answer never went through Generate, so nothing has recorded
     // it. The trace should still say what the user was told.
-    if canned && let Ok((text, _)) = &result {
+    if canned && let Ok((text, _, _)) = &result {
         agent.record_reply(text);
     }
     if let Err(failure) = &result {
         agent.record_failure(failure.cause, &failure.reason);
     }
-    result.map(|(reply, usage)| Finished {
+    result.map(|(reply, usage, cost_usd)| Finished {
         reply,
         usage,
+        cost_usd,
         route: Some(route),
         program: None,
         completion,
@@ -274,6 +280,7 @@ fn ran(run: Run) -> Finished {
     Finished {
         reply: run.summary(),
         usage: None,
+        cost_usd: None,
         route: None,
         completion: match run.finished() {
             true => Completion::Answered,

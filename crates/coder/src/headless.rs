@@ -82,6 +82,14 @@ pub async fn print(options: Print) -> u8 {
             None => eprintln!("no trace — CODER_TRACE is off"),
         }
     }
+    // Which door answers and why, before anything answers: a fallback
+    // should never pass for the door the operator expected.
+    eprintln!(
+        "door → {} ({}) because {}",
+        agent.door(),
+        agent.model(),
+        agent.door_reason()
+    );
     let trace = agent.trace_path().map(|path| path.display().to_string());
 
     report(&mut agent, &options, trace, &mut out).await
@@ -108,6 +116,7 @@ async fn report(
         match &event {
             Event::Shell(ShellEvent::Proposed(proposal)) => eprintln!("$ {}", proposal.command),
             Event::Program(slug) => eprintln!("program → {slug}"),
+            Event::Judgment(line) => eprintln!("  {line}"),
             _ => {}
         }
         if options.json
@@ -142,6 +151,7 @@ async fn report(
                         "route": finished.route.as_ref().map(Route::word),
                         "program": finished.program.as_ref().and_then(|run| run.program.clone()),
                         "usage": usage,
+                        "cost_usd": finished.cost_usd,
                         "error": Option::<String>::None,
                         "cause": Option::<String>::None,
                         "refusal": Option::<String>::None,
@@ -150,6 +160,9 @@ async fn report(
                 );
             } else {
                 say(out, &finished.reply);
+                if let Some(usd) = finished.cost_usd {
+                    eprintln!("spent ${usd:.4}");
+                }
             }
             code
         }
@@ -183,6 +196,7 @@ fn fail(
                 "route": Option::<String>::None,
                 "program": Option::<String>::None,
                 "usage": Option::<String>::None,
+                "cost_usd": Option::<f64>::None,
                 "error": why.reason,
                 "cause": why.cause,
                 "refusal": why.refusal,

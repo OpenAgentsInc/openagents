@@ -527,6 +527,7 @@ dependencies = [
  "atif",
  "capability",
  "coder-boundary",
+ "coder-one",
  "coder-terminal",
  "coderbench",
  "crossterm",

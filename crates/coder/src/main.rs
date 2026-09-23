@@ -42,6 +42,7 @@
 //! behind streamed text, and the scrollback is bounded and wraps each line
 //! once per width. `docs/coder/runtime/terminal.md` covers all three.
 
+mod checkup;
 mod cli;
 mod headless;
 
@@ -154,7 +155,7 @@ enum Work {
     /// A program was selected; the turn runs it instead of answering.
     Program(String),
     /// The turn ended; the reply text and usage are final.
-    Finished(Result<(String, Option<Usage>), String>),
+    Finished(Result<(String, Option<Usage>, Option<f64>), String>),
 }
 
 /// Deltas are preview text and may coalesce or, under pressure, drop;
@@ -302,6 +303,11 @@ async fn main() -> ExitCode {
             println!("{}", cli::USAGE);
             ExitCode::SUCCESS
         }
+        Ok(cli::Invocation::Version) => {
+            println!("{}", coder::identity::line());
+            ExitCode::SUCCESS
+        }
+        Ok(cli::Invocation::Doctor) => ExitCode::from(checkup::run()),
         Ok(cli::Invocation::Print(options)) => ExitCode::from(headless::print(options).await),
         Ok(cli::Invocation::Interactive { trace, programs }) => {
             match interactive(trace.as_deref(), programs.as_deref()).await {
@@ -358,7 +364,7 @@ async fn work_turn(agent: &mut Agent, draft: String, feed: &Feed<Work>) {
     .await;
     feed.send(Work::Finished(
         finished
-            .map(|finished| (finished.reply, finished.usage))
+            .map(|finished| (finished.reply, finished.usage, finished.cost_usd))
             .map_err(|failure| failure.reason),
     ));
 }
@@ -412,6 +418,18 @@ async fn run(
             (None, Some(error)) => app.push_detail("  ", format!("no trace — {error}")),
             (None, None) => app.push_detail("  ", "no trace — CODER_TRACE is off"),
         }
+        // Which door answers and why, so a fallback never passes for the
+        // door the operator expected.
+        app.push(
+            Intensity::Half,
+            "  ",
+            format!(
+                "door → {} ({}) because {}",
+                agent.door(),
+                agent.model(),
+                agent.door_reason()
+            ),
+        );
     }
 
     let mut events = EventStream::new();
@@ -536,7 +554,16 @@ impl App {
                 self.status = "generating".to_string();
             }
             Work::Judgment(line) => {
-                self.push_detail("  ", format!("classify → {line}"));
+                // A delegated turn's progress lines name their own phase,
+                // such as `survey ▸ …`; a relay worker's line is a
+                // classify verdict. The latest progress also rides the
+                // status, so a turn that is probing does not look wedged.
+                if line.contains(" ▸ ") {
+                    self.status = line.clone();
+                    self.push_detail("  ", line);
+                } else {
+                    self.push_detail("  ", format!("classify → {line}"));
+                }
             }
             Work::Shell(event) => {
                 // The plan's JSON streamed into pending; the $ lines
@@ -562,7 +589,7 @@ impl App {
                 self.status = format!("running {slug}");
             }
             Work::Delta(delta) => self.pending.push_str(&delta),
-            Work::Finished(Ok((text, usage))) => {
+            Work::Finished(Ok((text, usage, cost))) => {
                 // The reply lays out as markdown lines; each is a
                 // scrollback row.
                 for rendered in markdown::render(&text) {
@@ -571,6 +598,12 @@ impl App {
                 self.pending.clear();
                 if let Some(usage) = usage {
                     self.tokens = format!("{}/{}", usage.input_tokens, usage.output_tokens);
+                }
+                // A delegated turn knows what it spent; the rail shows it
+                // beside the tokens, and the scrollback keeps each turn's.
+                if let Some(usd) = cost {
+                    self.tokens = format!("{} · ${usd:.4}", self.tokens);
+                    self.push_detail("  ", format!("spent ${usd:.4} this turn"));
                 }
             }
             Work::Finished(Err(why)) => {

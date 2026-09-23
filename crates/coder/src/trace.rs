@@ -68,6 +68,13 @@ const PROMPT_HEAD: usize = 60;
 /// generation was given.
 pub const INSTRUCTIONS_KIND: &str = "instructions";
 
+/// The kind a system step carries when it says which door answers and
+/// why.
+pub const DOOR_KIND: &str = "door";
+
+/// The kind a system step carries when it summarizes a delegated turn.
+pub const DELEGATION_KIND: &str = "delegation";
+
 /// Where this machine records traces, or `None` when recording is off.
 #[must_use]
 pub fn directory() -> Option<PathBuf> {
@@ -157,7 +164,7 @@ impl Recorder {
             model,
             door,
             repository,
-            env!("CARGO_PKG_VERSION"),
+            &crate::identity::build(),
         )
     }
 
@@ -443,6 +450,67 @@ impl Recorder {
     pub fn decision_call(&mut self, mut call: atif::Call) {
         call.id = self.next_call_id();
         self.write(Step::called(call));
+    }
+
+    /// Which door answers this session's turns and why, recorded once as
+    /// the session opens, beside the header's door and model.
+    ///
+    /// The header holds the door's name and model and nothing else, and
+    /// "which door" without "why" leaves a reader guessing whether a
+    /// fallback was chosen or forced.
+    pub fn door(&mut self, name: &str, model: &str, reason: &str) {
+        let step = Step::said(
+            Source::System,
+            &format!("door: {name} ({model}) because {reason}"),
+        )
+        .noting("kind", json!(DOOR_KIND))
+        .noting(
+            DOOR_KIND,
+            json!({ "name": name, "model": model, "reason": reason }),
+        );
+        self.write(step);
+    }
+
+    /// Steps another recorder wrote, such as a delegated turn's probes,
+    /// Jev calls, executor events, and `delegate` call, appended in order.
+    ///
+    /// Each call's ID gets `prefix`, so two turns' calls, each numbered
+    /// from one by their own recorder, stay distinct in one session.
+    pub fn external(&mut self, steps: Vec<Step>, prefix: &str) {
+        for mut step in steps {
+            if let Some(call) = &mut step.call {
+                call.id = format!("{prefix}{}", call.id);
+            }
+            self.write(step);
+        }
+    }
+
+    /// A delegated turn's summary: the agent, model, status, session,
+    /// boundary, briefing, and what the turn cost by component.
+    pub fn delegated(&mut self, summary: &Value) {
+        let word = |key: &str| {
+            summary
+                .get(key)
+                .and_then(Value::as_str)
+                .unwrap_or("unknown")
+        };
+        let cost = summary
+            .pointer("/usage/cost/amount_usd")
+            .and_then(Value::as_f64)
+            .map_or("unknown".to_string(), |usd| format!("${usd:.4}"));
+        let step = Step::said(
+            Source::System,
+            &format!(
+                "delegation: {} on {} {} in a {} boundary, cost {cost}",
+                word("agent"),
+                word("model"),
+                word("status"),
+                word("boundary"),
+            ),
+        )
+        .noting("kind", json!(DELEGATION_KIND))
+        .noting(DELEGATION_KIND, summary.clone());
+        self.write(step);
     }
 
     /// Closes the log, so a reader can tell a session that ended from one
