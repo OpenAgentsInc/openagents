@@ -7,6 +7,12 @@ has the system prompt, the six tool definitions, the environment block, and
 the request settings. The only thing missing is the briefing itself, which
 is marked by a placeholder.
 
+[`system-prompt.md`](system-prompt.md) contains the three top-level system
+text blocks and the trailing system environment message, verbatim and in
+order, separated by blank lines. In the JSON request, the environment
+message follows the user message; the Markdown file collects only system
+text and omits cache metadata, tools, and user messages.
+
 ## How it was captured
 
 Claude Code doesn't print its system prompt, so the request was captured
