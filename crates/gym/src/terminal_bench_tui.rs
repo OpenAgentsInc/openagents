@@ -1293,7 +1293,24 @@ mod tests {
     fn the_matrix_and_router_views_show_frontiers_oracles_and_regret() {
         let traces = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../bench/terminal-bench/traces");
-        let records = Records::load(None, Some(&traces), None);
+        let mut records = Records::load(None, Some(&traces), None);
+        // The documented $0.0716 oracle covers the arms retained on
+        // 2026-09-22; later arms legitimately move it.
+        const DOCUMENTED: [&str; 10] = [
+            "claude-code-opus",
+            "codex-gpt-6-luna",
+            "coder-one-jevprobe-luna",
+            "coder-one-jevprobe2-luna",
+            "coder-one-jevprobe3-luna",
+            "coder-one-jevprobe-opus-lean-low",
+            "coder-one-jevprobe2-opus-lean-low",
+            "coder-one-jevprobe2-opus-lean-low-5m",
+            "coder-one-jevprobe3-opus-lean-low",
+            "coder-one-jevprobe-opus-lean",
+        ];
+        records
+            .attempts
+            .retain(|attempt| DOCUMENTED.contains(&attempt.arm.as_str()));
         let mut app = App::new(records);
         app.open(View::from_digit('m').unwrap());
         assert_eq!(app.view(), View::Matrix);
