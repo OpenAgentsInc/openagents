@@ -303,6 +303,8 @@ task and attempt, as many at once as the budgets allow:
 ```sh
 uv run tbench suite plan --profile tb4 --agent <arm> --attempts 5
 uv run tbench suite run --profile tb4 --agent <arm> --attempts 5 --detach
+uv run tbench suite run --profile tb4 --agent <arm> --max-cpus 16 --max-gpus 0 \
+  --order smallest --detach
 uv run tbench suite status --profile tb4 --agent <arm>
 uv run tbench suite stop --profile tb4 --agent <arm>
 ```
@@ -314,11 +316,20 @@ and the first wave a run would start. `--tasks a,b` narrows a suite, and
 - **Budgets.** A trial reserves its task's CPUs and memory, the larger of
   the agent and separate verifier environments. The defaults are
   `--max-cpus 24 --max-mem-gb 100`, which leave four CPUs and 25 GiB for
-  Docker builds and the host. The scheduler starts the largest pending
-  trials first and backfills smaller ones; a trial that has waited 30
-  minutes stops the backfill so the large tasks get their turn. A task
-  larger than the whole budget runs alone. `--max-concurrent` caps the
-  trial count as well.
+  Docker builds and the host. `--max-concurrent` caps the trial count as
+  well.
+- **Order.** `--order` sets which pending trials start first. `largest`,
+  the default, starts the largest trials first and backfills smaller ones.
+  `smallest` packs the most trials into the budget, which suits TB4, where
+  every task has an 8-hour timeout and one large task can hold the whole
+  budget for hours. `listed` follows the profile's task order, or the
+  order `--tasks` names. In every order, a trial that has waited 30 minutes
+  stops the backfill so it gets its turn.
+- **Oversize tasks.** A task that needs more CPUs, memory, or GPUs than the
+  whole budget is skipped by default, and the suite records the reason,
+  for example `larger than the whole budget (16 CPUs over the 8-CPU
+  budget)`. `--allow-oversize` runs such a task alone instead, once nothing
+  else is running.
 - **GPU.** A GPU task needs Docker to pass a GPU through. The `tb4`
   profile's environment, `tbench.gpu_docker:CdiDockerEnvironment`, is
   Harbor's Docker environment with GPU support declared when an NVIDIA
@@ -328,7 +339,19 @@ and the first wave a run would start. `--tasks a,b` narrows a suite, and
   service. Without a spec, `tbench run` refuses a GPU task and records why
   under the job's `tbench/refusals/`, and the suite marks the trial
   `skipped` with the same reason. GPU trials take GPU slots, one by
-  default (`--max-gpus`), because this host has one 16 GB RTX 4080. The
+  default (`--max-gpus`), because this host has one 16 GB RTX 4080.
+  `--max-gpus 0` keeps every GPU task out: the suite marks each one
+  `skipped` with `the GPU budget is 0`, even with `--allow-oversize`.
+  Schedulers for different arms share the host's GPU through one
+  host-wide slot, the lock file `~/.openagents/terminal-bench/gpu.lock`.
+  A GPU trial's `tbench` process holds the lock for its whole life, and
+  the kernel releases it when that process exits, so only one GPU trial
+  runs on the host at once, whichever suite started it. A GPU trial that
+  finds the slot taken stays `pending` with the reason `waiting for the
+  host-wide GPU slot another trial holds`, and `suite status` names the
+  job that holds the slot. A scheduler started before this slot existed
+  doesn't take it; stop and restart such a scheduler before you rely on
+  the slot. The
   tasks declare an H100; `fp8-rmsnorm-gemm` builds for `sm_90a`, which the
   RTX 4080 (`sm_89`) can't run, so expect that task to fail here whatever
   the agent does.

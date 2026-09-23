@@ -1,7 +1,10 @@
 """The suite scheduler, driven with a fake launcher and a fake host."""
 
 import json
+import os
 from pathlib import Path
+
+import pytest
 
 from tbench.panel import Task, TaskResources
 from tbench.suite import (
@@ -13,6 +16,8 @@ from tbench.suite import (
     Budget,
     Host,
     Scheduler,
+    acquire_gpu_slot,
+    gpu_slot_holder,
     inspect_job,
     job_name,
     read_status,
@@ -54,13 +59,23 @@ class FakeLauncher:
         self.pids: dict[str, int] = {}
         self.interrupted: list[int] = []
         self.next_pid = 1000
+        # Descriptors a "trial process" keeps, as a real child would.
+        self.held: dict[str, int] = {}
 
-    def start(self, trial, verb):
+    def start(self, trial, verb, hold=None):
         self.next_pid += 1
         self.started.append((trial.job, verb))
         self.live.add(self.next_pid)
         self.pids[trial.job] = self.next_pid
+        if hold is not None:
+            self.held[trial.job] = os.dup(hold)
         return self.next_pid
+
+    def exit(self, job):
+        self.live.discard(self.pids[job])
+        held = self.held.pop(job, None)
+        if held is not None:
+            os.close(held)
 
     def alive(self, pid):
         return pid in self.live
@@ -70,13 +85,14 @@ class FakeLauncher:
 
     def finish(self, job, **result):
         _write_result(self.jobs / job, **result)
-        self.live.discard(self.pids[job])
+        self.exit(job)
 
 
 class FakeHost:
-    def __init__(self, free_gb=200.0, gpu=False):
+    def __init__(self, free_gb=200.0, gpu=False, lock=None):
         self.free_gb = free_gb
         self.gpu = gpu
+        self.lock = lock
         self.images: set[str] = set()
         self.removed: list[str] = []
         self.cache_pruned = 0
@@ -90,6 +106,7 @@ class FakeHost:
             ),
             remove_images=self._remove,
             prune_build_cache=self._prune_cache,
+            gpu_slot=lambda job: acquire_gpu_slot(self.lock, job),
         )
 
     def _remove(self, names):
@@ -107,6 +124,7 @@ def _scheduler(tmp_path, tasks, *, attempts=1, budget=None, host=None, running=N
     jobs.mkdir(parents=True, exist_ok=True)
     launcher = FakeLauncher(jobs, tmp_path / "logs")
     host = host or FakeHost()
+    host.lock = host.lock or tmp_path / "gpu.lock"
     scheduler = Scheduler(
         profile="tb4",
         arm="arm",
@@ -142,12 +160,123 @@ def test_trials_pack_into_the_cpu_budget_largest_first(tmp_path):
     assert [t.job for t in scheduler.launch_ready()] == ["tb4--arm--small-a"]
 
 
-def test_a_task_bigger_than_the_budget_runs_alone(tmp_path):
-    tasks = [_task("huge", cpus=32), _task("small")]
+def test_a_task_bigger_than_the_budget_is_skipped_by_default(tmp_path):
+    tasks = [_task("huge", cpus=32), _task("fat", memory_gb=200), _task("small")]
     scheduler, launcher, _ = _scheduler(tmp_path, tasks)
+    scheduler.reconcile()
+    skipped = {t.task.id: t.reason for t in scheduler.trials if t.state == SKIPPED}
+    assert sorted(skipped) == ["fat", "huge"]
+    assert "32 CPUs over the 24-CPU budget" in skipped["huge"]
+    assert "--allow-oversize" in skipped["huge"]
+    assert "200 GiB over the 100 GiB budget" in skipped["fat"]
+    assert [t.job for t in scheduler.launch_ready()] == ["tb4--arm--small"]
+
+
+def test_allow_oversize_runs_a_task_bigger_than_the_budget_alone(tmp_path):
+    tasks = [_task("huge", cpus=32), _task("small")]
+    budget = Budget(max_cpus=24, max_mem_gb=100, allow_oversize=True)
+    scheduler, launcher, _ = _scheduler(tmp_path, tasks, budget=budget)
     scheduler.reconcile()
     assert [t.job for t in scheduler.launch_ready()] == ["tb4--arm--huge"]
     assert scheduler.launch_ready() == []
+    launcher.finish("tb4--arm--huge", reward=1.0)
+    scheduler.poll()
+    assert [t.job for t in scheduler.launch_ready()] == ["tb4--arm--small"]
+
+
+def test_order_smallest_and_listed(tmp_path):
+    tasks = [_task("mid", cpus=8), _task("big", cpus=16), _task("s1", cpus=2), _task("s2", cpus=2)]
+    budget = Budget(max_cpus=16, max_mem_gb=100, order="smallest")
+    scheduler, _, _ = _scheduler(tmp_path / "s", tasks, budget=budget)
+    scheduler.reconcile()
+    # Smallest first packs 2 + 2 + 8 into 16 CPUs; the 16-CPU task waits.
+    assert [t.task.id for t in scheduler.launch_ready()] == ["s1", "s2", "mid"]
+
+    budget = Budget(max_cpus=16, max_mem_gb=100, order="listed")
+    scheduler, _, _ = _scheduler(tmp_path / "l", tasks, budget=budget)
+    scheduler.reconcile()
+    # Listed order: mid (8) first, big (16) doesn't fit beside it, then s1, s2.
+    assert [t.task.id for t in scheduler.launch_ready()] == ["mid", "s1", "s2"]
+
+    budget = Budget(max_cpus=16, max_mem_gb=100)
+    scheduler, _, _ = _scheduler(tmp_path / "d", tasks, budget=budget)
+    scheduler.reconcile()
+    # The default stays largest first: the 16-CPU task takes the budget.
+    assert [t.task.id for t in scheduler.launch_ready()] == ["big"]
+    assert scheduler.status()["budget"]["order"] == "largest"
+
+
+def test_an_unknown_order_is_refused():
+    with pytest.raises(ValueError, match="order must be one of"):
+        Budget(order="random")
+
+
+def test_a_gpu_budget_of_zero_skips_gpu_tasks_even_with_oversize(tmp_path):
+    # The claude-code-opus launch: --max-gpus 0 --max-cpus 8 on a host with
+    # a GPU, and a 1-GPU, 16-CPU task that used to start alone.
+    tasks = [_task("jax-speedrun-gpu", cpus=16, gpus=1), _task("cpu", cpus=4)]
+    for allow in (False, True):
+        budget = Budget(max_cpus=8, max_mem_gb=100, max_gpus=0, allow_oversize=allow)
+        scheduler, launcher, _ = _scheduler(
+            tmp_path / str(allow), tasks, budget=budget, host=FakeHost(gpu=True)
+        )
+        scheduler.reconcile()
+        gpu = scheduler.trials[0]
+        assert gpu.state == SKIPPED
+        assert "GPU budget is 0" in gpu.reason
+        assert [t.task.id for t in scheduler.launch_ready()] == ["cpu"]
+        launcher.finish("tb4--arm--cpu", reward=1.0)
+        scheduler.poll()
+        assert scheduler.launch_ready() == []
+        assert [job for job, _ in launcher.started] == ["tb4--arm--cpu"]
+
+
+def test_the_host_wide_gpu_slot_holds_a_second_scheduler_back(tmp_path):
+    lock = tmp_path / "gpu.lock"
+    tasks = [_task("gpu", gpus=1)]
+    first, first_launcher, _ = _scheduler(
+        tmp_path / "a", tasks, host=FakeHost(gpu=True, lock=lock)
+    )
+    second, second_launcher, _ = _scheduler(
+        tmp_path / "b", tasks, host=FakeHost(gpu=True, lock=lock)
+    )
+    first.reconcile()
+    second.reconcile()
+    assert [t.job for t in first.launch_ready()] == ["tb4--arm--gpu"]
+    assert gpu_slot_holder(lock)["job"] == "tb4--arm--gpu"
+    # The other arm's scheduler has a free GPU budget, but the host's slot
+    # is taken for as long as the first trial's process lives.
+    assert second.launch_ready() == []
+    assert "host-wide GPU slot" in second.trials[0].reason
+    first_launcher.finish("tb4--arm--gpu", reward=1.0)
+    first.poll()
+    assert gpu_slot_holder(lock) is None
+    assert [t.job for t in second.launch_ready()] == ["tb4--arm--gpu"]
+    assert second.trials[0].reason is None
+    second_launcher.exit("tb4--arm--gpu")
+
+
+def test_a_cpu_trial_never_waits_for_the_gpu_slot(tmp_path):
+    lock = tmp_path / "gpu.lock"
+    held = acquire_gpu_slot(lock, "elsewhere")
+    try:
+        scheduler, _, _ = _scheduler(
+            tmp_path,
+            [_task("gpu", cpus=4, gpus=1), _task("cpu"), _task("cpu-2")],
+            attempts=1,
+            host=FakeHost(gpu=True, lock=lock),
+            budget=Budget(max_cpus=24, max_mem_gb=100, max_concurrent=1),
+        )
+        scheduler.clock = lambda: 1.0
+        scheduler.reconcile()
+        assert [t.task.id for t in scheduler.launch_ready()] == ["cpu"]
+        scheduler.budget = Budget(max_cpus=24, max_mem_gb=100)
+        # Hours later the GPU trial still waits on another suite's slot, but
+        # that wait doesn't reserve the budget: the backfill continues.
+        scheduler.clock = lambda: 10_000.0
+        assert [t.task.id for t in scheduler.launch_ready()] == ["cpu-2"]
+    finally:
+        os.close(held)
 
 
 def test_a_restart_skips_finished_trials_and_adopts_running_ones(tmp_path):

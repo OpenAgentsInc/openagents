@@ -17,14 +17,20 @@ Budgets:
 
 - CPUs and memory: a trial reserves its task's declared budget, the larger
   of the agent and separate verifier environments. A task that needs more
-  than the whole budget runs only when nothing else does.
+  than the whole budget is skipped, with the reason recorded, unless the
+  budget allows oversize tasks; then it runs only when nothing else does.
+- Order: pending trials start largest first by default, or smallest first,
+  or in the order the profile lists its tasks.
 - Disk: no trial starts while the Docker volume has less free space than
   the floor. When a task's trials have all finished and free space is
   within the prune margin of the floor, the task's leftover images go;
   under the floor, Docker's unused build cache goes too.
 - GPUs: a task that needs a GPU is skipped, with the reason recorded, when
-  Docker can't hand a container one (no NVIDIA CDI spec or runtime). GPU
-  trials take GPU slots, one by default, so they run one at a time.
+  Docker can't hand a container one (no NVIDIA CDI spec or runtime) or when
+  the GPU budget is 0. GPU trials take GPU slots, one by default, so they
+  run one at a time. A GPU trial also holds the host-wide GPU slot, a lock
+  file under the state directory, for its whole life, so schedulers for
+  different arms never run two GPU trials on the host at once.
 
 A setup timeout is never a result. The scheduler moves that job directory
 to ``failed/`` and runs the trial once more, as the runbook does by hand.
@@ -72,6 +78,9 @@ PENDING, RUNNING, FINISHED, SKIPPED, REFUSED, FAILED = (
 )
 TERMINAL = frozenset({FINISHED, SKIPPED, REFUSED, FAILED})
 
+# The orders pending trials start in.
+ORDERS = ("largest", "smallest", "listed")
+
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -92,6 +101,50 @@ def failed_dir() -> Path:
     return paths.state_dir() / "failed"
 
 
+def gpu_lock_path() -> Path:
+    """The host-wide GPU slot every scheduler on this host shares."""
+    return paths.state_dir() / "gpu.lock"
+
+
+def acquire_gpu_slot(lock: Path, job: str) -> int | None:
+    """Take the host-wide GPU slot for ``job``, or ``None`` when it's held.
+
+    Returns a file descriptor holding an exclusive ``flock`` on ``lock``.
+    The launcher passes it to the trial's process and the scheduler then
+    closes its own copy, so the lock lasts exactly as long as the trial's
+    ``tbench`` process: the kernel releases it when that process exits,
+    whether or not a scheduler still runs. The file names the holder, for
+    an operator who wants to know.
+    """
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(lock, os.O_RDWR | os.O_CREAT, 0o644)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        os.close(fd)
+        return None
+    os.ftruncate(fd, 0)
+    holder = {"job": job, "scheduler_pid": os.getpid(), "at": utc_now()}
+    os.write(fd, (json.dumps(holder) + "\n").encode())
+    return fd
+
+
+def gpu_slot_holder(lock: Path) -> dict[str, Any] | None:
+    """Who holds the host-wide GPU slot, or ``None`` when it's free."""
+    if not lock.exists():
+        return None
+    fd = os.open(lock, os.O_RDONLY)
+    try:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_SH | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return _read_json(lock) or {"job": "unknown"}
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        return None
+    finally:
+        os.close(fd)
+
+
 @dataclass(frozen=True)
 class Budget:
     max_cpus: float = 24
@@ -107,6 +160,16 @@ class Budget:
     # A pending trial that has waited this long stops smaller trials from
     # backfilling past it, so large tasks can't starve.
     reserve_after_sec: float = 1800
+    # The order pending trials start in: largest, smallest, or listed.
+    order: str = "largest"
+    # Run a task larger than the whole budget alone, rather than skip it.
+    allow_oversize: bool = False
+
+    def __post_init__(self) -> None:
+        if self.order not in ORDERS:
+            raise ValueError(
+                f"order must be one of {', '.join(ORDERS)}, not {self.order!r}"
+            )
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -117,6 +180,8 @@ class Budget:
             "max_concurrent": self.max_concurrent,
             "max_gpus": self.max_gpus,
             "reserve_after_sec": self.reserve_after_sec,
+            "order": self.order,
+            "allow_oversize": self.allow_oversize,
         }
 
 
@@ -279,6 +344,11 @@ class Host:
     task_images: Callable[[Task], list[str]]
     remove_images: Callable[[list[str]], list[str]]
     prune_build_cache: Callable[[], bool]
+    # Takes the host-wide GPU slot for a job: a descriptor that holds it,
+    # or None while another trial on the host holds it.
+    gpu_slot: Callable[[str], int | None] = lambda job: acquire_gpu_slot(
+        gpu_lock_path(), job
+    )
 
     @classmethod
     def docker(cls, checkout: Path) -> Host:
@@ -356,7 +426,8 @@ class Launcher:
             *self.extra_args,
         ]
 
-    def start(self, trial: Trial, verb: str) -> int:
+    def start(self, trial: Trial, verb: str, hold: int | None = None) -> int:
+        """Start the job; ``hold`` is a descriptor the trial keeps open."""
         self.logs.mkdir(parents=True, exist_ok=True)
         log = (self.logs / f"{trial.job}.log").open("ab")
         log.write(f"\n== {utc_now()} tbench {verb} {trial.job}\n".encode())
@@ -371,6 +442,7 @@ class Launcher:
             start_new_session=True,
             cwd=paths.PACKAGE_DIR,
             env=fresh_environment(os.environ),
+            pass_fds=() if hold is None else (hold,),
         )
         log.close()
         self.children[process.pid] = process
@@ -556,6 +628,39 @@ class Scheduler:
                 # start: all run again now. A refusal is retried because
                 # the operator may have fixed what it named.
                 trial.state = PENDING
+            if trial.state == PENDING:
+                reason = self.budget_refusal(trial)
+                if reason:
+                    trial.state = SKIPPED
+                    trial.reason = reason
+                    self.event(f"skipped {trial.job}: {reason}")
+
+    def budget_refusal(self, trial: Trial) -> str | None:
+        """Why the budget never lets ``trial`` start, or ``None``.
+
+        A GPU task never starts under a GPU budget of 0, whatever else the
+        budget allows. A task larger than the whole CPU, memory, or GPU
+        budget starts, alone, only when the budget allows oversize tasks.
+        """
+        budget = self.budget
+        if trial.gpus and budget.max_gpus <= 0:
+            return f"needs {trial.gpus} GPU and the GPU budget is 0 (--max-gpus 0)"
+        over = []
+        if trial.cpus > budget.max_cpus:
+            over.append(f"{trial.cpus} CPUs over the {budget.max_cpus:g}-CPU budget")
+        if trial.memory_gb > budget.max_mem_gb:
+            over.append(
+                f"{trial.memory_gb:g} GiB over the {budget.max_mem_gb:g} GiB budget"
+            )
+        if trial.gpus > budget.max_gpus:
+            over.append(f"{trial.gpus} GPUs over the {budget.max_gpus}-GPU budget")
+        if over and not budget.allow_oversize:
+            return (
+                "larger than the whole budget ("
+                + "; ".join(over)
+                + "); --allow-oversize runs it alone"
+            )
+        return None
 
     def _move_aside(self, trial: Trial, state: JobState) -> None:
         """Move a setup timeout to ``failed/`` and queue one retry."""
@@ -605,11 +710,15 @@ class Scheduler:
     def _fits(self, trial: Trial, running: list[Trial]) -> bool:
         if self.budget.max_concurrent is not None and len(running) >= self.budget.max_concurrent:
             return False
-        gpus_in_use = sum(t.gpus for t in running)
-        if trial.gpus and gpus_in_use and gpus_in_use + trial.gpus > self.budget.max_gpus:
+        if self.budget_refusal(trial):
             return False
         if not running:
+            # Alone, a trial fits: it's within every budget, or the budget
+            # allows an oversize task to run alone.
             return True
+        gpus_in_use = sum(t.gpus for t in running)
+        if trial.gpus and gpus_in_use + trial.gpus > self.budget.max_gpus:
+            return False
         cpus = sum(t.cpus for t in running) + trial.cpus
         memory = sum(t.memory_gb for t in running) + trial.memory_gb
         return cpus <= self.budget.max_cpus and memory <= self.budget.max_mem_gb
@@ -636,15 +745,28 @@ class Scheduler:
         self.free_gb = self.host.free_disk_gb()
         return self.free_gb >= self.budget.min_free_disk_gb
 
+    def _order_key(self) -> Callable[[Trial], tuple]:
+        if self.budget.order == "smallest":
+            return lambda t: (t.cpus, t.memory_gb, t.task.id, t.attempt)
+        if self.budget.order == "listed":
+            listed = {id(t): index for index, t in enumerate(self.trials)}
+            return lambda t: (listed[id(t)],)
+        return lambda t: (-t.cpus, -t.memory_gb, t.task.id, t.attempt)
+
+    def _disk_wait(self) -> None:
+        self.event(
+            f"free disk {self.free_gb:.1f} GiB is under the "
+            f"{self.budget.min_free_disk_gb} GiB floor; waiting"
+        )
+
     def launch_ready(self) -> list[Trial]:
-        """Start every pending trial that fits now, largest first."""
+        """Start every pending trial that fits now, in the budget's order."""
         if self.stopping:
             return []
         started: list[Trial] = []
         now = self.clock()
         pending = sorted(
-            (t for t in self.trials if t.state == PENDING),
-            key=lambda t: (-t.cpus, -t.memory_gb, t.task.id, t.attempt),
+            (t for t in self.trials if t.state == PENDING), key=self._order_key()
         )
         for trial in pending:
             if trial.waiting_since is None:
@@ -652,7 +774,25 @@ class Scheduler:
         disk_checked = False
         for trial in pending:
             running = [t for t in self.trials if t.state == RUNNING]
-            if not self._fits(trial, running) or not self._image_gate(trial, running):
+            fits = self._fits(trial, running) and self._image_gate(trial, running)
+            if fits and trial.gpus and not disk_checked:
+                # Check the disk before taking the host-wide GPU slot.
+                disk_checked = True
+                if not self._disk_ok():
+                    self._disk_wait()
+                    break
+            slot: int | None = None
+            if fits and trial.gpus:
+                slot = self.host.gpu_slot(trial.job)
+                if slot is None:
+                    reason = "waiting for the host-wide GPU slot another trial holds"
+                    if trial.reason != reason:
+                        trial.reason = reason
+                        self.event(f"{trial.job}: {reason}")
+                    # Another suite's trial may hold the slot for hours, so
+                    # this wait never holds back this suite's backfill.
+                    continue
+            if not fits:
                 if now - (trial.waiting_since or now) >= self.budget.reserve_after_sec:
                     # Hold the rest back so this trial gets its turn.
                     break
@@ -660,16 +800,20 @@ class Scheduler:
             if not disk_checked:
                 disk_checked = True
                 if not self._disk_ok():
-                    self.event(
-                        f"free disk {self.free_gb:.1f} GiB is under the "
-                        f"{self.budget.min_free_disk_gb} GiB floor; waiting"
-                    )
+                    self._disk_wait()
                     break
             verb = "resume" if inspect_job(self.jobs_dir / trial.job).kind in (
                 "interrupted",
                 "incomplete",
             ) else "run"
-            trial.pid = self.launcher.start(trial, verb)
+            try:
+                trial.pid = self.launcher.start(trial, verb, hold=slot)
+            finally:
+                # The trial's process holds its own copy of the slot now.
+                if slot is not None:
+                    os.close(slot)
+            if slot is not None:
+                trial.reason = None
             trial.state = RUNNING
             trial.started_at = utc_now()
             trial.finished_at = None
@@ -817,6 +961,13 @@ def status_lines(status: dict[str, Any]) -> list[str]:
         f"{budget.get('max_mem_gb')} GiB · free disk "
         f"{status.get('free_disk_gb')} GiB (floor {budget.get('min_free_disk_gb')})",
     ]
+    # A scheduler started before these settings existed doesn't record them.
+    if "order" in budget:
+        lines.append(
+            f"  order {budget['order']} · GPUs {in_use.get('gpus', 0)}/"
+            f"{budget.get('max_gpus')} · oversize "
+            + ("runs alone" if budget.get("allow_oversize") else "skipped")
+        )
     for trial in status.get("trials") or []:
         if trial["state"] in (RUNNING, SKIPPED, REFUSED, FAILED) or trial.get("reason"):
             detail = trial.get("reason") or (

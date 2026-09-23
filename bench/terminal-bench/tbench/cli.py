@@ -410,6 +410,8 @@ def _suite_scheduler(args: argparse.Namespace, *, dry_run: bool = False):
         prune_margin_gb=args.prune_margin_gb,
         max_concurrent=args.max_concurrent,
         max_gpus=args.max_gpus,
+        order=args.order,
+        allow_oversize=args.allow_oversize,
     )
     launcher = suite.Launcher(
         profile=request.profile.id,
@@ -460,6 +462,11 @@ def cmd_suite(args: argparse.Namespace) -> int:
         else:
             for line in suite.status_lines(status):
                 print(line)
+            holder = suite.gpu_slot_holder(suite.gpu_lock_path())
+            print(
+                "  host GPU slot: "
+                + (f"held by {holder.get('job')}" if holder else "free")
+            )
         return 0
     if args.suite_command == "stop":
         lock = suite.suite_dir(args.profile, args.agent) / "lock"
@@ -483,7 +490,7 @@ def cmd_suite(args: argparse.Namespace) -> int:
         print(f"suite: {exc}", file=sys.stderr)
         return 1
     if args.suite_command == "plan":
-        scheduler.launcher.start = lambda trial, verb: 0  # type: ignore[method-assign]
+        scheduler.launcher.start = lambda trial, verb, hold=None: 0  # type: ignore[method-assign]
         scheduler.echo = False
         scheduler.reconcile()
         started = scheduler.launch_ready()
@@ -743,7 +750,23 @@ def build_parser() -> argparse.ArgumentParser:
         )
         p.add_argument("--max-concurrent", type=int, help="cap on trials at once")
         p.add_argument(
-            "--max-gpus", type=int, default=1, help="GPU trials at once (default 1)"
+            "--max-gpus",
+            type=int,
+            default=1,
+            help="GPU trials at once (default 1); 0 skips every GPU task",
+        )
+        p.add_argument(
+            "--order",
+            choices=("largest", "smallest", "listed"),
+            default="largest",
+            help="start pending trials largest first (default), smallest "
+            "first, or in the profile's task order",
+        )
+        p.add_argument(
+            "--allow-oversize",
+            action="store_true",
+            help="run a task larger than the whole budget alone; by default "
+            "it is skipped with the reason recorded",
         )
         p.add_argument(
             "--interval", type=float, default=15.0, help="seconds between polls"
