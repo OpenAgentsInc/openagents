@@ -9,7 +9,7 @@ publish.workspace = true
 [features]
 default = []
 # The `gym` terminal and its dependencies.
-tui = ["dep:ratatui", "dep:crossterm", "dep:coder-terminal"]
+tui = ["dep:ratatui", "dep:crossterm", "dep:coder-terminal", "dep:supervise"]
 
 [dependencies]
 # Coder One's episode log is an ATIF session log; its recovering reader
@@ -23,13 +23,15 @@ sha2 = "0.10"
 thiserror = "2"
 # The `gym` binary asks doors over HTTP through the `jev` client, which is
 # async. The library itself starts no runtime.
-tokio = { version = "1", features = ["macros", "rt"] }
+tokio = { version = "1", features = ["macros", "rt", "time"] }
 
 # The terminal's design system — the amber ladder, the hairline frame, and
 # the rails — is `coder-terminal`'s, not a second copy of it.
 coder-terminal = { path = "../coder-terminal", optional = true }
 ratatui = { version = "0.30", optional = true }
 crossterm = { version = "0.29", optional = true }
+# The Runs pane runs `coder-one ask` as a supervised child process.
+supervise = { path = "../supervise", optional = true }
 
 [dev-dependencies]
 tempfile = "3"

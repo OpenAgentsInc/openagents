@@ -266,12 +266,24 @@ fn draw_tbench(
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
     mut app: terminal_bench_tui::App,
 ) -> io::Result<()> {
+    let mut read_at = std::time::Instant::now();
     loop {
         terminal.draw(|frame| app.render(frame.area(), frame.buffer_mut()))?;
+        // While Coder One answers a question, its events are read every
+        // quarter second; the runs themselves still every two.
+        if app.asking() && !event::poll(std::time::Duration::from_millis(250))? {
+            app.poll_ask();
+            if read_at.elapsed() >= std::time::Duration::from_secs(2) {
+                app.refresh_live();
+                read_at = std::time::Instant::now();
+            }
+            continue;
+        }
         // The live view reads its attempts again every two seconds; every
         // other view waits for a key.
-        if app.follows() && !event::poll(std::time::Duration::from_secs(2))? {
+        if !app.asking() && app.follows() && !event::poll(std::time::Duration::from_secs(2))? {
             app.refresh_live();
+            read_at = std::time::Instant::now();
             continue;
         }
         if let Event::Key(key) = event::read()? {

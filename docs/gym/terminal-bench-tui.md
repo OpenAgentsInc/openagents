@@ -75,6 +75,7 @@ copy of the episode log or the native output.
 | `x` | Mark the run, or the selected transcript step, as bad. |
 | `v` | Mark the run fine: you read it and nothing is wrong. |
 | `u` | Remove the mark on the run or the selected step. |
+| `?` | Ask Coder One a question about the runs, with the run in view. |
 | `Esc` | Go back. |
 | `q` | Leave. |
 
@@ -123,6 +124,32 @@ shows marks made from the command line on its next refresh, and
 its author. See
 [Mark bad runs and steps](terminal-bench-cli.md#mark-bad-runs-and-steps) and
 [Measure Jev against the marks](terminal-bench-cli.md#measure-jev-against-the-marks).
+
+### Ask Coder One about runs
+
+Press `?` in the list, a summary, or a transcript to ask a question in
+plain words, such as "why does this one rank?" or "what do the runs Jev
+flagged as unearned success share?" Type it in the composer and press
+`Enter`. The question goes to `coder-one ask` with what the pane shows: the
+selected or open run, the step you're reading in a transcript, the active
+filter, and the order. So "why does this one rank?" needs no run name.
+
+The pane runs `coder-one ask --events` as a child process through
+`supervise`, and the answer view fills in as it works: each Gym read and
+Jev judgment, then the answer, drawn the way the Coder terminal draws a
+reply. Each claim is marked `✓` when code checked its citations and `?`
+when one didn't, with the reason. The runs the claims cite are listed
+under the answer: the arrow keys choose one, and `Enter` opens it. `Esc`
+from the run returns to the answer, and `Esc` from the answer returns to
+the list. Press `?` and `Enter` with no question to see the last answer
+again.
+
+The pane stays a reader: `coder-one ask` only reads, inside a filesystem
+boundary, and writes its record under `~/.openagents/coder-one/asks`. The
+pane finds `coder-one` in `$CODER_ONE_BIN`, beside `gym-terminal`, or on
+`PATH`; build it with `cargo build -p coder-one`. An ask costs about a cent
+on Luna, the default, and takes under a minute; see
+[Ask Coder One about runs](../coder/guides/coder-one-ask.md).
 
 The expert views below stay behind their keys; `Esc` in any of them returns
 to the Runs pane. `gym runs` prints the same list and summaries as text; see

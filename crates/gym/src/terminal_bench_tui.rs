@@ -217,6 +217,22 @@ impl App {
         }
     }
 
+    /// Whether the Runs pane is waiting on `coder-one ask`, so the terminal
+    /// reads its events often.
+    #[must_use]
+    pub fn asking(&self) -> bool {
+        self.runs
+            .as_ref()
+            .is_some_and(crate::runs_tui::Pane::asking)
+    }
+
+    /// Takes the Runs pane's ask events. Returns whether any arrived.
+    pub fn poll_ask(&mut self) -> bool {
+        self.runs
+            .as_mut()
+            .is_some_and(crate::runs_tui::Pane::poll_ask)
+    }
+
     /// Goes back to the Runs pane from an expert view. Returns `false` when
     /// there is no pane to go back to.
     pub fn back_to_runs(&mut self) -> bool {

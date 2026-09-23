@@ -38,6 +38,9 @@ use crate::tui::ladder_from_environment;
 #[path = "runs_tui_marks.rs"]
 mod marking;
 
+#[path = "runs_tui_ask.rs"]
+mod asking;
+
 /// A key the pane understands, whatever terminal it came from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Key {
@@ -229,6 +232,8 @@ pub struct Pane {
     tick: u64,
     /// A person's marks, and the composer `x` opens.
     marking: marking::Marking,
+    /// Questions for Coder One, and the composer `?` opens.
+    asker: asking::Asker,
 }
 
 impl Pane {
@@ -251,6 +256,7 @@ impl Pane {
             read_at: now,
             tick: 0,
             marking: marking::Marking::in_memory(),
+            asker: asking::Asker::found(),
         }
     }
 
@@ -450,6 +456,7 @@ impl Pane {
         let before = self.shape();
         self.catalog.refresh(now);
         self.reload_marks();
+        self.poll_ask();
         self.now = now;
         self.read_at = now;
         self.tick = self.tick.wrapping_add(1);
@@ -552,6 +559,9 @@ impl Pane {
 
     /// Handles one key.
     pub fn key(&mut self, key: Key) -> Reply {
+        if !self.composing() && self.ask_key(key) {
+            return Reply::Handled;
+        }
         if self.typing.is_none() && self.mark_key(key) {
             return Reply::Handled;
         }
@@ -725,10 +735,14 @@ impl Pane {
             return;
         }
         match &self.open {
+            None if self.asker.showing && self.asker.asking.is_some() => {
+                self.render_ask(area, buf);
+            }
             None => self.render_list(area, buf),
             Some(open) => self.render_run(open, area, buf),
         }
         self.render_composer(area, buf);
+        self.render_ask_composer(area, buf);
     }
 
     fn style(&self, intensity: Intensity) -> Style {
@@ -843,8 +857,8 @@ impl Pane {
                 (search.as_str(), search.as_str())
             }
             None => (
-                "↑↓ move · enter open · t transcript · / search · a agent · o outcome · l order · c clear · x mark · u unmark · 1-9 views · q quit",
-                "↑↓ enter t / a o l c x v u q",
+                "↑↓ move · enter open · t transcript · / search · a agent · o outcome · l order · c clear · x mark · u unmark · ? ask · 1-9 views · q quit",
+                "↑↓ enter t / a o l c x v u ? q",
             ),
         };
         let inner = self.framed(area, buf, (&title, &hint), bottom);
@@ -1839,7 +1853,7 @@ pub(crate) mod tests {
     #[test]
     fn the_list_says_what_each_run_was_and_how_it_came_out() {
         let (_dir, pane) = pane();
-        let text = pane.to_text(140, 30);
+        let text = pane.to_text(150, 30);
         assert!(text.contains("Terminal-Bench runs"), "{text}");
         assert!(text.contains("5 runs · 1 running"), "{text}");
         assert!(text.contains("✓ passed"), "{text}");
@@ -1872,7 +1886,7 @@ pub(crate) mod tests {
         let (_dir, pane) = pane();
         let text = pane.to_text(80, 20);
         assert!(text.contains("coq-block-bound"), "{text}");
-        assert!(text.contains("↑↓ enter t / a o l c x v u q"), "{text}");
+        assert!(text.contains("↑↓ enter t / a o l c x v u ? q"), "{text}");
     }
 
     /// A pane that ranks with the recorded answers, keeping its store and
