@@ -76,6 +76,7 @@ copy of the episode log or the native output.
 | `v` | Mark the run fine: you read it and nothing is wrong. |
 | `u` | Remove the mark on the run or the selected step. |
 | `?` | Ask Coder One a question about the runs, with the run in view. |
+| `h` | List the highlights: candidate claims worth sharing, with their evidence. |
 | `Esc` | Go back. |
 | `q` | Leave. |
 
@@ -150,6 +151,24 @@ pane finds `coder-one` in `$CODER_ONE_BIN`, beside `gym-terminal`, or on
 `PATH`; build it with `cargo build -p coder-one`. An ask costs about a cent
 on Luna, the default, and takes under a minute; see
 [Ask Coder One about runs](../coder/guides/coder-one-ask.md).
+
+### Find highlights
+
+Press `h` in the list for the **Highlights** view: the candidate claims
+`gym runs highlights` computes, strongest first, one a line with its rule
+and sample size. A claim that rests on one run shows `n=1` and draws dimmer.
+Under the list, the selected claim reads in full with its key, its sample
+size, how many runs it cites, and every caveat. Code computes the claims
+from the runs, Jev's stored answers, the leaderboard, and the marks when
+you press `h`; no model writes a number, and nothing posts anywhere.
+
+Press `Enter` to open the cited runs: the list shows only the runs the claim
+cites, and the top rail names the claim. A claim that cites one run opens
+that run. `c` clears the filter. `h` or `Esc` leaves the view. See
+[Find highlights worth sharing](terminal-bench-cli.md#find-highlights-worth-sharing)
+for the rules, and
+[Draft highlights](../coder/guides/coder-one-ask.md#draft-highlights) for
+turning chosen claims into short drafts.
 
 The expert views below stay behind their keys; `Esc` in any of them returns
 to the Runs pane. `gym runs` prints the same list and summaries as text; see

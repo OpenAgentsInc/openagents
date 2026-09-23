@@ -250,6 +250,60 @@ question is a new question set with its own digest, and the same marks
 measure it: the report names the question set and its digest, so two
 reports on different wording are comparable.
 
+## Find highlights worth sharing
+
+The learning order ranks runs by what a person improving the agents should
+read. `gym runs highlights` answers a different question: which findings
+are worth telling other people, with evidence a stranger can check against
+the retained runs. Code computes every claim with fixed rules. No model
+writes a number, and nothing posts anywhere: a person picks, edits, and
+posts.
+
+```sh
+gym runs highlights                        # the 20 strongest claims
+gym runs highlights --rule leaderboard     # one rule; repeat for several
+gym runs highlights --limit 50 --json      # schema openagents.gym.runs-highlights.v1
+```
+
+The rules:
+
+| Rule | A claim when |
+| --- | --- |
+| `cost` | Two agents' arms both passed a task, and one arm spent at least 2 times as much a passing run on average. The cheapest arm is compared with each other agent's arm that has the most runs. |
+| `time` | The same, for the agent's own working time. |
+| `leaderboard` | An arm here passed a task that the leaderboard's rows ranked 5 or better pass in at most 20% of their trials, from `bench/terminal-bench/reference/tb4-leaderboard.json`. |
+| `shared-failure` | A low-hanging-fruit or misbehavior judgment Jev gave runs of at least 2 agents, 3 runs in all, from the same groups as `gym runs group --by reason`. |
+| `surprise` | A run Jev judged `surprise` at 0.70 or above; the 8 strongest. |
+
+The reference solution, the do-nothing control, and runs without a grade
+never count. Each claim carries:
+
+- **Its runs**, as `job/trial`, up to 6 per arm.
+- **Its numbers**, each with a label, a value, and the text the claim
+  writes it as. A draft must use these texts; see
+  [Ask Coder One about runs](../coder/guides/coder-one-ask.md#draft-highlights).
+- **Its sample size**: the fewest runs any side of the claim rests on. A
+  claim that rests on one run is labeled `n=1`, an anecdote rather than a
+  benchmark result.
+- **Caveats generated from the data**, such as one run on an arm, a cost
+  from list prices applied by hand to token counts, the Claude Code CLI's
+  own list-price figure for a subscription run, passing runs that report
+  no cost, arms that ran in different batches, the cheaper arm failing more
+  often, the leaderboard's own infrastructure and fetch date, Jev's
+  judgment rather than a person's, and a cited run a person marked bad.
+
+The claims come strongest first. A cost or time claim's strength grows with
+the ratio, up to 32 times; a leaderboard claim's is the share of trials the
+top rows fail; a shared failure's is its mean probability, weighed by how
+many agents share it; and a surprise's is its probability. A claim resting
+on one run counts half, and one citing a run a person marked bad counts
+half again. Each claim has a stable key, such as `cost-0d4bb2f6`, digested
+from the rule and what it compares, so the same claim keeps its key as runs
+are added. The source flags, `--learning-dir`, `--marks-dir`, and
+`--no-reference` work as they do for `gym runs`. The Runs pane lists the
+same claims under `h`; see
+[Find highlights](terminal-bench-tui.md#find-highlights).
+
 ## Read a Terminal-Bench 4.0 suite
 
 Attempts of the `tb4` profile ran Terminal-Bench 4.0 at tag `v4.0.0`. Some

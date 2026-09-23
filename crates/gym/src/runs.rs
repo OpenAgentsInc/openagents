@@ -1197,6 +1197,11 @@ pub struct Filter {
     /// answers `gym runs rank` keeps. [`Filter::admits`] doesn't read them;
     /// [`Filter::judged`] does.
     pub reasons: Vec<crate::runs_group::Reason>,
+    /// Only these runs, as `job/trial`, when any are named: the runs a
+    /// highlight cites.
+    pub runs: Vec<String>,
+    /// The highlight that named [`Filter::runs`].
+    pub cited_by: Option<String>,
 }
 
 impl Filter {
@@ -1206,6 +1211,7 @@ impl Filter {
         self.agent.is_none_or(|agent| run.agent == agent)
             && self.outcome.is_none_or(|word| run.outcome.word() == word)
             && run.matches(&self.search)
+            && (self.runs.is_empty() || self.runs.contains(&run.id()))
     }
 
     /// Whether Jev's `answer` for a run meets every `--reason`. With no
@@ -1230,6 +1236,13 @@ impl Filter {
         }
         for reason in &self.reasons {
             parts.push(reason.describe());
+        }
+        if !self.runs.is_empty() {
+            parts.push(format!(
+                "the {} runs {} cites",
+                self.runs.len(),
+                self.cited_by.as_deref().unwrap_or("a highlight")
+            ));
         }
         (!parts.is_empty()).then(|| parts.join(" · "))
     }
@@ -1309,6 +1322,7 @@ Usage:
   gym runs unmark RUN[/STEP]
   gym runs marks [--json]
   gym runs agreement [--json]
+  gym runs highlights [--rule RULE]... [--limit N] [--json]
 
 RUN is a job name, job/trial, a trial name, or a piece of a job name that
 only one job has. --agent takes coder-one, claude-code, codex, or reference;
@@ -1341,7 +1355,11 @@ is bad, with judgment IDs as tags and a note; --clear records that the run
 is fine. --marked keeps only marked runs, and the list, `show`, and the
 transcript show each mark. `agreement` measures Jev's judgments against the
 marks. `gym runs mark --help` says more. --marks-dir PATH keeps the marks
-somewhere other than ~/.openagents/gym/marks.";
+somewhere other than ~/.openagents/gym/marks.
+
+`highlights` computes candidate claims worth sharing with fixed rules, each
+with its runs, numbers, sample size, and caveats; `gym runs highlights
+--help` says more. Nothing posts anywhere.";
 
 /// `gym runs`: the list, or one run's summary and transcript.
 ///
@@ -1355,6 +1373,9 @@ pub fn command(args: &[String], out: &mut impl Write) -> Result<i32, String> {
         .is_some_and(|word| crate::runs_marks::handles(word))
     {
         return crate::runs_marks::command(args, out);
+    }
+    if args.first().map(String::as_str) == Some("highlights") {
+        return crate::runs_highlights::command(args, out);
     }
     let mut sources = Sources::standard();
     let mut marks_dir = crate::runs_marks::default_dir();

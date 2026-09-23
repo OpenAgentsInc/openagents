@@ -41,6 +41,9 @@ mod marking;
 #[path = "runs_tui_ask.rs"]
 mod asking;
 
+#[path = "runs_tui_highlights.rs"]
+mod highlighting;
+
 /// A key the pane understands, whatever terminal it came from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Key {
@@ -234,6 +237,8 @@ pub struct Pane {
     marking: marking::Marking,
     /// Questions for Coder One, and the composer `?` opens.
     asker: asking::Asker,
+    /// The candidate claims `h` lists.
+    highlighting: highlighting::Highlighting,
 }
 
 impl Pane {
@@ -257,6 +262,7 @@ impl Pane {
             tick: 0,
             marking: marking::Marking::in_memory(),
             asker: asking::Asker::found(),
+            highlighting: highlighting::Highlighting::default(),
         }
     }
 
@@ -559,6 +565,13 @@ impl Pane {
 
     /// Handles one key.
     pub fn key(&mut self, key: Key) -> Reply {
+        if self.typing.is_none()
+            && !self.composing()
+            && !self.composing_ask()
+            && let Some(reply) = self.highlight_key(key)
+        {
+            return reply;
+        }
         if !self.composing() && self.ask_key(key) {
             return Reply::Handled;
         }
@@ -735,6 +748,7 @@ impl Pane {
             return;
         }
         match &self.open {
+            None if self.highlighting.showing => self.render_highlights(area, buf),
             None if self.asker.showing && self.asker.asking.is_some() => {
                 self.render_ask(area, buf);
             }
@@ -857,8 +871,8 @@ impl Pane {
                 (search.as_str(), search.as_str())
             }
             None => (
-                "↑↓ move · enter open · t transcript · / search · a agent · o outcome · l order · c clear · x mark · u unmark · ? ask · 1-9 views · q quit",
-                "↑↓ enter t / a o l c x v u ? q",
+                "↑↓ move · enter open · t transcript · / search · a agent · o outcome · l order · c clear · x mark · u unmark · ? ask · h highlights · q quit",
+                "↑↓ enter t / a o l c x v u ? h q",
             ),
         };
         let inner = self.framed(area, buf, (&title, &hint), bottom);
@@ -1886,7 +1900,7 @@ pub(crate) mod tests {
         let (_dir, pane) = pane();
         let text = pane.to_text(80, 20);
         assert!(text.contains("coq-block-bound"), "{text}");
-        assert!(text.contains("↑↓ enter t / a o l c x v u ? q"), "{text}");
+        assert!(text.contains("↑↓ enter t / a o l c x v u ? h q"), "{text}");
     }
 
     /// A pane that ranks with the recorded answers, keeping its store and
