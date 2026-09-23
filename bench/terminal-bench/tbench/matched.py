@@ -31,11 +31,14 @@ def protocol() -> dict:
     return json.loads((EXPERIMENT / "protocol.json").read_text())
 
 
-def plain_argv(binary: str, system: str) -> list[str]:
+def plain_argv(binary: str, system: str, executor: dict | None = None) -> list[str]:
+    """Claude Code's command line: the pilot protocol's executor, or ``executor``,
+    a policy manifest's ``executor`` block."""
     p = protocol()
+    e = executor or {"model": p["model"], "tools": p["tools"], "effort": p["effort"]}
     return [binary, "-p", "--output-format", "stream-json", "--verbose",
-            "--model", p["model"], "--permission-mode", "bypassPermissions",
-            "--tools", p["tools"], "--effort", p["effort"],
+            "--model", e["model"], "--permission-mode", "bypassPermissions",
+            "--tools", e["tools"], "--effort", e["effort"],
             "--system-prompt-file", system]
 
 
@@ -46,8 +49,18 @@ class MatchedPlain(CoderOneDelegate):
     def name() -> str:
         return "matched-plain-opus"
 
-    async def run(self, instruction, environment, context) -> None:
+    def _executor(self) -> dict:
+        """Model, effort, tools, cache lifetime, and CLI version."""
         p = protocol()
+        return {"model": p["model"], "effort": p["effort"], "tools": p["tools"],
+                "prompt_cache_ttl": p["cache_ttl"], "version": p["claude_version"]}
+
+    def _allowance_sec(self) -> int:
+        return protocol()["episode_allowance_sec"]
+
+    async def run(self, instruction, environment, context) -> None:
+        executor = self._executor()
+        allowance = self._allowance_sec()
         rendered = self.render_instruction(instruction)
         local = self.logs_dir / "instruction.txt"
         local.write_text(rendered)
@@ -57,18 +70,18 @@ class MatchedPlain(CoderOneDelegate):
         await environment.exec(command=f"mkdir -p {remote}")
         await environment.upload_file(local, remote + "/instruction.txt")
         await environment.upload_file(system, remote + "/system.txt")
-        argv = plain_argv(self._claude_bin, remote + "/system.txt")
+        argv = plain_argv(self._claude_bin, remote + "/system.txt", executor)
         env = {
             "CLAUDE_CODE_OAUTH_TOKEN": self._get_env("CLAUDE_CODE_OAUTH_TOKEN"),
             "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
             "PYTHONDONTWRITEBYTECODE": "1", "IS_SANDBOX": "1",
-            "CLAUDE_CODE_PROMPT_CACHE_TTL": p["cache_ttl"],
+            "CLAUDE_CODE_PROMPT_CACHE_TTL": executor["prompt_cache_ttl"],
             "BASH_MAX_TIMEOUT_MS": "3600000",
         }
         record = {"argv": argv, "environment": {k: v for k, v in env.items()
                   if k != "CLAUDE_CODE_OAUTH_TOKEN"},
                   "credential_source": "CLAUDE_CODE_OAUTH_TOKEN",
-                  "timeout_sec": p["episode_allowance_sec"],
+                  "timeout_sec": allowance,
                   "system_sha256": hashlib.sha256(system.read_bytes()).hexdigest(),
                   "instruction_sha256": hashlib.sha256(local.read_bytes()).hexdigest()}
         (self.logs_dir / "invocation.txt").write_text(json.dumps(record, indent=2) + "\n")
@@ -77,7 +90,7 @@ class MatchedPlain(CoderOneDelegate):
                    + f" > {remote}/stream.jsonl 2> {remote}/stderr.txt")
         try:
             result = await environment.exec(command=command, env=env,
-                                           timeout_sec=p["episode_allowance_sec"])
+                                           timeout_sec=allowance)
             (self.logs_dir / "exit.txt").write_text(str(result.return_code) + "\n")
         finally:
             await environment.download_file(remote + "/stream.jsonl", self.logs_dir / "claude-code.txt")
@@ -90,8 +103,9 @@ class MatchedPlain(CoderOneDelegate):
     def populate_context_post_run(self, context) -> None:
         # Use Harbor's pinned native-session converter. The CLI result is
         # authoritative for cost; don't replace it with a pricing estimate.
-        converter = ClaudeCode(logs_dir=self.logs_dir, model_name=protocol()["model"],
-                               version=protocol()["claude_version"])
+        executor = self._executor()
+        converter = ClaudeCode(logs_dir=self.logs_dir, model_name=executor["model"],
+                               version=executor["version"])
         converter.populate_context_post_run(context)
         stream = self.logs_dir / "claude-code.txt"
         if not stream.exists():
@@ -112,6 +126,42 @@ class MatchedPlain(CoderOneDelegate):
                     + (usage.get("cache_creation_input_tokens") or 0))
                 context.n_cache_tokens = usage.get("cache_read_input_tokens")
                 context.n_output_tokens = usage.get("output_tokens")
+
+
+class MatchedPlainTask(MatchedPlain):
+    """The matched baseline as a profile arm on any task (issue #9567).
+
+    It runs the executor of the treatment's policy manifest (the ``policy``
+    kwarg) directly: the same model, effort, tools, five-minute prompt
+    cache, CLI version, and the pilot's headless system prompt, whose six
+    sections the manifest must name. The session runs until the treatment
+    episode's own deadline, 60 seconds inside the adapter's, which the
+    task's agent timeout sizes. It never starts a Coder One episode.
+    """
+
+    SECTIONS = ["role", "security", "authority", "verify", "report", "code-style"]
+
+    @staticmethod
+    def name() -> str:
+        return "claude-code-matched"
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        executor = (self._policy or {}).get("policy", {}).get("executor") or {}
+        system = executor.get("system") or {}
+        if (executor.get("agent") != "claude-code" or system.get("mode") != "replace"
+                or system.get("sections") != self.SECTIONS):
+            raise ValueError("the policy's executor must be Claude Code with the "
+                             "pilot's six replaced system-prompt sections")
+        self._policy_executor = executor
+
+    def _executor(self) -> dict:
+        return self._policy_executor
+
+    def _allowance_sec(self) -> int:
+        if not self._episode_timeout_sec:
+            raise ValueError("no agent timeout to size the session from")
+        return max(int(self._episode_timeout_sec) - self.DEADLINE_MARGIN_SEC, 60)
 
 
 def request_for(arm: str, task: str, repetition: int, artifact: Path):

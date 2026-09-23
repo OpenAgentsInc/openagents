@@ -2444,6 +2444,98 @@
         }
       },
       "note": "The verify.snapshot canary: coder-one-tunable-luna-v2's policy plus a post-executor snapshot (crates/coder-one/policies/tunable-luna-snapshot.json), which `tbench replay` reads. Run it with `tbench try` on a few tasks before adding verify.snapshot to another policy."
+    },
+    "claude-code-opus-matched": {
+      "role": "external-baseline",
+      "harbor_import_path": "tbench.matched:MatchedPlainTask",
+      "version": null,
+      "model": "free",
+      "kwargs": {
+        "policy": "crates/coder-one/policies/matched-opus-medium-v8.json"
+      },
+      "required_kwargs": [
+        "artifact_path",
+        "artifact_sha256"
+      ],
+      "extra_allowed_hosts": [
+        "openagents.com",
+        "api.typesafe.ai",
+        "api.anthropic.com",
+        "downloads.claude.ai",
+        "registry.npmjs.org"
+      ],
+      "cost_provenance": "provider_reported",
+      "cost_note": "Claude Code's own total_cost_usd for its one session, a list-price figure on a subscription token. No Jev or door calls.",
+      "env_forward": [
+        "OPENAGENTS_API_KEY",
+        "OPENAGENTS_DOOR_URL",
+        "TYPESAFE_API_KEY",
+        "CLAUDE_CODE_OAUTH_TOKEN",
+        "ANTHROPIC_API_KEY",
+        "ANTHROPIC_AUTH_TOKEN",
+        "ANTHROPIC_BASE_URL"
+      ],
+      "auth_modes": {
+        "subscription-oauth": {
+          "requires_all": [
+            "OPENAGENTS_API_KEY",
+            "TYPESAFE_API_KEY",
+            "CLAUDE_CODE_OAUTH_TOKEN"
+          ],
+          "exclude_env": [
+            "ANTHROPIC_API_KEY",
+            "ANTHROPIC_AUTH_TOKEN"
+          ],
+          "note": "Claude Code runs on a subscription token from `claude setup-token`, with the API-key variables excluded so the CLI uses it; its total_cost_usd is a list-price figure (cli_list_price). The door and Jev keys are required in both matched arms because both install Coder One and run its read-only doctor."
+        }
+      },
+      "note": "The fair baseline of the matched controller experiment (issue #9567): Claude Code 2.1.280 on Opus 5.5 at medium effort, run directly with the executor settings of coder-one-matched-v8's policy manifest: the six tools Bash, Read, Edit, Write, Glob, and Grep, the pilot's headless system prompt (bench/terminal-bench/experiments/2026-09-23-matched-opus/system-prompt.md), the five-minute prompt cache, and a one-hour shell-command ceiling. The session runs until the treatment episode's deadline. It installs Coder One and runs its doctor like the treatment, then never starts an episode."
+    },
+    "coder-one-matched-v8": {
+      "role": "candidate",
+      "harbor_import_path": "tbench.coder_one:CoderOneTunable",
+      "version": null,
+      "model": "free",
+      "kwargs": {
+        "policy": "crates/coder-one/policies/matched-opus-medium-v8.json"
+      },
+      "required_kwargs": [
+        "artifact_path",
+        "artifact_sha256"
+      ],
+      "extra_allowed_hosts": [
+        "openagents.com",
+        "api.typesafe.ai",
+        "api.anthropic.com",
+        "downloads.claude.ai",
+        "registry.npmjs.org"
+      ],
+      "cost_provenance": "mixed",
+      "cost_note": "Jev is a price estimate at the published input-token rate; every Claude Code dispatch (first executor, escalation, repair, second executor, persistence round) is its own total_cost_usd, a list-price figure on a subscription token, recorded as a delegate call in evaluation/usage.json. Unreported values are null, never zero.",
+      "env_forward": [
+        "OPENAGENTS_API_KEY",
+        "OPENAGENTS_DOOR_URL",
+        "TYPESAFE_API_KEY",
+        "CLAUDE_CODE_OAUTH_TOKEN",
+        "ANTHROPIC_API_KEY",
+        "ANTHROPIC_AUTH_TOKEN",
+        "ANTHROPIC_BASE_URL"
+      ],
+      "auth_modes": {
+        "subscription-oauth": {
+          "requires_all": [
+            "OPENAGENTS_API_KEY",
+            "TYPESAFE_API_KEY",
+            "CLAUDE_CODE_OAUTH_TOKEN"
+          ],
+          "exclude_env": [
+            "ANTHROPIC_API_KEY",
+            "ANTHROPIC_AUTH_TOKEN"
+          ],
+          "note": "Claude Code runs on a subscription token from `claude setup-token`, with the API-key variables excluded so the CLI uses it; its total_cost_usd is a list-price figure (cli_list_price). The door and Jev keys are required in both matched arms because both install Coder One and run its read-only doctor."
+        }
+      },
+      "note": "The treatment arm of the matched controller experiment (issue #9567): the tunable-v8 controller with every executor fixed to lean Claude Code on Opus 5.5 at medium effort (crates/coder-one/policies/matched-opus-medium-v8.json). No routing and no Codex tier. Pair it with claude-code-opus-matched, which runs the same executor without the controller."
     }
   }
 }

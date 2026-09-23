@@ -79,3 +79,65 @@ def test_cost_comes_from_cli_result(tmp_path):
     assert context.cost_usd == 1.23
     assert context.n_input_tokens == 51 and context.n_cache_tokens == 34
     assert context.n_output_tokens == 56
+
+
+def test_task_arm_runs_the_treatment_executor_until_its_deadline(tmp_path, monkeypatch):
+    """The #9567 baseline: the treatment policy's executor, the task's own
+    deadline, and the same install, credentials, and hosts as the treatment."""
+    from tbench.agents import load_agents
+    from tbench.coder_one import REPO_ROOT
+    from tbench.matched import MatchedPlainTask
+
+    agents = load_agents()
+    plain, coder = agents["claude-code-opus-matched"], agents["coder-one-matched-v8"]
+    assert plain.kwargs == coder.kwargs
+    assert plain.env_forward == coder.env_forward
+    assert plain.extra_allowed_hosts == coder.extra_allowed_hosts
+    assert plain.auth_modes == coder.auth_modes
+    policy = json.loads((REPO_ROOT / coder.kwargs["policy"]).read_text())["policy"]
+    assert "route" not in policy["control"]
+    tiers = [policy["executor"], policy["control"]["handoff"]["to"],
+             *policy["verify"]["second"]["to"]]
+    assert "cheap" not in policy["control"]["persist"]
+    assert policy["control"]["horizon"]["long_effort"] == "medium"
+    for tier in tiers:
+        for field in ("agent", "model", "effort", "tools", "prompt_cache_ttl", "version"):
+            assert tier[field] == policy["executor"][field]
+    assert policy["executor"]["effort"] == "medium"
+
+    binary = tmp_path / "binary"
+    binary.write_bytes(b"fixture")
+    agent = MatchedPlainTask(logs_dir=tmp_path, artifact_path=str(binary),
+                             artifact_sha256=hashlib.sha256(b"fixture").hexdigest(),
+                             policy=str(REPO_ROOT / coder.kwargs["policy"]))
+    agent._episode_timeout_sec = 28740
+    agent._claude_bin = "/usr/local/bin/claude"
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "secret-must-stay-in-memory")
+    calls = []
+
+    class Environment:
+        async def exec(self, **kwargs):
+            calls.append(kwargs)
+            return SimpleNamespace(return_code=0, stdout="/root")
+
+        async def upload_file(self, *args):
+            pass
+
+        async def download_file(self, source, target):
+            Path(target).write_text("")
+
+        async def download_dir(self, source, target):
+            assert Path(target).parent.is_dir()
+
+    asyncio.run(agent.run("Solve the task.", Environment(), None))
+    invocation = next(c for c in calls if "stream.jsonl" in c["command"])
+    argv = json.loads((tmp_path / "invocation.txt").read_text())["argv"]
+    for flag, field in (("--model", "model"), ("--effort", "effort"), ("--tools", "tools")):
+        assert argv[argv.index(flag) + 1] == policy["executor"][field]
+    # The Coder One episode's deadline: 60 seconds inside the adapter's.
+    assert invocation["timeout_sec"] == 28680
+    assert invocation["env"]["CLAUDE_CODE_PROMPT_CACHE_TTL"] == "5m"
+    assert invocation["env"]["BASH_MAX_TIMEOUT_MS"] == str(
+        policy["control"]["horizon"]["long_command_sec"] * 1000)
+    assert all("secret-must-stay-in-memory" not in f.read_text()
+               for f in tmp_path.glob("*.txt"))
