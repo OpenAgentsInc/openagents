@@ -202,6 +202,11 @@ pub struct ControlPolicy {
     /// and the digest is unchanged.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub persist: Option<crate::compose::PersistPolicy>,
+    /// `control.effort`: Jev's effort-sensitivity battery picks the effort
+    /// a long task runs at, in place of `control.horizon.long_effort`.
+    /// Absent, the horizon's effort holds, and the digest is unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effort: Option<crate::effort::EffortPolicy>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -528,6 +533,7 @@ impl Manifest {
                     route: None,
                     horizon: None,
                     persist: None,
+                    effort: None,
                 },
                 brief: BriefPolicy {
                     cap: delegate::BRIEFING_CAP,
@@ -709,6 +715,21 @@ impl Manifest {
         }
         if let Some(horizon) = &self.policy.control.horizon {
             problems.extend(horizon.validate());
+        }
+        if let Some(effort) = &self.policy.control.effort {
+            problems.extend(effort.validate());
+            if self
+                .policy
+                .control
+                .horizon
+                .as_ref()
+                .is_none_or(|h| h.long_after_sec.is_none())
+            {
+                problems.push(
+                    "control.effort needs control.horizon.long_after_sec: it picks a long task's effort"
+                        .to_string(),
+                );
+            }
         }
         if let Some(persist) = &self.policy.control.persist {
             problems.extend(persist.validate());
@@ -1370,6 +1391,10 @@ pub const REFERENCE: &[(&str, &str)] = &[
     (
         "matched-opus-medium-v8.json",
         include_str!("../policies/matched-opus-medium-v8.json"),
+    ),
+    (
+        "tunable-v9.json",
+        include_str!("../policies/tunable-v9.json"),
     ),
 ];
 

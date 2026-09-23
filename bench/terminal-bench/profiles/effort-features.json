@@ -1,0 +1,2183 @@
+{
+  "schema": "openagents.coder-one.effort-features.v1",
+  "component": "control.effort",
+  "implementation": {
+    "name": "Jev effort-sensitivity battery",
+    "digest": "d581da79a16639f9cb0f5887ca429db7d78a52464ac975c05f3d18b95fd19cb8"
+  },
+  "pool": {
+    "path": "bench/terminal-bench/profiles/task-pool.json",
+    "held_out_sha256": "7e4103f29fa3ab08a65cd8898b106b5f0352d523aa047a53710b174b3b098dc8"
+  },
+  "label": {
+    "rule": "A pool task is effort-sensitive when a stronger configuration of the same agent passes it at least 0.4 more often than a weaker one on the Terminal-Bench 2.1 leaderboard: Codex on GPT-6 Astra at xhigh and max against low and medium (effort alone), or Claude Code on Fable 5 at xhigh and Opus 4.8 at high against Sonnet 5 at high and Opus 4.7 at max (more reasoning capability). The gain is the larger of the two differences in pass rate.",
+    "gain": 0.4,
+    "reference": "https://hub.harborframework.com/leaderboards/60330f75-0dd8-47ea-bd1d-e2ea28945731",
+    "fetched_at": "2026-09-23T18:54:20+00:00"
+  },
+  "workspace": "The files under the task's environment directory, without the Dockerfile or compose file: what the container starts with.",
+  "jev": {
+    "requests": 83,
+    "usd": 0.002838
+  },
+  "tasks": [
+    {
+      "task": "build-cython-ext",
+      "split": "development-current",
+      "features": {
+        "close_reading": 0.04,
+        "domain_knowledge": 0.8,
+        "faithful_reproduction": 0.22,
+        "hidden_exactness": 0.76,
+        "long_reasoning": 0.65,
+        "unverifiable": 0.07
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.0,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          0.9,
+          0.9
+        ]
+      },
+      "workspace_files": 0,
+      "jev_usd": 0.000040614
+    },
+    {
+      "task": "cancel-async-tasks",
+      "split": "development-current",
+      "features": {
+        "close_reading": 0.03,
+        "domain_knowledge": 0.07,
+        "faithful_reproduction": 0.08,
+        "hidden_exactness": 0.75,
+        "long_reasoning": 0.21,
+        "unverifiable": 0.87
+      },
+      "label": {
+        "sensitive": true,
+        "gain": 0.4,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          0.4,
+          0.8
+        ]
+      },
+      "workspace_files": 0,
+      "jev_usd": 0.000028434
+    },
+    {
+      "task": "fix-code-vulnerability",
+      "split": "development-current",
+      "features": {
+        "close_reading": 0.09,
+        "domain_knowledge": 0.48,
+        "faithful_reproduction": 0.07,
+        "hidden_exactness": 0.85,
+        "long_reasoning": 0.53,
+        "unverifiable": 0.12
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.0,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          1.0,
+          1.0
+        ]
+      },
+      "workspace_files": 0,
+      "jev_usd": 0.000063084
+    },
+    {
+      "task": "fix-git",
+      "split": "development-current",
+      "features": {
+        "close_reading": 0.77,
+        "domain_knowledge": 0.08,
+        "faithful_reproduction": 0.1,
+        "hidden_exactness": 0.72,
+        "long_reasoning": 0.21,
+        "unverifiable": 0.84
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.0,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          1.0,
+          1.0
+        ]
+      },
+      "workspace_files": 3,
+      "jev_usd": 0.000025536
+    },
+    {
+      "task": "git-leak-recovery",
+      "split": "development-current",
+      "features": {
+        "close_reading": 0.25,
+        "domain_knowledge": 0.32,
+        "faithful_reproduction": 0.04,
+        "hidden_exactness": 0.83,
+        "long_reasoning": 0.21,
+        "unverifiable": 0.79
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.0,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          1.0,
+          1.0
+        ]
+      },
+      "workspace_files": 1,
+      "jev_usd": 0.000028056
+    },
+    {
+      "task": "headless-terminal",
+      "split": "development-current",
+      "features": {
+        "close_reading": 0.89,
+        "domain_knowledge": 0.31,
+        "faithful_reproduction": 0.3,
+        "hidden_exactness": 0.79,
+        "long_reasoning": 0.22,
+        "unverifiable": 0.8
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.0,
+        "astra": [
+          0.3,
+          0.1
+        ],
+        "claude_code": [
+          0.9,
+          0.9
+        ]
+      },
+      "workspace_files": 1,
+      "jev_usd": 0.00003024
+    },
+    {
+      "task": "log-summary-date-ranges",
+      "split": "development-current",
+      "features": {
+        "close_reading": 0.29,
+        "domain_knowledge": 0.07,
+        "faithful_reproduction": 0.1,
+        "hidden_exactness": 0.8,
+        "long_reasoning": 0.19,
+        "unverifiable": 0.86
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.1,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          0.9,
+          1.0
+        ]
+      },
+      "workspace_files": 1,
+      "jev_usd": 0.000039018
+    },
+    {
+      "task": "sqlite-db-truncate",
+      "split": "development-current",
+      "features": {
+        "close_reading": 0.95,
+        "domain_knowledge": 0.63,
+        "faithful_reproduction": 0.08,
+        "hidden_exactness": 0.8,
+        "long_reasoning": 0.41,
+        "unverifiable": 0.91
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.0,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          1.0,
+          1.0
+        ]
+      },
+      "workspace_files": 1,
+      "jev_usd": 0.00002646
+    },
+    {
+      "task": "financial-document-processor",
+      "split": "development",
+      "features": {
+        "close_reading": 0.88,
+        "domain_knowledge": 0.43,
+        "faithful_reproduction": 0.09,
+        "hidden_exactness": 0.81,
+        "long_reasoning": 0.21,
+        "unverifiable": 0.86
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.3,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          0.7,
+          1.0
+        ]
+      },
+      "workspace_files": 18,
+      "jev_usd": 0.000042462
+    },
+    {
+      "task": "hf-model-inference",
+      "split": "development",
+      "features": {
+        "close_reading": 0.04,
+        "domain_knowledge": 0.39,
+        "faithful_reproduction": 0.12,
+        "hidden_exactness": 0.77,
+        "long_reasoning": 0.08,
+        "unverifiable": 0.51
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.3,
+        "astra": [
+          0.7,
+          1.0
+        ],
+        "claude_code": [
+          1.0,
+          1.0
+        ]
+      },
+      "workspace_files": 0,
+      "jev_usd": 0.000036246
+    },
+    {
+      "task": "multi-source-data-merger",
+      "split": "development",
+      "features": {
+        "close_reading": 0.97,
+        "domain_knowledge": 0.1,
+        "faithful_reproduction": 0.11,
+        "hidden_exactness": 0.79,
+        "long_reasoning": 0.18,
+        "unverifiable": 0.75
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.1,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          0.9,
+          1.0
+        ]
+      },
+      "workspace_files": 3,
+      "jev_usd": 0.000043386
+    },
+    {
+      "task": "regex-log",
+      "split": "development",
+      "features": {
+        "close_reading": 0.03,
+        "domain_knowledge": 0.13,
+        "faithful_reproduction": 0.08,
+        "hidden_exactness": 0.8,
+        "long_reasoning": 0.46,
+        "unverifiable": 0.85
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.1,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          0.9,
+          1.0
+        ]
+      },
+      "workspace_files": 0,
+      "jev_usd": 0.000033432
+    },
+    {
+      "task": "reshard-c4-data",
+      "split": "development",
+      "features": {
+        "close_reading": 0.38,
+        "domain_knowledge": 0.15,
+        "faithful_reproduction": 0.16,
+        "hidden_exactness": 0.79,
+        "long_reasoning": 0.57,
+        "unverifiable": 0.77
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.1,
+        "astra": [
+          0.9,
+          1.0
+        ],
+        "claude_code": [
+          1.0,
+          1.0
+        ]
+      },
+      "workspace_files": 2,
+      "jev_usd": 0.000036204
+    },
+    {
+      "task": "count-dataset-tokens",
+      "split": "development",
+      "features": {
+        "close_reading": 0.05,
+        "domain_knowledge": 0.2,
+        "faithful_reproduction": 0.1,
+        "hidden_exactness": 0.82,
+        "long_reasoning": 0.15,
+        "unverifiable": 0.91
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.0,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          1.0,
+          0.9
+        ]
+      },
+      "workspace_files": 0,
+      "jev_usd": 0.000027846
+    },
+    {
+      "task": "distribution-search",
+      "split": "development",
+      "features": {
+        "close_reading": 0.03,
+        "domain_knowledge": 0.89,
+        "faithful_reproduction": 0.08,
+        "hidden_exactness": 0.78,
+        "long_reasoning": 0.84,
+        "unverifiable": 0.44
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.0,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          1.0,
+          1.0
+        ]
+      },
+      "workspace_files": 0,
+      "jev_usd": 0.00003591
+    },
+    {
+      "task": "llm-inference-batching-scheduler",
+      "split": "development",
+      "features": {
+        "close_reading": 0.98,
+        "domain_knowledge": 0.74,
+        "faithful_reproduction": 0.08,
+        "hidden_exactness": 0.83,
+        "long_reasoning": 0.88,
+        "unverifiable": 0.37
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.1,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          0.8,
+          0.9
+        ]
+      },
+      "workspace_files": 5,
+      "jev_usd": 0.000077784
+    },
+    {
+      "task": "adaptive-rejection-sampler",
+      "split": "development",
+      "features": {
+        "close_reading": 0.11,
+        "domain_knowledge": 0.94,
+        "faithful_reproduction": 0.57,
+        "hidden_exactness": 0.82,
+        "long_reasoning": 0.74,
+        "unverifiable": 0.31
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.2,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          0.7,
+          0.9
+        ]
+      },
+      "workspace_files": 1,
+      "jev_usd": 0.000048468
+    },
+    {
+      "task": "feal-differential-cryptanalysis",
+      "split": "development",
+      "features": {
+        "close_reading": 0.96,
+        "domain_knowledge": 0.84,
+        "faithful_reproduction": 0.07,
+        "hidden_exactness": 0.76,
+        "long_reasoning": 0.87,
+        "unverifiable": 0.82
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.0,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          1.0,
+          1.0
+        ]
+      },
+      "workspace_files": 1,
+      "jev_usd": 0.000028896
+    },
+    {
+      "task": "feal-linear-cryptanalysis",
+      "split": "development",
+      "features": {
+        "close_reading": 0.87,
+        "domain_knowledge": 0.86,
+        "faithful_reproduction": 0.09,
+        "hidden_exactness": 0.79,
+        "long_reasoning": 0.87,
+        "unverifiable": 0.31
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.3,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          0.7,
+          1.0
+        ]
+      },
+      "workspace_files": 3,
+      "jev_usd": 0.000030954
+    },
+    {
+      "task": "largest-eigenval",
+      "split": "development",
+      "features": {
+        "close_reading": 0.93,
+        "domain_knowledge": 0.88,
+        "faithful_reproduction": 0.17,
+        "hidden_exactness": 0.75,
+        "long_reasoning": 0.57,
+        "unverifiable": 0.15
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.0,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          1.0,
+          1.0
+        ]
+      },
+      "workspace_files": 2,
+      "jev_usd": 0.00003108
+    },
+    {
+      "task": "protein-assembly",
+      "split": "development",
+      "features": {
+        "close_reading": 0.97,
+        "domain_knowledge": 0.98,
+        "faithful_reproduction": 0.17,
+        "hidden_exactness": 0.85,
+        "long_reasoning": 0.78,
+        "unverifiable": 0.79
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.1,
+        "astra": [
+          0.9,
+          1.0
+        ],
+        "claude_code": [
+          0.3,
+          0.0
+        ]
+      },
+      "workspace_files": 3,
+      "jev_usd": 0.000050652
+    },
+    {
+      "task": "raman-fitting",
+      "split": "development",
+      "features": {
+        "close_reading": 0.96,
+        "domain_knowledge": 0.89,
+        "faithful_reproduction": 0.11,
+        "hidden_exactness": 0.77,
+        "long_reasoning": 0.14,
+        "unverifiable": 0.9
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.3,
+        "astra": [
+          0.5,
+          0.5
+        ],
+        "claude_code": [
+          0.0,
+          0.3
+        ]
+      },
+      "workspace_files": 1,
+      "jev_usd": 0.000030198
+    },
+    {
+      "task": "tune-mjcf",
+      "split": "development",
+      "features": {
+        "close_reading": 0.95,
+        "domain_knowledge": 0.93,
+        "faithful_reproduction": 0.25,
+        "hidden_exactness": 0.82,
+        "long_reasoning": 0.57,
+        "unverifiable": 0.1
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.1,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          0.9,
+          1.0
+        ]
+      },
+      "workspace_files": 2,
+      "jev_usd": 0.00002982
+    },
+    {
+      "task": "crack-7z-hash",
+      "split": "development",
+      "features": {
+        "close_reading": 0.92,
+        "domain_knowledge": 0.09,
+        "faithful_reproduction": 0.07,
+        "hidden_exactness": 0.75,
+        "long_reasoning": 0.08,
+        "unverifiable": 0.83
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.0,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          1.0,
+          1.0
+        ]
+      },
+      "workspace_files": 1,
+      "jev_usd": 0.00002499
+    },
+    {
+      "task": "password-recovery",
+      "split": "development",
+      "features": {
+        "close_reading": 0.3,
+        "domain_knowledge": 0.5,
+        "faithful_reproduction": 0.06,
+        "hidden_exactness": 0.76,
+        "long_reasoning": 0.35,
+        "unverifiable": 0.76
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.1,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          0.9,
+          1.0
+        ]
+      },
+      "workspace_files": 1,
+      "jev_usd": 0.000029232
+    },
+    {
+      "task": "sanitize-git-repo",
+      "split": "development",
+      "features": {
+        "close_reading": 0.78,
+        "domain_knowledge": 0.21,
+        "faithful_reproduction": 0.05,
+        "hidden_exactness": 0.76,
+        "long_reasoning": 0.1,
+        "unverifiable": 0.78
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.0,
+        "astra": [
+          0.5,
+          0.0
+        ],
+        "claude_code": [
+          0.8,
+          0.8
+        ]
+      },
+      "workspace_files": 1,
+      "jev_usd": 0.000030828
+    },
+    {
+      "task": "vulnerable-secret",
+      "split": "development",
+      "features": {
+        "close_reading": 0.91,
+        "domain_knowledge": 0.43,
+        "faithful_reproduction": 0.05,
+        "hidden_exactness": 0.81,
+        "long_reasoning": 0.42,
+        "unverifiable": 0.82
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.1,
+        "astra": [
+          0.0,
+          0.0
+        ],
+        "claude_code": [
+          0.9,
+          1.0
+        ]
+      },
+      "workspace_files": 1,
+      "jev_usd": 0.000027216
+    },
+    {
+      "task": "chess-best-move",
+      "split": "development",
+      "features": {
+        "close_reading": 0.16,
+        "domain_knowledge": 0.69,
+        "faithful_reproduction": 0.07,
+        "hidden_exactness": 0.82,
+        "long_reasoning": 0.64,
+        "unverifiable": 0.9
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.1,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          0.4,
+          0.5
+        ]
+      },
+      "workspace_files": 1,
+      "jev_usd": 0.000026208
+    },
+    {
+      "task": "circuit-fibsqrt",
+      "split": "development",
+      "features": {
+        "close_reading": 0.88,
+        "domain_knowledge": 0.28,
+        "faithful_reproduction": 0.21,
+        "hidden_exactness": 0.78,
+        "long_reasoning": 0.92,
+        "unverifiable": 0.12
+      },
+      "label": {
+        "sensitive": true,
+        "gain": 0.4,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          0.6,
+          1.0
+        ]
+      },
+      "workspace_files": 3,
+      "jev_usd": 0.000036078
+    },
+    {
+      "task": "code-from-image",
+      "split": "development",
+      "features": {
+        "close_reading": 0.95,
+        "domain_knowledge": 0.1,
+        "faithful_reproduction": 0.94,
+        "hidden_exactness": 0.8,
+        "long_reasoning": 0.55,
+        "unverifiable": 0.24
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.0,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          1.0,
+          1.0
+        ]
+      },
+      "workspace_files": 1,
+      "jev_usd": 0.000026334
+    },
+    {
+      "task": "constraints-scheduling",
+      "split": "development",
+      "features": {
+        "close_reading": 0.92,
+        "domain_knowledge": 0.16,
+        "faithful_reproduction": 0.11,
+        "hidden_exactness": 0.85,
+        "long_reasoning": 0.53,
+        "unverifiable": 0.58
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.0,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          1.0,
+          1.0
+        ]
+      },
+      "workspace_files": 3,
+      "jev_usd": 0.000050106
+    },
+    {
+      "task": "custom-memory-heap-crash",
+      "split": "development",
+      "features": {
+        "close_reading": 0.97,
+        "domain_knowledge": 0.43,
+        "faithful_reproduction": 0.06,
+        "hidden_exactness": 0.78,
+        "long_reasoning": 0.86,
+        "unverifiable": 0.53
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.1,
+        "astra": [
+          0.1,
+          0.2
+        ],
+        "claude_code": [
+          0.8,
+          0.7
+        ]
+      },
+      "workspace_files": 5,
+      "jev_usd": 0.00003675
+    },
+    {
+      "task": "kv-store-grpc",
+      "split": "development",
+      "features": {
+        "close_reading": 0.03,
+        "domain_knowledge": 0.17,
+        "faithful_reproduction": 0.1,
+        "hidden_exactness": 0.77,
+        "long_reasoning": 0.08,
+        "unverifiable": 0.75
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.1,
+        "astra": [
+          1.0,
+          0.9
+        ],
+        "claude_code": [
+          0.9,
+          1.0
+        ]
+      },
+      "workspace_files": 0,
+      "jev_usd": 0.00003507
+    },
+    {
+      "task": "make-doom-for-mips",
+      "split": "development",
+      "features": {
+        "close_reading": 0.93,
+        "domain_knowledge": 0.81,
+        "faithful_reproduction": 0.4,
+        "hidden_exactness": 0.8,
+        "long_reasoning": 0.53,
+        "unverifiable": 0.56
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.0,
+        "astra": [
+          0.1,
+          0.0
+        ],
+        "claude_code": [
+          0.0,
+          0.0
+        ]
+      },
+      "workspace_files": 2,
+      "jev_usd": 0.000029106
+    },
+    {
+      "task": "make-mips-interpreter",
+      "split": "development",
+      "features": {
+        "close_reading": 0.54,
+        "domain_knowledge": 0.89,
+        "faithful_reproduction": 0.67,
+        "hidden_exactness": 0.83,
+        "long_reasoning": 0.8,
+        "unverifiable": 0.42
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.3,
+        "astra": [
+          0.9,
+          1.0
+        ],
+        "claude_code": [
+          0.7,
+          1.0
+        ]
+      },
+      "workspace_files": 1,
+      "jev_usd": 0.000028098
+    },
+    {
+      "task": "overfull-hbox",
+      "split": "development",
+      "features": {
+        "close_reading": 0.96,
+        "domain_knowledge": 0.48,
+        "faithful_reproduction": 0.1,
+        "hidden_exactness": 0.78,
+        "long_reasoning": 0.49,
+        "unverifiable": 0.16
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.0,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          0.9,
+          0.8
+        ]
+      },
+      "workspace_files": 4,
+      "jev_usd": 0.000027384
+    },
+    {
+      "task": "path-tracing",
+      "split": "development",
+      "features": {
+        "close_reading": 0.52,
+        "domain_knowledge": 0.47,
+        "faithful_reproduction": 0.8,
+        "hidden_exactness": 0.82,
+        "long_reasoning": 0.83,
+        "unverifiable": 0.51
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.3,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          0.5,
+          0.8
+        ]
+      },
+      "workspace_files": 1,
+      "jev_usd": 0.000031542
+    },
+    {
+      "task": "path-tracing-reverse",
+      "split": "development",
+      "features": {
+        "close_reading": 0.75,
+        "domain_knowledge": 0.22,
+        "faithful_reproduction": 0.95,
+        "hidden_exactness": 0.8,
+        "long_reasoning": 0.72,
+        "unverifiable": 0.5
+      },
+      "label": {
+        "sensitive": true,
+        "gain": 0.4,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          0.6,
+          1.0
+        ]
+      },
+      "workspace_files": 1,
+      "jev_usd": 0.00002856
+    },
+    {
+      "task": "polyglot-c-py",
+      "split": "development",
+      "features": {
+        "close_reading": 0.03,
+        "domain_knowledge": 0.1,
+        "faithful_reproduction": 0.2,
+        "hidden_exactness": 0.75,
+        "long_reasoning": 0.49,
+        "unverifiable": 0.39
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.0,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          1.0,
+          1.0
+        ]
+      },
+      "workspace_files": 0,
+      "jev_usd": 0.000028686
+    },
+    {
+      "task": "polyglot-rust-c",
+      "split": "development",
+      "features": {
+        "close_reading": 0.03,
+        "domain_knowledge": 0.12,
+        "faithful_reproduction": 0.24,
+        "hidden_exactness": 0.79,
+        "long_reasoning": 0.63,
+        "unverifiable": 0.3
+      },
+      "label": {
+        "sensitive": true,
+        "gain": 0.5,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          0.5,
+          1.0
+        ]
+      },
+      "workspace_files": 0,
+      "jev_usd": 0.0000294
+    },
+    {
+      "task": "prove-plus-comm",
+      "split": "development",
+      "features": {
+        "close_reading": 0.9,
+        "domain_knowledge": 0.45,
+        "faithful_reproduction": 0.08,
+        "hidden_exactness": 0.73,
+        "long_reasoning": 0.72,
+        "unverifiable": 0.32
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.0,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          1.0,
+          1.0
+        ]
+      },
+      "workspace_files": 1,
+      "jev_usd": 0.000028812
+    },
+    {
+      "task": "torch-pipeline-parallelism",
+      "split": "development",
+      "features": {
+        "close_reading": 0.05,
+        "domain_knowledge": 0.92,
+        "faithful_reproduction": 0.23,
+        "hidden_exactness": 0.85,
+        "long_reasoning": 0.59,
+        "unverifiable": 0.6
+      },
+      "label": {
+        "sensitive": true,
+        "gain": 0.5,
+        "astra": [
+          0.9,
+          1.0
+        ],
+        "claude_code": [
+          0.5,
+          1.0
+        ]
+      },
+      "workspace_files": 0,
+      "jev_usd": 0.000040866
+    },
+    {
+      "task": "torch-tensor-parallelism",
+      "split": "development",
+      "features": {
+        "close_reading": 0.04,
+        "domain_knowledge": 0.87,
+        "faithful_reproduction": 0.25,
+        "hidden_exactness": 0.81,
+        "long_reasoning": 0.22,
+        "unverifiable": 0.78
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.2,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          0.8,
+          1.0
+        ]
+      },
+      "workspace_files": 0,
+      "jev_usd": 0.000037254
+    },
+    {
+      "task": "winning-avg-corewars",
+      "split": "development",
+      "features": {
+        "close_reading": 0.9,
+        "domain_knowledge": 0.53,
+        "faithful_reproduction": 0.06,
+        "hidden_exactness": 0.76,
+        "long_reasoning": 0.87,
+        "unverifiable": 0.1
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.0,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          0.6,
+          0.5
+        ]
+      },
+      "workspace_files": 5,
+      "jev_usd": 0.00003738
+    },
+    {
+      "task": "write-compressor",
+      "split": "development",
+      "features": {
+        "close_reading": 0.97,
+        "domain_knowledge": 0.4,
+        "faithful_reproduction": 0.33,
+        "hidden_exactness": 0.76,
+        "long_reasoning": 0.58,
+        "unverifiable": 0.11
+      },
+      "label": {
+        "sensitive": true,
+        "gain": 0.5,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          0.5,
+          1.0
+        ]
+      },
+      "workspace_files": 3,
+      "jev_usd": 0.000027636
+    },
+    {
+      "task": "compile-compcert",
+      "split": "development",
+      "features": {
+        "close_reading": 0.04,
+        "domain_knowledge": 0.71,
+        "faithful_reproduction": 0.12,
+        "hidden_exactness": 0.8,
+        "long_reasoning": 0.12,
+        "unverifiable": 0.51
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.0,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          0.5,
+          0.4
+        ]
+      },
+      "workspace_files": 0,
+      "jev_usd": 0.000026208
+    },
+    {
+      "task": "configure-git-webserver",
+      "split": "development",
+      "features": {
+        "close_reading": 0.03,
+        "domain_knowledge": 0.32,
+        "faithful_reproduction": 0.09,
+        "hidden_exactness": 0.8,
+        "long_reasoning": 0.13,
+        "unverifiable": 0.19
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.0,
+        "astra": [
+          0.0,
+          0.0
+        ],
+        "claude_code": [
+          0.7,
+          0.3
+        ]
+      },
+      "workspace_files": 0,
+      "jev_usd": 0.000028266
+    },
+    {
+      "task": "db-wal-recovery",
+      "split": "development",
+      "features": {
+        "close_reading": 0.94,
+        "domain_knowledge": 0.55,
+        "faithful_reproduction": 0.1,
+        "hidden_exactness": 0.85,
+        "long_reasoning": 0.49,
+        "unverifiable": 0.59
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.0,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          0.4,
+          0.3
+        ]
+      },
+      "workspace_files": 2,
+      "jev_usd": 0.000031458
+    },
+    {
+      "task": "extract-elf",
+      "split": "development",
+      "features": {
+        "close_reading": 0.29,
+        "domain_knowledge": 0.66,
+        "faithful_reproduction": 0.57,
+        "hidden_exactness": 0.83,
+        "long_reasoning": 0.52,
+        "unverifiable": 0.83
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.0,
+        "astra": [
+          0.0,
+          0.0
+        ],
+        "claude_code": [
+          0.5,
+          0.4
+        ]
+      },
+      "workspace_files": 1,
+      "jev_usd": 0.000030954
+    },
+    {
+      "task": "extract-moves-from-video",
+      "split": "development",
+      "features": {
+        "close_reading": 0.86,
+        "domain_knowledge": 0.22,
+        "faithful_reproduction": 0.38,
+        "hidden_exactness": 0.82,
+        "long_reasoning": 0.12,
+        "unverifiable": 0.9
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.1,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          0.1,
+          0.2
+        ]
+      },
+      "workspace_files": 1,
+      "jev_usd": 0.00002604
+    },
+    {
+      "task": "gcode-to-text",
+      "split": "development",
+      "features": {
+        "close_reading": 0.89,
+        "domain_knowledge": 0.72,
+        "faithful_reproduction": 0.18,
+        "hidden_exactness": 0.79,
+        "long_reasoning": 0.28,
+        "unverifiable": 0.88
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.1,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          0.9,
+          1.0
+        ]
+      },
+      "workspace_files": 1,
+      "jev_usd": 0.000025746
+    },
+    {
+      "task": "git-multibranch",
+      "split": "development",
+      "features": {
+        "close_reading": 0.28,
+        "domain_knowledge": 0.45,
+        "faithful_reproduction": 0.09,
+        "hidden_exactness": 0.82,
+        "long_reasoning": 0.13,
+        "unverifiable": 0.11
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.0,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          1.0,
+          1.0
+        ]
+      },
+      "workspace_files": 1,
+      "jev_usd": 0.00003402
+    },
+    {
+      "task": "install-windows-3.11",
+      "split": "development",
+      "features": {
+        "close_reading": 0.24,
+        "domain_knowledge": 0.62,
+        "faithful_reproduction": 0.14,
+        "hidden_exactness": 0.81,
+        "long_reasoning": 0.18,
+        "unverifiable": 0.72
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.3,
+        "astra": [
+          0.6,
+          0.7
+        ],
+        "claude_code": [
+          0.3,
+          0.6
+        ]
+      },
+      "workspace_files": 7,
+      "jev_usd": 0.000035364
+    },
+    {
+      "task": "qemu-alpine-ssh",
+      "split": "development",
+      "features": {
+        "close_reading": 0.05,
+        "domain_knowledge": 0.57,
+        "faithful_reproduction": 0.12,
+        "hidden_exactness": 0.79,
+        "long_reasoning": 0.11,
+        "unverifiable": 0.17
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.1,
+        "astra": [
+          0.9,
+          1.0
+        ],
+        "claude_code": [
+          0.6,
+          0.7
+        ]
+      },
+      "workspace_files": 0,
+      "jev_usd": 0.000026628
+    },
+    {
+      "task": "qemu-startup",
+      "split": "development",
+      "features": {
+        "close_reading": 0.04,
+        "domain_knowledge": 0.55,
+        "faithful_reproduction": 0.09,
+        "hidden_exactness": 0.78,
+        "long_reasoning": 0.13,
+        "unverifiable": 0.34
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.0,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          0.9,
+          0.8
+        ]
+      },
+      "workspace_files": 0,
+      "jev_usd": 0.000026712
+    },
+    {
+      "task": "mteb-leaderboard",
+      "split": "held-out",
+      "features": {
+        "close_reading": 0.03,
+        "domain_knowledge": 0.6,
+        "faithful_reproduction": 0.12,
+        "hidden_exactness": 0.85,
+        "long_reasoning": 0.15,
+        "unverifiable": 0.86
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.0,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          1.0,
+          1.0
+        ]
+      },
+      "workspace_files": 0,
+      "jev_usd": 0.00002709
+    },
+    {
+      "task": "mteb-retrieve",
+      "split": "held-out",
+      "features": {
+        "close_reading": 0.73,
+        "domain_knowledge": 0.4,
+        "faithful_reproduction": 0.13,
+        "hidden_exactness": 0.8,
+        "long_reasoning": 0.12,
+        "unverifiable": 0.87
+      },
+      "label": {
+        "sensitive": true,
+        "gain": 0.4,
+        "astra": [
+          0.5,
+          0.2
+        ],
+        "claude_code": [
+          0.2,
+          0.6
+        ]
+      },
+      "workspace_files": 1,
+      "jev_usd": 0.00002877
+    },
+    {
+      "task": "query-optimize",
+      "split": "held-out",
+      "features": {
+        "close_reading": 0.93,
+        "domain_knowledge": 0.26,
+        "faithful_reproduction": 0.59,
+        "hidden_exactness": 0.82,
+        "long_reasoning": 0.42,
+        "unverifiable": 0.78
+      },
+      "label": {
+        "sensitive": false,
+        "gain": -0.5,
+        "astra": [
+          1.0,
+          0.5
+        ],
+        "claude_code": [
+          0.7,
+          0.2
+        ]
+      },
+      "workspace_files": 1,
+      "jev_usd": 0.00002919
+    },
+    {
+      "task": "sparql-university",
+      "split": "held-out",
+      "features": {
+        "close_reading": 0.97,
+        "domain_knowledge": 0.36,
+        "faithful_reproduction": 0.08,
+        "hidden_exactness": 0.79,
+        "long_reasoning": 0.45,
+        "unverifiable": 0.89
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.1,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          0.9,
+          1.0
+        ]
+      },
+      "workspace_files": 1,
+      "jev_usd": 0.000035994
+    },
+    {
+      "task": "video-processing",
+      "split": "held-out",
+      "features": {
+        "close_reading": 0.91,
+        "domain_knowledge": 0.66,
+        "faithful_reproduction": 0.12,
+        "hidden_exactness": 0.8,
+        "long_reasoning": 0.75,
+        "unverifiable": 0.87
+      },
+      "label": {
+        "sensitive": true,
+        "gain": 0.4,
+        "astra": [
+          0.6,
+          0.5
+        ],
+        "claude_code": [
+          0.1,
+          0.5
+        ]
+      },
+      "workspace_files": 1,
+      "jev_usd": 0.000036918
+    },
+    {
+      "task": "pytorch-model-cli",
+      "split": "held-out",
+      "features": {
+        "close_reading": 0.92,
+        "domain_knowledge": 0.78,
+        "faithful_reproduction": 0.31,
+        "hidden_exactness": 0.79,
+        "long_reasoning": 0.26,
+        "unverifiable": 0.8
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.1,
+        "astra": [
+          0.9,
+          1.0
+        ],
+        "claude_code": [
+          0.7,
+          0.5
+        ]
+      },
+      "workspace_files": 7,
+      "jev_usd": 0.000030576
+    },
+    {
+      "task": "pytorch-model-recovery",
+      "split": "held-out",
+      "features": {
+        "close_reading": 0.97,
+        "domain_knowledge": 0.81,
+        "faithful_reproduction": 0.35,
+        "hidden_exactness": 0.83,
+        "long_reasoning": 0.42,
+        "unverifiable": 0.52
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.1,
+        "astra": [
+          0.9,
+          1.0
+        ],
+        "claude_code": [
+          0.9,
+          0.9
+        ]
+      },
+      "workspace_files": 2,
+      "jev_usd": 0.000037464
+    },
+    {
+      "task": "train-fasttext",
+      "split": "held-out",
+      "features": {
+        "close_reading": 0.49,
+        "domain_knowledge": 0.73,
+        "faithful_reproduction": 0.07,
+        "hidden_exactness": 0.81,
+        "long_reasoning": 0.2,
+        "unverifiable": 0.8
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.1,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          0.1,
+          0.2
+        ]
+      },
+      "workspace_files": 1,
+      "jev_usd": 0.000026292
+    },
+    {
+      "task": "bn-fit-modify",
+      "split": "held-out",
+      "features": {
+        "close_reading": 0.07,
+        "domain_knowledge": 0.93,
+        "faithful_reproduction": 0.16,
+        "hidden_exactness": 0.81,
+        "long_reasoning": 0.44,
+        "unverifiable": 0.86
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.0,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          1.0,
+          1.0
+        ]
+      },
+      "workspace_files": 0,
+      "jev_usd": 0.000036708
+    },
+    {
+      "task": "dna-assembly",
+      "split": "held-out",
+      "features": {
+        "close_reading": 0.97,
+        "domain_knowledge": 0.98,
+        "faithful_reproduction": 0.15,
+        "hidden_exactness": 0.85,
+        "long_reasoning": 0.58,
+        "unverifiable": 0.77
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.2,
+        "astra": [
+          1.0,
+          0.9
+        ],
+        "claude_code": [
+          0.5,
+          0.7
+        ]
+      },
+      "workspace_files": 1,
+      "jev_usd": 0.000042756
+    },
+    {
+      "task": "dna-insert",
+      "split": "held-out",
+      "features": {
+        "close_reading": 0.97,
+        "domain_knowledge": 0.96,
+        "faithful_reproduction": 0.16,
+        "hidden_exactness": 0.83,
+        "long_reasoning": 0.7,
+        "unverifiable": 0.74
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.1,
+        "astra": [
+          0.8,
+          0.9
+        ],
+        "claude_code": [
+          0.1,
+          0.1
+        ]
+      },
+      "workspace_files": 1,
+      "jev_usd": 0.000034398
+    },
+    {
+      "task": "model-extraction-relu-logits",
+      "split": "held-out",
+      "features": {
+        "close_reading": 0.84,
+        "domain_knowledge": 0.87,
+        "faithful_reproduction": 0.16,
+        "hidden_exactness": 0.77,
+        "long_reasoning": 0.82,
+        "unverifiable": 0.89
+      },
+      "label": {
+        "sensitive": false,
+        "gain": -0.1,
+        "astra": [
+          1.0,
+          0.4
+        ],
+        "claude_code": [
+          0.5,
+          0.4
+        ]
+      },
+      "workspace_files": 1,
+      "jev_usd": 0.000029274
+    },
+    {
+      "task": "modernize-scientific-stack",
+      "split": "held-out",
+      "features": {
+        "close_reading": 0.97,
+        "domain_knowledge": 0.22,
+        "faithful_reproduction": 0.82,
+        "hidden_exactness": 0.74,
+        "long_reasoning": 0.12,
+        "unverifiable": 0.33
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.0,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          1.0,
+          1.0
+        ]
+      },
+      "workspace_files": 5,
+      "jev_usd": 0.000038724
+    },
+    {
+      "task": "break-filter-js-from-html",
+      "split": "held-out",
+      "features": {
+        "close_reading": 0.94,
+        "domain_knowledge": 0.37,
+        "faithful_reproduction": 0.07,
+        "hidden_exactness": 0.77,
+        "long_reasoning": 0.44,
+        "unverifiable": 0.06
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.0,
+        "astra": [
+          0.8,
+          0.0
+        ],
+        "claude_code": [
+          1.0,
+          1.0
+        ]
+      },
+      "workspace_files": 3,
+      "jev_usd": 0.000029232
+    },
+    {
+      "task": "filter-js-from-html",
+      "split": "held-out",
+      "features": {
+        "close_reading": 0.03,
+        "domain_knowledge": 0.32,
+        "faithful_reproduction": 0.09,
+        "hidden_exactness": 0.79,
+        "long_reasoning": 0.23,
+        "unverifiable": 0.86
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.1,
+        "astra": [
+          0.0,
+          0.0
+        ],
+        "claude_code": [
+          0.0,
+          0.1
+        ]
+      },
+      "workspace_files": 0,
+      "jev_usd": 0.000029274
+    },
+    {
+      "task": "openssl-selfsigned-cert",
+      "split": "held-out",
+      "features": {
+        "close_reading": 0.03,
+        "domain_knowledge": 0.54,
+        "faithful_reproduction": 0.08,
+        "hidden_exactness": 0.77,
+        "long_reasoning": 0.06,
+        "unverifiable": 0.33
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.2,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          0.7,
+          0.9
+        ]
+      },
+      "workspace_files": 0,
+      "jev_usd": 0.000036792
+    },
+    {
+      "task": "build-pmars",
+      "split": "held-out",
+      "features": {
+        "close_reading": 0.69,
+        "domain_knowledge": 0.21,
+        "faithful_reproduction": 0.21,
+        "hidden_exactness": 0.77,
+        "long_reasoning": 0.15,
+        "unverifiable": 0.08
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.0,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          1.0,
+          1.0
+        ]
+      },
+      "workspace_files": 2,
+      "jev_usd": 0.000030576
+    },
+    {
+      "task": "cobol-modernization",
+      "split": "held-out",
+      "features": {
+        "close_reading": 0.99,
+        "domain_knowledge": 0.46,
+        "faithful_reproduction": 0.99,
+        "hidden_exactness": 0.86,
+        "long_reasoning": 0.64,
+        "unverifiable": 0.35
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.0,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          1.0,
+          0.7
+        ]
+      },
+      "workspace_files": 5,
+      "jev_usd": 0.000038934
+    },
+    {
+      "task": "fix-ocaml-gc",
+      "split": "held-out",
+      "features": {
+        "close_reading": 0.07,
+        "domain_knowledge": 0.79,
+        "faithful_reproduction": 0.08,
+        "hidden_exactness": 0.74,
+        "long_reasoning": 0.89,
+        "unverifiable": 0.11
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.0,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          1.0,
+          1.0
+        ]
+      },
+      "workspace_files": 0,
+      "jev_usd": 0.000027468
+    },
+    {
+      "task": "merge-diff-arc-agi-task",
+      "split": "held-out",
+      "features": {
+        "close_reading": 0.97,
+        "domain_knowledge": 0.18,
+        "faithful_reproduction": 0.57,
+        "hidden_exactness": 0.9,
+        "long_reasoning": 0.83,
+        "unverifiable": 0.2
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.2,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          0.8,
+          1.0
+        ]
+      },
+      "workspace_files": 3,
+      "jev_usd": 0.000038892
+    },
+    {
+      "task": "portfolio-optimization",
+      "split": "held-out",
+      "features": {
+        "close_reading": 0.96,
+        "domain_knowledge": 0.82,
+        "faithful_reproduction": 0.96,
+        "hidden_exactness": 0.79,
+        "long_reasoning": 0.26,
+        "unverifiable": 0.08
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.1,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          0.9,
+          1.0
+        ]
+      },
+      "workspace_files": 6,
+      "jev_usd": 0.000033852
+    },
+    {
+      "task": "pypi-server",
+      "split": "held-out",
+      "features": {
+        "close_reading": 0.03,
+        "domain_knowledge": 0.1,
+        "faithful_reproduction": 0.08,
+        "hidden_exactness": 0.79,
+        "long_reasoning": 0.09,
+        "unverifiable": 0.15
+      },
+      "label": {
+        "sensitive": true,
+        "gain": 0.4,
+        "astra": [
+          0.6,
+          1.0
+        ],
+        "claude_code": [
+          0.9,
+          1.0
+        ]
+      },
+      "workspace_files": 0,
+      "jev_usd": 0.000031962
+    },
+    {
+      "task": "regex-chess",
+      "split": "held-out",
+      "features": {
+        "close_reading": 0.87,
+        "domain_knowledge": 0.72,
+        "faithful_reproduction": 0.6,
+        "hidden_exactness": 0.81,
+        "long_reasoning": 0.92,
+        "unverifiable": 0.08
+      },
+      "label": {
+        "sensitive": true,
+        "gain": 0.4,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          0.5,
+          0.9
+        ]
+      },
+      "workspace_files": 1,
+      "jev_usd": 0.00004557
+    },
+    {
+      "task": "schemelike-metacircular-eval",
+      "split": "held-out",
+      "features": {
+        "close_reading": 0.97,
+        "domain_knowledge": 0.16,
+        "faithful_reproduction": 0.92,
+        "hidden_exactness": 0.84,
+        "long_reasoning": 0.84,
+        "unverifiable": 0.19
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.3,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          0.6,
+          0.9
+        ]
+      },
+      "workspace_files": 66,
+      "jev_usd": 0.000068124
+    },
+    {
+      "task": "large-scale-text-editing",
+      "split": "held-out",
+      "features": {
+        "close_reading": 0.61,
+        "domain_knowledge": 0.09,
+        "faithful_reproduction": 0.56,
+        "hidden_exactness": 0.85,
+        "long_reasoning": 0.77,
+        "unverifiable": 0.16
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.0,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          1.0,
+          1.0
+        ]
+      },
+      "workspace_files": 3,
+      "jev_usd": 0.000037422
+    },
+    {
+      "task": "mailman",
+      "split": "held-out",
+      "features": {
+        "close_reading": 0.76,
+        "domain_knowledge": 0.62,
+        "faithful_reproduction": 0.12,
+        "hidden_exactness": 0.8,
+        "long_reasoning": 0.13,
+        "unverifiable": 0.22
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.1,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          0.9,
+          1.0
+        ]
+      },
+      "workspace_files": 1,
+      "jev_usd": 0.000033264
+    },
+    {
+      "task": "nginx-request-logging",
+      "split": "held-out",
+      "features": {
+        "close_reading": 0.03,
+        "domain_knowledge": 0.39,
+        "faithful_reproduction": 0.08,
+        "hidden_exactness": 0.82,
+        "long_reasoning": 0.08,
+        "unverifiable": 0.25
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.0,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          1.0,
+          1.0
+        ]
+      },
+      "workspace_files": 0,
+      "jev_usd": 0.000042252
+    },
+    {
+      "task": "sqlite-with-gcov",
+      "split": "held-out",
+      "features": {
+        "close_reading": 0.91,
+        "domain_knowledge": 0.27,
+        "faithful_reproduction": 0.09,
+        "hidden_exactness": 0.8,
+        "long_reasoning": 0.1,
+        "unverifiable": 0.74
+      },
+      "label": {
+        "sensitive": false,
+        "gain": 0.0,
+        "astra": [
+          1.0,
+          1.0
+        ],
+        "claude_code": [
+          1.0,
+          1.0
+        ]
+      },
+      "workspace_files": 2,
+      "jev_usd": 0.000026544
+    }
+  ]
+}

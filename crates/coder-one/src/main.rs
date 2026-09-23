@@ -17,6 +17,7 @@
 //! coder-one checks synthetic|run|recover …
 //! coder-one support evaluate|run|fixtures …
 //! coder-one repair study|brief …
+//! coder-one effort features|fit …
 //! coder-one capabilities [--demonstrate] [--json]
 //! ```
 //!
@@ -73,7 +74,8 @@ const USAGE: &str = "usage: coder-one doctor
        coder-one snapshot checks|subject            (coder-one snapshot help)
        coder-one study run|list                     (coder-one study help)
        coder-one support evaluate|run|fixtures      (coder-one support help)
-       coder-one repair study|brief                 (coder-one repair help)";
+       coder-one repair study|brief                 (coder-one repair help)
+       coder-one effort features|fit                (coder-one effort help)";
 
 const PROMPT: &str = "Solve this issue.";
 
@@ -117,6 +119,15 @@ async fn main() -> ExitCode {
         }
         Some("ask") => {
             return match coder_one::ask::command(&args[1..]).await {
+                Ok(code) => ExitCode::from(u8::try_from(code).unwrap_or(1)),
+                Err(message) => {
+                    eprintln!("coder-one: {message}");
+                    ExitCode::FAILURE
+                }
+            };
+        }
+        Some("effort") => {
+            return match coder_one::effort::command(&args[1..]).await {
                 Ok(code) => ExitCode::from(u8::try_from(code).unwrap_or(1)),
                 Err(message) => {
                     eprintln!("coder-one: {message}");

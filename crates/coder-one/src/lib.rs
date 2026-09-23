@@ -31,6 +31,7 @@ pub mod compose;
 pub mod credentials;
 pub mod deadline;
 pub mod delegate;
+pub mod effort;
 pub mod episode;
 pub mod generate;
 pub mod handoff;

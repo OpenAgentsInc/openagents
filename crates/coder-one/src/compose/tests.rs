@@ -368,6 +368,45 @@ async fn an_eight_hour_task_starts_strong_at_the_long_effort_with_hours_to_work(
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn control_effort_picks_a_long_tasks_effort_and_records_why() {
+    if !python() {
+        return;
+    }
+    // With Jev off the features are unknown, and an unknown task runs at
+    // the raised effort rather than risk a pass.
+    let ran = compose(
+        "effort",
+        &manifest("tunable-v9.json"),
+        vec![script("opus", 6, 0)],
+        Some(easy()),
+        Duration::from_secs(8 * 3600 - 120),
+    )
+    .await;
+    let record = &ran.record;
+    assert_eq!(record["effort"]["effort"], "xhigh", "{record:#}");
+    assert_eq!(record["effort"]["jev"], "off");
+    assert_eq!(record["effort"]["score"], Value::Null);
+    assert_eq!(record["effort"]["workspace_files"], 2);
+    assert_eq!(ran.made[0].0.effort.as_deref(), Some("xhigh"));
+    assert!(ran.recorder.steps().iter().any(|step| {
+        step.extensions
+            .values()
+            .any(|v| v.to_string().contains("effort xhigh"))
+    }));
+
+    // A short task keeps the horizon's effort and asks nothing.
+    let short = compose(
+        "effort-short",
+        &manifest("tunable-v9.json"),
+        vec![script("luna", 6, 0)],
+        Some(easy()),
+        Duration::from_secs(900),
+    )
+    .await;
+    assert_eq!(short.record["effort"], Value::Null);
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn a_planner_writes_the_plan_in_a_scratch_copy_before_the_worker() {
     let mut manifest = manifest("tunable-luna.json");
     let handoff = manifest.policy.control.handoff.as_mut().unwrap();

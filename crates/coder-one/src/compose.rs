@@ -1243,6 +1243,49 @@ async fn route(setup: &Setup<'_>, total: Option<u64>) -> (Routed, Value) {
     (routed, record)
 }
 
+/// Asks the effort battery over the task and the files the workspace
+/// starts with, and picks the effort a long task runs at.
+async fn choose_effort(setup: &Setup<'_>, policy: &crate::effort::EffortPolicy) -> (String, Value) {
+    let workspace = crate::effort::workspace_files(setup.workdir, 400);
+    let (state, questions) = crate::effort::request(setup.instruction, &workspace);
+    let asked = crate::component::jev::ask(
+        &setup.jev,
+        setup.recorder,
+        crate::component::jev::Ask {
+            component: crate::effort::COMPONENT,
+            name: "jev_effort",
+            id: "jev-effort".to_string(),
+            state,
+            questions,
+            parent: None,
+            deadline: Some(setup.deadline.clone()),
+        },
+    )
+    .await;
+    let features = crate::effort::read(asked.answers.as_ref());
+    let decided = policy.decide(&features);
+    let record = json!({
+        "rule": policy.rule,
+        "features": features,
+        "score": decided.score,
+        "at": policy.at,
+        "effort": decided.effort,
+        "base": policy.base,
+        "raised": policy.raised,
+        "reason": decided.reason,
+        "jev": asked.how,
+        "workspace_files": workspace.len(),
+    });
+    record_decision(
+        setup.recorder,
+        crate::effort::COMPONENT,
+        &format!("effort {}", decided.effort),
+        &record,
+    );
+    println!("  effort ▸ {} · {}", decided.effort, decided.reason);
+    (decided.effort, record)
+}
+
 /// The monitor the first session runs under: acting for an escalation,
 /// shadow otherwise, with its silence scaled to the dispatch.
 fn monitor_for(
@@ -1310,7 +1353,7 @@ where
 {
     let manifest = setup.manifest;
     let control = &manifest.policy.control;
-    let horizon = control.horizon.clone().unwrap_or_default();
+    let mut horizon = control.horizon.clone().unwrap_or_default();
     let verify = manifest
         .policy
         .verify
@@ -1320,6 +1363,15 @@ where
     let long = horizon.long(total);
     let fallback = manifest.policy.executor.deadline_sec;
     let (routed, route_record) = route(setup, total).await;
+    // control.effort picks the long-task effort every later tier reads.
+    let effort_record = match &control.effort {
+        Some(policy) if long => {
+            let (effort, record) = choose_effort(setup, policy).await;
+            horizon.long_effort = Some(effort);
+            record
+        }
+        _ => Value::Null,
+    };
     let mut first = routed.tier.clone();
     let handoff = control
         .handoff
@@ -1824,6 +1876,7 @@ where
         "schema": SCHEMA,
         "route": route_record,
         "first": routed,
+        "effort": effort_record,
         "horizon": {
             "policy": horizon,
             "episode_deadline_sec": total,

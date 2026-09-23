@@ -175,6 +175,8 @@ impl Row {
             "cost_usd": self.cost_usd,
             "agent_ms": self.agent_ms,
             "start": self.start(),
+            "effort": self.record["effort"]["effort"],
+            "effort_score": self.record["effort"]["score"],
             "dispatches": self.roles(),
             "escalated": self.record["escalated"],
             "second_kept": self.record["second"]["kept"],
@@ -246,6 +248,25 @@ pub fn detail_lines(record: &Value) -> Vec<String> {
                 .and_then(Value::as_str)
                 .unwrap_or("none"),
             family.get("why").and_then(Value::as_str).unwrap_or("")
+        ));
+    }
+    if let Some(effort) = record["effort"].as_object() {
+        let features: Vec<String> = effort
+            .get("features")
+            .and_then(Value::as_object)
+            .into_iter()
+            .flatten()
+            .filter_map(|(id, p)| p.as_f64().map(|p| format!("{id} {p:.2}")))
+            .collect();
+        lines.push(format!(
+            "  effort: {} · {}{}",
+            effort.get("effort").map_or_else(|| "?".to_owned(), words),
+            effort.get("reason").map_or_else(|| "?".to_owned(), words),
+            if features.is_empty() {
+                String::new()
+            } else {
+                format!(" · {}", features.join(", "))
+            }
         ));
     }
     let horizon = &record["horizon"];
@@ -748,6 +769,36 @@ mod tests {
             "{text}"
         );
         assert!(text.contains("[escalated]"), "{text}");
+    }
+
+    #[test]
+    fn a_v9_attempt_shows_the_effort_it_chose_and_why() {
+        let mut value = record();
+        value["effort"] = json!({
+            "rule": "sensitivity-v1",
+            "features": { "faithful_reproduction": 0.91, "long_reasoning": 0.4, "close_reading": null },
+            "score": 0.672,
+            "at": 0.4,
+            "effort": "xhigh",
+            "reason": "sensitivity 0.672 is at or above 0.400",
+            "jev": "live",
+        });
+        let text = detail_lines(&value).join("\n");
+        assert!(
+            text.contains("effort: xhigh · sensitivity 0.672 is at or above 0.400 · faithful_reproduction 0.91, long_reasoning 0.40"),
+            "{text}"
+        );
+        let mut attempt = crate::terminal_bench::test_attempt();
+        attempt.composition = Some(value);
+        let rows = rows(&Records {
+            attempts: vec![attempt],
+            ..Records::default()
+        });
+        let json = to_json(&rows);
+        assert_eq!(json["attempts"][0]["effort"], "xhigh");
+        assert_eq!(json["attempts"][0]["effort_score"], 0.672);
+        // An attempt without control.effort shows no effort line.
+        assert!(!detail_lines(&record()).join("\n").contains("effort:"));
     }
 
     #[test]
