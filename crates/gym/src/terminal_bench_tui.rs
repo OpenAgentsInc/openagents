@@ -1,4 +1,8 @@
 //! The Gym's read-only Terminal-Bench views.
+//!
+//! The Runs pane ([`crate::runs_tui`]) opens first when it is attached: the
+//! recent runs in plain words. The views below it are the expert views,
+//! each behind its own key.
 
 use crate::terminal_bench::{Attempt, ComparisonGroup, Records};
 use crate::tui::{DASH, ladder_from_environment, show};
@@ -26,10 +30,12 @@ pub enum View {
     Router,
     Live,
     Study,
+    /// The Runs pane: recent runs in plain words.
+    Runs,
 }
 
 impl View {
-    pub const ALL: [Self; 15] = [
+    pub const ALL: [Self; 16] = [
         Self::Overview,
         Self::Comparison,
         Self::Attempt,
@@ -45,6 +51,7 @@ impl View {
         Self::Router,
         Self::Live,
         Self::Study,
+        Self::Runs,
     ];
     pub fn title(self) -> &'static str {
         match self {
@@ -63,6 +70,7 @@ impl View {
             Self::Router => "router",
             Self::Live => "live",
             Self::Study => "study",
+            Self::Runs => "runs",
         }
     }
     fn index(self) -> usize {
@@ -82,6 +90,7 @@ impl View {
             Self::Router => 12,
             Self::Live => 13,
             Self::Study => 14,
+            Self::Runs => 15,
         }
     }
     /// The view a key opens: `1` to `9` open the first nine, `0` the
@@ -139,6 +148,8 @@ pub struct App {
     monitor: Option<crate::coder_monitor::Report>,
     /// `control.handoff`'s patterns compared on the mini-tasks.
     patterns: Option<crate::coder_handoff::Report>,
+    /// The Runs pane, when it is attached.
+    runs: Option<crate::runs_tui::Pane>,
 }
 
 impl App {
@@ -186,6 +197,34 @@ impl App {
             studies: (Vec::new(), Vec::new()),
             monitor: crate::coder_monitor::load(&crate::coder_monitor::default_path()).ok(),
             patterns: crate::coder_handoff::load(&crate::coder_handoff::default_path()).ok(),
+            runs: None,
+        }
+    }
+
+    /// Attaches the Runs pane and opens it: the first screen a reader sees.
+    #[must_use]
+    pub fn with_runs(mut self, pane: crate::runs_tui::Pane) -> Self {
+        self.runs = Some(pane);
+        self.view = View::Runs;
+        self
+    }
+
+    /// Hands a key to the Runs pane. Without a pane, nothing happens.
+    pub fn runs_key(&mut self, key: crate::runs_tui::Key) -> crate::runs_tui::Reply {
+        match &mut self.runs {
+            Some(pane) => pane.key(key),
+            None => crate::runs_tui::Reply::Handled,
+        }
+    }
+
+    /// Goes back to the Runs pane from an expert view. Returns `false` when
+    /// there is no pane to go back to.
+    pub fn back_to_runs(&mut self) -> bool {
+        if self.runs.is_some() {
+            self.view = View::Runs;
+            true
+        } else {
+            false
         }
     }
 
@@ -250,8 +289,15 @@ impl App {
         self
     }
 
-    /// Reads the live view's attempts again.
+    /// Reads the live view's attempts again, or the Runs pane's runs when
+    /// that is open.
     pub fn refresh_live(&mut self) {
+        if self.view == View::Runs
+            && let Some(pane) = &mut self.runs
+        {
+            pane.refresh(crate::runs::now_ms());
+            return;
+        }
         if let Some(sources) = &self.live {
             let now = crate::coder_live::now_ms();
             self.live_attempts = (crate::coder_live::discover(sources, now), now);
@@ -261,7 +307,8 @@ impl App {
     /// Whether the open view follows attempts as they run.
     #[must_use]
     pub fn follows(&self) -> bool {
-        self.view == View::Live && self.live.is_some()
+        (self.view == View::Live && self.live.is_some())
+            || (self.view == View::Runs && self.runs.as_ref().is_some_and(|pane| pane.follows()))
     }
 
     fn live(&self) -> Vec<String> {
@@ -331,6 +378,7 @@ impl App {
             View::Router => self.router.lines().len(),
             View::Live => self.live().len(),
             View::Study => self.study().len(),
+            View::Runs => 0,
         }
     }
     pub fn inspect(&mut self) {
@@ -369,7 +417,8 @@ impl App {
             | View::Matrix
             | View::Router
             | View::Live
-            | View::Study => {}
+            | View::Study
+            | View::Runs => {}
         }
     }
     fn current(&self) -> Option<&Attempt> {
@@ -407,6 +456,12 @@ impl App {
                 buf[(x, y)].set_style(Style::new().bg(self.ladder.background()));
             }
         }
+        if self.view == View::Runs
+            && let Some(pane) = &self.runs
+        {
+            pane.render(area, buf);
+            return;
+        }
         if area.width < 48 || area.height < 8 {
             buf.set_string(
                 area.left(),
@@ -440,7 +495,11 @@ impl App {
                 self.ladder.style(Intensity::Half),
             )),
         );
-        let keys = "1-9,0,b,m,r,f,s view  tab/h/l switch  j/k move  enter inspect  q quit";
+        let keys = if self.runs.is_some() {
+            "1-9,0,b,m,r,f,s view  tab/h/l switch  j/k move  enter inspect  esc runs  q quit"
+        } else {
+            "1-9,0,b,m,r,f,s view  tab/h/l switch  j/k move  enter inspect  q quit"
+        };
         rail(
             box_area,
             buf,
@@ -492,7 +551,7 @@ impl App {
             View::Comparison => Some(4 + self.cursor()),
             View::History => Some(3 + self.cursor()),
             View::Evidence => Some(2 + self.cursor()),
-            View::Attempt | View::Guide => None,
+            View::Attempt | View::Guide | View::Runs => None,
             View::Components
             | View::Requirements
             | View::Prompt
@@ -526,6 +585,10 @@ impl App {
             View::Router => self.router.lines(),
             View::Live => self.live(),
             View::Study => self.study(),
+            View::Runs => self.runs.as_ref().map_or_else(
+                || vec!["The Runs pane is not attached.".to_owned()],
+                |pane| pane.lines(),
+            ),
         }
     }
 
@@ -1098,6 +1161,32 @@ fn wilson_95(successes: usize, trials: usize) -> (f64, f64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_runs_pane_opens_first_and_esc_comes_back_to_it() {
+        let (_dir, sources) = crate::runs::fixture_sources();
+        let pane = crate::runs_tui::Pane::new(crate::runs::Catalog::load(sources));
+        let mut app = App::new(Records::default()).with_runs(pane);
+        assert_eq!(app.view(), View::Runs);
+        assert!(app.follows(), "the Runs pane reads again on a timer");
+        let text = app.to_text(140, 30);
+        assert!(text.contains("Terminal-Bench runs"), "{text}");
+        assert!(text.contains("coq-block-bound"), "{text}");
+        assert_eq!(
+            app.runs_key(crate::runs_tui::Key::Char('1')),
+            crate::runs_tui::Reply::Open('1')
+        );
+        app.open(View::Overview);
+        assert!(app.to_text(140, 30).contains("esc runs"));
+        assert!(app.back_to_runs());
+        assert_eq!(app.view(), View::Runs);
+        // Printing lists the runs as text too.
+        assert!(
+            app.lines()
+                .iter()
+                .any(|line| line.contains("coq-block-bound"))
+        );
+    }
 
     #[test]
     fn the_components_view_shows_isolated_runs_and_episodes() {

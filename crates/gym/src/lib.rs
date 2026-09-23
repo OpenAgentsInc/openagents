@@ -80,6 +80,9 @@ pub mod jobs;
 pub mod questions;
 pub mod regress;
 pub mod row;
+pub mod runs;
+pub mod runs_story;
+pub mod runs_transcript;
 pub mod spread;
 pub mod store;
 pub mod suite;
@@ -88,6 +91,8 @@ pub mod terminal_bench_reference;
 pub mod timeline;
 pub mod views;
 
+#[cfg(feature = "tui")]
+pub mod runs_tui;
 #[cfg(feature = "tui")]
 pub mod terminal_bench_tui;
 #[cfg(feature = "tui")]

@@ -58,6 +58,29 @@ from `bench/terminal-bench/samples/`. Use `--jobs-dir`, `--traces-dir`, or
 `--no-samples` to omit one. Nested resilience samples and resumed trials
 are included. Read errors stay visible in text and JSON output.
 
+## Read recent runs
+
+`gym runs` lists recent Terminal-Bench runs in plain words, newest first,
+and `gym runs show` prints one run's summary. Both read what the Runs pane
+reads and print the same words.
+
+```sh
+gym runs                                  # the 40 newest runs
+gym runs --agent coder-one --outcome failed
+gym runs --search tb4 --limit 100 --json
+gym runs show tb4--coder-one-tunable-v6--coq-block-bound
+gym runs show coq-block-bound --transcript           # steps closed
+gym runs show coq-block-bound --expand               # every step open
+gym runs show coq-block-bound --json
+```
+
+`show` takes a job name, `job/trial`, a trial name, a task name, or a piece
+of a job name that only one job has. The summary is deterministic: it is
+built from the run's records by fixed rules, so the same records always
+print the same words, and a missing record prints as missing rather than as
+zero. `--jobs-dir PATH` and `--traces-dir PATH` read other directories, and
+`--no-jobs` and `--no-traces` skip one.
+
 ## Read a Terminal-Bench 4.0 suite
 
 Attempts of the `tb4` profile ran Terminal-Bench 4.0 at tag `v4.0.0`. Some

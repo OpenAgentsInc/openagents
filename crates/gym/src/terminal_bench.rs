@@ -1331,32 +1331,36 @@ fn apply_manual_price(attempt: &mut Attempt) {
             .push("Cache tokens exceed total input; manual price unavailable.".to_owned());
         return;
     }
-    let catalog: Value = match serde_json::from_str(include_str!(
+    let Some(amount) = list_price(model, input, cache, output) else {
+        return;
+    };
+    attempt.cost_usd = Some(amount);
+    attempt.cost_provenance = "manual list price; subscription reference".to_owned();
+    attempt.notes.push("Price source: docs/terminal-bench/runbook.md, operator-supplied standard short-context rates on 2026-09-22. This is not a bill.".to_owned());
+}
+
+/// What `input` tokens (of which `cache` were cache reads) and `output`
+/// tokens cost at the operator-supplied list prices in
+/// `bench/terminal-bench/profiles/manual-prices.json`, when the model has a
+/// row there. A reference figure, not a bill.
+pub(crate) fn list_price(model: &str, input: u64, cache: u64, output: u64) -> Option<f64> {
+    if cache > input {
+        return None;
+    }
+    let catalog: Value = serde_json::from_str(include_str!(
         "../../../bench/terminal-bench/profiles/manual-prices.json"
-    )) {
-        Ok(value) => value,
-        Err(_) => return,
-    };
-    let Some(rates) = catalog.pointer(&format!("/models/{model}")) else {
-        return;
-    };
-    let Some((uncached_rate, cache_rate, output_rate)) = rates
-        .get("input")
-        .and_then(Value::as_f64)
-        .zip(rates.get("cached_input").and_then(Value::as_f64))
-        .zip(rates.get("output").and_then(Value::as_f64))
-        .map(|((a, b), c)| (a, b, c))
-    else {
-        return;
-    };
-    attempt.cost_usd = Some(
+    ))
+    .ok()?;
+    let rates = catalog.pointer(&format!("/models/{model}"))?;
+    let uncached_rate = rates.get("input").and_then(Value::as_f64)?;
+    let cache_rate = rates.get("cached_input").and_then(Value::as_f64)?;
+    let output_rate = rates.get("output").and_then(Value::as_f64)?;
+    Some(
         ((input - cache) as f64 * uncached_rate
             + cache as f64 * cache_rate
             + output as f64 * output_rate)
             / 1_000_000.0,
-    );
-    attempt.cost_provenance = "manual list price; subscription reference".to_owned();
-    attempt.notes.push("Price source: docs/terminal-bench/runbook.md, operator-supplied standard short-context rates on 2026-09-22. This is not a bill.".to_owned());
+    )
 }
 
 fn children(path: &Path) -> Vec<PathBuf> {

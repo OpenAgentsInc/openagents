@@ -11,6 +11,7 @@
 //! ```text
 //! gym-terminal            # read the fixture in the terminal
 //! gym-terminal --print    # write all five views to stdout and exit
+//! gym-terminal --terminal-bench   # recent Terminal-Bench runs, then the expert views
 //! ```
 
 use std::io::{self, Stdout, Write, stdout};
@@ -68,7 +69,19 @@ The default decision-model views open a built-in fixture. Terminal-Bench
 views read local Harbor jobs and retained evidence. Neither mode runs a
 door or opens a network connection.
 
-Keys:
+Terminal-Bench opens on the Runs pane: recent runs in plain words.
+  arrows, j, k   Move.
+  enter          Open a run's summary.
+  t              Open, or switch to, the run's transcript.
+  enter, space   In a transcript, open or close the selected step.
+  e              In a transcript, open or close every step.
+  d              In a summary, show the details experts use.
+  /              Search by task, agent, or batch.
+  a, o, c        Filter by agent, filter by outcome, clear the filters.
+  esc            Go back.
+  q              Leave.
+
+Expert views:
   1-5            Open the decision scoreboard, families, ladder, row, or chain.
   1-9, 0         Open the Terminal-Bench overview, comparison, attempt,
                  evidence, history, runbooks, Coder One components,
@@ -81,7 +94,8 @@ Keys:
   j, k, arrows   Move the cursor.
   g, G           Jump to the first or last item.
   enter          Open the inspector on the selection.
-  q, esc         Leave.";
+  esc            Go back to the Runs pane.
+  q              Leave.";
 
 fn terminal_bench_mode(arguments: &[String]) -> io::Result<()> {
     let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
@@ -143,6 +157,11 @@ fn terminal_bench_mode(arguments: &[String]) -> io::Result<()> {
         ..gym::coder_live::Sources::default()
     };
     let (studies, study_errors) = gym::coder_study::load(&gym::coder_study::default_dirs());
+    let runs = gym::runs::Catalog::load(gym::runs::Sources {
+        jobs: jobs.clone(),
+        traces: traces.clone(),
+        ..gym::runs::Sources::standard()
+    });
     let mut app = terminal_bench_tui::App::new(records)
         .with_components(components)
         .with_requirements(requirements)
@@ -155,7 +174,8 @@ fn terminal_bench_mode(arguments: &[String]) -> io::Result<()> {
                 .unwrap_or_default(),
         )
         .with_live(live)
-        .with_studies(studies, study_errors);
+        .with_studies(studies, study_errors)
+        .with_runs(terminal_bench_tui_runs(runs));
     if print_only {
         let mut out = stdout().lock();
         for view in terminal_bench_tui::View::ALL {
@@ -165,6 +185,29 @@ fn terminal_bench_mode(arguments: &[String]) -> io::Result<()> {
         return Ok(());
     }
     run_tbench(app)
+}
+
+/// The Runs pane over `catalog`.
+fn terminal_bench_tui_runs(catalog: gym::runs::Catalog) -> gym::runs_tui::Pane {
+    gym::runs_tui::Pane::new(catalog)
+}
+
+/// A terminal key as the Runs pane reads it.
+fn runs_key(code: KeyCode) -> Option<gym::runs_tui::Key> {
+    use gym::runs_tui::Key;
+    Some(match code {
+        KeyCode::Up => Key::Up,
+        KeyCode::Down => Key::Down,
+        KeyCode::PageUp => Key::PageUp,
+        KeyCode::PageDown => Key::PageDown,
+        KeyCode::Home => Key::Home,
+        KeyCode::End => Key::End,
+        KeyCode::Enter => Key::Enter,
+        KeyCode::Esc => Key::Back,
+        KeyCode::Backspace => Key::Backspace,
+        KeyCode::Char(c) => Key::Char(c),
+        _ => return None,
+    })
 }
 
 fn run_tbench(app: terminal_bench_tui::App) -> io::Result<()> {
@@ -200,9 +243,30 @@ fn draw_tbench(
                 continue;
             }
             let control = key.modifiers.contains(KeyModifiers::CONTROL);
+            if control && matches!(key.code, KeyCode::Char('c' | 'd')) {
+                return Ok(());
+            }
+            if app.view() == terminal_bench_tui::View::Runs {
+                if let Some(key) = runs_key(key.code) {
+                    match app.runs_key(key) {
+                        gym::runs_tui::Reply::Quit => return Ok(()),
+                        gym::runs_tui::Reply::Open(digit) => {
+                            if let Some(view) = terminal_bench_tui::View::from_digit(digit) {
+                                app.open(view);
+                            }
+                        }
+                        gym::runs_tui::Reply::Handled => {}
+                    }
+                }
+                continue;
+            }
             match key.code {
-                KeyCode::Char('c' | 'd') if control => return Ok(()),
-                KeyCode::Char('q') | KeyCode::Esc => return Ok(()),
+                KeyCode::Char('q') => return Ok(()),
+                KeyCode::Esc => {
+                    if !app.back_to_runs() {
+                        return Ok(());
+                    }
+                }
                 KeyCode::Char('j') | KeyCode::Down => app.down(),
                 KeyCode::Char('k') | KeyCode::Up => app.up(),
                 KeyCode::Char('l') | KeyCode::Right | KeyCode::Tab => app.next(),

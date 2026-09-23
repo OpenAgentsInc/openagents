@@ -33,6 +33,51 @@ another location. Use `--no-jobs`, `--no-traces`, or `--no-samples` to omit
 one. If a configured directory is unavailable, the overview reports that
 condition; it does not silently substitute a sample.
 
+## Read recent runs
+
+The terminal opens on the **Runs** pane. It lists every Terminal-Bench trial
+under the jobs directory and every trial retained in the checkout, newest
+first, one run a line: when it started, how it came out (**passed**,
+**failed**, **running**, or **not graded**), the task and what it asks, the
+agent, the verifier's tests passed, the cost, and the time. Trials in
+progress sort first and refresh every two seconds. A run that stopped
+without a grade says why below the list: a cancelled run, a container that
+failed to start, a full disk, or a provider's usage limit.
+
+Press Enter to open a run's **summary**: a few short paragraphs built from
+the run's records by fixed rules, with no model call. They say what the
+task asked, what the agent did in order (Coder One's briefing, which
+executor worked on it and for how long, the checks, repair, second opinion,
+and persistence rounds), what the verifier found and which tests failed,
+why the run likely passed or failed, and what it cost and how long it took.
+Names, paths, versions, and digests stay behind `d`.
+
+Press `t` for the **transcript**, drawn the way the Coder terminal draws a
+conversation: the task, the agent's messages, each command with its output
+closed until you open it, file edits, Jev's judgments as one-line decision
+rows, checks and repairs as boxes, and each hand-off to an executor as a
+chapter rule with its time and cost. The left margin shows the time since
+the run started. Long output shows its first 60 lines and counts the rest.
+It reads Coder One's episode log and each executor's native stream, Harbor's
+Claude Code and Codex trajectories, and, for a trial in progress, the live
+copy of the episode log or the native output.
+
+| Key | Runs pane action |
+| --- | --- |
+| Arrow keys, `j`, `k` | Move. |
+| `Enter` | Open a run's summary. In a transcript, open or close the selected step. |
+| `t` | Open the run's transcript, or switch between summary and transcript. |
+| `e` | Open or close every step of a transcript. |
+| `d` | Show the details experts use in a summary. |
+| `/` | Search by task, what it asks, agent, or batch. |
+| `a`, `o`, `c` | Filter by agent, filter by outcome, or clear the filters. |
+| `Esc` | Go back. |
+| `q` | Leave. |
+
+The expert views below stay behind their keys; `Esc` in any of them returns
+to the Runs pane. `gym runs` prints the same list and summaries as text; see
+the [Gym CLI](terminal-bench-cli.md#read-recent-runs).
+
 ## Navigate the views
 
 | Key | Action |
@@ -42,7 +87,8 @@ condition; it does not silently substitute a sample.
 | `Tab`, `h`, `l` | Move between views. |
 | `j`, `k`, arrow keys, `g`, `G` | Move the selection. |
 | `Enter` | Open a selected group, attempt, or its evidence. |
-| `q`, `Esc` | Leave and restore the terminal. |
+| `Esc` | Go back to the Runs pane. |
+| `q` | Leave and restore the terminal. |
 
 **Overview** lists every task and arm with its attempt count, verifier
 rewards, terminal statuses, cost sources, and evidence health. Oracle and

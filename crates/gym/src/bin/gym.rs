@@ -187,6 +187,17 @@ fn main() {
     if command == "terminal-bench" {
         std::process::exit(terminal_bench_cli::run(args.collect()));
     }
+    if command == "runs" {
+        let args: Vec<String> = args.collect();
+        let mut out = std::io::stdout().lock();
+        match gym::runs::command(&args, &mut out) {
+            Ok(code) => std::process::exit(code),
+            Err(message) => {
+                eprintln!("{message}");
+                std::process::exit(2);
+            }
+        }
+    }
     if command == "coder" {
         std::process::exit(coder_cli::run(args.collect()));
     }
@@ -233,6 +244,7 @@ gym build    turn a caller's labelled JSONL into a suite and question set
 gym regress  compare a door with its own last recorded run
 gym admit    judge a frozen admission plan against recorded evidence and
              write the decision a registry activates
+gym runs     Terminal-Bench runs in plain words; `gym runs show <job>` reads one
 gym terminal-bench  inspect evidence or run the pinned Harbor harness
 gym coder policy    list, show, and diff Coder One policy manifests
 gym coder requirements  Coder One requirement maps from suites and episodes
