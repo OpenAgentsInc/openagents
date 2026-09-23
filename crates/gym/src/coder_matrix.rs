@@ -936,7 +936,25 @@ mod tests {
     fn the_retained_trials_reproduce_the_documented_oracles() {
         let traces = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../bench/terminal-bench/traces");
-        let records = Records::load(None, Some(&traces), None);
+        let mut records = Records::load(None, Some(&traces), None);
+        // The documented oracles cover the arms retained on 2026-09-22.
+        // Later arms legitimately move the oracle, so the reproduction
+        // pins the arm set it was documented over.
+        const DOCUMENTED: [&str; 10] = [
+            "claude-code-opus",
+            "codex-gpt-6-luna",
+            "coder-one-jevprobe-luna",
+            "coder-one-jevprobe2-luna",
+            "coder-one-jevprobe3-luna",
+            "coder-one-jevprobe-opus-lean-low",
+            "coder-one-jevprobe2-opus-lean-low",
+            "coder-one-jevprobe2-opus-lean-low-5m",
+            "coder-one-jevprobe3-opus-lean-low",
+            "coder-one-jevprobe-opus-lean",
+        ];
+        records
+            .attempts
+            .retain(|attempt| DOCUMENTED.contains(&attempt.arm.as_str()));
         let tasks: BTreeSet<String> = DEVELOPMENT.iter().map(|t| (*t).to_owned()).collect();
         let matrix = Matrix::from_records(&records, Params::default(), Some(&tasks));
         let cheapest = matrix.cheapest();
