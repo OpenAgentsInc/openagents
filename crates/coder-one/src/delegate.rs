@@ -1660,6 +1660,15 @@ impl Cli {
             // Bytecode the delegate's test runs leave behind is not part of
             // the change, and in issue mode the host would commit it.
             .env("PYTHONDONTWRITEBYTECODE", "1");
+        if self.agent == Agent::ClaudeCode {
+            // A signed-in Claude Code attaches the account's claude.ai
+            // connectors partway through a session, and their tool lists
+            // alone are about 115,000 tokens of prompt: on 2026-09-23 a
+            // resumed turn cost $0.74 with them and $0.077 without. No
+            // delegated run uses them. A policy's `env` can still override.
+            let (name, value) = crate::terminal::NO_CONNECTORS;
+            command.env(name, value);
+        }
         match &self.prompt_cache_ttl {
             Some(ttl) => command.env("CLAUDE_CODE_PROMPT_CACHE_TTL", ttl),
             None => command.env_remove("CLAUDE_CODE_PROMPT_CACHE_TTL"),

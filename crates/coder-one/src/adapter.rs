@@ -844,6 +844,32 @@ mod tests {
             .find(|action| action.capability == capability)
     }
 
+    #[test]
+    fn every_claude_code_launch_keeps_the_accounts_connectors_out() {
+        let dir = scratch("claude-connectors");
+        let connectors = |command: &std::process::Command| {
+            command
+                .get_envs()
+                .find(|(name, _)| *name == "ENABLE_CLAUDEAI_MCP_SERVERS")
+                .and_then(|(_, value)| value)
+                .map(|value| value.to_string_lossy().into_owned())
+        };
+        let claude = cli(Agent::ClaudeCode, &dir, &[]);
+        let binary = claude.binary.clone().unwrap();
+        let batch = claude.command(&binary, &dir.join("b"), &dir.join("s"));
+        let launch = Launch {
+            session: SessionArg::New(None),
+            steerable: true,
+        };
+        let live = claude.live_command(&binary, &launch);
+        assert_eq!(connectors(&batch).as_deref(), Some("false"));
+        assert_eq!(connectors(&live).as_deref(), Some("false"));
+        let codex = cli(Agent::Codex, &dir, &[]);
+        let binary = codex.binary.clone().unwrap();
+        assert_eq!(connectors(&codex.live_command(&binary, &launch)), None);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
     #[tokio::test]
     async fn claude_code_starts_under_the_hosts_session_id_and_is_observed_as_it_runs() {
         let dir = scratch("claude-observe");
