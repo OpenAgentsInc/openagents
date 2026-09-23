@@ -244,7 +244,7 @@ mod enforced {
     use std::process::Stdio;
     use std::time::Duration;
 
-    use coder_boundary::BACKEND;
+    use coder_boundary::{BACKEND, backend_path};
     use supervise::Ending;
     use supervise::blocking::{own_group, wait};
 
@@ -253,7 +253,8 @@ mod enforced {
     /// Whether this machine has a working backend. A machine without it
     /// cannot run these cases, which is not the same as the cases failing.
     fn backend() -> bool {
-        BACKEND.is_some_and(|path| Path::new(path).is_file())
+        BACKEND.is_some()
+            && Path::new(backend_path()).is_file()
             && Boundary::readonly().build().is_ok()
     }
 

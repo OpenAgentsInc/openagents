@@ -78,6 +78,29 @@ pub const SANDBOX_EXEC: &str = "/usr/bin/sandbox-exec";
 /// not the namespaces is [`Error::Inoperable`], not a boundary.
 pub const BUBBLEWRAP: &str = "/usr/bin/bwrap";
 
+/// Bubblewrap on NixOS, which installs system packages under the
+/// root-owned system profile instead of `/usr/bin`.
+pub const BUBBLEWRAP_NIXOS: &str = "/run/current-system/sw/bin/bwrap";
+
+/// The fixed, root-owned paths the Linux backend is taken from, in order.
+/// The boundary never searches `PATH`: a writable directory on the search
+/// path would let anything that can write there choose the sandbox.
+pub const BUBBLEWRAP_PATHS: [&str; 2] = [BUBBLEWRAP, BUBBLEWRAP_NIXOS];
+
+/// The backend binary this host would use: on Linux, the first of
+/// [`BUBBLEWRAP_PATHS`] that exists, else [`BUBBLEWRAP`] so the refusal
+/// names the conventional path.
+pub fn backend_path() -> &'static str {
+    if cfg!(target_os = "linux") {
+        BUBBLEWRAP_PATHS
+            .into_iter()
+            .find(|path| Path::new(path).is_file())
+            .unwrap_or(BUBBLEWRAP)
+    } else {
+        BACKEND.unwrap_or(SANDBOX_EXEC)
+    }
+}
+
 /// The backend this platform enforces with, or `None` where there is none.
 pub const BACKEND: Option<&str> = if cfg!(target_os = "macos") {
     Some(SANDBOX_EXEC)
@@ -183,7 +206,7 @@ impl Spec {
             protected: Vec::new(),
             sealed: Vec::new(),
             scratch_under: None,
-            backend: PathBuf::from(BACKEND.unwrap_or(SANDBOX_EXEC)),
+            backend: PathBuf::from(backend_path()),
         }
     }
 
@@ -525,14 +548,26 @@ impl Held {
 /// Whether the Linux backend can confine anything here, checked once per
 /// process. A `bwrap` binary on a host with user namespaces disabled
 /// fails at spawn rather than running unbounded, but a spec built over it
-/// would be a promise; asking `bwrap` to run `/bin/true` inside a
+/// would be a promise; asking `bwrap` to run `/bin/sh -c :` inside a
 /// read-only root settles the question before any boundary exists.
+/// `/bin/sh` is the one command every POSIX host has; `/bin/true` is
+/// absent on NixOS.
 fn operable(backend: &Path) -> Result<(), Error> {
     use std::sync::OnceLock;
     static PROBE: OnceLock<Result<(), String>> = OnceLock::new();
     let probe = PROBE.get_or_init(|| {
         let output = Command::new(backend)
-            .args(["--ro-bind", "/", "/", "--dev", "/dev", "--", "/bin/true"])
+            .args([
+                "--ro-bind",
+                "/",
+                "/",
+                "--dev",
+                "/dev",
+                "--",
+                "/bin/sh",
+                "-c",
+                ":",
+            ])
             .stdin(std::process::Stdio::null())
             .output()
             .map_err(|error| error.to_string())?;

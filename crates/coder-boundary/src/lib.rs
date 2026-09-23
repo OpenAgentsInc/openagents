@@ -23,5 +23,8 @@
 pub mod boundary;
 pub mod snapshot;
 
-pub use boundary::{BACKEND, BUBBLEWRAP, Boundary, Error, Held, SANDBOX_EXEC, Spec};
+pub use boundary::{
+    BACKEND, BUBBLEWRAP, BUBBLEWRAP_NIXOS, BUBBLEWRAP_PATHS, Boundary, Error, Held, SANDBOX_EXEC,
+    Spec, backend_path,
+};
 pub use snapshot::{Change, Fault, Limits, Snapshot, Verdict, compare};
