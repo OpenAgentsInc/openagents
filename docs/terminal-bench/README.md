@@ -1198,6 +1198,15 @@ Cutting time means fewer model turns, which the delegate arms deliver.
 
 ## Data problems
 
+- **21 Terminal-Bench 4.0 trials on 2026-09-23 ran into the Claude
+  subscription's usage limit** (13 `claude-code-opus`, 8 Coder One) while
+  several Opus 5.5 trials ran at xhigh in parallel, and were graded as if
+  the agent had finished. Their sessions ended with `api_error_status`
+  429 or a usage-limit message, so they measure the quota, not the agent.
+  19 are under `failed/` as `*-usage-limit-*` and rerun; the harness is
+  getting a distinct usage-limited outcome, a requeue, and a host-wide cap
+  on concurrent Claude trials.
+
 - **Ten Terminal-Bench 4.0 trials on 2026-09-23 died on a revoked Claude
   token** (four `claude-code-opus`, six Coder One). Refreshing the host's
   Claude login, by a refresh loop or by the operator's own Claude Code
