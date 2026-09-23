@@ -28,13 +28,23 @@ or absolute. The adapter reads it on the host and passes it inline as
 it and records the manifest and its digest. For the delegate arm the
 manifest also decides which CLI and version install, so the kwargs that
 would repeat it are refused when they disagree.
+
+By default the delegate CLI and a pinned Node come from prebuilt toolchain
+layers (``tbench.toolchain``): built once on the host, copied into each
+trial, and linked into ``/usr/local/bin``, with no package manager or
+network in the trial. ``toolchain=network`` keeps the network install, with
+Node pinned and at most ``install_concurrency`` installs at a time. The
+adapter writes ``toolchain-setup.json`` beside its logs with the mode, the
+cold or warm cache state, and the install phases.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import shlex
+import time
 from pathlib import Path, PurePosixPath
 from typing import Any, ClassVar
 
@@ -60,6 +70,13 @@ def load_policy(path: str) -> dict[str, Any]:
     if not isinstance(manifest, dict) or manifest.get("schema") != POLICY_SCHEMA:
         raise EpisodeContractError(f"policy {file} is not a {POLICY_SCHEMA} manifest")
     return manifest
+from tbench.toolchain import (
+    NODE_VERSION,
+    ToolchainError,
+    place_toolchain,
+    setup_record,
+    write_setup,
+)
 
 
 class CoderOne(CoderV05):
@@ -107,6 +124,19 @@ CODEX_HOME = PurePosixPath("/tmp/codex-home")
 CODEX_SECRETS = PurePosixPath("/tmp/codex-secrets")
 CODEX_BIN = PurePosixPath("/usr/local/bin/codex")
 _TRUTHY = ("1", "true", "yes", "on")
+TOOLCHAIN_MODES = ("prebuilt", "network")
+
+# Network installs share one guard per process: Harbor runs a job's
+# trials as tasks in one event loop, and eight concurrent bootstrap
+# downloads caused the 2026-09-22 setup timeouts.
+_INSTALL_GUARDS: dict[int, asyncio.Semaphore] = {}
+
+
+def _install_guard(limit: int) -> asyncio.Semaphore:
+    guard = _INSTALL_GUARDS.get(limit)
+    if guard is None:
+        guard = _INSTALL_GUARDS[limit] = asyncio.Semaphore(limit)
+    return guard
 
 
 def _version_tuple(text: str) -> tuple[int, ...] | None:
@@ -134,6 +164,9 @@ class CoderOneDelegate(CoderOne):
     - ``policy``: a policy manifest. It supplies the mode, the agent, the
       model, the pinned version, and the bounds above, so those kwargs
       must agree with it or be left out.
+    - ``toolchain``: ``prebuilt`` (the default) or ``network``.
+    - ``install_concurrency``: the most network installs at once, 2 by
+      default.
     """
 
     EPISODE_ENV: ClassVar[tuple[str, ...]] = CoderOne.EPISODE_ENV + (
@@ -183,6 +216,8 @@ class CoderOneDelegate(CoderOne):
         )
         self._delegate_timeout_sec = kwargs.pop("delegate_timeout_sec", None)
         self._explore_steps = kwargs.pop("explore_steps", None)
+        self._toolchain = kwargs.pop("toolchain", None) or "prebuilt"
+        self._install_concurrency = int(kwargs.pop("install_concurrency", None) or 2)
         self._claude_bin: str | None = None
         self._codex_bin: str | None = None
         policy = kwargs.get("policy")
@@ -233,6 +268,10 @@ class CoderOneDelegate(CoderOne):
                 f"coder-one-delegate needs delegate=always or delegate=auto, "
                 f"not {self._delegate!r}"
             )
+        if self._toolchain not in TOOLCHAIN_MODES:
+            raise EpisodeContractError(
+                f"toolchain must be prebuilt or network, not {self._toolchain!r}"
+            )
         if self._delegate_agent not in DELEGATE_AGENTS:
             raise EpisodeContractError(
                 f"delegate_agent must be claude-code or codex, not {self._delegate_agent!r}"
@@ -274,7 +313,7 @@ class CoderOneDelegate(CoderOne):
             '  export NVM_DIR="$HOME/.nvm" &&'
             '  \\. "$NVM_DIR/nvm.sh" || true &&'
             "  command -v nvm &>/dev/null || { echo 'Error: NVM failed to load' >&2; exit 1; } &&"
-            "  nvm install 22 && nvm alias default 22 && npm -v &&"
+            f"  nvm install {NODE_VERSION} && nvm alias default {NODE_VERSION} && npm -v &&"
             f"  npm install -g {spec};"
             " fi && "
             "codex --version"
@@ -299,13 +338,7 @@ class CoderOneDelegate(CoderOne):
             return Path.home() / ".codex" / "auth.json"
         return None
 
-    async def _install_codex(self, environment: BaseEnvironment) -> None:
-        auth = self.codex_auth_path()
-        if auth is None or not auth.is_file():
-            raise EpisodeContractError(
-                "the Codex delegate needs CODEX_AUTH_JSON_PATH or CODEX_FORCE_AUTH_JSON "
-                "naming an existing auth.json"
-            )
+    async def _install_codex_network(self, environment: BaseEnvironment) -> None:
         await self.ensure_system_dependencies(
             environment, ("curl", "bash", "nodejs", "npm", "ripgrep")
         )
@@ -328,6 +361,57 @@ class CoderOneDelegate(CoderOne):
                 " done"
             ),
         )
+
+    async def _install_toolchain(self, environment: BaseEnvironment) -> None:
+        """Place the delegate CLI from prebuilt layers, or install it."""
+        version = (
+            self._codex_version
+            if self._delegate_agent == "codex"
+            else self._claude_code_version
+        )
+        started = time.monotonic()
+        fallback = None
+        if self._toolchain == "prebuilt":
+            try:
+                record = await place_toolchain(
+                    self, environment, self._delegate_agent, version
+                )
+                write_setup(self.logs_dir, record)
+                return
+            except ToolchainError as exc:
+                fallback = (
+                    f"prebuilt layers unavailable, installed from the network: {exc}"
+                )
+        async with _install_guard(self._install_concurrency):
+            waited = time.monotonic()
+            if self._delegate_agent == "codex":
+                await self._install_codex_network(environment)
+            else:
+                await self._install_claude_network(environment)
+        finished = time.monotonic()
+        write_setup(
+            self.logs_dir,
+            setup_record(
+                mode="network",
+                platform=None,
+                layers=[],
+                phases_ms={
+                    "guard_wait": int((waited - started) * 1000),
+                    "network_install": int((finished - waited) * 1000),
+                },
+                versions={self._delegate_agent: version},
+                note=fallback,
+            ),
+        )
+
+    async def _install_codex(self, environment: BaseEnvironment) -> None:
+        auth = self.codex_auth_path()
+        if auth is None or not auth.is_file():
+            raise EpisodeContractError(
+                "the Codex delegate needs CODEX_AUTH_JSON_PATH or CODEX_FORCE_AUTH_JSON "
+                "naming an existing auth.json"
+            )
+        await self._install_toolchain(environment)
         found = await environment.exec(command=f"{CODEX_BIN} --version")
         words = (found.stdout or "").strip().split()
         if found.return_code != 0 or len(words) < 2:
@@ -358,16 +442,19 @@ class CoderOneDelegate(CoderOne):
             ),
         )
 
+    async def _install_claude_network(self, environment: BaseEnvironment) -> None:
+        await self.ensure_system_dependencies(
+            environment, ("curl", "bash", "nodejs", "npm", "procps")
+        )
+        await self.exec_as_agent(environment, command=self.claude_install_command())
+
     async def install(self, environment: BaseEnvironment) -> None:
         """Install the pinned delegate CLI, then Coder One and its doctor."""
         if self._delegate_agent == "codex":
             await self._install_codex(environment)
             await super().install(environment)
             return
-        await self.ensure_system_dependencies(
-            environment, ("curl", "bash", "nodejs", "npm", "procps")
-        )
-        await self.exec_as_agent(environment, command=self.claude_install_command())
+        await self._install_toolchain(environment)
         found = await environment.exec(command=self._CLAUDE_PATH_COMMAND)
         lines = (found.stdout or "").strip().splitlines()
         if found.return_code != 0 or len(lines) < 2:

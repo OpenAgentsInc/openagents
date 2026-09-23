@@ -411,14 +411,16 @@ impl App {
             ),
             format!("{} attempts; {} graded; reward mean {} over graded only", members.len(), rewarded, if rewarded == 0 { DASH.to_owned() } else { format!("{:.3}", sum / rewarded as f64) }),
             uncertainty,
-            "Trial                    reward status              agent/total       cost and source                  tokens in/out        evidence".to_owned(),
+            "Trial                    reward status              setup (cache)     agent/total       cost and source                  tokens in/out        evidence".to_owned(),
         ];
         for attempt in members {
             lines.push(format!(
-                "{:<24} {:>5}  {:<19} {:>7}/{:<7}  {:<32} {:>7}/{:<7} {}",
+                "{:<24} {:>5}  {:<19} {:>7} {:<9} {:>7}/{:<7}  {:<32} {:>7}/{:<7} {}",
                 clip(&attempt.trial, 24),
                 show::number(attempt.reward, 1),
                 clip(attempt.display_status(), 19),
+                ms(attempt.phases_ms[1]),
+                clip(&format!("({})", attempt.setup_cache_label()), 9),
                 ms(attempt.phases_ms[2]),
                 ms(attempt.phases_ms[4]),
                 clip(&cost(attempt), 32),
@@ -465,6 +467,28 @@ impl App {
                 lines.push(note.clone());
             }
         }
+        let setup_failures = members.iter().filter(|a| a.is_setup_failure()).count();
+        let mut setups = BTreeMap::<&str, Vec<u64>>::new();
+        for attempt in &members {
+            if let Some(value) = attempt.phases_ms[1] {
+                setups
+                    .entry(attempt.setup_cache_label())
+                    .or_default()
+                    .push(value);
+            }
+        }
+        lines.push(format!(
+            "Setup (Harbor agent_setup): {} · {setup_failures} setup failures beside {rewarded} graded. Agent is agent_execution; total is trial start to finish.",
+            if setups.is_empty() {
+                DASH.to_owned()
+            } else {
+                setups
+                    .iter()
+                    .map(|(cache, values)| format!("{cache} {}", spread_u64(values)))
+                    .collect::<Vec<_>>()
+                    .join(" · ")
+            }
+        ));
         let times: Vec<_> = fresh.iter().filter_map(|a| a.phases_ms[2]).collect();
         let costs: Vec<_> = fresh.iter().filter_map(|a| a.cost_usd).collect();
         lines.push(format!("Observed spread: agent time {} · cost {}. Missing measurements stay out of each range.", spread_u64(&times), spread_f64(&costs)));

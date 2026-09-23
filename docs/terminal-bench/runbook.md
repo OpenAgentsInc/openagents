@@ -159,16 +159,84 @@ gym coder policy list
 gym coder policy diff coder-one-jevprobe3-luna coder-one-jevprobe2-opus-lean-low-5m
 ```
 
-## Don't install too many agents at once
+## Install agents from prebuilt layers
 
-Harbor gives an agent 360 seconds to install. Each Claude Code arm
-downloads the CLI in its container, and with eight to sixteen trials
-installing at once, some installs pass the limit and the trial ends in
-`AgentSetupTimeoutError` before any inference. On 2026-09-22 this happened
-to 3 of 16 trials at sixteen at a time, and to 12 of 24 attempts when eight
-Claude Code arms started together. Run at most eight trials at a time, no
-more than about four of them Claude Code arms, and retry a setup timeout
-once after moving its job directory to `failed/`. A setup timeout is never a
+Before 2026-09-23, each trial installed its delegate CLI over the network:
+`apt-get install nodejs npm`, nvm, `nvm install 22`, then `npm install -g`
+or Claude Code's bootstrap download. Over v3 Luna's 24 trials, Harbor's
+`agent_setup` phase averaged 273 seconds, against 52.5 seconds of agent
+work. With eight to sixteen trials installing at once, some installs
+passed Harbor's 360-second limit and ended in `AgentSetupTimeoutError`
+before any inference: 3 of 16 trials at sixteen at a time, and 12 of 24
+attempts when eight Claude Code arms started together.
+
+The Coder One delegate arms now install from prebuilt toolchain layers by
+default. A layer is one finished install, built once on the host from
+pinned public downloads and cached under
+`~/.openagents/terminal-bench/toolchains/<key>/`:
+
+| Layer | Source | Check |
+| --- | --- | --- |
+| `node-22.23.2-<platform>` | The Node build `nvm install 22` resolved on 2026-09-22 | The sha256 pinned in `tbench/toolchain.py` |
+| `codex-<version>-<platform>` | `@openai/codex` and its platform package, laid out as `npm install -g` lays them out | The npm registry's sha512 integrity |
+| `claude-code-<version>-<platform>` | Claude Code's native binary | The release manifest's sha256 |
+
+The platform is `linux-x64` or `linux-arm64`, with a `-musl` suffix on a
+musl image. The layers depend on the task image only through the C
+library, so the platform is the whole image identity in the key. The
+Coder One artifact was already a host upload pinned by its sha256.
+
+Each trial copies its layers into `/opt/openagents/toolchain/<key>/` and
+links `node`, `npm`, `npx`, and `codex` or `claude` into `/usr/local/bin`.
+The trial runs no package manager and makes no network request to install
+anything. Layers hold public release files only. Each build scans its layer
+for your credential values and discards the layer if it finds one.
+
+Build the layers before a run so no trial pays the cold build:
+
+```sh
+uv run tbench toolchain build --executor codex --version 0.155.1
+uv run tbench toolchain build --executor claude-code --version 2.1.280
+uv run tbench toolchain list
+```
+
+Each adapter writes `agent/toolchain-setup.json` with the mode
+(`prebuilt` or `network`), the cache state (`warm` when every layer was
+reused, `cold` when a layer was built during the trial, `none` for a
+network install), each layer's key and tree digest, and the install
+phases. If no layer fits the image, such as a musl image for Codex, the
+adapter falls back to the network install and says why in `note`. To
+keep the network install, pass `--agent-kwarg toolchain=network`. It pins
+Node 22.23.2 and runs at most `install_concurrency` installs at a time
+(two by default) in each Harbor process.
+
+To use layers for Harbor's own Claude Code and Codex arms, set an arm's
+`harbor_import_path` to `tbench.prebuilt:PrebuiltClaudeCode` or
+`tbench.prebuilt:PrebuiltCodex` in place of `harbor_name`. The existing
+`claude-code-*` and `codex-*` arms keep Harbor's stock install, so their
+results stay comparable.
+
+A standalone check on 2026-09-23, with no trial and no container network
+(`--network none`), measured the toolchain install alone:
+
+| Executor | Cold, one container | Warm, eight containers at once |
+| --- | --- | --- |
+| Codex 0.155.1 with Node 22.23.2 | 11.8 s (10.6 s of it the host build) | 1.7 to 11.6 s |
+| Claude Code 2.1.280 with Node 22.23.2 | 5.9 s (5.0 s of it the host build) | 1.8 to 9.2 s |
+
+These times cover the toolchain only. Harbor's `agent_setup` phase also
+covers the Coder One artifact upload and the episode doctor, so compare
+trial setup times in the Gym, which labels each boundary. A screen at
+eight concurrent trials hasn't run yet.
+
+Harbor's `agent_setup` phase is what the Gym reports as setup:
+`gym terminal-bench compare` shows setup time by cache state beside agent
+and total time, counts setup failures beside the graded attempts, and
+prints which clock each number uses.
+
+With the network install, still run at most eight trials at a time, no
+more than about four of them Claude Code arms. Retry a setup timeout once
+after moving its job directory to `failed/`. A setup timeout is never a
 result.
 
 ## Name jobs so results don't collide
@@ -251,6 +319,7 @@ It copies each trial's full evidence closure into
 | `<trial>.episode/native/` | Other executors' native traces, such as `claude-code.txt`, `codex.txt`, and session JSONL |
 | `<trial>.episode/verifier/` | The reward, the CTRF report, and the verifier's per-test output (`test-stdout.txt`) |
 | `<trial>.episode/produced/` | Files Harbor collected from the task container |
+| `<trial>.episode/setup/toolchain-setup.json` | How the agent was installed: prebuilt or network, cold or warm, and the install phases |
 | `<trial>.episode/harbor-result.json` | Harbor's result, trimmed to phase timings, the verifier result, the exception, and `agent_result`'s usage and cost |
 | `<trial>.episode/tbench-attempt.json`, `tbench-manifest.json` | The harness's attempt record and episode manifest |
 | `<trial>.episode/retention.json` | The retention record: each copied file and its digest, each manifest digest checked, each missing reference with its reason, how the raw ATIF relates to the normalized one, and the credential scan |

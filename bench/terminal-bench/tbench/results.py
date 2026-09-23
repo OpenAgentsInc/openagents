@@ -273,6 +273,57 @@ def image_state(
     return state
 
 
+SETUP_BOUNDARIES = {
+    "agent_setup_ms": (
+        "Harbor's agent_setup phase: the toolchain install, the artifact "
+        "upload, and the episode doctor"
+    ),
+    "install_ms": (
+        "the toolchain alone, from the adapter's toolchain-setup.json"
+    ),
+    "agent_execution_ms": "Harbor's agent_execution phase",
+    "total_ms": "the trial's started_at to finished_at",
+}
+
+
+def setup_summary(
+    trial_dir: Path, timing: dict[str, Any], terminal_status: str
+) -> dict[str, Any]:
+    """How the agent was installed, cold or warm, and what it cost.
+
+    The mode and cache state come from the adapter's
+    ``agent/toolchain-setup.json``; an agent that writes none (a stock
+    Harbor agent, or an older run) is ``unknown``, never assumed warm.
+    A setup failure stays beside the graded attempts rather than
+    disappearing from the denominator.
+    """
+    summary: dict[str, Any] = {
+        "mode": "unknown",
+        "cache": "unknown",
+        "install_ms": None,
+        "agent_setup_ms": timing.get("agent_setup_ms"),
+        "layers": [],
+        "failed": terminal_status in ("install_failure", "setup_failure"),
+        "boundaries": SETUP_BOUNDARIES,
+    }
+    path = trial_dir / "agent" / "toolchain-setup.json"
+    try:
+        record = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return summary
+    if not isinstance(record, dict):
+        return summary
+    summary["mode"] = record.get("mode") or "unknown"
+    summary["cache"] = record.get("cache") or "unknown"
+    summary["install_ms"] = record.get("install_ms")
+    summary["layers"] = [
+        layer.get("key") for layer in record.get("layers") or [] if isinstance(layer, dict)
+    ]
+    if record.get("note"):
+        summary["note"] = record["note"]
+    return summary
+
+
 def attempt_record(
     trial_result: dict[str, Any],
     *,
@@ -387,6 +438,7 @@ def attempt_record(
             ),
         },
         "timing": timing,
+        "setup": setup_summary(trial_dir, timing, _terminal_status(trial_result)),
         "environment": image_state(trial_result, trial_dir),
         "usage": usage,
         "cost": {

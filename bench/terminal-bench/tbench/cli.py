@@ -277,6 +277,38 @@ def cmd_retain(args: argparse.Namespace) -> int:
     return 1 if errors else 0
 
 
+def cmd_toolchain(args: argparse.Namespace) -> int:
+    """Build or list the prebuilt toolchain layers outside any trial."""
+    from .toolchain import (
+        ToolchainError,
+        cache_root,
+        ensure_layer,
+        layers_for,
+    )
+
+    if args.toolchain_command == "list":
+        root = cache_root()
+        for manifest in sorted(root.glob("*/layer.json")):
+            layer = json.loads(manifest.read_text())
+            print(
+                f"{layer['key']:<40} {layer['bytes']:>12} bytes  "
+                f"{layer['tree_sha256'][:12]}  built {layer['built_at']}"
+            )
+        return 0
+    try:
+        for spec in layers_for(args.executor, args.version, args.platform):
+            layer = ensure_layer(spec)
+            print(
+                f"{spec.key}: {layer.cache}, {layer.build_ms} ms, "
+                f"{layer.manifest['bytes']} bytes, "
+                f"tree {layer.manifest['tree_sha256'][:12]}"
+            )
+    except ToolchainError as exc:
+        print(f"toolchain: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
 def cmd_materialize(args: argparse.Namespace) -> int:
     """Write the resolved job config without starting Harbor."""
     try:
@@ -394,6 +426,27 @@ def build_parser() -> argparse.ArgumentParser:
         help="copy to scratch and scan without writing",
     )
     retain_parser.set_defaults(func=cmd_retain)
+
+    toolchain_parser = sub.add_parser(
+        "toolchain", help="build or list prebuilt agent toolchain layers"
+    )
+    toolchain_sub = toolchain_parser.add_subparsers(
+        dest="toolchain_command", required=True
+    )
+    build = toolchain_sub.add_parser(
+        "build", help="build the layers one executor needs, or reuse them"
+    )
+    build.add_argument(
+        "--executor", required=True, choices=("codex", "claude-code")
+    )
+    build.add_argument("--version", required=True, help="the pinned CLI version")
+    build.add_argument(
+        "--platform",
+        default="linux-x64",
+        help="linux-x64, linux-arm64, or a -musl variant",
+    )
+    toolchain_sub.add_parser("list", help="list the cached layers")
+    toolchain_parser.set_defaults(func=cmd_toolchain)
 
     cmp_parser = sub.add_parser(
         "compare", help="fold attempts into a comparison report"

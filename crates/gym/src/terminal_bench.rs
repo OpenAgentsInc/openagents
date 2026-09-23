@@ -65,6 +65,12 @@ pub struct Attempt {
     pub status: String,
     pub started_at: Option<String>,
     pub phases_ms: [Option<u64>; 5],
+    /// How the agent was installed: `prebuilt`, `network`, or unknown.
+    pub setup_mode: Option<String>,
+    /// Whether the toolchain came from a warm cache, a cold build, or none.
+    pub setup_cache: Option<String>,
+    /// The toolchain install alone, inside Harbor's agent_setup phase.
+    pub setup_install_ms: Option<u64>,
     pub input_tokens: Option<u64>,
     pub cache_tokens: Option<u64>,
     pub output_tokens: Option<u64>,
@@ -150,6 +156,16 @@ impl Attempt {
             .iter()
             .filter(|e| e.state == EvidenceState::Missing)
             .collect()
+    }
+
+    /// Whether the attempt ended in setup rather than in the task.
+    pub fn is_setup_failure(&self) -> bool {
+        matches!(self.status.as_str(), "install_failure" | "setup_failure")
+    }
+
+    /// The setup cache state, for grouping setup times.
+    pub fn setup_cache_label(&self) -> &str {
+        self.setup_cache.as_deref().unwrap_or("unknown")
     }
 
     pub fn display_status(&self) -> &str {
@@ -513,6 +529,7 @@ fn read_traces(root: &Path, records: &mut Records, seen: &mut BTreeSet<String>) 
                     };
                     attach_usage(&mut attempt, &usage, records);
                     attach_retention(&mut attempt, &job, &episode, records);
+                    attach_setup(&mut attempt, &episode.join("setup/toolchain-setup.json"));
                     attach_verifier(&mut attempt, &episode.join("verifier/ctrf.json"));
                     apply_manual_price(&mut attempt);
                     records.attempts.push(attempt);
@@ -588,6 +605,9 @@ fn parse_attempt(
             .pointer(&format!("/timing/{field}"))
             .and_then(Value::as_u64)
     });
+    attempt.setup_mode = string(value, "/setup/mode");
+    attempt.setup_cache = string(value, "/setup/cache");
+    attempt.setup_install_ms = value.pointer("/setup/install_ms").and_then(Value::as_u64);
     attempt.input_tokens = value.pointer("/usage/input_tokens").and_then(Value::as_u64);
     attempt.cache_tokens = value.pointer("/usage/cache_tokens").and_then(Value::as_u64);
     attempt.output_tokens = value
@@ -667,6 +687,9 @@ fn empty_attempt(source: &str, job: &str, trial: &str) -> Attempt {
         status: "unknown".to_owned(),
         started_at: None,
         phases_ms: [None; 5],
+        setup_mode: None,
+        setup_cache: None,
+        setup_install_ms: None,
         input_tokens: None,
         cache_tokens: None,
         output_tokens: None,
@@ -986,6 +1009,16 @@ fn attach_retention(attempt: &mut Attempt, job: &Path, episode: &Path, records: 
     if let Some(conversion) = string(&value, "/atif/conversion") {
         attempt.notes.push(format!("ATIF: {conversion}"));
     }
+}
+
+/// Read the adapter's toolchain setup record kept with a retained trace.
+fn attach_setup(attempt: &mut Attempt, path: &Path) {
+    let Ok(value) = read_json(path) else {
+        return;
+    };
+    attempt.setup_mode = string(&value, "/mode");
+    attempt.setup_cache = string(&value, "/cache");
+    attempt.setup_install_ms = value.pointer("/install_ms").and_then(Value::as_u64);
 }
 
 fn attach_usage(attempt: &mut Attempt, path: &Path, records: &mut Records) {

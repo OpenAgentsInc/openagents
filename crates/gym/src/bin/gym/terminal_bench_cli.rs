@@ -281,6 +281,13 @@ fn attempt_value(attempt: &Attempt) -> Value {
             "verifier": attempt.phases_ms[3],
             "total": attempt.phases_ms[4],
         },
+        "setup": {
+            "mode": attempt.setup_mode,
+            "cache": attempt.setup_cache,
+            "install_ms": attempt.setup_install_ms,
+            "agent_setup_ms": attempt.phases_ms[1],
+            "failed": attempt.is_setup_failure(),
+        },
         "usage": {
             "input_tokens": attempt.input_tokens,
             "cache_tokens": attempt.cache_tokens,
@@ -367,12 +374,47 @@ fn comparisons(records: &Records, task: Option<&str>, arm: Option<&str>) -> Valu
                 "interval": interval,
                 "development_observation": true,
                 "agent_time_ms_range": range_u64(&fresh.iter().filter_map(|attempt| attempt.phases_ms[2]).collect::<Vec<_>>()),
+                "total_time_ms_range": range_u64(&fresh.iter().filter_map(|attempt| attempt.phases_ms[4]).collect::<Vec<_>>()),
+                "setup_ms_range": setup_ranges(&members),
+                "setup_failures": members.iter().filter(|attempt| attempt.is_setup_failure()).count(),
                 "cost_usd_range": range_f64(&fresh.iter().filter_map(|attempt| attempt.cost_usd).collect::<Vec<_>>()),
                 "attempts": members.iter().map(|attempt| attempt_value(attempt)).collect::<Vec<_>>(),
             })
         })
         .collect::<Vec<_>>();
-    json!({"groups":groups})
+    json!({"groups":groups,"time_boundaries":TIME_BOUNDARIES})
+}
+
+/// Which clock each reported time uses.
+const TIME_BOUNDARIES: [(&str, &str); 4] = [
+    (
+        "setup",
+        "Harbor's agent_setup phase: toolchain install, artifact upload, and episode doctor",
+    ),
+    (
+        "install",
+        "the toolchain alone, from the adapter's toolchain-setup.json",
+    ),
+    ("agent", "Harbor's agent_execution phase"),
+    ("total", "trial started_at to finished_at"),
+];
+
+/// Harbor agent_setup time per cache state, so cold and warm never pool.
+fn setup_ranges(members: &[&Attempt]) -> Value {
+    let mut by_cache = std::collections::BTreeMap::<&str, Vec<u64>>::new();
+    for attempt in members {
+        if let Some(ms) = attempt.phases_ms[1] {
+            by_cache
+                .entry(attempt.setup_cache_label())
+                .or_default()
+                .push(ms);
+        }
+    }
+    by_cache
+        .into_iter()
+        .map(|(cache, values)| (cache.to_owned(), json!(range_u64(&values))))
+        .collect::<serde_json::Map<_, _>>()
+        .into()
 }
 
 fn range_u64(values: &[u64]) -> Option<[u64; 2]> {
@@ -513,18 +555,37 @@ fn render_text(
                 }
                 writeln!(
                     out,
-                    "  Observed fresh spread: agent time {} ms · cost {} USD",
+                    "  Observed fresh spread: agent time {} ms · total {} ms · cost {} USD",
                     range_text(&group["agent_time_ms_range"]),
+                    range_text(&group["total_time_ms_range"]),
                     range_text(&group["cost_usd_range"])
+                )?;
+                let setup = group["setup_ms_range"]
+                    .as_object()
+                    .map(|ranges| {
+                        ranges
+                            .iter()
+                            .map(|(cache, range)| format!("{cache} {} ms", range_text(range)))
+                            .collect::<Vec<_>>()
+                            .join(" · ")
+                    })
+                    .filter(|text| !text.is_empty())
+                    .unwrap_or_else(|| "—".to_owned());
+                writeln!(
+                    out,
+                    "  Setup (agent_setup phase): {setup} · {} setup failures beside {} graded",
+                    group["setup_failures"], group["graded_denominator"]
                 )?;
                 for attempt in group["attempts"].as_array().into_iter().flatten() {
                     writeln!(
                         out,
-                        "  {} / {} · reward {} · {} · agent/total {} / {} ms · cost {} ({}) · tokens {}/{} ({}) · {}",
+                        "  {} / {} · reward {} · {} · setup {} ms ({}) · agent/total {} / {} ms · cost {} ({}) · tokens {}/{} ({}) · {}",
                         attempt["job"].as_str().unwrap_or("?"),
                         attempt["trial"].as_str().unwrap_or("?"),
                         show(&attempt["reward"]),
                         attempt["display_status"].as_str().unwrap_or("?"),
+                        show(&attempt["setup"]["agent_setup_ms"]),
+                        attempt["setup"]["cache"].as_str().unwrap_or("unknown"),
                         show(&attempt["phases_ms"]["agent_execution"]),
                         show(&attempt["phases_ms"]["total"]),
                         show(&attempt["cost"]["amount_usd"]),
@@ -533,6 +594,16 @@ fn render_text(
                         show(&attempt["usage"]["output_tokens"]),
                         attempt["usage"]["coverage"].as_str().unwrap_or("?"),
                         attempt["evidence_health"].as_str().unwrap_or("?")
+                    )?;
+                }
+            }
+            if let Some(boundaries) = value["time_boundaries"].as_array() {
+                for pair in boundaries {
+                    writeln!(
+                        out,
+                        "Time boundary: {} = {}",
+                        show(&pair[0]),
+                        show(&pair[1])
                     )?;
                 }
             }
@@ -796,6 +867,73 @@ mod tests {
             args[1] = "missing".to_owned();
             assert!(execute(&args, &mut Vec::new(), &mut Vec::new()).is_err());
         }
+    }
+
+    #[test]
+    fn compare_reports_setup_by_cache_state_and_setup_failures() {
+        let temp = tempfile::tempdir().unwrap();
+        let job = temp.path().join("extended--coder-one-x--task");
+        std::fs::create_dir_all(job.join("tbench/attempts")).unwrap();
+        for (trial, status, cache, setup_ms) in [
+            ("task__a", "completed", Some("cold"), 70_000),
+            ("task__b", "completed", Some("warm"), 9_000),
+            ("task__c", "completed", Some("warm"), 12_000),
+            ("task__d", "install_failure", None, 360_000),
+        ] {
+            let record = json!({
+                "schema": "openagents.tbench.attempt.v1",
+                "attempt": {"job": "extended--coder-one-x--task", "trial": trial, "arm": "coder-one-x", "kind": "fresh"},
+                "task": {"name": "terminal-bench/task"},
+                "outcome": {"reward": if status == "completed" { json!(1.0) } else { Value::Null }, "terminal_status": status},
+                "timing": {"agent_setup_ms": setup_ms, "agent_execution_ms": 30_000, "total_ms": setup_ms + 40_000},
+                "setup": {"mode": cache.map(|_| "prebuilt"), "cache": cache, "install_ms": 4_000},
+            });
+            std::fs::write(
+                job.join(format!("tbench/attempts/{trial}.json")),
+                serde_json::to_vec(&record).unwrap(),
+            )
+            .unwrap();
+        }
+        let jobs = temp.path().to_str().unwrap();
+        let args = strings(&[
+            "compare",
+            "--jobs-dir",
+            jobs,
+            "--no-traces",
+            "--no-samples",
+            "--json",
+        ]);
+        let mut output = Vec::new();
+        assert_eq!(execute(&args, &mut output, &mut Vec::new()).unwrap(), 0);
+        let value: Value = serde_json::from_slice(&output).unwrap();
+        let group = &value["data"]["groups"][0];
+        assert_eq!(group["setup_failures"], 1);
+        assert_eq!(group["graded_denominator"], 3);
+        assert_eq!(group["setup_ms_range"]["warm"], json!([9_000, 12_000]));
+        assert_eq!(group["setup_ms_range"]["cold"], json!([70_000, 70_000]));
+        assert_eq!(
+            group["setup_ms_range"]["unknown"],
+            json!([360_000, 360_000])
+        );
+        assert_eq!(group["attempts"][1]["setup"]["cache"], "warm");
+        assert!(
+            value["data"]["time_boundaries"][0][1]
+                .as_str()
+                .unwrap()
+                .contains("agent_setup")
+        );
+        let mut text = Vec::new();
+        execute(&args[..args.len() - 1], &mut text, &mut Vec::new()).unwrap();
+        let text = String::from_utf8(text).unwrap();
+        assert!(
+            text.contains("Setup (agent_setup phase): cold 70000 to 70000 ms · unknown 360000 to 360000 ms · warm 9000 to 12000 ms · 1 setup failures beside 3 graded"),
+            "{text}"
+        );
+        assert!(text.contains("setup 9000 ms (warm)"), "{text}");
+        assert!(
+            text.contains("Time boundary: agent = Harbor's agent_execution phase"),
+            "{text}"
+        );
     }
 
     #[test]

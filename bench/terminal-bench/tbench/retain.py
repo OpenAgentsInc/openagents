@@ -320,6 +320,9 @@ def plan_trial(trial_dir: Path) -> tuple[_Plan, dict[str, Any]]:
                 )
                 native += 1
     context["native"] = native
+    setup = agent / "toolchain-setup.json"
+    if setup.is_file():
+        plan.add("setup record", setup, "setup/toolchain-setup.json")
 
     verifier = trial_dir / "verifier"
     if verifier.is_dir():

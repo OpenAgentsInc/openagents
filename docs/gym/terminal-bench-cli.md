@@ -16,7 +16,7 @@ replace it with `cargo run -p gym --bin gym --`.
 | Command | Result |
 | --- | --- |
 | `overview` | Sources, status and usage counts, controls, latest time, report warnings, and each task and arm group. |
-| `compare [--task ID] [--arm ID]` | Rewards, statuses, denominators, timing, usage, cost source, evidence health, and member identities for comparable groups. |
+| `compare [--task ID] [--arm ID]` | Rewards, statuses, denominators, timing, usage, cost source, evidence health, and member identities for comparable groups. Setup time is reported by cache state (`cold`, `warm`, `none`, or `unknown`) beside agent and total time, with setup failures counted beside the graded attempts and each time boundary named. |
 | `attempt JOB TRIAL` | One attempt's pins, model, reward, status, timing, usage, component costs, call counts, and notes. |
 | `evidence JOB TRIAL` | Each retained path and its digest or resolution state. |
 | `evidence --missing` | Every attempt with a missing stream, artifact, or other referenced file, and why each is missing. |
