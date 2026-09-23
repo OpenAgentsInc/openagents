@@ -1,0 +1,101 @@
+{
+  "definition": {
+    "v": 1,
+    "requires": [],
+    "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/review-runs",
+    "summary": "Answers a question about Terminal-Bench runs from the Gym's records, with checked citations.",
+    "input": {
+      "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+      "size": 17,
+      "media_type": "application/schema+json"
+    },
+    "output": {
+      "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+      "size": 17,
+      "media_type": "application/schema+json"
+    },
+    "steps": [
+      {
+        "name": "runs",
+        "kind": "query",
+        "target": {
+          "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/gym-runs",
+          "artifact": {
+            "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+            "size": 17,
+            "media_type": "application/octet-stream"
+          }
+        },
+        "after": [],
+        "input": {
+          "from": "input",
+          "pointer": ""
+        },
+        "output": {
+          "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "size": 17,
+          "media_type": "application/schema+json"
+        },
+        "bounds": {},
+        "on_error": "stop"
+      },
+      {
+        "name": "answer",
+        "kind": "delegate",
+        "target": {
+          "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/coder-one-ask",
+          "artifact": {
+            "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+            "size": 17,
+            "media_type": "application/octet-stream"
+          }
+        },
+        "after": [
+          "runs"
+        ],
+        "input": {
+          "from": "input",
+          "pointer": ""
+        },
+        "output": {
+          "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "size": 17,
+          "media_type": "application/schema+json"
+        },
+        "bounds": {},
+        "on_error": "stop"
+      }
+    ],
+    "result": {
+      "from": "step:answer",
+      "pointer": "/value"
+    },
+    "bounds": {}
+  },
+  "binding": {
+    "name": "Review runs with Coder One",
+    "inputs": {
+      "question": "string"
+    },
+    "outputs": {
+      "answer": "string"
+    },
+    "steps": {
+      "runs": {
+        "source": "gym-runs",
+        "bounds": {
+          "max_results": 1,
+          "on_overflow": "refuse"
+        }
+      },
+      "answer": {
+        "executor": "coder-one-ask",
+        "bounds": {
+          "concurrent_max": 1,
+          "isolation": "directory",
+          "minutes": 10
+        }
+      }
+    }
+  }
+}

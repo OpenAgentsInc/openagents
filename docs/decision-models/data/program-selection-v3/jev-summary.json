@@ -1,0 +1,170 @@
+{
+  "suite_digest": "7f8cdfb93b439643749e77b29ddbd77be17ceddb55d046213a395787f86a88df",
+  "question_digest": "796b4ab95576819330b524c9d6c3a76ccf19c6b260318d50f45dc19d79bbc4fe",
+  "door_identity": {
+    "model": "jev-latest",
+    "verified": false
+  },
+  "locked_scored": 0,
+  "groups": {
+    "real": {
+      "expected": 32,
+      "answered": 32,
+      "refused": 0,
+      "harness_missing": 0,
+      "correct": 29,
+      "negative": 31,
+      "positive": 1,
+      "spurious": 3,
+      "missed": 0,
+      "wrong_program": 0,
+      "confident_errors": 0,
+      "accuracy_answered": 0.90625,
+      "top_probability_brier": 0.042509375,
+      "constants": {
+        "none": 31,
+        "answer-question": 0,
+        "burn-down": 0,
+        "delegate-fan-out": 1,
+        "review-runs": 0
+      }
+    },
+    "authored": {
+      "expected": 46,
+      "answered": 46,
+      "refused": 0,
+      "harness_missing": 0,
+      "correct": 36,
+      "negative": 14,
+      "positive": 32,
+      "spurious": 3,
+      "missed": 3,
+      "wrong_program": 4,
+      "confident_errors": 0,
+      "accuracy_answered": 0.782608695652174,
+      "top_probability_brier": 0.1352,
+      "constants": {
+        "none": 14,
+        "answer-question": 9,
+        "burn-down": 6,
+        "delegate-fan-out": 11,
+        "review-runs": 6
+      }
+    },
+    "all": {
+      "expected": 78,
+      "answered": 78,
+      "refused": 0,
+      "harness_missing": 0,
+      "correct": 65,
+      "negative": 45,
+      "positive": 33,
+      "spurious": 6,
+      "missed": 3,
+      "wrong_program": 4,
+      "confident_errors": 0,
+      "accuracy_answered": 0.8333333333333334,
+      "top_probability_brier": 0.09717307692307692,
+      "constants": {
+        "none": 45,
+        "answer-question": 9,
+        "burn-down": 6,
+        "delegate-fan-out": 12,
+        "review-runs": 6
+      }
+    }
+  },
+  "errors": [
+    {
+      "item": "turn/1d845d65#26",
+      "truth": "none",
+      "selected": "answer-question",
+      "confidence": 0.56,
+      "kind": "spurious"
+    },
+    {
+      "item": "turn/1d845d65#27",
+      "truth": "none",
+      "selected": "answer-question",
+      "confidence": 0.61,
+      "kind": "spurious"
+    },
+    {
+      "item": "turn/1d845d65#3",
+      "truth": "none",
+      "selected": "delegate-fan-out",
+      "confidence": 0.43,
+      "kind": "spurious"
+    },
+    {
+      "item": "authored/answer-one-question",
+      "truth": "answer-question",
+      "selected": "none",
+      "confidence": 0.48,
+      "kind": "missed"
+    },
+    {
+      "item": "authored/answer-rounds-max",
+      "truth": "answer-question",
+      "selected": "delegate-fan-out",
+      "confidence": 0.49,
+      "kind": "wrong_program"
+    },
+    {
+      "item": "authored-v2/cal-answer-bound",
+      "truth": "answer-question",
+      "selected": "delegate-fan-out",
+      "confidence": 0.72,
+      "kind": "wrong_program"
+    },
+    {
+      "item": "authored-v2/cal-none-question",
+      "truth": "none",
+      "selected": "answer-question",
+      "confidence": 0.83,
+      "kind": "spurious"
+    },
+    {
+      "item": "authored-v2/dev-none-overlap",
+      "truth": "none",
+      "selected": "answer-question",
+      "confidence": 0.84,
+      "kind": "spurious"
+    },
+    {
+      "item": "authored-v3/cal-runs-why-fail",
+      "truth": "review-runs",
+      "selected": "answer-question",
+      "confidence": 0.49,
+      "kind": "wrong_program"
+    },
+    {
+      "item": "authored-v3/dev-runs-output-paths",
+      "truth": "review-runs",
+      "selected": "none",
+      "confidence": 0.68,
+      "kind": "missed"
+    },
+    {
+      "item": "authored-v3/dev-runs-rank",
+      "truth": "review-runs",
+      "selected": "answer-question",
+      "confidence": 0.45,
+      "kind": "wrong_program"
+    },
+    {
+      "item": "authored-v3/dev-runs-compare",
+      "truth": "review-runs",
+      "selected": "none",
+      "confidence": 0.54,
+      "kind": "missed"
+    },
+    {
+      "item": "authored-v3/dev-none-code",
+      "truth": "none",
+      "selected": "answer-question",
+      "confidence": 0.78,
+      "kind": "spurious"
+    }
+  ]
+}

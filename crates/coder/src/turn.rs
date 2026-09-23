@@ -277,8 +277,17 @@ pub async fn run(
 /// That is the same distinction `Halt` draws, and a caller reading the
 /// exit code should not have to read the summary to tell them apart.
 fn ran(run: Run) -> Finished {
+    // A program that handed one piece of work to one executor, such as
+    // `review-runs` or `answer-question`, answered with what that executor
+    // said: the reply leads with it, and the run's summary follows.
+    let reply = match (run.finished(), run.delegations.as_slice()) {
+        (true, [only]) if only.answered() && !only.answer().trim().is_empty() => {
+            format!("{}\n\n{}", only.answer().trim(), run.summary())
+        }
+        _ => run.summary(),
+    };
     Finished {
-        reply: run.summary(),
+        reply,
         usage: None,
         cost_usd: None,
         route: None,

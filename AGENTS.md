@@ -207,7 +207,7 @@ uses, and marks which are implemented and which are only specified.
   `docs/decision-models/measurements/2026-09-19-program-selection.md` is that question's
   baseline, headroom, and error rates, counted apart because a missed
   program costs a retry and a spurious one runs a program nobody asked for.
-  `docs/programs.md` covers all five. The crate's second binary,
+  `docs/programs.md` covers all six. The crate's second binary,
   `coder-worker`, is the other end of the relay door: it answers NIP-CJ
   job requests from a relay through an Open Responses door.
   `docs/coder/measurements/relay-transport.md` is the measured proof that the two ends

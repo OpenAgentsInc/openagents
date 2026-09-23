@@ -1,0 +1,59 @@
+{
+  "definition": {
+    "v": 1,
+    "requires": [],
+    "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/gym",
+    "profile": "adapter",
+    "summary": "Approves the Gym's read-only gym binary for the host's command sources. It is not a delegated executor.",
+    "input": {
+      "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+      "size": 17,
+      "media_type": "application/schema+json"
+    },
+    "output": {
+      "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+      "size": 17,
+      "media_type": "application/schema+json"
+    },
+    "effects": {
+      "reads": [
+        "gym"
+      ],
+      "writes": [],
+      "network": [],
+      "process": true,
+      "delegates": false,
+      "spend": false
+    },
+    "minimum": {},
+    "support": {
+      "bounds": {},
+      "cancellation": "host_terminated",
+      "idempotency": "pure",
+      "evidence": []
+    },
+    "binding_contract": {
+      "interface": "gym.read.v1",
+      "transport": "subprocess",
+      "operations": [
+        "runs"
+      ]
+    }
+  },
+  "binding": {
+    "name": "Gym reads",
+    "detect": {
+      "binary": "gym",
+      "version": [
+        "gym",
+        "--version"
+      ]
+    },
+    "sees_repository": false,
+    "concurrent_max": 1,
+    "cost": "local",
+    "claims_not_enforced": [
+      "budget_cents"
+    ]
+  }
+}

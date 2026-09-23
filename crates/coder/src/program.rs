@@ -281,6 +281,27 @@ impl Program {
                 }
                 _ => {}
             }
+            // A `delegate` step may name the capability that does its
+            // work, by slug: the program says which executor answers,
+            // never how to run it. No other step hands work over.
+            match (step.rest.get("executor"), step.kind) {
+                (Some(executor), Kind::Delegate) => {
+                    if !executor.as_str().is_some_and(is_slug) {
+                        return Err(format!(
+                            "delegate step {:?} names executor {executor}, which is not a capability slug",
+                            step.name
+                        ));
+                    }
+                }
+                (Some(_), kind) => {
+                    return Err(format!(
+                        "step {:?} is a {} step and names an executor, which only a delegate step hands work to",
+                        step.name,
+                        kind.word()
+                    ));
+                }
+                (None, _) => {}
+            }
             if step.kind == Kind::Program && step.program.is_none() {
                 return Err(format!("program step {:?} names no program", step.name));
             }
@@ -289,6 +310,17 @@ impl Program {
             }
         }
         Ok(())
+    }
+
+    /// The capability a `delegate` step names to do its work, when one
+    /// does. A program that names one runs its delegation there whatever
+    /// executor the session would otherwise choose.
+    #[must_use]
+    pub fn executor(&self) -> Option<&str> {
+        self.steps
+            .iter()
+            .filter(|step| step.kind == Kind::Delegate)
+            .find_map(|step| step.rest.get("executor").and_then(Value::as_str))
     }
 
     /// The step names, in order.
@@ -644,7 +676,7 @@ mod tests {
     }
 
     #[test]
-    fn the_registry_lists_the_five_programs_the_repository_carries() {
+    fn the_registry_lists_the_six_programs_the_repository_carries() {
         let registry = repository_programs();
         assert!(registry.refused().is_empty(), "{:?}", registry.refused());
         let mut slugs = registry.slugs();
@@ -656,6 +688,7 @@ mod tests {
                 "burn-down",
                 "delegate-fan-out",
                 "review-changes",
+                "review-runs",
                 "run-suite"
             ]
         );
@@ -672,6 +705,27 @@ mod tests {
             ["answer"]
         );
         assert_eq!(registry.get("run-suite").unwrap().step_names(), ["score"]);
+        // `review-runs` reads the Gym through a source and hands the
+        // question to the one executor it names.
+        let review = registry.get("review-runs").unwrap();
+        assert_eq!(review.step_names(), ["runs", "answer"]);
+        assert_eq!(review.steps[0].source.as_deref(), Some("gym-runs"));
+        assert_eq!(review.executor(), Some("coder-one-ask"));
+        assert_eq!(registry.get("answer-question").unwrap().executor(), None);
+    }
+
+    #[test]
+    fn only_a_delegate_step_names_an_executor() {
+        let program = |kind: &str, executor: &str| {
+            format!(
+                r#"{{"v": 1, "slug": "p", "steps": [{{"name": "s", "kind": "{kind}", "executor": "{executor}"}}]}}"#
+            )
+        };
+        assert!(Program::parse(program("delegate", "coder-one-ask").as_bytes()).is_ok());
+        let error = Program::parse(program("query", "coder-one-ask").as_bytes()).unwrap_err();
+        assert!(error.contains("only a delegate step"), "{error}");
+        let error = Program::parse(program("delegate", "Not A Slug").as_bytes()).unwrap_err();
+        assert!(error.contains("not a capability slug"), "{error}");
     }
 
     #[test]
@@ -695,7 +749,7 @@ mod tests {
             call.extra["programs"]["delegate-fan-out"]["steps"],
             json!(["select", "independence", "admit", "fan_out", "accept"])
         );
-        assert!(call.output.starts_with("5 programs: "));
+        assert!(call.output.starts_with("6 programs: "));
     }
 
     #[test]

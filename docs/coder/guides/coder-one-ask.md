@@ -120,6 +120,33 @@ went over.
 | `--no-jev`, `--jev-recorded FILE`, `--jev-record FILE` | Code's order instead of Jev, recorded answers, or a file of the answers used. |
 | `--answer-file FILE` | Replays an executor's answer instead of running one: the citation check and the record, with no model. |
 
+## Ask from the terminals
+
+In the Gym terminal, press `?` in the Runs pane; see
+[View Terminal-Bench runs in the Gym terminal](../../gym/terminal-bench-tui.md#ask-coder-one-about-runs).
+
+In the Coder Terminal, the `review-runs` program asks the same question: a
+`query` step over the `gym-runs` command source, then a `delegate` step to
+the `coder-one-ask` capability, which runs `coder-one ask --scope gym`. The
+turn's program-selection question has to pick it, and on 2026-09-23 hosted
+Jev picked it for 2 of 6 questions about runs; see
+[program selection with review-runs](../../decision-models/measurements/2026-09-23-program-selection-v3.md).
+Both capabilities run only under an approval, with `gym` and `coder-one` on
+`PATH`:
+
+```sh
+capability-trust approve gym
+capability-trust approve coder-one-ask --writable ~/.codex --writable ~/.openagents/coder-one/asks
+coder -p "Which Terminal-Bench runs claimed success they didn't earn?" --programs review-runs
+```
+
+A delegation seals the directory that holds the trust store, so keep the
+store outside `~/.openagents` with `CODER_CAPABILITY_TRUST` when asks record
+there; an ask that can't write its record directory records under the
+temporary directory instead and says so. Run that way on 2026-09-23, the
+turn selected `review-runs`, read `gym runs`, and answered through Luna in
+43 seconds for $0.0057, with 34 of 34 citations checked.
+
 ## The record
 
 Each ask records itself under `~/.openagents/coder-one/asks/ask-<ms>/`, or

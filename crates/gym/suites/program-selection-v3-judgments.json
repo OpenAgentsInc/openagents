@@ -1,0 +1,35 @@
+{
+  "created": "2026-09-23",
+  "label_source": "author",
+  "independent_review": false,
+  "rule": "review-runs for a question about Terminal-Bench runs themselves (their outcomes, failures, rankings, or Jev's judgments of them) that the Gym's records answer; none for questions about how the Gym, its commands, or its code work, for requests to start, mark, or change runs, and for negated requests. The v2 labels are kept: none of the v2 items asks about runs.",
+  "disputes": [
+    {
+      "items": ["authored-v3/dev-none-code", "authored-v3/lock-none-doc"],
+      "judgment": "none",
+      "reason": "Both mention the Gym, but they ask about its code and documentation, which the repository answers, not about runs. `answer-question` would need an explicit delegation, which neither makes."
+    },
+    {
+      "items": ["authored-v3/cal-runs-patterns", "authored-v3/lock-runs-near-miss"],
+      "judgment": "review-runs",
+      "reason": "Neither names the program or asks for delegation. The label rests on the rule that an ordinary turn can't read the Gym, so a question the Gym answers is the program's work."
+    }
+  ],
+  "authored": [
+    {"id": "cal-runs-unearned", "partition": "calibration", "truth": "review-runs", "request": "Which Terminal-Bench runs claimed success they didn't earn?"},
+    {"id": "cal-runs-why-fail", "partition": "calibration", "truth": "review-runs", "request": "Why did Luna fail log-summary-date-ranges?"},
+    {"id": "cal-runs-patterns", "partition": "calibration", "truth": "review-runs", "request": "Look through the runs Jev ranked most worth learning from and tell me what they share."},
+    {"id": "cal-none-runs-howto", "partition": "calibration", "truth": "none", "request": "How do I list Terminal-Bench runs with the gym runs command?"},
+    {"id": "cal-none-runs-negated", "partition": "calibration", "truth": "none", "request": "Don't dig through the runs; just explain what the unearned_success judgment means."},
+    {"id": "dev-runs-output-paths", "partition": "development", "truth": "review-runs", "request": "Which failures come down to output paths?"},
+    {"id": "dev-runs-rank", "partition": "development", "truth": "review-runs", "request": "Why does the cargo-flight-dispatch run rank so high for learning?"},
+    {"id": "dev-runs-compare", "partition": "development", "truth": "review-runs", "request": "Compare how Coder One and Claude Code failed bun-sourcemap-leak."},
+    {"id": "dev-none-code", "partition": "development", "truth": "none", "request": "Where in the code does gym runs compute the learning order?"},
+    {"id": "dev-none-start", "partition": "development", "truth": "none", "request": "Start a new Terminal-Bench run of fix-git with Coder One."},
+    {"id": "lock-runs-harness", "partition": "locked", "truth": "review-runs", "request": "Which runs never started because of a harness fault?"},
+    {"id": "lock-runs-near-miss", "partition": "locked", "truth": "review-runs", "request": "Which recent failures were near misses, and what would have fixed them?"},
+    {"id": "lock-runs-opus", "partition": "locked", "truth": "review-runs", "request": "What did the Opus runs that failed cad-model get wrong?"},
+    {"id": "lock-none-doc", "partition": "locked", "truth": "none", "request": "Summarize docs/gym/terminal-bench-cli.md for me."},
+    {"id": "lock-none-mark", "partition": "locked", "truth": "none", "request": "Mark the wal-recovery-ordering run as bad."}
+  ]
+}

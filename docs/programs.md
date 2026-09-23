@@ -123,10 +123,10 @@ carries both, and `crates/coder` reads them:
 
 | Directory | What it holds |
 | --- | --- |
-| `capabilities/` | One `kind:30180` manifest per file. `devin-local` is the first. |
-| `programs/` | One `kind:30182` program per file: `delegate-fan-out`, `burn-down`, `review-changes`, `answer-question`, `run-suite`. |
+| `capabilities/` | One `kind:30180` manifest per file. `devin-local` is the first; `coder-one-ask` is Coder One's read-only ask mode, and `gym` is the Gym's read-only binary for a command source. |
+| `programs/` | One `kind:30182` program per file: `delegate-fan-out`, `burn-down`, `review-changes`, `answer-question`, `run-suite`, `review-runs`. |
 | `questions/` | One question set per file, addressed by identifier: `openagents.program.v1`, `openagents.independence.v1`, `openagents.independence.v2`, `openagents.completion.v1`. |
-| `sources/` | One task source per file. `work-list` is the first; `request` is built in. |
+| `sources/` | One task source per file. `work-list` reads a file, `gym-runs` runs a command; `request` is built in. |
 
 A host reads `CODER_CAPABILITY_DIR` first, then the repository's directory,
 then `~/.openagents/capabilities`, and the same three for programs, for
@@ -200,14 +200,41 @@ A source declares where its answer comes from and the order it is in:
 }
 ```
 
-Two sources exist. `request` is the work the request carried, built in
-because its meaning cannot be anything else, and a file source reads a work
-list under the workspace. Neither runs a process. A source that spawned one
-would need the trust boundary and the subprocess bounds
-[#9427](https://github.com/OpenAgentsInc/openagents/issues/9427) is about,
-and a lookup that executed a manifest's argv because it had read that
-manifest is the finding rather than the fix. An operator who wants the open
-issues writes them to a work list with one command of their own.
+`request` is the work the request carried, built in because its meaning
+cannot be anything else, and a file source reads a work list under the
+workspace. Neither runs a process.
+
+A `command` source runs one, and only through the trust boundary and the
+subprocess bounds
+[#9427](https://github.com/OpenAgentsInc/openagents/issues/9427) is about. It
+names a **capability**, never a binary, so the program it runs is the one
+that capability's approval pins: `capability-trust approve gym` records the
+manifest's digest and the binary's canonical path and content, and a
+capability that isn't present refuses the step with `source_unavailable`.
+The command runs in the workspace through the supervisor, bounded at 60
+seconds and the probe's 64 KiB output cap, and its output must declare the
+schema the source names. A lookup that executed an argv because it had read
+a file is still the finding rather than the fix; the approval is what makes
+this one different. `gym-runs` is the first:
+
+```jsonc
+{
+  "v": 1,
+  "slug": "gym-runs",
+  "from": {"command": {"capability": "gym",
+                       "args": ["runs", "--order", "learning", "--json", "--limit", "5"],
+                       "schema": "openagents.gym.runs.v1"}},
+  "order": "given"
+}
+```
+
+This host reads one command schema, `openagents.gym.runs.v1`, and it becomes
+one work item: the operator's request, with the Gym's totals and the runs it
+listed as context. A question about runs is one question, so it's one
+delegation, never one per run. A `query` step whose source is a command
+declares the `subprocesses` effect as well as `reads`. An operator who wants
+the open issues still writes them to a work list with one command of their
+own.
 
 A work list names what each item touches, what it comes after, and what
 answer it expects back:
@@ -459,7 +486,7 @@ Two steps are deterministic and two are decisions, which is the right ratio:
 the program is mostly mechanism, and the decision model is asked only where
 a judgment is genuinely required.
 
-`coder::runtime` runs all five from the file, and
+`coder::runtime` runs all six from the file, and
 [`coder/delegate.md`](coder/runtime/delegate.md) covers the `fan_out` step in
 detail: what it records, how it is bounded, and why a refusal, a timeout,
 and a failure are three outcomes.
@@ -561,7 +588,7 @@ that was there before. Three rules hold the path together:
   already refuses a program whose bounds or steps this host cannot keep, so
   offering one as an option would put a choice on the question whose only
   outcome is a refusal. On this repository that leaves `delegate-fan-out`,
-  `burn-down`, and `answer-question`; `run-suite` requires a protected
+  `burn-down`, `answer-question`, and `review-runs`; `run-suite` requires a protected
   verification plan that ordinary turns do not install, and
   `review-changes` requires a protected reviewer and captured artifact scope
   that ordinary turns do not install. `burn-down` is `delegate-fan-out` with the `work-list` source in
@@ -591,6 +618,29 @@ that was there before. Three rules hold the path together:
   and a `delegate` step with nothing to hand over both stop the program.
   That is what bounds a wrong selection: an ordinary turn writes out no
   list, so a program chosen for one declines instead of running.
+
+`review-runs` answers a question about Terminal-Bench runs: a `query` step
+over the `gym-runs` command source, then a `delegate` step whose binding
+names its executor, `coder-one-ask`, which runs `coder-one ask --scope gym`.
+A `delegate` step may name its executor by capability slug, and a program
+that does runs its delegation there whatever `CODER_DELEGATE` says; a
+capability a program names is that program's, and the session never picks
+it, or an adapter such as `gym`, as the default executor. A turn whose
+program handed one piece of work to one executor replies with what the
+executor answered, then the run's summary. Both capabilities need an
+approval, and `coder-one-ask` needs its state granted:
+
+```sh
+capability-trust approve gym
+capability-trust approve coder-one-ask --writable ~/.codex --writable ~/.openagents/coder-one/asks
+```
+
+Keep the trust store outside `~/.openagents` when the ask records there: a
+delegation seals the directory that holds the store. The selection
+question's five-option baseline is
+[program-selection-v3](decision-models/measurements/2026-09-23-program-selection-v3.md).
+[Ask Coder One about runs](coder/guides/coder-one-ask.md) covers the ask
+itself.
 
 Three live episodes have taken the path from a sentence, the first in 25.6
 seconds: six delegations, six correct answers, and nothing on the path that

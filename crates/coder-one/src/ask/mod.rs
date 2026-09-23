@@ -215,6 +215,11 @@ impl Options {
                     options.answer_file = Some(PathBuf::from(value("--answer-file")?));
                 }
                 "--help" | "-h" => return Err(USAGE.to_string()),
+                // Everything after `--` is the question, whatever it looks
+                // like: an executor capability appends the task that way.
+                "--" => {
+                    words.extend(args.by_ref().cloned());
+                }
                 flag if flag.starts_with("--") => {
                     return Err(format!("unknown option {flag}\n\n{USAGE}"));
                 }
@@ -347,9 +352,30 @@ pub async fn run(options: Options, progress: &Progress) -> Result<(Value, i32), 
         .clone()
         .or_else(default_dir)
         .ok_or("HOME is not set, so there's nowhere to record the ask; pass --out")?;
-    let dir = root.join(&id);
-    std::fs::create_dir_all(&dir)
-        .map_err(|error| format!("cannot create {}: {error}", dir.display()))?;
+    let mut dir = root.join(&id);
+    if let Err(error) = std::fs::create_dir_all(&dir) {
+        // Run as a delegated executor, the ask sits inside the caller's own
+        // boundary, which keeps `~/.openagents` sealed. Its record then
+        // goes to the temporary directory that boundary grants, and the
+        // record says where.
+        if options.out.is_some() {
+            return Err(format!("cannot create {}: {error}", dir.display()));
+        }
+        let fallback = std::env::temp_dir().join("coder-one-asks").join(&id);
+        std::fs::create_dir_all(&fallback).map_err(|second| {
+            format!(
+                "cannot create {} ({error}) or {} ({second})",
+                dir.display(),
+                fallback.display()
+            )
+        })?;
+        progress.line(&format!(
+            "record ▸ {} isn't writable here ({error}), so the ask records under {}",
+            root.display(),
+            fallback.display()
+        ));
+        dir = fallback;
+    }
     let repo = options
         .repo
         .clone()
@@ -1361,6 +1387,11 @@ mod tests {
         assert!(parse(&["q", "--budget", "0"]).is_err());
         assert!(parse(&["q", "--scope", "web"]).is_err());
         assert!(parse(&["q", "--frobnicate"]).is_err());
+        // An executor capability appends the task after `--`, and
+        // everything there is the question.
+        let options = parse(&["--scope", "gym", "--", "why --json?", "--no-jev"]).unwrap();
+        assert_eq!(options.question, "why --json? --no-jev");
+        assert_eq!(options.jev, JevChoice::Live);
     }
 
     /// A stand-in `gym` that prints fixed JSON for the reads an ask makes.

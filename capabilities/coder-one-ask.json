@@ -1,0 +1,97 @@
+{
+  "definition": {
+    "v": 1,
+    "requires": [],
+    "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/coder-one-ask",
+    "profile": "executor",
+    "summary": "Hands a question about Terminal-Bench runs to Coder One's read-only ask mode on this computer.",
+    "input": {
+      "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+      "size": 17,
+      "media_type": "application/schema+json"
+    },
+    "output": {
+      "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+      "size": 17,
+      "media_type": "application/schema+json"
+    },
+    "effects": {
+      "reads": [
+        "workspace",
+        "gym"
+      ],
+      "writes": [],
+      "network": [
+        "typesafe",
+        "model-provider"
+      ],
+      "process": true,
+      "delegates": false,
+      "spend": true
+    },
+    "minimum": {},
+    "support": {
+      "bounds": {
+        "wall_ms": "unknown",
+        "calls": "unknown"
+      },
+      "cancellation": "host_terminated",
+      "idempotency": "none",
+      "evidence": []
+    },
+    "binding_contract": {
+      "interface": "coder-one.ask.v1",
+      "transport": "subprocess",
+      "task": {
+        "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+        "size": 17,
+        "media_type": "application/schema+json"
+      },
+      "context": {
+        "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+        "size": 17,
+        "media_type": "application/schema+json"
+      },
+      "isolation": [
+        "directory"
+      ]
+    }
+  },
+  "binding": {
+    "name": "Coder One ask mode, this computer",
+    "detect": {
+      "binary": "coder-one",
+      "version": [
+        "coder-one",
+        "--version"
+      ]
+    },
+    "invoke": [
+      "coder-one",
+      "ask",
+      "--scope",
+      "gym",
+      "--"
+    ],
+    "sees_repository": true,
+    "concurrent_max": 1,
+    "cost": "operator_account",
+    "claims_enforced": [],
+    "claims_not_enforced": [
+      "max_turns",
+      "model",
+      "tool_set",
+      "role",
+      "budget_cents",
+      "effort"
+    ],
+    "enforcement": [
+      {
+        "bound": "wall_ms",
+        "ceiling": 0,
+        "assurance": "host",
+        "mechanism": "supervisor"
+      }
+    ]
+  }
+}

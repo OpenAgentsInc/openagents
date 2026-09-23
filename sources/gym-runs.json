@@ -1,0 +1,21 @@
+{
+  "v": 1,
+  "slug": "gym-runs",
+  "name": "Terminal-Bench runs the Gym holds",
+  "summary": "Reads the runs Jev judged most worth learning from, through the approved gym binary, and hands the question on as one work item.",
+  "from": {
+    "command": {
+      "capability": "gym",
+      "args": [
+        "runs",
+        "--order",
+        "learning",
+        "--json",
+        "--limit",
+        "5"
+      ],
+      "schema": "openagents.gym.runs.v1"
+    }
+  },
+  "order": "given"
+}

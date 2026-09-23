@@ -463,23 +463,42 @@ impl Agent {
                 }
             }
         }
-        // Which executor does the work is the operator's choice when
-        // `CODER_DELEGATE` names one, and otherwise the survey's answer:
-        // the first capability that is a route here. A machine with none
-        // still runs the program, and the `delegate` step refuses by name
-        // rather than by silence.
+        // Which executor does the work is the program's when a `delegate`
+        // step names one: `review-runs` hands its question to Coder One's
+        // ask mode and nothing else answers it. Otherwise it is the
+        // operator's choice when `CODER_DELEGATE` names one, and otherwise
+        // the survey's answer: the first capability that is a route here.
+        // A machine with none still runs the program, and the `delegate`
+        // step refuses by name rather than by silence.
         let survey = runtime.survey();
         // The same variable turns the delegate door on or off; a mode
         // word names no capability.
-        let executor = env::var(DELEGATE_VAR)
-            .ok()
-            .filter(|slug| !slug.is_empty() && crate::delegate_door::Mode::parse(slug).is_none())
+        let executor = program
+            .executor()
+            .map(str::to_string)
+            .or_else(|| {
+                env::var(DELEGATE_VAR).ok().filter(|slug| {
+                    !slug.is_empty() && crate::delegate_door::Mode::parse(slug).is_none()
+                })
+            })
             .unwrap_or_else(|| {
+                // A capability some program names as its own executor is
+                // that program's, and a capability that isn't an executor
+                // at all, such as a read-only adapter, takes no work.
+                let dedicated: Vec<&str> = survey
+                    .programs
+                    .programs()
+                    .iter()
+                    .filter_map(crate::program::Program::executor)
+                    .collect();
+                let general = |found: &&crate::capability::Found| {
+                    found.manifest.profile == "executor" && !dedicated.contains(&found.capability())
+                };
                 survey
                     .options()
-                    .first()
-                    .copied()
-                    .or_else(|| survey.capabilities.first())
+                    .into_iter()
+                    .find(general)
+                    .or_else(|| survey.capabilities.iter().find(general))
                     .map(|found| found.capability().to_string())
                     .unwrap_or_default()
             });

@@ -1,0 +1,24 @@
+# Suite scores: `program-selection-v3`
+
+95 items, 33 calibration, 45 development, 17 locked and unread, digest `7f8cdfb93b439643`.
+
+The production five-option program question, with review-runs added for questions about Terminal-Bench runs. v2's items keep their labels; new authored requests measure recognition of run questions and the run-adjacent requests that must stay none. Labels are one author's readings, with disputes retained separately.
+
+Judged by `probability-v2`, digest `gate:5bdfd1423c6c2d305a12d8f9f16e7e83a594f8548f1b605de0f77c1ef639e758`.
+
+Asked as `program-selection-v3`, digest `796b4ab955768193`. The suite digest covers the items and the question set covers the text, so a reword is a candidate against these items rather than another suite.
+
+## jev (hosted)
+
+Identity: not verifiable for this door.
+
+Recorded 78 rows in `crates/gym/results/program-selection-v3-jev.jsonl`.
+
+78 items asked: 78 scored, 0 refused by the door, 0 lost to the harness and unrecorded.
+
+| Set | Accuracy | ECE | Brier | NLL | Confident errors | Items |
+| --- | --- | --- | --- | --- | --- | --- |
+| calibration, raw | 0.85 | 0.059 | 0.093 | 0.285 | 0 | 33 |
+| development, raw | 0.82 | 0.106 | 0.100 | 0.307 | 0 | 45 |
+
+

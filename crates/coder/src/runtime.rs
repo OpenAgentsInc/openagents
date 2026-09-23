@@ -1732,11 +1732,18 @@ impl Runtime {
     /// executor's manifest adds the rest: `subprocesses` for any
     /// transport that is not the relay, `spend` for any cost that is not
     /// `local`. An executor this host cannot resolve declares the wider
-    /// set, because the refusal that names it reads the same survey.
+    /// set, because the refusal that names it reads the same survey. A
+    /// `query` step reads, and one whose source is a command also runs a
+    /// subprocess.
     fn step_effects(&self, step: &Step, inputs: &Inputs, visiting: &mut Vec<String>) -> Effects {
         let mut effects = match step.kind {
             Kind::Query => Effects {
                 reads: true,
+                subprocesses: step
+                    .source
+                    .as_deref()
+                    .and_then(|slug| self.survey.sources.get(slug))
+                    .is_some_and(|source| matches!(source.from, source::From::Command { .. })),
                 ..Effects::none()
             },
             Kind::Decide => Effects {
@@ -3115,9 +3122,46 @@ impl Runtime {
         trace: Option<&mut Recorder>,
     ) -> Result<Selection, Refused> {
         let source = self.admit_source(step)?;
-        let found = source
-            .read(&self.survey.workspace, &inputs.tasks)
-            .map_err(|reason| Refused::at(&step.name, "source_unreadable", reason))?;
+        let found = match &source.from {
+            // A command source runs its capability's resolved binary, and
+            // only a present capability has one: approved by the operator,
+            // probed, and answering. Anything else refuses the step by
+            // name rather than running a binary nobody approved.
+            source::From::Command { capability, .. } => {
+                let binary = match self
+                    .survey
+                    .capability(capability)
+                    .map(|found| &found.presence)
+                {
+                    Some(Presence::Present { path, .. }) => path.clone(),
+                    Some(presence) => {
+                        return Err(Refused::at(
+                            &step.name,
+                            "source_unavailable",
+                            format!(
+                                "{} runs the {capability} capability, which is {} here; \
+                                 `capability-trust approve {capability}` approves it",
+                                source.slug,
+                                presence.state()
+                            ),
+                        ));
+                    }
+                    None => {
+                        return Err(Refused::at(
+                            &step.name,
+                            "source_unavailable",
+                            format!(
+                                "{} runs the {capability} capability, and this host declares none",
+                                source.slug
+                            ),
+                        ));
+                    }
+                };
+                source.read_command(&binary, &self.survey.workspace, &inputs.request)
+            }
+            _ => source.read(&self.survey.workspace, &inputs.tasks),
+        }
+        .map_err(|reason| Refused::at(&step.name, "source_unreadable", reason))?;
         if found.is_empty() {
             return Err(Refused::at(
                 &step.name,

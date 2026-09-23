@@ -108,14 +108,16 @@ const TASK_MINUTES: u64 = 5;
 
 /// Where a source's answer comes from.
 ///
-/// All three variants are reads. None runs anything: a source that spawned
-/// a process would need the trust and the subprocess bounds that
+/// Three variants read what is already there, and none of them runs
+/// anything. The fourth, [`From::Command`], runs one command, and only
+/// through the trust and the subprocess bounds that
 /// [#9427](https://github.com/OpenAgentsInc/openagents/issues/9427) is
-/// about, and a lookup that executed a manifest's argv on the strength of
-/// having read that manifest is the finding rather than the fix. An
-/// operator who wants the open issues runs a host-owned adapter that
-/// writes a pinned snapshot — see [`crate::tracker`] — and the program
-/// names the snapshot's source.
+/// about: it names a capability rather than a binary, so the program it
+/// runs is the one that capability's approval pins, and a lookup that
+/// executed an argv on the strength of having read a file is still the
+/// finding rather than the fix. An operator who wants the open issues runs
+/// a host-owned adapter that writes a pinned snapshot — see
+/// [`crate::tracker`] — and the program names the snapshot's source.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum From {
@@ -150,14 +152,50 @@ pub enum From {
         #[serde(default)]
         scope: Option<crate::tracker::Scope>,
     },
+    /// What one command prints, read as a document with a declared schema.
+    ///
+    /// The command is a capability's resolved binary plus `args`, and it
+    /// runs only when that capability is present: its manifest approved
+    /// with `capability-trust approve` and its probe answered. It runs in
+    /// the workspace, bounded through the supervisor at [`COMMAND_WALL`]
+    /// and the probe's output cap, and the output must carry the declared
+    /// `schema`. The source definition in the operator's registry holds the
+    /// arguments; a program still names only the source.
+    Command {
+        /// The capability whose resolved binary runs.
+        capability: String,
+        /// The arguments after the binary.
+        #[serde(default)]
+        args: Vec<String>,
+        /// The schema the output declares in its `schema` field. This host
+        /// reads [`COMMAND_SCHEMAS`].
+        schema: String,
+    },
 }
+
+/// The command-output schemas a `command` source reads.
+///
+/// `openagents.gym.runs.v1`, what `gym runs --json` prints, becomes one
+/// work item: the operator's request, with what the Gym listed as its
+/// context. A question about runs is one question, so it is one
+/// delegation, never one per run.
+pub const COMMAND_SCHEMAS: &[&str] = &[GYM_RUNS_SCHEMA];
+
+/// What `gym runs --json` prints.
+pub const GYM_RUNS_SCHEMA: &str = "openagents.gym.runs.v1";
+
+/// How long a `command` source's command may run.
+pub const COMMAND_WALL: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// The most runs a `gym runs` source names in the work item it answers.
+const NAMED_RUNS: usize = 8;
 
 impl From {
     /// The workspace-relative path this answer is read from, when it is
     /// read from a file.
     fn path(&self) -> Option<&str> {
         match self {
-            From::Request => None,
+            From::Request | From::Command { .. } => None,
             From::File { path } | From::Tracker { path, .. } => Some(path),
         }
     }
@@ -302,6 +340,27 @@ impl Source {
         if let Some(path) = self.from.path() {
             workspace_relative(path)?;
         }
+        if let From::Command {
+            capability,
+            args,
+            schema,
+        } = &self.from
+        {
+            if !is_slug(capability) {
+                return Err(format!(
+                    "capability {capability:?} is not a capability slug, and a command source runs a capability's binary"
+                ));
+            }
+            if args.iter().any(|arg| arg.contains('\0')) {
+                return Err("an argument holds a NUL byte, which no argv carries".to_string());
+            }
+            if !COMMAND_SCHEMAS.contains(&schema.as_str()) {
+                return Err(format!(
+                    "schema {schema:?} is not one this host reads command output in; it reads {}",
+                    COMMAND_SCHEMAS.join(", ")
+                ));
+            }
+        }
         Ok(())
     }
 
@@ -313,6 +372,11 @@ impl Source {
             From::Request => "the request".to_string(),
             From::File { path } => format!("file {path}"),
             From::Tracker { path, .. } => format!("tracker snapshot {path}"),
+            From::Command {
+                capability, args, ..
+            } => format!("command {capability} {}", args.join(" "))
+                .trim_end()
+                .to_string(),
         }
     }
 
@@ -350,8 +414,127 @@ impl Source {
                     .work()
                     .map_err(|reason| format!("{}: {reason}", full.display()))
             }
+            From::Command { capability, .. } => Err(format!(
+                "{} runs {capability}, and a command source is read through the capability's resolved binary",
+                self.slug
+            )),
         }
     }
+
+    /// The work a `command` source answers with: `binary` and the
+    /// source's arguments run in `workspace`, bounded, and the output read
+    /// under its declared schema. `request` is the operator's sentence,
+    /// which a `gym runs` source hands on as the one work item.
+    ///
+    /// `binary` is the capability's resolved path, which the caller took
+    /// from a present capability: this method runs what it is handed and
+    /// decides nothing about trust.
+    ///
+    /// # Errors
+    ///
+    /// Returns a sentence naming why the command's answer could not be
+    /// read: it didn't run, timed out, exited non-zero, overran the output
+    /// cap, printed something other than JSON, or declared another schema.
+    pub fn read_command(
+        &self,
+        binary: &Path,
+        workspace: &Path,
+        request: &str,
+    ) -> Result<Vec<Work>, String> {
+        let From::Command { args, schema, .. } = &self.from else {
+            return Err(format!("{} is not a command source", self.slug));
+        };
+        let mut command = std::process::Command::new(binary);
+        command.args(args).current_dir(workspace);
+        let said = crate::capability::bounded::run(command, COMMAND_WALL)
+            .map_err(|stop| format!("{} did not answer: {stop}", self.resolved_from()))?;
+        if said.code != Some(0) {
+            return Err(format!(
+                "{} exited {}: {}",
+                self.resolved_from(),
+                said.code
+                    .map_or("on a signal".to_string(), |code| code.to_string()),
+                said.err
+                    .trim()
+                    .lines()
+                    .last()
+                    .unwrap_or("it printed nothing on standard error")
+            ));
+        }
+        if said.truncated {
+            return Err(format!(
+                "{} printed more than {} bytes, and a cut document is not the one it declared; narrow its arguments",
+                self.resolved_from(),
+                crate::capability::bounded::OUTPUT_MAX
+            ));
+        }
+        let value: Value = serde_json::from_str(&said.out)
+            .map_err(|error| format!("{} did not print JSON: {error}", self.resolved_from()))?;
+        let declared = value
+            .get("schema")
+            .and_then(Value::as_str)
+            .unwrap_or("none");
+        if declared != schema {
+            return Err(format!(
+                "{} printed schema {declared}, and the source declares {schema}",
+                self.resolved_from()
+            ));
+        }
+        Ok(vec![gym_runs_work(&value, request)?])
+    }
+}
+
+/// The one work item a `gym runs --json` document becomes: the operator's
+/// request, with the Gym's totals and the runs it listed first as context,
+/// so the delegate starts from what the lookup saw.
+fn gym_runs_work(runs: &Value, request: &str) -> Result<Work, String> {
+    let request = request.trim();
+    if request.is_empty() {
+        return Err(
+            "a question about runs needs the question, and the request is empty".to_string(),
+        );
+    }
+    let listed: Vec<String> = runs["runs"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|run| {
+            Some(format!(
+                "{}/{}",
+                run.get("job")?.as_str()?,
+                run.get("trial")?.as_str()?
+            ))
+        })
+        .take(NAMED_RUNS)
+        .collect();
+    let order = match runs["order"].as_str() {
+        Some("learning") => "most worth learning from first",
+        _ => "newest first",
+    };
+    let mut prompt = request.to_string();
+    prompt.push_str(&format!(
+        "\n\nThe Gym holds {} runs, {} of them judged by Jev.",
+        runs["total"], runs["ranked"]
+    ));
+    if !listed.is_empty() {
+        prompt.push_str(&format!(" Listed {order}: {}.", listed.join(", ")));
+    }
+    Ok(Work {
+        id: "question".to_string(),
+        touches: Vec::new(),
+        after: Vec::new(),
+        blocked: None,
+        task: Task {
+            prompt,
+            purpose: "Answer a question about Terminal-Bench runs from the Gym's records."
+                .to_string(),
+            reads: None,
+            expected: None,
+            bounds: Bounds::minutes(TASK_MINUTES),
+            isolation: crate::delegate::Isolation::Directory,
+            writes: false,
+        },
+    })
 }
 
 /// The workspace-relative path a source reads under, when it reads a
@@ -1762,5 +1945,127 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["held"]
         );
+    }
+
+    /// A stand-in binary: a script that prints `output` and exits `code`.
+    fn script(dir: &Path, output: &str, code: i32) -> PathBuf {
+        let data = dir.join(format!("output-{code}-{}.json", output.len()));
+        std::fs::write(&data, output).unwrap();
+        let path = dir.join(format!("fake-gym-{code}-{}", output.len()));
+        std::fs::write(
+            &path,
+            format!("#!/bin/sh\ncat '{}'\nexit {code}\n", data.display()),
+        )
+        .unwrap();
+        let mut permissions = std::fs::metadata(&path).unwrap().permissions();
+        std::os::unix::fs::PermissionsExt::set_mode(&mut permissions, 0o755);
+        std::fs::set_permissions(&path, permissions).unwrap();
+        path
+    }
+
+    fn command_source(schema: &str) -> Source {
+        Source {
+            v: SOURCE_VERSION,
+            slug: "gym-runs".to_string(),
+            name: String::new(),
+            summary: String::new(),
+            from: From::Command {
+                capability: "gym".to_string(),
+                args: vec!["runs".to_string(), "--json".to_string()],
+                schema: schema.to_string(),
+            },
+            order: Order::Given,
+        }
+    }
+
+    #[test]
+    fn a_command_source_reads_gym_runs_as_one_question() {
+        let dir = tempfile::tempdir().unwrap();
+        let runs = json!({
+            "schema": GYM_RUNS_SCHEMA,
+            "order": "learning",
+            "total": 597,
+            "ranked": 561,
+            "runs": [
+                {"job": "tb4--a", "trial": "a__1"},
+                {"job": "tb4--b", "trial": "b__2"},
+            ],
+        });
+        let binary = script(dir.path(), &runs.to_string(), 0);
+        let source = command_source(GYM_RUNS_SCHEMA);
+        source.validate().unwrap();
+        assert_eq!(source.resolved_from(), "command gym runs --json");
+        let work = source
+            .read_command(&binary, dir.path(), "why does tb4--a rank?")
+            .unwrap();
+        assert_eq!(work.len(), 1, "a question about runs is one delegation");
+        assert_eq!(work[0].id, "question");
+        assert!(!work[0].task.writes);
+        let prompt = &work[0].task.prompt;
+        assert!(prompt.starts_with("why does tb4--a rank?"), "{prompt}");
+        assert!(
+            prompt.contains("597 runs, 561 of them judged by Jev"),
+            "{prompt}"
+        );
+        assert!(
+            prompt.contains("most worth learning from first: tb4--a/a__1, tb4--b/b__2"),
+            "{prompt}"
+        );
+        // The plain read refuses: a command runs only through its
+        // capability's resolved binary.
+        assert!(source.read(dir.path(), &[]).is_err());
+        assert!(
+            source
+                .read_command(&binary, dir.path(), "  ")
+                .unwrap_err()
+                .contains("request is empty")
+        );
+    }
+
+    #[test]
+    fn a_command_source_refuses_what_it_cannot_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = command_source(GYM_RUNS_SCHEMA);
+        let other = script(dir.path(), r#"{"schema": "openagents.gym.other.v1"}"#, 0);
+        let error = source.read_command(&other, dir.path(), "q").unwrap_err();
+        assert!(
+            error.contains("printed schema openagents.gym.other.v1"),
+            "{error}"
+        );
+        let failing = script(dir.path(), "{}", 3);
+        let error = source.read_command(&failing, dir.path(), "q").unwrap_err();
+        assert!(error.contains("exited 3"), "{error}");
+        let prose = script(dir.path(), "not json", 0);
+        let error = source.read_command(&prose, dir.path(), "q").unwrap_err();
+        assert!(error.contains("did not print JSON"), "{error}");
+        // A schema this host has no reading for, and a capability that
+        // isn't a slug, refuse when the file is read.
+        assert!(
+            command_source("openagents.gym.other.v1")
+                .validate()
+                .is_err()
+        );
+        let mut bad = command_source(GYM_RUNS_SCHEMA);
+        bad.from = From::Command {
+            capability: "Not A Slug".to_string(),
+            args: Vec::new(),
+            schema: GYM_RUNS_SCHEMA.to_string(),
+        };
+        assert!(bad.validate().is_err());
+    }
+
+    #[test]
+    fn the_repository_source_names_the_gym_capability() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../sources/gym-runs.json");
+        let source = Source::load(&path).unwrap();
+        match &source.from {
+            From::Command {
+                capability, schema, ..
+            } => {
+                assert_eq!(capability, "gym");
+                assert_eq!(schema, GYM_RUNS_SCHEMA);
+            }
+            other => panic!("gym-runs reads {other:?}"),
+        }
     }
 }

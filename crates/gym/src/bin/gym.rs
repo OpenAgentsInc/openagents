@@ -184,6 +184,10 @@ struct Options {
 fn main() {
     let mut args = std::env::args().skip(1);
     let command = args.next().unwrap_or_default();
+    if command == "--version" {
+        println!("gym {}", env!("CARGO_PKG_VERSION"));
+        return;
+    }
     if command == "terminal-bench" {
         std::process::exit(terminal_bench_cli::run(args.collect()));
     }

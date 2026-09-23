@@ -1,0 +1,24 @@
+{
+  "$comment": [
+    "The question crates/coder/src/runtime.rs sends before every turn, lifted out of the crate and given a name a row can pin. The wording is questions/program.json; the options are the programs in programs/ that this host would admit, which is what Runtime::select builds an option set from.",
+    "This set supersedes program-selection-v2: it adds the `review-runs` option the repository gained on 2026-09-23 (issue #9574), and nothing else changed. A new option is a new question, so it carries a new id rather than an edit to v2, whose measurement stays about v2. `run-suite` and `review-changes` are still not offered, for the reasons v2 gives.",
+    "This file is generated, not written. `cargo test -p coder --test suite_questions -- --ignored --nocapture print_wire_selection` prints it, and `the_selection_question_is_the_production_text` fails when the repository and this file drift, so a reword is a new question set with a new id rather than an edit to this one.",
+    "Paired with the separately frozen program-selection-v3 suite. Historical v1 and v2 rows keep their own questions and suites."
+  ],
+  "schema": "openagents.gym.question_set.v1",
+  "id": "program-selection-v3",
+  "suite": "program-selection-v3",
+  "questions": {
+    "program": {
+      "type": "choice",
+      "instructions": "Which program does this request ask this machine to run? Almost every request asks for none: a question to answer, an instruction to follow, a remark to reply to. Answer none unless the request asks for the work one of the other options describes.",
+      "criteria": {
+        "none": "This request asks for no program. It is an ordinary turn - a question, an instruction, or a remark - and the agent answers it itself.",
+        "answer-question": "Answers a question about the repository from its own contents.",
+        "burn-down": "Runs one delegated session per item of the work list this checkout carries (.coder/work-list.json), each in a worktree of its own, and keeps every worktree for review.",
+        "delegate-fan-out": "Runs one delegated session per task, in parallel.",
+        "review-runs": "Answers a question about Terminal-Bench runs from the Gym's records, with checked citations."
+      }
+    }
+  }
+}

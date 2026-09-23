@@ -116,7 +116,7 @@ fn host() -> Runtime {
 /// The committed question set for the program selection, as the Gym holds
 /// it.
 fn committed_selection() -> BTreeMap<String, Value> {
-    let text = std::fs::read_to_string(gym("questions/program-selection-v2.json"))
+    let text = std::fs::read_to_string(gym("questions/program-selection-v3.json"))
         .expect("the selection question set is committed");
     let set: Value = serde_json::from_str(&text).expect("the question set parses");
     serde_json::from_value(set["questions"].clone()).expect("the set holds a map of questions")
@@ -136,7 +136,7 @@ fn the_selection_question_is_the_production_text() {
     assert_eq!(
         committed_selection(),
         wire_selection(),
-        "crates/gym/questions/program-selection-v2.json no longer matches what \
+        "crates/gym/questions/program-selection-v3.json no longer matches what \
          questions/program.json and programs/ produce; a reword is a new question \
          set with a new id, not an edit to this one"
     );

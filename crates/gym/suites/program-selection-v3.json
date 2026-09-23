@@ -1,0 +1,1158 @@
+{
+  "schema": "openagents.gym.suite.v1",
+  "name": "program-selection-v3",
+  "created": "2026-09-23",
+  "tier": "scored",
+  "gate": "probability-v2",
+  "questions": "program-selection-v3",
+  "description": "The production five-option program question, with review-runs added for questions about Terminal-Bench runs. v2's items keep their labels; new authored requests measure recognition of run questions and the run-adjacent requests that must stay none. Labels are one author's readings, with disputes retained separately.",
+  "sampling": {
+    "source_suite_digest": "378b57c423ebef319e94bfc47e43ab6e8460740230d60d078c9e4e573d596026",
+    "v2_items": 80,
+    "new_authored": 15,
+    "label_review": "program-selection-v3-judgments.json"
+  },
+  "items": [
+    {
+      "id": "turn/1c164c1c#0",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "look at 01a04b8e-6bdd-7f93-b3ab-e6996bc3187a , ~/.grok session, most recent messages, i need u to continue it"
+      },
+      "truth": "none",
+      "partition": "calibration",
+      "label_source": "author",
+      "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+    },
+    {
+      "id": "turn/1d845d65#0",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Read AGENTS.md then everything in docs/ and crates/ about jev and kev, and all open issues, summarize here"
+      },
+      "truth": "none",
+      "partition": "calibration",
+      "label_source": "author",
+      "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+    },
+    {
+      "id": "turn/1d845d65#1",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Look deeply through the commit history of this repo, and ~/work/psionic, for everything about Apple FM --- we are going to define a \"Lev\" (AppleV get it) similar to Kev but using Apple FM. Go look thoroughly then create new docs alongside the Jev/Kev docs for Lev defining all this, and proposed issues in a roadmap doc I can review, commit alla nd push. Do this on fresh worktree off remote main to not interfere with other agent doing the open issues"
+      },
+      "truth": "none",
+      "partition": "development",
+      "label_source": "author",
+      "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+    },
+    {
+      "id": "turn/1d845d65#10",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": " i have no new agreements to sign. i see no download link at all. maybe because i already downloaded it, look elsewhere on this computer now"
+      },
+      "truth": "none",
+      "partition": "development",
+      "label_source": "author",
+      "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+    },
+    {
+      "id": "turn/1d845d65#13",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "issue 9363 \"\n\n<pasted_content id=\"ec0e\">\nThe known weak point\n</pasted_content id=\"ec0e\">\n\n\" part is stale"
+      },
+      "truth": "none",
+      "partition": "calibration",
+      "label_source": "author",
+      "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+    },
+    {
+      "id": "turn/1d845d65#14",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "ok, keep going, keep updating that issue w comments"
+      },
+      "truth": "none",
+      "partition": "calibration",
+      "label_source": "author",
+      "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+    },
+    {
+      "id": "turn/1d845d65#16",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Build the Gym. Make issues for the issues and do them. I want a ratatui TUI for the Gym just like the Coder Terminal. Prepare to move all this optimization work of Jev/Kev/Lev into the gym ASAP, make issues for all of it and then delegate it all, max parallelization."
+      },
+      "truth": "delegate-fan-out",
+      "partition": "development",
+      "label_source": "author",
+      "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+    },
+    {
+      "id": "turn/1d845d65#17",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "look in ~/.zshrc note how coderdev starts coder, add alias for 'gym' booting that in dev similarly"
+      },
+      "truth": "none",
+      "partition": "development",
+      "label_source": "author",
+      "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+    },
+    {
+      "id": "turn/1d845d65#19",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "organize all docs re jev kev lev into a new folder docs/classifiers/ or name u choose, move all docs in to that. then make a new research folder for stuff to look into, one being htis post - \n\n<pasted_content id=\"ec0e\">\nyou can make any open source model behave like jev with just a bit of inference engineering.  \n\nit's shockingly easy. to prove it, we built a new endpoint we're calling deepseek-v4.1-flash-jev. see the demo below. here's how it's done:\n\nsglang (an inference engine) offers a scoring endpoint in addition to the normal generation one. in scoring mode, given an input & set of possible answers, it forces the model to produce probabilities for each one. example:\n\n> input: what is most common letter in abcccde?\n> possible answers: a, b, c\n> output: (c, 0.9), (b, 0.0.5), (a, 0.05)\n\ngetting the above behavior instead of streamed output is as simple as using sglang's /v1/score endpoint instead of /generate. there's just one other trick required.\n\nfor deepseek, you have to add a closing think tag before the response. this forces a direct answer instead of  a reasoning trace. if you want reasoning, you can do that too, but imo that makes things too slow to be worth it.\n\ndsv4.1 flash is not as good as jev, but if we had enough spare compute to experiment with this same approach for a larger model then i think the decision quality would be at least as good, if not better.\n\nalso, somewhat unrelated, i think decision-making models kill all prospecting & sourcing work. i would have absolutely killed to have jev or similar when i was recruiting \n@mintlify\n. absolutely incredible.\n</pasted_content id=\"ec0e\">\n\n - \n\n<pasted_content id=\"ec0e\">\nhttps://github.com/skeptrunedev/jev-recruiter\n</pasted_content id=\"ec0e\">\n\n - look thru that, see what should inform our stuff - updat eall docs and push"
+      },
+      "truth": "none",
+      "partition": "calibration",
+      "label_source": "author",
+      "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+    },
+    {
+      "id": "turn/1d845d65#20",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "another for this - \n\n<pasted_content id=\"ec0e\">\nhttps://x.com/JoshKuechly/status/2101156721074774115\n</pasted_content id=\"ec0e\">\n\n - \n\n<pasted_content id=\"ec0e\">\n\nJσsh\n@JoshKuechly\nJev is great at zero-shot classification, but specialist classifiers will dominate commercial use cases. \n\n@trycua\n  tuned a tiny model that scored 99.7% on their form-filling eval.  Hosted Jev scored 83.6%.  \n\nI tuned GLiNER 2.5 on a task in 51 minutes yesterday and it crushes Jev.  And it's local.  And 8.8x faster:\n\nYou too can do this.  Linked post in comments.\n</pasted_content id=\"ec0e\">\n\n -  - - \n\n<pasted_content id=\"ec0e\">\nJev from \n@typesafeai\n is great, but way overhyped.  \n\nI fine-tuned an open-weight model on my Mac that beats Jev by almost 10pp, and is 8x faster.\n\nIt took less than an hour and runs on my local CPU.  Yes, it's task-specific.  Meaning it doesn't beat Jev on every task.  But that's ok:\n\nJev is pretty good at zero-shot general classification, but a quick fine-tuning run allows GLiNER 2.5 (open weights, built by \n@fastinoAI\n) to beat it on a specific task as a specialized classifier.\n\nIn this experiment, I tested default GLiNER 2.5 vs Jev vs Fine-tuned GLiNER 2.5 on the Banking77 benchmark from \n@huggingface\n.  \n\nDefault GLiNER 2.5 trailed Jev by ~9pp, despite being 10x faster. \n\nAfter fine-tuning GLiNER 2.5 on ~10k training samples (this took about 51 minutes on my M4 Max), I retested.\n\nFine-tuned GLiNER 2.5 gained ~18pp of classifying accuracy on the task, beating Jev by ~9pp. \n\nI'm betting that while Jev thrives as an easy plug-and-play endpoint for non-recurring classification tasks, most teams shipping to production will just take a little bit of time of front to fine-tune open-weight classifiers for tasks.  \n\nIf you can spend an hour fine-tuning to get:\n- 8-10x speed boost\n- 10pt accuracy lift\n- AND it can run locally on your hardware?  \n\nThat seems like a no-brainer.  \n\nSo yes, \n@rileybrown\n, it seems like you can fine-tune  your own \"jev\" on your data :)\n</pasted_content id=\"ec0e\">\n\n - \n\n<pasted_content id=\"ec0e\">\nhttps://x.com/JoshKuechly/status/2100709039613100112\n</pasted_content id=\"ec0e\">\n\n - \n\n<pasted_content id=\"ec0e\">\nhttps://github.com/fastino-ai/GLiNER2#-training-custom-models\n</pasted_content id=\"ec0e\">\n\n - \n\n<pasted_content id=\"ec0e\">\nhttps://huggingface.co/fastino/gliner2.5-base-v1\n</pasted_content id=\"ec0e\">\n"
+      },
+      "truth": "none",
+      "partition": "calibration",
+      "label_source": "author",
+      "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+    },
+    {
+      "id": "turn/1d845d65#21",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "what do u think about this - [Image #4] [Image #5]"
+      },
+      "truth": "none",
+      "partition": "development",
+      "label_source": "author",
+      "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+    },
+    {
+      "id": "turn/1d845d65#22",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "sure write it"
+      },
+      "truth": "none",
+      "partition": "development",
+      "label_source": "author",
+      "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+    },
+    {
+      "id": "turn/1d845d65#23",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "look deeply thru ~/work/psionic and ~/work/coder and this repo's commit history for everything mentioning DSPy/GEPA and make a doc in docs/ about it and what we might want to do with it in what we're doing now, Gym etc  - and push - task to subagent maybe"
+      },
+      "truth": "none",
+      "partition": "development",
+      "label_source": "author",
+      "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+    },
+    {
+      "id": "turn/1d845d65#24",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "consider our Gym and Jev/Kev/Lev stuff holistically and tell me what are the next, highest-impact things we hsuold do that we havent already planned to do"
+      },
+      "truth": "none",
+      "partition": "calibration",
+      "label_source": "author",
+      "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+    },
+    {
+      "id": "turn/1d845d65#26",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "i want to see if that programs as weight arguments is similar to the plugin system we've designed, look thru ~/work/coder on that"
+      },
+      "truth": "none",
+      "partition": "calibration",
+      "label_source": "author",
+      "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+    },
+    {
+      "id": "turn/1d845d65#27",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "tell me the status of all open issues"
+      },
+      "truth": "none",
+      "partition": "calibration",
+      "label_source": "author",
+      "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+    },
+    {
+      "id": "turn/1d845d65#28",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "you"
+      },
+      "truth": "none",
+      "partition": "development",
+      "label_source": "author",
+      "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+    },
+    {
+      "id": "turn/1d845d65#3",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "allow maximum work. get it all to full PARITY NOW. CONTINUE,"
+      },
+      "truth": "none",
+      "partition": "development",
+      "label_source": "author",
+      "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+    },
+    {
+      "id": "turn/1d845d65#5",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "\n\n<pasted_content id=\"ec0e\">\nDo the adapter issue now. Set up the full testing environment.\n\nI know that their framework is Python only, I don't care. Get that in this repo in the appropriate place. Get it working, train an adapter, get to showing an improvement over the base model, and document the full process, and then close the outstanding issues.\n</pasted_content id=\"ec0e\">\n"
+      },
+      "truth": "none",
+      "partition": "calibration",
+      "label_source": "author",
+      "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+    },
+    {
+      "id": "turn/1d845d65#6",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "doit now"
+      },
+      "truth": "none",
+      "partition": "calibration",
+      "label_source": "author",
+      "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+    },
+    {
+      "id": "turn/1d845d65#7",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "\n\n<pasted_content id=\"ec0e\">\nWhere do I download the training toolkit?\n</pasted_content id=\"ec0e\">\n"
+      },
+      "truth": "none",
+      "partition": "development",
+      "label_source": "author",
+      "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+    },
+    {
+      "id": "turn/1d845d65#8",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "\n\n<pasted_content id=\"ec0e\">\nI logged into that website. Now, where the hell do I go? And what do I do?\n</pasted_content id=\"ec0e\">\n"
+      },
+      "truth": "none",
+      "partition": "development",
+      "label_source": "author",
+      "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+    },
+    {
+      "id": "turn/5a07e23a#0",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Read ~/.codex convo codex://threads/019efbcb-9de7-71a2-bd1c-73d678e80a4c just the most recent so u see how to transcribe. in ~/Downloads/Coder Cloud Launch, Dollar An Hour Agents.mp4 i want u to do a good HD video for X frmo that, starting from 0:54 seconds in to the end."
+      },
+      "truth": "none",
+      "partition": "calibration",
+      "label_source": "author",
+      "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+    },
+    {
+      "id": "turn/5a07e23a#1",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "yes 276.md, title Coder Cloud, push to forge and github"
+      },
+      "truth": "none",
+      "partition": "calibration",
+      "label_source": "author",
+      "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+    },
+    {
+      "id": "turn/9b37638d#0",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Read docs/coder/autoimprove.md and everything in this repo and ~/work/openagents.com, summarize here"
+      },
+      "truth": "none",
+      "partition": "development",
+      "label_source": "author",
+      "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+    },
+    {
+      "id": "turn/9b37638d#18",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "give me a msg for that agent doing those, proceed on allf ronts just dont touch those issues"
+      },
+      "truth": "none",
+      "partition": "development",
+      "label_source": "author",
+      "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+    },
+    {
+      "id": "turn/9b37638d#23",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "update the handoff doc with al lthat, yes wait for current deploy to finish and ill have the next agent do the deploy. ensure it knows EVERYTHING about the process to manage it, and the single-target and 7-target binary deploys - and push"
+      },
+      "truth": "none",
+      "partition": "development",
+      "label_source": "author",
+      "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+    },
+    {
+      "id": "turn/9b37638d#25",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "weatch its change first"
+      },
+      "truth": "none",
+      "partition": "calibration",
+      "label_source": "author",
+      "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+    },
+    {
+      "id": "turn/9b37638d#27",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "ensure handoff / runbook docs are fully updfated then stop"
+      },
+      "truth": "none",
+      "partition": "calibration",
+      "label_source": "author",
+      "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+    },
+    {
+      "id": "turn/9b37638d#4",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "yes commit and push to main thx"
+      },
+      "truth": "none",
+      "partition": "development",
+      "label_source": "author",
+      "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+    },
+    {
+      "id": "turn/9b37638d#7",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "we removed loadseed from these versions, delete that stuff"
+      },
+      "truth": "none",
+      "partition": "development",
+      "label_source": "author",
+      "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+    },
+    {
+      "id": "turn/9b37638d#8",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "wrap up work on the open opteimizer issues, like finish up current issues, dont start new subagents or issues unless youre fnishing current work, dont start new issues"
+      },
+      "truth": "none",
+      "partition": "calibration",
+      "label_source": "author",
+      "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+    },
+    {
+      "id": "authored/fan-out-six-questions",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Delegate six instances of Devin, one for each of these six read-only questions.\n- How many `pub struct` declarations are in crates/atif/src/document.rs?\n- What are the three partition names in the Partition enum in crates/gym/src/suite.rs?\n- What are the variant names of the Estimator enum in crates/lev/src/estimator.rs?\n- How many distinct kev checkpoints are named in docs/kev/model-cards.md?\n- Which single Nostr event kind number does nips/openagents/NIP-PRG.md define?\n- What is the value of the ROUNDS_MAX constant in crates/coder/src/shell.rs?"
+      },
+      "truth": "delegate-fan-out",
+      "partition": "development",
+      "label_source": "author",
+      "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+    },
+    {
+      "id": "authored/fan-out-top-issues",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "take the top six open issues and hand each one to its own agent, six at once"
+      },
+      "truth": "delegate-fan-out",
+      "partition": "development",
+      "label_source": "author",
+      "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+    },
+    {
+      "id": "authored/fan-out-listed-work",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "fan these out to separate sessions, one each:\n- update the readme\n- fix the clippy warnings in crates/gym\n- bump the jev version"
+      },
+      "truth": "delegate-fan-out",
+      "partition": "development",
+      "label_source": "author",
+      "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+    },
+    {
+      "id": "authored/fan-out-per-crate",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "spin up a session per crate and have each one report what its tests actually cover"
+      },
+      "truth": "delegate-fan-out",
+      "partition": "development",
+      "label_source": "author",
+      "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+    },
+    {
+      "id": "authored/fan-out-max-parallel",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "delegate all of those to subagents in parallel, max parallelization"
+      },
+      "truth": "delegate-fan-out",
+      "partition": "development",
+      "label_source": "author",
+      "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+    },
+    {
+      "id": "authored/answer-one-file",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "have an agent read crates/gym/src/suite.rs and tell me what the partitions are"
+      },
+      "truth": "answer-question",
+      "partition": "development",
+      "label_source": "author",
+      "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+    },
+    {
+      "id": "authored/answer-one-question",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "hand this one question to Devin: how many pub structs are in crates/atif/src/document.rs"
+      },
+      "truth": "answer-question",
+      "partition": "development",
+      "label_source": "author",
+      "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+    },
+    {
+      "id": "authored/answer-rounds-max",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "get a delegate to answer what ROUNDS_MAX is set to"
+      },
+      "truth": "answer-question",
+      "partition": "development",
+      "label_source": "author",
+      "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+    },
+    {
+      "id": "authored/about-the-program",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "what does the delegate-fan-out program do?"
+      },
+      "truth": "none",
+      "partition": "development",
+      "label_source": "author",
+      "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+    },
+    {
+      "id": "authored/do-it-yourself",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "don't delegate this, do it yourself: add the gym alias to ~/.zshrc"
+      },
+      "truth": "none",
+      "partition": "development",
+      "label_source": "author",
+      "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+    },
+    {
+      "id": "authored/about-the-last-run",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "how many delegations did the last fan-out start, and how many answered?"
+      },
+      "truth": "none",
+      "partition": "development",
+      "label_source": "author",
+      "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+    },
+    {
+      "id": "authored/ordinary-question",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "What does ROUNDS_MAX do?"
+      },
+      "truth": "none",
+      "partition": "development",
+      "label_source": "author",
+      "label_rule": "author: the request is labelled with a program when it asks this machine to run that program's work — `delegate-fan-out` for several pieces of work handed to other sessions at once, `answer-question` for one question about the repository handed to an executor — and `none` otherwise"
+    },
+    {
+      "id": "authored-v2/cal-burn-explicit",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Run burn-down on this checkout's .coder/work-list.json; give each item its own delegated session and worktree."
+      },
+      "truth": "burn-down",
+      "partition": "calibration",
+      "label_source": "author",
+      "label_rule": "author: choose burn-down only for execution of this checkout's work list with one delegated session per item; delegate-fan-out for multiple named tasks delegated in parallel; answer-question for one repository question explicitly handed to an executor; none for ordinary turns, descriptions, negated execution, or work outside those admitted program contracts"
+    },
+    {
+      "id": "authored-v2/cal-burn-worktrees",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Execute the saved work list here, one delegate per entry, and keep the resulting worktrees for review."
+      },
+      "truth": "burn-down",
+      "partition": "calibration",
+      "label_source": "author",
+      "label_rule": "author: choose burn-down only for execution of this checkout's work list with one delegated session per item; delegate-fan-out for multiple named tasks delegated in parallel; answer-question for one repository question explicitly handed to an executor; none for ordinary turns, descriptions, negated execution, or work outside those admitted program contracts"
+    },
+    {
+      "id": "authored-v2/cal-burn-list",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Start the program that works through this checkout's work-list file using separate delegated sessions."
+      },
+      "truth": "burn-down",
+      "partition": "calibration",
+      "label_source": "author",
+      "label_rule": "author: choose burn-down only for execution of this checkout's work list with one delegated session per item; delegate-fan-out for multiple named tasks delegated in parallel; answer-question for one repository question explicitly handed to an executor; none for ordinary turns, descriptions, negated execution, or work outside those admitted program contracts"
+    },
+    {
+      "id": "authored-v2/cal-fan-files",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "In parallel, delegate these two tasks: inspect crates/jev error handling; inspect crates/kev request validation."
+      },
+      "truth": "delegate-fan-out",
+      "partition": "calibration",
+      "label_source": "author",
+      "label_rule": "author: choose burn-down only for execution of this checkout's work list with one delegated session per item; delegate-fan-out for multiple named tasks delegated in parallel; answer-question for one repository question explicitly handed to an executor; none for ordinary turns, descriptions, negated execution, or work outside those admitted program contracts"
+    },
+    {
+      "id": "authored-v2/cal-fan-docs",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Launch separate sessions for updating the README and checking the examples; run them at the same time."
+      },
+      "truth": "delegate-fan-out",
+      "partition": "calibration",
+      "label_source": "author",
+      "label_rule": "author: choose burn-down only for execution of this checkout's work list with one delegated session per item; delegate-fan-out for multiple named tasks delegated in parallel; answer-question for one repository question explicitly handed to an executor; none for ordinary turns, descriptions, negated execution, or work outside those admitted program contracts"
+    },
+    {
+      "id": "authored-v2/cal-fan-tests",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Give each of these tasks to its own executor concurrently: test the parser, test the encoder, test the client."
+      },
+      "truth": "delegate-fan-out",
+      "partition": "calibration",
+      "label_source": "author",
+      "label_rule": "author: choose burn-down only for execution of this checkout's work list with one delegated session per item; delegate-fan-out for multiple named tasks delegated in parallel; answer-question for one repository question explicitly handed to an executor; none for ordinary turns, descriptions, negated execution, or work outside those admitted program contracts"
+    },
+    {
+      "id": "authored-v2/cal-answer-config",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Have one delegate read the repository and answer which Rust toolchain is pinned."
+      },
+      "truth": "answer-question",
+      "partition": "calibration",
+      "label_source": "author",
+      "label_rule": "author: choose burn-down only for execution of this checkout's work list with one delegated session per item; delegate-fan-out for multiple named tasks delegated in parallel; answer-question for one repository question explicitly handed to an executor; none for ordinary turns, descriptions, negated execution, or work outside those admitted program contracts"
+    },
+    {
+      "id": "authored-v2/cal-answer-model",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Hand a single repository question to an executor: where is the default Kev model chosen?"
+      },
+      "truth": "answer-question",
+      "partition": "calibration",
+      "label_source": "author",
+      "label_rule": "author: choose burn-down only for execution of this checkout's work list with one delegated session per item; delegate-fan-out for multiple named tasks delegated in parallel; answer-question for one repository question explicitly handed to an executor; none for ordinary turns, descriptions, negated execution, or work outside those admitted program contracts"
+    },
+    {
+      "id": "authored-v2/cal-answer-bound",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Ask one delegated session to find the request token limit in this repository and report it."
+      },
+      "truth": "answer-question",
+      "partition": "calibration",
+      "label_source": "author",
+      "label_rule": "author: choose burn-down only for execution of this checkout's work list with one delegated session per item; delegate-fan-out for multiple named tasks delegated in parallel; answer-question for one repository question explicitly handed to an executor; none for ordinary turns, descriptions, negated execution, or work outside those admitted program contracts"
+    },
+    {
+      "id": "authored-v2/cal-none-burn",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Explain what burn-down does and where its work-list file is stored."
+      },
+      "truth": "none",
+      "partition": "calibration",
+      "label_source": "author",
+      "label_rule": "author: choose burn-down only for execution of this checkout's work list with one delegated session per item; delegate-fan-out for multiple named tasks delegated in parallel; answer-question for one repository question explicitly handed to an executor; none for ordinary turns, descriptions, negated execution, or work outside those admitted program contracts"
+    },
+    {
+      "id": "authored-v2/cal-none-negation",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Do not start delegate-fan-out. Just describe the tasks it would receive."
+      },
+      "truth": "none",
+      "partition": "calibration",
+      "label_source": "author",
+      "label_rule": "author: choose burn-down only for execution of this checkout's work list with one delegated session per item; delegate-fan-out for multiple named tasks delegated in parallel; answer-question for one repository question explicitly handed to an executor; none for ordinary turns, descriptions, negated execution, or work outside those admitted program contracts"
+    },
+    {
+      "id": "authored-v2/cal-none-question",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Which Rust toolchain does this repository pin?"
+      },
+      "truth": "none",
+      "partition": "calibration",
+      "label_source": "author",
+      "label_rule": "author: choose burn-down only for execution of this checkout's work list with one delegated session per item; delegate-fan-out for multiple named tasks delegated in parallel; answer-question for one repository question explicitly handed to an executor; none for ordinary turns, descriptions, negated execution, or work outside those admitted program contracts"
+    },
+    {
+      "id": "authored-v2/dev-burn-handoff",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Take the entries already saved in .coder/work-list.json through the delegated work-list program, keeping each checkout for review."
+      },
+      "truth": "burn-down",
+      "partition": "development",
+      "label_source": "author",
+      "label_rule": "author: choose burn-down only for execution of this checkout's work list with one delegated session per item; delegate-fan-out for multiple named tasks delegated in parallel; answer-question for one repository question explicitly handed to an executor; none for ordinary turns, descriptions, negated execution, or work outside those admitted program contracts"
+    },
+    {
+      "id": "authored-v2/dev-burn-named",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Start burn-down for the current checkout now."
+      },
+      "truth": "burn-down",
+      "partition": "development",
+      "label_source": "author",
+      "label_rule": "author: choose burn-down only for execution of this checkout's work list with one delegated session per item; delegate-fan-out for multiple named tasks delegated in parallel; answer-question for one repository question explicitly handed to an executor; none for ordinary turns, descriptions, negated execution, or work outside those admitted program contracts"
+    },
+    {
+      "id": "authored-v2/dev-burn-each",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "For every item in this checkout's persisted work list, run a delegate in its own worktree. Keep all the worktrees afterwards."
+      },
+      "truth": "burn-down",
+      "partition": "development",
+      "label_source": "author",
+      "label_rule": "author: choose burn-down only for execution of this checkout's work list with one delegated session per item; delegate-fan-out for multiple named tasks delegated in parallel; answer-question for one repository question explicitly handed to an executor; none for ordinary turns, descriptions, negated execution, or work outside those admitted program contracts"
+    },
+    {
+      "id": "authored-v2/dev-fan-two",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Fan out two sessions now: one reviews the decoder, the other reviews the HTTP client."
+      },
+      "truth": "delegate-fan-out",
+      "partition": "development",
+      "label_source": "author",
+      "label_rule": "author: choose burn-down only for execution of this checkout's work list with one delegated session per item; delegate-fan-out for multiple named tasks delegated in parallel; answer-question for one repository question explicitly handed to an executor; none for ordinary turns, descriptions, negated execution, or work outside those admitted program contracts"
+    },
+    {
+      "id": "authored-v2/dev-fan-list",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Delegate in parallel:\n- check the example commands\n- inspect the refusal tests\n- review the model cards"
+      },
+      "truth": "delegate-fan-out",
+      "partition": "development",
+      "label_source": "author",
+      "label_rule": "author: choose burn-down only for execution of this checkout's work list with one delegated session per item; delegate-fan-out for multiple named tasks delegated in parallel; answer-question for one repository question explicitly handed to an executor; none for ordinary turns, descriptions, negated execution, or work outside those admitted program contracts"
+    },
+    {
+      "id": "authored-v2/dev-fan-questions",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Have two executors answer these repository questions simultaneously: where are manifests loaded, and where are traces written?"
+      },
+      "truth": "delegate-fan-out",
+      "partition": "development",
+      "label_source": "author",
+      "label_rule": "author: choose burn-down only for execution of this checkout's work list with one delegated session per item; delegate-fan-out for multiple named tasks delegated in parallel; answer-question for one repository question explicitly handed to an executor; none for ordinary turns, descriptions, negated execution, or work outside those admitted program contracts"
+    },
+    {
+      "id": "authored-v2/dev-answer-one",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Delegate just this question: which crate writes the append-only result store?"
+      },
+      "truth": "answer-question",
+      "partition": "development",
+      "label_source": "author",
+      "label_rule": "author: choose burn-down only for execution of this checkout's work list with one delegated session per item; delegate-fan-out for multiple named tasks delegated in parallel; answer-question for one repository question explicitly handed to an executor; none for ordinary turns, descriptions, negated execution, or work outside those admitted program contracts"
+    },
+    {
+      "id": "authored-v2/dev-answer-doc",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Have an executor inspect docs/verification.md and tell me whether Metal checks run by default."
+      },
+      "truth": "answer-question",
+      "partition": "development",
+      "label_source": "author",
+      "label_rule": "author: choose burn-down only for execution of this checkout's work list with one delegated session per item; delegate-fan-out for multiple named tasks delegated in parallel; answer-question for one repository question explicitly handed to an executor; none for ordinary turns, descriptions, negated execution, or work outside those admitted program contracts"
+    },
+    {
+      "id": "authored-v2/dev-answer-count",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Use one delegated session to answer how many program manifests this checkout contains."
+      },
+      "truth": "answer-question",
+      "partition": "development",
+      "label_source": "author",
+      "label_rule": "author: choose burn-down only for execution of this checkout's work list with one delegated session per item; delegate-fan-out for multiple named tasks delegated in parallel; answer-question for one repository question explicitly handed to an executor; none for ordinary turns, descriptions, negated execution, or work outside those admitted program contracts"
+    },
+    {
+      "id": "authored-v2/dev-none-overlap",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Read the repository and tell me where program manifests are loaded."
+      },
+      "truth": "none",
+      "partition": "development",
+      "label_source": "author",
+      "label_rule": "author: choose burn-down only for execution of this checkout's work list with one delegated session per item; delegate-fan-out for multiple named tasks delegated in parallel; answer-question for one repository question explicitly handed to an executor; none for ordinary turns, descriptions, negated execution, or work outside those admitted program contracts"
+    },
+    {
+      "id": "authored-v2/dev-none-mention",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Rename the section explaining answer-question; do the edit yourself."
+      },
+      "truth": "none",
+      "partition": "development",
+      "label_source": "author",
+      "label_rule": "author: choose burn-down only for execution of this checkout's work list with one delegated session per item; delegate-fan-out for multiple named tasks delegated in parallel; answer-question for one repository question explicitly handed to an executor; none for ordinary turns, descriptions, negated execution, or work outside those admitted program contracts"
+    },
+    {
+      "id": "authored-v2/dev-none-list",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Show me .coder/work-list.json and explain its entries. Do not execute the list."
+      },
+      "truth": "none",
+      "partition": "development",
+      "label_source": "author",
+      "label_rule": "author: choose burn-down only for execution of this checkout's work list with one delegated session per item; delegate-fan-out for multiple named tasks delegated in parallel; answer-question for one repository question explicitly handed to an executor; none for ordinary turns, descriptions, negated execution, or work outside those admitted program contracts"
+    },
+    {
+      "id": "authored-v2/locked-burn-queue",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Execute our saved checkout work list through burn-down, with a delegated worktree for each entry."
+      },
+      "truth": "burn-down",
+      "partition": "locked",
+      "label_source": "author",
+      "label_rule": "author: choose burn-down only for execution of this checkout's work list with one delegated session per item; delegate-fan-out for multiple named tasks delegated in parallel; answer-question for one repository question explicitly handed to an executor; none for ordinary turns, descriptions, negated execution, or work outside those admitted program contracts"
+    },
+    {
+      "id": "authored-v2/locked-burn-review",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Run the persisted .coder work list using one executor per item, preserving every workspace for my review."
+      },
+      "truth": "burn-down",
+      "partition": "locked",
+      "label_source": "author",
+      "label_rule": "author: choose burn-down only for execution of this checkout's work list with one delegated session per item; delegate-fan-out for multiple named tasks delegated in parallel; answer-question for one repository question explicitly handed to an executor; none for ordinary turns, descriptions, negated execution, or work outside those admitted program contracts"
+    },
+    {
+      "id": "authored-v2/locked-burn-short",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Please run this checkout's burn-down program."
+      },
+      "truth": "burn-down",
+      "partition": "locked",
+      "label_source": "author",
+      "label_rule": "author: choose burn-down only for execution of this checkout's work list with one delegated session per item; delegate-fan-out for multiple named tasks delegated in parallel; answer-question for one repository question explicitly handed to an executor; none for ordinary turns, descriptions, negated execution, or work outside those admitted program contracts"
+    },
+    {
+      "id": "authored-v2/locked-fan-build",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Start two delegates concurrently: one examines the build script, one examines the release notes."
+      },
+      "truth": "delegate-fan-out",
+      "partition": "locked",
+      "label_source": "author",
+      "label_rule": "author: choose burn-down only for execution of this checkout's work list with one delegated session per item; delegate-fan-out for multiple named tasks delegated in parallel; answer-question for one repository question explicitly handed to an executor; none for ordinary turns, descriptions, negated execution, or work outside those admitted program contracts"
+    },
+    {
+      "id": "authored-v2/locked-fan-checks",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Hand these checks to separate sessions at once: inspect timeout handling; inspect cancellation handling."
+      },
+      "truth": "delegate-fan-out",
+      "partition": "locked",
+      "label_source": "author",
+      "label_rule": "author: choose burn-down only for execution of this checkout's work list with one delegated session per item; delegate-fan-out for multiple named tasks delegated in parallel; answer-question for one repository question explicitly handed to an executor; none for ordinary turns, descriptions, negated execution, or work outside those admitted program contracts"
+    },
+    {
+      "id": "authored-v2/locked-fan-crates",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Delegate a documentation audit for crates/jev and a separate test audit for crates/gym in parallel."
+      },
+      "truth": "delegate-fan-out",
+      "partition": "locked",
+      "label_source": "author",
+      "label_rule": "author: choose burn-down only for execution of this checkout's work list with one delegated session per item; delegate-fan-out for multiple named tasks delegated in parallel; answer-question for one repository question explicitly handed to an executor; none for ordinary turns, descriptions, negated execution, or work outside those admitted program contracts"
+    },
+    {
+      "id": "authored-v2/locked-answer-port",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Ask one executor to inspect this repository and report the default HTTP listening port."
+      },
+      "truth": "answer-question",
+      "partition": "locked",
+      "label_source": "author",
+      "label_rule": "author: choose burn-down only for execution of this checkout's work list with one delegated session per item; delegate-fan-out for multiple named tasks delegated in parallel; answer-question for one repository question explicitly handed to an executor; none for ordinary turns, descriptions, negated execution, or work outside those admitted program contracts"
+    },
+    {
+      "id": "authored-v2/locked-answer-manual",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Use a delegate to answer this one question from the repository: which script runs the manual gate?"
+      },
+      "truth": "answer-question",
+      "partition": "locked",
+      "label_source": "author",
+      "label_rule": "author: choose burn-down only for execution of this checkout's work list with one delegated session per item; delegate-fan-out for multiple named tasks delegated in parallel; answer-question for one repository question explicitly handed to an executor; none for ordinary turns, descriptions, negated execution, or work outside those admitted program contracts"
+    },
+    {
+      "id": "authored-v2/locked-answer-source",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Have one delegated session find and explain the source of the default inference dtype."
+      },
+      "truth": "answer-question",
+      "partition": "locked",
+      "label_source": "author",
+      "label_rule": "author: choose burn-down only for execution of this checkout's work list with one delegated session per item; delegate-fan-out for multiple named tasks delegated in parallel; answer-question for one repository question explicitly handed to an executor; none for ordinary turns, descriptions, negated execution, or work outside those admitted program contracts"
+    },
+    {
+      "id": "authored-v2/locked-none-dry",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Describe a hypothetical burn-down run without starting anything."
+      },
+      "truth": "none",
+      "partition": "locked",
+      "label_source": "author",
+      "label_rule": "author: choose burn-down only for execution of this checkout's work list with one delegated session per item; delegate-fan-out for multiple named tasks delegated in parallel; answer-question for one repository question explicitly handed to an executor; none for ordinary turns, descriptions, negated execution, or work outside those admitted program contracts"
+    },
+    {
+      "id": "authored-v2/locked-none-ordinary",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Where does the server choose its listening address?"
+      },
+      "truth": "none",
+      "partition": "locked",
+      "label_source": "author",
+      "label_rule": "author: choose burn-down only for execution of this checkout's work list with one delegated session per item; delegate-fan-out for multiple named tasks delegated in parallel; answer-question for one repository question explicitly handed to an executor; none for ordinary turns, descriptions, negated execution, or work outside those admitted program contracts"
+    },
+    {
+      "id": "authored-v2/locked-none-document",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Document the difference between answer-question and delegate-fan-out; make the change yourself."
+      },
+      "truth": "none",
+      "partition": "locked",
+      "label_source": "author",
+      "label_rule": "author: choose burn-down only for execution of this checkout's work list with one delegated session per item; delegate-fan-out for multiple named tasks delegated in parallel; answer-question for one repository question explicitly handed to an executor; none for ordinary turns, descriptions, negated execution, or work outside those admitted program contracts"
+    },
+    {
+      "id": "authored-v3/cal-runs-unearned",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Which Terminal-Bench runs claimed success they didn't earn?"
+      },
+      "truth": "review-runs",
+      "partition": "calibration",
+      "label_source": "author",
+      "label_rule": "review-runs for a question about Terminal-Bench runs themselves (their outcomes, failures, rankings, or Jev's judgments of them) that the Gym's records answer; none for questions about how the Gym, its commands, or its code work, for requests to start, mark, or change runs, and for negated requests. The v2 labels are kept: none of the v2 items asks about runs."
+    },
+    {
+      "id": "authored-v3/cal-runs-why-fail",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Why did Luna fail log-summary-date-ranges?"
+      },
+      "truth": "review-runs",
+      "partition": "calibration",
+      "label_source": "author",
+      "label_rule": "review-runs for a question about Terminal-Bench runs themselves (their outcomes, failures, rankings, or Jev's judgments of them) that the Gym's records answer; none for questions about how the Gym, its commands, or its code work, for requests to start, mark, or change runs, and for negated requests. The v2 labels are kept: none of the v2 items asks about runs."
+    },
+    {
+      "id": "authored-v3/cal-runs-patterns",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Look through the runs Jev ranked most worth learning from and tell me what they share."
+      },
+      "truth": "review-runs",
+      "partition": "calibration",
+      "label_source": "author",
+      "label_rule": "review-runs for a question about Terminal-Bench runs themselves (their outcomes, failures, rankings, or Jev's judgments of them) that the Gym's records answer; none for questions about how the Gym, its commands, or its code work, for requests to start, mark, or change runs, and for negated requests. The v2 labels are kept: none of the v2 items asks about runs."
+    },
+    {
+      "id": "authored-v3/cal-none-runs-howto",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "How do I list Terminal-Bench runs with the gym runs command?"
+      },
+      "truth": "none",
+      "partition": "calibration",
+      "label_source": "author",
+      "label_rule": "review-runs for a question about Terminal-Bench runs themselves (their outcomes, failures, rankings, or Jev's judgments of them) that the Gym's records answer; none for questions about how the Gym, its commands, or its code work, for requests to start, mark, or change runs, and for negated requests. The v2 labels are kept: none of the v2 items asks about runs."
+    },
+    {
+      "id": "authored-v3/cal-none-runs-negated",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Don't dig through the runs; just explain what the unearned_success judgment means."
+      },
+      "truth": "none",
+      "partition": "calibration",
+      "label_source": "author",
+      "label_rule": "review-runs for a question about Terminal-Bench runs themselves (their outcomes, failures, rankings, or Jev's judgments of them) that the Gym's records answer; none for questions about how the Gym, its commands, or its code work, for requests to start, mark, or change runs, and for negated requests. The v2 labels are kept: none of the v2 items asks about runs."
+    },
+    {
+      "id": "authored-v3/dev-runs-output-paths",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Which failures come down to output paths?"
+      },
+      "truth": "review-runs",
+      "partition": "development",
+      "label_source": "author",
+      "label_rule": "review-runs for a question about Terminal-Bench runs themselves (their outcomes, failures, rankings, or Jev's judgments of them) that the Gym's records answer; none for questions about how the Gym, its commands, or its code work, for requests to start, mark, or change runs, and for negated requests. The v2 labels are kept: none of the v2 items asks about runs."
+    },
+    {
+      "id": "authored-v3/dev-runs-rank",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Why does the cargo-flight-dispatch run rank so high for learning?"
+      },
+      "truth": "review-runs",
+      "partition": "development",
+      "label_source": "author",
+      "label_rule": "review-runs for a question about Terminal-Bench runs themselves (their outcomes, failures, rankings, or Jev's judgments of them) that the Gym's records answer; none for questions about how the Gym, its commands, or its code work, for requests to start, mark, or change runs, and for negated requests. The v2 labels are kept: none of the v2 items asks about runs."
+    },
+    {
+      "id": "authored-v3/dev-runs-compare",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Compare how Coder One and Claude Code failed bun-sourcemap-leak."
+      },
+      "truth": "review-runs",
+      "partition": "development",
+      "label_source": "author",
+      "label_rule": "review-runs for a question about Terminal-Bench runs themselves (their outcomes, failures, rankings, or Jev's judgments of them) that the Gym's records answer; none for questions about how the Gym, its commands, or its code work, for requests to start, mark, or change runs, and for negated requests. The v2 labels are kept: none of the v2 items asks about runs."
+    },
+    {
+      "id": "authored-v3/dev-none-code",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Where in the code does gym runs compute the learning order?"
+      },
+      "truth": "none",
+      "partition": "development",
+      "label_source": "author",
+      "label_rule": "review-runs for a question about Terminal-Bench runs themselves (their outcomes, failures, rankings, or Jev's judgments of them) that the Gym's records answer; none for questions about how the Gym, its commands, or its code work, for requests to start, mark, or change runs, and for negated requests. The v2 labels are kept: none of the v2 items asks about runs."
+    },
+    {
+      "id": "authored-v3/dev-none-start",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Start a new Terminal-Bench run of fix-git with Coder One."
+      },
+      "truth": "none",
+      "partition": "development",
+      "label_source": "author",
+      "label_rule": "review-runs for a question about Terminal-Bench runs themselves (their outcomes, failures, rankings, or Jev's judgments of them) that the Gym's records answer; none for questions about how the Gym, its commands, or its code work, for requests to start, mark, or change runs, and for negated requests. The v2 labels are kept: none of the v2 items asks about runs."
+    },
+    {
+      "id": "authored-v3/lock-runs-harness",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Which runs never started because of a harness fault?"
+      },
+      "truth": "review-runs",
+      "partition": "locked",
+      "label_source": "author",
+      "label_rule": "review-runs for a question about Terminal-Bench runs themselves (their outcomes, failures, rankings, or Jev's judgments of them) that the Gym's records answer; none for questions about how the Gym, its commands, or its code work, for requests to start, mark, or change runs, and for negated requests. The v2 labels are kept: none of the v2 items asks about runs."
+    },
+    {
+      "id": "authored-v3/lock-runs-near-miss",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Which recent failures were near misses, and what would have fixed them?"
+      },
+      "truth": "review-runs",
+      "partition": "locked",
+      "label_source": "author",
+      "label_rule": "review-runs for a question about Terminal-Bench runs themselves (their outcomes, failures, rankings, or Jev's judgments of them) that the Gym's records answer; none for questions about how the Gym, its commands, or its code work, for requests to start, mark, or change runs, and for negated requests. The v2 labels are kept: none of the v2 items asks about runs."
+    },
+    {
+      "id": "authored-v3/lock-runs-opus",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "What did the Opus runs that failed cad-model get wrong?"
+      },
+      "truth": "review-runs",
+      "partition": "locked",
+      "label_source": "author",
+      "label_rule": "review-runs for a question about Terminal-Bench runs themselves (their outcomes, failures, rankings, or Jev's judgments of them) that the Gym's records answer; none for questions about how the Gym, its commands, or its code work, for requests to start, mark, or change runs, and for negated requests. The v2 labels are kept: none of the v2 items asks about runs."
+    },
+    {
+      "id": "authored-v3/lock-none-doc",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Summarize docs/gym/terminal-bench-cli.md for me."
+      },
+      "truth": "none",
+      "partition": "locked",
+      "label_source": "author",
+      "label_rule": "review-runs for a question about Terminal-Bench runs themselves (their outcomes, failures, rankings, or Jev's judgments of them) that the Gym's records answer; none for questions about how the Gym, its commands, or its code work, for requests to start, mark, or change runs, and for negated requests. The v2 labels are kept: none of the v2 items asks about runs."
+    },
+    {
+      "id": "authored-v3/lock-none-mark",
+      "family": "program",
+      "kind": "choice",
+      "state": {
+        "request": "Mark the wal-recovery-ordering run as bad."
+      },
+      "truth": "none",
+      "partition": "locked",
+      "label_source": "author",
+      "label_rule": "review-runs for a question about Terminal-Bench runs themselves (their outcomes, failures, rankings, or Jev's judgments of them) that the Gym's records answer; none for questions about how the Gym, its commands, or its code work, for requests to start, mark, or change runs, and for negated requests. The v2 labels are kept: none of the v2 items asks about runs."
+    }
+  ],
+  "digest": "7f8cdfb93b439643749e77b29ddbd77be17ceddb55d046213a395787f86a88df"
+}
