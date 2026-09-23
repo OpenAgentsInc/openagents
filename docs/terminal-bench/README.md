@@ -311,6 +311,10 @@ and [#9559](https://github.com/OpenAgentsInc/openagents/issues/9559).
 **Status: not yet run.** No agent arm has run the suite on this host yet.
 Only the harness checks below have run.
 
+[TB4 failure analysis, 2026-09-23](2026-09-23-tb4-failure-analysis.md)
+diagnoses the tunable Coder One arm's first graded failures and ranks the
+levers that would turn them into passes.
+
 ### Leaderboard reference
 
 The public leaderboard on the Harbor Hub, fetched on 2026-09-23
