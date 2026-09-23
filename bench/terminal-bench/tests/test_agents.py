@@ -48,6 +48,7 @@ def test_known_arms(agents):
         "coder-one-tunable-luna-pack",
         "coder-one-tunable-v2",
         "coder-one-tunable-luna-v2",
+        "coder-one-tunable-v3",
         "oracle",
         "nop",
     }
@@ -197,6 +198,7 @@ def test_tunable_arms_install_both_clis_and_forward_both_credentials(agents):
         ("coder-one-tunable-luna-pack", "tunable-luna-pack.json"),
         ("coder-one-tunable-v2", "tunable-v2.json"),
         ("coder-one-tunable-luna-v2", "tunable-luna-v2.json"),
+        ("coder-one-tunable-v3", "tunable-v3.json"),
     ):
         profile = agents[arm]
         assert profile.harbor_import_path == "tbench.coder_one:CoderOneTunable"
