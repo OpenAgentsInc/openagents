@@ -368,9 +368,10 @@ async fn replay_monitor(flags: &Flags) -> Result<i32, String> {
 fn print_replay(report: &super::replay::Report) {
     let totals = &report.totals;
     println!(
-        "evidence.pack replay · {} manifests · {} briefings · {} replayed · {} rebuild exactly · {} skipped",
+        "evidence.pack replay · {} manifests · {} first-packer briefings ({} coverage-packed left out) · {} replayed · {} rebuild exactly · {} skipped",
         report.manifests,
         report.briefings,
+        report.coverage_packed,
         totals["replayed"],
         totals["reproduces"],
         report.skipped.len()

@@ -52,8 +52,12 @@ pub struct Report {
     pub schema: String,
     pub implementation: crate::record::Implementation,
     pub manifests: usize,
-    /// Episodes that delegated and kept a briefing.
+    /// Episodes that delegated and kept a briefing the first packer built.
     pub briefings: usize,
+    /// Episodes whose briefing the coverage packer built, which the replay
+    /// leaves out.
+    #[serde(default)]
+    pub coverage_packed: usize,
     /// Briefings that could not be read back, with why.
     pub skipped: Vec<(String, String)>,
     pub replayed: Vec<Replayed>,
@@ -62,6 +66,21 @@ pub struct Report {
 
 fn read_json(path: &Path) -> Option<Value> {
     serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()
+}
+
+/// Whether the episode kept a briefing the first packer built.
+///
+/// An episode whose policy chose the coverage packer attaches
+/// `artifacts/briefing-pack.json`, and its briefing has the coverage
+/// packer's shape, which [`super::pack::parse`] doesn't read. Only the
+/// first packer's briefings replay.
+pub(crate) fn first_packer_briefing(dir: &Path, manifest: &Value) -> bool {
+    manifest.pointer("/delegate/delegation/briefing").is_some()
+        && !dir.join("artifacts/briefing-pack.json").exists()
+        && manifest
+            .pointer("/policy/manifest/policy/brief/packer")
+            .and_then(Value::as_str)
+            .is_none_or(|packer| packer == "sections")
 }
 
 /// Every episode directory under `traces` that holds a manifest.
@@ -220,10 +239,16 @@ pub fn replay_tree(traces: &Path, params: Params) -> Report {
     let mut replayed = Vec::new();
     let mut skipped = Vec::new();
     let mut briefings = 0;
+    let mut coverage_packed = 0;
     for dir in &dirs {
-        let has_briefing = read_json(&dir.join("manifest.json"))
-            .is_some_and(|m| m.pointer("/delegate/delegation/briefing").is_some());
-        if !has_briefing {
+        let Some(manifest) = read_json(&dir.join("manifest.json")) else {
+            continue;
+        };
+        if manifest.pointer("/delegate/delegation/briefing").is_none() {
+            continue;
+        }
+        if !first_packer_briefing(dir, &manifest) {
+            coverage_packed += 1;
             continue;
         }
         briefings += 1;
@@ -276,6 +301,7 @@ pub fn replay_tree(traces: &Path, params: Params) -> Report {
         implementation: crate::pack::implementation(params, false),
         manifests: dirs.len(),
         briefings,
+        coverage_packed,
         skipped,
         replayed,
         totals,
@@ -283,7 +309,7 @@ pub fn replay_tree(traces: &Path, params: Params) -> Report {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     fn traces() -> PathBuf {
@@ -297,6 +323,16 @@ mod tests {
     fn every_retained_briefing_replays_without_dropping_selected_evidence() {
         let report = replay_tree(&traces(), Params::default());
         assert!(report.briefings >= 200, "{}", report.briefings);
+        // The coverage packer's briefings (the pack and Luna-first tunable
+        // arms) aren't the first packer's, so they stay out.
+        assert!(report.coverage_packed > 0);
+        assert!(
+            report
+                .replayed
+                .iter()
+                .all(|r| !r.trace.contains("-pack") && !r.trace.contains("-luna-v2")),
+            "a coverage-packed briefing replayed"
+        );
         // One early smoke briefing predates the section format the reader
         // parses, and the report names it.
         assert!(report.skipped.len() <= 1, "{:?}", report.skipped);
@@ -318,5 +354,74 @@ mod tests {
             assert_eq!(one.after.selected_dropped, 0);
             assert!(one.after.data_chars > 0);
         }
+    }
+
+    /// Writes episodes in the shapes newer retained traces take, none of
+    /// them a first-packer briefing the replays can read: a TB4 job with
+    /// only a live ATIF log, a composition that never delegated, a
+    /// coverage-packed briefing, an unreadable manifest, a raw ATIF
+    /// trajectory, a retention record, and a stream of lines that aren't
+    /// JSON.
+    pub(crate) fn odd_tree(root: &Path) {
+        let write = |path: &str, text: &str| {
+            let path = root.join(path);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, text).unwrap();
+        };
+        write(
+            "tb4--coder-one-tunable-v4--task/task__A/agent/live/episode.atif.jsonl",
+            "{\"schema_version\":\"ATIF-v1.7\"}\n",
+        );
+        write("tb4--coder-one-tunable-v4--task/result.json", "{}");
+        write(
+            "panel--coder-one-tunable--t/t__B.episode/manifest.json",
+            r#"{"contract":"x","composition":{"steps":[]}}"#,
+        );
+        write("panel--coder-one-tunable--t/t__B.episode/artifacts/x", "");
+        write(
+            "panel--coder-one-tunable--t/t__B.episode/retention.json",
+            r#"{"kept":["manifest.json"]}"#,
+        );
+        write(
+            "panel--coder-one-tunable--t/t__B.episode/trajectory.atif.json",
+            r#"{"schema_version":"ATIF-v1.7","steps":[]}"#,
+        );
+        write(
+            "extended--coder-one-tunable-luna-pack--t/t__C.episode/manifest.json",
+            r#"{"policy":{"manifest":{"policy":{"brief":{"packer":"coverage-jev"}}}},
+               "delegate":{"model":"luna","delegation":{"briefing":{"sha256":"0","cap":12000}}}}"#,
+        );
+        write(
+            "extended--coder-one-tunable-luna-pack--t/t__C.episode/artifacts/briefing-pack.json",
+            "{}",
+        );
+        write(
+            "extended--coder-one-tunable-luna-pack--t/t__C.episode/artifacts/delegate-1.briefing.md",
+            "## Evidence\n",
+        );
+        write(
+            "extended--coder-one-tunable-luna-pack--t/t__C.episode/artifacts/delegate-1.stream.jsonl",
+            "not json\n{\"type\":\"unknown\"}\n",
+        );
+        write(
+            "extended--coder-one-tunable-luna-pack--t/t__C.episode/artifacts/state.json",
+            r#"{"issue":{"title":"t","body":"Do t."},"survey":[{"path":7}]}"#,
+        );
+        write("smoke--x--t/t__D.episode/manifest.json", "not json");
+        write(
+            "smoke--x--t/t__D.episode/artifacts/delegate-1.stream.jsonl",
+            "",
+        );
+    }
+
+    #[test]
+    fn newer_trace_shapes_replay_without_crashing() {
+        let dir = tempfile::tempdir().unwrap();
+        odd_tree(dir.path());
+        let report = replay_tree(dir.path(), Params::default());
+        assert_eq!(report.briefings, 0);
+        assert_eq!(report.coverage_packed, 1);
+        assert!(report.replayed.is_empty());
+        assert!(report.skipped.is_empty(), "{:?}", report.skipped);
     }
 }

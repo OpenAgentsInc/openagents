@@ -113,12 +113,15 @@ pub fn parse(
     }
 
     // Find each section in order; a section runs to the next one's start.
+    // Every section starts a line, so a marker only matches at a line's
+    // start: a requirement that itself opens with "- " doesn't end early.
     let mut starts = Vec::new();
     let mut cursor = 0;
     for (item, marker) in &markers {
         let found = body[cursor..]
-            .find(marker.as_str())
-            .map(|offset| cursor + offset)
+            .match_indices(marker.as_str())
+            .map(|(offset, _)| cursor + offset)
+            .find(|&at| at == 0 || body[..at].ends_with('\n'))
             .ok_or_else(|| format!("cannot find {item:?} in the briefing"))?;
         starts.push(found);
         cursor = found + marker.len().max(1);
@@ -386,6 +389,24 @@ mod tests {
         a.sort();
         b.sort();
         assert_eq!(a, b);
+    }
+
+    /// A task's nested bullets become requirements that open with "- ",
+    /// as the tunable arms' briefings show; each still parses as its own
+    /// section.
+    #[test]
+    fn a_requirement_that_opens_with_a_dash_parses_back() {
+        let mut original = inputs();
+        original.requirements = vec![
+            ("Support the following.".to_string(), None),
+            ("- Interactive programs".to_string(), None),
+            ("- Modifier keys".to_string(), Some(0.4)),
+            ("Install dependencies.".to_string(), None),
+        ];
+        let briefing = Briefing::build(&original, 12_000);
+        let parsed = parse(&briefing.text, &briefing.included, &briefing.omitted).unwrap();
+        assert_eq!(parsed.requirements, original.requirements);
+        assert_eq!(Briefing::build(&parsed, 12_000).sha256(), briefing.sha256());
     }
 
     #[test]

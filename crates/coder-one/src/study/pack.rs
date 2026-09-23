@@ -204,17 +204,18 @@ pub fn load_case(dir: &Path, labels: &BTreeMap<String, Vec<Label>>) -> Result<Ca
     })
 }
 
-/// Every retained briefing under `traces`, and the ones that couldn't be
-/// read back, with why.
+/// Every retained briefing the first packer built under `traces`, and the
+/// ones that couldn't be read back, with why. A coverage-packed briefing
+/// has no first-packer inputs to restore, so it isn't a case.
 #[must_use]
 pub fn load_cases(traces: &Path, fixtures: &Path) -> (Vec<Case>, Vec<(String, String)>) {
     let labels = labels(fixtures);
     let mut cases = Vec::new();
     let mut skipped = Vec::new();
     for dir in crate::component::replay::episodes(traces) {
-        let delegated = read_json(&dir.join("manifest.json"))
-            .is_some_and(|m| m.pointer("/delegate/delegation/briefing").is_some());
-        if !delegated {
+        let first_packer = read_json(&dir.join("manifest.json"))
+            .is_some_and(|m| crate::component::replay::first_packer_briefing(&dir, &m));
+        if !first_packer {
             continue;
         }
         match load_case(&dir, &labels) {
@@ -1423,6 +1424,15 @@ mod tests {
             aggregate.label_coverage > 0.0 && aggregate.label_coverage <= aggregate.label_coverable
         );
         assert_eq!(aggregate.selected_delivered_rate, 1.0);
+    }
+
+    #[test]
+    fn newer_trace_shapes_load_no_cases_and_no_crash() {
+        let dir = tempfile::tempdir().unwrap();
+        crate::component::replay::tests::odd_tree(dir.path());
+        let (cases, skipped) = load_cases(dir.path(), &dir.path().join("none"));
+        assert!(cases.is_empty());
+        assert!(skipped.is_empty(), "{skipped:?}");
     }
 
     #[test]

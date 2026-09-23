@@ -368,6 +368,19 @@ fn first_trial(trace: &str) -> bool {
 /// Returns the report and the recorder whose steps hold every Jev answer,
 /// so a live run can be saved.
 pub async fn replay_tree(traces: &Path, params: &Params, jev: &ReplayJev) -> (Report, Recorder) {
+    replay_streams(traces, params, jev, &|_| true).await
+}
+
+/// Replays the retained streams under `traces` that `keep` accepts,
+/// each named `<trace>/<stream file>`, as [`replay_tree`] replays them
+/// all. A test pins a report to the population it was written over this
+/// way, so newer retained traces don't move its numbers.
+pub async fn replay_streams(
+    traces: &Path,
+    params: &Params,
+    jev: &ReplayJev,
+    keep: &dyn Fn(&str) -> bool,
+) -> (Report, Recorder) {
     let recorder = Recorder::default();
     let mut skipped = Vec::new();
     let mut replayed = Vec::new();
@@ -375,19 +388,28 @@ pub async fn replay_tree(traces: &Path, params: &Params, jev: &ReplayJev) -> (Re
     let mut compared = Score::default();
     let mut families: std::collections::BTreeMap<String, Score> = Default::default();
     let mut live_used = 0usize;
-    let all = streams(traces);
-    for (dir, file) in &all {
-        let trace = dir
-            .parent()
+    let trace_of = |dir: &Path| {
+        dir.parent()
             .and_then(Path::file_name)
             .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default();
-        let label = format!(
-            "{trace}/{}",
+            .unwrap_or_default()
+    };
+    let label_of = |dir: &Path, file: &Path| {
+        format!(
+            "{}/{}",
+            trace_of(dir),
             file.file_name()
                 .map(|n| n.to_string_lossy())
                 .unwrap_or_default()
-        );
+        )
+    };
+    let all: Vec<(PathBuf, PathBuf)> = streams(traces)
+        .into_iter()
+        .filter(|(dir, file)| keep(&label_of(dir, file)))
+        .collect();
+    for (dir, file) in &all {
+        let trace = trace_of(dir);
+        let label = label_of(dir, file);
         let (input, manifest) = match stream_input(dir, file) {
             Ok(read) => read,
             Err(why) => {
@@ -401,15 +423,19 @@ pub async fn replay_tree(traces: &Path, params: &Params, jev: &ReplayJev) -> (Re
             jev: false,
             ..params.clone()
         };
-        let Ok(dry) = watch(
+        let dry = match watch(
             &input,
             rules_only.clone(),
             &JevMode::Off,
             &Recorder::default(),
         )
         .await
-        else {
-            continue;
+        {
+            Ok(dry) => dry,
+            Err(why) => {
+                skipped.push((label, why));
+                continue;
+            }
         };
         let sampled = jev.on
             && jev.live.is_some()
@@ -604,20 +630,70 @@ mod tests {
             recorded: Recorded::load(&dir.join("jev-recorded.json")).unwrap(),
             on: true,
         };
-        let (report, _) = replay_tree(&traces(), &Params::default(), &jev).await;
+        let checked_in: Value =
+            serde_json::from_str(&std::fs::read_to_string(dir.join("replay.json")).unwrap())
+                .unwrap();
+        // The checked-in report documents the streams retained when it was
+        // written; traces retained since then aren't part of it.
+        let documented: std::collections::BTreeSet<String> = checked_in["replayed"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| {
+                format!(
+                    "{}/{}",
+                    r["trace"].as_str().unwrap(),
+                    r["stream"].as_str().unwrap()
+                )
+            })
+            .chain(
+                checked_in["skipped"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|s| s[0].as_str().unwrap().to_string()),
+            )
+            .collect();
+        assert_eq!(
+            documented.len(),
+            checked_in["streams"].as_u64().unwrap() as usize
+        );
+        let (report, _) = replay_streams(&traces(), &Params::default(), &jev, &|label| {
+            documented.contains(label)
+        })
+        .await;
+        // Every documented stream is still retained.
+        assert_eq!(report.streams, documented.len());
         assert!(report.streams >= 200, "{}", report.streams);
         assert_eq!(report.replayed.len() + report.skipped.len(), report.streams);
         assert!(report.totals["triggers"].as_u64().unwrap() > 500);
         // Every live answer the replay recorded replays; the rest miss.
         assert!(report.compared["jev_answered"].as_u64().unwrap() >= 100);
-        let checked_in: Value =
-            serde_json::from_str(&std::fs::read_to_string(dir.join("replay.json")).unwrap())
-                .unwrap();
         assert_eq!(
             serde_json::to_value(&report).unwrap(),
             checked_in,
             "rerun `coder-one component replay control.monitor --out bench/terminal-bench/monitor/replay.json`"
         );
+    }
+
+    /// Every retained stream, the documented ones and the newer ones,
+    /// replays or is skipped with a reason; none crash the replay.
+    #[tokio::test]
+    async fn every_retained_stream_replays_or_is_skipped() {
+        let jev = ReplayJev {
+            live: None,
+            live_limit: 0,
+            sample: default_sample(),
+            recorded: Recorded::default(),
+            on: false,
+        };
+        let (report, _) = replay_tree(&traces(), &Params::default(), &jev).await;
+        assert!(report.streams >= 234, "{}", report.streams);
+        assert_eq!(report.replayed.len() + report.skipped.len(), report.streams);
+        let dir = tempfile::tempdir().unwrap();
+        crate::component::replay::tests::odd_tree(dir.path());
+        let (report, _) = replay_tree(dir.path(), &Params::default(), &jev).await;
+        assert_eq!(report.replayed.len() + report.skipped.len(), report.streams);
     }
 
     #[tokio::test]
