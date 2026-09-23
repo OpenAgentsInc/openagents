@@ -5,8 +5,10 @@
 //! `artifacts/composition.json` (`openagents.coder-one.composition.v1`):
 //! where the route started and why, the deadline each dispatch asked for,
 //! every dispatch with its tier, status, time, and cost, each handoff and
-//! its trigger, the checks after each dispatch, `verify.support`'s states,
-//! and the repair. This module reads it from each attempt and renders it.
+//! its trigger, the checks after each dispatch with what
+//! `generic.self-report` found, `verify.support`'s states, the repair, and
+//! `verify.second`'s second executor. This module reads it from each
+//! attempt and renders it.
 
 use std::path::PathBuf;
 
@@ -165,6 +167,7 @@ impl Row {
             "start": self.start(),
             "dispatches": self.roles(),
             "escalated": self.record["escalated"],
+            "second_kept": self.record["second"]["kept"],
             "last_checks": self.last_checks(),
             "composition": self.record,
         })
@@ -222,6 +225,16 @@ pub fn detail_lines(record: &Value) -> Vec<String> {
             .filter(|_| !words(&first["reason"]).contains("difficulty"))
             .map_or(String::new(), |d| format!(" · difficulty {d:.2}"))
     ));
+    if let Some(family) = route["family"].as_object() {
+        lines.push(format!(
+            "  route family: {} · {}",
+            family
+                .get("family")
+                .and_then(Value::as_str)
+                .unwrap_or("none"),
+            family.get("why").and_then(Value::as_str).unwrap_or("")
+        ));
+    }
     let horizon = &record["horizon"];
     lines.push(format!(
         "  horizon: episode deadline {} · first dispatch asked {}s · checks {}s, {}s per command{}",
@@ -299,6 +312,23 @@ pub fn detail_lines(record: &Value) -> Vec<String> {
             },
             summary["packets"].as_u64().unwrap_or(0)
         ));
+        let reported = &checks["self_report"];
+        if let Some(verdict) = reported["verdict"].as_str() {
+            let findings = reported["findings"].as_array().cloned().unwrap_or_default();
+            lines.push(format!(
+                "    self-report {verdict}{}",
+                reported["requirement"]
+                    .as_str()
+                    .map_or(String::new(), |r| format!(" on {r}"))
+            ));
+            for finding in findings.iter().take(3) {
+                lines.push(format!(
+                    "      {}: {}",
+                    words(&finding["signal"]),
+                    short(finding["evidence"].as_str().unwrap_or_default(), 140)
+                ));
+            }
+        }
     }
     if let Some(support) = record["support"].as_object() {
         lines.push(format!(
@@ -320,6 +350,20 @@ pub fn detail_lines(record: &Value) -> Vec<String> {
         ));
     }
     let repair = &record["repair"];
+    let second = &record["second"];
+    let second_line = if second.is_null() {
+        None
+    } else if let Some(why) = second["skipped"].as_str() {
+        Some(format!("  second: skipped: {why}"))
+    } else {
+        Some(format!(
+            "  second: {} · {} · kept the {} candidate · {}",
+            tier(&second["tier"]),
+            words(&second["trigger"]),
+            words(&second["kept"]),
+            words(&second["why"])
+        ))
+    };
     lines.push(format!(
         "  repair: {}{}",
         repair_word(repair),
@@ -333,6 +377,7 @@ pub fn detail_lines(record: &Value) -> Vec<String> {
             String::new()
         }
     ));
+    lines.extend(second_line);
     lines
 }
 
@@ -387,7 +432,7 @@ Each Terminal-Bench attempt that ran Coder One's tunable composition: where
 control.route started and why, the deadline each dispatch asked for, every
 dispatch (planner, primary, escalation) with its tier, status, time, and
 cost, each handoff and its trigger, verify.checks after each dispatch,
-verify.support's states, and the repair. QUERY picks the attempts whose task,
+verify.support's states, the repair, and verify.second. QUERY picks the attempts whose task,
 job, or trial contains it for detail; the newest is shown otherwise.
 
   --jobs-dir PATH          local Harbor jobs (default ~/.openagents/terminal-bench/jobs)
@@ -513,6 +558,38 @@ mod tests {
             json!(["primary", "escalation"])
         );
         assert_eq!(value["attempts"][0]["escalated"], true);
+    }
+
+    #[test]
+    fn a_v4_attempt_shows_its_family_self_report_and_second_executor() {
+        let mut value = record();
+        value["route"]["family"] = json!({ "family": "cad-from-drawing", "why": "astra passed 10 of 10 on cad-from-drawing against the rule's 0.80", "picked": "astra" });
+        value["checks"][0]["self_report"] = json!({
+            "verdict": "failed",
+            "requirement": "R1",
+            "findings": [{ "source": "report", "signal": "underdetermined", "evidence": "The drawing doesn't pin this down exactly." }],
+        });
+        value["second"] = json!({
+            "tier": { "agent": "codex", "model": "gpt-6-astra", "effort": "xhigh" },
+            "trigger": "failed: 1 failed scenario(s) and 0 contradicted requirement(s) remain",
+            "kept": "second",
+            "why": "the second candidate has 0 failure(s)",
+        });
+        let text = detail_lines(&value).join("\n");
+        assert!(text.contains("route family: cad-from-drawing"), "{text}");
+        assert!(text.contains("self-report failed on R1"), "{text}");
+        assert!(
+            text.contains("underdetermined: The drawing doesn't pin this down exactly."),
+            "{text}"
+        );
+        assert!(text.contains("second: codex/gpt-6-astra (xhigh)"), "{text}");
+        assert!(text.contains("kept the second candidate"), "{text}");
+        value["second"] = json!({ "skipped": "the checks confirmed the result" });
+        let text = detail_lines(&value).join("\n");
+        assert!(
+            text.contains("second: skipped: the checks confirmed the result"),
+            "{text}"
+        );
     }
 
     #[test]

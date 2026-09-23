@@ -544,6 +544,7 @@ pub async fn run(options: Options) -> Result<Ran, String> {
                     .clone()
                     .map(crate::component::jev::JevMode::Live),
                 previous_session: session_record["session_id"].as_str().map(str::to_string),
+                support_params: None,
             };
             Some(
                 crate::repair::with_profile(

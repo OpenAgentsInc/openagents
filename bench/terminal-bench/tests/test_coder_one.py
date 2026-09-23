@@ -396,6 +396,17 @@ def test_the_tunable_arm_installs_every_cli_its_manifest_names(tmp_path):
         assert name not in env
 
 
+def test_the_v4_manifest_names_astra_through_its_families_and_second_executor():
+    from tbench.coder_one import load_policy, manifest_tiers
+
+    manifest = load_policy("crates/coder-one/policies/tunable-v4.json")
+    tiers = manifest_tiers(manifest)
+    models = {tier["model"] for tier in tiers}
+    assert "gpt-6-astra" in models
+    assert {tier["version"] for tier in tiers if tier["agent"] == "codex"} == {"0.155.1"}
+    assert {tier["version"] for tier in tiers if tier["agent"] == "claude-code"} == {"2.1.280"}
+
+
 def test_the_tunable_arm_refuses_a_pin_that_disagrees_or_no_policy(tmp_path):
     with pytest.raises(EpisodeContractError, match="pins codex at both"):
         _tunable(tmp_path, executors={"codex": "0.154.0"})

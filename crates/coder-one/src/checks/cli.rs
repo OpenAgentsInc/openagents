@@ -12,6 +12,8 @@ use crate::record::Recorder;
 pub const USAGE: &str = "usage: coder-one checks synthetic [NAME] [--json]
        coder-one checks run --input FILE [--json]
        coder-one checks recover --traces DIR [--arm ARM|all] [--out DIR] [--json]
+       coder-one checks replay [--jobs DIR] [--match TEXT] [--policy FILE]
+                               [--write-fixtures DIR] [--json]
 
 synthetic runs the known-good and known-bad candidates and says whether each
 scenario tells them apart. run checks the candidate in an input file
@@ -19,7 +21,15 @@ scenario tells them apart. run checks the candidate in an input file
 recover rebuilds candidates from retained native streams under --traces
 (the v3 Luna arm by default), checks each one with repair disabled, and
 writes <out>/<job>/<trial>/checks.json for the Gym; --out defaults to
-~/.openagents/coder-one/checks. Scenarios need python3 on PATH.";
+~/.openagents/coder-one/checks. Scenarios need python3 on PATH.
+
+replay reads composed Terminal-Bench trials (the jobs whose names contain
+--match, tb4--coder-one- by default, under --jobs,
+~/.openagents/terminal-bench/jobs by default; the checked-in fixtures with
+--jobs fixtures) and says what verify.self_report, verify.optional_outputs,
+and the support budget of --policy (tunable-v4.json by default) would have
+done on each first check. It runs nothing and asks Jev nothing.
+--write-fixtures writes each trial as a fixture.";
 
 /// The schema of a recovery summary.
 pub const RECOVERY_SCHEMA: &str = "openagents.coder-one.checks-recovery.v1";
@@ -63,6 +73,10 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
     let mut traces = None;
     let mut arm = "coder-one-jevprobe3-luna".to_string();
     let mut out = None;
+    let mut jobs = None;
+    let mut matching = "tb4--coder-one-".to_string();
+    let mut policy = None;
+    let mut fixtures_out = None;
     let mut json_output = false;
     let mut iter = rest.iter();
     while let Some(arg) = iter.next() {
@@ -76,6 +90,10 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
             "--traces" => traces = Some(PathBuf::from(value("--traces")?)),
             "--arm" => arm = value("--arm")?,
             "--out" => out = Some(PathBuf::from(value("--out")?)),
+            "--jobs" => jobs = Some(value("--jobs")?),
+            "--match" => matching = value("--match")?,
+            "--policy" => policy = Some(PathBuf::from(value("--policy")?)),
+            "--write-fixtures" => fixtures_out = Some(PathBuf::from(value("--write-fixtures")?)),
             "--json" => json_output = true,
             other if other.starts_with("--") => return Err(format!("unknown option {other}")),
             other => positional.push(other.to_string()),
@@ -184,8 +202,67 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
             }
             Ok(0)
         }
+        "replay" => {
+            let params = replay_params(policy.as_deref())?;
+            let trials = match jobs.as_deref() {
+                Some("fixtures") => super::replay::fixtures(),
+                Some(dir) => super::replay::load_jobs(Path::new(dir), &matching)?,
+                None => {
+                    let dir = std::env::var_os("HOME")
+                        .map(|home| PathBuf::from(home).join(".openagents/terminal-bench/jobs"))
+                        .ok_or("no --jobs and no HOME")?;
+                    super::replay::load_jobs(&dir, &matching)?
+                }
+            };
+            if let Some(dir) = &fixtures_out {
+                std::fs::create_dir_all(dir)
+                    .map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
+                for trial in &trials {
+                    let path = dir.join(format!("{}.json", trial.trial));
+                    let text = serde_json::to_string_pretty(trial).map_err(|e| e.to_string())?;
+                    std::fs::write(&path, text + "\n")
+                        .map_err(|e| format!("cannot write {}: {e}", path.display()))?;
+                }
+            }
+            let replayed: Vec<_> = trials
+                .iter()
+                .map(|trial| super::replay::replay(trial, params))
+                .collect();
+            if json_output {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&super::replay::to_json(&replayed, params))
+                        .map_err(|e| e.to_string())?
+                );
+            } else {
+                for line in super::replay::lines(&replayed, params) {
+                    println!("{line}");
+                }
+            }
+            Ok(0)
+        }
         _ => Err(USAGE.to_string()),
     }
+}
+
+/// The long-task support parameters of the policy at `path`, or of
+/// `tunable-v4.json`.
+fn replay_params(path: Option<&Path>) -> Result<crate::support::Params, String> {
+    let text = match path {
+        Some(path) => std::fs::read_to_string(path)
+            .map_err(|e| format!("cannot read {}: {e}", path.display()))?,
+        None => crate::policy::REFERENCE
+            .iter()
+            .find(|(name, _)| *name == "tunable-v4.json")
+            .map(|(_, text)| (*text).to_string())
+            .ok_or("no tunable-v4.json in this build")?,
+    };
+    let manifest = crate::policy::Manifest::parse(&text)?;
+    Ok(manifest
+        .policy
+        .verify
+        .map(|verify| verify.support_params(true))
+        .unwrap_or_default())
 }
 
 /// A report as text: coverage per requirement, then each packet.

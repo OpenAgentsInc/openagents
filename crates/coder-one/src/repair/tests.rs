@@ -199,6 +199,7 @@ async fn a_spent_deadline_leaves_no_time_for_a_repair() {
         deadline: &deadline,
         jev: None,
         previous_session: None,
+        support_params: None,
     };
     let repaired = attempt::<crate::scripted::Scripted>(
         &place,

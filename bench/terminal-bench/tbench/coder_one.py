@@ -650,16 +650,21 @@ def merge_setup(records: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def manifest_tiers(manifest: dict[str, Any]) -> list[dict[str, Any]]:
-    """Every executor a manifest can dispatch to: its own, the route's two,
-    and the handoff's second, as ``{agent, model, version}``."""
+    """Every executor a manifest can dispatch to: its own, the route's two
+    and its family profiles, the handoff's second, and ``verify.second``'s,
+    as ``{agent, model, version}``."""
     policy = manifest.get("policy") or {}
     control = policy.get("control") or {}
     tiers = [policy.get("executor") or {}]
     route = control.get("route") or {}
     tiers += [route[key] for key in ("cheap", "strong") if route.get(key)]
+    families = route.get("families") or {}
+    tiers += list((families.get("profiles") or {}).values())
     handoff = control.get("handoff") or {}
     if handoff.get("to"):
         tiers.append(handoff["to"])
+    second = (policy.get("verify") or {}).get("second") or {}
+    tiers += list(second.get("to") or [])
     return [tier for tier in tiers if tier.get("agent")]
 
 

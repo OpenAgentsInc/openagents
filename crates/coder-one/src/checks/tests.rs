@@ -200,3 +200,204 @@ fn protected_verifier_test_names_never_enter_a_scenario() {
     }
     assert!(checked > 0 || recovered.is_empty());
 }
+
+/// A live-workspace check of `instruction` over the files in `files`, with
+/// `options`.
+async fn live_check(
+    label: &str,
+    instruction: &str,
+    files: &[(&str, &str)],
+    options: generic::Options,
+    report: Option<&str>,
+    edit: impl FnOnce(&mut crate::requirements::RequirementMap),
+) -> Report {
+    let dir = scratch(label);
+    let work = dir.join("work");
+    std::fs::create_dir_all(&work).unwrap();
+    for (path, text) in files {
+        std::fs::write(work.join(path), text).unwrap();
+    }
+    let mut map = crate::requirements::mechanical(instruction);
+    edit(&mut map);
+    let subject = Subject {
+        label: label.to_string(),
+        task: TaskText {
+            title: label.to_string(),
+            instruction: instruction.to_string(),
+        },
+        requirements: Some(map),
+        provided: Vec::new(),
+        inputs: None,
+        budget: Budget::default(),
+        live: Some(generic::Workspace {
+            dir: String::new(),
+            claimed: Vec::new(),
+            command_sec: 30,
+            report: report.map(str::to_string),
+            options,
+        }),
+    };
+    let input = subject.input(&work);
+    let report = check(&input, &Recorder::default(), &dir.join("scratch")).await;
+    let _ = std::fs::remove_dir_all(&dir);
+    report
+}
+
+fn verdict_of<'a>(report: &'a Report, id: &str) -> &'a str {
+    report
+        .verdicts
+        .iter()
+        .find(|v| v.scenario == id)
+        .map_or("not run", |v| v.verdict.as_str())
+}
+
+const DEPENDENCIES: &str = "Fix the planner so that it writes a correct plan to `plan.json`.\n\n\
+Write any Python dependencies needed to run your code to `requirements.txt`.";
+
+fn optional_on() -> generic::Options {
+    generic::Options {
+        optional_outputs: true,
+        ..generic::Options::default()
+    }
+}
+
+#[tokio::test]
+async fn an_empty_optional_output_passes_only_when_the_option_is_on() {
+    let files = [("requirements.txt", ""), ("plan.json", "{\"ok\": true}")];
+    let off = live_check(
+        "optional-off",
+        DEPENDENCIES,
+        &files,
+        generic::Options::default(),
+        None,
+        |_| {},
+    )
+    .await;
+    assert_eq!(
+        verdict_of(&off, "generic.output:requirements.txt"),
+        "failed"
+    );
+    assert_eq!(off.implementation, implementation());
+    let on = live_check(
+        "optional-on",
+        DEPENDENCIES,
+        &files,
+        optional_on(),
+        None,
+        |_| {},
+    )
+    .await;
+    assert_eq!(verdict_of(&on, "generic.output:requirements.txt"), "passed");
+    assert!(on.packets.is_empty(), "{:?}", on.packets);
+    assert_ne!(on.implementation, implementation());
+    // A missing file still fails: optional means it may be empty.
+    let missing = live_check(
+        "optional-missing",
+        DEPENDENCIES,
+        &[("plan.json", "{}")],
+        optional_on(),
+        None,
+        |_| {},
+    )
+    .await;
+    assert_eq!(
+        verdict_of(&missing, "generic.output:requirements.txt"),
+        "failed"
+    );
+}
+
+#[tokio::test]
+async fn a_missing_output_of_an_unsure_requirement_is_inconclusive() {
+    let unsure = |map: &mut crate::requirements::RequirementMap| {
+        for requirement in &mut map.requirements {
+            if requirement.text.contains("plan.json") {
+                requirement.binding = crate::requirements::Binding::Uncertain;
+            }
+        }
+    };
+    let on = live_check(
+        "unsure-on",
+        DEPENDENCIES,
+        &[("requirements.txt", "numpy\n")],
+        optional_on(),
+        None,
+        unsure,
+    )
+    .await;
+    assert_eq!(verdict_of(&on, "generic.output:plan.json"), "inconclusive");
+    assert!(!on.detected());
+    let off = live_check(
+        "unsure-off",
+        DEPENDENCIES,
+        &[("requirements.txt", "numpy\n")],
+        generic::Options::default(),
+        None,
+        unsure,
+    )
+    .await;
+    assert_eq!(verdict_of(&off, "generic.output:plan.json"), "failed");
+}
+
+#[tokio::test]
+async fn a_self_reported_failure_is_a_failed_check_with_a_packet() {
+    let files = [
+        ("requirements.txt", "numpy\n"),
+        (
+            "plan.json",
+            "{\"summary\": {\"route_feasible\": false}, \"legs\": [{\"takeoff_weight_ok\": false}]}",
+        ),
+    ];
+    let options = generic::Options {
+        self_report: true,
+        ..generic::Options::default()
+    };
+    let report = live_check(
+        "self-report",
+        DEPENDENCIES,
+        &files,
+        options,
+        Some("I checked all 24 orderings and every one breaks at least one weight limit."),
+        |_| {},
+    )
+    .await;
+    assert_eq!(verdict_of(&report, "generic.self-report"), "failed");
+    let packet = report
+        .packets
+        .iter()
+        .find(|p| p.scenario == "generic.self-report")
+        .unwrap();
+    let signals: Vec<&str> = packet
+        .observations
+        .iter()
+        .map(|o| o["signal"].as_str().unwrap())
+        .collect();
+    assert_eq!(signals, ["infeasible", "output-flag"]);
+    assert!(packet.requirement_text.contains("plan.json"));
+    // Nothing reported: inconclusive, which leaves the requirement's state
+    // to the other scenarios.
+    let quiet = live_check(
+        "self-report-quiet",
+        DEPENDENCIES,
+        &[
+            ("requirements.txt", "numpy\n"),
+            ("plan.json", "{\"route_feasible\": true}"),
+        ],
+        options,
+        Some("The plan is correct and every leg is within limits."),
+        |_| {},
+    )
+    .await;
+    assert_eq!(verdict_of(&quiet, "generic.self-report"), "inconclusive");
+    assert!(!quiet.detected());
+    // Off by default.
+    let off = live_check(
+        "self-report-off",
+        DEPENDENCIES,
+        &files,
+        generic::Options::default(),
+        Some("every one breaks at least one weight limit"),
+        |_| {},
+    )
+    .await;
+    assert_eq!(verdict_of(&off, "generic.self-report"), "not run");
+}

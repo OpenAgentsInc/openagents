@@ -60,6 +60,7 @@ pub mod coder_capabilities;
 pub mod coder_components;
 pub mod coder_composition;
 pub mod coder_coverage;
+pub mod coder_families;
 pub mod coder_handoff;
 pub mod coder_live;
 pub mod coder_matrix;

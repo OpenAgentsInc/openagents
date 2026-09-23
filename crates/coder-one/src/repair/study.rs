@@ -207,6 +207,7 @@ pub async fn cell(
                 deadline: &deadline,
                 jev: None,
                 previous_session: preserved.session.clone(),
+                support_params: None,
             };
             Some(
                 super::with_profile(

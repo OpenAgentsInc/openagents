@@ -34,6 +34,8 @@ pub mod data;
 pub mod generic;
 pub mod interactive;
 pub mod recover;
+pub mod replay;
+pub mod selfreport;
 pub mod synthetic;
 
 use std::collections::BTreeMap;
@@ -344,13 +346,38 @@ pub fn implementation() -> Implementation {
     Implementation::new(
         "verify.checks",
         "admitted scenario catalog, deterministic selector",
-        &json!({
-            "version": 1,
-            "catalog": ["data.message-severity", "data.date-boundaries", "interactive.program", "interactive.interrupt", "cancel.signal", "cancel.internal", "generic.output", "generic.parse", "generic.public-command", "generic.claimed-command"],
-            "selector": "one per requirement first, then by catalog order, within the budget",
-            "cancel_limit": cancel::LIMIT,
-            "cancel_sizes": cancel::SIZES,
-        }),
+        &parameters(),
+    )
+}
+
+fn parameters() -> Value {
+    json!({
+        "version": 1,
+        "catalog": ["data.message-severity", "data.date-boundaries", "interactive.program", "interactive.interrupt", "cancel.signal", "cancel.internal", "generic.output", "generic.parse", "generic.public-command", "generic.claimed-command"],
+        "selector": "one per requirement first, then by catalog order, within the budget",
+        "cancel_limit": cancel::LIMIT,
+        "cancel_sizes": cancel::SIZES,
+    })
+}
+
+/// The implementation with the generic scenarios' options: the same as
+/// [`implementation`] when every option is off.
+#[must_use]
+pub fn implementation_for(options: generic::Options) -> Implementation {
+    if options.is_default() {
+        return implementation();
+    }
+    let mut config = parameters();
+    config["options"] = serde_json::to_value(options).unwrap_or(Value::Null);
+    if options.self_report
+        && let Some(catalog) = config["catalog"].as_array_mut()
+    {
+        catalog.push(json!("generic.self-report"));
+    }
+    Implementation::new(
+        "verify.checks",
+        "admitted scenario catalog, deterministic selector",
+        &config,
     )
 }
 
@@ -649,7 +676,13 @@ pub async fn check(input: &Input, recorder: &Recorder, scratch: &Path) -> Report
     );
     let report = Report {
         schema: SCHEMA.to_string(),
-        implementation: implementation(),
+        implementation: implementation_for(
+            input
+                .workspace
+                .as_ref()
+                .map(|w| w.options)
+                .unwrap_or_default(),
+        ),
         candidate: json!({
             "label": input.candidate.label,
             "origin": input.candidate.origin,

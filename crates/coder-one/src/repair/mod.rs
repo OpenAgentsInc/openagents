@@ -422,6 +422,9 @@ pub struct Place<'a> {
     /// The session that produced the candidate, when known. The repair
     /// never resumes it; the record names it so the two stay apart.
     pub previous_session: Option<String>,
+    /// `verify.support`'s parameters for the rejudgment; the defaults when
+    /// `None`.
+    pub support_params: Option<crate::support::Params>,
 }
 
 /// The repair policy.
@@ -447,6 +450,9 @@ pub struct Repaired {
     /// What the session cost: zero when none ran, unknown when it may
     /// have billed and didn't say.
     pub cost_usd: Option<f64>,
+    /// `verify.support`'s rejudgment of the changed candidate, when Jev
+    /// was given.
+    pub support_after: Option<crate::support::Report>,
 }
 
 fn session_cost(agent: &str, report: &delegate::Report) -> Cost {
@@ -523,6 +529,7 @@ pub async fn attempt<E: Executor>(
             changed: false,
             recheck: None,
             cost_usd: Some(0.0),
+            support_after: None,
         })
     };
     if !triggered {
@@ -633,6 +640,7 @@ pub async fn attempt<E: Executor>(
         }
     }
     record["invalidated"] = json!(invalidated);
+    let mut support_after = None;
     let recheck = if changed {
         let (input, report) = checks::check_subject_as(
             place.subject,
@@ -653,11 +661,12 @@ pub async fn attempt<E: Executor>(
                 &report,
                 jev,
                 place.recorder,
-                crate::support::Params::default(),
+                place.support_params.unwrap_or_default(),
                 Some(place.deadline.clone()),
             )
             .await;
             record["support_after"] = judged.summary();
+            support_after = Some(judged);
         }
         Some((input, report))
     } else {
@@ -690,6 +699,7 @@ pub async fn attempt<E: Executor>(
         ran: true,
         changed,
         recheck,
+        support_after,
     })
 }
 

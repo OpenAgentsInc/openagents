@@ -60,6 +60,38 @@ fn contradicts_criteria() -> NoulCriteria {
         .when_false("Nothing in the evidence shows the requirement not being met.")
 }
 
+/// Which requirements a support run judges first when it can't judge all.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Order {
+    /// A contradicted requirement, then those a scenario observed, then
+    /// unobserved behaviors and deliverables.
+    #[default]
+    ScenarioFirst,
+    /// A contradicted requirement, then behaviors and checks, then
+    /// deliverables, then observed constraints: what the result does comes
+    /// before whether a file exists. Within each, a requirement the
+    /// extraction read as binding comes first.
+    BehaviorFirst,
+}
+
+impl Order {
+    /// Whether this is the default order.
+    #[must_use]
+    pub fn is_default(&self) -> bool {
+        *self == Order::default()
+    }
+
+    /// The order's word.
+    #[must_use]
+    pub fn word(self) -> &'static str {
+        match self {
+            Order::ScenarioFirst => "scenario-first",
+            Order::BehaviorFirst => "behavior-first",
+        }
+    }
+}
+
 /// What the judge reads and how it decides.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Params {
@@ -75,6 +107,9 @@ pub struct Params {
     pub artifact_chars: usize,
     /// The most characters of scenario observations one request carries.
     pub observation_chars: usize,
+    /// Which requirements come first under the budget.
+    #[serde(default, skip_serializing_if = "Order::is_default")]
+    pub order: Order,
 }
 
 impl Default for Params {
@@ -87,6 +122,7 @@ impl Default for Params {
             max_requirements: 3,
             artifact_chars: 6_000,
             observation_chars: 2_500,
+            order: Order::ScenarioFirst,
         }
     }
 }
@@ -388,29 +424,69 @@ pub fn excerpts(
         .collect()
 }
 
+/// Where a requirement falls under [`Order::ScenarioFirst`]: one a
+/// scenario contradicted first, then those a scenario observed (behaviors
+/// and deliverables first), then behaviors and deliverables no scenario
+/// observed; `None` leaves it out.
+fn scenario_rank(covered: &checks::Covered) -> Option<u8> {
+    let primary = matches!(covered.kind.as_str(), "behavior" | "deliverable");
+    match (
+        covered.state.as_str(),
+        covered.scenarios.is_empty(),
+        primary,
+    ) {
+        ("contradicted", _, _) => Some(0),
+        (_, false, true) => Some(1),
+        (_, false, false) => Some(2),
+        (_, true, true) => Some(3),
+        _ => None,
+    }
+}
+
+/// Where a requirement falls under [`Order::BehaviorFirst`]: contradicted,
+/// then behaviors and checks, then deliverables, then constraints a
+/// scenario observed; each split by whether the extraction read it as
+/// binding. Constraints and context no scenario observed are left out.
+fn behavior_rank(covered: &checks::Covered, binding: bool) -> Option<u8> {
+    let tier = match (
+        covered.state.as_str(),
+        covered.kind.as_str(),
+        covered.scenarios.is_empty(),
+    ) {
+        ("contradicted", _, _) => 0,
+        (_, "behavior" | "check", _) => 1,
+        (_, "deliverable", _) => 2,
+        (_, _, false) => 3,
+        _ => return None,
+    };
+    Some(tier * 2 + u8::from(!binding))
+}
+
 /// The evidence for each requirement worth judging, and the ones left
-/// out. A requirement a scenario contradicted comes first, then those a
-/// scenario observed (behaviors and deliverables first), then behaviors
-/// and deliverables no scenario observed; constraints and context no
-/// scenario observed are left out. At most `params.max_requirements`.
+/// out, in the order `params.order` names. At most
+/// `params.max_requirements`.
 #[must_use]
 pub fn evidence(
     candidate: &Candidate,
     report: &checks::Report,
     params: Params,
 ) -> (Vec<Evidence>, Vec<Skipped>) {
+    evidence_with(candidate, report, params, &[])
+}
+
+/// [`evidence`], with the requirement IDs the extraction was unsure bind,
+/// which [`Order::BehaviorFirst`] judges after the binding ones.
+#[must_use]
+pub fn evidence_with(
+    candidate: &Candidate,
+    report: &checks::Report,
+    params: Params,
+    uncertain: &[String],
+) -> (Vec<Evidence>, Vec<Skipped>) {
     let rank = |covered: &checks::Covered| -> Option<u8> {
-        let primary = matches!(covered.kind.as_str(), "behavior" | "deliverable");
-        match (
-            covered.state.as_str(),
-            covered.scenarios.is_empty(),
-            primary,
-        ) {
-            ("contradicted", _, _) => Some(0),
-            (_, false, true) => Some(1),
-            (_, false, false) => Some(2),
-            (_, true, true) => Some(3),
-            _ => None,
+        match params.order {
+            Order::ScenarioFirst => scenario_rank(covered),
+            Order::BehaviorFirst => behavior_rank(covered, !uncertain.contains(&covered.id)),
         }
     };
     let mut ranked: Vec<(u8, usize, &checks::Covered)> = report
@@ -722,7 +798,18 @@ pub async fn judge(
     params: Params,
     deadline: Option<crate::deadline::Deadline>,
 ) -> Report {
-    let (evidence, skipped) = evidence(&input.candidate, report, params);
+    let uncertain: Vec<String> = input
+        .requirements
+        .as_ref()
+        .map(|map| {
+            map.requirements
+                .iter()
+                .filter(|r| r.binding == crate::requirements::Binding::Uncertain)
+                .map(|r| r.id.clone())
+                .collect()
+        })
+        .unwrap_or_default();
+    let (evidence, skipped) = evidence_with(&input.candidate, report, params, &uncertain);
     judge_evidence(
         &input.task,
         &input.candidate.digest(),
@@ -742,8 +829,17 @@ pub async fn judge(
 ///
 /// Returns a message when it can't be written.
 pub fn save(report: &Report, dir: &Path) -> Result<(), String> {
+    save_as(report, dir, FILE)
+}
+
+/// Writes `report` to `<dir>/<file>`.
+///
+/// # Errors
+///
+/// Returns a message when it can't be written.
+pub fn save_as(report: &Report, dir: &Path, file: &str) -> Result<(), String> {
     let text = serde_json::to_string_pretty(report).map_err(|e| e.to_string())?;
-    crate::record::write_atomic(&dir.join(FILE), text.as_bytes())
+    crate::record::write_atomic(&dir.join(file), text.as_bytes())
 }
 
 #[cfg(test)]

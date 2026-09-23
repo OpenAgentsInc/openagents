@@ -723,6 +723,7 @@ impl Manifest {
             if policy.control.delegate == DelegateMode::Off {
                 problems.push("verify needs a delegate mode other than off".to_string());
             }
+            problems.extend(verify.validate());
         }
         if let Some(session) = &executor.session {
             let (demonstrated, _) = crate::adapter::capabilities(executor.agent.agent());
@@ -1322,6 +1323,10 @@ pub const REFERENCE: &[(&str, &str)] = &[
     (
         "tunable-luna.json",
         include_str!("../policies/tunable-luna.json"),
+    ),
+    (
+        "tunable-v4.json",
+        include_str!("../policies/tunable-v4.json"),
     ),
 ];
 

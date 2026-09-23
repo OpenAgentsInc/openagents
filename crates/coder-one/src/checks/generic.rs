@@ -11,6 +11,13 @@
 //! | `generic.parse` | Each output file with a structured format parses as that format, and a CSV output starts with the header the task shows. |
 //! | `generic.public-command` | A test or check command the instruction names exits 0. |
 //! | `generic.claimed-command` | A test command the executor ran and saw pass still passes on the final state. |
+//! | `generic.self-report` | Neither the executor's final report nor the outputs it wrote say the result failed. Off unless [`Options::self_report`]. |
+//!
+//! [`Options::optional_outputs`] changes two output verdicts: an empty file
+//! a requirement asks for only when something is needed ("write any
+//! dependencies needed to ...") passes, and a missing or malformed output
+//! of a requirement the extraction was unsure binds is inconclusive rather
+//! than a failure.
 //!
 //! Commands run in the task's working directory, bounded, with the
 //! episode's credentials removed from their environment. Only commands
@@ -25,8 +32,9 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
+use super::selfreport;
 use super::{Bounds, Context, Ineligible, Relation, Scenario, Verdict};
-use crate::requirements::{Kind, Requirement};
+use crate::requirements::{Binding, Kind, Requirement};
 
 /// The scenario kinds this family builds.
 pub const KINDS: &[&str] = &[
@@ -34,6 +42,7 @@ pub const KINDS: &[&str] = &[
     "generic.parse",
     "generic.public-command",
     "generic.claimed-command",
+    "generic.self-report",
 ];
 
 /// The most claimed commands one check reruns.
@@ -72,6 +81,36 @@ pub struct Workspace {
     pub claimed: Vec<Claimed>,
     /// Seconds each command scenario may run.
     pub command_sec: u64,
+    /// The executor's final report, which `generic.self-report` reads.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub report: Option<String>,
+    /// Which optional behaviors the generic scenarios run.
+    #[serde(default, skip_serializing_if = "Options::is_default")]
+    pub options: Options,
+}
+
+/// The generic scenarios' optional behaviors; all off by default, so a
+/// check without them runs as it always has.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Options {
+    /// Build `generic.self-report`: a failure the executor reports in its
+    /// own words, its outputs, or the exit of a command the task names is
+    /// a failed check.
+    #[serde(default)]
+    pub self_report: bool,
+    /// Let an optional output be empty, and don't count a missing output
+    /// against a requirement the extraction was unsure binds.
+    #[serde(default)]
+    pub optional_outputs: bool,
+}
+
+impl Options {
+    /// Whether every option is off.
+    #[must_use]
+    pub fn is_default(&self) -> bool {
+        *self == Options::default()
+    }
 }
 
 /// Words that mark a requirement as asking for an output file.
@@ -289,6 +328,17 @@ pub fn build(context: &Context<'_>) -> Result<Vec<Scenario>, Vec<Ineligible>> {
             }
             seen.push(resolved.clone());
             let shown = resolved.to_string_lossy().into_owned();
+            let options = workspace.options;
+            let optional =
+                options.optional_outputs && selfreport::optional_output(&requirement.text);
+            let unsure = options.optional_outputs && requirement.binding == Binding::Uncertain;
+            let mut params = json!({ "path": path, "resolved": shown });
+            if optional {
+                params["optional"] = json!(true);
+            }
+            if unsure {
+                params["binding"] = json!("uncertain");
+            }
             scenarios.push(scenario(
                 context,
                 format!("generic.output:{path}"),
@@ -298,10 +348,21 @@ pub fn build(context: &Context<'_>) -> Result<Vec<Scenario>, Vec<Ineligible>> {
                 format!("the file {path}"),
                 1,
                 Relation {
-                    statement: format!("{path} exists and isn't empty."),
-                    derivation: format!("{} asks for {path} to be written.", requirement.id),
+                    statement: if optional {
+                        format!("{path} exists; it may be empty when nothing is needed.")
+                    } else {
+                        format!("{path} exists and isn't empty.")
+                    },
+                    derivation: if optional {
+                        format!(
+                            "{} asks for {path} to hold only what is needed, so an empty file can meet it.",
+                            requirement.id
+                        )
+                    } else {
+                        format!("{} asks for {path} to be written.", requirement.id)
+                    },
                 },
-                json!({ "path": path, "resolved": shown }),
+                params.clone(),
             ));
             if let Some(ext) = extension(&path).filter(|ext| PARSED.contains(ext)) {
                 let header = (ext == "csv")
@@ -334,7 +395,15 @@ pub fn build(context: &Context<'_>) -> Result<Vec<Scenario>, Vec<Ineligible>> {
                             "The task names {path}; its extension says its format."
                         ),
                     },
-                    json!({ "path": path, "resolved": shown, "format": ext, "header": header }),
+                    {
+                        let mut parse = json!({ "path": path, "resolved": shown, "format": ext, "header": header });
+                        for key in ["optional", "binding"] {
+                            if let Some(value) = params.get(key) {
+                                parse[key] = value.clone();
+                            }
+                        }
+                        parse
+                    },
                 ));
             }
         }
@@ -423,6 +492,14 @@ pub fn build(context: &Context<'_>) -> Result<Vec<Scenario>, Vec<Ineligible>> {
             why: "the executor ran no test command a check can rerun".to_string(),
         }),
     }
+    if workspace.options.self_report {
+        match self_report(context, workspace) {
+            // First, so the selector keeps it within the scenario budget:
+            // it costs nothing and reads what nothing else reads.
+            Ok(built) => scenarios.insert(0, built),
+            Err(why) => ineligible.push(why),
+        }
+    }
     if scenarios.is_empty() {
         if ineligible.is_empty() {
             ineligible.push(Ineligible {
@@ -434,6 +511,98 @@ pub fn build(context: &Context<'_>) -> Result<Vec<Scenario>, Vec<Ineligible>> {
     } else {
         Ok(scenarios)
     }
+}
+
+/// The requirement a self-reported failure contradicts: the first check or
+/// behavior that names a command or an output, else the first check,
+/// behavior, or deliverable.
+fn self_report_target<'a>(context: &'a Context<'_>) -> Option<&'a Requirement> {
+    context
+        .map
+        .requirements
+        .iter()
+        .find(|r| {
+            matches!(r.kind, Kind::Check | Kind::Behavior)
+                && (!r.extracted.commands.is_empty() || !outputs(r).is_empty())
+        })
+        .or_else(|| requirement_for(context, &[Kind::Check, Kind::Behavior, Kind::Deliverable]))
+}
+
+/// `generic.self-report`: reads the final report, the JSON outputs the
+/// requirements name, and the session's runs of the commands the
+/// instruction names.
+fn self_report(context: &Context<'_>, workspace: &Workspace) -> Result<Scenario, Ineligible> {
+    let refuse = |why: &str| Ineligible {
+        kind: "generic.self-report".to_string(),
+        why: why.to_string(),
+    };
+    let requirement = self_report_target(context)
+        .ok_or_else(|| refuse("no requirement for a self-report to contradict"))?;
+    let dir = Path::new(&workspace.dir);
+    let mut files: Vec<serde_json::Value> = Vec::new();
+    for r in &context.map.requirements {
+        for path in outputs(r) {
+            if extension(&path) != Some("json") {
+                continue;
+            }
+            if let Some(resolved) = resolve(dir, &path)
+                && !files.iter().any(|f| f["path"] == path.as_str())
+            {
+                files.push(json!({ "path": path, "resolved": resolved.to_string_lossy() }));
+            }
+        }
+    }
+    let mut commands: Vec<String> = Vec::new();
+    for command in context
+        .map
+        .requirements
+        .iter()
+        .flat_map(|r| r.extracted.commands.iter().map(|c| core(c)))
+    {
+        if !command.contains('<') && !command.contains("YYYY") && !commands.contains(&command) {
+            commands.push(command);
+        }
+    }
+    let report = workspace.report.as_deref().filter(|r| !r.trim().is_empty());
+    if report.is_none() && files.is_empty() && commands.is_empty() {
+        return Err(refuse(
+            "no final report, JSON output, or named command to read",
+        ));
+    }
+    let mut applies = Vec::new();
+    if report.is_some() {
+        applies.push("the executor wrote a final report".to_string());
+    }
+    if !files.is_empty() {
+        applies.push(format!("the task names {} JSON output(s)", files.len()));
+    }
+    if !commands.is_empty() {
+        applies.push(format!(
+            "the instruction names {} command(s)",
+            commands.len()
+        ));
+    }
+    Ok(scenario(
+        context,
+        "generic.self-report".to_string(),
+        "generic.self-report",
+        requirement,
+        applies,
+        "the executor's final report and outputs".to_string(),
+        5,
+        Relation {
+            statement: "Neither the executor's final report nor its outputs say the result failed, rests on a guess, or couldn't be done, and no command the task names last exited nonzero.".to_string(),
+            derivation: format!(
+                "The executor's own account is evidence about {}: a failure it reports is a failure the check doesn't need to rediscover.",
+                requirement.id
+            ),
+        },
+        json!({
+            "report_chars": report.map(|r| r.chars().count()),
+            "outputs": files,
+            "commands": commands,
+        }),
+    ))
 }
 
 /// Why a CSV isn't well formed, or `None`: each row has the header's
@@ -492,8 +661,23 @@ pub async fn run(context: &Context<'_>, scenario: &Scenario) -> Verdict {
                 Err(_) => json!({ "path": scenario.params["path"], "exists": false }),
             };
             verdict.observations.push(observed);
-            let good = meta.as_ref().is_ok_and(|m| m.is_file() && m.len() > 0);
-            if !good {
+            let optional = scenario.params["optional"] == true;
+            let good = meta
+                .as_ref()
+                .is_ok_and(|m| m.is_file() && (optional || m.len() > 0));
+            if optional && good {
+                verdict.coverage.push(
+                    "the requirement asks only for what is needed, so an empty file passes"
+                        .to_string(),
+                );
+            }
+            if !good && scenario.params["binding"] == "uncertain" {
+                verdict.verdict = "inconclusive".to_string();
+                verdict.coverage.push(
+                    "the extraction was unsure this requirement binds, so a missing output doesn't count against it"
+                        .to_string(),
+                );
+            } else if !good {
                 verdict.verdict = "failed".to_string();
                 verdict.hypotheses = vec![
                     "the executor wrote the output somewhere else, or under another name"
@@ -511,6 +695,15 @@ pub async fn run(context: &Context<'_>, scenario: &Scenario) -> Verdict {
             let Ok(text) = std::fs::read_to_string(&path) else {
                 return Verdict::unavailable(&scenario.id, "the file is missing or isn't text");
             };
+            if scenario.params["optional"] == true && text.trim().is_empty() {
+                verdict.observations.push(
+                    json!({ "path": scenario.params["path"], "format": format, "problem": null, "empty": true }),
+                );
+                verdict
+                    .coverage
+                    .push("the file is empty, which an optional output may be".to_string());
+                return verdict;
+            }
             let problem = match format {
                 "json" => serde_json::from_str::<serde_json::Value>(&text)
                     .err()
@@ -548,7 +741,13 @@ pub async fn run(context: &Context<'_>, scenario: &Scenario) -> Verdict {
             verdict.observations.push(
                 json!({ "path": scenario.params["path"], "format": format, "problem": problem }),
             );
-            if problem.is_some() {
+            if problem.is_some() && scenario.params["binding"] == "uncertain" {
+                verdict.verdict = "inconclusive".to_string();
+                verdict.coverage.push(
+                    "the extraction was unsure this requirement binds, so a malformed output doesn't count against it"
+                        .to_string(),
+                );
+            } else if problem.is_some() {
                 verdict.verdict = "failed".to_string();
                 verdict.hypotheses = vec![format!(
                     "the file isn't valid {format}, or not in the shape the task shows"
@@ -613,6 +812,51 @@ pub async fn run(context: &Context<'_>, scenario: &Scenario) -> Verdict {
             verdict
                 .coverage
                 .push("a passing test shows only what the test covers".to_string());
+        }
+        "generic.self-report" => {
+            let mut findings = Vec::new();
+            if let Some(report) = workspace.report.as_deref() {
+                findings.extend(selfreport::admissions(report));
+            }
+            for file in scenario.params["outputs"].as_array().into_iter().flatten() {
+                let resolved = PathBuf::from(file["resolved"].as_str().unwrap_or_default());
+                let small = std::fs::metadata(&resolved).is_ok_and(|m| m.len() <= 4 * 1024 * 1024);
+                if small && let Ok(text) = std::fs::read_to_string(&resolved) {
+                    findings.extend(selfreport::output_flags(
+                        file["path"].as_str().unwrap_or_default(),
+                        &text,
+                    ));
+                }
+            }
+            let named: Vec<String> = scenario.params["commands"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|c| c.as_str().map(str::to_string))
+                .collect();
+            findings.extend(selfreport::command_failures(&workspace.claimed, &named));
+            verdict.coverage.push(
+                "reads what the executor said and wrote about its own result, not the result itself"
+                    .to_string(),
+            );
+            if findings.is_empty() {
+                verdict.verdict = "inconclusive".to_string();
+                verdict.coverage.push(
+                    "no self-reported failure, which alone doesn't show the requirement met"
+                        .to_string(),
+                );
+            } else {
+                verdict.verdict = "failed".to_string();
+                verdict.hypotheses = vec![
+                    "the executor stopped at a result it knew was wrong or incomplete".to_string(),
+                    "the executor resolved an ambiguity by assumption, and the assumption may be wrong".to_string(),
+                    "the task's intended reading makes the reported obstacle go away".to_string(),
+                ];
+                verdict.observations = findings
+                    .iter()
+                    .map(|f| serde_json::to_value(f).unwrap_or_default())
+                    .collect();
+            }
         }
         other => return Verdict::unavailable(&scenario.id, &format!("no runner for {other}")),
     }

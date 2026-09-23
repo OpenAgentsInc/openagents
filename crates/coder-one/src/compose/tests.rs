@@ -457,3 +457,348 @@ fn every_tunable_tier_is_listed_for_the_doctor() {
     assert!(composes(&manifest("tunable-opus.json")));
     assert!(!composes(&manifest("jevprobe3-luna.json")));
 }
+
+// ---------------------------------------------------------------------------
+// v4: self-report, profile-v2 and families, and verify.second.
+// ---------------------------------------------------------------------------
+
+fn at(at_ms: u64, act: Act) -> Timed {
+    Timed { at_ms, act }
+}
+
+/// A script that writes `sum` to answer.json and each of `extra`, runs the
+/// public test, and ends with `claim`.
+fn script_saying(name: &str, sum: i64, extra: &[&str], claim: &str) -> Script {
+    let mut script = script(name, sum, 0);
+    let mut events = vec![at(
+        500,
+        Act::Write {
+            path: "answer.json".to_string(),
+            content: format!("{{\"sum\": {sum}}}\n"),
+            announce: true,
+        },
+    )];
+    for (i, path) in extra.iter().enumerate() {
+        events.push(at(
+            600 + i as u64,
+            Act::Write {
+                path: (*path).to_string(),
+                content: format!("{name}\n"),
+                announce: true,
+            },
+        ));
+    }
+    events.push(at(
+        2_000,
+        Act::Command {
+            command: "python3 test_answer.py".to_string(),
+            output: "ok".to_string(),
+            exit_code: 0,
+        },
+    ));
+    events.push(at(
+        3_000,
+        Act::Claim {
+            text: claim.to_string(),
+        },
+    ));
+    events.push(at(3_000, Act::End { error: false }));
+    script.events = events;
+    script
+}
+
+/// v4 without its route, so the manifest's executor (lean Opus) starts,
+/// and with verify.second's time floor lowered for a fifteen-minute test.
+fn v4_unrouted() -> Manifest {
+    let mut manifest = manifest("tunable-v4.json");
+    manifest.policy.control.route = None;
+    if let Some(second) = manifest
+        .policy
+        .verify
+        .as_mut()
+        .and_then(|v| v.second.as_mut())
+    {
+        second.min_remaining_sec = 60;
+    }
+    manifest
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_self_reported_guess_triggers_the_repair_only_under_v4() {
+    if !python() {
+        return;
+    }
+    let claim = "Done. The task doesn't pin down the rounding, so I guessed at it.";
+    let mut v4 = v4_unrouted();
+    v4.policy.verify.as_mut().unwrap().second = None;
+    let ran = compose(
+        "self-report",
+        &v4,
+        vec![
+            script_saying("opus", 6, &[], claim),
+            script_saying("opus-repair", 6, &[], "Done: answer.json holds the sum."),
+        ],
+        None,
+        Duration::from_secs(900),
+    )
+    .await;
+    let record = &ran.record;
+    let reported = &record["checks"][0]["self_report"];
+    assert_eq!(reported["verdict"], "failed", "{record:#}");
+    let signals: Vec<&str> = reported["findings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|f| f["signal"].as_str().unwrap())
+        .collect();
+    assert_eq!(signals, ["underdetermined", "guess"]);
+    assert_eq!(record["repair"]["ran"], true, "{record:#}");
+    let brief = std::fs::read_to_string(ran.out.join("artifacts/repair-1.brief.md")).unwrap();
+    assert!(brief.contains("generic.self-report"), "{brief}");
+
+    // The canary: the same session under the Opus arm without
+    // verify.self_report certifies it, as it always has.
+    let ran = compose(
+        "self-report-canary",
+        &manifest("tunable-opus.json"),
+        vec![script_saying("opus", 6, &[], claim)],
+        None,
+        Duration::from_secs(900),
+    )
+    .await;
+    assert_eq!(ran.record["checks"][0]["self_report"], Value::Null);
+    assert_eq!(ran.record["repair"]["ran"], false);
+    assert_eq!(ran.made.len(), 1);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_second_executor_that_checks_better_replaces_the_first_candidate() {
+    if !python() {
+        return;
+    }
+    let ran = compose(
+        "second-wins",
+        &v4_unrouted(),
+        vec![
+            script_saying("opus", 7, &["first.txt"], "Done."),
+            // The repair changes nothing, so the check still fails.
+            script_saying("opus-repair", 7, &["first.txt"], "Done."),
+            script_saying("astra", 6, &["second.txt"], "Done."),
+        ],
+        None,
+        Duration::from_secs(900),
+    )
+    .await;
+    let record = &ran.record;
+    let labels: Vec<String> = ran.made.iter().map(|(tier, _)| tier.label()).collect();
+    assert_eq!(
+        labels,
+        [
+            "claude-code/claude-opus-5-5",
+            "claude-code/claude-opus-5-5",
+            "codex/gpt-6-astra"
+        ]
+    );
+    let second = &record["second"];
+    assert_eq!(second["kept"], "second", "{record:#}");
+    assert!(second["trigger"].as_str().unwrap().starts_with("failed"));
+    assert_eq!(second["first"]["failed"], 1);
+    assert_eq!(second["second"]["failed"], 0);
+    assert_eq!(sum_in(&ran.work), 6);
+    // The second executor ran on the original state, not on the first
+    // candidate: the first's extra file is gone.
+    assert!(!ran.work.join("first.txt").exists());
+    assert!(ran.work.join("second.txt").is_file());
+    assert_eq!(record["final_tier"]["model"], "gpt-6-astra");
+    assert!(ran.out.join(SECOND_CHECKS).is_file());
+    let roles: Vec<&str> = record["branches"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|b| b["role"].as_str().unwrap())
+        .collect();
+    assert_eq!(roles, ["primary", "second"]);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_second_executor_that_checks_no_better_leaves_the_first_candidate() {
+    if !python() {
+        return;
+    }
+    let ran = compose(
+        "second-loses",
+        &v4_unrouted(),
+        vec![
+            script_saying("opus", 7, &["first.txt"], "Done."),
+            script_saying("opus-repair", 7, &["first.txt"], "Done."),
+            script_saying("astra", 5, &["second.txt"], "Done."),
+        ],
+        None,
+        Duration::from_secs(900),
+    )
+    .await;
+    let record = &ran.record;
+    assert_eq!(record["second"]["kept"], "first", "{record:#}");
+    assert_eq!(sum_in(&ran.work), 7);
+    assert!(ran.work.join("first.txt").is_file());
+    assert!(!ran.work.join("second.txt").exists());
+    assert_eq!(record["final_tier"]["model"], "claude-opus-5-5");
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_confirmed_result_runs_no_second_executor() {
+    if !python() {
+        return;
+    }
+    let ran = compose(
+        "second-skipped",
+        &v4_unrouted(),
+        vec![script_saying("opus", 6, &[], "Done.")],
+        None,
+        Duration::from_secs(900),
+    )
+    .await;
+    assert_eq!(ran.made.len(), 1);
+    assert_eq!(
+        ran.record["second"]["skipped"],
+        "the checks confirmed the result"
+    );
+    assert_eq!(sum_in(&ran.work), 6);
+}
+
+fn with_difficulty(difficulty: f64) -> crate::profile::Profile {
+    let mut profile = easy();
+    profile.difficulty = Some(difficulty);
+    profile
+}
+
+#[test]
+fn under_profile_v2_a_long_deadline_lowers_the_bar_but_does_not_decide() {
+    let manifest = manifest("tunable-v4.json");
+    let route = manifest.policy.control.route.as_ref().unwrap();
+    assert_eq!(route.rule, "profile-v2");
+    let long = Some(28_680);
+    let routed = decide(route, &with_difficulty(0.25), long);
+    assert_eq!(routed.start, "cheap", "{}", routed.reason);
+    assert!(routed.reason.contains("the deadline is long"));
+    let routed = decide(route, &with_difficulty(0.4), long);
+    assert_eq!(routed.start, "strong");
+    assert!(routed.reason.contains("the bar for a long task"));
+    // On a short task the ordinary bar holds.
+    assert_eq!(
+        decide(route, &with_difficulty(0.4), Some(840)).start,
+        "cheap"
+    );
+    // profile-v1 is unchanged: the deadline alone decides.
+    let v1 = manifest_route("tunable.json");
+    assert_eq!(decide(&v1, &with_difficulty(0.25), long).start, "strong");
+}
+
+fn manifest_route(file: &str) -> RoutePolicy {
+    manifest(file).policy.control.route.unwrap()
+}
+
+#[test]
+fn the_family_table_picks_the_profile_that_passed_more() {
+    let route = manifest_route("tunable-v4.json");
+    let hard = with_difficulty(0.9);
+    let cad = "I'd like you to output a STEP file in `/app/out.step` which contains the object described by the 2d schematic in `/app/schematic.png`.";
+    let (routed, record) = decide_with_families(&route, &hard, Some(28_680), cad);
+    assert_eq!(routed.start, "family", "{record:#}");
+    assert_eq!(routed.tier.label(), "codex/gpt-6-astra");
+    assert_eq!(record["family"], "cad-from-drawing");
+    assert_eq!(record["picked"], "astra");
+    // A family where the rule's Opus already passed more keeps it.
+    let genomics =
+        "You are provided with a region of genomic DNA representing the human ATRX locus.";
+    let (routed, record) = decide_with_families(&route, &hard, Some(28_680), genomics);
+    assert_eq!(routed.start, "strong");
+    assert_eq!(record["family"], "genomics");
+    assert!(record["picked"].is_null());
+    // No family: the rule decides, and the record says why.
+    let (routed, record) = decide_with_families(
+        &route,
+        &hard,
+        Some(28_680),
+        "Sum the numbers in numbers.txt.",
+    );
+    assert_eq!(routed.start, "strong");
+    assert!(record["family"].is_null());
+    // A route without a table records nothing.
+    let (_, record) = decide_with_families(&manifest_route("tunable.json"), &hard, Some(840), cad);
+    assert!(record.is_null());
+}
+
+#[test]
+fn a_family_pick_needs_trials_and_a_gap() {
+    let mut route = manifest_route("tunable-v4.json");
+    let families = route.families.as_mut().unwrap();
+    let cad = "Write a STEP file for the 2d schematic in schematic.png.";
+    let strong = route.strong.clone();
+    families.min_trials = 11;
+    let (picked, record) = families.pick(cad, &strong);
+    assert!(picked.is_none());
+    assert!(record["why"].as_str().unwrap().contains("11 trials"));
+    families.min_trials = 10;
+    families.min_gap = 0.25;
+    let (picked, record) = families.pick(cad, &strong);
+    assert!(picked.is_none(), "{record:#}");
+    assert!(
+        record["why"]
+            .as_str()
+            .unwrap()
+            .contains("less than the gap")
+    );
+}
+
+#[test]
+fn every_v4_tier_is_listed_for_the_doctor() {
+    let tiers = tiers(&manifest("tunable-v4.json"));
+    assert!(tiers.iter().any(|t| t.model == "gpt-6-astra"));
+    assert!(tiers.iter().all(|t| t.version.is_some()));
+    let verify = manifest("tunable-v4.json").policy.verify.unwrap();
+    assert!(verify.validate().is_empty());
+    assert_eq!(verify.support_params(true).max_requirements, 8);
+    assert_eq!(verify.support_params(false).max_requirements, 3);
+    assert_eq!(
+        verify.support_params(true).order,
+        crate::support::Order::BehaviorFirst
+    );
+    // v2's and v3's verify serialize as they always have.
+    let v3: Value = serde_json::from_str(include_str!("../../policies/tunable-v3.json")).unwrap();
+    let parsed: VerifyPolicy = serde_json::from_value(v3["policy"]["verify"].clone()).unwrap();
+    assert_eq!(
+        serde_json::to_value(&parsed).unwrap(),
+        v3["policy"]["verify"]
+    );
+    assert_eq!(
+        parsed.support_params(true),
+        crate::support::Params::default()
+    );
+    assert!(parsed.check_options().is_default());
+}
+
+#[test]
+fn a_standing_prefers_fewer_failures_then_more_confirmed_requirements() {
+    let standing = |failed, contradicted, confirmed| Standing {
+        failed,
+        contradicted,
+        confirmed,
+        passed_scenarios: 1,
+        unresolved: 0,
+    };
+    assert!(standing(1, 0, 3).beaten_by(&standing(0, 0, 1)));
+    assert!(standing(0, 0, 1).beaten_by(&standing(0, 0, 2)));
+    assert!(!standing(0, 0, 2).beaten_by(&standing(0, 0, 2)));
+    assert!(!standing(0, 0, 2).beaten_by(&standing(0, 1, 5)));
+    let on = vec!["unconfirmed".to_string(), "failed".to_string()];
+    assert!(standing(0, 0, 2).triggers(&on).is_empty());
+    let mut unconfirmed = standing(0, 0, 0);
+    unconfirmed.passed_scenarios = 0;
+    assert_eq!(unconfirmed.triggers(&on).len(), 1);
+    assert!(
+        standing(1, 0, 0)
+            .triggers(&["unconfirmed".to_string()])
+            .is_empty()
+    );
+}
