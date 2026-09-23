@@ -82,7 +82,8 @@ pub fn tools() -> Value {
             "description": "Finish with the answer. Call it once, last. Break the answer into \
                 claims, and give each claim the runs it rests on as `job/trial`, the \
                 transcript step numbers it rests on where it helps, the judgment IDs it \
-                cites, such as `unearned_success`, and any repository files. Code checks every citation before the \
+                cites, such as `unearned_success`, a person's marks it rests on, and any \
+                repository files. Code checks every citation before the \
                 answer is shown; a claim whose citation doesn't check is marked unverified.",
             "inputSchema": {
                 "type": "object",
@@ -109,9 +110,11 @@ pub fn tools() -> Value {
                                     "description": "Transcript steps it rests on: the run and the step number from `gym runs show RUN --json`."
                                 },
                                 "judgments": { "type": "array", "items": { "type": "string" }, "description": "Jev judgment IDs it cites, such as unearned_success; each must hold for every cited run." },
-                                "files": { "type": "array", "items": { "type": "string" }, "description": "Repository files it rests on, as a path from the repository root, optionally with `:LINE`." }
+                                "files": { "type": "array", "items": { "type": "string" }, "description": "Repository files it rests on, as a path from the repository root, optionally with `:LINE`." },
+                                "marks": { "type": "array", "items": { "type": "string" }, "description": "A person's marks it rests on: `job/trial` for a mark on the run, `job/trial/STEP` for a mark on a step. Empty when it rests on none." },
+                                "highlight": { "type": "string", "description": "For a highlights ask, the key of the highlight this claim drafts, such as `cost-0d4bb2f6`; empty otherwise." }
                             },
-                            "required": ["claim", "runs", "steps", "judgments", "files"],
+                            "required": ["claim", "runs", "steps", "judgments", "files", "marks", "highlight"],
                             "additionalProperties": false
                         }
                     },

@@ -10,6 +10,8 @@ coder-one ask "why did the runs Jev flagged as unearned success rank that way, a
 coder-one ask "why did Luna fail log-summary-date-ranges?" --executor opus
 coder-one ask "why does this one rank?" --run tb4--coder-one-tunable-v6--coq-block-bound/coq-block-bound__Mu8ygpJ
 coder-one ask "which docs describe the check recall study?" --scope repo
+coder-one ask "which runs did I mark bad, and what do they share?"
+coder-one ask --scope highlights --claim cost-0d4bb2f6 --claim leaderboard-31931936
 gym coder asks                     # every ask, with its citations and cost
 gym coder asks latest              # the last answer, each claim marked
 ```
@@ -20,12 +22,14 @@ Issue #9574 holds the design.
 
 1. **Probe.** Before any model runs, the host runs a fixed battery of Gym
    reads: `gym runs --order learning --json --limit 40`, `gym runs group
-   --by reason --json`, `gym runs group --by task --json`, and `gym coder
-   matrix --json`, plus `gym runs show RUN --json` for the run `--run`
-   names. The matrix runs beside the rest, because only the briefing needs
-   it.
+   --by reason --json`, `gym runs group --by task --json`, `gym runs marks
+   --json`, and `gym coder matrix --json`, plus `gym runs show RUN --json`
+   for the run `--run` names. The matrix runs beside the rest, because only
+   the briefing needs it.
 2. **Judge.** Jev reads the question and the reason groups and says which
-   reasons the question asks about, one Noul per reason. The host then
+   reasons the question asks about, one Noul per reason. When a person has
+   marked runs, the same request asks whether the question is about marked
+   runs; see [Read a person's marks](#read-a-persons-marks). The host then
    reads those reasons' runs with `gym runs --reason ID`, and the runs of
    any task the question names. Jev judges which of the candidates bear on
    the question, one Noul per run, and the host opens the strongest six
@@ -84,7 +88,63 @@ refuses to run.
 | A step, `{run, step}` | The run has a transcript step with that number, as `gym runs show RUN --json` numbers them. |
 | A judgment ID | Jev's stored probability for it is at or above 0.50 for every run the claim cites. |
 | A file, `path` or `path:LINE` | The file is inside the repository, and the line is within it. |
+| A mark, `job/trial` or `job/trial/STEP` | A person marked that run, or that step of it, in `~/.openagents/gym/marks/marks.jsonl`. |
 
+## Read a person's marks
+
+A mark is a person's word that a run, or one step of it, is bad, or that a
+run is fine; see
+[Mark bad runs and steps](../../gym/terminal-bench-cli.md#mark-bad-runs-and-steps).
+The ask reads the marks with `gym runs marks --json`, and the briefing lists
+them under **A person's marks**, with each mark's tags, note, and author,
+and says that a mark outranks Jev's judgment. Each opened run shows its own
+marks.
+
+When there are marks, the Jev request that reads the reasons also asks
+whether the question is about marked runs: runs a person flagged as bad,
+cleared, tagged, or wrote a note on. When Jev says yes, or, with Jev off,
+when the question says "mark", "flagged", "bad run", or "cleared", the
+host reads `gym runs --marked --json` and puts the marked runs first among
+the candidates, bad before cleared, and the briefing opens them. A claim
+can cite a mark in its `marks` field, and code checks that the mark exists.
+
+The executor can't mark a run: the allowlist refuses `gym runs mark` and
+`gym runs unmark`, and the boundary keeps the marks store read-only.
+
+## Draft highlights
+
+`gym runs highlights` computes candidate claims worth sharing by fixed
+rules, each with its runs, numbers, sample size, and caveats; see
+[Find highlights worth sharing](../../gym/terminal-bench-cli.md#find-highlights-worth-sharing).
+`coder-one ask --scope highlights` turns chosen claims into short drafts a
+person may post:
+
+```sh
+gym runs highlights                                     # the claims and their keys
+coder-one ask --scope highlights --claim cost-0d4bb2f6  # one claim; repeat --claim for more
+coder-one ask --scope highlights                        # the 3 strongest claims
+```
+
+The host reads `gym runs highlights --json`, keeps the claims each
+`--claim KEY` names, or the 3 strongest, and briefs the executor with each
+claim's sentence, numbers, runs, and caveats. It asks Jev nothing: code
+chose the claims. The executor writes one draft per claim and names the
+claim's key in the draft's `highlight` field. Code then refuses a draft
+that fails any check:
+
+- It names one of the chosen claims.
+- Every run it cites is one that claim cites, and the Gym has it.
+- Every number it writes is a number the claim writes, in its sentence,
+  its numbers, or its caveats. A rounded or computed figure is refused. A
+  digit inside a name, such as `tb4--x`, `GPT-6`, or `demo__1`, isn't a
+  number; a model version such as `Opus 5.5` is, and the claim writes it.
+- A claim that rests on one run says so, such as "in one run" or "n=1".
+
+A refused draft is kept with its reasons. The text output marks each draft
+`✓` or `✗`, and the record carries `drafts`, each with its `highlight`,
+`draft`, `runs`, `status` (`passed` or `refused`), and `problems`. Nothing
+posts anywhere: a person picks, edits, and posts. The question is optional
+with this scope.
 ## What it costs
 
 Measured on 2026-09-23 against this machine's Gym (597 runs, 561 judged),
@@ -107,7 +167,8 @@ went over.
 
 | Option | Effect |
 | --- | --- |
-| `--scope gym\|repo` | `gym`, the default, probes the Gym. `repo` searches the repository's Markdown for the question's words, and Jev judges which files bear on it. |
+| `--scope gym\|repo\|highlights` | `gym`, the default, probes the Gym. `repo` searches the repository's Markdown for the question's words, and Jev judges which files bear on it. `highlights` drafts from the Gym's highlights; see [Draft highlights](#draft-highlights). |
+| `--claim KEY` | With `--scope highlights`, a highlight to draft. Repeatable. |
 | `--executor luna\|opus` | Codex on GPT-6 Luna, or Claude Code on Opus 5.5. `--model` names another model. |
 | `--budget USD` | The most the ask spends, Jev included. |
 | `--run RUN` | The run the operator has selected, opened whatever Jev says. |

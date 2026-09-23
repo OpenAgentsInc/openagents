@@ -370,6 +370,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
             jev: jev.clone(),
             jev_record: None,
             answer_file: None,
+            claims: Vec::new(),
         };
         let row = match super::run(options, &progress).await {
             Ok((record, _)) => score(question, &record),

@@ -11,6 +11,11 @@
 //! transcript steps and says which of those do. One Noul per item, the
 //! same pattern the Jev probe uses for files.
 //!
+//! When a person has marked runs, the battery reads the marks too, and the
+//! same Jev request that reads the reasons says whether the question asks
+//! about marked runs. When it does, the marked runs come first among the
+//! candidates and the briefing opens them.
+//!
 //! For a question about the repository, the battery is a search of the
 //! Markdown files for the question's words, and Jev judges which files
 //! bear on it.
@@ -250,7 +255,66 @@ pub fn run_summary(run: &Value) -> Value {
         "cost_usd": run["cost_usd"].as_f64().map(|c| (c * 1000.0).round() / 1000.0),
         "learning": run["learning"]["learning"],
         "reasons": reasons,
+        "marks": run["marks"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|mark| {
+                let mut text = match mark["step"].as_u64() {
+                    Some(step) => format!("step {step} {}", mark["verdict"].as_str().unwrap_or("?")),
+                    None => mark["verdict"].as_str().unwrap_or("?").to_string(),
+                };
+                let tags: Vec<&str> = mark["tags"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
+                if !tags.is_empty() {
+                    text.push_str(&format!(": {}", tags.join(", ")));
+                }
+                text
+            })
+            .collect::<Vec<_>>(),
     })
+}
+
+/// The Noul that asks whether a question is about runs a person marked.
+#[must_use]
+pub fn marks_noul() -> Noul {
+    Noul::with_criteria(
+        "Does the question in `question` ask about runs a person marked or judged: runs a person flagged as bad, cleared as fine, tagged with a judgment, or wrote a note on, as `marks` summarizes them?",
+        NoulCriteria::new()
+            .when_true("The question asks about marked runs, about which runs a person called bad or fine, or about what the marks or their notes say.")
+            .when_false("The question is about runs in general, Jev's judgments, a task, or an agent, and would be answered the same way without anyone's marks."),
+    )
+}
+
+/// Whether the question's words name marks, for when Jev can't say.
+#[must_use]
+pub fn names_marks(question: &str) -> bool {
+    let lower = question.to_lowercase();
+    ["mark", "flagged", "bad run", "cleared"]
+        .iter()
+        .any(|word| lower.contains(word))
+}
+
+/// The marks `gym runs marks --json` lists: bad first, then cleared, each
+/// as its run.
+#[must_use]
+pub fn marked_runs(marks: &Value) -> Vec<String> {
+    let mut runs: Vec<(bool, String)> = marks["marks"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|mark| {
+            Some((
+                mark["verdict"].as_str() != Some("bad"),
+                mark["run"].as_str()?.to_string(),
+            ))
+        })
+        .collect();
+    runs.sort();
+    let mut seen = std::collections::HashSet::new();
+    runs.into_iter()
+        .filter(|(_, run)| seen.insert(run.clone()))
+        .map(|(_, run)| run)
+        .collect()
 }
 
 /// The reason groups a `gym runs group --by reason --json` probe found:

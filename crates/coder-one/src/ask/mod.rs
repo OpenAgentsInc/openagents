@@ -34,6 +34,7 @@
 pub mod allow;
 pub mod brief;
 pub mod cite;
+pub mod drafts;
 pub mod executor;
 pub mod gather;
 pub mod study;
@@ -64,7 +65,8 @@ pub const DEFAULT_DEADLINE: Duration = Duration::from_secs(240);
 
 /// The command line's usage.
 pub const USAGE: &str = "\
-usage: coder-one ask \"QUESTION\" [--scope gym|repo] [--executor luna|opus] [--budget USD]
+usage: coder-one ask \"QUESTION\" [--scope gym|repo|highlights] [--claim KEY]...
+                     [--executor luna|opus] [--budget USD]
                      [--json | --events] [--run RUN] [--context TEXT]... [--rank]
                      [--model MODEL] [--timeout SECONDS] [--gym PATH] [--repo DIR]
                      [--out DIR] [--no-jev] [--jev-recorded FILE] [--jev-record FILE]
@@ -75,8 +77,13 @@ claim's citations checked by code. It only reads: each command runs inside a
 filesystem boundary that leaves only the ask's scratch directory and the
 executor CLI's own state writable.
 
---scope gym (the default) probes the Gym's runs, reason groups, and outcome
-matrix; --scope repo searches the repository's Markdown instead. --executor
+--scope gym (the default) probes the Gym's runs, reason groups, marks, and
+outcome matrix; --scope repo searches the repository's Markdown instead.
+--scope highlights drafts short text from the claims `gym runs highlights`
+computes: the ones each --claim KEY names, or the 3 strongest. Code refuses a
+draft with a number its claim doesn't give, a run its claim doesn't cite, or
+an n=1 claim it doesn't say rests on one run. Nothing posts anywhere, and the
+question may be empty. --executor
 luna (the default) runs Codex on GPT-6 Luna, and opus runs Claude Code on Opus
 5.5. --budget caps the whole ask, Jev included, at USD dollars (default 1.00);
 Claude Code enforces its share, and a Codex run over it is reported. --run
@@ -99,6 +106,8 @@ executor's answer instead of running one.";
 pub enum Scope {
     Gym,
     Repo,
+    /// Drafts from the Gym's highlights.
+    Highlights,
 }
 
 impl Scope {
@@ -106,7 +115,10 @@ impl Scope {
         match text.trim() {
             "gym" => Ok(Scope::Gym),
             "repo" => Ok(Scope::Repo),
-            other => Err(format!("--scope takes gym or repo, not {other}")),
+            "highlights" => Ok(Scope::Highlights),
+            other => Err(format!(
+                "--scope takes gym, repo, or highlights, not {other}"
+            )),
         }
     }
 
@@ -114,6 +126,7 @@ impl Scope {
         match self {
             Scope::Gym => "gym",
             Scope::Repo => "repo",
+            Scope::Highlights => "highlights",
         }
     }
 }
@@ -146,6 +159,8 @@ pub struct Options {
     pub jev: JevChoice,
     pub jev_record: Option<PathBuf>,
     pub answer_file: Option<PathBuf>,
+    /// For a highlights ask, the highlights to draft, by key.
+    pub claims: Vec<String>,
 }
 
 impl Options {
@@ -173,6 +188,7 @@ impl Options {
             jev: JevChoice::Live,
             jev_record: None,
             answer_file: None,
+            claims: Vec::new(),
         };
         let mut words: Vec<String> = Vec::new();
         let mut args = args.iter();
@@ -204,6 +220,7 @@ impl Options {
                 "--rank" => options.rank = true,
                 "--run" => options.run = Some(value("--run")?),
                 "--context" => options.context.push(value("--context")?),
+                "--claim" => options.claims.push(value("--claim")?),
                 "--gym" => options.gym = Some(PathBuf::from(value("--gym")?)),
                 "--repo" => options.repo = Some(PathBuf::from(value("--repo")?)),
                 "--out" => options.out = Some(PathBuf::from(value("--out")?)),
@@ -228,6 +245,12 @@ impl Options {
             }
         }
         options.question = words.join(" ").trim().to_string();
+        if options.question.is_empty() && options.scope == Scope::Highlights {
+            options.question = "Draft short posts from these highlights.".to_string();
+        }
+        if !options.claims.is_empty() && options.scope != Scope::Highlights {
+            return Err("--claim names a highlight; it needs --scope highlights".to_string());
+        }
         if options.question.is_empty() {
             return Err(format!("ask needs a question\n\n{USAGE}"));
         }
@@ -320,7 +343,9 @@ fn jev_usd(asked: &[&Asked]) -> f64 {
         .filter(|a| a.how == "live")
         .filter_map(|a| a.input_tokens)
         .map(|tokens| tokens as f64 * USD_PER_MILLION_INPUT / 1_000_000.0)
-        .sum()
+        // An empty float sum is -0.0, which prints as `$-0.0000`.
+        .sum::<f64>()
+        + 0.0
 }
 
 fn strings(args: &[&str]) -> Vec<String> {
@@ -384,7 +409,7 @@ pub async fn run(options: Options, progress: &Progress) -> Result<(Value, i32), 
         .map_err(|error| format!("cannot read the current directory: {error}"))?;
     let repo = repo.canonicalize().unwrap_or(repo);
     let gym = find_gym(options.gym.as_deref());
-    if options.scope == Scope::Gym && gym.is_none() {
+    if options.scope != Scope::Repo && gym.is_none() {
         return Err(
             "no gym binary: build it with `cargo build -p gym`, then pass --gym PATH or set \
              CODER_ONE_GYM_BIN"
@@ -489,6 +514,7 @@ pub async fn run(options: Options, progress: &Progress) -> Result<(Value, i32), 
             gathered
         }
         Scope::Repo => gather_repo(&options, &reader, &jev, &recorder, progress).await,
+        Scope::Highlights => gather_highlights(&options, &reader, &recorder, progress).await?,
     };
     gathered.inputs.question.clone_from(&options.question);
     gathered.inputs.context = options.context.clone();
@@ -745,6 +771,9 @@ pub async fn run(options: Options, progress: &Progress) -> Result<(Value, i32), 
         })
         .collect();
     cite::check(&mut claims, &facts, &repo);
+    if options.scope == Scope::Highlights {
+        drafts::check(&mut claims, &gathered.inputs.highlights);
+    }
     let totals = cite::totals(&claims);
     recorder.end(
         &invocation,
@@ -753,10 +782,20 @@ pub async fn run(options: Options, progress: &Progress) -> Result<(Value, i32), 
             .cost(Cost::none()),
     );
     if answer.is_some() {
-        progress.line(&format!(
-            "cite ▸ {} of {} citations check; {} of {} claims verified",
-            totals["valid_citations"], totals["citations"], totals["verified"], totals["claims"]
-        ));
+        progress.line(&if options.scope == Scope::Highlights {
+            format!(
+                "drafts ▸ {} of {} drafts pass the number and citation checks, and {} are refused",
+                totals["verified"], totals["claims"], totals["unverified"]
+            )
+        } else {
+            format!(
+                "cite ▸ {} of {} citations check; {} of {} claims verified",
+                totals["valid_citations"],
+                totals["citations"],
+                totals["verified"],
+                totals["claims"]
+            )
+        });
     }
 
     let total_usd = executor_cost.usd.map(|usd| usd + jev_cost);
@@ -788,6 +827,18 @@ pub async fn run(options: Options, progress: &Progress) -> Result<(Value, i32), 
         "answer": answer.as_ref().map(|a| a["answer"].clone()),
         "proposed_change": answer.as_ref().and_then(|a| a["proposed_change"].as_str()).filter(|s| !s.trim().is_empty()),
         "claims": claims.iter().map(cite::Claim::to_json).collect::<Vec<_>>(),
+        "highlights": gathered.inputs.highlights.iter().map(|h| h["key"].clone()).collect::<Vec<_>>(),
+        "drafts": if options.scope == Scope::Highlights {
+            json!(claims.iter().map(|c| json!({
+                "highlight": c.highlight,
+                "draft": c.text,
+                "runs": c.runs,
+                "status": if c.verified() { "passed" } else { "refused" },
+                "problems": c.problems,
+            })).collect::<Vec<_>>())
+        } else {
+            Value::Null
+        },
         "citations": totals,
         "cited_runs": facts.iter().map(|(cited, fact)| json!({
             "cited": cited,
@@ -811,6 +862,8 @@ pub async fn run(options: Options, progress: &Progress) -> Result<(Value, i32), 
             "reasons": gathered.inputs.asked_reasons.iter().map(|(id, p)| json!({"id": id, "probability": p})).collect::<Vec<_>>(),
             "tasks": gathered.inputs.tasks,
             "files": gathered.inputs.files.iter().map(|(path, p, _)| json!({"path": path, "relevance": p})).collect::<Vec<_>>(),
+            "marks": gathered.inputs.marks.as_ref().and_then(|m| m["marks"].as_array()).map_or(0, Vec::len),
+            "about_marks": gathered.inputs.about_marks,
         },
         "executor_record": executor_record,
         "started_at": atif::document::iso(at),
@@ -847,6 +900,7 @@ async fn gather_gym(
         strings(&["runs", "--order", "learning", "--json", "--limit", "40"]),
         strings(&["runs", "group", "--by", "reason", "--json"]),
         strings(&["runs", "group", "--by", "task", "--json"]),
+        strings(&["runs", "marks", "--json"]),
     ];
     if let Some(run) = &options.run {
         battery.push(strings(&["runs", "show", run, "--json"]));
@@ -861,13 +915,16 @@ async fn gather_gym(
     let learning = probes[0].json().unwrap_or(Value::Null);
     let reasons = probes[1].json();
     let tasks = probes[2].json().unwrap_or(Value::Null);
+    let marks = probes[3]
+        .json()
+        .filter(|marks| marks["marks"].as_array().is_some_and(|m| !m.is_empty()));
     gathered.inputs.totals = learning.is_object().then(|| {
         json!({ "total": learning["total"], "ranked": learning["ranked"], "running": learning["running"] })
     });
     let selected = options
         .run
         .as_ref()
-        .and_then(|_| probes.get(3))
+        .and_then(|_| probes.get(4))
         .and_then(Probe::json);
 
     // Which reasons and tasks the question names.
@@ -876,20 +933,51 @@ async fn gather_gym(
         .map(gather::reason_groups)
         .unwrap_or_default();
     let mut asked_reasons = Vec::new();
-    if !groups.is_empty() {
-        let state = json!({
+    let mut about_marks = false;
+    if !groups.is_empty() || marks.is_some() {
+        let mut state = json!({
             "question": options.question,
             "context": options.context,
             "reasons": groups.iter().map(|(id, tag, count)| json!({"id": id, "tag": tag, "runs": count})).collect::<Vec<_>>(),
         });
-        let asked = gather::judge(
-            jev,
-            recorder,
-            "ask_reasons",
-            state,
-            gather::reason_questions(groups.len()),
-        )
-        .await;
+        let mut questions = gather::reason_questions(groups.len());
+        if let Some(marks) = &marks {
+            let all = marks["marks"].as_array().cloned().unwrap_or_default();
+            let bad = all.iter().filter(|m| m["verdict"] == "bad").count();
+            let mut tags: Vec<&str> = all
+                .iter()
+                .flat_map(|m| {
+                    m["tags"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .filter_map(Value::as_str)
+                })
+                .collect();
+            tags.sort_unstable();
+            tags.dedup();
+            state["marks"] = json!({
+                "marked_bad": bad,
+                "cleared": all.len() - bad,
+                "tags": tags,
+            });
+            questions = questions.with("marks", gather::marks_noul());
+        }
+        let asked = gather::judge(jev, recorder, "ask_reasons", state, questions).await;
+        if marks.is_some() {
+            about_marks = match asked.noul("marks") {
+                Some(p) => p >= gather::YES,
+                None => gather::names_marks(&options.question),
+            };
+            progress.line(&format!(
+                "jev ▸ the question {} about marked runs{}",
+                if about_marks { "asks" } else { "doesn't ask" },
+                asked.noul("marks").map_or(
+                    " (by its words; Jev didn't answer)".to_string(),
+                    |p| format!(" ({p:.2})")
+                )
+            ));
+        }
         for (index, p) in gather::chosen(&asked, "reason", groups.len(), gather::MAX_REASONS, 0) {
             asked_reasons.push((groups[index].0.clone(), p));
         }
@@ -920,6 +1008,10 @@ async fn gather_gym(
         extra.push(strings(&[
             "runs", "--order", "learning", "--reason", reason, "--json", "--limit", "15",
         ]));
+    }
+    // The marked runs come first when the question asks about them.
+    if about_marks {
+        extra.insert(0, strings(&["runs", "--marked", "--json", "--limit", "30"]));
     }
     let extra_probes: Vec<Probe> =
         join_all(extra.iter().map(|args| reader.gym(args.clone()))).await;
@@ -984,6 +1076,19 @@ async fn gather_gym(
             for (i, p) in rest.into_iter().take(gather::MIN_OPENED - picked.len()) {
                 picked.push((i, Some(p)));
             }
+        }
+        // A question about marked runs opens them, bad before cleared.
+        if about_marks && let Some(marks) = &marks {
+            let marked: Vec<usize> = gather::marked_runs(marks)
+                .iter()
+                .filter_map(|run| candidates.iter().position(|c| c["run"] == run.as_str()))
+                .take(gather::MAX_OPENED)
+                .collect();
+            for (at, index) in marked.into_iter().enumerate() {
+                picked.retain(|(i, _)| *i != index);
+                picked.insert(at, (index, relevance.get(&index).copied()));
+            }
+            picked.truncate(gather::MAX_OPENED);
         }
         if selected.is_some() && !picked.iter().any(|(i, _)| *i == 0) {
             picked.insert(0, (0, relevance.get(&0).copied()));
@@ -1118,10 +1223,63 @@ async fn gather_gym(
         .map(|(i, c)| (c.clone(), relevance.get(&i).copied()))
         .collect();
     gathered.inputs.opened = opened;
+    gathered.inputs.marks = marks;
+    gathered.inputs.about_marks = about_marks;
     gathered.inputs.reasons = reasons;
     gathered.inputs.asked_reasons = asked_reasons;
     gathered.inputs.tasks = named;
     gathered
+}
+
+/// A highlights ask: read `gym runs highlights --json` and choose the
+/// highlights to draft. It asks Jev nothing: code chose the claims.
+async fn gather_highlights(
+    options: &Options,
+    reader: &Reader<'_>,
+    recorder: &Recorder,
+    progress: &Progress,
+) -> Result<Gathered, String> {
+    let mut gathered = Gathered::default();
+    let probe = reader
+        .gym(strings(&["runs", "highlights", "--json", "--limit", "60"]))
+        .await;
+    gather::record_probes(recorder, "highlights", &[&probe], progress);
+    let highlights = probe.json().ok_or_else(|| {
+        format!(
+            "`gym runs highlights --json` failed: {}",
+            clip(probe.stderr.trim(), 300)
+        )
+    })?;
+    let (chosen, missing) = drafts::choose(&highlights, &options.claims);
+    if !missing.is_empty() {
+        progress.line(&format!(
+            "highlights ▸ no highlight has the key {}; `gym runs highlights` lists them",
+            missing.join(", ")
+        ));
+    }
+    if chosen.is_empty() {
+        return Err(if missing.is_empty() {
+            "`gym runs highlights` found no claim to draft".to_string()
+        } else {
+            format!(
+                "no highlight has the key {}; `gym runs highlights` lists them",
+                missing.join(", ")
+            )
+        });
+    }
+    progress.line(&format!(
+        "highlights ▸ drafting {} of {}: {}",
+        chosen.len(),
+        highlights["total"],
+        chosen
+            .iter()
+            .filter_map(|h| h["key"].as_str())
+            .collect::<Vec<_>>()
+            .join(", ")
+    ));
+    gathered.candidates = chosen.len();
+    gathered.inputs.highlights = chosen;
+    Ok(gathered)
 }
 
 /// A repository question: search the Markdown for the question's words,
@@ -1242,7 +1400,10 @@ pub fn text(record: &Value) -> String {
         )),
     }
     let claims = record["claims"].as_array().cloned().unwrap_or_default();
-    if !claims.is_empty() {
+    if record["scope"] == "highlights" {
+        out.clear();
+        out.push_str(&drafts_text(record));
+    } else if !claims.is_empty() {
         out.push_str("Claims (✓ citations checked, ? unverified):\n");
         for (index, claim) in claims.iter().enumerate() {
             let mark = if claim["verified"] == true {
@@ -1336,6 +1497,51 @@ pub fn text(record: &Value) -> String {
     out
 }
 
+/// The drafts of a highlights ask as text: each draft with its highlight,
+/// its runs, and, for a refused one, why.
+fn drafts_text(record: &Value) -> String {
+    let mut out = String::from(
+        "Drafts from highlights (✓ passed the number and citation checks, ✗ refused). \
+         Nothing posts; a person picks, edits, and posts.\n\n",
+    );
+    let drafts = record["drafts"].as_array().cloned().unwrap_or_default();
+    if drafts.is_empty() {
+        out.push_str(&format!(
+            "No drafts: the executor {}.\n\n",
+            record["status"].as_str().unwrap_or("didn't answer")
+        ));
+    }
+    for (index, draft) in drafts.iter().enumerate() {
+        let passed = draft["status"] == "passed";
+        out.push_str(&format!(
+            "{} {}. [{}] {}\n",
+            if passed { '✓' } else { '✗' },
+            index + 1,
+            draft["highlight"].as_str().unwrap_or("no highlight"),
+            draft["draft"].as_str().unwrap_or("")
+        ));
+        let runs: Vec<&str> = draft["runs"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .collect();
+        if !runs.is_empty() {
+            out.push_str(&format!("     cites: {}\n", runs.join("; ")));
+        }
+        for problem in draft["problems"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+        {
+            out.push_str(&format!("     refused: {problem}\n"));
+        }
+    }
+    out.push('\n');
+    out
+}
+
 /// `coder-one ask …`: the exit code, 0 when it answered.
 ///
 /// # Errors
@@ -1405,11 +1611,17 @@ mod tests {
 
     /// A stand-in `gym` that prints fixed JSON for the reads an ask makes.
     fn fake_gym(dir: &Path) -> PathBuf {
+        let mark = json!({
+            "run": "tb4--coder-one-tunable-v6--demo/demo__1", "step": null, "verdict": "bad",
+            "tags": ["unearned_success"], "note": "said all tests pass; three failed",
+            "author": "chris", "task": "demo",
+        });
         let run = json!({
             "job": "tb4--coder-one-tunable-v6--demo", "trial": "demo__1", "task": "demo",
             "agent": "Coder One", "variant": "tunable-v6", "outcome": "failed",
             "tests": {"passed": 1, "failed": 3, "total": 4}, "cost_usd": 0.4,
             "learning": {"learning": 0.8, "reasons": [{"id": "unearned_success", "probability": 0.96}]},
+            "marks": [mark],
         });
         let other = json!({
             "job": "tb4--claude-code-opus--demo", "trial": "demo__2", "task": "demo",
@@ -1436,7 +1648,35 @@ mod tests {
                     "summary": [{"heading": "What happened", "text": "It said all tests pass."}],
                     "transcript": [{"step": 1, "headline": "Read the task", "body": "…"}, {"step": 2, "headline": "Report", "body": "All tests pass."}],
                     "learning": {"learning": 0.8, "value": 2.0, "judgments": {"unearned_success": 0.96, "near_miss": 0.1}, "every_judgment": [{"id": "unearned_success", "probability": 0.96, "reason": true}]},
+                    "marks": [mark],
                 }),
+            ),
+            (
+                "marks.json",
+                json!({"schema": "openagents.gym.runs-marks.v1", "marks": [mark]}),
+            ),
+            (
+                "marked.json",
+                json!({"total": 2, "ranked": 2, "running": 0, "runs": [run]}),
+            ),
+            (
+                "highlights.json",
+                json!({"schema": "openagents.gym.runs-highlights.v1", "total": 2, "highlights": [
+                    {
+                        "key": "cost-aaaa", "rule": "cost", "task": "demo",
+                        "claim": "Coder One · tunable-v6 passed demo for 20% of what Claude Code · Opus 5.5 spent: $0.40 against $2.00 a passing run on average, 5.0 times as much for the second, over 2 and 2 runs.",
+                        "runs": ["tb4--coder-one-tunable-v6--demo/demo__1"],
+                        "numbers": [{"label": "share_percent", "value": 20.0, "text": "20%"}],
+                        "sample": 2, "n1": false,
+                        "caveats": ["Claude Code · Opus 5.5's cost is the Claude Code CLI's own list-price figure; these runs used a subscription, so it isn't a bill."],
+                    },
+                    {
+                        "key": "surprise-bbbb", "rule": "surprise", "task": "demo",
+                        "claim": "Coder One · tunable-v6 failed demo, an outcome Jev judged surprising (0.78).",
+                        "runs": ["tb4--coder-one-tunable-v6--demo/demo__1"],
+                        "numbers": [], "sample": 1, "n1": true, "caveats": ["One run: an anecdote, not a benchmark result."],
+                    },
+                ]}),
             ),
             (
                 "evidence.json",
@@ -1457,6 +1697,9 @@ mod tests {
              'runs group --by reason --json') cat \"$D/reasons.json\" ;;\n\
              'runs group --by task --json') cat \"$D/tasks.json\" ;;\n\
              'coder matrix --json') cat \"$D/matrix.json\" ;;\n\
+             'runs marks --json') cat \"$D/marks.json\" ;;\n\
+             'runs --marked --json --limit 30') cat \"$D/marked.json\" ;;\n\
+             'runs highlights --json --limit 60') cat \"$D/highlights.json\" ;;\n\
              '{show} --json') cat \"$D/show.json\" ;;\n\
              '{show} --evidence') cat \"$D/evidence.json\" ;;\n\
              'runs show '*) echo 'no run matches' >&2; exit 1 ;;\n\
@@ -1553,6 +1796,174 @@ mod tests {
             "{text}"
         );
         assert!(text.contains("4 of 6 citations check"), "{text}");
+    }
+
+    fn replay(
+        fixtures: &Path,
+        out: &Path,
+        args: &[&str],
+        answer: &Value,
+    ) -> Result<(Value, i32), String> {
+        let gym = fake_gym(fixtures);
+        let file = fixtures.join("answer.json");
+        std::fs::write(&file, answer.to_string()).unwrap();
+        let mut options = Options::parse(&strings(args)).unwrap();
+        options.gym = Some(gym);
+        options.out = Some(out.to_path_buf());
+        options.repo = Some(fixtures.to_path_buf());
+        options.answer_file = Some(file);
+        let progress = Progress {
+            events: false,
+            quiet: true,
+        };
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(run(options, &progress))
+    }
+
+    #[test]
+    fn a_question_about_marks_opens_the_marked_runs_and_an_answer_can_cite_a_mark() {
+        if coder_boundary::Boundary::readonly().build().is_err() {
+            return;
+        }
+        let fixtures = tempfile::tempdir().unwrap();
+        let out = tempfile::tempdir().unwrap();
+        let demo = "tb4--coder-one-tunable-v6--demo/demo__1";
+        let answer = json!({
+            "answer": "A person marked the demo run bad for claiming success.",
+            "claims": [
+                {"claim": "A person marked it bad: it said all tests pass.", "runs": [demo], "steps": [], "judgments": [], "files": [], "marks": [demo], "highlight": ""},
+                {"claim": "Step 2 was marked too.", "runs": [demo], "steps": [], "judgments": [], "files": [], "marks": [format!("{demo}/2")], "highlight": ""},
+            ],
+            "proposed_change": "",
+        });
+        let (record, code) = replay(
+            fixtures.path(),
+            out.path(),
+            &[
+                "which", "runs", "did", "a", "person", "mark", "bad?", "--no-jev",
+            ],
+            &answer,
+        )
+        .unwrap();
+        assert_eq!(code, 0, "{record}");
+        assert_eq!(record["evidence"]["marks"], 1, "{record}");
+        assert_eq!(record["evidence"]["about_marks"], true, "{record}");
+        assert_eq!(record["evidence"]["opened"][0]["run"], demo, "{record}");
+        let verified: Vec<bool> = record["claims"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| c["verified"] == true)
+            .collect();
+        assert_eq!(verified, vec![true, false], "{record}");
+        assert_eq!(
+            record["claims"][1]["problems"][0],
+            format!("no person marked step 2 of {demo}")
+        );
+        let dir = PathBuf::from(record["dir"].as_str().unwrap());
+        let briefing = std::fs::read_to_string(dir.join("briefing.md")).unwrap();
+        for needle in [
+            "# A person's marks",
+            "marked bad, tagged unearned_success — \"said all tests pass; three failed\" (chris)",
+            "so the marked runs come first",
+            "A person's mark: `tb4--coder-one-tunable-v6--demo/demo__1` demo: marked bad",
+        ] {
+            assert!(briefing.contains(needle), "{needle}\n{briefing}");
+        }
+    }
+
+    #[test]
+    fn a_highlights_ask_refuses_a_draft_whose_numbers_or_citations_do_not_check() {
+        if coder_boundary::Boundary::readonly().build().is_err() {
+            return;
+        }
+        let fixtures = tempfile::tempdir().unwrap();
+        let out = tempfile::tempdir().unwrap();
+        let demo = "tb4--coder-one-tunable-v6--demo/demo__1";
+        let draft = |text: &str, key: &str, runs: &[&str]| json!({"claim": text, "runs": runs, "steps": [], "judgments": [], "files": [], "marks": [], "highlight": key});
+        let answer = json!({
+            "answer": "Two drafts.",
+            "claims": [
+                draft("On demo, Coder One passed for $0.40 a run; Claude Code on Opus 5.5 spent $2.00, so Coder One cost 20% as much, over 2 runs each.", "cost-aaaa", &[demo]),
+                draft("Coder One passed demo for 7 times less than Claude Code.", "cost-aaaa", &[demo]),
+                draft("Coder One failed demo, a surprise.", "surprise-bbbb", &[demo]),
+                draft("Coder One cost 20% as much.", "cost-aaaa", &["tb4--nowhere/x__1"]),
+            ],
+            "proposed_change": "",
+        });
+        let (record, code) = replay(
+            fixtures.path(),
+            out.path(),
+            &["--scope", "highlights", "--claim", "cost-aaaa"],
+            &answer,
+        )
+        .unwrap();
+        assert_eq!(code, 0, "{record}");
+        assert_eq!(record["highlights"], json!(["cost-aaaa"]));
+        let status: Vec<&str> = record["drafts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|d| d["status"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            status,
+            vec!["passed", "refused", "refused", "refused"],
+            "{record}"
+        );
+        assert_eq!(
+            record["drafts"][1]["problems"],
+            json!(["7 isn't a number cost-aaaa gives"])
+        );
+        assert_eq!(
+            record["drafts"][2]["problems"],
+            json!(["surprise-bbbb isn't one of the chosen highlights"])
+        );
+        assert_eq!(record["cost"]["jev_requests"], 0);
+        let text = text(&record);
+        assert!(text.starts_with("Drafts from highlights"), "{text}");
+        assert!(text.contains("✓ 1. [cost-aaaa] On demo"), "{text}");
+        assert!(
+            text.contains("refused: 7 isn't a number cost-aaaa gives"),
+            "{text}"
+        );
+        assert!(
+            text.contains("refused: the Gym has no run tb4--nowhere/x__1"),
+            "{text}"
+        );
+        let dir = PathBuf::from(record["dir"].as_str().unwrap());
+        let briefing = std::fs::read_to_string(dir.join("briefing.md")).unwrap();
+        assert!(briefing.contains("# Claims to draft"), "{briefing}");
+        assert!(briefing.contains("## `cost-aaaa` (cost)"), "{briefing}");
+        assert!(!briefing.contains("surprise-bbbb"), "{briefing}");
+
+        // With no --claim, the strongest are chosen; an unknown key is refused.
+        let (record, _) = replay(
+            fixtures.path(),
+            out.path(),
+            &["--scope", "highlights"],
+            &answer,
+        )
+        .unwrap();
+        assert_eq!(record["highlights"], json!(["cost-aaaa", "surprise-bbbb"]));
+        assert_eq!(
+            record["drafts"][2]["status"], "refused",
+            "an n=1 draft must say so"
+        );
+        assert!(
+            replay(
+                fixtures.path(),
+                out.path(),
+                &["--scope", "highlights", "--claim", "nope"],
+                &answer
+            )
+            .unwrap_err()
+            .contains("no highlight has the key nope")
+        );
+        assert!(Options::parse(&strings(&["q", "--claim", "x"])).is_err());
     }
 
     #[test]

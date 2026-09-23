@@ -125,6 +125,12 @@ impl Allowlist {
                 if !ranks && args.iter().any(|arg| arg == "--record") {
                     return Err("--record writes a file; an ask only reads".to_string());
                 }
+                if matches!(next, "mark" | "unmark") {
+                    return Err(format!(
+                        "`gym runs {next}` writes a person's mark; an ask only reads marks, \
+                         with `gym runs marks --json`"
+                    ));
+                }
                 Ok(())
             }
             "terminal-bench" if TERMINAL_BENCH_READS.contains(&next) => Ok(()),
@@ -300,6 +306,9 @@ mod tests {
             "gym runs --reason unearned_success --json",
             "gym runs show tb4--x/y__1 --json",
             "gym runs group --by reason --json",
+            "gym runs marks --json",
+            "gym runs highlights --json",
+            "gym runs --marked --json",
             "gym terminal-bench attempt JOB TRIAL --timeline --json",
             "gym coder matrix --json",
             "/elsewhere/gym coder study --json",
@@ -311,6 +320,8 @@ mod tests {
             "gym runs rank",
             "gym runs rank --record x.json",
             "gym runs --record x.json",
+            "gym runs mark tb4--x/y__1 --tag looped",
+            "gym runs unmark tb4--x/y__1",
             "gym terminal-bench run --profile tb4",
             "gym terminal-bench materialize",
             "gym terminal-bench resume",

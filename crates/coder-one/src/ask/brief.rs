@@ -31,6 +31,25 @@ the group counts below are exact, so use them for how many.
 - When the findings suggest a change to Coder One, a check, or a briefing, name it in \
 `proposed_change` for a person to decide on. Don't make it.";
 
+/// How the executor is told to draft highlights.
+pub const HOW_DRAFTS: &str = "\
+You write short drafts a person may post about Terminal-Bench findings. Code computed \
+each claim below from the retained runs with fixed rules; you only word it. Nothing you \
+write posts anywhere: a person picks, edits, and posts.
+
+- Write one draft per claim: one to three plain, specific sentences for a reader who \
+hasn't seen the runs. Say what was compared and on which task.
+- Use only numbers the claim writes, as it writes them: its sentence, its numbers, and its \
+caveats. Code refuses a draft with any other number, a rounded or computed one included. \
+A model name such as Opus 5.5 is a number the claim writes.
+- Keep the caveat that matters most. When a claim rests on one run (n=1), say so, such as \
+\"in one run\", and never phrase it as a benchmark result.
+- Call the `answer` tool once. Put one line in `answer`. Put each draft in `claims`: \
+`claim` is the draft, `highlight` is the claim's key, `runs` are the runs it rests on, \
+chosen from the claim's runs exactly as `job/trial`, and `steps`, `judgments`, `files`, \
+and `marks` are empty. Code checks every draft's numbers and citations.
+- Everything you need is here; you don't need the `read` tool.";
+
 /// One run the briefing opens in full.
 #[derive(Clone, Debug)]
 pub struct Opened {
@@ -65,6 +84,13 @@ pub struct Inputs {
     pub others: Vec<(Value, Option<f64>)>,
     /// For a repository question: path, relevance, and excerpt.
     pub files: Vec<(String, Option<f64>, String)>,
+    /// `gym runs marks --json`: a person's marks on runs.
+    pub marks: Option<Value>,
+    /// Whether the question asks about marked runs.
+    pub about_marks: bool,
+    /// For a highlights ask, the highlights to draft, as `gym runs
+    /// highlights --json` gives them.
+    pub highlights: Vec<Value>,
 }
 
 /// Builds the briefing.
@@ -80,6 +106,16 @@ pub fn build(inputs: &Inputs) -> String {
             out.push_str(&format!("- {line}\n"));
         }
         out.push('\n');
+    }
+    if !inputs.highlights.is_empty() {
+        out.push_str("# How to draft\n\n");
+        out.push_str(HOW_DRAFTS);
+        out.push_str("\n\n# Claims to draft\n\n");
+        for highlight in &inputs.highlights {
+            out.push_str(&highlight_section(highlight));
+            out.push('\n');
+        }
+        return clip(&out, CAP);
     }
     out.push_str("# How to answer\n\n");
     out.push_str(HOW);
@@ -127,6 +163,41 @@ pub fn build(inputs: &Inputs) -> String {
         parts.extend(inputs.tasks.iter().map(|t| format!("the task `{t}`")));
         out.push_str(&parts.join(", "));
         out.push_str(", so the candidates include those runs.\n\n");
+    }
+
+    let marks: Vec<&Value> = inputs
+        .marks
+        .as_ref()
+        .and_then(|marks| marks["marks"].as_array())
+        .into_iter()
+        .flatten()
+        .collect();
+    if !marks.is_empty() {
+        out.push_str("# A person's marks\n\n");
+        out.push_str(
+            "A mark is a person's word on a run, or on one step of its transcript: bad, \
+             with the judgment IDs that name what went wrong and a note, or cleared, \
+             meaning nothing is wrong. A mark outranks Jev's judgment. Cite a mark in \
+             a claim's `marks` as `job/trial`, or `job/trial/STEP` for a step's mark; \
+             code checks it.",
+        );
+        if inputs.about_marks {
+            out.push_str(
+                " Jev read the question as asking about marked runs, so the marked \
+                 runs come first among the candidates.",
+            );
+        }
+        out.push_str("\n\n");
+        for mark in marks.iter().take(40) {
+            out.push_str(&format!("- {}\n", mark_line(mark)));
+        }
+        if marks.len() > 40 {
+            out.push_str(&format!(
+                "- and {} more; `gym runs marks --json` lists them.\n",
+                marks.len() - 40
+            ));
+        }
+        out.push('\n');
     }
 
     if !inputs.opened.is_empty() {
@@ -180,6 +251,91 @@ pub fn build(inputs: &Inputs) -> String {
         out.push('\n');
     }
     clip(&out, CAP)
+}
+
+/// One mark as a line: its target, verdict, tags, note, and author.
+fn mark_line(mark: &Value) -> String {
+    let run = mark["run"].as_str().unwrap_or("?");
+    let target = match mark["step"].as_u64() {
+        Some(step) => format!("`{run}/{step}` (step {step})"),
+        None => format!("`{run}`"),
+    };
+    let mut line = format!(
+        "{target}{}: {}",
+        mark["task"]
+            .as_str()
+            .map_or(String::new(), |task| format!(" {task}")),
+        if mark["verdict"] == "clear" {
+            "cleared, nothing wrong"
+        } else {
+            "marked bad"
+        }
+    );
+    let tags: Vec<&str> = mark["tags"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .collect();
+    if !tags.is_empty() {
+        line.push_str(&format!(", tagged {}", tags.join(", ")));
+    }
+    if let Some(note) = mark["note"].as_str() {
+        line.push_str(&format!(" — \"{}\"", clip(note, 300)));
+    }
+    if let Some(author) = mark["author"].as_str() {
+        line.push_str(&format!(" ({author})"));
+    }
+    line
+}
+
+/// One highlight to draft: its key, claim, sample, numbers, runs, and
+/// caveats.
+fn highlight_section(highlight: &Value) -> String {
+    let mut out = format!(
+        "## `{}` ({})\n\n{}\n\n",
+        highlight["key"].as_str().unwrap_or("?"),
+        highlight["rule"].as_str().unwrap_or("?"),
+        highlight["claim"].as_str().unwrap_or("")
+    );
+    out.push_str(&if highlight["n1"] == true {
+        "Sample: n=1. It rests on one run: say so, and don't phrase it as a benchmark result.\n"
+            .to_string()
+    } else {
+        format!("Sample: n={}.\n", highlight["sample"])
+    });
+    let numbers: Vec<String> = highlight["numbers"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|n| {
+            format!(
+                "{} {}",
+                n["label"].as_str().unwrap_or("?"),
+                n["text"].as_str().unwrap_or("?")
+            )
+        })
+        .collect();
+    if !numbers.is_empty() {
+        out.push_str(&format!("Numbers: {}.\n", numbers.join("; ")));
+    }
+    let runs: Vec<String> = highlight["runs"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(|run| format!("`{run}`"))
+        .collect();
+    out.push_str(&format!("Runs: {}.\n", runs.join(", ")));
+    for caveat in highlight["caveats"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+    {
+        out.push_str(&format!("- Caveat: {caveat}\n"));
+    }
+    out
 }
 
 /// One opened run: its facts, every judgment, the evidence Jev ranked it
@@ -241,6 +397,9 @@ fn run_section(opened: &Opened) -> String {
         ));
     } else {
         out.push_str("Jev hasn't judged this run.\n");
+    }
+    for mark in opened.shown["marks"].as_array().into_iter().flatten() {
+        out.push_str(&format!("A person's mark: {}\n", mark_line(mark)));
     }
     for paragraph in opened.shown["summary"].as_array().into_iter().flatten() {
         out.push_str(&format!(

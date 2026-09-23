@@ -8,7 +8,9 @@
 //! - a step exists in that run's transcript;
 //! - a judgment is at or above [`REASON_AT`] in that run's stored answer,
 //!   for every run the claim cites;
-//! - a file exists under the repository, and a cited line is within it.
+//! - a file exists under the repository, and a cited line is within it;
+//! - a person's mark exists on a cited run, or on a cited step of it, in
+//!   the Gym's marks store.
 //!
 //! A claim with a citation that doesn't check, or with no citation at all,
 //! is marked unverified. It's kept: a person decides what to make of it.
@@ -33,6 +35,9 @@ pub struct RunFacts {
     pub steps: usize,
     /// Each judgment's probability, when Jev judged the run.
     pub judgments: Option<BTreeMap<String, f64>>,
+    /// A person's marks on the run: the step, or `None` for the whole run,
+    /// and the verdict, `bad` or `clear`.
+    pub marks: Vec<(Option<u64>, String)>,
 }
 
 impl RunFacts {
@@ -56,6 +61,17 @@ impl RunFacts {
                 .to_string(),
             steps: shown["transcript"].as_array().map_or(0, Vec::len),
             judgments,
+            marks: shown["marks"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .map(|mark| {
+                    (
+                        mark["step"].as_u64(),
+                        mark["verdict"].as_str().unwrap_or_default().to_string(),
+                    )
+                })
+                .collect(),
         })
     }
 }
@@ -68,6 +84,11 @@ pub struct Claim {
     pub steps: Vec<(String, u64)>,
     pub judgments: Vec<String>,
     pub files: Vec<String>,
+    /// Marks it rests on: `job/trial` for a run's mark, `job/trial/STEP`
+    /// for a step's.
+    pub marks: Vec<String>,
+    /// For a highlights ask, the key of the highlight the claim drafts.
+    pub highlight: Option<String>,
     /// Why a citation didn't check, one line each.
     pub problems: Vec<String>,
     /// Citations checked, and how many held.
@@ -91,6 +112,8 @@ impl Claim {
             "steps": self.steps.iter().map(|(run, step)| json!({"run": run, "step": step})).collect::<Vec<_>>(),
             "judgments": self.judgments,
             "files": self.files,
+            "marks": self.marks,
+            "highlight": self.highlight,
             "verified": self.verified(),
             "problems": self.problems,
             "citations": self.citations,
@@ -127,6 +150,11 @@ pub fn claims(answer: &Value) -> Vec<Claim> {
                 .collect(),
             judgments: strings(&claim["judgments"]),
             files: strings(&claim["files"]),
+            marks: strings(&claim["marks"]),
+            highlight: claim["highlight"]
+                .as_str()
+                .map(|key| key.trim().to_string())
+                .filter(|key| !key.is_empty()),
             problems: Vec::new(),
             citations: 0,
             valid: 0,
@@ -144,6 +172,7 @@ pub fn cited_runs(claims: &[Claim]) -> Vec<String> {
                 .iter()
                 .cloned()
                 .chain(c.steps.iter().map(|(run, _)| run.clone()))
+                .chain(c.marks.iter().map(|mark| split_mark(mark).0.to_string()))
         })
         .collect();
     runs.sort();
@@ -206,6 +235,20 @@ pub fn check(claims: &mut [Claim], facts: &BTreeMap<String, Option<RunFacts>>, r
                 problems.extend(misses);
             }
         }
+        for mark in &claim.marks {
+            citations += 1;
+            let (run, step) = split_mark(mark);
+            match resolve(run, facts) {
+                Ok(fact) => match fact.marks.iter().find(|(at, _)| *at == step) {
+                    Some(_) => valid += 1,
+                    None => problems.push(match step {
+                        Some(step) => format!("no person marked step {step} of {run}"),
+                        None => format!("no person marked {run}"),
+                    }),
+                },
+                Err(why) => problems.push(why),
+            }
+        }
         for file in &claim.files {
             citations += 1;
             match check_file(file, repo) {
@@ -219,6 +262,21 @@ pub fn check(claims: &mut [Claim], facts: &BTreeMap<String, Option<RunFacts>>, r
         claim.problems = problems;
         claim.citations = citations;
         claim.valid = valid;
+    }
+}
+
+/// A mark citation's run and step: `job/trial` or `job/trial/STEP`.
+#[must_use]
+pub fn split_mark(text: &str) -> (&str, Option<u64>) {
+    match text.rsplit_once('/') {
+        Some((run, step))
+            if run.contains('/')
+                && !step.is_empty()
+                && step.bytes().all(|b| b.is_ascii_digit()) =>
+        {
+            (run, step.parse().ok())
+        }
+        _ => (text, None),
     }
 }
 
@@ -282,6 +340,7 @@ mod tests {
         let shown = json!({
             "run": {"job": "tb4--a", "trial": "a__1"},
             "transcript": [{"step": 1}, {"step": 2}, {"step": 3}],
+            "marks": [{"run": "tb4--a/a__1", "step": null, "verdict": "bad"}, {"run": "tb4--a/a__1", "step": 2, "verdict": "bad"}],
             "learning": {"judgments": {"unearned_success": 0.97, "near_miss": 0.2}},
         });
         let fact = RunFacts::from_show(&shown).unwrap();
@@ -291,6 +350,7 @@ mod tests {
             task: "b".to_string(),
             steps: 0,
             judgments: None,
+            marks: Vec::new(),
         };
         BTreeMap::from([
             ("tb4--a/a__1".to_string(), Some(fact.clone())),
@@ -316,6 +376,8 @@ mod tests {
             {"claim": "a task name", "runs": ["a"], "steps": [], "judgments": []},
             {"claim": "uncited", "runs": [], "steps": [], "judgments": []},
             {"claim": "bad file", "runs": [], "steps": [], "judgments": [], "files": ["docs/a.md:9", "../x", "docs/none.md"]},
+            {"claim": "marked", "runs": [], "steps": [], "judgments": [], "marks": ["tb4--a/a__1", "tb4--a/a__1/2"]},
+            {"claim": "unmarked", "runs": [], "steps": [], "judgments": [], "marks": ["tb4--a/a__1/3", "tb4--b/b__1"]},
         ]});
         let mut claims = claims(&answer);
         assert_eq!(
@@ -326,8 +388,20 @@ mod tests {
         let verified: Vec<bool> = claims.iter().map(Claim::verified).collect();
         assert_eq!(
             verified,
-            vec![true, true, false, false, false, false, false, false, false]
+            vec![
+                true, true, false, false, false, false, false, false, false, true, false
+            ]
         );
+        assert_eq!(
+            claims[10].problems,
+            vec![
+                "no person marked step 3 of tb4--a/a__1",
+                "no person marked tb4--b/b__1"
+            ]
+        );
+        assert_eq!(split_mark("tb4--a/a__1/12"), ("tb4--a/a__1", Some(12)));
+        assert_eq!(split_mark("tb4--a/a__1"), ("tb4--a/a__1", None));
+        assert_eq!(split_mark("tb4--a"), ("tb4--a", None));
         assert_eq!(claims[0].citations, 4);
         assert!(
             claims[2].problems[0].contains("no run nope/x"),
@@ -353,9 +427,9 @@ mod tests {
         assert_eq!(claims[7].problems, vec!["the claim cites nothing"]);
         assert_eq!(claims[8].problems.len(), 3, "{:?}", claims[8]);
         let totals = totals(&claims);
-        assert_eq!(totals["claims"], 9);
-        assert_eq!(totals["verified"], 2);
+        assert_eq!(totals["claims"], 11);
+        assert_eq!(totals["verified"], 3);
         // Unverified claims are kept, not dropped.
-        assert_eq!(claims.len(), 9);
+        assert_eq!(claims.len(), 11);
     }
 }
