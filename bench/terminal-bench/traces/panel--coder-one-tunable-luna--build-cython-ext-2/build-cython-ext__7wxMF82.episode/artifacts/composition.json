@@ -1,0 +1,91 @@
+{
+  "schema": "openagents.coder-one.composition.v1",
+  "route": null,
+  "first": {
+    "start": "manifest",
+    "tier": {
+      "agent": "codex",
+      "model": "gpt-6-luna",
+      "version": "0.155.1"
+    },
+    "reason": "no control.route: the manifest's executor starts"
+  },
+  "horizon": {
+    "policy": {
+      "first_share": 0.55,
+      "later_share": 0.75,
+      "min_dispatch_sec": 300,
+      "check_share": 0.05,
+      "long_after_sec": 3600,
+      "long_effort": "medium",
+      "long_command_sec": 3600
+    },
+    "episode_deadline_sec": 777,
+    "long": false,
+    "first_dispatch_sec": 411,
+    "check_budget": {
+      "max_scenarios": 12,
+      "seconds": 180
+    },
+    "command_sec": 60
+  },
+  "planner": null,
+  "handoffs": [],
+  "escalated": false,
+  "branches": [
+    {
+      "role": "primary",
+      "tier": {
+        "agent": "codex",
+        "model": "gpt-6-luna",
+        "version": "0.155.1"
+      },
+      "status": "answered",
+      "milliseconds": 162327,
+      "requested_sec": 411,
+      "usd": 0.0084916,
+      "charge": "priced",
+      "turns": 1,
+      "stopped_by": null,
+      "session_id": "01a0cccd-0960-7860-b0de-2fc96d39ecc7"
+    }
+  ],
+  "checks": [
+    {
+      "after": "primary",
+      "file": "verification/checks.json",
+      "summary": {
+        "candidate": "8e12f72ce06c7caa517f88c3a99be30f87266412d9363c43f788dcb68ed00795",
+        "scenarios": 0,
+        "verdicts": {},
+        "requirements": {
+          "unobserved": 8
+        },
+        "packets": 0
+      }
+    }
+  ],
+  "support": null,
+  "repair": {
+    "tier": {
+      "agent": "codex",
+      "model": "gpt-6-luna",
+      "version": "0.155.1"
+    },
+    "triggered": false,
+    "ran": false,
+    "changed": false,
+    "skipped": "no check contradicted a requirement",
+    "session": null,
+    "recheck": null,
+    "cost_usd": 0.0
+  },
+  "verify": {
+    "checks": true,
+    "support": false,
+    "repair": {
+      "brief": "packet",
+      "trigger": "detected"
+    }
+  }
+}

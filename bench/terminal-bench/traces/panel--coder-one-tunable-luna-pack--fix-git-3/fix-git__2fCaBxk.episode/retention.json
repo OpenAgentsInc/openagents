@@ -1,0 +1,248 @@
+{
+  "schema": "openagents.tbench.retention.v1",
+  "job": "panel--coder-one-tunable-luna-pack--fix-git-3",
+  "trial": "fix-git__2fCaBxk",
+  "source": "<jobs-dir>/panel--coder-one-tunable-luna-pack--fix-git-3/fix-git__2fCaBxk",
+  "retained_at": "2026-09-23T05:57:58+00:00",
+  "bounds": {
+    "file_bytes": 4194304,
+    "trial_bytes": 16777216
+  },
+  "files": [
+    {
+      "kind": "normalized trajectory",
+      "path": "fix-git__2fCaBxk.json",
+      "bytes": 274817,
+      "sha256": "cc423c8847599566dd0b1f7764193a45f1561dcf47b08fd4f6958d5e564fbf81",
+      "manifest_sha256": null,
+      "digest": "none recorded"
+    },
+    {
+      "kind": "agent episode manifest",
+      "path": "manifest.json",
+      "bytes": 13444,
+      "sha256": "f32b27ab1826245905a031babe3082154abfcaaf7469ac60025f10e628297be0",
+      "manifest_sha256": null,
+      "digest": "none recorded"
+    },
+    {
+      "kind": "briefing_pack",
+      "path": "artifacts/briefing-pack.json",
+      "bytes": 10805,
+      "sha256": "6087a73273b3fc3525f6e40bac58baced50e5e82775e4d5145723f421c61eb60",
+      "manifest_sha256": "6087a73273b3fc3525f6e40bac58baced50e5e82775e4d5145723f421c61eb60",
+      "digest": "match"
+    },
+    {
+      "kind": "collection",
+      "path": "artifacts/collection.json",
+      "bytes": 565,
+      "sha256": "5796b2d31a2421bc0bf8e8075dde7b2ad94f4e31cd80c8d054d8a2889e8213fb",
+      "manifest_sha256": "5796b2d31a2421bc0bf8e8075dde7b2ad94f4e31cd80c8d054d8a2889e8213fb",
+      "digest": "match"
+    },
+    {
+      "kind": "composition",
+      "path": "artifacts/composition.json",
+      "bytes": 1988,
+      "sha256": "72318e56bb9ace8e9be6679a8401f6c1d04065ebc5545214bca4c77e07d19fa6",
+      "manifest_sha256": "72318e56bb9ace8e9be6679a8401f6c1d04065ebc5545214bca4c77e07d19fa6",
+      "digest": "match"
+    },
+    {
+      "kind": "delegate-1_briefing_md",
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 7147,
+      "sha256": "02378dcb253ca295414e67dfabc05ee281fda8384f59b3ef54ba06f1f33ad07f",
+      "manifest_sha256": "02378dcb253ca295414e67dfabc05ee281fda8384f59b3ef54ba06f1f33ad07f",
+      "digest": "match"
+    },
+    {
+      "kind": "native delegate stream",
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 12886,
+      "sha256": "cdc5362b9d785036a2242cb287d65e2cd92e7acd75cab34f288607054918cd29",
+      "manifest_sha256": "cdc5362b9d785036a2242cb287d65e2cd92e7acd75cab34f288607054918cd29",
+      "digest": "match"
+    },
+    {
+      "kind": "delegate-1_system_md",
+      "path": "artifacts/delegate-1.system.md",
+      "bytes": 1542,
+      "sha256": "d2ccda88e4b9fc3119b2db881f7eb463cf86e6557cef6cc4f75a0aca389b9aec",
+      "manifest_sha256": "d2ccda88e4b9fc3119b2db881f7eb463cf86e6557cef6cc4f75a0aca389b9aec",
+      "digest": "match"
+    },
+    {
+      "kind": "diff",
+      "path": "artifacts/diff.patch",
+      "bytes": 4942,
+      "sha256": "b330f02d2a6d64646d4482ef5dd706e09f7dc2e7981cbf560f8cf2e9060b4b23",
+      "manifest_sha256": "b330f02d2a6d64646d4482ef5dd706e09f7dc2e7981cbf560f8cf2e9060b4b23",
+      "digest": "match"
+    },
+    {
+      "kind": "invocation_log",
+      "path": "episode.atif.jsonl",
+      "bytes": 174960,
+      "sha256": "9bba13e4e9e364509bcb8953182d8adaf58da58dd702b5b41d06b7b249727829",
+      "manifest_sha256": "9bba13e4e9e364509bcb8953182d8adaf58da58dd702b5b41d06b7b249727829",
+      "digest": "match"
+    },
+    {
+      "kind": "requirements",
+      "path": "artifacts/requirements.json",
+      "bytes": 1457,
+      "sha256": "c1323cac19180ee92c507ccba2f211cf5470d3fb103d89ae683b946264895b77",
+      "manifest_sha256": "c1323cac19180ee92c507ccba2f211cf5470d3fb103d89ae683b946264895b77",
+      "digest": "match"
+    },
+    {
+      "kind": "state",
+      "path": "artifacts/state.json",
+      "bytes": 6397,
+      "sha256": "29be5b494e1f9cfc57306e48a7207d92e6075f26ca22a5e7d4d4ff858b0e54ad",
+      "manifest_sha256": "29be5b494e1f9cfc57306e48a7207d92e6075f26ca22a5e7d4d4ff858b0e54ad",
+      "digest": "match"
+    },
+    {
+      "kind": "trajectory",
+      "path": "trajectory.atif.json",
+      "bytes": 274842,
+      "sha256": "e96e7c1aad411e3c3a52a8ffc215189c0dcd6548fd1af4d9f34375321e3ec1fb",
+      "manifest_sha256": "e96e7c1aad411e3c3a52a8ffc215189c0dcd6548fd1af4d9f34375321e3ec1fb",
+      "digest": "match"
+    },
+    {
+      "kind": "usage",
+      "path": "evaluation/usage.json",
+      "bytes": 10133,
+      "sha256": "7f91728cee26cf6741bc66869e83e01a3fb53e072e7c9105f2c00ba406c93632",
+      "manifest_sha256": "7f91728cee26cf6741bc66869e83e01a3fb53e072e7c9105f2c00ba406c93632",
+      "digest": "match"
+    },
+    {
+      "kind": "episode file",
+      "path": "verification/checks.json",
+      "bytes": 3032,
+      "sha256": "d44ea7bed44915250879265f3e63d517b3328bb7c63ea654fe259d3519856b34",
+      "manifest_sha256": null,
+      "digest": "none recorded"
+    },
+    {
+      "kind": "episode file",
+      "path": "verification/repair.json",
+      "bytes": 411,
+      "sha256": "cfe4037f9df57e42840b3984555dfb4cf47b3b75b997b6b9783c525a8763dc5d",
+      "manifest_sha256": null,
+      "digest": "none recorded"
+    },
+    {
+      "kind": "native trace",
+      "path": "native/episode-doctor.txt",
+      "bytes": 631,
+      "sha256": "bd91f4d94385aa01188cc207c94da7dd3514703bb9ebaa0fc5fd02aa79d84234",
+      "manifest_sha256": null,
+      "digest": "none recorded"
+    },
+    {
+      "kind": "setup record",
+      "path": "setup/toolchain-setup.json",
+      "bytes": 1677,
+      "sha256": "bbc9e5f6664a0f16138b8e7b3aecc0d82a5f71b8914abcbd73fe8c920d7f3613",
+      "manifest_sha256": null,
+      "digest": "none recorded"
+    },
+    {
+      "kind": "verifier output",
+      "path": "verifier/ctrf.json",
+      "bytes": 1091,
+      "sha256": "15a1bc8b6e2e94ed1472003035b8482648dcd2b2cdcc962fde861e67d2e16fd2",
+      "manifest_sha256": null,
+      "digest": "none recorded"
+    },
+    {
+      "kind": "verifier output",
+      "path": "verifier/reward.txt",
+      "bytes": 2,
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+      "manifest_sha256": null,
+      "digest": "none recorded"
+    },
+    {
+      "kind": "verifier output",
+      "path": "verifier/test-stdout.txt",
+      "bytes": 3616,
+      "sha256": "2e264fd664a7fb5b243bd62984b36fb9f7e439516d5bf9f908728e85303bc915",
+      "manifest_sha256": null,
+      "digest": "none recorded"
+    },
+    {
+      "kind": "produced artifact",
+      "path": "produced/manifest.json",
+      "bytes": 159,
+      "sha256": "c1db653f487fb773c4f9247162ab3314e7f0584a486914b9874c4b3d6949e42d",
+      "manifest_sha256": null,
+      "digest": "none recorded"
+    },
+    {
+      "kind": "harness episode manifest",
+      "path": "tbench-manifest.json",
+      "bytes": 4396,
+      "sha256": "0f42c276ef9b741d34e96254b9d1a398614623ab34c437524b347fe655a1d5b7",
+      "manifest_sha256": null,
+      "digest": "none recorded"
+    },
+    {
+      "kind": "harness attempt record",
+      "path": "tbench-attempt.json",
+      "bytes": 3716,
+      "sha256": "5ffdda902bdeaf1659ebdbecc66fdf34683da7b45c95cc594aab02f98cbe9caf",
+      "manifest_sha256": null,
+      "digest": "none recorded"
+    },
+    {
+      "kind": "Harbor result (trimmed)",
+      "path": "harbor-result.json",
+      "bytes": 968,
+      "sha256": "4ff43ed31b676f617f7a7cdfab7a583945bdd1db427ed6a59343d06b80777c74",
+      "manifest_sha256": null,
+      "digest": "none recorded"
+    }
+  ],
+  "missing": [],
+  "notes": [
+    "Harbor collected nothing from /logs/artifacts; files the task wrote elsewhere in the container were not captured."
+  ],
+  "atif": {
+    "raw": {
+      "sha256": "e96e7c1aad411e3c3a52a8ffc215189c0dcd6548fd1af4d9f34375321e3ec1fb",
+      "bytes": 274842,
+      "schema_version": "ATIF-v1.7",
+      "steps": 122,
+      "parses": true
+    },
+    "normalized": {
+      "sha256": "cc423c8847599566dd0b1f7764193a45f1561dcf47b08fd4f6958d5e564fbf81",
+      "bytes": 274817,
+      "schema_version": "ATIF-v1.7",
+      "steps": 122,
+      "parses": true
+    },
+    "conversion": "Harbor's trajectory.json differs from the episode's raw ATIF; the adapter rewrote it, so compare both."
+  },
+  "credential_scan": {
+    "credentials_checked": [
+      "~/.claude/.credentials.json accessToken",
+      "~/.claude/.credentials.json refreshToken",
+      "~/.codex/auth.json tokens.access_token",
+      "~/.codex/auth.json tokens.account_id",
+      "~/.codex/auth.json tokens.id_token",
+      "~/.codex/auth.json tokens.refresh_token",
+      "~/.openagents/bearer",
+      "~/.openagents/jev.json api_key"
+    ],
+    "files_scanned": 25,
+    "matches": 0
+  }
+}

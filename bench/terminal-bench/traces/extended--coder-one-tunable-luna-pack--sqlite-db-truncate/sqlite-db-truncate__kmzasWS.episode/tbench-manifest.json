@@ -1,0 +1,119 @@
+{
+  "schema": "openagents.tbench.episode-manifest.v1",
+  "attempt": {
+    "id": "f251802f-aa63-4bc9-b662-8a3cdffac009",
+    "job": "extended--coder-one-tunable-luna-pack--sqlite-db-truncate",
+    "trial": "sqlite-db-truncate__kmzasWS",
+    "arm": "coder-one-tunable-luna-pack",
+    "profile": "extended",
+    "auth_mode": "subscription-oauth",
+    "kind": "fresh"
+  },
+  "task": {
+    "name": "terminal-bench/sqlite-db-truncate",
+    "path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench/archive/sqlite-db-truncate",
+    "git_url": null,
+    "git_commit_id": null,
+    "checksum": "149c8061043d593a987eea4a61d9d24a772957a7ddee70414574b70dafbe4b30",
+    "source": null,
+    "pin": {
+      "git_url": "https://github.com/harbor-framework/terminal-bench.git",
+      "git_commit_id": "3b5caaa4863d64dda7f0957bf4fc2d4f019202d4"
+    }
+  },
+  "agent": {
+    "selector": "tbench.coder_one:CoderOneTunable",
+    "requested_model": "free",
+    "observed_name": "coder-one-tunable",
+    "observed_version": "pinned-artifact",
+    "observed_model": "free",
+    "observed_provider": null,
+    "artifact_sha256": "dd50175fe396bc3ddd702fc9f7ac3aa9a03c510ac8ec29e1c26a218876c753bd"
+  },
+  "outcome": {
+    "reward": 1.0,
+    "verifier_rewards": {
+      "reward": 1.0
+    },
+    "terminal_status": "completed",
+    "exception": null,
+    "verifier_environment_mode": "shared"
+  },
+  "timing": {
+    "started_at": "2026-09-23T05:45:08.353895Z",
+    "finished_at": "2026-09-23T05:46:30.133914Z",
+    "environment_setup_ms": 1101,
+    "agent_setup_ms": 4055,
+    "agent_execution_ms": 46138,
+    "verifier_ms": 17897,
+    "total_ms": 81780
+  },
+  "usage": {
+    "input_tokens": 107510,
+    "cache_tokens": 77312,
+    "output_tokens": 1613,
+    "input_includes_cache": true,
+    "coverage": "full"
+  },
+  "cost": {
+    "amount_usd": 0.003864386,
+    "provenance": "mixed",
+    "note": "A subscription reference price or a pricing-registry estimate is not an observed incremental bill."
+  },
+  "task_notes": [
+    "Runs natively on the x86_64 Linux host."
+  ],
+  "evidence": {
+    "trial_result": {
+      "kind": "trial-result",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-tunable-luna-pack--sqlite-db-truncate/sqlite-db-truncate__kmzasWS/result.json",
+      "sha256": "4cf1a24ec006ea7fc3765e7fa18c3bbfa95304b5eed8ab6c64c9eb911d932176",
+      "bytes": 5107
+    },
+    "trajectory": {
+      "kind": "trajectory",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-tunable-luna-pack--sqlite-db-truncate/sqlite-db-truncate__kmzasWS/agent/trajectory.json",
+      "sha256": "64da2017e8ed67536611c9e901f4be43cb53f97ab3b0c235946aeecba7fd152e",
+      "bytes": 182800
+    },
+    "native_traces": [],
+    "collection_failure": {
+      "kind": "collection-failure",
+      "resolved": false,
+      "path": null,
+      "sha256": null
+    },
+    "verifier_reward": {
+      "kind": "verifier-reward",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-tunable-luna-pack--sqlite-db-truncate/sqlite-db-truncate__kmzasWS/verifier/reward.txt",
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+      "bytes": 2
+    },
+    "verifier_report": {
+      "kind": "verifier-report",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-tunable-luna-pack--sqlite-db-truncate/sqlite-db-truncate__kmzasWS/verifier/ctrf.json",
+      "sha256": "1c36e04b52d0ba61c0157409c160f76fdf116f10b2284decb50ced5aae42203d",
+      "bytes": 746
+    },
+    "artifacts": [
+      {
+        "kind": "artifact",
+        "resolved": true,
+        "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-tunable-luna-pack--sqlite-db-truncate/sqlite-db-truncate__kmzasWS/artifacts/manifest.json",
+        "sha256": "c1db653f487fb773c4f9247162ab3314e7f0584a486914b9874c4b3d6949e42d",
+        "bytes": 159
+      }
+    ],
+    "attempt_record": {
+      "kind": "attempt-record",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-tunable-luna-pack--sqlite-db-truncate/tbench/attempts/sqlite-db-truncate__kmzasWS.json",
+      "sha256": "21c1d88779828611d8346ba84f77b0357ca089c274e89ed9d77627732f12f465"
+    }
+  },
+  "collected_at": "2026-09-23T05:46:31.923+00:00"
+}

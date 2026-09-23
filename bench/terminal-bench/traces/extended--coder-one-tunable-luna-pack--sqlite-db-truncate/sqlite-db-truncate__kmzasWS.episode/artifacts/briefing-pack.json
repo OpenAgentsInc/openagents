@@ -1,0 +1,193 @@
+{
+  "record": {
+    "schema": "openagents.coder-one.briefing-pack.v1",
+    "implementation": "3a10f6d6afc0fe5e1459ec0203f830e6b6efa4a03586c77f60df2942fc8d819d",
+    "cap": 12000,
+    "chars": 2078,
+    "items": [
+      {
+        "id": "e1",
+        "source": "probe",
+        "label": "$ list /app (depth 3)",
+        "p": 0.9,
+        "selected": true,
+        "original_chars": 22,
+        "delivered_chars": 22,
+        "state": "complete",
+        "informs": [
+          "R1"
+        ],
+        "duplicate_lines": 0
+      },
+      {
+        "id": "e2",
+        "source": "probe",
+        "label": "$ read /app/trunc.db (first 200 lines)",
+        "p": 0.53,
+        "selected": true,
+        "original_chars": 25,
+        "delivered_chars": 25,
+        "state": "complete",
+        "informs": [
+          "R1"
+        ],
+        "duplicate_lines": 0
+      }
+    ],
+    "bytes_per_requirement": {
+      "R1": 47,
+      "R2": 0
+    },
+    "uncovered": [
+      "R2"
+    ],
+    "instruction_trimmed": false
+  },
+  "coverage": {
+    "e1": {
+      "R1": 0.86,
+      "R2": 0.33
+    },
+    "e2": {
+      "R1": 0.57,
+      "R2": 0.2
+    }
+  },
+  "requirements": {
+    "schema": "openagents.coder-one.requirements.v1",
+    "instruction_sha256": "465c135cd80be49023ea3ecf8f1d840c679b3a960efe425d510894e417b9d802",
+    "method": "jev",
+    "spans": [
+      {
+        "id": "s1",
+        "start": 0,
+        "end": 87,
+        "form": "sentence",
+        "text": "I have a sqlite database in /app/trunc.db that was corrupted through binary truncation.",
+        "requirement": null,
+        "kind": "context",
+        "kinds": {
+          "behavior": 0.0,
+          "check": 0.0,
+          "constraint": 0.0,
+          "context": 1.0,
+          "deliverable": 0.0
+        },
+        "answered": true
+      },
+      {
+        "id": "s2",
+        "start": 88,
+        "end": 173,
+        "form": "sentence",
+        "text": "Recover as many of the rows as possible, and create a JSON file in /app/recover.json.",
+        "requirement": "R1",
+        "kind": "deliverable",
+        "kinds": {
+          "behavior": 0.02,
+          "check": 0.0,
+          "constraint": 0.0,
+          "context": 0.0,
+          "deliverable": 0.98
+        },
+        "answered": true
+      },
+      {
+        "id": "s3",
+        "start": 174,
+        "end": 284,
+        "form": "sentence",
+        "text": "The output should have the format [{\"word\": \"testwordXY\", \"value\": M}, {\"word\": \"testwordZZ\",\"value\": N}, ...]",
+        "requirement": "R2",
+        "kind": "constraint",
+        "kinds": {
+          "behavior": 0.0,
+          "check": 0.0,
+          "constraint": 0.98,
+          "context": 0.0,
+          "deliverable": 0.02
+        },
+        "answered": true
+      }
+    ],
+    "requirements": [
+      {
+        "id": "R1",
+        "spans": [
+          "s2"
+        ],
+        "kind": "deliverable",
+        "binding": "yes",
+        "state": "unobserved",
+        "p": 1.0,
+        "text": "Recover as many of the rows as possible, and create a JSON file in /app/recover.json.",
+        "extracted": {
+          "paths": [
+            "/app/recover.json"
+          ],
+          "constants": [
+            "JSON"
+          ]
+        }
+      },
+      {
+        "id": "R2",
+        "spans": [
+          "s3"
+        ],
+        "kind": "constraint",
+        "binding": "yes",
+        "state": "unobserved",
+        "p": 1.0,
+        "exhaustive": 0.13,
+        "text": "The output should have the format [{\"word\": \"testwordXY\", \"value\": M}, {\"word\": \"testwordZZ\",\"value\": N}, ...]",
+        "extracted": {
+          "formats": [
+            "[{\"word\": \"testwordXY\", \"value\": M}, {\"word\": \"testwordZZ\",\"value\": N}, ...]",
+            "{\"word\": \"testwordXY\", \"value\": M}, {\"word\": \"testwordZZ\",\"value\": N}, ...]"
+          ]
+        }
+      }
+    ],
+    "coverage": {
+      "chars": 243,
+      "covered": 243,
+      "fraction": 1.0,
+      "spans": 3,
+      "requirement_spans": 2,
+      "context_spans": 1,
+      "unanswered_spans": 0
+    }
+  },
+  "inputs": {
+    "instruction": "I have a sqlite database in /app/trunc.db that was corrupted through binary truncation. Recover as many of the rows as possible, and create a JSON file in /app/recover.json. The output should have the format [{\"word\": \"testwordXY\", \"value\": M}, {\"word\": \"testwordZZ\",\"value\": N}, ...]\n",
+    "requirements": [
+      [
+        "Recover as many of the rows as possible, and create a JSON file in /app/recover.json.",
+        null
+      ],
+      [
+        "The output should have the format [{\"word\": \"testwordXY\", \"value\": M}, {\"word\": \"testwordZZ\",\"value\": N}, ...]",
+        null
+      ]
+    ],
+    "files": [
+      [
+        "$ list /app (depth 3)",
+        0.9,
+        "/app:\ntrunc.db  4096 B"
+      ],
+      [
+        "$ read /app/trunc.db (first 200 lines)",
+        0.53,
+        "[binary file, 4096 bytes]"
+      ]
+    ],
+    "spans": [],
+    "commands": [],
+    "last_output": null,
+    "conclusion": "The explorer reached its 0-step bound without a conclusion.",
+    "directions": "Complete the task in the current working directory. Nobody answers questions, so decide from the task and the environment. An automated checker grades the final state of the environment against the task, so verify every requirement, including exact paths, names, and formats, before you stop. The files, command outputs, and setup results in this briefing were gathered just before you started and are complete and current: do not list, read, or run them again. Work in few, large steps: write each file whole in one command, and chain related commands (installs, builds) with && in one call. Before you stop, run the checks the task names and exercise every code path you changed, not only the example the task gives. After a bulk find-and-replace, search the result for occurrences it missed or changed twice. End with a short summary of what you changed and how you checked it."
+  },
+  "schema": "openagents.coder-one.briefing-pack.v1"
+}

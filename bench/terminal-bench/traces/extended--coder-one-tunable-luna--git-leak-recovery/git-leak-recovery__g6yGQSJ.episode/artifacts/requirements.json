@@ -1,0 +1,232 @@
+{
+  "schema": "openagents.coder-one.requirements.v1",
+  "instruction_sha256": "54ac693fd26a4c003f610d62c4b2671f1d1d04ac5b1286f780605e385a9a5861",
+  "method": "jev",
+  "spans": [
+    {
+      "id": "s1",
+      "start": 0,
+      "end": 101,
+      "form": "sentence",
+      "text": "A secret was accidentally committed to this repository in /app and then removed by rewriting history.",
+      "requirement": null,
+      "kind": "context",
+      "kinds": {
+        "behavior": 0.0,
+        "check": 0.0,
+        "constraint": 0.0,
+        "context": 1.0,
+        "deliverable": 0.0
+      },
+      "answered": true
+    },
+    {
+      "id": "s2",
+      "start": 102,
+      "end": 108,
+      "form": "sentence",
+      "text": "Please",
+      "requirement": "R1",
+      "kind": "behavior",
+      "kinds": {
+        "behavior": 0.2,
+        "check": 0.0,
+        "constraint": 0.01,
+        "context": 0.62,
+        "deliverable": 0.17
+      },
+      "answered": true
+    },
+    {
+      "id": "s3",
+      "start": 111,
+      "end": 172,
+      "form": "list_item",
+      "text": "1. recover the secret and write it to a /app/secret.txt file.",
+      "requirement": "R2",
+      "kind": "deliverable",
+      "kinds": {
+        "behavior": 0.0,
+        "check": 0.0,
+        "constraint": 0.0,
+        "context": 0.0,
+        "deliverable": 1.0
+      },
+      "answered": true
+    },
+    {
+      "id": "s4",
+      "start": 175,
+      "end": 265,
+      "form": "list_item",
+      "text": "2. clean up the secret in that repo to make sure it cannot be found anywhere in that repo.",
+      "requirement": "R3",
+      "kind": "behavior",
+      "kinds": {
+        "behavior": 0.58,
+        "check": 0.01,
+        "constraint": 0.17,
+        "context": 0.0,
+        "deliverable": 0.24
+      },
+      "answered": true
+    },
+    {
+      "id": "s5",
+      "start": 267,
+      "end": 334,
+      "form": "list_item",
+      "text": "3. make sure irrelevant files and commit messages remain untouched.",
+      "requirement": "R4",
+      "kind": "constraint",
+      "kinds": {
+        "behavior": 0.0,
+        "check": 0.0,
+        "constraint": 1.0,
+        "context": 0.0,
+        "deliverable": 0.0
+      },
+      "answered": true
+    },
+    {
+      "id": "s6",
+      "start": 335,
+      "end": 340,
+      "form": "line",
+      "text": "Hint:",
+      "requirement": null,
+      "kind": "context",
+      "kinds": {
+        "behavior": 0.0,
+        "check": 0.0,
+        "constraint": 0.0,
+        "context": 1.0,
+        "deliverable": 0.0
+      },
+      "answered": true
+    },
+    {
+      "id": "s7",
+      "start": 343,
+      "end": 369,
+      "form": "list_item",
+      "text": "- The repo is in /app/repo",
+      "requirement": null,
+      "kind": "context",
+      "kinds": {
+        "behavior": 0.0,
+        "check": 0.0,
+        "constraint": 0.02,
+        "context": 0.98,
+        "deliverable": 0.0
+      },
+      "answered": true
+    },
+    {
+      "id": "s8",
+      "start": 372,
+      "end": 407,
+      "form": "list_item",
+      "text": "- The secret format is secret[...].",
+      "requirement": "R5",
+      "kind": "constraint",
+      "kinds": {
+        "behavior": 0.0,
+        "check": 0.0,
+        "constraint": 0.37,
+        "context": 0.62,
+        "deliverable": 0.01
+      },
+      "answered": true
+    },
+    {
+      "id": "s9",
+      "start": 410,
+      "end": 473,
+      "form": "list_item",
+      "text": "- There is only one string in the repo with secret[...] format.",
+      "requirement": null,
+      "kind": "context",
+      "kinds": {
+        "behavior": 0.01,
+        "check": 0.0,
+        "constraint": 0.16,
+        "context": 0.83,
+        "deliverable": 0.0
+      },
+      "answered": true
+    }
+  ],
+  "requirements": [
+    {
+      "id": "R1",
+      "spans": [
+        "s2"
+      ],
+      "kind": "behavior",
+      "binding": "uncertain",
+      "state": "unobserved",
+      "p": 0.38,
+      "text": "Please"
+    },
+    {
+      "id": "R2",
+      "spans": [
+        "s3"
+      ],
+      "kind": "deliverable",
+      "binding": "yes",
+      "state": "unobserved",
+      "p": 1.0,
+      "text": "1. recover the secret and write it to a /app/secret.txt file.",
+      "extracted": {
+        "paths": [
+          "/app/secret.txt"
+        ]
+      }
+    },
+    {
+      "id": "R3",
+      "spans": [
+        "s4"
+      ],
+      "kind": "behavior",
+      "binding": "yes",
+      "state": "unobserved",
+      "p": 1.0,
+      "text": "2. clean up the secret in that repo to make sure it cannot be found anywhere in that repo."
+    },
+    {
+      "id": "R4",
+      "spans": [
+        "s5"
+      ],
+      "kind": "constraint",
+      "binding": "yes",
+      "state": "unobserved",
+      "p": 1.0,
+      "text": "3. make sure irrelevant files and commit messages remain untouched."
+    },
+    {
+      "id": "R5",
+      "spans": [
+        "s8"
+      ],
+      "kind": "constraint",
+      "binding": "uncertain",
+      "state": "unobserved",
+      "p": 0.38,
+      "exhaustive": 0.27,
+      "text": "- The secret format is secret[...]."
+    }
+  ],
+  "coverage": {
+    "chars": 381,
+    "covered": 381,
+    "fraction": 1.0,
+    "spans": 9,
+    "requirement_spans": 5,
+    "context_spans": 4,
+    "unanswered_spans": 0
+  }
+}

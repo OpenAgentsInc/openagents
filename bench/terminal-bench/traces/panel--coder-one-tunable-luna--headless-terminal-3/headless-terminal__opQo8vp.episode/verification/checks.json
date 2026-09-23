@@ -1,0 +1,488 @@
+{
+  "schema": "openagents.coder-one.checks.v1",
+  "implementation": {
+    "name": "admitted scenario catalog, deterministic selector",
+    "digest": "b81f1d8b5c4ccef58702fffbdf222f8543355c36adf06fe66208be128cf5ac32"
+  },
+  "candidate": {
+    "label": "terminal-bench task",
+    "origin": "workspace",
+    "digest": "38da03aef91ec464bce59fdcabea9f83580414d18d28c70cffbeb78b2c7fb9df",
+    "files": [
+      "base_terminal.py",
+      "headless_terminal.py"
+    ],
+    "programs": 0
+  },
+  "requirements_method": "jev",
+  "ineligible": [
+    {
+      "kind": "data",
+      "why": "the instruction shows no CSV rows to fill"
+    },
+    {
+      "kind": "cancellation",
+      "why": "the instruction asks for no cleanup on cancellation"
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "interactive.program",
+      "kind": "interactive.program",
+      "requirements": [
+        "R5"
+      ],
+      "spans": [
+        {
+          "requirement": "R5",
+          "span": "s5",
+          "start": 328,
+          "end": 359,
+          "text": "- Supports interactive programs"
+        }
+      ],
+      "applies": [
+        "the instruction names the interface from headless_terminal import HeadlessTerminal; HeadlessTerminal().send_keystrokes(keys, wait_sec)",
+        "the candidate provides headless_terminal.py"
+      ],
+      "interface": "from headless_terminal import HeadlessTerminal; HeadlessTerminal().send_keystrokes(keys, wait_sec)",
+      "bounds": {
+        "seconds": 25,
+        "processes": 4
+      },
+      "effects": [
+        "copies the candidate into a scratch directory and runs it there",
+        "starts the candidate's shell and a host-authored raw-mode program"
+      ],
+      "candidate": "38da03aef91ec464bce59fdcabea9f83580414d18d28c70cffbeb78b2c7fb9df",
+      "input": "cd5d10bc9caa89971bd60120f0e5e429c55f4a1eb5f9cc6d2dbcc0e5ce4659f5",
+      "expected": {
+        "statement": "A program started through the interface gets a terminal in raw mode, reads the staged keys up to Enter, and writes them reversed to a scratch file.",
+        "derivation": "The instruction asks for support of interactive programs typed into an interactive shell; a raw-mode program reads only from a terminal, and the reversed token shows it read the keys."
+      },
+      "params": {
+        "token": "q7Zk2x",
+        "enter": "\\n",
+        "derived_from": "host choices; the interface from the instruction and the provided files"
+      }
+    },
+    {
+      "id": "interactive.interrupt",
+      "kind": "interactive.interrupt",
+      "requirements": [
+        "R6"
+      ],
+      "spans": [
+        {
+          "requirement": "R6",
+          "span": "s6",
+          "start": 361,
+          "end": 426,
+          "text": "- Has support for modifier keys like `\"\\x03\"` for control C, etc."
+        }
+      ],
+      "applies": [
+        "the instruction names the interface from headless_terminal import HeadlessTerminal; HeadlessTerminal().send_keystrokes(keys, wait_sec)",
+        "a requirement names control C"
+      ],
+      "interface": "from headless_terminal import HeadlessTerminal; HeadlessTerminal().send_keystrokes(keys, wait_sec)",
+      "bounds": {
+        "seconds": 40,
+        "processes": 4
+      },
+      "effects": [
+        "copies the candidate into a scratch directory and runs it there",
+        "starts the candidate's shell and, once per round, a 30-second foreground command"
+      ],
+      "candidate": "38da03aef91ec464bce59fdcabea9f83580414d18d28c70cffbeb78b2c7fb9df",
+      "input": "823aa0b0c522db32b2672fca20c7b869a15357691d7145946000a662ecc869f0",
+      "expected": {
+        "statement": "After control C interrupts a foreground command, the shell runs the next command typed.",
+        "derivation": "The instruction asks for control C in an interactive shell; interrupting a foreground command must leave the shell usable."
+      },
+      "params": {
+        "marker": "still-usable-4821",
+        "foreground": "sleep 30",
+        "delays": [
+          0.05,
+          0.3,
+          1.0
+        ],
+        "derived_from": "host choices"
+      }
+    },
+    {
+      "id": "generic.output:/app/headless_terminal.py",
+      "kind": "generic.output",
+      "requirements": [
+        "R8"
+      ],
+      "spans": [
+        {
+          "requirement": "R8",
+          "span": "s8",
+          "start": 516,
+          "end": 709,
+          "text": "Call your implementation `HeadlessTerminal(BaseTerminal)` and put it in a file called `/app/headless_terminal.py` so that it can be imported as `from headless_terminal import HeadlessTerminal`."
+        }
+      ],
+      "applies": [
+        "R8 names the output /app/headless_terminal.py"
+      ],
+      "interface": "the file /app/headless_terminal.py",
+      "bounds": {
+        "seconds": 1,
+        "processes": 1
+      },
+      "effects": [
+        "reads the file in the task's working directory"
+      ],
+      "candidate": "38da03aef91ec464bce59fdcabea9f83580414d18d28c70cffbeb78b2c7fb9df",
+      "input": "4fa597737c2c63e852b58d2a1c570c5a38fd4e669a341fadac81c9daf4852315",
+      "expected": {
+        "statement": "/app/headless_terminal.py exists and isn't empty.",
+        "derivation": "R8 asks for /app/headless_terminal.py to be written."
+      },
+      "params": {
+        "path": "/app/headless_terminal.py",
+        "resolved": "/app/headless_terminal.py"
+      }
+    },
+    {
+      "id": "generic.parse:/app/headless_terminal.py",
+      "kind": "generic.parse",
+      "requirements": [
+        "R8"
+      ],
+      "spans": [
+        {
+          "requirement": "R8",
+          "span": "s8",
+          "start": 516,
+          "end": 709,
+          "text": "Call your implementation `HeadlessTerminal(BaseTerminal)` and put it in a file called `/app/headless_terminal.py` so that it can be imported as `from headless_terminal import HeadlessTerminal`."
+        }
+      ],
+      "applies": [
+        "/app/headless_terminal.py has the structured format py"
+      ],
+      "interface": "the file /app/headless_terminal.py",
+      "bounds": {
+        "seconds": 10,
+        "processes": 1
+      },
+      "effects": [
+        "reads the file in the task's working directory"
+      ],
+      "candidate": "38da03aef91ec464bce59fdcabea9f83580414d18d28c70cffbeb78b2c7fb9df",
+      "input": "dab3a53cdf4168f081f4d0a3837de288a46bfb7f5cf1b55340ff13a4eccd84a8",
+      "expected": {
+        "statement": "/app/headless_terminal.py parses as py.",
+        "derivation": "The task names /app/headless_terminal.py; its extension says its format."
+      },
+      "params": {
+        "path": "/app/headless_terminal.py",
+        "resolved": "/app/headless_terminal.py",
+        "format": "py",
+        "header": null
+      }
+    }
+  ],
+  "selection": {
+    "selector": "deterministic",
+    "admitted": 4,
+    "selected": [
+      "interactive.program",
+      "interactive.interrupt",
+      "generic.output:/app/headless_terminal.py",
+      "generic.parse:/app/headless_terminal.py"
+    ],
+    "skipped": [],
+    "bound_seconds": 76,
+    "budget": {
+      "max_scenarios": 12,
+      "seconds": 180
+    }
+  },
+  "verdicts": [
+    {
+      "scenario": "interactive.program",
+      "verdict": "passed",
+      "observations": [
+        {
+          "step": "construct",
+          "status": "ok",
+          "detail": null
+        },
+        {
+          "step": "send",
+          "keys": "echo ready > /opt/openagents/episode/checks-scratch/interactive.program/result.txt.canary\n",
+          "status": "ok",
+          "detail": null
+        },
+        {
+          "step": "canary",
+          "seen": true
+        },
+        {
+          "step": "send",
+          "keys": "python3 /opt/openagents/episode/checks-scratch/interactive.program/interact.py /opt/openagents/episode/checks-scratch/interactive.program/result.txt\n",
+          "status": "ok",
+          "detail": null
+        },
+        {
+          "step": "ready",
+          "seen": true
+        },
+        {
+          "step": "send",
+          "keys": "q7Zk2x",
+          "status": "ok",
+          "detail": null
+        },
+        {
+          "step": "send",
+          "keys": "\n",
+          "status": "ok",
+          "detail": null
+        },
+        {
+          "step": "result",
+          "content": "x2kZ7q"
+        }
+      ],
+      "coverage": [
+        "One raw-mode program and one token; full-screen programs that query the terminal are untested."
+      ]
+    },
+    {
+      "scenario": "interactive.interrupt",
+      "verdict": "passed",
+      "observations": [
+        {
+          "step": "construct",
+          "status": "ok",
+          "detail": null
+        },
+        {
+          "step": "send",
+          "keys": "echo ready > /opt/openagents/episode/checks-scratch/interactive.interrupt/result.txt.canary\n",
+          "status": "ok",
+          "detail": null
+        },
+        {
+          "step": "canary",
+          "seen": true
+        },
+        {
+          "step": "send",
+          "keys": "sleep 30\n",
+          "status": "ok",
+          "detail": null
+        },
+        {
+          "step": "send",
+          "keys": "\u0003",
+          "status": "ok",
+          "detail": null
+        },
+        {
+          "step": "send",
+          "keys": "echo still-usable-4821 > /opt/openagents/episode/checks-scratch/interactive.interrupt/result.txt.0\n",
+          "status": "ok",
+          "detail": null
+        },
+        {
+          "step": "result",
+          "round": 0,
+          "delay": 0.05,
+          "content": "still-usable-4821\n"
+        },
+        {
+          "step": "send",
+          "keys": "sleep 30\n",
+          "status": "ok",
+          "detail": null
+        },
+        {
+          "step": "send",
+          "keys": "\u0003",
+          "status": "ok",
+          "detail": null
+        },
+        {
+          "step": "send",
+          "keys": "echo still-usable-4821 > /opt/openagents/episode/checks-scratch/interactive.interrupt/result.txt.1\n",
+          "status": "ok",
+          "detail": null
+        },
+        {
+          "step": "result",
+          "round": 1,
+          "delay": 0.3,
+          "content": "still-usable-4821\n"
+        },
+        {
+          "step": "send",
+          "keys": "sleep 30\n",
+          "status": "ok",
+          "detail": null
+        },
+        {
+          "step": "send",
+          "keys": "\u0003",
+          "status": "ok",
+          "detail": null
+        },
+        {
+          "step": "send",
+          "keys": "echo still-usable-4821 > /opt/openagents/episode/checks-scratch/interactive.interrupt/result.txt.2\n",
+          "status": "ok",
+          "detail": null
+        },
+        {
+          "step": "result",
+          "round": 2,
+          "delay": 1.0,
+          "content": "still-usable-4821\n"
+        }
+      ],
+      "coverage": [
+        "One control key, sent 0.05, 0.3, 1 s after the command; other modifiers and delays are untested."
+      ]
+    },
+    {
+      "scenario": "generic.output:/app/headless_terminal.py",
+      "verdict": "passed",
+      "observations": [
+        {
+          "path": "/app/headless_terminal.py",
+          "exists": true,
+          "bytes": 3724
+        }
+      ],
+      "coverage": [
+        "checks that the file is there, not what it holds"
+      ]
+    },
+    {
+      "scenario": "generic.parse:/app/headless_terminal.py",
+      "verdict": "passed",
+      "observations": [
+        {
+          "path": "/app/headless_terminal.py",
+          "format": "py",
+          "problem": null
+        }
+      ],
+      "coverage": [
+        "checks the format, not the values"
+      ]
+    }
+  ],
+  "coverage": [
+    {
+      "id": "R1",
+      "text": "Implement the provided `BaseTerminal` interface.",
+      "kind": "deliverable",
+      "state": "unobserved",
+      "scenarios": []
+    },
+    {
+      "id": "R2",
+      "text": "It provides a simple python interface to send keys to a headless terminal.",
+      "kind": "behavior",
+      "state": "unobserved",
+      "scenarios": []
+    },
+    {
+      "id": "R3",
+      "text": "Make sure it supports the following functionality.",
+      "kind": "behavior",
+      "state": "unobserved",
+      "scenarios": []
+    },
+    {
+      "id": "R4",
+      "text": "- Mimics a terminal, where the process starts as an interactive bash shell and commands are typically executed by typing characters and hitting Enter.",
+      "kind": "behavior",
+      "state": "unobserved",
+      "scenarios": []
+    },
+    {
+      "id": "R5",
+      "text": "- Supports interactive programs",
+      "kind": "behavior",
+      "state": "observed",
+      "scenarios": [
+        {
+          "id": "interactive.program",
+          "verdict": "passed",
+          "scenario_verdict": "passed",
+          "coverage": [
+            "One raw-mode program and one token; full-screen programs that query the terminal are untested."
+          ],
+          "candidate": "38da03aef91ec464bce59fdcabea9f83580414d18d28c70cffbeb78b2c7fb9df"
+        }
+      ]
+    },
+    {
+      "id": "R6",
+      "text": "- Has support for modifier keys like `\"\\x03\"` for control C, etc.",
+      "kind": "behavior",
+      "state": "observed",
+      "scenarios": [
+        {
+          "id": "interactive.interrupt",
+          "verdict": "passed",
+          "scenario_verdict": "passed",
+          "coverage": [
+            "One control key, sent 0.05, 0.3, 1 s after the command; other modifiers and delays are untested."
+          ],
+          "candidate": "38da03aef91ec464bce59fdcabea9f83580414d18d28c70cffbeb78b2c7fb9df"
+        }
+      ]
+    },
+    {
+      "id": "R7",
+      "text": "- Because the shell is interactive, it should source the startup files (e.g. ~/.bashrc)",
+      "kind": "behavior",
+      "state": "unobserved",
+      "scenarios": []
+    },
+    {
+      "id": "R8",
+      "text": "Call your implementation `HeadlessTerminal(BaseTerminal)` and put it in a file called `/app/headless_terminal.py` so that it can be imported as `from headless_terminal import HeadlessTerminal`.",
+      "kind": "constraint",
+      "state": "observed",
+      "scenarios": [
+        {
+          "id": "generic.output:/app/headless_terminal.py",
+          "verdict": "passed",
+          "scenario_verdict": "passed",
+          "coverage": [
+            "checks that the file is there, not what it holds"
+          ],
+          "candidate": "38da03aef91ec464bce59fdcabea9f83580414d18d28c70cffbeb78b2c7fb9df"
+        },
+        {
+          "id": "generic.parse:/app/headless_terminal.py",
+          "verdict": "passed",
+          "scenario_verdict": "passed",
+          "coverage": [
+            "checks the format, not the values"
+          ],
+          "candidate": "38da03aef91ec464bce59fdcabea9f83580414d18d28c70cffbeb78b2c7fb9df"
+        }
+      ]
+    },
+    {
+      "id": "R9",
+      "text": "Install dependencies into the system python.",
+      "kind": "deliverable",
+      "state": "unobserved",
+      "scenarios": []
+    }
+  ],
+  "packets": []
+}

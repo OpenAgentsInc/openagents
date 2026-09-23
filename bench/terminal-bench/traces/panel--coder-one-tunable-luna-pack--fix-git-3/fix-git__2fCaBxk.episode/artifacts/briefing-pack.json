@@ -1,0 +1,201 @@
+{
+  "record": {
+    "schema": "openagents.coder-one.briefing-pack.v1",
+    "implementation": "3a10f6d6afc0fe5e1459ec0203f830e6b6efa4a03586c77f60df2942fc8d819d",
+    "cap": 12000,
+    "chars": 7147,
+    "items": [
+      {
+        "id": "e1",
+        "source": "probe",
+        "label": "$ git reflog -n 40",
+        "p": 0.91,
+        "selected": true,
+        "original_chars": 315,
+        "delivered_chars": 315,
+        "state": "complete",
+        "informs": [
+          "R1"
+        ],
+        "duplicate_lines": 0
+      },
+      {
+        "id": "e3",
+        "source": "probe",
+        "label": "$ git log --oneline --graph --all -n 40",
+        "p": 0.89,
+        "selected": true,
+        "original_chars": 1059,
+        "delivered_chars": 1059,
+        "state": "complete",
+        "informs": [
+          "R1"
+        ],
+        "duplicate_lines": 0
+      },
+      {
+        "id": "e2",
+        "source": "probe",
+        "label": "$ git branch -a -vv",
+        "p": 0.89,
+        "selected": true,
+        "original_chars": 39,
+        "delivered_chars": 39,
+        "state": "complete",
+        "informs": [],
+        "duplicate_lines": 0
+      },
+      {
+        "id": "e4",
+        "source": "probe",
+        "label": "$ git status",
+        "p": 0.84,
+        "selected": true,
+        "original_chars": 54,
+        "delivered_chars": 54,
+        "state": "complete",
+        "informs": [],
+        "duplicate_lines": 0
+      },
+      {
+        "id": "e5",
+        "source": "probe",
+        "label": "$ list /app/personal-site (depth 3)",
+        "p": 0.57,
+        "selected": true,
+        "original_chars": 3689,
+        "delivered_chars": 3689,
+        "state": "complete",
+        "informs": [],
+        "duplicate_lines": 0
+      }
+    ],
+    "bytes_per_requirement": {
+      "R1": 1374
+    },
+    "uncovered": [],
+    "instruction_trimmed": false
+  },
+  "coverage": {
+    "e1": {
+      "R1": 0.72
+    },
+    "e2": {
+      "R1": 0.42
+    },
+    "e3": {
+      "R1": 0.55
+    },
+    "e4": {
+      "R1": 0.46
+    },
+    "e5": {
+      "R1": 0.31
+    }
+  },
+  "requirements": {
+    "schema": "openagents.coder-one.requirements.v1",
+    "instruction_sha256": "f98174e47ba5ce040f6fad22ef3cbca4dd27b3192868ea5d082077222c3ec4e8",
+    "method": "jev",
+    "spans": [
+      {
+        "id": "s1",
+        "start": 0,
+        "end": 104,
+        "form": "sentence",
+        "text": "I just made some changes to my personal site and checked out master, but now I can't find those changes.",
+        "requirement": null,
+        "kind": "context",
+        "kinds": {
+          "behavior": 0.0,
+          "check": 0.0,
+          "constraint": 0.0,
+          "context": 0.94,
+          "deliverable": 0.06
+        },
+        "answered": true
+      },
+      {
+        "id": "s2",
+        "start": 105,
+        "end": 157,
+        "form": "sentence",
+        "text": "Please help me find them and merge them into master.",
+        "requirement": "R1",
+        "kind": "deliverable",
+        "kinds": {
+          "behavior": 0.01,
+          "check": 0.0,
+          "constraint": 0.0,
+          "context": 0.0,
+          "deliverable": 0.99
+        },
+        "answered": true
+      }
+    ],
+    "requirements": [
+      {
+        "id": "R1",
+        "spans": [
+          "s2"
+        ],
+        "kind": "deliverable",
+        "binding": "yes",
+        "state": "unobserved",
+        "p": 1.0,
+        "text": "Please help me find them and merge them into master."
+      }
+    ],
+    "coverage": {
+      "chars": 128,
+      "covered": 128,
+      "fraction": 1.0,
+      "spans": 2,
+      "requirement_spans": 1,
+      "context_spans": 1,
+      "unanswered_spans": 0
+    }
+  },
+  "inputs": {
+    "instruction": "I just made some changes to my personal site and checked out master, but now I can't find those changes. Please help me find them and merge them into master.\n",
+    "requirements": [
+      [
+        "Please help me find them and merge them into master.",
+        null
+      ]
+    ],
+    "files": [
+      [
+        "$ git reflog -n 40",
+        0.91,
+        "d7d3e4b HEAD@{0}: checkout: moving from c499730ae050deb27e5d22972ea28daf778060f2 to master\nc499730 HEAD@{1}: commit: Move to Stanford\nc4e38a1 HEAD@{2}: checkout: moving from master to HEAD~1\nd7d3e4b HEAD@{3}: reset: moving to d7d3e4b\n19b5d10 HEAD@{4}: clone: from https://github.com/TheMikeMerrill/personal-site.git"
+      ],
+      [
+        "$ git branch -a -vv",
+        0.89,
+        "* master d7d3e4b off the job market woo"
+      ],
+      [
+        "$ git log --oneline --graph --all -n 40",
+        0.89,
+        "* d7d3e4b off the job market woo\n* c4e38a1 Add code link for BLADE\n* 6f46fa0 CV Update\n* dd7e395 Adds BLADE to bib\n* 2cd355a n+1 (for the last time???)\n* 8eaf505 Add BLADE\n* cc2ec78 Underline\n* d71094e Underline Conferences\n* 232b279 Remove posters\n* 3fdf5f5 Add NeurIPS\n* 8c4731d Add EMNLP acceptance\n* f54f66b Add GR link\n* 18d2430 Add other links\n* 1dd055e Ignore Gemfile, etc\n* 5c77a6d Dont overwrite\n* c7d2f95 Delete unsused files\n* 20b05d9 Remove more unused files\n* 2d144f7 Add yamls for new papers\n* 7882f2d Don't track _site\n* cd2b8de Add new papers\n* 26dc65c Fix author\n* bc1962c Interests update\n* 257eba8 More space for interests\n* ff6a94a Bib update\n* 97c4a55 Underline bold\n* a320806 Other fixes, new paper\n* 2cb7243 New PDFs\n* 7321328 PDF update\n* f1e3860 Deletions\n* 7b4d171 Update Bio\n* 073117a Another update\n* cb63517 Another CV Updatee\n* 192ae7b update headshot\n* 7fb9365 Update about and contact\n* 54ef19d CV Update\n* b0fb76a Add GR\n* 6adfab9 n plus one\n* 8a5509d Needs to be a string\n* e2f686e Add Gemfile\n* fa098ef properly handle class"
+      ],
+      [
+        "$ git status",
+        0.84,
+        "On branch master\nnothing to commit, working tree clean"
+      ],
+      [
+        "$ list /app/personal-site (depth 3)",
+        0.57,
+        "/app/personal-site:\n.git/\n.gitignore  100 B\nCNAME  14 B\nGemfile  42 B\n_config.yml  152 B\n_includes/\n_layouts/\n_posters/\n_publications/\nbiblib/\ncss/\nfonts/\nindex.md  47 B\njs/\nmake_pubs.py  2382 B\nme.bib  19618 B\nresources/\n_includes/about.md  565 B\n_includes/contact.md  217 B\n_includes/interests.md  346 B\n_layouts/default.html  4910 B\n_posters/frank2016sensing.md  485 B\n_posters/frank2017sensing.md  542 B\n_publications/ben-zeev_crosscheck_2017.md  2925 B\n_publications/guBLADEBenchmarkingLanguage2024a.md  2535 B\n_publications/merrill2021multiverse.md  416 B\n_publications/merrill2023selfsupervised.md  619 B\n_publications/merrillHomekit2020BenchmarkTime2023.md  1739 B\n_publications/merrillLanguageModelsStill2024.md  2305 B\n_publications/merrillTransformingWearableData2024a.md  2531 B\n_publications/tanAreLanguageModels2024.md  1611 B\n_publications/tseng2016ubicomp.md  862 B\n_publications/wang_crosscheck_2016.md  2454 B\n_publications/xu2022GLOBEM.md  862 B\n_publications/zhang2022coral.md  416 B\nbiblib/__init__.py  38 B\nbiblib/algo.py  17807 B\nbiblib/bib.py  18667 B\nbiblib/messages.py  4154 B\nbiblib/test.py  13962 B\ncss/bootstrap-grid.css  25510 B\ncss/bootstrap-grid.css.map  31527 B\ncss/bootstrap-grid.min.css  18528 B\ncss/bootstrap-grid.min.css.map  12300 B\ncss/bootstrap-reboot.css  5916 B\ncss/bootstrap-reboot.css.map  9322 B\ncss/bootstrap-reboot.min.css  4707 B\ncss/bootstrap-reboot.min.css.map  2668 B\ncss/bootstrap.css  191738 B\ncss/bootstrap.css.map  235595 B\ncss/bootstrap.min.css  150996 B\ncss/bootstrap.min.css.map  68044 B\ncss/style.css  1745 B\nfonts/Proxima-Nova-Regular.otf  94668 B\nfonts/Proxima-Nova-Thin.otf  90796 B\nfonts/glyphicons-halflings-regular.eot  20127 B\nfonts/glyphicons-halflings-regular.svg  108738 B\nfonts/glyphicons-halflings-regular.ttf  45404 B\nfonts/glyphicons-halflings-regular.woff  23424 B\nfonts/glyphicons-halflings-regular.woff2  18028 B\njs/bootstrap.min.js  46653 B\njs/jquery.min.js  86927 B\njs/popper.min.js  20560 B\njs/scripts.js  40 B\nresources/Mike_Merrill_CV.pdf  53501 B\nresources/Mike_Merrill_CV_old.pdf  49956 B\nresources/Mike_Merrill_Resume.pdf  88884 B\nresources/Personal_Statement_UW_Draft.pdf  82046 B\nresources/Research_Statement.pdf  98507 B\nresources/headshot.jpeg  183469 B\nresources/pubpdfs/\nresources/thumbnails/\nresources/pubpdfs/ben-zeev_crosscheck_2017.pdf  739696 B\nresources/pubpdfs/guBLADEBenchmarkingLanguage2024a.pdf  17556676 B\nresources/pubpdfs/merrill2021multiverse.pdf  1524223 B\nresources/pubpdfs/merrill2023selfsupervised.pdf  732131 B\nresources/pubpdfs/merrillHomekit2020BenchmarkTime2023.pdf  1061354 B\nresources/pubpdfs/merrillLanguageModelsStill2024.pdf  1452135 B\nresources/pubpdfs/merrillTransformingWearableData2024a.pdf  1442625 B\nresources/pubpdfs/tanAreLanguageModels2024.pdf  1465170 B\nresources/pubpdfs/tseng2016ubicomp.pdf  263155 B\nresources/pubpdfs/wang_crosscheck_2016.pdf  673921 B\nresources/pubpdfs/xu2022GLOBEM.pdf  1400157 B\nresources/pubpdfs/zhang2022coral.pdf  2162799 B\nresources/thumbnails/ben-zeev_crosscheck_2017.png  77717 B\nresources/thumbnails/guBLADEBenchmarkingLanguage2024a.png  38286 B\nresources/thumbnails/merrill2021multiverse.png  93635 B\nresources/thumbnails/merrill2023selfsupervised.png  157388 B\nresources/thumbnails/merrillHomekit2020BenchmarkTime2023.png  55070 B\nresources/thumbnails/merrillLanguageModelsStill2024.png  83835 B\nresources/thumbnails/merrillTransformingWearableData2024a.png  373655 B\nresources/thumbnails/tanAreLanguageModels2024.png  74984 B\nresources/thumbnails/tseng2016ubicomp.png  92972 B\nresources/thumbnails/wang_crosscheck_2016.png  75637 B\nresources/thumbnails/xu2022GLOBEM.png  130110 B\nresources/thumbnails/zhang2022coral.png  116132 B"
+      ]
+    ],
+    "spans": [],
+    "commands": [],
+    "last_output": null,
+    "conclusion": "The explorer reached its 0-step bound without a conclusion.",
+    "directions": "Complete the task in the current working directory. Nobody answers questions, so decide from the task and the environment. An automated checker grades the final state of the environment against the task, so verify every requirement, including exact paths, names, and formats, before you stop. The files, command outputs, and setup results in this briefing were gathered just before you started and are complete and current: do not list, read, or run them again. Work in few, large steps: write each file whole in one command, and chain related commands (installs, builds) with && in one call. Before you stop, run the checks the task names and exercise every code path you changed, not only the example the task gives. After a bulk find-and-replace, search the result for occurrences it missed or changed twice. End with a short summary of what you changed and how you checked it."
+  },
+  "schema": "openagents.coder-one.briefing-pack.v1"
+}

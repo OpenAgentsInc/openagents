@@ -1,0 +1,36 @@
+{
+  "trial_name": "log-summary-date-ranges__7yPBBBk",
+  "task_name": "terminal-bench/log-summary-date-ranges",
+  "started_at": "2026-09-23T05:51:55.567296Z",
+  "finished_at": "2026-09-23T05:52:48.410700Z",
+  "environment_setup": {
+    "started_at": "2026-09-23T05:51:55.616110Z",
+    "finished_at": "2026-09-23T05:51:57.467444Z"
+  },
+  "agent_setup": {
+    "started_at": "2026-09-23T05:51:57.467485Z",
+    "finished_at": "2026-09-23T05:52:01.846905Z"
+  },
+  "agent_execution": {
+    "started_at": "2026-09-23T05:52:01.847072Z",
+    "finished_at": "2026-09-23T05:52:24.544992Z"
+  },
+  "verifier": {
+    "started_at": "2026-09-23T05:52:24.795978Z",
+    "finished_at": "2026-09-23T05:52:35.734998Z"
+  },
+  "verifier_result": {
+    "rewards": {
+      "reward": 1.0
+    }
+  },
+  "agent_result": {
+    "n_input_tokens": 85811,
+    "n_cache_tokens": 34048,
+    "n_output_tokens": 572,
+    "cost_usd": 0.0032647580000000004,
+    "rollout_details": null,
+    "metadata": null
+  },
+  "exception_info": null
+}

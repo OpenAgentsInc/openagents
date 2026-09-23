@@ -1,0 +1,111 @@
+{
+  "schema": "openagents.tbench.attempt.v1",
+  "attempt": {
+    "id": "862950ff-9cd6-4fa1-aa19-319417a20798",
+    "job": "panel--coder-one-tunable-luna-pack--build-cython-ext-2",
+    "trial": "build-cython-ext__N4fdZAz",
+    "arm": "coder-one-tunable-luna-pack",
+    "profile": "panel",
+    "auth_mode": "subscription-oauth",
+    "kind": "fresh"
+  },
+  "task": {
+    "name": "terminal-bench/build-cython-ext",
+    "path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench/archive/build-cython-ext",
+    "git_url": null,
+    "git_commit_id": null,
+    "checksum": "df5a71095bf690f7b2b2091e8ea3b0ecab7ff6cd4e3629b79e86e99118702a10",
+    "source": null,
+    "pin": {
+      "git_url": "https://github.com/harbor-framework/terminal-bench.git",
+      "git_commit_id": "3b5caaa4863d64dda7f0957bf4fc2d4f019202d4"
+    }
+  },
+  "agent": {
+    "selector": "tbench.coder_one:CoderOneTunable",
+    "requested_model": "free",
+    "observed_name": "coder-one-tunable",
+    "observed_version": "pinned-artifact",
+    "observed_model": "free",
+    "observed_provider": null,
+    "artifact_sha256": "dd50175fe396bc3ddd702fc9f7ac3aa9a03c510ac8ec29e1c26a218876c753bd"
+  },
+  "outcome": {
+    "reward": 1.0,
+    "verifier_rewards": {
+      "reward": 1.0
+    },
+    "terminal_status": "completed",
+    "exception": null,
+    "verifier_environment_mode": "shared"
+  },
+  "timing": {
+    "started_at": "2026-09-23T05:45:37.887328Z",
+    "finished_at": "2026-09-23T05:48:05.926532Z",
+    "environment_setup_ms": 8508,
+    "agent_setup_ms": 4330,
+    "agent_execution_ms": 120118,
+    "verifier_ms": 3704,
+    "total_ms": 148039
+  },
+  "setup": {
+    "mode": "prebuilt",
+    "cache": "warm",
+    "install_ms": 2740,
+    "agent_setup_ms": 4330,
+    "layers": [
+      "node-22.23.2-linux-x64",
+      "claude-code-2.1.280-linux-x64",
+      "node-22.23.2-linux-x64",
+      "codex-0.155.1-linux-x64"
+    ],
+    "failed": false,
+    "boundaries": {
+      "agent_setup_ms": "Harbor's agent_setup phase: the toolchain install, the artifact upload, and the episode doctor",
+      "install_ms": "the toolchain alone, from the adapter's toolchain-setup.json",
+      "agent_execution_ms": "Harbor's agent_execution phase",
+      "total_ms": "the trial's started_at to finished_at"
+    }
+  },
+  "environment": {
+    "image": null,
+    "image_source": "dockerfile",
+    "image_state": "unknown",
+    "image_action": "built",
+    "image_state_method": "Harbor builds a Dockerfile task in every trial; the trial log doesn't record whether the build cache served its layers"
+  },
+  "usage": {
+    "input_tokens": 332095,
+    "cache_tokens": 241664,
+    "output_tokens": 2256,
+    "input_includes_cache": true,
+    "coverage": "full"
+  },
+  "cost": {
+    "amount_usd": 0.01008504,
+    "provenance": "mixed",
+    "note": "A subscription reference price or a pricing-registry estimate is not an observed incremental bill."
+  },
+  "counts": {
+    "semantics": "atif-v1-steps-and-calls",
+    "atif_steps": 193,
+    "model_invocations": 31,
+    "typed_decisions": 0,
+    "tool_calls": 30,
+    "shell_commands": 0,
+    "retries": 0,
+    "subagent_steps": 0
+  },
+  "evidence": {
+    "trial_result": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-tunable-luna-pack--build-cython-ext-2/build-cython-ext__N4fdZAz/result.json",
+    "trial_dir": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-tunable-luna-pack--build-cython-ext-2/build-cython-ext__N4fdZAz",
+    "manifest": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-tunable-luna-pack--build-cython-ext-2/tbench/manifests/build-cython-ext__N4fdZAz.json"
+  },
+  "completeness": {
+    "trace": "present",
+    "usage": "full",
+    "cost": "reported",
+    "artifacts": "present",
+    "bundle": "present"
+  }
+}

@@ -1,0 +1,119 @@
+{
+  "schema": "openagents.tbench.episode-manifest.v1",
+  "attempt": {
+    "id": "4cf4f698-4bdf-4256-96ff-36b90e7b2585",
+    "job": "panel--coder-one-tunable-luna-pack--build-cython-ext",
+    "trial": "build-cython-ext__ierikWT",
+    "arm": "coder-one-tunable-luna-pack",
+    "profile": "panel",
+    "auth_mode": "subscription-oauth",
+    "kind": "fresh"
+  },
+  "task": {
+    "name": "terminal-bench/build-cython-ext",
+    "path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench/archive/build-cython-ext",
+    "git_url": null,
+    "git_commit_id": null,
+    "checksum": "df5a71095bf690f7b2b2091e8ea3b0ecab7ff6cd4e3629b79e86e99118702a10",
+    "source": null,
+    "pin": {
+      "git_url": "https://github.com/harbor-framework/terminal-bench.git",
+      "git_commit_id": "3b5caaa4863d64dda7f0957bf4fc2d4f019202d4"
+    }
+  },
+  "agent": {
+    "selector": "tbench.coder_one:CoderOneTunable",
+    "requested_model": "free",
+    "observed_name": "coder-one-tunable",
+    "observed_version": "pinned-artifact",
+    "observed_model": "free",
+    "observed_provider": null,
+    "artifact_sha256": "dd50175fe396bc3ddd702fc9f7ac3aa9a03c510ac8ec29e1c26a218876c753bd"
+  },
+  "outcome": {
+    "reward": 1.0,
+    "verifier_rewards": {
+      "reward": 1.0
+    },
+    "terminal_status": "completed",
+    "exception": null,
+    "verifier_environment_mode": "shared"
+  },
+  "timing": {
+    "started_at": "2026-09-23T05:42:05.642003Z",
+    "finished_at": "2026-09-23T05:44:57.642783Z",
+    "environment_setup_ms": 17778,
+    "agent_setup_ms": 3839,
+    "agent_execution_ms": 134480,
+    "verifier_ms": 4034,
+    "total_ms": 172000
+  },
+  "usage": {
+    "input_tokens": null,
+    "cache_tokens": null,
+    "output_tokens": null,
+    "input_includes_cache": true,
+    "coverage": "unknown"
+  },
+  "cost": {
+    "amount_usd": null,
+    "provenance": "unknown",
+    "note": "A subscription reference price or a pricing-registry estimate is not an observed incremental bill."
+  },
+  "task_notes": [
+    "Image is resolved from the task checkout at build time; doctor reports the manifest arch when the checkout is present."
+  ],
+  "evidence": {
+    "trial_result": {
+      "kind": "trial-result",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-tunable-luna-pack--build-cython-ext/build-cython-ext__ierikWT/result.json",
+      "sha256": "18c4b2006e63a7ffa150d71e0dd8ea2ac59f7263ac2ad7364a010216bd6a54cb",
+      "bytes": 5075
+    },
+    "trajectory": {
+      "kind": "trajectory",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-tunable-luna-pack--build-cython-ext/build-cython-ext__ierikWT/agent/trajectory.json",
+      "sha256": "818105272d1e601a6bd3c9094b5cc2e796087ad03521419724e4cf455d78996a",
+      "bytes": 778086
+    },
+    "native_traces": [],
+    "collection_failure": {
+      "kind": "collection-failure",
+      "resolved": false,
+      "path": null,
+      "sha256": null
+    },
+    "verifier_reward": {
+      "kind": "verifier-reward",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-tunable-luna-pack--build-cython-ext/build-cython-ext__ierikWT/verifier/reward.txt",
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+      "bytes": 2
+    },
+    "verifier_report": {
+      "kind": "verifier-report",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-tunable-luna-pack--build-cython-ext/build-cython-ext__ierikWT/verifier/ctrf.json",
+      "sha256": "848b68a60ddf4cae33f4fb168ed462c2f64642ba92164a1a0c02b21d25718da8",
+      "bytes": 4253
+    },
+    "artifacts": [
+      {
+        "kind": "artifact",
+        "resolved": true,
+        "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-tunable-luna-pack--build-cython-ext/build-cython-ext__ierikWT/artifacts/manifest.json",
+        "sha256": "c1db653f487fb773c4f9247162ab3314e7f0584a486914b9874c4b3d6949e42d",
+        "bytes": 159
+      }
+    ],
+    "attempt_record": {
+      "kind": "attempt-record",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-tunable-luna-pack--build-cython-ext/tbench/attempts/build-cython-ext__ierikWT.json",
+      "sha256": "be16b31374ec349d5f14378faf04381c0dd790d35e406635f5e5b8af934f60e3"
+    }
+  },
+  "collected_at": "2026-09-23T05:44:58.437+00:00"
+}

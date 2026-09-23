@@ -1,0 +1,12 @@
+exit 0
+version: coder-one 0.1.0 (1a035cebe6e6)
+contract: openagents.coder.episode.v1
+policy: coder-one-tunable-luna e153463ca5a18cfa9441f9db5265a67da230b45ca5a99ddf3b70602a4a368fe5 (inline, 1 overrides)
+generation door: https://openagents.com/v1/models answered 200 OK
+jev door: https://api.typesafe.ai answered with 2 models
+delegate: always to codex (gpt-6-luna), explore 0 steps, deadline 600s
+codex: codex-cli 0.155.1 at /usr/local/bin/codex
+codex credential: codex_auth_json
+claude: 2.1.280 (Claude Code) at /opt/openagents/toolchain/claude-code-2.1.280-linux-x64/bin/claude
+claude-code credential: subscription_oauth
+ok

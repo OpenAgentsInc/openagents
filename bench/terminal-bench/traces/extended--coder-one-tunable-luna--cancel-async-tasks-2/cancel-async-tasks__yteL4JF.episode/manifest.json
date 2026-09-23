@@ -1,0 +1,471 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "policy": {
+    "schema": "openagents.coder-one.policy.v1",
+    "name": "coder-one-tunable-luna",
+    "digest": "e153463ca5a18cfa9441f9db5265a67da230b45ca5a99ddf3b70602a4a368fe5",
+    "source": "inline",
+    "overrides": [
+      {
+        "source": "CODER_ONE_EPISODE_DEADLINE",
+        "field": "protected.ceilings.episode_deadline_sec",
+        "value": "780"
+      }
+    ],
+    "notes": [],
+    "manifest": {
+      "schema": "openagents.coder-one.policy.v1",
+      "name": "coder-one-tunable-luna",
+      "note": "Codex on GPT-6 Luna with the headless core system prompt, verify.checks on the live workspace, escalation to lean Claude Code on Opus 5.5 on a stall, a failed check, or no answer, and one verify.repair from the diagnostic packets. control.horizon sizes every dispatch from the task's own timeout.",
+      "policy": {
+        "jev": {
+          "mode": "deep",
+          "model": "jev-1.13.0",
+          "question_sets": "builtin-v1"
+        },
+        "evidence": {
+          "probes": "v2",
+          "survey_files": 40
+        },
+        "control": {
+          "delegate": "always",
+          "explore_steps": 0,
+          "max_steps": 50,
+          "command_timeout_sec": 300,
+          "lane": "free",
+          "error_streak": 3,
+          "unchanged_steps": 6,
+          "monitor": {
+            "on_operation": true,
+            "on_artifact": true,
+            "on_claim": true,
+            "silence_ms": 300000,
+            "window": 8,
+            "event_chars": 300,
+            "requirements": 10,
+            "threshold": 0.5,
+            "jev": true,
+            "stall_commands": 12,
+            "latency_ms": 800
+          },
+          "handoff": {
+            "pattern": "escalate",
+            "to": {
+              "agent": "claude-code",
+              "model": "claude-opus-5-5",
+              "effort": "low",
+              "tools": "Bash,Read,Edit,Write,Glob,Grep",
+              "prompt_cache_ttl": "5m",
+              "version": "2.1.280"
+            },
+            "on": [
+              "stalled",
+              "repeating"
+            ],
+            "after": 3,
+            "max_handoffs": 1,
+            "brief": {
+              "requirements": true,
+              "diff": true,
+              "errors": true,
+              "packets": true
+            },
+            "monitor": {
+              "on_operation": true,
+              "on_artifact": true,
+              "on_claim": true,
+              "silence_ms": 300000,
+              "window": 8,
+              "event_chars": 300,
+              "requirements": 10,
+              "threshold": 0.5,
+              "jev": true,
+              "stall_commands": 12,
+              "latency_ms": 800
+            }
+          },
+          "horizon": {
+            "first_share": 0.55,
+            "later_share": 0.75,
+            "min_dispatch_sec": 300,
+            "check_share": 0.05,
+            "long_after_sec": 3600,
+            "long_effort": "medium",
+            "long_command_sec": 3600
+          }
+        },
+        "brief": {
+          "cap": 12000,
+          "directions": "batch-checked"
+        },
+        "executor": {
+          "agent": "codex",
+          "version": "0.155.1",
+          "model": "gpt-6-luna",
+          "effort": null,
+          "tools": null,
+          "prompt_cache_ttl": null,
+          "deadline_sec": 600,
+          "system": {
+            "mode": "replace",
+            "sections": [
+              "role",
+              "security",
+              "authority",
+              "verify",
+              "report",
+              "code-style"
+            ]
+          }
+        },
+        "verify": {
+          "checks": true,
+          "support": false,
+          "repair": {
+            "brief": "packet",
+            "trigger": "detected"
+          }
+        }
+      },
+      "protected": {
+        "isolation": "task-container",
+        "effect_policy": "executor-bypasses-its-own-sandbox",
+        "acceptance": "task-verifier",
+        "ceilings": {
+          "episode_deadline_sec": 780,
+          "reserve_sec": 30,
+          "spend_soft_usd": null,
+          "spend_hard_usd": null
+        }
+      }
+    },
+    "text_digests": {
+      "directions": "fea432bfc839af266ebfde909c2c0d9240b05206b815c2254c4849fee9757a1e",
+      "episode_instructions": "968529ff8c30adc54aeed0ed420a6108c23cf9157cc9bc034a9bae2af1ce9a2f",
+      "explore_prompt": "e00d4aa84650903e0b9174be59e0f5118f89c56fa7c878b2717632c4ff3c9e24",
+      "system": "295d575f2830763a5663487ddbb04b7f0b6dd2ea852926122eef893a6edc3607"
+    }
+  },
+  "delegate": {
+    "mode": "always",
+    "agent": "codex",
+    "model": "gpt-6-luna",
+    "version": "0.155.1",
+    "effort": null,
+    "tools": null,
+    "prompt_cache_ttl": null,
+    "system": {
+      "mode": "replace",
+      "sections": [
+        "role",
+        "security",
+        "authority",
+        "verify",
+        "report",
+        "code-style"
+      ]
+    },
+    "executor_path": "/usr/local/bin/codex",
+    "credential": "codex_auth_json",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "directions": "batch-checked",
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "3219976f2d7cd30335cf36b7bcf292cc59c42e8c47f62ad35f731224b591253a",
+        "chars": 2470,
+        "bytes": 2470,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "requirement 1",
+          "requirement 2",
+          "requirement 3",
+          "requirement 4",
+          "explorer conclusion",
+          "file $ list /app (depth 3)",
+          "file $ list test files under /app (depth 4)"
+        ],
+        "omitted": []
+      },
+      "packer": "sections",
+      "uncovered_requirements": null,
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 1,
+      "api_calls": null,
+      "completed_items": 2,
+      "charge": "priced",
+      "total_cost_usd": 0.0009214000000000001,
+      "milliseconds": 18023,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 5314,
+        "kept_bytes": 5314,
+        "truncated": false,
+        "sha256": "fcb1f92df7b0699c2bcb04d4a937384907590712223aeb770cd4c910499bb43f",
+        "gaps": [],
+        "retention": "first 8388608 bytes written as they arrive; past that, the first and last halves"
+      },
+      "system": {
+        "schema": "openagents.coder-one.system-prompt.v1",
+        "variant": "manifest",
+        "agent": "codex",
+        "mode": "replace",
+        "setting": "model_instructions_file",
+        "digest": "295d575f2830763a5663487ddbb04b7f0b6dd2ea852926122eef893a6edc3607",
+        "chars": 1542,
+        "default": "codex 0.155.1 (gpt-6-luna)",
+        "default_chars": 18037,
+        "protected": true,
+        "sections": [
+          {
+            "id": "role",
+            "status": "core",
+            "chars": 214,
+            "by": "manifest"
+          },
+          {
+            "id": "security",
+            "status": "protected",
+            "chars": 461,
+            "by": "manifest"
+          },
+          {
+            "id": "authority",
+            "status": "core",
+            "chars": 334,
+            "by": "manifest"
+          },
+          {
+            "id": "verify",
+            "status": "core",
+            "chars": 258,
+            "by": "manifest"
+          },
+          {
+            "id": "report",
+            "status": "core",
+            "chars": 176,
+            "by": "manifest"
+          },
+          {
+            "id": "code-style",
+            "status": "core",
+            "chars": 95,
+            "by": "manifest"
+          }
+        ],
+        "asked": []
+      },
+      "close": {
+        "done": 0.58,
+        "criteria": [
+          {
+            "requirement": "Create a Python function called `async run_tasks(tasks: list[Callable[[], Awaitable[None]]], max_concurrent: int) -> None` where each task is an async job to be run and `max_concurrent` is the max number of tasks that can be run concurrently.",
+            "p": 0.8
+          },
+          {
+            "requirement": "Put the function in a file called `/app/run.py` so that it can be imported using `from run import run_tasks`.",
+            "p": 0.81
+          },
+          {
+            "requirement": "Just use the system python to implement.",
+            "p": 0.42
+          },
+          {
+            "requirement": "Sometimes I cancel runs via keyboard interrupt but I want the tasks' cleanup code to still run.",
+            "p": 0.8
+          }
+        ],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (1a035cebe6e6)",
+    "sha256": "dd50175fe396bc3ddd702fc9f7ac3aa9a03c510ac8ec29e1c26a218876c753bd"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline_sec": 780,
+    "reserve_sec": 30
+  },
+  "spend": {
+    "soft_usd": null,
+    "hard_usd": null,
+    "enforcement": "soft: checked before each dispatch starts; a running dispatch can pass it",
+    "hard_note": "no hard dollar cap: no executor adapter reserves a known maximum charge before a model call",
+    "known_usd": 0.086968866,
+    "unknown_calls": 0
+  },
+  "generation": 2,
+  "started_at": "2026-09-23T05:47:32.411Z",
+  "updated_at": "2026-09-23T05:48:39.959Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 264320,
+      "sha256": "5a785c301157a3a9cbc0f614968c66a8af390bab47d425c0d3f36dbc9e911674"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 9705,
+      "sha256": "31aea35529c4b3cc4636df4369af5f718186d917ee8ff7e24cd83d8503590599"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 1151,
+      "sha256": "a1ea21f61024a3291cf75eac54f784caa16e9752a6b8d08c0cfc83b522472422"
+    },
+    "composition": {
+      "path": "artifacts/composition.json",
+      "bytes": 3387,
+      "sha256": "bb1a252666bbbc379ac2f2e6716dd923eb55485c86ceff754d48f360926463ac"
+    },
+    "requirements": {
+      "path": "artifacts/requirements.json",
+      "bytes": 4200,
+      "sha256": "c47e060a1fa3d24ed6a11f942700996c9fbb4b6829f432058536e5b29d729156"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 2470,
+      "sha256": "3219976f2d7cd30335cf36b7bcf292cc59c42e8c47f62ad35f731224b591253a"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 5314,
+      "sha256": "fcb1f92df7b0699c2bcb04d4a937384907590712223aeb770cd4c910499bb43f"
+    },
+    "delegate-1_system_md": {
+      "path": "artifacts/delegate-1.system.md",
+      "bytes": 1542,
+      "sha256": "d2ccda88e4b9fc3119b2db881f7eb463cf86e6557cef6cc4f75a0aca389b9aec"
+    },
+    "delegate-2_briefing_md": {
+      "path": "artifacts/delegate-2.briefing.md",
+      "bytes": 4195,
+      "sha256": "afbd61e2fcc7d01fac664babfc4f420ac0563556e841637caca949cf2e72dbd0"
+    },
+    "delegate-2_stream_jsonl": {
+      "path": "artifacts/delegate-2.stream.jsonl",
+      "bytes": 28307,
+      "sha256": "778ff3ae17a2d81137c70fc0e40e7d3aeefd754a8be3231f695f9e6e24c5f181"
+    },
+    "delegate-2_system_md": {
+      "path": "artifacts/delegate-2.system.md",
+      "bytes": 1542,
+      "sha256": "d2ccda88e4b9fc3119b2db881f7eb463cf86e6557cef6cc4f75a0aca389b9aec"
+    },
+    "invocation_log": {
+      "path": "episode.atif.jsonl",
+      "bytes": 174992,
+      "sha256": "1e6e228287c0c784890a4819fe87ed0fe66682e6b491328b9214ac5fd6e891df",
+      "ended": true,
+      "faults": 0
+    }
+  },
+  "deadline": {
+    "kind": "hard",
+    "total_ms": 780000,
+    "reserve_ms": 30000,
+    "elapsed_ms": 67578,
+    "remaining_ms": 712421,
+    "used_fraction": 0.08663936830769231,
+    "cuts": [],
+    "note": "one monotonic deadline from the episode's start; every dispatch, Jev request, retry, wait, setup command, probe, and check is granted at most what is left after the reserve"
+  },
+  "verification": {
+    "note": "The composition's checks observe requirements; the task's verifier is still the only grader.",
+    "checks": [
+      {
+        "after": "primary",
+        "file": "verification/checks.json",
+        "summary": {
+          "candidate": "752d55a2895cd2e8a446382e9b7885ee28f67036d0a548cfddbc4df86ad18efa",
+          "scenarios": 6,
+          "verdicts": {
+            "failed": 1,
+            "passed": 5
+          },
+          "requirements": {
+            "contradicted": 1,
+            "observed": 2,
+            "unobserved": 1
+          },
+          "packets": 1
+        }
+      },
+      {
+        "after": "escalation",
+        "file": "verification/checks-escalated.json",
+        "summary": {
+          "candidate": "8fdf8785a61a9092a0545982b9681b9c9737bc9e92cf1d7aa11bd9c71ca8324d",
+          "scenarios": 6,
+          "verdicts": {
+            "passed": 6
+          },
+          "requirements": {
+            "observed": 3,
+            "unobserved": 1
+          },
+          "packets": 0
+        }
+      }
+    ],
+    "support": null,
+    "repair": {
+      "tier": {
+        "agent": "claude-code",
+        "model": "claude-opus-5-5",
+        "effort": "low",
+        "tools": "Bash,Read,Edit,Write,Glob,Grep",
+        "prompt_cache_ttl": "5m",
+        "version": "2.1.280"
+      },
+      "triggered": false,
+      "ran": false,
+      "changed": false,
+      "skipped": "no check contradicted a requirement",
+      "session": null,
+      "recheck": null,
+      "cost_usd": 0.0
+    }
+  },
+  "result": {
+    "title": "Create a Python function called `async run_tasks(tasks: list[Callable[[], Awaitable[None]]], max_con…",
+    "summary": "I fixed `/app/run.py` so that interrupting a run now lets every started task finish its cleanup before `run_tasks` returns.\n\n**Cause of the failed check:** each running task was being cancelled twice. The existing code waited on the tasks with `asyncio.gather`, which cancels its tasks itself when the call is interrupted, and then the error handler cancelled them again. The second cancel hit each task's cleanup (its `finally` block) partway through. That's why the check saw cleanup begin for tasks 0–2 but never finish.\n\n**Changes:**\n- **Waiting on tasks:** the function now waits with `asyncio.wait`, which doesn't cancel anything on its own. On interrupt, each unfinished task is cancelled exactly once.\n- **Waiting for cleanup:** it then waits for every task to finish. If it gets interrupted again while waiting (for example, a second Ctrl+C), it keeps waiting.\n- **Task errors:** if a task raises, the others are cancelled and cleaned up, and the error is re-raised. This still needs the `gather` call that comes after the wait.\n\n**Tests run with the system Python:**\n- **Two cancels:** 5 tasks, limit 3, cancelled twice after 3 had started. All three cleanups began and finished before the call returned.\n- **Real Ctrl+C:** I sent a SIGINT to a live process running 8 tasks with a limit of 3. Every started task finished its cleanup, no more than 3 ran at once, and the process exited with `KeyboardInterrupt`.\n- **Normal run:** 6 tasks with a limit of 2 all completed.\n- **A task raising:** a `ValueError` from one task was passed on to the caller.\n\nI didn't run the grader's own check (`cancel.internal.above`) again, so I haven't confirmed it now passes. My double-cancel test covers the same scenario.",
+    "delegate_status": "answered"
+  }
+}

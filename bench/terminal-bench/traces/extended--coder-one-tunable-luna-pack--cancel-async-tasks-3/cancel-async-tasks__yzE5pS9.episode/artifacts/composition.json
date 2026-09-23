@@ -1,0 +1,145 @@
+{
+  "schema": "openagents.coder-one.composition.v1",
+  "route": null,
+  "first": {
+    "start": "manifest",
+    "tier": {
+      "agent": "codex",
+      "model": "gpt-6-luna",
+      "version": "0.155.1"
+    },
+    "reason": "no control.route: the manifest's executor starts"
+  },
+  "horizon": {
+    "policy": {
+      "first_share": 0.55,
+      "later_share": 0.75,
+      "min_dispatch_sec": 300,
+      "check_share": 0.05,
+      "long_after_sec": 3600,
+      "long_effort": "medium",
+      "long_command_sec": 3600
+    },
+    "episode_deadline_sec": 779,
+    "long": false,
+    "first_dispatch_sec": 412,
+    "check_budget": {
+      "max_scenarios": 12,
+      "seconds": 180
+    },
+    "command_sec": 60
+  },
+  "planner": null,
+  "handoffs": [
+    {
+      "pattern": "escalate",
+      "action": "escalate",
+      "from": "codex/gpt-6-luna",
+      "to": "claude-code/claude-opus-5-5",
+      "trigger": "a check failed",
+      "brief_chars": 1723,
+      "requested_sec": 542,
+      "remaining_ms": 722373
+    }
+  ],
+  "escalated": true,
+  "branches": [
+    {
+      "role": "primary",
+      "tier": {
+        "agent": "codex",
+        "model": "gpt-6-luna",
+        "version": "0.155.1"
+      },
+      "status": "answered",
+      "milliseconds": 18699,
+      "requested_sec": 412,
+      "usd": 0.0009287000000000001,
+      "charge": "priced",
+      "turns": 1,
+      "stopped_by": null,
+      "session_id": "01a0ccd1-6cd9-7e61-810d-f76186f4f56f"
+    },
+    {
+      "role": "escalation",
+      "tier": {
+        "agent": "claude-code",
+        "model": "claude-opus-5-5",
+        "effort": "low",
+        "tools": "Bash,Read,Edit,Write,Glob,Grep",
+        "prompt_cache_ttl": "5m",
+        "version": "2.1.280"
+      },
+      "status": "answered",
+      "milliseconds": 26655,
+      "requested_sec": 542,
+      "usd": 0.074842,
+      "charge": "priced",
+      "turns": 4,
+      "stopped_by": null,
+      "session_id": "134fa133-27b9-415f-b93e-272b5d76ba06"
+    }
+  ],
+  "checks": [
+    {
+      "after": "primary",
+      "file": "verification/checks.json",
+      "summary": {
+        "candidate": "2397c20716902df00a5033a34188e68be6ba8105616ba3cb6a4f2449ee3f2c3e",
+        "scenarios": 6,
+        "verdicts": {
+          "failed": 1,
+          "passed": 5
+        },
+        "requirements": {
+          "contradicted": 1,
+          "observed": 2,
+          "unobserved": 1
+        },
+        "packets": 1
+      }
+    },
+    {
+      "after": "escalation",
+      "file": "verification/checks-escalated.json",
+      "summary": {
+        "candidate": "3cc8b56d3bcd1f5f466d22494956f9a0005d677ac5fe2399144820ec6d90c35f",
+        "scenarios": 6,
+        "verdicts": {
+          "passed": 6
+        },
+        "requirements": {
+          "observed": 3,
+          "unobserved": 1
+        },
+        "packets": 0
+      }
+    }
+  ],
+  "support": null,
+  "repair": {
+    "tier": {
+      "agent": "claude-code",
+      "model": "claude-opus-5-5",
+      "effort": "low",
+      "tools": "Bash,Read,Edit,Write,Glob,Grep",
+      "prompt_cache_ttl": "5m",
+      "version": "2.1.280"
+    },
+    "triggered": false,
+    "ran": false,
+    "changed": false,
+    "skipped": "no check contradicted a requirement",
+    "session": null,
+    "recheck": null,
+    "cost_usd": 0.0
+  },
+  "verify": {
+    "checks": true,
+    "support": false,
+    "repair": {
+      "brief": "packet",
+      "trigger": "detected"
+    }
+  }
+}

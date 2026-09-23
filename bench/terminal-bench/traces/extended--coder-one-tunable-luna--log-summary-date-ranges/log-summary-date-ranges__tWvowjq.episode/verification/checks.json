@@ -1,0 +1,430 @@
+{
+  "schema": "openagents.coder-one.checks.v1",
+  "implementation": {
+    "name": "admitted scenario catalog, deterministic selector",
+    "digest": "b81f1d8b5c4ccef58702fffbdf222f8543355c36adf06fe66208be128cf5ac32"
+  },
+  "candidate": {
+    "label": "terminal-bench task",
+    "origin": "workspace",
+    "digest": "55824ce6700e7e9e3dd3cb931a0fd25e0df8c8eca44d8616aa82079d2cf29e81",
+    "files": [
+      "logs/2025-07-03_api.log",
+      "logs/2025-07-03_app.log",
+      "logs/2025-07-03_auth.log",
+      "logs/2025-07-03_db.log",
+      "logs/2025-07-04_api.log",
+      "logs/2025-07-04_app.log",
+      "logs/2025-07-04_auth.log",
+      "logs/2025-07-04_db.log",
+      "logs/2025-07-05_api.log",
+      "logs/2025-07-05_app.log",
+      "logs/2025-07-05_auth.log",
+      "logs/2025-07-05_db.log",
+      "logs/2025-07-06_api.log",
+      "logs/2025-07-06_app.log",
+      "logs/2025-07-06_auth.log",
+      "logs/2025-07-06_db.log",
+      "logs/2025-07-07_api.log",
+      "logs/2025-07-07_app.log",
+      "logs/2025-07-07_auth.log",
+      "logs/2025-07-07_db.log",
+      "logs/2025-07-08_api.log",
+      "logs/2025-07-08_app.log",
+      "logs/2025-07-08_auth.log",
+      "logs/2025-07-08_db.log",
+      "logs/2025-07-09_api.log",
+      "logs/2025-07-09_app.log",
+      "logs/2025-07-09_auth.log",
+      "logs/2025-07-09_db.log",
+      "logs/2025-07-10_api.log",
+      "logs/2025-07-10_app.log",
+      "logs/2025-07-10_auth.log",
+      "logs/2025-07-10_db.log",
+      "logs/2025-07-11_api.log",
+      "logs/2025-07-11_app.log",
+      "logs/2025-07-11_auth.log",
+      "logs/2025-07-11_db.log",
+      "logs/2025-07-12_api.log",
+      "logs/2025-07-12_app.log",
+      "logs/2025-07-12_auth.log",
+      "logs/2025-07-12_db.log",
+      "logs/2025-07-13_api.log",
+      "logs/2025-07-13_app.log",
+      "logs/2025-07-13_auth.log",
+      "logs/2025-07-13_db.log",
+      "logs/2025-07-14_api.log",
+      "logs/2025-07-14_app.log",
+      "logs/2025-07-14_auth.log",
+      "logs/2025-07-14_db.log",
+      "logs/2025-07-15_api.log",
+      "logs/2025-07-15_app.log",
+      "logs/2025-07-15_auth.log",
+      "logs/2025-07-15_db.log",
+      "logs/2025-07-16_api.log",
+      "logs/2025-07-16_app.log",
+      "logs/2025-07-16_auth.log",
+      "logs/2025-07-16_db.log",
+      "logs/2025-07-17_api.log",
+      "logs/2025-07-17_app.log",
+      "logs/2025-07-17_auth.log",
+      "logs/2025-07-17_db.log",
+      "logs/2025-07-18_api.log",
+      "logs/2025-07-18_app.log",
+      "logs/2025-07-18_auth.log",
+      "logs/2025-07-18_db.log",
+      "logs/2025-07-19_api.log",
+      "logs/2025-07-19_app.log",
+      "logs/2025-07-19_auth.log",
+      "logs/2025-07-19_db.log",
+      "logs/2025-07-20_api.log",
+      "logs/2025-07-20_app.log",
+      "logs/2025-07-20_auth.log",
+      "logs/2025-07-20_db.log",
+      "logs/2025-07-21_api.log",
+      "logs/2025-07-21_app.log",
+      "logs/2025-07-21_auth.log",
+      "logs/2025-07-21_db.log",
+      "logs/2025-07-22_api.log",
+      "logs/2025-07-22_app.log",
+      "logs/2025-07-22_auth.log",
+      "logs/2025-07-22_db.log",
+      "logs/2025-07-23_api.log",
+      "logs/2025-07-23_app.log",
+      "logs/2025-07-23_auth.log",
+      "logs/2025-07-23_db.log",
+      "logs/2025-07-24_api.log",
+      "logs/2025-07-24_app.log",
+      "logs/2025-07-24_auth.log",
+      "logs/2025-07-24_db.log",
+      "logs/2025-07-25_api.log",
+      "logs/2025-07-25_app.log",
+      "logs/2025-07-25_auth.log",
+      "logs/2025-07-25_db.log",
+      "logs/2025-07-26_api.log",
+      "logs/2025-07-26_app.log",
+      "logs/2025-07-26_auth.log",
+      "logs/2025-07-26_db.log",
+      "logs/2025-07-27_api.log",
+      "logs/2025-07-27_app.log",
+      "logs/2025-07-27_auth.log",
+      "logs/2025-07-27_db.log",
+      "logs/2025-07-28_api.log",
+      "logs/2025-07-28_app.log",
+      "logs/2025-07-28_auth.log",
+      "logs/2025-07-28_db.log",
+      "logs/2025-07-29_api.log",
+      "logs/2025-07-29_app.log",
+      "logs/2025-07-29_auth.log",
+      "logs/2025-07-29_db.log",
+      "logs/2025-07-30_api.log",
+      "logs/2025-07-30_app.log",
+      "logs/2025-07-30_auth.log",
+      "logs/2025-07-30_db.log",
+      "logs/2025-07-31_api.log",
+      "logs/2025-07-31_app.log",
+      "logs/2025-07-31_auth.log",
+      "logs/2025-07-31_db.log",
+      "logs/2025-08-01_api.log",
+      "logs/2025-08-01_app.log",
+      "logs/2025-08-01_auth.log",
+      "logs/2025-08-01_db.log",
+      "logs/2025-08-02_api.log",
+      "logs/2025-08-02_app.log",
+      "logs/2025-08-02_auth.log",
+      "logs/2025-08-02_db.log",
+      "logs/2025-08-03_api.log",
+      "logs/2025-08-03_app.log",
+      "logs/2025-08-03_auth.log",
+      "logs/2025-08-03_db.log",
+      "logs/2025-08-04_api.log",
+      "logs/2025-08-04_app.log",
+      "logs/2025-08-04_auth.log",
+      "logs/2025-08-04_db.log",
+      "logs/2025-08-05_api.log",
+      "logs/2025-08-05_app.log",
+      "logs/2025-08-05_auth.log",
+      "logs/2025-08-05_db.log",
+      "logs/2025-08-06_api.log",
+      "logs/2025-08-06_app.log",
+      "logs/2025-08-06_auth.log",
+      "logs/2025-08-06_db.log",
+      "logs/2025-08-07_api.log",
+      "logs/2025-08-07_app.log",
+      "logs/2025-08-07_auth.log",
+      "logs/2025-08-07_db.log",
+      "logs/2025-08-08_api.log",
+      "logs/2025-08-08_app.log",
+      "logs/2025-08-08_auth.log",
+      "logs/2025-08-08_db.log",
+      "logs/2025-08-09_api.log",
+      "logs/2025-08-09_app.log",
+      "logs/2025-08-09_auth.log",
+      "logs/2025-08-09_db.log",
+      "logs/2025-08-10_api.log",
+      "logs/2025-08-10_app.log",
+      "logs/2025-08-10_auth.log",
+      "logs/2025-08-10_db.log",
+      "logs/2025-08-11_api.log",
+      "logs/2025-08-11_app.log",
+      "logs/2025-08-11_auth.log",
+      "logs/2025-08-11_db.log",
+      "logs/2025-08-12_api.log",
+      "logs/2025-08-12_app.log",
+      "logs/2025-08-12_auth.log",
+      "logs/2025-08-12_db.log",
+      "summary.csv"
+    ],
+    "programs": 0
+  },
+  "requirements_method": "jev",
+  "ineligible": [
+    {
+      "kind": "data",
+      "why": "the candidate has no program that writes /app/summary.csv from /app/logs"
+    },
+    {
+      "kind": "interactive",
+      "why": "the instruction asks for no interactive behavior"
+    },
+    {
+      "kind": "cancellation",
+      "why": "the instruction asks for no cleanup on cancellation"
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "generic.output:/app/summary.csv",
+      "kind": "generic.output",
+      "requirements": [
+        "R8"
+      ],
+      "spans": [
+        {
+          "requirement": "R8",
+          "span": "s11",
+          "start": 658,
+          "end": 744,
+          "text": "Write a CSV file /app/summary.csv with the following structure (including the header):"
+        }
+      ],
+      "applies": [
+        "R8 names the output /app/summary.csv"
+      ],
+      "interface": "the file /app/summary.csv",
+      "bounds": {
+        "seconds": 1,
+        "processes": 1
+      },
+      "effects": [
+        "reads the file in the task's working directory"
+      ],
+      "candidate": "55824ce6700e7e9e3dd3cb931a0fd25e0df8c8eca44d8616aa82079d2cf29e81",
+      "input": "1f746fbe8d9bf66dff6eed51df6d21aff2388ffcd42afddffb1cbf60bd69b2e3",
+      "expected": {
+        "statement": "/app/summary.csv exists and isn't empty.",
+        "derivation": "R8 asks for /app/summary.csv to be written."
+      },
+      "params": {
+        "path": "/app/summary.csv",
+        "resolved": "/app/summary.csv"
+      }
+    },
+    {
+      "id": "generic.parse:/app/summary.csv",
+      "kind": "generic.parse",
+      "requirements": [
+        "R8"
+      ],
+      "spans": [
+        {
+          "requirement": "R8",
+          "span": "s11",
+          "start": 658,
+          "end": 744,
+          "text": "Write a CSV file /app/summary.csv with the following structure (including the header):"
+        }
+      ],
+      "applies": [
+        "/app/summary.csv has the structured format csv"
+      ],
+      "interface": "the file /app/summary.csv",
+      "bounds": {
+        "seconds": 10,
+        "processes": 1
+      },
+      "effects": [
+        "reads the file in the task's working directory"
+      ],
+      "candidate": "55824ce6700e7e9e3dd3cb931a0fd25e0df8c8eca44d8616aa82079d2cf29e81",
+      "input": "070025bf15e5d57127ff16629bda435378862a9f3b7274f4d2c4bafd82f82c4e",
+      "expected": {
+        "statement": "/app/summary.csv parses as csv and starts with the header period,severity,count.",
+        "derivation": "The task names /app/summary.csv; its extension says its format."
+      },
+      "params": {
+        "path": "/app/summary.csv",
+        "resolved": "/app/summary.csv",
+        "format": "csv",
+        "header": "period,severity,count"
+      }
+    }
+  ],
+  "selection": {
+    "selector": "deterministic",
+    "admitted": 2,
+    "selected": [
+      "generic.output:/app/summary.csv",
+      "generic.parse:/app/summary.csv"
+    ],
+    "skipped": [],
+    "bound_seconds": 11,
+    "budget": {
+      "max_scenarios": 12,
+      "seconds": 180
+    }
+  },
+  "verdicts": [
+    {
+      "scenario": "generic.output:/app/summary.csv",
+      "verdict": "passed",
+      "observations": [
+        {
+          "path": "/app/summary.csv",
+          "exists": true,
+          "bytes": 367
+        }
+      ],
+      "coverage": [
+        "checks that the file is there, not what it holds"
+      ]
+    },
+    {
+      "scenario": "generic.parse:/app/summary.csv",
+      "verdict": "passed",
+      "observations": [
+        {
+          "path": "/app/summary.csv",
+          "format": "csv",
+          "problem": null
+        }
+      ],
+      "coverage": [
+        "checks the format, not the values"
+      ]
+    }
+  ],
+  "coverage": [
+    {
+      "id": "R1",
+      "text": "Your task is to analyze all logs and count how many times each severity appears within the following date ranges:",
+      "kind": "behavior",
+      "state": "unobserved",
+      "scenarios": []
+    },
+    {
+      "id": "R2",
+      "text": "Today (the current date)",
+      "kind": "behavior",
+      "state": "unobserved",
+      "scenarios": []
+    },
+    {
+      "id": "R3",
+      "text": "Last 7 days (including today)",
+      "kind": "behavior",
+      "state": "unobserved",
+      "scenarios": []
+    },
+    {
+      "id": "R4",
+      "text": "Last 30 days (including today)",
+      "kind": "behavior",
+      "state": "unobserved",
+      "scenarios": []
+    },
+    {
+      "id": "R5",
+      "text": "Current month to date (from the 1st date of the current month up to and including today)",
+      "kind": "behavior",
+      "state": "unobserved",
+      "scenarios": []
+    },
+    {
+      "id": "R6",
+      "text": "Total (all log files combined, regardless of date)",
+      "kind": "behavior",
+      "state": "unobserved",
+      "scenarios": []
+    },
+    {
+      "id": "R7",
+      "text": "The severity levels to count are exactly: ERROR, WARNING, and INFO.",
+      "kind": "constraint",
+      "state": "unobserved",
+      "scenarios": []
+    },
+    {
+      "id": "R8",
+      "text": "Write a CSV file /app/summary.csv with the following structure (including the header):",
+      "kind": "deliverable",
+      "state": "observed",
+      "scenarios": [
+        {
+          "id": "generic.output:/app/summary.csv",
+          "verdict": "passed",
+          "scenario_verdict": "passed",
+          "coverage": [
+            "checks that the file is there, not what it holds"
+          ],
+          "candidate": "55824ce6700e7e9e3dd3cb931a0fd25e0df8c8eca44d8616aa82079d2cf29e81"
+        },
+        {
+          "id": "generic.parse:/app/summary.csv",
+          "verdict": "passed",
+          "scenario_verdict": "passed",
+          "coverage": [
+            "checks the format, not the values"
+          ],
+          "candidate": "55824ce6700e7e9e3dd3cb931a0fd25e0df8c8eca44d8616aa82079d2cf29e81"
+        }
+      ]
+    },
+    {
+      "id": "R9",
+      "text": "period,severity,count\ntoday,ERROR,<count>\ntoday,WARNING,<count>\ntoday,INFO,<count>\nlast_7_days,ERROR,<count>\nlast_7_days,WARNING,<count>\nlast_7_days,INFO,<count>\nlast_30_days,ERROR,<count>\nlast_30_days,WARNING,<count>\nlast_30_days,INFO,<count>\nmonth_to_date,ERROR,<count>\nmonth_to_date,WARNING,<count>\nmonth_to_date,INFO,<count>\ntotal,ERROR,<count>\ntotal,WARNING,<count>\ntotal,INFO,<count>",
+      "kind": "deliverable",
+      "state": "unobserved",
+      "scenarios": []
+    },
+    {
+      "id": "R10",
+      "text": "Each row should report the total count of each severity for the corresponding date range.",
+      "kind": "behavior",
+      "state": "unobserved",
+      "scenarios": []
+    },
+    {
+      "id": "R11",
+      "text": "The current date is 2025-08-12.",
+      "kind": "constraint",
+      "state": "unobserved",
+      "scenarios": []
+    },
+    {
+      "id": "R12",
+      "text": "Use this as the reference date for all calculations.",
+      "kind": "constraint",
+      "state": "unobserved",
+      "scenarios": []
+    },
+    {
+      "id": "R13",
+      "text": "You can assume log filenames always follow the YYYY-MM-DD_<source>.log pattern.",
+      "kind": "constraint",
+      "state": "unobserved",
+      "scenarios": []
+    }
+  ],
+  "packets": []
+}

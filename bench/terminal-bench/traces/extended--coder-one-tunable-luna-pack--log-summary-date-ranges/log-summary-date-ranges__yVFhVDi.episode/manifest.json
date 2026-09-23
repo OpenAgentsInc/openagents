@@ -1,0 +1,474 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "policy": {
+    "schema": "openagents.coder-one.policy.v1",
+    "name": "coder-one-tunable-luna-pack",
+    "digest": "a7c6962858a063e8fcb0b790fed714f0a6f03545681badb3ac2ad2bff19b2781",
+    "source": "inline",
+    "overrides": [
+      {
+        "source": "CODER_ONE_EPISODE_DEADLINE",
+        "field": "protected.ceilings.episode_deadline_sec",
+        "value": "780"
+      }
+    ],
+    "notes": [],
+    "manifest": {
+      "schema": "openagents.coder-one.policy.v1",
+      "name": "coder-one-tunable-luna-pack",
+      "note": "Codex on GPT-6 Luna with the headless core system prompt, verify.checks on the live workspace, escalation to lean Claude Code on Opus 5.5 on a stall, a failed check, or no answer, and one verify.repair from the diagnostic packets. control.horizon sizes every dispatch from the task's own timeout. The briefing uses the coverage packer with Jev coverage judgments (brief.packer coverage-jev), which fixed Luna on log-summary-date-ranges.",
+      "policy": {
+        "jev": {
+          "mode": "deep",
+          "model": "jev-1.13.0",
+          "question_sets": "builtin-v1"
+        },
+        "evidence": {
+          "probes": "v2",
+          "survey_files": 40
+        },
+        "control": {
+          "delegate": "always",
+          "explore_steps": 0,
+          "max_steps": 50,
+          "command_timeout_sec": 300,
+          "lane": "free",
+          "error_streak": 3,
+          "unchanged_steps": 6,
+          "monitor": {
+            "on_operation": true,
+            "on_artifact": true,
+            "on_claim": true,
+            "silence_ms": 300000,
+            "window": 8,
+            "event_chars": 300,
+            "requirements": 10,
+            "threshold": 0.5,
+            "jev": true,
+            "stall_commands": 12,
+            "latency_ms": 800
+          },
+          "handoff": {
+            "pattern": "escalate",
+            "to": {
+              "agent": "claude-code",
+              "model": "claude-opus-5-5",
+              "effort": "low",
+              "tools": "Bash,Read,Edit,Write,Glob,Grep",
+              "prompt_cache_ttl": "5m",
+              "version": "2.1.280"
+            },
+            "on": [
+              "stalled",
+              "repeating"
+            ],
+            "after": 3,
+            "max_handoffs": 1,
+            "brief": {
+              "requirements": true,
+              "diff": true,
+              "errors": true,
+              "packets": true
+            },
+            "monitor": {
+              "on_operation": true,
+              "on_artifact": true,
+              "on_claim": true,
+              "silence_ms": 300000,
+              "window": 8,
+              "event_chars": 300,
+              "requirements": 10,
+              "threshold": 0.5,
+              "jev": true,
+              "stall_commands": 12,
+              "latency_ms": 800
+            }
+          },
+          "horizon": {
+            "first_share": 0.55,
+            "later_share": 0.75,
+            "min_dispatch_sec": 300,
+            "check_share": 0.05,
+            "long_after_sec": 3600,
+            "long_effort": "medium",
+            "long_command_sec": 3600
+          }
+        },
+        "brief": {
+          "cap": 12000,
+          "directions": "batch-checked",
+          "packer": "coverage-jev"
+        },
+        "executor": {
+          "agent": "codex",
+          "version": "0.155.1",
+          "model": "gpt-6-luna",
+          "effort": null,
+          "tools": null,
+          "prompt_cache_ttl": null,
+          "deadline_sec": 600,
+          "system": {
+            "mode": "replace",
+            "sections": [
+              "role",
+              "security",
+              "authority",
+              "verify",
+              "report",
+              "code-style"
+            ]
+          }
+        },
+        "verify": {
+          "checks": true,
+          "support": false,
+          "repair": {
+            "brief": "packet",
+            "trigger": "detected"
+          }
+        }
+      },
+      "protected": {
+        "isolation": "task-container",
+        "effect_policy": "executor-bypasses-its-own-sandbox",
+        "acceptance": "task-verifier",
+        "ceilings": {
+          "episode_deadline_sec": 780,
+          "reserve_sec": 30,
+          "spend_soft_usd": null,
+          "spend_hard_usd": null
+        }
+      }
+    },
+    "text_digests": {
+      "directions": "fea432bfc839af266ebfde909c2c0d9240b05206b815c2254c4849fee9757a1e",
+      "episode_instructions": "968529ff8c30adc54aeed0ed420a6108c23cf9157cc9bc034a9bae2af1ce9a2f",
+      "explore_prompt": "e00d4aa84650903e0b9174be59e0f5118f89c56fa7c878b2717632c4ff3c9e24",
+      "system": "295d575f2830763a5663487ddbb04b7f0b6dd2ea852926122eef893a6edc3607"
+    }
+  },
+  "delegate": {
+    "mode": "always",
+    "agent": "codex",
+    "model": "gpt-6-luna",
+    "version": "0.155.1",
+    "effort": null,
+    "tools": null,
+    "prompt_cache_ttl": null,
+    "system": {
+      "mode": "replace",
+      "sections": [
+        "role",
+        "security",
+        "authority",
+        "verify",
+        "report",
+        "code-style"
+      ]
+    },
+    "executor_path": "/usr/local/bin/codex",
+    "credential": "codex_auth_json",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "directions": "batch-checked",
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "3fed1fbac7f1d3e16525fd868597d469bb98204d0e7a89782b86559c88403dc1",
+        "chars": 10502,
+        "bytes": 10512,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "file logs/2025-08-07_api.log",
+          "file logs/2025-08-10_db.log",
+          "file logs/2025-07-07_api.log",
+          "file $ list /app (depth 3)",
+          "file $ list /app/logs"
+        ],
+        "omitted": []
+      },
+      "packer": "coverage",
+      "uncovered_requirements": [
+        "R11",
+        "R12"
+      ],
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 1,
+      "api_calls": null,
+      "completed_items": 2,
+      "charge": "priced",
+      "total_cost_usd": 0.00115302,
+      "milliseconds": 14755,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 3794,
+        "kept_bytes": 3794,
+        "truncated": false,
+        "sha256": "695599ede1f7092fc2daa0657ce5d8bb14cfe3a286c46908cfa14fb30b9e04d6",
+        "gaps": [],
+        "retention": "first 8388608 bytes written as they arrive; past that, the first and last halves"
+      },
+      "system": {
+        "schema": "openagents.coder-one.system-prompt.v1",
+        "variant": "manifest",
+        "agent": "codex",
+        "mode": "replace",
+        "setting": "model_instructions_file",
+        "digest": "295d575f2830763a5663487ddbb04b7f0b6dd2ea852926122eef893a6edc3607",
+        "chars": 1542,
+        "default": "codex 0.155.1 (gpt-6-luna)",
+        "default_chars": 18037,
+        "protected": true,
+        "sections": [
+          {
+            "id": "role",
+            "status": "core",
+            "chars": 214,
+            "by": "manifest"
+          },
+          {
+            "id": "security",
+            "status": "protected",
+            "chars": 461,
+            "by": "manifest"
+          },
+          {
+            "id": "authority",
+            "status": "core",
+            "chars": 334,
+            "by": "manifest"
+          },
+          {
+            "id": "verify",
+            "status": "core",
+            "chars": 258,
+            "by": "manifest"
+          },
+          {
+            "id": "report",
+            "status": "core",
+            "chars": 176,
+            "by": "manifest"
+          },
+          {
+            "id": "code-style",
+            "status": "core",
+            "chars": 95,
+            "by": "manifest"
+          }
+        ],
+        "asked": []
+      },
+      "close": {
+        "done": 0.61,
+        "criteria": [
+          {
+            "requirement": "Your task is to analyze all logs and count how many times each severity appears within the following date ranges:",
+            "p": 0.71
+          },
+          {
+            "requirement": "Today (the current date)",
+            "p": 0.6
+          },
+          {
+            "requirement": "Last 7 days (including today)",
+            "p": 0.58
+          },
+          {
+            "requirement": "Last 30 days (including today)",
+            "p": 0.58
+          },
+          {
+            "requirement": "Current month to date (from the 1st date of the current month up to and including today)",
+            "p": 0.65
+          },
+          {
+            "requirement": "Total (all log files combined, regardless of date)",
+            "p": 0.52
+          },
+          {
+            "requirement": "The severity levels to count are exactly: ERROR, WARNING, and INFO.",
+            "p": 0.63
+          },
+          {
+            "requirement": "Write a CSV file /app/summary.csv with the following structure (including the header):",
+            "p": 0.6
+          },
+          {
+            "requirement": "period,severity,count today,ERROR,<count> today,WARNING,<count> today,INFO,<count> last_7_days,ERROR,<count> last_7_days,WARNING,<count> last_7_days,INFO,<count> last_30_days,ERROR,<count> last_30_days,WARNING,<count> last_30_days,INFO,<count> month_to_date,ERROR,<count> month_to_date,WARNING,<count…",
+            "p": 0.7
+          },
+          {
+            "requirement": "Each row should report the total count of each severity for the corresponding date range.",
+            "p": 0.77
+          },
+          {
+            "requirement": "The current date is 2025-08-12.",
+            "p": 0.54
+          },
+          {
+            "requirement": "Use this as the reference date for all calculations.",
+            "p": 0.54
+          }
+        ],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (1a035cebe6e6)",
+    "sha256": "dd50175fe396bc3ddd702fc9f7ac3aa9a03c510ac8ec29e1c26a218876c753bd"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline_sec": 780,
+    "reserve_sec": 30
+  },
+  "spend": {
+    "soft_usd": null,
+    "hard_usd": null,
+    "enforcement": "soft: checked before each dispatch starts; a running dispatch can pass it",
+    "hard_note": "no hard dollar cap: no executor adapter reserves a known maximum charge before a model call",
+    "known_usd": 0.0029255880000000007,
+    "unknown_calls": 0
+  },
+  "generation": 2,
+  "started_at": "2026-09-23T05:44:45.736Z",
+  "updated_at": "2026-09-23T05:45:07.023Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 336531,
+      "sha256": "06b41037937cff4e77ef31d641a7997813c45b78170a2f995b1ee7c0395691ec"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 8539,
+      "sha256": "057f6ab640df06bbeff33935d56bc5d71b07bcb21c833fcd04a0130e80b99228"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 36651,
+      "sha256": "d5faea40ab40be7a4d61d9f3b195bcefd43e72e1a36f06e582cb8d9a0b43bb50"
+    },
+    "briefing_pack": {
+      "path": "artifacts/briefing-pack.json",
+      "bytes": 55919,
+      "sha256": "e3045936db48a45012c68a026e34c9454a0e400b5208bce560b99a87a1c46a94"
+    },
+    "composition": {
+      "path": "artifacts/composition.json",
+      "bytes": 2034,
+      "sha256": "cf6394447e06b2a736335b8c3c09adc90dfb278cc85f15ccb2b3cc1ca7e83187"
+    },
+    "requirements": {
+      "path": "artifacts/requirements.json",
+      "bytes": 11510,
+      "sha256": "f962190faff794f29cba35d17cbc4fe57d404c312114cb49b31be64f43ed7c85"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 10512,
+      "sha256": "3fed1fbac7f1d3e16525fd868597d469bb98204d0e7a89782b86559c88403dc1"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 3794,
+      "sha256": "695599ede1f7092fc2daa0657ce5d8bb14cfe3a286c46908cfa14fb30b9e04d6"
+    },
+    "delegate-1_system_md": {
+      "path": "artifacts/delegate-1.system.md",
+      "bytes": 1542,
+      "sha256": "d2ccda88e4b9fc3119b2db881f7eb463cf86e6557cef6cc4f75a0aca389b9aec"
+    },
+    "invocation_log": {
+      "path": "episode.atif.jsonl",
+      "bytes": 224683,
+      "sha256": "90988bfd80dc21d39d779fda56fc4310016f0f9404a1cc808fafde26d4afa3b8",
+      "ended": true,
+      "faults": 0
+    }
+  },
+  "deadline": {
+    "kind": "hard",
+    "total_ms": 780000,
+    "reserve_ms": 30000,
+    "elapsed_ms": 21374,
+    "remaining_ms": 758625,
+    "used_fraction": 0.027403633961538464,
+    "cuts": [],
+    "note": "one monotonic deadline from the episode's start; every dispatch, Jev request, retry, wait, setup command, probe, and check is granted at most what is left after the reserve"
+  },
+  "verification": {
+    "note": "The composition's checks observe requirements; the task's verifier is still the only grader.",
+    "checks": [
+      {
+        "after": "primary",
+        "file": "verification/checks.json",
+        "summary": {
+          "candidate": "c28a1b7f112998fdc4c9415e494e4fb61f21453d2bc73cdec70bdc3cab07fc5c",
+          "scenarios": 2,
+          "verdicts": {
+            "passed": 2
+          },
+          "requirements": {
+            "observed": 1,
+            "unobserved": 12
+          },
+          "packets": 0
+        }
+      }
+    ],
+    "support": null,
+    "repair": {
+      "tier": {
+        "agent": "codex",
+        "model": "gpt-6-luna",
+        "version": "0.155.1"
+      },
+      "triggered": false,
+      "ran": false,
+      "changed": false,
+      "skipped": "no check contradicted a requirement",
+      "session": null,
+      "recheck": null,
+      "cost_usd": 0.0
+    }
+  },
+  "result": {
+    "title": "You are given multiple log files stored in /app/logs. Each log file name follows the pattern YYYY-MM…",
+    "summary": "Created `/app/summary.csv` with the requested header and 15 period/severity rows. Counts were computed from matching severity tags in all log files, using 2025-08-12 as the reference date and inclusive date ranges.",
+    "delegate_status": "answered"
+  }
+}

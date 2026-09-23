@@ -571,6 +571,40 @@ and the traces say why:
   `brief.packer` unset. `coder-one-tunable-luna-pack` adds the coverage
   packer.
 
+### Luna first, escalating to Opus, 2026-09-23
+
+Two Luna-first tunable arms on the same eight tasks, three trials each:
+Codex on GPT-6 Luna starts; a failed check, a contradicted requirement, no
+answer, or a monitor stall escalates once to lean Opus 5.5 with a
+code-built handoff brief. Artifact `1a035cebe6e6`.
+
+| Arm | Passed | Eight-task mean cost | Eight-task mean agent time |
+| --- | --- | ---: | ---: |
+| Claude Code on Opus 5.5 alone | 24/24 | $1.0863 | 306.4 s |
+| Codex on GPT-6 Luna alone (13 of 16 across unequal trials) | 13/16 | $0.0432 | 577.9 s |
+| Luna first, section packer (`coder-one-tunable-luna`) | 22/24 | $0.0859‡ | 406.6 s |
+| **Luna first, coverage packer (`coder-one-tunable-luna-pack`)** | **24/24** | **$0.1505‡** | **385.0 s** |
+
+‡ Luna costs are manual list prices. Four trials of the coverage-packer arm
+have one Luna dispatch whose charge is unknown; the table counts the
+recorded lower bound, so the true cost is slightly higher.
+
+**Every trial passed, at one-seventh of Opus's cost.** The coverage-packer
+arm matched Claude Code on Opus 5.5's 24 of 24 for 86% less, with 26% more
+agent time. The section packer's two misses were both
+`log-summary-date-ranges`, the failure the coverage packer fixed.
+
+**Most of the remaining cost was a monitor false alarm.** The policy
+escalated on the monitor's stall flag after three judgments. In four
+trials (`build-cython-ext`, two `fix-code-vulnerability`,
+`sqlite-db-truncate`) it stopped a working Luna session after 12 to 30
+seconds, and Opus finished the task for $0.05 to $0.14, 10 to 40 times the
+Luna cost. The replay measurements had already shown Jev's stall flag
+right 0 times in 22. `coder-one-tunable-luna-v2` keeps the monitor in
+shadow mode and escalates only on a failed check, a contradicted
+requirement, or no answer. Escalations on `cancel-async-tasks` were real:
+Luna's candidate failed a cancellation check, and Opus fixed it.
+
 ### The `extended` tasks, cheapest first
 
 Arm means over three trials each, from the Jev-probe runs above.

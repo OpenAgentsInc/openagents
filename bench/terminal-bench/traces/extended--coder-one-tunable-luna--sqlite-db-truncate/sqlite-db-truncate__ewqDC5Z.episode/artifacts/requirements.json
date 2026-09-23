@@ -1,0 +1,106 @@
+{
+  "schema": "openagents.coder-one.requirements.v1",
+  "instruction_sha256": "465c135cd80be49023ea3ecf8f1d840c679b3a960efe425d510894e417b9d802",
+  "method": "jev",
+  "spans": [
+    {
+      "id": "s1",
+      "start": 0,
+      "end": 87,
+      "form": "sentence",
+      "text": "I have a sqlite database in /app/trunc.db that was corrupted through binary truncation.",
+      "requirement": null,
+      "kind": "context",
+      "kinds": {
+        "behavior": 0.0,
+        "check": 0.0,
+        "constraint": 0.0,
+        "context": 1.0,
+        "deliverable": 0.0
+      },
+      "answered": true
+    },
+    {
+      "id": "s2",
+      "start": 88,
+      "end": 173,
+      "form": "sentence",
+      "text": "Recover as many of the rows as possible, and create a JSON file in /app/recover.json.",
+      "requirement": "R1",
+      "kind": "deliverable",
+      "kinds": {
+        "behavior": 0.01,
+        "check": 0.0,
+        "constraint": 0.0,
+        "context": 0.0,
+        "deliverable": 0.99
+      },
+      "answered": true
+    },
+    {
+      "id": "s3",
+      "start": 174,
+      "end": 284,
+      "form": "sentence",
+      "text": "The output should have the format [{\"word\": \"testwordXY\", \"value\": M}, {\"word\": \"testwordZZ\",\"value\": N}, ...]",
+      "requirement": "R2",
+      "kind": "constraint",
+      "kinds": {
+        "behavior": 0.0,
+        "check": 0.0,
+        "constraint": 0.98,
+        "context": 0.0,
+        "deliverable": 0.02
+      },
+      "answered": true
+    }
+  ],
+  "requirements": [
+    {
+      "id": "R1",
+      "spans": [
+        "s2"
+      ],
+      "kind": "deliverable",
+      "binding": "yes",
+      "state": "unobserved",
+      "p": 1.0,
+      "text": "Recover as many of the rows as possible, and create a JSON file in /app/recover.json.",
+      "extracted": {
+        "paths": [
+          "/app/recover.json"
+        ],
+        "constants": [
+          "JSON"
+        ]
+      }
+    },
+    {
+      "id": "R2",
+      "spans": [
+        "s3"
+      ],
+      "kind": "constraint",
+      "binding": "yes",
+      "state": "unobserved",
+      "p": 1.0,
+      "exhaustive": 0.12,
+      "text": "The output should have the format [{\"word\": \"testwordXY\", \"value\": M}, {\"word\": \"testwordZZ\",\"value\": N}, ...]",
+      "extracted": {
+        "formats": [
+          "[{\"word\": \"testwordXY\", \"value\": M}, {\"word\": \"testwordZZ\",\"value\": N}, ...]",
+          "{\"word\": \"testwordXY\", \"value\": M}, {\"word\": \"testwordZZ\",\"value\": N}, ...]"
+        ]
+      }
+    }
+  ],
+  "coverage": {
+    "chars": 243,
+    "covered": 243,
+    "fraction": 1.0,
+    "spans": 3,
+    "requirement_spans": 2,
+    "context_spans": 1,
+    "unanswered_spans": 0
+  }
+}

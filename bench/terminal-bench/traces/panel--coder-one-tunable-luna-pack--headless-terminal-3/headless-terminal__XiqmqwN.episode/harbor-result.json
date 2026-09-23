@@ -1,0 +1,36 @@
+{
+  "trial_name": "headless-terminal__XiqmqwN",
+  "task_name": "terminal-bench/headless-terminal",
+  "started_at": "2026-09-23T05:50:09.376618Z",
+  "finished_at": "2026-09-23T05:51:54.112205Z",
+  "environment_setup": {
+    "started_at": "2026-09-23T05:50:09.417426Z",
+    "finished_at": "2026-09-23T05:50:10.322588Z"
+  },
+  "agent_setup": {
+    "started_at": "2026-09-23T05:50:10.322643Z",
+    "finished_at": "2026-09-23T05:50:16.921151Z"
+  },
+  "agent_execution": {
+    "started_at": "2026-09-23T05:50:16.921274Z",
+    "finished_at": "2026-09-23T05:51:13.603416Z"
+  },
+  "verifier": {
+    "started_at": "2026-09-23T05:51:13.827153Z",
+    "finished_at": "2026-09-23T05:51:40.550907Z"
+  },
+  "verifier_result": {
+    "rewards": {
+      "reward": 1.0
+    }
+  },
+  "agent_result": {
+    "n_input_tokens": 63029,
+    "n_cache_tokens": 40960,
+    "n_output_tokens": 1928,
+    "cost_usd": 0.002721346,
+    "rollout_details": null,
+    "metadata": null
+  },
+  "exception_info": null
+}

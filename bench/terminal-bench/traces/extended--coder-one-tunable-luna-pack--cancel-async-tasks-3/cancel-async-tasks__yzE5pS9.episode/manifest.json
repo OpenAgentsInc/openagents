@@ -1,0 +1,477 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "policy": {
+    "schema": "openagents.coder-one.policy.v1",
+    "name": "coder-one-tunable-luna-pack",
+    "digest": "a7c6962858a063e8fcb0b790fed714f0a6f03545681badb3ac2ad2bff19b2781",
+    "source": "inline",
+    "overrides": [
+      {
+        "source": "CODER_ONE_EPISODE_DEADLINE",
+        "field": "protected.ceilings.episode_deadline_sec",
+        "value": "780"
+      }
+    ],
+    "notes": [],
+    "manifest": {
+      "schema": "openagents.coder-one.policy.v1",
+      "name": "coder-one-tunable-luna-pack",
+      "note": "Codex on GPT-6 Luna with the headless core system prompt, verify.checks on the live workspace, escalation to lean Claude Code on Opus 5.5 on a stall, a failed check, or no answer, and one verify.repair from the diagnostic packets. control.horizon sizes every dispatch from the task's own timeout. The briefing uses the coverage packer with Jev coverage judgments (brief.packer coverage-jev), which fixed Luna on log-summary-date-ranges.",
+      "policy": {
+        "jev": {
+          "mode": "deep",
+          "model": "jev-1.13.0",
+          "question_sets": "builtin-v1"
+        },
+        "evidence": {
+          "probes": "v2",
+          "survey_files": 40
+        },
+        "control": {
+          "delegate": "always",
+          "explore_steps": 0,
+          "max_steps": 50,
+          "command_timeout_sec": 300,
+          "lane": "free",
+          "error_streak": 3,
+          "unchanged_steps": 6,
+          "monitor": {
+            "on_operation": true,
+            "on_artifact": true,
+            "on_claim": true,
+            "silence_ms": 300000,
+            "window": 8,
+            "event_chars": 300,
+            "requirements": 10,
+            "threshold": 0.5,
+            "jev": true,
+            "stall_commands": 12,
+            "latency_ms": 800
+          },
+          "handoff": {
+            "pattern": "escalate",
+            "to": {
+              "agent": "claude-code",
+              "model": "claude-opus-5-5",
+              "effort": "low",
+              "tools": "Bash,Read,Edit,Write,Glob,Grep",
+              "prompt_cache_ttl": "5m",
+              "version": "2.1.280"
+            },
+            "on": [
+              "stalled",
+              "repeating"
+            ],
+            "after": 3,
+            "max_handoffs": 1,
+            "brief": {
+              "requirements": true,
+              "diff": true,
+              "errors": true,
+              "packets": true
+            },
+            "monitor": {
+              "on_operation": true,
+              "on_artifact": true,
+              "on_claim": true,
+              "silence_ms": 300000,
+              "window": 8,
+              "event_chars": 300,
+              "requirements": 10,
+              "threshold": 0.5,
+              "jev": true,
+              "stall_commands": 12,
+              "latency_ms": 800
+            }
+          },
+          "horizon": {
+            "first_share": 0.55,
+            "later_share": 0.75,
+            "min_dispatch_sec": 300,
+            "check_share": 0.05,
+            "long_after_sec": 3600,
+            "long_effort": "medium",
+            "long_command_sec": 3600
+          }
+        },
+        "brief": {
+          "cap": 12000,
+          "directions": "batch-checked",
+          "packer": "coverage-jev"
+        },
+        "executor": {
+          "agent": "codex",
+          "version": "0.155.1",
+          "model": "gpt-6-luna",
+          "effort": null,
+          "tools": null,
+          "prompt_cache_ttl": null,
+          "deadline_sec": 600,
+          "system": {
+            "mode": "replace",
+            "sections": [
+              "role",
+              "security",
+              "authority",
+              "verify",
+              "report",
+              "code-style"
+            ]
+          }
+        },
+        "verify": {
+          "checks": true,
+          "support": false,
+          "repair": {
+            "brief": "packet",
+            "trigger": "detected"
+          }
+        }
+      },
+      "protected": {
+        "isolation": "task-container",
+        "effect_policy": "executor-bypasses-its-own-sandbox",
+        "acceptance": "task-verifier",
+        "ceilings": {
+          "episode_deadline_sec": 780,
+          "reserve_sec": 30,
+          "spend_soft_usd": null,
+          "spend_hard_usd": null
+        }
+      }
+    },
+    "text_digests": {
+      "directions": "fea432bfc839af266ebfde909c2c0d9240b05206b815c2254c4849fee9757a1e",
+      "episode_instructions": "968529ff8c30adc54aeed0ed420a6108c23cf9157cc9bc034a9bae2af1ce9a2f",
+      "explore_prompt": "e00d4aa84650903e0b9174be59e0f5118f89c56fa7c878b2717632c4ff3c9e24",
+      "system": "295d575f2830763a5663487ddbb04b7f0b6dd2ea852926122eef893a6edc3607"
+    }
+  },
+  "delegate": {
+    "mode": "always",
+    "agent": "codex",
+    "model": "gpt-6-luna",
+    "version": "0.155.1",
+    "effort": null,
+    "tools": null,
+    "prompt_cache_ttl": null,
+    "system": {
+      "mode": "replace",
+      "sections": [
+        "role",
+        "security",
+        "authority",
+        "verify",
+        "report",
+        "code-style"
+      ]
+    },
+    "executor_path": "/usr/local/bin/codex",
+    "credential": "codex_auth_json",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "directions": "batch-checked",
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "5024fea34a1c3a9c3e77772df2705f4719772a321c307bd41fe75a1aa2a83cf2",
+        "chars": 2500,
+        "bytes": 2506,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "file $ list /app (depth 3)"
+        ],
+        "omitted": [
+          "file $ list test files under /app (depth 4) (duplicate listing)"
+        ]
+      },
+      "packer": "coverage",
+      "uncovered_requirements": [
+        "R1",
+        "R3",
+        "R4"
+      ],
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 1,
+      "api_calls": null,
+      "completed_items": 2,
+      "charge": "priced",
+      "total_cost_usd": 0.0009287000000000001,
+      "milliseconds": 18699,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 5488,
+        "kept_bytes": 5488,
+        "truncated": false,
+        "sha256": "76b89e1a2bda9c5d1d056565dbb96aaf1877106187fc4867ebb06e5e6a535968",
+        "gaps": [],
+        "retention": "first 8388608 bytes written as they arrive; past that, the first and last halves"
+      },
+      "system": {
+        "schema": "openagents.coder-one.system-prompt.v1",
+        "variant": "manifest",
+        "agent": "codex",
+        "mode": "replace",
+        "setting": "model_instructions_file",
+        "digest": "295d575f2830763a5663487ddbb04b7f0b6dd2ea852926122eef893a6edc3607",
+        "chars": 1542,
+        "default": "codex 0.155.1 (gpt-6-luna)",
+        "default_chars": 18037,
+        "protected": true,
+        "sections": [
+          {
+            "id": "role",
+            "status": "core",
+            "chars": 214,
+            "by": "manifest"
+          },
+          {
+            "id": "security",
+            "status": "protected",
+            "chars": 461,
+            "by": "manifest"
+          },
+          {
+            "id": "authority",
+            "status": "core",
+            "chars": 334,
+            "by": "manifest"
+          },
+          {
+            "id": "verify",
+            "status": "core",
+            "chars": 258,
+            "by": "manifest"
+          },
+          {
+            "id": "report",
+            "status": "core",
+            "chars": 176,
+            "by": "manifest"
+          },
+          {
+            "id": "code-style",
+            "status": "core",
+            "chars": 95,
+            "by": "manifest"
+          }
+        ],
+        "asked": []
+      },
+      "close": {
+        "done": 0.62,
+        "criteria": [
+          {
+            "requirement": "Create a Python function called `async run_tasks(tasks: list[Callable[[], Awaitable[None]]], max_concurrent: int) -> None` where each task is an async job to be run and `max_concurrent` is the max number of tasks that can be run concurrently.",
+            "p": 0.79
+          },
+          {
+            "requirement": "Put the function in a file called `/app/run.py` so that it can be imported using `from run import run_tasks`.",
+            "p": 0.83
+          },
+          {
+            "requirement": "Just use the system python to implement.",
+            "p": 0.65
+          },
+          {
+            "requirement": "Sometimes I cancel runs via keyboard interrupt but I want the tasks' cleanup code to still run.",
+            "p": 0.8
+          }
+        ],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (1a035cebe6e6)",
+    "sha256": "dd50175fe396bc3ddd702fc9f7ac3aa9a03c510ac8ec29e1c26a218876c753bd"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline_sec": 780,
+    "reserve_sec": 30
+  },
+  "spend": {
+    "soft_usd": null,
+    "hard_usd": null,
+    "enforcement": "soft: checked before each dispatch starts; a running dispatch can pass it",
+    "hard_note": "no hard dollar cap: no executor adapter reserves a known maximum charge before a model call",
+    "known_usd": 0.07632762000000001,
+    "unknown_calls": 0
+  },
+  "generation": 2,
+  "started_at": "2026-09-23T05:51:09.895Z",
+  "updated_at": "2026-09-23T05:52:11.366Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 261884,
+      "sha256": "5064a070bf3f0db95432e221c4ae471144fa5f0a0f60aeb5389dfad08b2eca65"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 10038,
+      "sha256": "cd1c8ba53687fb50b359487110845bc4e3534302ecc79282f6bf87a8a45d5126"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 1151,
+      "sha256": "a849192451adf598938c67f76366b73c77044731b291ead99b87d77fdf9c0dc4"
+    },
+    "briefing_pack": {
+      "path": "artifacts/briefing-pack.json",
+      "bytes": 8441,
+      "sha256": "606511b38157b81c13a11f68c38efcc5e145446acee4b2e70e8aa7cbf4d38751"
+    },
+    "composition": {
+      "path": "artifacts/composition.json",
+      "bytes": 3386,
+      "sha256": "dafeaa632973d731bdc6e0470b501d60ff05abe819f48f0ee3c7a7bb2a3ad408"
+    },
+    "requirements": {
+      "path": "artifacts/requirements.json",
+      "bytes": 4200,
+      "sha256": "901bc84aeacba76e5e7d7d296967852b1feb6b0856f758131e6e9a33a948ecfd"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 2506,
+      "sha256": "5024fea34a1c3a9c3e77772df2705f4719772a321c307bd41fe75a1aa2a83cf2"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 5488,
+      "sha256": "76b89e1a2bda9c5d1d056565dbb96aaf1877106187fc4867ebb06e5e6a535968"
+    },
+    "delegate-1_system_md": {
+      "path": "artifacts/delegate-1.system.md",
+      "bytes": 1542,
+      "sha256": "d2ccda88e4b9fc3119b2db881f7eb463cf86e6557cef6cc4f75a0aca389b9aec"
+    },
+    "delegate-2_briefing_md": {
+      "path": "artifacts/delegate-2.briefing.md",
+      "bytes": 4231,
+      "sha256": "b2990da3b09e3ddf06f1e44f8d29094dfef7b4019f10c0c46c54090a39e27f60"
+    },
+    "delegate-2_stream_jsonl": {
+      "path": "artifacts/delegate-2.stream.jsonl",
+      "bytes": 27180,
+      "sha256": "c58f969f9ea44fd2fc403b00f4f466ce91aca9916bad0fb4937043831d419814"
+    },
+    "delegate-2_system_md": {
+      "path": "artifacts/delegate-2.system.md",
+      "bytes": 1542,
+      "sha256": "d2ccda88e4b9fc3119b2db881f7eb463cf86e6557cef6cc4f75a0aca389b9aec"
+    },
+    "invocation_log": {
+      "path": "episode.atif.jsonl",
+      "bytes": 172824,
+      "sha256": "c88a662e78445a2119f794077b7a09818c54c4ab47a94332a558cae562b42e20",
+      "ended": true,
+      "faults": 0
+    }
+  },
+  "deadline": {
+    "kind": "hard",
+    "total_ms": 780000,
+    "reserve_ms": 30000,
+    "elapsed_ms": 61491,
+    "remaining_ms": 718508,
+    "used_fraction": 0.07883465879358974,
+    "cuts": [],
+    "note": "one monotonic deadline from the episode's start; every dispatch, Jev request, retry, wait, setup command, probe, and check is granted at most what is left after the reserve"
+  },
+  "verification": {
+    "note": "The composition's checks observe requirements; the task's verifier is still the only grader.",
+    "checks": [
+      {
+        "after": "primary",
+        "file": "verification/checks.json",
+        "summary": {
+          "candidate": "2397c20716902df00a5033a34188e68be6ba8105616ba3cb6a4f2449ee3f2c3e",
+          "scenarios": 6,
+          "verdicts": {
+            "failed": 1,
+            "passed": 5
+          },
+          "requirements": {
+            "contradicted": 1,
+            "observed": 2,
+            "unobserved": 1
+          },
+          "packets": 1
+        }
+      },
+      {
+        "after": "escalation",
+        "file": "verification/checks-escalated.json",
+        "summary": {
+          "candidate": "3cc8b56d3bcd1f5f466d22494956f9a0005d677ac5fe2399144820ec6d90c35f",
+          "scenarios": 6,
+          "verdicts": {
+            "passed": 6
+          },
+          "requirements": {
+            "observed": 3,
+            "unobserved": 1
+          },
+          "packets": 0
+        }
+      }
+    ],
+    "support": null,
+    "repair": {
+      "tier": {
+        "agent": "claude-code",
+        "model": "claude-opus-5-5",
+        "effort": "low",
+        "tools": "Bash,Read,Edit,Write,Glob,Grep",
+        "prompt_cache_ttl": "5m",
+        "version": "2.1.280"
+      },
+      "triggered": false,
+      "ran": false,
+      "changed": false,
+      "skipped": "no check contradicted a requirement",
+      "session": null,
+      "recheck": null,
+      "cost_usd": 0.0
+    }
+  },
+  "result": {
+    "title": "Create a Python function called `async run_tasks(tasks: list[Callable[[], Awaitable[None]]], max_con…",
+    "summary": "I rewrote `/app/run.py`, and when interrupted it now waits for every running task's cleanup to finish before it returns. I tested it with my own script, not the checker that failed, so I haven't seen that check pass.\n\n**What was wrong.** The previous version waited on the tasks as one group. When interrupted, it only started each task's cleanup, and the call returned before any cleanup had finished.\n\n**What changed.** `run_tasks` still starts every job and uses a semaphore to allow at most `max_concurrent` to run at once. It waits on the jobs one by one instead of as a group. If it is cancelled or interrupted, it:\n- cancels every job itself;\n- ignores any further cancellations while it waits for all of them to finish their cleanup;\n- then passes the interrupt on to the caller.\n\nIf a job raises an error during a normal run, that error is raised after all the jobs have finished.\n\n**How I checked it** (system Python 3.13.7):\n- **Interrupt:** a script ran 5 tasks with a limit of 3, and I sent it Ctrl+C (SIGINT) after 3 had started. Each started task printed both \"cleanup_begin\" and \"cleanup_end\" before the call returned. The process then exited with a normal `KeyboardInterrupt` traceback.\n- **Normal run:** 10 tasks with a limit of 3 all completed, and no more than 3 ran at once.\n- **Empty list:** returns straight away.\n\nI didn't test a job that raises an error, or a second Ctrl+C sent while cleanup is still running.",
+    "delegate_status": "answered"
+  }
+}

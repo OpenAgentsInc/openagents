@@ -1,0 +1,461 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "policy": {
+    "schema": "openagents.coder-one.policy.v1",
+    "name": "coder-one-tunable-luna",
+    "digest": "e153463ca5a18cfa9441f9db5265a67da230b45ca5a99ddf3b70602a4a368fe5",
+    "source": "inline",
+    "overrides": [
+      {
+        "source": "CODER_ONE_EPISODE_DEADLINE",
+        "field": "protected.ceilings.episode_deadline_sec",
+        "value": "780"
+      }
+    ],
+    "notes": [],
+    "manifest": {
+      "schema": "openagents.coder-one.policy.v1",
+      "name": "coder-one-tunable-luna",
+      "note": "Codex on GPT-6 Luna with the headless core system prompt, verify.checks on the live workspace, escalation to lean Claude Code on Opus 5.5 on a stall, a failed check, or no answer, and one verify.repair from the diagnostic packets. control.horizon sizes every dispatch from the task's own timeout.",
+      "policy": {
+        "jev": {
+          "mode": "deep",
+          "model": "jev-1.13.0",
+          "question_sets": "builtin-v1"
+        },
+        "evidence": {
+          "probes": "v2",
+          "survey_files": 40
+        },
+        "control": {
+          "delegate": "always",
+          "explore_steps": 0,
+          "max_steps": 50,
+          "command_timeout_sec": 300,
+          "lane": "free",
+          "error_streak": 3,
+          "unchanged_steps": 6,
+          "monitor": {
+            "on_operation": true,
+            "on_artifact": true,
+            "on_claim": true,
+            "silence_ms": 300000,
+            "window": 8,
+            "event_chars": 300,
+            "requirements": 10,
+            "threshold": 0.5,
+            "jev": true,
+            "stall_commands": 12,
+            "latency_ms": 800
+          },
+          "handoff": {
+            "pattern": "escalate",
+            "to": {
+              "agent": "claude-code",
+              "model": "claude-opus-5-5",
+              "effort": "low",
+              "tools": "Bash,Read,Edit,Write,Glob,Grep",
+              "prompt_cache_ttl": "5m",
+              "version": "2.1.280"
+            },
+            "on": [
+              "stalled",
+              "repeating"
+            ],
+            "after": 3,
+            "max_handoffs": 1,
+            "brief": {
+              "requirements": true,
+              "diff": true,
+              "errors": true,
+              "packets": true
+            },
+            "monitor": {
+              "on_operation": true,
+              "on_artifact": true,
+              "on_claim": true,
+              "silence_ms": 300000,
+              "window": 8,
+              "event_chars": 300,
+              "requirements": 10,
+              "threshold": 0.5,
+              "jev": true,
+              "stall_commands": 12,
+              "latency_ms": 800
+            }
+          },
+          "horizon": {
+            "first_share": 0.55,
+            "later_share": 0.75,
+            "min_dispatch_sec": 300,
+            "check_share": 0.05,
+            "long_after_sec": 3600,
+            "long_effort": "medium",
+            "long_command_sec": 3600
+          }
+        },
+        "brief": {
+          "cap": 12000,
+          "directions": "batch-checked"
+        },
+        "executor": {
+          "agent": "codex",
+          "version": "0.155.1",
+          "model": "gpt-6-luna",
+          "effort": null,
+          "tools": null,
+          "prompt_cache_ttl": null,
+          "deadline_sec": 600,
+          "system": {
+            "mode": "replace",
+            "sections": [
+              "role",
+              "security",
+              "authority",
+              "verify",
+              "report",
+              "code-style"
+            ]
+          }
+        },
+        "verify": {
+          "checks": true,
+          "support": false,
+          "repair": {
+            "brief": "packet",
+            "trigger": "detected"
+          }
+        }
+      },
+      "protected": {
+        "isolation": "task-container",
+        "effect_policy": "executor-bypasses-its-own-sandbox",
+        "acceptance": "task-verifier",
+        "ceilings": {
+          "episode_deadline_sec": 780,
+          "reserve_sec": 30,
+          "spend_soft_usd": null,
+          "spend_hard_usd": null
+        }
+      }
+    },
+    "text_digests": {
+      "directions": "fea432bfc839af266ebfde909c2c0d9240b05206b815c2254c4849fee9757a1e",
+      "episode_instructions": "968529ff8c30adc54aeed0ed420a6108c23cf9157cc9bc034a9bae2af1ce9a2f",
+      "explore_prompt": "e00d4aa84650903e0b9174be59e0f5118f89c56fa7c878b2717632c4ff3c9e24",
+      "system": "295d575f2830763a5663487ddbb04b7f0b6dd2ea852926122eef893a6edc3607"
+    }
+  },
+  "delegate": {
+    "mode": "always",
+    "agent": "codex",
+    "model": "gpt-6-luna",
+    "version": "0.155.1",
+    "effort": null,
+    "tools": null,
+    "prompt_cache_ttl": null,
+    "system": {
+      "mode": "replace",
+      "sections": [
+        "role",
+        "security",
+        "authority",
+        "verify",
+        "report",
+        "code-style"
+      ]
+    },
+    "executor_path": "/usr/local/bin/codex",
+    "credential": "codex_auth_json",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "directions": "batch-checked",
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "61f20a26a9d35b9b547823e1beeb496242306178674d1ad8240876556164dc2c",
+        "chars": 3482,
+        "bytes": 3482,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "requirement 1",
+          "requirement 2",
+          "requirement 3",
+          "requirement 4",
+          "requirement 5",
+          "requirement 6",
+          "requirement 7",
+          "requirement 8",
+          "requirement 9",
+          "explorer conclusion",
+          "file $ list /app (depth 3)",
+          "file $ pip list",
+          "file base_terminal.py"
+        ],
+        "omitted": []
+      },
+      "packer": "sections",
+      "uncovered_requirements": null,
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 1,
+      "api_calls": null,
+      "completed_items": 3,
+      "charge": "priced",
+      "total_cost_usd": 0.0015014000000000002,
+      "milliseconds": 40023,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 11799,
+        "kept_bytes": 11799,
+        "truncated": false,
+        "sha256": "96e528d69e24d15791d41c8320d1d5af6cd2d080d146173abdb4c2bec0878880",
+        "gaps": [],
+        "retention": "first 8388608 bytes written as they arrive; past that, the first and last halves"
+      },
+      "system": {
+        "schema": "openagents.coder-one.system-prompt.v1",
+        "variant": "manifest",
+        "agent": "codex",
+        "mode": "replace",
+        "setting": "model_instructions_file",
+        "digest": "295d575f2830763a5663487ddbb04b7f0b6dd2ea852926122eef893a6edc3607",
+        "chars": 1542,
+        "default": "codex 0.155.1 (gpt-6-luna)",
+        "default_chars": 18037,
+        "protected": true,
+        "sections": [
+          {
+            "id": "role",
+            "status": "core",
+            "chars": 214,
+            "by": "manifest"
+          },
+          {
+            "id": "security",
+            "status": "protected",
+            "chars": 461,
+            "by": "manifest"
+          },
+          {
+            "id": "authority",
+            "status": "core",
+            "chars": 334,
+            "by": "manifest"
+          },
+          {
+            "id": "verify",
+            "status": "core",
+            "chars": 258,
+            "by": "manifest"
+          },
+          {
+            "id": "report",
+            "status": "core",
+            "chars": 176,
+            "by": "manifest"
+          },
+          {
+            "id": "code-style",
+            "status": "core",
+            "chars": 95,
+            "by": "manifest"
+          }
+        ],
+        "asked": []
+      },
+      "close": {
+        "done": 0.44,
+        "criteria": [
+          {
+            "requirement": "Implement the provided `BaseTerminal` interface.",
+            "p": 0.65
+          },
+          {
+            "requirement": "It provides a simple python interface to send keys to a headless terminal.",
+            "p": 0.76
+          },
+          {
+            "requirement": "Make sure it supports the following functionality.",
+            "p": 0.6
+          },
+          {
+            "requirement": "- Mimics a terminal, where the process starts as an interactive bash shell and commands are typically executed by typing characters and hitting Enter.",
+            "p": 0.77
+          },
+          {
+            "requirement": "- Supports interactive programs",
+            "p": 0.59
+          },
+          {
+            "requirement": "- Has support for modifier keys like `\"\\x03\"` for control C, etc.",
+            "p": 0.66
+          },
+          {
+            "requirement": "- Because the shell is interactive, it should source the startup files (e.g. ~/.bashrc)",
+            "p": 0.6
+          },
+          {
+            "requirement": "Call your implementation `HeadlessTerminal(BaseTerminal)` and put it in a file called `/app/headless_terminal.py` so that it can be imported as `from headless_terminal import HeadlessTerminal`.",
+            "p": 0.2
+          },
+          {
+            "requirement": "Install dependencies into the system python.",
+            "p": 0.21
+          }
+        ],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (1a035cebe6e6)",
+    "sha256": "dd50175fe396bc3ddd702fc9f7ac3aa9a03c510ac8ec29e1c26a218876c753bd"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline_sec": 780,
+    "reserve_sec": 30
+  },
+  "spend": {
+    "soft_usd": null,
+    "hard_usd": null,
+    "enforcement": "soft: checked before each dispatch starts; a running dispatch can pass it",
+    "hard_note": "no hard dollar cap: no executor adapter reserves a known maximum charge before a model call",
+    "known_usd": 0.0018959900000000002,
+    "unknown_calls": 0
+  },
+  "generation": 2,
+  "started_at": "2026-09-23T05:46:36.884Z",
+  "updated_at": "2026-09-23T05:47:28.537Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 168032,
+      "sha256": "8f338b9567321224d3b724797c972dedd18919e4bf34ece662efbd27214a010d"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 6803,
+      "sha256": "f9df3dd9dd9f8a3cbd247906d7c07865942e524789508ed0e9b9b7646226d779"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 1927,
+      "sha256": "b3662b3dc9bd72ee83ccaaa67db40de468c4afdb513d5b1ab7d8b5c01dcb2eef"
+    },
+    "composition": {
+      "path": "artifacts/composition.json",
+      "bytes": 2044,
+      "sha256": "d289884be96f96ad53117e32c9a89a6ab72a72843ea851c62c9649ba536b0eb8"
+    },
+    "requirements": {
+      "path": "artifacts/requirements.json",
+      "bytes": 7123,
+      "sha256": "2eead9562f6aa64f09a1dbed3864a178e63842ea900a717fae14175ea161a62d"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 3482,
+      "sha256": "61f20a26a9d35b9b547823e1beeb496242306178674d1ad8240876556164dc2c"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 11799,
+      "sha256": "96e528d69e24d15791d41c8320d1d5af6cd2d080d146173abdb4c2bec0878880"
+    },
+    "delegate-1_system_md": {
+      "path": "artifacts/delegate-1.system.md",
+      "bytes": 1542,
+      "sha256": "d2ccda88e4b9fc3119b2db881f7eb463cf86e6557cef6cc4f75a0aca389b9aec"
+    },
+    "invocation_log": {
+      "path": "episode.atif.jsonl",
+      "bytes": 111360,
+      "sha256": "8f87daf22f4957a54057009341495700990bd9be80d150a518ff748dc44658cb",
+      "ended": true,
+      "faults": 0
+    }
+  },
+  "deadline": {
+    "kind": "hard",
+    "total_ms": 780000,
+    "reserve_ms": 30000,
+    "elapsed_ms": 51686,
+    "remaining_ms": 728313,
+    "used_fraction": 0.06626417851025641,
+    "cuts": [],
+    "note": "one monotonic deadline from the episode's start; every dispatch, Jev request, retry, wait, setup command, probe, and check is granted at most what is left after the reserve"
+  },
+  "verification": {
+    "note": "The composition's checks observe requirements; the task's verifier is still the only grader.",
+    "checks": [
+      {
+        "after": "primary",
+        "file": "verification/checks.json",
+        "summary": {
+          "candidate": "7d2b4f152b1c8810fe8f2ff0fb84003e816356e7dd357aa91cd91ece0efec0be",
+          "scenarios": 4,
+          "verdicts": {
+            "passed": 4
+          },
+          "requirements": {
+            "observed": 3,
+            "unobserved": 6
+          },
+          "packets": 0
+        }
+      }
+    ],
+    "support": null,
+    "repair": {
+      "tier": {
+        "agent": "codex",
+        "model": "gpt-6-luna",
+        "version": "0.155.1"
+      },
+      "triggered": false,
+      "ran": false,
+      "changed": false,
+      "skipped": "no check contradicted a requirement",
+      "session": null,
+      "recheck": null,
+      "cost_usd": 0.0
+    }
+  },
+  "result": {
+    "title": "Implement the provided `BaseTerminal` interface. It provides a simple python interface to send keys …",
+    "summary": "Implemented `HeadlessTerminal` in `/app/headless_terminal.py` as an interactive, PTY-backed bash shell. It supports typed commands, interactive programs, and control characters such as Ctrl-C; interactive login mode also sources bash startup files.\n\nVerified command execution and Ctrl-C interruption with a PTY smoke test. No additional dependencies were needed.",
+    "delegate_status": "answered"
+  }
+}

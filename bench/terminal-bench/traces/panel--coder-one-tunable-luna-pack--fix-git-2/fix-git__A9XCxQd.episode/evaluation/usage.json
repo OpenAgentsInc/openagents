@@ -1,0 +1,334 @@
+{
+  "tokens": {
+    "input": 90908,
+    "cache": 62208,
+    "output": 506,
+    "note": "input sums generation, Jev, and delegate input tokens, the delegate's cache reads and writes included; cache is the delegate's cache reads when a delegation ran, and generation's reported cached input otherwise"
+  },
+  "cost": {
+    "amount_usd": 0.0025143199999999996,
+    "lower_bound_usd": 0.0025143199999999996,
+    "unknown_calls": 0,
+    "provenance": "mixed",
+    "covers": "generation (provider_reported), jev (price_estimate), and delegate (cli_list_price or cli_reported for Claude Code, price_estimate for Codex); each is under components, and ledger lists every call"
+  },
+  "calls": {
+    "generation": 0,
+    "decisions": 15,
+    "decisions_skipped": 0,
+    "delegates": 1,
+    "failed": 0,
+    "retries": 0
+  },
+  "components": {
+    "generation": {
+      "input_tokens": 0,
+      "cached_input_tokens": null,
+      "output_tokens": 0,
+      "cost_usd": 0.0,
+      "cost_lower_bound_usd": 0.0,
+      "cost_provenance": "provider_reported",
+      "unpriced_calls": 0,
+      "failed_calls_unknown_charge": 0
+    },
+    "jev": {
+      "model": "jev-1.13.0",
+      "requests": 15,
+      "priced": 15,
+      "known_zero": 0,
+      "unknown": 0,
+      "skipped": 0,
+      "input_tokens": 21220,
+      "input_tokens_priced": 21220,
+      "output_tokens_billed": false,
+      "cost_usd": 0.00089124,
+      "cost_lower_bound_usd": 0.00089124,
+      "cost_provenance": "price_estimate",
+      "rate": "$0.042 per million input tokens, retrieved 2026-09-22"
+    },
+    "delegate": {
+      "agent": "codex",
+      "model": "gpt-6-luna",
+      "credential": "codex_auth_json",
+      "agents": [
+        "codex"
+      ],
+      "models": [
+        "gpt-6-luna"
+      ],
+      "delegations": 1,
+      "turns": 1,
+      "api_calls": null,
+      "units": {
+        "native_turns": 1,
+        "model_calls": null,
+        "completed_items": 5
+      },
+      "input_tokens": 7480,
+      "cache_read_input_tokens": 62208,
+      "cache_creation_input_tokens": 0,
+      "total_input_tokens": 69688,
+      "output_tokens": 506,
+      "input_tokens_per_call": [],
+      "max_input_tokens_per_call": null,
+      "cost_usd": 0.0016230799999999998,
+      "cost_lower_bound_usd": 0.0016230799999999998,
+      "cost_provenance": "price_estimate",
+      "unknown_dispatches": 0,
+      "cost_note": "A price estimate: Codex reports no cost. The rates are OpenAI's standard short-context list prices, supplied manually by the operator on 2026-09-22, not reported by Codex.",
+      "dispatches": [
+        {
+          "component": "delegate",
+          "id": "delegate-1",
+          "name": "delegate",
+          "agent": "codex",
+          "model": "gpt-6-luna",
+          "model_requested": "gpt-6-luna",
+          "credential": "codex_auth_json",
+          "status": "answered",
+          "outcome": "Completed",
+          "charge": "priced",
+          "cost_usd": 0.0016230799999999998,
+          "cost_lower_bound_usd": 0.0016230799999999998,
+          "provenance": "price_estimate",
+          "basis": "the session reported its usage",
+          "milliseconds": 20999,
+          "units": {
+            "native_turns": 1,
+            "model_calls": null,
+            "completed_items": 5
+          },
+          "deadline": {
+            "requested_sec": 409,
+            "granted_ms": 409000,
+            "cut": false
+          }
+        }
+      ]
+    }
+  },
+  "ledger": [
+    {
+      "component": "jev",
+      "id": "jev_requirements-1",
+      "name": "jev_requirements",
+      "model": "jev-1.13.0",
+      "outcome": "Completed",
+      "charge": "priced",
+      "cost_usd": 0.000035952000000000004,
+      "provenance": "price_estimate",
+      "basis": "the response reported its input tokens",
+      "milliseconds": 246,
+      "input_tokens": 856
+    },
+    {
+      "component": "jev",
+      "id": "jev_probe-2",
+      "name": "jev_probe",
+      "model": "jev-1.13.0",
+      "outcome": "Completed",
+      "charge": "priced",
+      "cost_usd": 0.000128772,
+      "provenance": "price_estimate",
+      "basis": "the response reported its input tokens",
+      "milliseconds": 183,
+      "input_tokens": 3066
+    },
+    {
+      "component": "jev",
+      "id": "jev-survey-3",
+      "name": "jev_survey",
+      "model": "jev-1.13.0",
+      "outcome": "Completed",
+      "charge": "priced",
+      "cost_usd": 0.000124194,
+      "provenance": "price_estimate",
+      "basis": "the response reported its input tokens",
+      "milliseconds": 239,
+      "input_tokens": 2957
+    },
+    {
+      "component": "jev",
+      "id": "jev-survey-4",
+      "name": "jev_survey",
+      "model": "jev-1.13.0",
+      "outcome": "Completed",
+      "charge": "priced",
+      "cost_usd": 0.00010760400000000001,
+      "provenance": "price_estimate",
+      "basis": "the response reported its input tokens",
+      "milliseconds": 293,
+      "input_tokens": 2562
+    },
+    {
+      "component": "jev",
+      "id": "jev_coverage-e1",
+      "name": "jev_coverage",
+      "model": "jev-1.13.0",
+      "outcome": "Completed",
+      "charge": "priced",
+      "cost_usd": 0.000040782000000000004,
+      "provenance": "price_estimate",
+      "basis": "the response reported its input tokens",
+      "milliseconds": 208,
+      "input_tokens": 971
+    },
+    {
+      "component": "jev",
+      "id": "jev_coverage-e2",
+      "name": "jev_coverage",
+      "model": "jev-1.13.0",
+      "outcome": "Completed",
+      "charge": "priced",
+      "cost_usd": 0.000025368000000000002,
+      "provenance": "price_estimate",
+      "basis": "the response reported its input tokens",
+      "milliseconds": 198,
+      "input_tokens": 604
+    },
+    {
+      "component": "jev",
+      "id": "jev_coverage-e3",
+      "name": "jev_coverage",
+      "model": "jev-1.13.0",
+      "outcome": "Completed",
+      "charge": "priced",
+      "cost_usd": 0.000019656000000000003,
+      "provenance": "price_estimate",
+      "basis": "the response reported its input tokens",
+      "milliseconds": 191,
+      "input_tokens": 468
+    },
+    {
+      "component": "jev",
+      "id": "jev_coverage-e4",
+      "name": "jev_coverage",
+      "model": "jev-1.13.0",
+      "outcome": "Completed",
+      "charge": "priced",
+      "cost_usd": 0.000019362000000000002,
+      "provenance": "price_estimate",
+      "basis": "the response reported its input tokens",
+      "milliseconds": 241,
+      "input_tokens": 461
+    },
+    {
+      "component": "jev",
+      "id": "jev_coverage-e5",
+      "name": "jev_coverage",
+      "model": "jev-1.13.0",
+      "outcome": "Completed",
+      "charge": "priced",
+      "cost_usd": 0.00007820400000000001,
+      "provenance": "price_estimate",
+      "basis": "the response reported its input tokens",
+      "milliseconds": 189,
+      "input_tokens": 1862
+    },
+    {
+      "component": "jev",
+      "id": "jev_monitor-1",
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "outcome": "Completed",
+      "charge": "priced",
+      "cost_usd": 0.000033432,
+      "provenance": "price_estimate",
+      "basis": "the response reported its input tokens",
+      "milliseconds": 137,
+      "input_tokens": 796
+    },
+    {
+      "component": "jev",
+      "id": "jev_monitor-2",
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "outcome": "Completed",
+      "charge": "priced",
+      "cost_usd": 0.000043764,
+      "provenance": "price_estimate",
+      "basis": "the response reported its input tokens",
+      "milliseconds": 159,
+      "input_tokens": 1042
+    },
+    {
+      "component": "jev",
+      "id": "jev_monitor-3",
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "outcome": "Completed",
+      "charge": "priced",
+      "cost_usd": 0.00005077800000000001,
+      "provenance": "price_estimate",
+      "basis": "the response reported its input tokens",
+      "milliseconds": 148,
+      "input_tokens": 1209
+    },
+    {
+      "component": "jev",
+      "id": "jev_monitor-4",
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "outcome": "Completed",
+      "charge": "priced",
+      "cost_usd": 0.00005905200000000001,
+      "provenance": "price_estimate",
+      "basis": "the response reported its input tokens",
+      "milliseconds": 185,
+      "input_tokens": 1406
+    },
+    {
+      "component": "jev",
+      "id": "jev_monitor-5",
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "outcome": "Completed",
+      "charge": "priced",
+      "cost_usd": 0.000060270000000000004,
+      "provenance": "price_estimate",
+      "basis": "the response reported its input tokens",
+      "milliseconds": 174,
+      "input_tokens": 1435
+    },
+    {
+      "component": "delegate",
+      "id": "delegate-1",
+      "name": "delegate",
+      "agent": "codex",
+      "model": "gpt-6-luna",
+      "model_requested": "gpt-6-luna",
+      "credential": "codex_auth_json",
+      "status": "answered",
+      "outcome": "Completed",
+      "charge": "priced",
+      "cost_usd": 0.0016230799999999998,
+      "cost_lower_bound_usd": 0.0016230799999999998,
+      "provenance": "price_estimate",
+      "basis": "the session reported its usage",
+      "milliseconds": 20999,
+      "units": {
+        "native_turns": 1,
+        "model_calls": null,
+        "completed_items": 5
+      },
+      "deadline": {
+        "requested_sec": 409,
+        "granted_ms": 409000,
+        "cut": false
+      }
+    },
+    {
+      "component": "jev",
+      "id": "jev_close-5",
+      "name": "jev_close",
+      "model": "jev-1.13.0",
+      "outcome": "Completed",
+      "charge": "priced",
+      "cost_usd": 0.00006405,
+      "provenance": "price_estimate",
+      "basis": "the response reported its input tokens",
+      "milliseconds": 173,
+      "input_tokens": 1525
+    }
+  ]
+}
