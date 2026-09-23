@@ -92,6 +92,7 @@ fn a_scenario_names_its_requirement_spans_and_derivation() {
         map: &map,
         candidate: &case.input.candidate,
         observed: &case.input.observed,
+        workspace: None,
     };
     let (scenarios, _) = build(&context);
     let message = scenarios
@@ -132,6 +133,7 @@ fn a_candidate_without_the_named_interface_is_ineligible_not_failed() {
         map: &map,
         candidate: &case.input.candidate,
         observed: &case.input.observed,
+        workspace: None,
     };
     let (scenarios, ineligible) = build(&context);
     assert!(scenarios.is_empty());
@@ -150,6 +152,7 @@ fn the_selector_keeps_one_scenario_per_requirement_within_the_budget() {
         map: &map,
         candidate: &case.input.candidate,
         observed: &case.input.observed,
+        workspace: None,
     };
     let (scenarios, _) = build(&context);
     assert_eq!(scenarios.len(), 4);
@@ -182,6 +185,7 @@ fn protected_verifier_test_names_never_enter_a_scenario() {
             map: &map,
             candidate: &input.candidate,
             observed: &input.observed,
+            workspace: None,
         };
         let (scenarios, _) = build(&context);
         let text = serde_json::to_string(&scenarios).unwrap();

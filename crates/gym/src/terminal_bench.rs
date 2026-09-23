@@ -98,6 +98,9 @@ pub struct Attempt {
     /// The system prompt the delegate was sent (`exec.system`), when the
     /// episode recorded it.
     pub system: Option<Value>,
+    /// The tunable composition's record, `artifacts/composition.json`,
+    /// when the episode ran one.
+    pub composition: Option<Value>,
 }
 
 impl Attempt {
@@ -721,6 +724,7 @@ fn empty_attempt(source: &str, job: &str, trial: &str) -> Attempt {
         delegate_turns: None,
         delegate_calls: None,
         system: None,
+        composition: None,
     }
 }
 
@@ -893,6 +897,11 @@ fn attach_episode(attempt: &mut Attempt, path: &Path, episode: &Path, records: &
                     });
                 }
             }
+            attempt.composition = value
+                .pointer("/files/composition/path")
+                .and_then(Value::as_str)
+                .filter(|relative| !relative.contains(".."))
+                .and_then(|relative| read_json(&episode.join(relative)).ok());
             attempt.delegate_agent = string(&value, "/delegate/agent");
             if let Some(delegate) = value.pointer("/delegate/delegation") {
                 attempt.delegate_turns = delegate.get("num_turns").and_then(Value::as_u64);

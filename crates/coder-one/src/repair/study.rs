@@ -196,8 +196,10 @@ pub async fn cell(
     let repaired = match &arm.repair {
         None => None,
         Some((kind, profile)) => {
+            let subject = crate::checks::Subject::mini(&preserved.task);
             let place = Place {
-                task: &preserved.task,
+                task: Some(&preserved.task),
+                subject: &subject,
                 work: &work,
                 dir,
                 artifacts: &artifacts,

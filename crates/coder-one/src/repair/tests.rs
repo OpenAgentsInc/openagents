@@ -188,8 +188,10 @@ async fn a_spent_deadline_leaves_no_time_for_a_repair() {
     let input = checks::workspace_input(&task, &work);
     let recorder = Recorder::default();
     let deadline = Deadline::new(Some(Duration::from_millis(300)), Duration::ZERO);
+    let subject = checks::Subject::mini(&task);
     let place = Place {
-        task: &task,
+        task: Some(&task),
+        subject: &subject,
         work: &work,
         dir: &preserved.dir,
         artifacts: &preserved.dir.join("artifacts"),

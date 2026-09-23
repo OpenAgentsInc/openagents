@@ -110,6 +110,12 @@ pub struct Components {
     pub control: ControlPolicy,
     pub brief: BriefPolicy,
     pub executor: ExecutorPolicy,
+    /// What runs after the executor in a Terminal-Bench episode:
+    /// `verify.checks`, `verify.support`, and one `verify.repair`. Absent,
+    /// nothing checks the work, and the manifest's digest is what it was
+    /// before this field existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verify: Option<crate::compose::VerifyPolicy>,
 }
 
 /// How Jev is used.
@@ -181,6 +187,16 @@ pub struct ControlPolicy {
     /// start to finish, and the manifest's digest is unchanged.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub handoff: Option<crate::handoff::Policy>,
+    /// `control.route`: task.profile's features pick the first executor.
+    /// Absent, the manifest's executor starts, and the digest is
+    /// unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub route: Option<crate::compose::RoutePolicy>,
+    /// `control.horizon`: dispatches, checks, and effort sized from the
+    /// episode deadline. Absent, each dispatch asks for
+    /// `executor.deadline_sec`, and the digest is unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub horizon: Option<crate::compose::Horizon>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -504,6 +520,8 @@ impl Manifest {
                     unchanged_steps: 6,
                     monitor: None,
                     handoff: None,
+                    route: None,
+                    horizon: None,
                 },
                 brief: BriefPolicy {
                     cap: delegate::BRIEFING_CAP,
@@ -522,6 +540,7 @@ impl Manifest {
                     system: None,
                     session: None,
                 },
+                verify: None,
             },
             protected: Protected {
                 isolation: ISOLATION.to_string(),
@@ -674,6 +693,35 @@ impl Manifest {
             );
             if let Err(problem) = handoff.check(&first) {
                 problems.push(problem);
+            }
+        }
+        if let Some(route) = &self.policy.control.route {
+            problems.extend(route.validate());
+            if policy.control.delegate == DelegateMode::Off {
+                problems.push("control.route needs a delegate mode other than off".to_string());
+            }
+        }
+        if let Some(horizon) = &self.policy.control.horizon {
+            problems.extend(horizon.validate());
+        }
+        if let Some(to) = self
+            .policy
+            .control
+            .handoff
+            .as_ref()
+            .and_then(|handoff| handoff.to.as_ref())
+        {
+            problems.extend(to.validate("control.handoff.to"));
+        }
+        if let Some(verify) = &self.policy.verify {
+            if verify.repair.is_some() && !verify.checks {
+                problems.push("verify.repair needs verify.checks".to_string());
+            }
+            if verify.support && policy.jev.mode == JevMode::Off {
+                problems.push("verify.support needs Jev".to_string());
+            }
+            if policy.control.delegate == DelegateMode::Off {
+                problems.push("verify needs a delegate mode other than off".to_string());
             }
         }
         if let Some(session) = &executor.session {
@@ -1265,6 +1313,15 @@ pub const REFERENCE: &[(&str, &str)] = &[
     (
         "handoff-race.json",
         include_str!("../policies/handoff-race.json"),
+    ),
+    ("tunable.json", include_str!("../policies/tunable.json")),
+    (
+        "tunable-opus.json",
+        include_str!("../policies/tunable-opus.json"),
+    ),
+    (
+        "tunable-luna.json",
+        include_str!("../policies/tunable-luna.json"),
     ),
 ];
 

@@ -42,6 +42,9 @@ def test_known_arms(agents):
         "coder-one-jevprobe-opus-lean-low",
         "coder-one-jevprobe-sonnet-lean-low",
         "coder-one-jevprobe-haiku-lean",
+        "coder-one-tunable",
+        "coder-one-tunable-opus",
+        "coder-one-tunable-luna",
         "oracle",
         "nop",
     }
@@ -181,3 +184,34 @@ def test_luna_auth_json_keeps_the_selector_host_side(agents):
 def test_unset_vars_are_not_forwarded(agents):
     out = agent_config_env(agents["claude-code"], env={})
     assert "ANTHROPIC_API_KEY" not in out
+
+
+def test_tunable_arms_install_both_clis_and_forward_both_credentials(agents):
+    for arm, policy in (
+        ("coder-one-tunable", "tunable.json"),
+        ("coder-one-tunable-opus", "tunable-opus.json"),
+        ("coder-one-tunable-luna", "tunable-luna.json"),
+    ):
+        profile = agents[arm]
+        assert profile.harbor_import_path == "tbench.coder_one:CoderOneTunable"
+        assert profile.kwargs["policy"] == f"crates/coder-one/policies/{policy}"
+        assert profile.kwargs["executors"] == {"claude-code": "2.1.280", "codex": "0.155.1"}
+        env = {
+            "OPENAGENTS_API_KEY": "oak_secret",
+            "TYPESAFE_API_KEY": "ts_secret",
+            "CLAUDE_CODE_OAUTH_TOKEN": "tok-secret",
+            "ANTHROPIC_API_KEY": "sk-secret",
+            "CODEX_FORCE_AUTH_JSON": "1",
+        }
+        assert [m.name for m in configured_auth_modes(profile, env=env)] == [
+            "subscription-oauth"
+        ]
+        out = agent_config_env(profile, auth_mode="subscription-oauth", env=env)
+        assert out["CLAUDE_CODE_OAUTH_TOKEN"] == "${CLAUDE_CODE_OAUTH_TOKEN}"
+        assert out["CODEX_AUTH_JSON_PATH"].endswith(".codex/auth.json")
+        assert "ANTHROPIC_API_KEY" not in out
+        assert "CODEX_FORCE_AUTH_JSON" not in out
+        assert "secret" not in str(out)
+        # Without the Codex credential the mode is not configured.
+        del env["CODEX_FORCE_AUTH_JSON"]
+        assert configured_auth_modes(profile, env=env) == []

@@ -96,6 +96,19 @@ pub struct Tier {
     /// `claude-code`, `codex`, or `scripted`.
     pub agent: String,
     pub model: String,
+    /// Reasoning effort; the CLI's default when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effort: Option<String>,
+    /// Claude Code's built-in tools; the full set when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tools: Option<String>,
+    /// Claude Code's prompt-cache TTL, `5m` or `1h`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt_cache_ttl: Option<String>,
+    /// The CLI version the harness installs; the episode doctor refuses
+    /// another.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
 }
 
 impl Tier {
@@ -104,7 +117,46 @@ impl Tier {
         Tier {
             agent: agent.to_string(),
             model: model.to_string(),
+            effort: None,
+            tools: None,
+            prompt_cache_ttl: None,
+            version: None,
         }
+    }
+
+    /// Refuses a tier its CLI can't run as written.
+    ///
+    /// # Errors
+    ///
+    /// Returns each problem found.
+    pub fn validate(&self, field: &str) -> Vec<String> {
+        let mut problems = Vec::new();
+        if !matches!(self.agent.as_str(), "claude-code" | "codex" | "scripted") {
+            problems.push(format!(
+                "{field}.agent must be claude-code, codex, or scripted, not {}",
+                self.agent
+            ));
+        }
+        if self.model.trim().is_empty() {
+            problems.push(format!("{field}.model must name a model"));
+        }
+        if self.agent != "claude-code" && (self.tools.is_some() || self.prompt_cache_ttl.is_some())
+        {
+            problems.push(format!(
+                "{field}.tools and prompt_cache_ttl apply only to claude-code"
+            ));
+        }
+        if let Some(effort) = &self.effort
+            && (effort.is_empty() || !effort.chars().all(|c| c.is_ascii_lowercase()))
+        {
+            problems.push(format!("{field}.effort must be one lowercase word"));
+        }
+        if let Some(ttl) = &self.prompt_cache_ttl
+            && !matches!(ttl.as_str(), "5m" | "1h")
+        {
+            problems.push(format!("{field}.prompt_cache_ttl must be 5m or 1h"));
+        }
+        problems
     }
 
     /// `codex/gpt-6-luna`.

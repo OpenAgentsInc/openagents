@@ -47,6 +47,7 @@ fn input(task: &str, candidate: Candidate, observed: Observed) -> Input {
         candidate,
         observed,
         budget: Budget::default(),
+        workspace: None,
     }
 }
 
