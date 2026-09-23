@@ -1075,6 +1075,20 @@ Cutting time means fewer model turns, which the delegate arms deliver.
 
 ## Data problems
 
+- **Ten Terminal-Bench 4.0 trials on 2026-09-23 died on a revoked Claude
+  token** (four `claude-code-opus`, six Coder One). Refreshing the host's
+  Claude login, by a refresh loop or by the operator's own Claude Code
+  session on the same credentials, revokes the access token a running trial
+  holds, so a trial longer than the gap between refreshes fails with
+  `401 OAuth access token has been revoked`. They are under `failed/` as
+  `*-revoked-token-*` and rerun. The suite launcher now prefers a
+  long-lived token from `claude setup-token` in
+  `~/.openagents/claude-setup-token`.
+- **Two `freecad-spring-clip` trials were never graded** because the
+  adapter raised on Coder One's `delegate_failed` exit code. Since commit
+  `10dfdba65e`, outcome exit codes (3, 4, 5) are recorded and the verifier
+  grades the environment, as it does for other agents.
+
 - **24 `coder-one-tunable-luna-v2` trials on 2026-09-23 are invalid.** A
   runner script mapped the arm to an older artifact that predates policy
   manifests; it ignored the policy and ran Coder One's original Gemini loop,
