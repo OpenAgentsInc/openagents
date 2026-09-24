@@ -318,12 +318,17 @@ pub fn scrub(text: &str) -> String {
         .to_string_lossy()
         .trim_end_matches('/')
         .to_string();
+    let prefix = format!("{tmp}/");
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
     loop {
-        let temp = rest
-            .find(&format!("{tmp}/coder-one-"))
-            .map(|at| (at, at + tmp.len() + 1));
+        let temp = rest.match_indices(&prefix).find_map(|(at, _)| {
+            // A temporary directory may already end in a separator when
+            // a logged path appends another one.
+            let tail = rest[at + prefix.len()..].trim_start_matches('/');
+            tail.starts_with("coder-one-")
+                .then_some((at, rest.len() - tail.len()))
+        });
         let checks = rest.find("/checks-scratch").map(|at| {
             let start = rest[..at]
                 .rfind(|c: char| c.is_whitespace() || c == '"' || c == '\'' || c == '(')

@@ -209,6 +209,25 @@ fn scrub_leaves_other_paths_alone() {
     );
 }
 
+#[test]
+fn scrub_handles_repeated_temp_separators_without_changing_other_text() {
+    let tmp = std::env::temp_dir();
+    let tmp = tmp.to_str().unwrap().trim_end_matches('/');
+    for separator in ["/", "//", "///"] {
+        let other = format!("{tmp}{separator}other/log.txt");
+        let text = format!(
+            "unchanged {other}; ran in '{tmp}{separator}coder-one-checks-1/cancel/log.txt' \
+             then \"{tmp}{separator}coder-one-checks-2/data/in.log\"; /app/run.py"
+        );
+        let expected = format!(
+            "unchanged {other}; ran in '<scratch>/cancel/log.txt' \
+             then \"<scratch>/data/in.log\"; /app/run.py"
+        );
+        assert_eq!(scrub(&text), expected);
+        assert_eq!(scrub(&expected), expected);
+    }
+}
+
 #[tokio::test]
 async fn the_checked_in_cutoffs_are_fitted_on_development_fixtures_only() {
     let dirs = cli::labeled(&crate::component::default_fixtures());

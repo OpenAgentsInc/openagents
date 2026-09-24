@@ -313,11 +313,12 @@ repository does not use GitHub-billed automation.
 
 The September 24 Markdown update passed all 23 replay tests, 13 shared
 Markdown tests, and a corpus check covering 694 local and all 1,649 public
-transcripts. Strict Gym and terminal-renderer Clippy also passed. Its full workspace gate
-remained failed at an existing Coder One scratch-path test; the
-[verification record](docs/gym/head-to-head.md#verification) documents the
-scope. Feature-specific success does not mean the full repository gate is
-green.
+transcripts. Strict Gym and terminal-renderer Clippy also passed. Its full
+workspace gate was blocked by a Coder One scratch-path test. That failure
+is now fixed: path scrubbing handles repeated separators in temporary
+paths. The [verification record](docs/gym/head-to-head.md#verification)
+documents the earlier runs. Feature-specific success does not mean the
+full repository gate is green.
 
 The [experiment safeguards review](docs/terminal-bench/2026-09-24-issue-review.md#validation)
 records the later Python, Rust, live Jev, and retained-data checks, including
