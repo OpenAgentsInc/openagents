@@ -442,12 +442,24 @@ impl Agent {
             }
         };
         let program = runtime.survey().programs.get(&slug)?.clone();
-        selected(&slug);
         // The grant is the operator's, read fresh from this session's
         // settings on every run: a selection is a proposal, and the grant
         // is the authority it is proposed under. Neither the selection
         // nor any judgment the program records widens it.
         let grant = Grant::operator(self.program_grant.as_deref());
+        // A program the grant doesn't name never runs, and the turn is
+        // answered the ordinary way instead of stopping on the refusal:
+        // "how many open issues are there here" once ended with a sentence
+        // about grants rather than an answer.
+        if !grant.authorizes(&slug) {
+            if let Some(trace) = &mut self.trace {
+                trace.note(&format!(
+                    "selected program {slug} is not granted this session; answering without it"
+                ));
+            }
+            return None;
+        }
+        selected(&slug);
         // A relay capability is probed only now, once a program is going
         // to run, because the probe is a round trip to a worker and an
         // ordinary turn should not pay for it — and neither should a
