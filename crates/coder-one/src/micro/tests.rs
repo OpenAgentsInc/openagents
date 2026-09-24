@@ -147,6 +147,10 @@ async fn a_single_session_records_executor_events_and_an_exact_price() {
             .is_file()
     );
     assert!(dir.path().join("artifacts/microluna-1.json").is_file());
+    assert_eq!(
+        report.stream.as_ref().unwrap()["path"],
+        json!("artifacts/microluna-1.json")
+    );
 }
 
 #[tokio::test]

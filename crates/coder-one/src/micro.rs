@@ -1451,7 +1451,7 @@ impl Executor for Micro {
             milliseconds,
             stderr: String::new(),
             stream: Some(json!({
-                "path": format!("artifacts/microluna-{}.json", self.dispatch()),
+                "path": format!("artifacts/microluna-{}.json", self.runs),
                 "sessions": sessions.iter().map(|r| r.trace.clone()).collect::<Vec<_>>(),
             })),
         }
