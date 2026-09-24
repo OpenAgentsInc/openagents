@@ -314,6 +314,7 @@ pub fn reconstruct(episode: &Path) -> Result<Subject, String> {
             },
             root: None,
             collected: Vec::new(),
+            suite: None,
         }),
         distrust: verify["distrust"]
             .as_array()
@@ -367,7 +368,7 @@ pub fn repair_brief(episode: &Path, input: &checks::Input, report: &Report) -> V
         read_json(&episode.join(crate::support::FILE)).and_then(|v| serde_json::from_value(v).ok());
     let found = crate::repair::gaps(report, support.as_ref());
     let triggered = match trigger {
-        crate::repair::Trigger::Detected => !found.is_empty(),
+        crate::repair::Trigger::Detected | crate::repair::Trigger::Unobserved => !found.is_empty(),
         crate::repair::Trigger::Checked => found.iter().any(|gap| !gap.packets.is_empty()),
         crate::repair::Trigger::Always => true,
     };
@@ -598,6 +599,7 @@ mod tests {
                 options: generic::Options::default(),
                 root: None,
                 collected: Vec::new(),
+                suite: None,
             }),
             distrust: Vec::new(),
         }

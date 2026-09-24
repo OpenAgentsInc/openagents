@@ -197,6 +197,47 @@ pub struct Policy {
     /// final guard, give one session to a failure it shows, and stop.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub final_guard: bool,
+    /// Gap rounds after a green suite that is partial: each writes
+    /// deciding tests for the suite's gaps, proven red on a snapshot of
+    /// the untouched workspace, and the loop resumes. A partial suite's
+    /// green isn't done while one is left.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub gap_rounds: u32,
+    /// Spend less time running the suite: reuse the last run when the
+    /// workspace hasn't changed since, run only the tests that were red
+    /// until they all pass and then the whole suite once, and tell each
+    /// session to do the same.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub fast_runs: bool,
+    /// Before stopping on a green suite, join the evidence in one Jev
+    /// judgment: the suite's result and gaps, the last session's report,
+    /// and a real diff against the start, over the requirements a session
+    /// can show (constraints left out). A partial suite or a done below
+    /// [`CLOSE_MIN`] gets one audit session first.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub close_audit: bool,
+}
+
+/// Below this probability that the joined evidence shows the task done, a
+/// green suite gets an audit session. Not calibrated yet.
+pub const CLOSE_MIN: f64 = 0.7;
+
+/// The joined closing question.
+pub const CLOSE_QUESTION: &str = "Do the frozen acceptance suite's result in `suite`, the last session's report in `report`, and the changes to the workspace in `diff` together show that the task in `task` is complete, with every requirement in `requirements` met the way the task states it?";
+
+/// The joined closing question for requirement `j`.
+#[must_use]
+pub fn close_requirement_question(j: usize) -> String {
+    format!(
+        "Do `suite`, `report`, and `diff` together show that the requirement `requirements[{j}]` \
+         is met the way the task in `task` states it, including the standard definition of any \
+         method it names?"
+    )
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_zero(n: &u32) -> bool {
+    *n == 0
 }
 
 fn one() -> u32 {
@@ -234,6 +275,18 @@ pub struct SuiteWriter {
     /// Tell the writer to find the deciding facts by reading the code's
     /// documentation and running property probes on the untouched code.
     pub discover: bool,
+    /// Expand a requirement that sweeps a set of modules into a defect
+    /// inventory (`accept::Options::inventory`).
+    #[serde(default)]
+    pub inventory: bool,
+    /// Count the standard definition of a method the task names as stated
+    /// (`accept::Options::standard_methods`).
+    #[serde(default)]
+    pub standard_methods: bool,
+    /// Keep tests green on the untouched workspace as guards
+    /// (`accept::Options::guards`).
+    #[serde(default)]
+    pub guards: bool,
 }
 
 impl SuiteWriter {
@@ -262,6 +315,9 @@ impl SuiteWriter {
             repair_turns: Some(self.repair_turns),
             one_pass: self.one_pass,
             discover: self.discover,
+            inventory: self.inventory,
+            standard_methods: self.standard_methods,
+            guards: self.guards,
             ..crate::accept::Options::default()
         }
     }
@@ -293,6 +349,9 @@ impl Default for Policy {
             parallel_edits: 1,
             handoff_jev: false,
             final_guard: false,
+            gap_rounds: 0,
+            fast_runs: false,
+            close_audit: false,
         }
     }
 }
@@ -349,6 +408,17 @@ fn scratch(name: &str) -> PathBuf {
         atif::now_ms(),
         MADE.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     ))
+}
+
+/// Removes its directory when it goes out of scope.
+struct Cleanup(Option<PathBuf>);
+
+impl Drop for Cleanup {
+    fn drop(&mut self) {
+        if let Some(dir) = &self.0 {
+            let _ = std::fs::remove_dir_all(dir);
+        }
+    }
 }
 
 /// What the suite loop ran and why it stopped.
@@ -490,7 +560,10 @@ impl Policy {
             && (self.overlap_suite
                 || self.parallel_edits > 1
                 || self.handoff_jev
-                || self.final_guard)
+                || self.final_guard
+                || self.gap_rounds > 0
+                || self.fast_runs
+                || self.close_audit)
         {
             problems.push(
                 "executor.microluna's overlap_suite, parallel_edits, handoff_jev, and final_guard \
@@ -1664,6 +1737,7 @@ impl Micro {
                 options: checks::generic::Options::default(),
                 root: None,
                 collected: Vec::new(),
+                suite: None,
             }),
             distrust: Vec::new(),
         });
@@ -2018,6 +2092,23 @@ impl Micro {
         let evidence = evidence_for(prepared, &everything, self.policy.evidence_chars);
         let key = format!("microluna-{}", &sha256(&prepared.instruction)[..16]);
         let written_by = self.policy.suite_writer.as_ref();
+        let mut edit_evidence = evidence.clone();
+        if written_by.is_some_and(|w| w.discover) {
+            let defended = crate::accept::defended_choices(&self.workdir);
+            if !defended.is_empty() {
+                edit_evidence.insert(
+                    0,
+                    Evidence {
+                        label: "Choices the code defends in its own comments".to_string(),
+                        text: format!(
+                            "Each of these may be the defect itself. Check it against the task \
+                             and the standard definition of what it names:\n{}",
+                            defended.join("\n")
+                        ),
+                    },
+                );
+            }
+        }
         let writer = crate::accept::MicrolunaWriter {
             transport: wire,
             config: Config {
@@ -2044,7 +2135,7 @@ impl Micro {
         };
         // A snapshot of the untouched workspace for the proof, so the first
         // edit session can start in the workspace at once.
-        let snapshot = if self.policy.overlap_suite {
+        let base_copy = if self.policy.overlap_suite || self.policy.gap_rounds > 0 {
             let dir = scratch("accept-base");
             if !parallel::copyable(&self.workdir) {
                 crate::say::line(
@@ -2065,7 +2156,19 @@ impl Micro {
         } else {
             None
         };
+        let _cleanup = Cleanup(base_copy.clone());
+        let snapshot = base_copy.clone().filter(|_| self.policy.overlap_suite);
         let real = self.workdir.display().to_string();
+        let snapshot_note = |snap: &Path| {
+            format!(
+                "a snapshot of the task's workspace at {snap}, copied from {real} before any \
+                 edit; your commands can read it but you must not change it. Another session \
+                 is editing {real} while you write, so read the snapshot, not {real}. In tests, \
+                 name the task's paths as the task states them: the host runs the tests \
+                 against the snapshot while it proves them red, and against {real} after",
+                snap = snap.display()
+            )
+        };
         let inputs = crate::accept::Inputs {
             task: &task,
             requirements: &prepared.requirements,
@@ -2073,14 +2176,7 @@ impl Micro {
             workspace: snapshot.as_deref().unwrap_or(&self.workdir),
             suite_dir: &suite_dir,
             workspace_note: match &snapshot {
-                Some(snap) => format!(
-                    "a snapshot of the task's workspace at {snap}, copied from {real} before any \
-                     edit; your commands can read it but you must not change it. Another session \
-                     is editing {real} while you write, so read the snapshot, not {real}. In tests, \
-                     name the task's paths as the task states them: the host runs the tests \
-                     against the snapshot while it proves them red, and against {real} after",
-                    snap = snap.display()
-                ),
+                Some(snap) => snapshot_note(snap),
                 None => format!(
                     "the task's workspace, {real}, which your commands can read but you must not \
                      change"
@@ -2107,9 +2203,10 @@ impl Micro {
             .await;
             (suite, atif::now_ms())
         };
-        let ((suite, define_ended), early) = if snapshot.is_some() {
+        let ((mut suite, define_ended), early) = if snapshot.is_some() {
             let (defined, ran) =
-                futures_util::future::join(define, self.early_session(prepared, &evidence)).await;
+                futures_util::future::join(define, self.early_session(prepared, &edit_evidence))
+                    .await;
             (defined, Some(ran))
         } else {
             (define.await, None)
@@ -2159,9 +2256,6 @@ impl Micro {
             + suite.jev_usd
             + sessions.iter().filter_map(|r| r.cost_usd).sum::<f64>();
         if suite.tests.is_empty() {
-            if let Some(snap) = &snapshot {
-                let _ = std::fs::remove_dir_all(snap);
-            }
             crate::say::line(
                 "  microluna ▸ the suite has no tests, so the requirements loop runs instead",
             );
@@ -2185,7 +2279,6 @@ impl Micro {
                 "start (snapshot)",
             )
             .await;
-            let _ = std::fs::remove_dir_all(snap);
             if let Ok(start) = &start
                 && let Some(differ) = unreproduced(&suite, start)
             {
@@ -2210,7 +2303,12 @@ impl Micro {
         let mut round = 0u32;
         let mut guarded = false;
         let mut guard_failure: Option<String> = None;
+        let mut audited = false;
+        let mut audit: Option<String> = None;
         let mut first_run = true;
+        let mut gaps_left = self.policy.gap_rounds;
+        let mut gap_number = 0u32;
+        let mut last_run: Option<(String, String, crate::accept::RunResult)> = None;
         let stopped;
         loop {
             let label = if number == 0 {
@@ -2218,21 +2316,45 @@ impl Micro {
             } else {
                 format!("after session {number}")
             };
-            let result = match crate::accept::run(
-                &suite,
-                &self.workdir,
-                &runner,
-                Some(&self.recorder),
-                &label,
-            )
-            .await
-            {
-                Ok(result) => result,
-                Err(tampered) => {
-                    stopped = format!("the suite can't be trusted: {tampered}");
-                    break;
+            // With fast runs, an unchanged workspace reuses the last run.
+            let tree = self
+                .policy
+                .fast_runs
+                .then(|| crate::accept::digest_of(&parallel::tree(&self.workdir)));
+            let reused = match (&tree, &last_run) {
+                (Some(now), Some((then, digest, held)))
+                    if now == then && *digest == suite.digest =>
+                {
+                    Some(held.clone())
+                }
+                _ => None,
+            };
+            let result = match reused {
+                Some(mut held) => {
+                    held.label =
+                        format!("{label} (the workspace is unchanged, so the last run stands)");
+                    held
+                }
+                None => {
+                    let previous = last_run
+                        .as_ref()
+                        .filter(|(_, digest, _)| *digest == suite.digest)
+                        .map(|(_, _, held)| held.clone());
+                    match self
+                        .run_suite(&suite, &runner, &label, previous.as_ref())
+                        .await
+                    {
+                        Ok(result) => result,
+                        Err(tampered) => {
+                            stopped = format!("the suite can't be trusted: {tampered}");
+                            break;
+                        }
+                    }
                 }
             };
+            if let Some(tree) = tree {
+                last_run = Some((tree, suite.digest.clone(), result.clone()));
+            }
             crate::say::line(&format!(
                 "  microluna ▸ suite {label}: {} of {} green",
                 result.passed, result.total
@@ -2262,7 +2384,150 @@ impl Micro {
                 "complete": result.complete,
                 "red": result.red_requirements(),
             }));
-            if result.green {
+            let partial = suite.status != crate::accept::Status::Accepted || !result.complete;
+            if result.green
+                && partial
+                && gaps_left > 0
+                && spent < self.policy.spend_usd
+                && time_left() >= Duration::from_secs(60)
+                && let Some(base_dir) = &base_copy
+            {
+                // A partial suite's green isn't done: write deciding tests
+                // for its gaps on the untouched snapshot, then resume.
+                gaps_left -= 1;
+                gap_number += 1;
+                let open: Vec<String> = suite.gaps.iter().map(|g| g.requirement.clone()).collect();
+                crate::say::line(&format!(
+                    "  microluna ▸ the suite is green but partial (open: {}), so gap round \
+                     {gap_number} writes deciding tests on the snapshot",
+                    open.join(", ")
+                ));
+                let gap_inputs = crate::accept::Inputs {
+                    task: &task,
+                    requirements: &prepared.requirements,
+                    evidence: &evidence,
+                    workspace: base_dir,
+                    suite_dir: &suite_dir,
+                    workspace_note: snapshot_note(base_dir),
+                    target: Some(&self.workdir),
+                };
+                let gap_started = atif::now_ms();
+                let (tests_before, usd_before) = (suite.tests.len(), suite.writer_usd);
+                suite = crate::accept::extend(
+                    &suite,
+                    &gap_inputs,
+                    &writer,
+                    &runner,
+                    &self.recorder,
+                    &options,
+                    gap_number,
+                )
+                .await;
+                let added = suite.tests.len() - tests_before;
+                spent += suite.writer_usd - usd_before;
+                tracks.push(parallel::Track {
+                    label: format!("gap round {gap_number}"),
+                    kind: "gap".to_string(),
+                    batch: format!("gap round {gap_number}"),
+                    group: Some(open.join(", ")),
+                    workspace: Some(base_dir.display().to_string()),
+                    start_ms: gap_started.saturating_sub(started_at),
+                    end_ms: atif::now_ms().saturating_sub(started_at),
+                    turns: suite.rounds.last().map_or(0, |r| r.writer.turns),
+                    input_tokens: suite.rounds.last().map_or(0, |r| r.writer.input_tokens),
+                    cached_tokens: suite.rounds.last().map_or(0, |r| r.writer.cached_tokens),
+                    read_turns: 0,
+                    cost_usd: suite.writer_usd - usd_before,
+                });
+                moves.push(json!({
+                    "kind": "gap",
+                    "round": gap_number,
+                    "open": open,
+                    "added": added,
+                    "gaps": suite.gaps,
+                    "status": suite.status,
+                    "digest": suite.digest,
+                    "writer_usd": suite.writer_usd - usd_before,
+                }));
+                crate::say::line(&format!(
+                    "  microluna ▸ gap round {gap_number}: {added} new test{}; {}",
+                    if added == 1 { "" } else { "s" },
+                    suite.headline()
+                ));
+                if added > 0 || !suite.gaps.iter().any(|g| open.contains(&g.requirement)) {
+                    last_run = None;
+                    last_signature = None;
+                    first_run = false;
+                    continue;
+                }
+            }
+            let partial_note = if partial {
+                format!(
+                    ", but the suite is partial (open: {})",
+                    suite
+                        .gaps
+                        .iter()
+                        .map(|g| g.requirement.clone())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            } else {
+                String::new()
+            };
+            // Before stopping on green, join the evidence once; a partial
+            // suite or a doubtful done gets one audit session.
+            if result.green && self.policy.close_audit && !audited {
+                audited = true;
+                let (done, record, usd) = self
+                    .joined_close(prepared, &suite, &result, &sessions, base_copy.as_deref())
+                    .await;
+                spent += usd;
+                let weak: Vec<String> = record["requirements"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter(|r| r["p"].as_f64().is_some_and(|p| p < 0.5))
+                    .map(|r| {
+                        format!(
+                            "{} ({:.2})",
+                            r["text"].as_str().unwrap_or_default(),
+                            r["p"].as_f64().unwrap_or_default()
+                        )
+                    })
+                    .collect();
+                let doubtful = partial || done.is_none_or(|p| p < CLOSE_MIN);
+                crate::say::line(&format!(
+                    "  microluna ▸ joined close: done {}{}",
+                    done.map_or("unanswered".to_string(), |p| format!("p={p:.2}")),
+                    if doubtful {
+                        ", so one audit session runs"
+                    } else {
+                        ""
+                    }
+                ));
+                moves.push(record);
+                if doubtful
+                    && number < self.policy.max_sessions
+                    && spent < self.policy.spend_usd
+                    && time_left() >= Duration::from_secs(60)
+                {
+                    audit = Some(format!(
+                        "The acceptance suite is green, but the host doubts the task is done \
+                         (p={}){partial_note}. Audit the work: for each requirement, read the \
+                         code that implements it and check it against the task's exact rule and \
+                         the standard definition of any method the task names, and against the \
+                         choices the code defends in its comments. Fix what's wrong without \
+                         turning an acceptance test red, run the suite, and call finish.{}",
+                        done.map_or("unanswered".to_string(), |p| format!("{p:.2}")),
+                        if weak.is_empty() {
+                            String::new()
+                        } else {
+                            format!(" The weakest requirements: {}.", weak.join("; "))
+                        }
+                    ));
+                }
+            }
+            if result.green && audit.is_none() {
                 // Stop the moment the suite is green; with a final guard,
                 // the task's own visible tests run once first.
                 if self.policy.final_guard && !guarded {
@@ -2308,24 +2573,25 @@ impl Micro {
                         }
                         Some(guard) if !guard.green => {
                             stopped = format!(
-                                "the acceptance suite is green after session {number} ({} of {}), \
-                                 but the task's own tests fail and no bound is left for a session",
+                                "the acceptance suite is green after session {number} ({} of \
+                                 {}){partial_note}, but the task's own tests fail and no bound is \
+                                 left for a session",
                                 result.passed, result.total
                             );
                             break;
                         }
                         Some(_) => {
                             stopped = format!(
-                                "the acceptance suite is green after session {number} ({} of {}), \
-                                 and the task's own tests pass",
+                                "the acceptance suite is green after session {number} ({} of \
+                                 {}){partial_note}, and the task's own tests pass",
                                 result.passed, result.total
                             );
                             break;
                         }
                         None => {
                             stopped = format!(
-                                "the acceptance suite is green after session {number} ({} of {}); \
-                                 the task has no visible tests to guard with",
+                                "the acceptance suite is green after session {number} ({} of \
+                                 {}){partial_note}; the task has no visible tests to guard with",
                                 result.passed, result.total
                             );
                             break;
@@ -2333,7 +2599,7 @@ impl Micro {
                     }
                 } else {
                     stopped = format!(
-                        "the acceptance suite is green after session {number} ({} of {})",
+                        "the acceptance suite is green after session {number} ({} of {}){partial_note}",
                         result.passed, result.total
                     );
                     break;
@@ -2443,7 +2709,7 @@ impl Micro {
             }
             notes.truncate(6);
             // Jev's move after the last round; code keeps the last word.
-            if self.policy.handoff_jev && number > 0 && guard_failure.is_none() {
+            if self.policy.handoff_jev && number > 0 && guard_failure.is_none() && audit.is_none() {
                 let (chosen, record, usd) = self
                     .suite_move(prepared, &suite, &result, &ended, since_progress)
                     .await;
@@ -2508,6 +2774,7 @@ impl Micro {
                 result.tests.iter().filter(|t| !t.green).collect();
             let room = self.policy.max_sessions.saturating_sub(number);
             let planned = if guard_failure.is_none()
+                && audit.is_none()
                 && self.policy.parallel_edits > 1
                 && red.len() >= 2
                 && room >= 2
@@ -2530,8 +2797,16 @@ impl Micro {
                     .collect();
                 let (ran, merged) = self
                     .parallel_round(
-                        prepared, &suite, &result, &lanes, &evidence, &sessions, &notes, round,
-                        number, best,
+                        prepared,
+                        &suite,
+                        &result,
+                        &lanes,
+                        &edit_evidence,
+                        &sessions,
+                        &notes,
+                        round,
+                        number,
+                        best,
                     )
                     .await;
                 requeued = merged["requeued"]
@@ -2551,13 +2826,30 @@ impl Micro {
                 sessions.extend(ran);
             } else {
                 number += 1;
-                let brief = match &guard_failure {
-                    Some(output) => self.guard_brief(prepared, &suite, &evidence, number, output),
-                    None => self.suite_brief(
+                let brief = match (&guard_failure, &audit) {
+                    (Some(output), _) => {
+                        self.guard_brief(prepared, &suite, &edit_evidence, number, output)
+                    }
+                    (None, Some(note)) => {
+                        let mut brief = self.suite_brief(
+                            prepared,
+                            &suite,
+                            &result,
+                            &edit_evidence,
+                            &sessions,
+                            &notes,
+                            number,
+                            best,
+                            0,
+                        );
+                        brief.state.insert(1, note.clone());
+                        brief
+                    }
+                    (None, None) => self.suite_brief(
                         prepared,
                         &suite,
                         &result,
-                        &evidence,
+                        &edit_evidence,
                         &sessions,
                         &notes,
                         number,
@@ -2566,15 +2858,22 @@ impl Micro {
                     ),
                 };
                 let red_ids = result.red_requirements();
-                let (focus, why) = match &guard_failure {
-                    Some(_) => (
+                let (focus, why) = match (&guard_failure, &audit) {
+                    (None, Some(_)) => (
+                        vec!["an audit of the whole task".to_string()],
+                        format!(
+                            "session {number} audits the work: the suite is green, but the \
+                             joined evidence doesn't show the task done"
+                        ),
+                    ),
+                    (Some(_), _) => (
                         vec!["the task's own tests".to_string()],
                         format!(
                             "session {number} fixes what the task's own tests show, with the \
                              acceptance suite green"
                         ),
                     ),
-                    None => (
+                    (None, None) => (
                         red_ids.clone(),
                         format!(
                             "session {number} works toward a green suite ({} of {} green; red: {})",
@@ -2585,6 +2884,7 @@ impl Micro {
                     ),
                 };
                 guard_failure = None;
+                audit = None;
                 notes.clear();
                 let ran = self
                     .session_at(
@@ -2745,8 +3045,71 @@ impl Micro {
         }
     }
 
+    /// Runs the suite on the workspace. With fast runs and a previous run
+    /// of the same suite, only the tests that were red run; when they all
+    /// pass, the whole suite runs once to confirm.
+    async fn run_suite(
+        &self,
+        suite: &crate::accept::AcceptanceSuite,
+        runner: &crate::accept::Local,
+        label: &str,
+        previous: Option<&crate::accept::RunResult>,
+    ) -> Result<crate::accept::RunResult, crate::accept::Tampered> {
+        if self.policy.fast_runs
+            && let Some(previous) = previous.filter(|p| !p.green)
+        {
+            let red: Vec<crate::accept::Test> = suite
+                .tests
+                .iter()
+                .filter(|t| previous.tests.iter().any(|r| r.id == t.id && !r.green))
+                .cloned()
+                .collect();
+            if !red.is_empty() && red.len() < suite.tests.len() {
+                let only = crate::accept::AcceptanceSuite {
+                    tests: red,
+                    ..suite.clone()
+                };
+                let now = crate::accept::run(
+                    &only,
+                    &self.workdir,
+                    runner,
+                    Some(&self.recorder),
+                    &format!("{label}, the red tests only"),
+                )
+                .await?;
+                if !now.green {
+                    let mut tests: Vec<crate::accept::TestRun> = previous
+                        .tests
+                        .iter()
+                        .filter(|r| r.green)
+                        .cloned()
+                        .chain(now.tests.iter().cloned())
+                        .collect();
+                    tests.sort_by_key(|t| suite.tests.iter().position(|s| s.id == t.id));
+                    let mut combined = crate::accept::RunResult::of(
+                        label,
+                        &suite.digest,
+                        &suite.requirement_ids(),
+                        tests,
+                        now.milliseconds,
+                    );
+                    combined.gaps = suite.gaps.iter().map(|g| g.requirement.clone()).collect();
+                    combined.complete = combined.green && combined.gaps.is_empty();
+                    return Ok(combined);
+                }
+            }
+        }
+        crate::accept::run(suite, &self.workdir, runner, Some(&self.recorder), label).await
+    }
+
     fn suite_guidance(&self, prepared: &Prepared) -> String {
         let mut guidance = SUITE_GUIDANCE.to_string();
+        if self.policy.fast_runs {
+            guidance.push_str(
+                " Rerun only the red tests, as `sh run.sh T2 T5`, until the last one passes, \
+                 then run the whole suite once.",
+            );
+        }
         let facts = constraints(&prepared.requirements);
         if !facts.is_empty() {
             guidance.push_str(&format!(
@@ -2810,6 +3173,87 @@ impl Micro {
         let mut runs = crate::accept::Runner::run_all(runner, &[test], &dir, &self.workdir).await;
         let _ = std::fs::remove_dir_all(&dir);
         runs.pop()
+    }
+
+    /// The joined closing judgment: the suite's result and gaps, the last
+    /// session's report, and the diff against the start (a snapshot when
+    /// there is one, Git otherwise), over every requirement but context and
+    /// constraints. Returns Jev's done, the record, and its cost.
+    async fn joined_close(
+        &self,
+        prepared: &Prepared,
+        suite: &crate::accept::AcceptanceSuite,
+        result: &crate::accept::RunResult,
+        sessions: &[Ran],
+        base: Option<&Path>,
+    ) -> (Option<f64>, Value, f64) {
+        let diff = match base {
+            Some(base) => crate::delegate::changes_since(base, &self.workdir),
+            None => crate::delegate::changes(&self.workdir, None),
+        };
+        let requirements: Vec<&crate::requirements::Requirement> = prepared
+            .requirements
+            .requirements
+            .iter()
+            .filter(|r| !matches!(r.kind, Kind::Context | Kind::Constraint))
+            .collect();
+        let state = json!({
+            "task": clip_lines(&prepared.instruction, 4_000),
+            "requirements": requirements.iter().map(|r| json!({
+                "id": r.id,
+                "kind": r.kind.word(),
+                "text": r.text.split_whitespace().collect::<Vec<_>>().join(" "),
+            })).collect::<Vec<_>>(),
+            "suite": {
+                "status": suite.status,
+                "green": result.passed,
+                "total": result.total,
+                "open_gaps": suite.gaps,
+                "tests": suite.tests.iter().map(|t| format!("{} ({}): {}", t.id, t.requirements.join(", "), t.what)).collect::<Vec<_>>(),
+            },
+            "report": sessions.last().map(|r| clip_lines(&r.summary(), 1_500)),
+            "diff": crate::judge::clip(&diff, 8_000),
+        });
+        let mut questions = jev::Questions::new().with("done", jev::Noul::new(CLOSE_QUESTION));
+        for j in 0..requirements.len() {
+            questions = questions.with(
+                format!("requirement_{j}"),
+                jev::Noul::new(close_requirement_question(j).as_str()),
+            );
+        }
+        let asked = jev_component::ask(
+            &prepared.jev,
+            &self.recorder,
+            jev_component::Ask {
+                component: "verify.close",
+                name: "jev_joined_close",
+                id: format!("jev-joined-close-{}", self.dispatch()),
+                state,
+                questions,
+                parent: None,
+                deadline: prepared.deadline.clone(),
+            },
+        )
+        .await;
+        let done = asked.noul("done");
+        let usd = asked.input_tokens.map_or(0.0, |t| {
+            t as f64 * jev_component::USD_PER_MILLION_INPUT / 1_000_000.0
+        });
+        let record = json!({
+            "kind": "close",
+            "done": done,
+            "requirements": requirements.iter().enumerate().map(|(j, r)| json!({
+                "id": r.id,
+                "text": crate::judge::clip(&r.text, 200),
+                "p": asked.noul(&format!("requirement_{j}")),
+            })).collect::<Vec<_>>(),
+            "suite_status": suite.status,
+            "open_gaps": suite.gaps.iter().map(|g| g.requirement.clone()).collect::<Vec<_>>(),
+            "diff_chars": diff.chars().count(),
+            "jev": { "how": asked.how, "error": asked.error },
+            "jev_usd": usd,
+        });
+        (done, record, usd)
     }
 
     /// Jev's move after a suite-loop round, settled by code: `done` while

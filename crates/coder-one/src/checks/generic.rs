@@ -12,6 +12,7 @@
 //! | `generic.public-command` | A test or check command the instruction names exits 0. |
 //! | `generic.claimed-command` | A test command the executor ran and saw pass still passes on the final state. |
 //! | `generic.self-report` | Neither the executor's final report nor the outputs it wrote say the result failed. Off unless [`Options::self_report`]. |
+//! | `generic.acceptance` | Each test of the frozen acceptance suite the executor worked to still passes on the final state, observing the requirements it names. |
 //!
 //! [`Options::optional_outputs`] changes two output verdicts: an empty file
 //! a requirement asks for only when something is needed ("write any
@@ -44,6 +45,7 @@ pub const KINDS: &[&str] = &[
     "generic.public-command",
     "generic.claimed-command",
     "generic.self-report",
+    "generic.acceptance",
 ];
 
 /// The most claimed commands one check reruns.
@@ -86,6 +88,11 @@ pub struct Workspace {
     /// missing output elsewhere is unknown, not missing.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub collected: Vec<String>,
+    /// The frozen acceptance suite's record, when the executor worked to
+    /// one: each of its tests becomes a `generic.acceptance` scenario on
+    /// the requirements it names.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub suite: Option<String>,
 }
 
 impl Workspace {
@@ -602,6 +609,59 @@ pub fn build(context: &Context<'_>) -> Result<Vec<Scenario>, Vec<Ineligible>> {
             }
         }
     }
+    // The frozen acceptance suite, one scenario per test, so a green suite
+    // observes the requirements its tests name instead of leaving them
+    // unobserved.
+    if let Some(suite) = workspace
+        .suite
+        .as_deref()
+        .and_then(|path| crate::accept::AcceptanceSuite::load(Path::new(path)).ok())
+    {
+        for test in &suite.tests {
+            let named: Vec<&Requirement> = context
+                .map
+                .requirements
+                .iter()
+                .filter(|r| test.requirements.contains(&r.id))
+                .collect();
+            let Some(first) = named.first() else {
+                continue;
+            };
+            let script = suite.dir.join(&test.path);
+            let command = format!(
+                "ACCEPT_DIR={} WORKSPACE={} ACCEPT_TMP=\"$(mktemp -d)\" sh {}",
+                crate::accept::runner::sh_quote(&suite.dir.display().to_string()),
+                crate::accept::runner::sh_quote(&workspace.dir),
+                crate::accept::runner::sh_quote(&script.display().to_string())
+            );
+            let mut built = scenario(
+                context,
+                format!("generic.acceptance:{}", test.id),
+                "generic.acceptance",
+                first,
+                vec![format!(
+                    "the frozen acceptance suite's {} checks {}",
+                    test.id,
+                    test.requirements.join(", ")
+                )],
+                format!("the acceptance test {}", test.id),
+                command_sec,
+                Relation {
+                    statement: format!(
+                        "The acceptance test {} passes on the final state: {}",
+                        test.id, test.what
+                    ),
+                    derivation: "The test was written from the task before any fix, proven to \
+                                 fail on the untouched workspace, and frozen."
+                        .to_string(),
+                },
+                json!({ "command": command, "source": "acceptance", "test": test.id }),
+            );
+            built.requirements = named.iter().map(|r| r.id.clone()).collect();
+            built.spans = context.spans_of(&named);
+            scenarios.push(built);
+        }
+    }
     // The executor's own test commands, latest first: a test it saw pass
     // should still pass on what it left.
     let target = requirement_for(context, &[Kind::Check, Kind::Deliverable, Kind::Behavior]);
@@ -928,7 +988,7 @@ pub async fn run(context: &Context<'_>, scenario: &Scenario, scratch: &Path) -> 
                 .coverage
                 .push("checks the format, not the values".to_string());
         }
-        "generic.public-command" | "generic.claimed-command" => {
+        "generic.public-command" | "generic.claimed-command" | "generic.acceptance" => {
             let command_text = scenario.params["command"].as_str().unwrap_or_default();
             let command = match place.shell(command_text, &workspace.dir, &[], scratch) {
                 Ok(command) => command,

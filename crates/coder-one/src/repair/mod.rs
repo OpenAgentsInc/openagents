@@ -91,6 +91,10 @@ pub enum Trigger {
     Checked,
     /// On every candidate, to count what an unneeded repair breaks.
     Always,
+    /// When a check contradicted a requirement, or when no scenario
+    /// observed a behavior or deliverable requirement at all: silence
+    /// isn't a clean pass.
+    Unobserved,
 }
 
 impl Trigger {
@@ -101,6 +105,7 @@ impl Trigger {
             Trigger::Detected => "detected",
             Trigger::Checked => "checked",
             Trigger::Always => "always",
+            Trigger::Unobserved => "unobserved",
         }
     }
 
@@ -114,8 +119,9 @@ impl Trigger {
             "detected" => Ok(Trigger::Detected),
             "checked" => Ok(Trigger::Checked),
             "always" => Ok(Trigger::Always),
+            "unobserved" => Ok(Trigger::Unobserved),
             other => Err(format!(
-                "a trigger is detected, checked, or always, not {other}"
+                "a trigger is detected, checked, always, or unobserved, not {other}"
             )),
         }
     }
@@ -179,6 +185,25 @@ pub fn gaps(report: &Report, support: Option<&crate::support::Report>) -> Vec<Ga
         }
     }
     out
+}
+
+/// The behavior and deliverable requirements no scenario observed, as
+/// gaps with no packet.
+#[must_use]
+pub fn unobserved(report: &Report) -> Vec<Gap> {
+    report
+        .coverage
+        .iter()
+        .filter(|c| {
+            c.state == "unobserved" && matches!(c.kind.as_str(), "behavior" | "deliverable")
+        })
+        .map(|c| Gap {
+            requirement: c.id.clone(),
+            text: c.text.clone(),
+            packets: Vec::new(),
+            support: None,
+        })
+        .collect()
 }
 
 /// A repair brief.
@@ -283,12 +308,23 @@ pub fn packet_brief(
     gaps: &[Gap],
 ) -> Brief {
     let digest = candidate.digest();
-    let mut text = String::from(
-        "A host check ran your candidate and observed that it doesn't meet a \
+    let mut text = if gaps
+        .iter()
+        .all(|gap| gap.packets.is_empty() && gap.support.is_none())
+    {
+        String::from(
+            "The host's checks couldn't observe these requirements of the task at all. Check \
+each one against the task's words, fix what doesn't meet it, keep what already works, and \
+check the fix yourself before you finish.\n\n",
+        )
+    } else {
+        String::from(
+            "A host check ran your candidate and observed that it doesn't meet a \
 requirement of the task. Fix what the observations show, keep what already \
 works, and check the fix yourself before you finish. Don't rewrite parts the \
 check didn't question.\n\n",
-    );
+        )
+    };
     text.push_str(&format!("## The task\n\n{}\n\n", task.instruction.trim()));
     text.push_str(&format!(
         "## The candidate\n\nRevision {}. {}\n\n",
@@ -491,7 +527,10 @@ pub async fn attempt<E: Executor>(
     make: impl FnOnce(Duration) -> Result<E, String>,
 ) -> Result<Repaired, String> {
     let (input, report) = before;
-    let found = gaps(report, support);
+    let mut found = gaps(report, support);
+    if policy.trigger == Trigger::Unobserved && found.is_empty() {
+        found = unobserved(report);
+    }
     let invocation = place.recorder.enter(
         Start::new("verify.repair", implementation(policy.kind, policy.trigger))
             .named(&format!("{} brief", policy.kind.word()))
@@ -502,7 +541,7 @@ pub async fn attempt<E: Executor>(
             .with_effects(),
     );
     let triggered = match policy.trigger {
-        Trigger::Detected => !found.is_empty(),
+        Trigger::Detected | Trigger::Unobserved => !found.is_empty(),
         Trigger::Checked => found.iter().any(|gap| !gap.packets.is_empty()),
         Trigger::Always => true,
     };

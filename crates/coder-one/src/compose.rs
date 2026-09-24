@@ -1506,6 +1506,7 @@ where
             options: verify.check_options(),
             root: None,
             collected: Vec::new(),
+            suite: None,
         }),
         distrust: verify.distrust.clone(),
     };
@@ -1716,6 +1717,7 @@ where
         if let Some(live) = &mut subject.live {
             live.claimed = claimed(setup.recorder);
             live.report = Some(first_delegation.report.output());
+            live.suite = crate::accept::latest_record(setup.dir);
         }
         let outside = output_paths(subject.requirements.as_ref(), setup.workdir);
         let taken = crate::snapshot::take(setup.dir, setup.workdir, &outside, &subject, policy);
@@ -1743,6 +1745,7 @@ where
         if let Some(live) = &mut subject.live {
             live.claimed = claimed(setup.recorder);
             live.report = report;
+            live.suite = crate::accept::latest_record(setup.dir);
         }
         async move {
             checks::check_subject_as(&subject, setup.workdir, setup.dir, setup.recorder, file).await
@@ -2665,6 +2668,7 @@ async fn verify_by_second<F: Factory>(
     if let Some(live) = &mut subject.live {
         live.claimed = claimed(setup.recorder);
         live.report = Some(report.output());
+        live.suite = crate::accept::latest_record(setup.dir);
     }
     let second_checked = checks::check_subject_as(
         &subject,

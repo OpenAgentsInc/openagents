@@ -237,6 +237,7 @@ async fn live_check(
             options,
             root: None,
             collected: Vec::new(),
+            suite: None,
         }),
         distrust: Vec::new(),
     };
@@ -440,6 +441,7 @@ async fn behavior_check(
             },
             root: None,
             collected: Vec::new(),
+            suite: None,
         }),
         distrust: Vec::new(),
     };
@@ -622,4 +624,87 @@ fn a_distrusted_kind_fails_as_inconclusive_and_contradicts_nothing() {
             .any(|c| c.contains("verify.distrust"))
     );
     assert_eq!(verdicts[1].verdict, "failed");
+}
+
+/// A frozen acceptance suite becomes one scenario per test on the
+/// requirements it names: a green test observes its requirement, and a red
+/// one contradicts it, instead of leaving both unobserved.
+#[tokio::test]
+async fn the_frozen_suite_observes_the_requirements_its_tests_name() {
+    let dir = scratch("acceptance-scenarios");
+    let work = dir.join("work");
+    let suite = dir.join("accept-suite-1");
+    std::fs::create_dir_all(&work).unwrap();
+    std::fs::create_dir_all(suite.join("tests")).unwrap();
+    std::fs::write(work.join("hello.txt"), "hello\n").unwrap();
+    std::fs::write(work.join("world.txt"), "nope\n").unwrap();
+    std::fs::write(
+        suite.join("tests/T1.sh"),
+        "grep -qx hello \"$WORKSPACE/hello.txt\"\n",
+    )
+    .unwrap();
+    std::fs::write(suite.join("tests/T2.sh"), "grep -qx world world.txt\n").unwrap();
+    let test = |id: &str, requirement: &str, what: &str| {
+        serde_json::json!({
+            "id": id, "requirements": [requirement], "kind": "example", "what": what,
+            "path": format!("tests/{id}.sh"),
+        })
+    };
+    let record = dir.join("accept-suite-1.accept.json");
+    std::fs::write(
+        &record,
+        serde_json::json!({
+            "schema": crate::accept::SCHEMA, "dir": suite, "status": "accepted",
+            "instruction_sha256": "", "tests": [
+                test("T1", "R1", "hello.txt holds hello"),
+                test("T2", "R2", "world.txt holds world"),
+            ],
+            "rejected": [], "coverage": [], "gaps": [], "start": null, "files": {},
+            "digest": "", "rounds": [], "writer_usd": 0.0, "jev_usd": 0.0,
+            "milliseconds": 0, "detail": null,
+        })
+        .to_string(),
+    )
+    .unwrap();
+    assert_eq!(
+        crate::accept::latest_record(&dir).as_deref(),
+        Some(record.display().to_string().as_str())
+    );
+    let instruction = "Write hello.txt containing the word hello.\n\nThen write world.txt containing the word world.";
+    let subject = Subject {
+        label: "acceptance".to_string(),
+        task: TaskText {
+            title: "acceptance".to_string(),
+            instruction: instruction.to_string(),
+        },
+        requirements: Some(crate::requirements::mechanical(instruction)),
+        provided: Vec::new(),
+        inputs: None,
+        budget: Budget::default(),
+        live: Some(generic::Workspace {
+            dir: String::new(),
+            claimed: Vec::new(),
+            command_sec: 30,
+            report: None,
+            options: generic::Options::default(),
+            root: None,
+            collected: Vec::new(),
+            suite: Some(record.display().to_string()),
+        }),
+        distrust: Vec::new(),
+    };
+    let input = subject.input(&work);
+    let report = check(&input, &Recorder::default(), &dir.join("scratch")).await;
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(verdict_of(&report, "generic.acceptance:T1"), "passed");
+    assert_eq!(verdict_of(&report, "generic.acceptance:T2"), "failed");
+    let state = |id: &str| {
+        report
+            .coverage
+            .iter()
+            .find(|c| c.id == id)
+            .map(|c| c.state.clone())
+    };
+    assert_eq!(state("R1").as_deref(), Some("observed"));
+    assert_eq!(state("R2").as_deref(), Some("contradicted"));
 }

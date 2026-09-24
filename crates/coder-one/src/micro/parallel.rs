@@ -616,7 +616,7 @@ impl Track {
     }
 
     fn session(&self) -> bool {
-        self.kind == "edit" || self.kind == "writer"
+        self.kind == "edit" || self.kind == "writer" || self.kind == "gap"
     }
 }
 

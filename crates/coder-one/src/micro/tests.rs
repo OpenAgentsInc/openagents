@@ -647,6 +647,9 @@ fn one_round() -> Option<SuiteWriter> {
         effort: None,
         one_pass: true,
         discover: false,
+        inventory: false,
+        standard_methods: false,
+        guards: false,
     })
 }
 
@@ -974,5 +977,96 @@ async fn the_same_failure_twice_stops_the_loop() {
             .as_str()
             .unwrap()
             .contains("no answer")
+    );
+}
+
+/// A green suite that is partial isn't done: a gap round writes a
+/// deciding test for the open requirement on the snapshot, the suite is
+/// frozen again with it, and the loop resumes until the whole suite is
+/// green.
+#[tokio::test]
+async fn a_partial_green_runs_a_gap_round_then_resumes() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut executor = micro(
+        dir.path(),
+        vec![
+            call(
+                "s1",
+                "write_file",
+                &json!({ "path": "hello.txt", "contents": "hello\n" }),
+                usage(900, 0, 40),
+            ),
+            finish("s1f", "done", "Wrote hello.txt."),
+            call(
+                "s2",
+                "write_file",
+                &json!({ "path": "world.txt", "contents": "world\n" }),
+                usage(900, 800, 40),
+            ),
+            finish("s2f", "done", "Wrote world.txt."),
+        ],
+        Policy {
+            suite: true,
+            checks: false,
+            suite_writer: one_round(),
+            gap_rounds: 1,
+            fast_runs: true,
+            ..Policy::default()
+        },
+    );
+    wrong_files(dir.path());
+    // The gap writer's brief also names the suite, so its lane comes first.
+    fake(&executor).lane(
+        "Write new tests only for them",
+        vec![
+            call(
+                "g1",
+                "write_file",
+                &json!({ "path": "tests/T1.sh", "contents": WORLD_TEST }),
+                usage(900, 0, 40),
+            ),
+            finish("g2", "done", "Wrote a test for R2."),
+        ],
+    );
+    fake(&executor).lane(
+        "Write an executable acceptance suite",
+        vec![
+            call(
+                "w1",
+                "write_file",
+                &json!({ "path": "tests/T1.sh", "contents": HELLO_TEST }),
+                usage(900, 0, 40),
+            ),
+            finish("w2", "done", "Wrote T1 for R1."),
+        ],
+    );
+    executor.take_evidence(&prepared());
+    let report = executor.execute(&briefing(TASK)).await;
+    let record = executor.last.clone().unwrap();
+    assert_eq!(report.status, Status::Answered, "{record:#}");
+    let gap = record["moves"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["kind"] == "gap")
+        .unwrap_or_else(|| panic!("no gap round: {record:#}"));
+    assert_eq!(gap["open"], json!(["R2"]));
+    assert_eq!(gap["added"], json!(1));
+    assert_eq!(gap["status"], json!("accepted"));
+    let stopped = record["stopped"].as_str().unwrap();
+    assert!(
+        stopped.contains("green after session 2 (2 of 2)"),
+        "{stopped}"
+    );
+    assert!(!stopped.contains("partial"), "{stopped}");
+    // The new test joined the frozen suite as T2, naming the workspace.
+    let t2 = std::fs::read_to_string(dir.path().join("accept-suite-1/tests/T2.sh")).unwrap();
+    assert!(t2.contains("world.txt"));
+    assert!(
+        record["parallel"]["batches"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|b| b["batch"] == "gap round 1")
     );
 }

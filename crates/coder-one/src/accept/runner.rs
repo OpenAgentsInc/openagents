@@ -141,6 +141,7 @@ for test in "$ACCEPT_DIR"/tests/*.sh; do
   fi
 done
 echo "$green green, $red red"
+[ "$red" -eq 0 ]
 "#
     )
 }

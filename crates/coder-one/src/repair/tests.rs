@@ -307,3 +307,10 @@ fn every_trigger_round_trips_through_its_word() {
     }
     assert!(Trigger::parse("sometimes").is_err());
 }
+
+#[test]
+fn the_unobserved_trigger_parses_and_names_itself() {
+    assert_eq!(Trigger::parse("unobserved").unwrap(), Trigger::Unobserved);
+    assert_eq!(Trigger::Unobserved.word(), "unobserved");
+    assert!(Trigger::parse("silent").unwrap_err().contains("unobserved"));
+}

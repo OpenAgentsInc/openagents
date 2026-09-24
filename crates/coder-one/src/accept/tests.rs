@@ -1028,3 +1028,96 @@ async fn define_with_writer<W: Writer>(fx: &Fixture, writer: &W) -> AcceptanceSu
     )
     .await
 }
+
+/// A requirement that sweeps a directory of modules becomes an inventory
+/// of its source files, and comments that defend a choice are found.
+#[test]
+fn a_sweep_becomes_an_inventory_and_defended_comments_are_found() {
+    let root = tempfile::tempdir().unwrap();
+    let ws = root.path();
+    for (path, text) in [
+        ("pkg/a.py", "def a():\n    return 1\n"),
+        (
+            "pkg/b.py",
+            "\"\"\"Stats.\n\nUses the biased estimator, which is sufficient here.\n\"\"\"\ndef b():\n    return 2  # assumes positive input\n",
+        ),
+        ("tests/test_a.py", "def test_a():\n    pass\n"),
+        ("README.md", "notes\n"),
+    ] {
+        std::fs::create_dir_all(ws.join(path).parent().unwrap()).unwrap();
+        std::fs::write(ws.join(path), text).unwrap();
+    }
+    let mut map = map();
+    map.requirements.push(requirement(
+        "R4",
+        Kind::Constraint,
+        "Fix all the production modules under /app/pkg/, not just a.",
+    ));
+    let (sweeps, modules) = inventory(&map, ws);
+    assert_eq!(sweeps, ["R4"]);
+    assert_eq!(modules, ["pkg/a.py", "pkg/b.py"]);
+    let defended = defended_choices(ws);
+    assert_eq!(defended.len(), 2, "{defended:#?}");
+    assert!(defended[0].starts_with("pkg/b.py:3: Uses the biased estimator"));
+    assert!(defended[1].starts_with("pkg/b.py:6:"));
+    assert_eq!(
+        waived("WAIVE pkg/a.py: nothing wrong\nR1: x\n", &modules),
+        ["pkg/a.py"]
+    );
+}
+
+/// With an inventory, a module no test names and no waiver covers is a
+/// hard failure: the suite goes back for a targeted repair, and the sweep
+/// is a requirement with tests, not a constraint.
+#[tokio::test(flavor = "current_thread")]
+async fn an_unnamed_inventory_module_goes_back_to_the_writer() {
+    let fx = fixture();
+    std::fs::create_dir_all(fx.workspace.join("pkg")).unwrap();
+    std::fs::write(fx.workspace.join("pkg/a.py"), "A = 1\n").unwrap();
+    std::fs::write(fx.workspace.join("pkg/b.py"), "B = 2\n").unwrap();
+    let mut fx = fx;
+    fx.map.requirements.push(requirement(
+        "R4",
+        Kind::Constraint,
+        "Fix all the modules under pkg/.",
+    ));
+    let t4: &'static str = "#!/bin/sh\n# requirement: R4\n# kind: example\n# what: pkg/a.py sets A to 2\ngrep -q 'A = 2' pkg/a.py\n";
+    let writer = Scripted::new(vec![
+        vec![
+            ("tests/T1.sh", Some(T1)),
+            ("tests/T2.sh", Some(T2)),
+            ("tests/T3.sh", Some(t4)),
+        ],
+        vec![(
+            "facts.md",
+            Some("R1: hello\nWAIVE pkg/b.py: it has no defect\n"),
+        )],
+    ]);
+    let suite = define_with(
+        &fx,
+        &writer,
+        &JevMode::Off,
+        &Options {
+            rewrite: Rewrite::Hard,
+            inventory: true,
+            ..Options::default()
+        },
+    )
+    .await;
+    assert_eq!(suite.rounds.len(), 2, "{:#?}", suite.rounds);
+    assert!(
+        suite.rounds[0]
+            .problems
+            .iter()
+            .any(|p| p.contains("No test names pkg/b.py")),
+        "{:#?}",
+        suite.rounds[0].problems
+    );
+    assert!(
+        suite.rounds[1].problems.is_empty(),
+        "{:#?}",
+        suite.rounds[1]
+    );
+    assert!(suite.requirement_ids().contains(&"R4".to_string()));
+    assert_eq!(suite.status, Status::Accepted, "{:#?}", suite.gaps);
+}

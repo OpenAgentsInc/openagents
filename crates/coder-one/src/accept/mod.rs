@@ -188,6 +188,197 @@ pub struct Options {
     /// ([`DISCOVER`]).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub discover: bool,
+    /// Expand a requirement that sweeps a set of modules ("fix all the
+    /// modules under …") into a defect inventory: one entry per module,
+    /// each needing a test that names it or a `WAIVE path: why` line in
+    /// `facts.md`, checked by code, with a Jev question per module on
+    /// whether a test fails on its current behavior. A sweep isn't a
+    /// constraint any more: it gets tests.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub inventory: bool,
+    /// Count the standard definition and textbook properties of a method
+    /// the task names as stated by the task ([`STANDARD_METHODS`]), for
+    /// the writer and for Jev's faithfulness question.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub standard_methods: bool,
+    /// Keep a test that passes on the untouched workspace as a guard that
+    /// must stay green, instead of sending it back to be made to fail. A
+    /// requirement with only guards isn't decided: it's a gap.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub guards: bool,
+}
+
+/// What a writer is told with [`Options::standard_methods`].
+pub const STANDARD_METHODS: &str = "When the task names a method, statistic, estimator, metric, \
+algorithm, or format, its standard definition and textbook properties count as stated by the \
+task, even when the code's comments defend something else: test that a correct implementation \
+has them. A comment or docstring that defends a simplification, an approximation, a biased or \
+shortcut form, or an assumption about the input is a suspect, not a fact: check it against the \
+task and the method's standard definition.";
+
+/// The line that waives an inventory entry in `facts.md`.
+pub const WAIVE: &str = "WAIVE";
+
+/// Source files the inventory and the defended-choice scan read.
+const SOURCE_EXTENSIONS: [&str; 12] = [
+    "py", "js", "ts", "go", "rs", "rb", "java", "c", "cc", "cpp", "h", "sh",
+];
+
+fn is_test_file(path: &str) -> bool {
+    let name = path.rsplit('/').next().unwrap_or(path);
+    path.split('/')
+        .any(|part| part == "tests" || part == "test")
+        || name.starts_with("test_")
+        || name.contains("_test.")
+        || name.contains(".test.")
+}
+
+/// The workspace's production source files, relative to it, sorted: no
+/// tests, no caches, at most `max`.
+#[must_use]
+pub fn source_files(workspace: &Path, max: usize) -> Vec<String> {
+    crate::micro::parallel::workspace_files(workspace)
+        .into_iter()
+        .filter(|path| {
+            path.rsplit_once('.')
+                .is_some_and(|(_, ext)| SOURCE_EXTENSIONS.contains(&ext))
+                && !is_test_file(path)
+                && std::fs::metadata(workspace.join(path)).is_ok_and(|m| m.len() > 0)
+        })
+        .take(max)
+        .collect()
+}
+
+/// A requirement that sweeps a set of modules, and the modules: a
+/// requirement names a workspace directory that holds source files, or
+/// says "all", "every", or "each" of the modules, files, utilities,
+/// components, or functions. Its modules are the source files under the
+/// directory it names, or every source file when it names none, at most
+/// 12. Context requirements are never sweeps.
+#[must_use]
+pub fn inventory(map: &RequirementMap, workspace: &Path) -> (Vec<String>, Vec<String>) {
+    let sources = source_files(workspace, 200);
+    let mut dirs: Vec<String> = sources
+        .iter()
+        .filter_map(|path| path.rsplit_once('/').map(|(dir, _)| dir.to_string()))
+        .collect();
+    dirs.sort();
+    dirs.dedup();
+    let mut sweeps = Vec::new();
+    let mut modules: Vec<String> = Vec::new();
+    for requirement in &map.requirements {
+        if requirement.kind == Kind::Context {
+            continue;
+        }
+        let text = requirement.text.to_ascii_lowercase();
+        let named: Vec<&String> = dirs
+            .iter()
+            .filter(|dir| {
+                text.contains(&format!("{dir}/"))
+                    || text.contains(&format!("/{dir}"))
+                    || text
+                        .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+                        .any(|word| word == dir.as_str())
+            })
+            .collect();
+        let quantified = ["all ", "every ", "each "].iter().any(|q| text.contains(q))
+            && ["module", "file", "utilit", "component", "function"]
+                .iter()
+                .any(|noun| text.contains(noun));
+        if named.is_empty() && !quantified {
+            continue;
+        }
+        sweeps.push(requirement.id.clone());
+        for path in &sources {
+            let under =
+                named.is_empty() || named.iter().any(|dir| path.starts_with(&format!("{dir}/")));
+            if under && !modules.contains(path) {
+                modules.push(path.clone());
+            }
+        }
+    }
+    modules.truncate(12);
+    if modules.is_empty() {
+        sweeps.clear();
+    }
+    (sweeps, modules)
+}
+
+/// Comments and docstrings in the workspace's source that defend a
+/// choice: a simplification, an approximation, a biased or shortcut form,
+/// an assumption about the input, or behavior that adapts. In the tasks
+/// seen so far such a comment is often the planted defect, so the writer
+/// and the edit sessions read each as a suspect. `path:line: text`, at
+/// most 24.
+#[must_use]
+pub fn defended_choices(workspace: &Path) -> Vec<String> {
+    const MARKS: [&str; 16] = [
+        "biased",
+        "approximat",
+        "simplif",
+        "sufficient",
+        "good enough",
+        "for speed",
+        "for performance",
+        "for simplicity",
+        "assumes",
+        "assume ",
+        "adapts",
+        "intentional",
+        "by design",
+        "standard ",
+        "non-degenerate",
+        "should be fine",
+    ];
+    let mut out = Vec::new();
+    for path in source_files(workspace, 60) {
+        let Ok(text) = std::fs::read_to_string(workspace.join(&path)) else {
+            continue;
+        };
+        let mut in_docstring = false;
+        for (number, line) in text.lines().enumerate() {
+            let trimmed = line.trim();
+            let quotes = trimmed.matches("\"\"\"").count() + trimmed.matches("'''").count();
+            let commented = in_docstring
+                || quotes > 0
+                || trimmed.starts_with('#')
+                || trimmed.starts_with("//")
+                || trimmed.starts_with('*')
+                || trimmed.starts_with("/*")
+                || line.contains(" # ")
+                || line.contains(" // ");
+            if quotes % 2 == 1 {
+                in_docstring = !in_docstring;
+            }
+            let lower = trimmed.to_ascii_lowercase();
+            if commented && MARKS.iter().any(|mark| lower.contains(mark)) {
+                out.push(format!(
+                    "{path}:{}: {}",
+                    number + 1,
+                    crate::judge::clip(trimmed, 200)
+                ));
+                if out.len() >= 24 {
+                    return out;
+                }
+            }
+        }
+    }
+    out
+}
+
+/// The inventory modules `facts` waives: lines `WAIVE path: why`.
+#[must_use]
+pub fn waived(facts: &str, modules: &[String]) -> Vec<String> {
+    modules
+        .iter()
+        .filter(|module| {
+            facts.lines().any(|line| {
+                let line = line.trim().trim_start_matches(['-', '*', ' ']);
+                line.starts_with(WAIVE) && line.contains(module.as_str())
+            })
+        })
+        .cloned()
+        .collect()
 }
 
 fn one_writer() -> usize {
@@ -229,6 +420,14 @@ because the code does it.
 - For every statistic, estimator, distance, or formula the task names, write a null test: on \
 inputs whose true answer is known, such as two samples from one distribution, check the property \
 a correct implementation must have.
+- Run each statistic or estimator on two disjoint parts of the task's own reference data at \
+several sizes, such as 25, 50, 100, and 200 rows. On samples from one distribution a consistent, \
+unbiased value stays near its null value at every size; a value that shrinks or grows with the \
+size is biased, and a threshold calibrated at one window size then misfires at another. Check \
+symmetry, identity values, and scale invariance where the method is defined to have them.
+- Treat every comment or docstring that defends a choice (a simplification, an approximation, a \
+biased or shortcut form, an assumption about the input, behavior that adapts) as a suspect \
+defect, not a fact: the evidence lists the ones the host found.
 List each fact in facts.md with where you found it: the task, a docstring, or a probe.";
 
 /// What a writer is told with [`Options::one_pass`].
@@ -257,6 +456,9 @@ impl Default for Options {
             repair_turns: None,
             one_pass: false,
             discover: false,
+            inventory: false,
+            standard_methods: false,
+            guards: false,
         }
     }
 }
@@ -705,6 +907,26 @@ impl AcceptanceSuite {
     }
 }
 
+/// The latest frozen suite record in an episode directory,
+/// `accept-suite-<n>.accept.json` with the highest `n`, as a path.
+#[must_use]
+pub fn latest_record(dir: &Path) -> Option<String> {
+    std::fs::read_dir(dir)
+        .ok()?
+        .flatten()
+        .filter_map(|entry| {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let n: u64 = name
+                .strip_prefix("accept-suite-")?
+                .strip_suffix(".accept.json")?
+                .parse()
+                .ok()?;
+            Some((n, entry.path()))
+        })
+        .max_by_key(|(n, _)| *n)
+        .map(|(_, path)| path.display().to_string())
+}
+
 /// SHA-256 of `bytes`, hex.
 #[must_use]
 pub fn sha256(bytes: &[u8]) -> String {
@@ -1011,6 +1233,17 @@ pub fn briefed(inputs: &Inputs<'_>, problems: &[String], options: &Options) -> m
         out.guidance.push_str("\n\n");
         out.guidance.push_str(DISCOVER);
     }
+    if options.standard_methods {
+        out.guidance.push_str("\n\n");
+        out.guidance.push_str(STANDARD_METHODS);
+    }
+    if options.guards {
+        out.guidance.push_str(
+            "\n\nA test of behavior that already works on the untouched workspace is welcome \
+             as a guard that must stay green; don't bend it to fail. Each requirement still \
+             needs at least one test that fails now.",
+        );
+    }
     if options.one_pass {
         out.guidance.push_str("\n\n");
         out.guidance.push_str(ONE_PASS);
@@ -1125,6 +1358,7 @@ pub fn merge_parts(
     dir: &Path,
     parts: &[PathBuf],
     known: &[String],
+    first: usize,
 ) -> Result<Vec<(Renames, Renames)>, String> {
     let write = |path: &Path, bytes: &[u8]| -> Result<(), String> {
         if let Some(parent) = path.parent() {
@@ -1133,8 +1367,15 @@ pub fn merge_parts(
         }
         std::fs::write(path, bytes).map_err(|error| format!("{}: {error}", path.display()))
     };
-    let mut next = 1usize;
-    let mut facts: Vec<String> = Vec::new();
+    let mut next = first.max(1);
+    // Facts already in the suite come first.
+    let mut facts: Vec<String> = std::fs::read_to_string(dir.join(FACTS))
+        .unwrap_or_default()
+        .lines()
+        .map(str::trim_end)
+        .filter(|line| !line.trim().is_empty())
+        .map(str::to_string)
+        .collect();
     let mut out = Vec::new();
     for (index, part) in parts.iter().enumerate() {
         let prefix = format!("w{}-", index + 1);
@@ -1269,7 +1510,7 @@ async fn write_parts<W: Writer, R: Runner>(
             |(((brief, directive), part), name)| writer.write_as(brief, part, 1, name, directive),
         ))
         .await;
-    let merged = match merge_parts(dir, &dirs, known) {
+    let merged = match merge_parts(dir, &dirs, known, 1) {
         Ok(merged) => merged,
         Err(error) => {
             crate::say::line(&format!(
@@ -1336,6 +1577,60 @@ async fn define_on<W: Writer, R: Runner>(
     options: &Options,
 ) -> AcceptanceSuite {
     let started = Instant::now();
+    // A sweep over modules becomes a behavior with an inventory, and the
+    // comments that defend a choice are evidence for the writer.
+    let (sweeps, modules) = if options.inventory {
+        inventory(inputs.requirements, inputs.workspace)
+    } else {
+        (Vec::new(), Vec::new())
+    };
+    let mut map = inputs.requirements.clone();
+    for requirement in &mut map.requirements {
+        if sweeps.contains(&requirement.id) {
+            requirement.kind = Kind::Behavior;
+        }
+    }
+    let mut evidence: Vec<microluna::Evidence> = Vec::new();
+    if !modules.is_empty() {
+        evidence.push(microluna::Evidence {
+            label: "The defect inventory".to_string(),
+            text: format!(
+                "{} asks for a fix across these modules. Each needs a test that names it and fails \
+                 on its current behavior, or a line in facts.md that waives it, as `{WAIVE} path: \
+                 why it has no defect`:\n{}",
+                sweeps.join(", "),
+                modules
+                    .iter()
+                    .map(|m| format!("- {m}"))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            ),
+        });
+    }
+    if options.discover {
+        let defended = defended_choices(inputs.workspace);
+        if !defended.is_empty() {
+            evidence.push(microluna::Evidence {
+                label: "Choices the code defends in its own comments".to_string(),
+                text: format!(
+                    "Each of these may be the defect itself. Check it against the task and the \
+                     standard definition of what it names:\n{}",
+                    defended.join("\n")
+                ),
+            });
+        }
+    }
+    evidence.extend(inputs.evidence.iter().cloned());
+    let extended = Inputs {
+        task: inputs.task,
+        requirements: &map,
+        evidence: &evidence,
+        workspace: inputs.workspace,
+        suite_dir: inputs.suite_dir,
+        workspace_note: inputs.workspace_note.clone(),
+        target: inputs.target,
+    };
+    let inputs = &extended;
     // Tests run from the workspace root, so every path to the suite is
     // absolute.
     let _ = std::fs::remove_dir_all(inputs.suite_dir);
@@ -1410,7 +1705,7 @@ async fn define_on<W: Writer, R: Runner>(
         };
         writer_usd += written.usd;
         let verified = verify::verify(
-            inputs, &dir, &known, runner, jev, recorder, options, &mut cache, number,
+            inputs, &dir, &known, runner, jev, recorder, options, &mut cache, number, &modules,
         )
         .await;
         jev_usd += verified.jev_usd;
@@ -1518,6 +1813,7 @@ async fn define_on<W: Writer, R: Runner>(
             "options": options,
             "judged": verified.judged,
             "left": problems,
+            "inventory": { "sweeps": sweeps, "modules": modules },
         }),
     };
     let _ = suite.save(&AcceptanceSuite::record_path(&dir));
@@ -1550,6 +1846,282 @@ async fn define_on<W: Writer, R: Runner>(
         })),
     );
     suite
+}
+
+/// The highest number among the suite's test IDs, rejected ones included.
+fn highest_id(suite: &AcceptanceSuite) -> usize {
+    suite
+        .tests
+        .iter()
+        .map(|t| t.id.as_str())
+        .chain(suite.rejected.iter().map(|r| r.id.as_str()))
+        .filter_map(|id| {
+            id.trim_start_matches(|c: char| !c.is_ascii_digit())
+                .parse()
+                .ok()
+        })
+        .max()
+        .unwrap_or(0)
+}
+
+/// A gap round: a writer writes deciding tests for the suite's gaps only,
+/// in a directory of its own beside the suite, and code proves them red
+/// on `inputs.workspace` (the untouched snapshot, through [`Rebased`]
+/// when `inputs.target` is set). The tests that are red for a reason of
+/// their own join the suite with new IDs after the last one, a gap that a
+/// kept test names or `facts.md` waives closes, and the suite is frozen
+/// again under a new digest. With no kept test and no waiver, the suite
+/// comes back as it was.
+#[allow(clippy::too_many_lines)]
+pub async fn extend<W: Writer, R: Runner>(
+    suite: &AcceptanceSuite,
+    inputs: &Inputs<'_>,
+    writer: &W,
+    runner: &R,
+    recorder: &Recorder,
+    options: &Options,
+    round: u32,
+) -> AcceptanceSuite {
+    let started = Instant::now();
+    let dir = suite.dir.clone();
+    let known: Vec<String> = decidable(inputs.requirements)
+        .iter()
+        .map(|r| r.id.clone())
+        .collect();
+    let gap_ids: Vec<String> = suite.gaps.iter().map(|g| g.requirement.clone()).collect();
+    let name = dir
+        .file_name()
+        .map_or("suite".to_string(), |n| n.to_string_lossy().into_owned());
+    let part = dir.with_file_name(format!("{name}-gap{round}"));
+    let _ = std::fs::remove_dir_all(&part);
+    let _ = std::fs::create_dir_all(part.join(TESTS_DIR));
+    let rebased = inputs.target.map(|target| Rebased {
+        inner: runner,
+        real: target.to_path_buf(),
+        snapshot: inputs.workspace.to_path_buf(),
+        test_sec: options.test_sec,
+    });
+    let harness = match &rebased {
+        Some(rebased) => rebased.harness(&part, inputs.workspace),
+        None => runner.harness(&part, inputs.workspace),
+    };
+    for (file, text) in harness {
+        let _ = std::fs::write(part.join(file), text);
+    }
+    let mut brief = briefed(inputs, &[], options);
+    if let Some(first) = brief.evidence.first_mut() {
+        first.label = "The requirements the new tests must decide".to_string();
+        first.text = suite
+            .gaps
+            .iter()
+            .map(|gap| {
+                let text = inputs
+                    .requirements
+                    .requirements
+                    .iter()
+                    .find(|r| r.id == gap.requirement)
+                    .map(|r| r.text.split_whitespace().collect::<Vec<_>>().join(" "))
+                    .unwrap_or_else(|| "an inventory module".to_string());
+                format!("- {}: {text} (open because {})", gap.requirement, gap.why)
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+    }
+    brief.state = vec![
+        format!(
+            "A frozen suite of {} tests already passes on the current code, but it doesn't \
+             decide the requirements listed first in the evidence. Write new tests only for \
+             them, one fact per test, in this directory: each must fail on the untouched \
+             workspace because the behavior is missing there. The host renumbers them after \
+             the frozen tests. If the untouched workspace already meets one, write `{WAIVE} \
+             <requirement or module>: why` in facts.md instead of a test.",
+            suite.tests.len()
+        ),
+        format!(
+            "The frozen tests:\n{}",
+            suite
+                .tests
+                .iter()
+                .map(|t| format!("{} ({}): {}", t.id, t.requirements.join(", "), t.what))
+                .collect::<Vec<_>>()
+                .join("\n")
+        ),
+    ];
+    let written = writer
+        .write_as(
+            &brief,
+            &part,
+            round,
+            &format!("accept-writer-gap-{round}"),
+            &format!("a gap round for {}", gap_ids.join(", ")),
+        )
+        .await;
+    // Prove the new tests red on the untouched workspace.
+    let every: Vec<String> = known
+        .iter()
+        .cloned()
+        .chain(gap_ids.iter().cloned())
+        .collect();
+    let (tests, _) = read_tests(&part, &every);
+    let proof = match &rebased {
+        Some(rebased) => rebased.run_all(&tests, &part, inputs.workspace).await,
+        None => runner.run_all(&tests, &part, inputs.workspace).await,
+    };
+    let mut kept_ids = Vec::new();
+    let mut dropped = Vec::new();
+    for test in &tests {
+        let run = proof.iter().find(|r| r.id == test.id);
+        let red = run.is_some_and(|r| !r.green);
+        let broken = run.filter(|r| !r.green).and_then(verify::broken_reason);
+        if red && broken.is_none() && !verify::statically_trivial(&test.source) {
+            kept_ids.push(test.id.clone());
+        } else {
+            dropped.push(json!({
+                "id": test.id,
+                "why": if !red { "green on the untouched workspace".to_string() }
+                    else { broken.unwrap_or_else(|| "it can't fail".to_string()) },
+            }));
+            let _ = std::fs::remove_file(part.join(TESTS_DIR).join(format!("{}.sh", test.id)));
+        }
+    }
+    let first = highest_id(suite) + 1;
+    let merged = merge_parts(&dir, std::slice::from_ref(&part), &every, first)
+        .ok()
+        .and_then(|mut m| m.pop())
+        .unwrap_or_default();
+    // Everything in the suite names the target, not the snapshot.
+    if let Some(target) = inputs.target {
+        for path in digest_files(&dir).keys() {
+            let at = dir.join(path);
+            if let Ok(text) = std::fs::read_to_string(&at) {
+                let rebased_text = crate::compose::best_of::rebase(&text, inputs.workspace, target);
+                if rebased_text != text {
+                    let _ = std::fs::write(&at, rebased_text);
+                }
+            }
+        }
+    }
+    let renumbered: BTreeMap<String, String> = merged.0.iter().cloned().collect();
+    let mut out = suite.clone();
+    for test in tests.iter().filter(|t| kept_ids.contains(&t.id)) {
+        let Some(id) = renumbered.get(&test.id) else {
+            continue;
+        };
+        let path = format!("{TESTS_DIR}/{id}.sh");
+        out.tests.push(Test {
+            id: id.clone(),
+            source: std::fs::read_to_string(dir.join(&path)).unwrap_or_default(),
+            path,
+            notes: Vec::new(),
+            ..test.clone()
+        });
+        if let (Some(start), Some(run)) =
+            (out.start.as_mut(), proof.iter().find(|r| r.id == test.id))
+        {
+            start.tests.push(TestRun {
+                id: id.clone(),
+                ..run.clone()
+            });
+        }
+    }
+    let facts = std::fs::read_to_string(dir.join(FACTS)).unwrap_or_default();
+    let waived_now: Vec<String> = gap_ids
+        .iter()
+        .filter(|id| {
+            facts.lines().any(|line| {
+                let line = line.trim().trim_start_matches(['-', '*', ' ']);
+                line.starts_with(WAIVE) && line.contains(id.as_str())
+            })
+        })
+        .cloned()
+        .collect();
+    let added: Vec<&Test> = out.tests.iter().skip(suite.tests.len()).collect();
+    out.gaps.retain(|gap| {
+        let closed = waived_now.contains(&gap.requirement)
+            || added.iter().any(|t| {
+                t.requirements.contains(&gap.requirement)
+                    || !crate::micro::parallel::files_named(
+                        &t.source,
+                        std::slice::from_ref(&gap.requirement),
+                    )
+                    .is_empty()
+            });
+        !closed
+    });
+    for coverage in &mut out.coverage {
+        if !out.gaps.iter().any(|g| g.requirement == coverage.id) {
+            coverage.covered = true;
+            for t in &added {
+                if t.requirements.contains(&coverage.id) && !coverage.tests.contains(&t.id) {
+                    coverage.tests.push(t.id.clone());
+                }
+            }
+        }
+    }
+    out.status = if out.gaps.is_empty() && !out.tests.is_empty() {
+        Status::Accepted
+    } else {
+        Status::Partial
+    };
+    out.files = digest_files(&dir);
+    out.digest = digest_of(&out.files);
+    if let Some(start) = out.start.as_mut() {
+        start.digest.clone_from(&out.digest);
+    }
+    out.writer_usd += written.usd;
+    out.milliseconds += u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+    out.rounds.push(Round {
+        number: suite.rounds.len() as u32 + 1,
+        writer: written,
+        tests: tests.len(),
+        green_at_start: proof.iter().filter(|r| r.green).count(),
+        problems: dropped
+            .iter()
+            .map(|d| {
+                format!(
+                    "{} dropped: {}",
+                    d["id"].as_str().unwrap_or("?"),
+                    d["why"].as_str().unwrap_or("")
+                )
+            })
+            .collect(),
+        gaps: out.gaps.clone(),
+        jev_requests: 0,
+        jev_usd: 0.0,
+        parts: Vec::new(),
+    });
+    out.detail["gap_rounds"] = json!(
+        out.detail["gap_rounds"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .chain(std::iter::once(json!({
+                "round": round,
+                "gaps": gap_ids,
+                "kept": kept_ids.iter().map(|id| renumbered.get(id).cloned().unwrap_or_default()).collect::<Vec<_>>(),
+                "dropped": dropped,
+                "waived": waived_now,
+            })))
+            .collect::<Vec<_>>()
+    );
+    let _ = out.save(&AcceptanceSuite::record_path(&dir));
+    recorder.push(
+        atif::Step::said(
+            atif::Source::System,
+            &format!(
+                "accept.define's gap round {round} added {} tests for {}; {}.",
+                out.tests.len() - suite.tests.len(),
+                gap_ids.join(", "),
+                out.headline()
+            ),
+        )
+        .noting(
+            SUITE_EXTENSION,
+            serde_json::to_value(&out).unwrap_or(Value::Null),
+        ),
+    );
+    out
 }
 
 /// Runs the frozen suite on `workspace` through `runner`.
@@ -1594,11 +2166,13 @@ pub async fn run<R: Runner>(
     let started = Instant::now();
     let mut runs = runner.run_all(&suite.tests, &suite.dir, workspace).await;
     // A red test runs once more: one that passes then is green but marked
-    // flaky, since timing-bound tests fail under load.
+    // flaky, since timing-bound tests fail under load. At the start every
+    // test is expected red, so nothing reruns.
     let red: Vec<Test> = suite
         .tests
         .iter()
         .filter(|t| runs.iter().any(|r| r.id == t.id && !r.green))
+        .filter(|_| !label.starts_with("start"))
         .cloned()
         .collect();
     if !red.is_empty() {

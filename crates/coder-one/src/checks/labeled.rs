@@ -527,6 +527,7 @@ pub fn input(labeled: &Labeled, root: &Path, workdir: &str, options: Options) ->
             options,
             root: Some(root.to_string_lossy().into_owned()),
             collected: labeled.label.collected.clone(),
+            suite: None,
         }),
         distrust: Vec::new(),
     }

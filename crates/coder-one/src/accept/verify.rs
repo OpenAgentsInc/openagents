@@ -37,9 +37,25 @@ pub const DECIDES: &str = "The acceptance tests in `tests` were written to check
 /// that decides a test and then applying a simpler rule.
 pub const EXACT: &str = "The task in `task` states the requirement in `requirement`, and `facts` lists the exact formats, edge cases, units, and rules the suite's writer found for it. Do the tests in `tests` check this requirement's rule exactly as the task states it, including those facts, rather than a simpler or more lenient version of it?";
 
-/// The per-test question set.
+/// Does the test assert only what the task states, counting the standard
+/// definition of a method the task names as stated?
+pub const FAITHFUL_STANDARD: &str = "The acceptance test in `test` was written before the task in `task` was solved, to check the requirements in `requirements`. Count as stated by the task its words, its examples, its rules, and the standard definition and textbook properties of any method, statistic, estimator, metric, algorithm, or format the task names, even where the code's comments defend something else. Does every assertion in the test follow from what the task states in that sense, with nothing the task doesn't ask for, and does every input the test builds follow the input format the task describes?";
+
+/// Does at least one test fail on a module's current behavior?
 #[must_use]
-pub fn test_questions() -> Questions {
+pub fn module_question(index: usize) -> String {
+    format!(
+        "The task in `task` asks for a fix across several modules. `modules[{index}]` is one of \
+         them, with its current source, and `tests` are the acceptance tests written for the \
+         task. Does at least one test in `tests` fail on the current behavior of the module in \
+         `modules[{index}]`, because of a defect in that module?"
+    )
+}
+
+/// The per-test question set; with `standard`, the faithfulness question
+/// counts the standard definition of a method the task names as stated.
+#[must_use]
+pub fn test_questions(standard: bool) -> Questions {
     let noul = |text: &str, yes: &str, no: &str| {
         Noul::with_criteria(text, NoulCriteria::new().when_true(yes).when_false(no))
     };
@@ -47,7 +63,7 @@ pub fn test_questions() -> Questions {
         .with(
             "faithful",
             noul(
-                FAITHFUL,
+                if standard { FAITHFUL_STANDARD } else { FAITHFUL },
                 "every assertion follows from the task's words, examples, or rules",
                 "some assertion checks something the task doesn't state or imply",
             ),
@@ -315,6 +331,7 @@ pub async fn verify<R: Runner>(
     options: &Options,
     cache: &mut Cache,
     round: u32,
+    modules: &[String],
 ) -> Verified {
     let (tests, headers) = read_tests(dir, known);
     let started = std::time::Instant::now();
@@ -354,7 +371,7 @@ pub async fn verify<R: Runner>(
                 "jev_accept_test",
                 format!("jev-accept-test-{round}-{}", test.id),
                 state,
-                test_questions(),
+                test_questions(options.standard_methods),
             )
         });
         for ((key, asked), test) in join_all(asks).await.into_iter().zip(chunk) {
@@ -403,7 +420,13 @@ pub async fn verify<R: Runner>(
             }
         }
         let green_at_start = run.is_some_and(|r| r.green);
-        if green_at_start && keeps.is_none_or(|k| k < options.keeps_min) {
+        if green_at_start && options.guards {
+            notes.push(
+                "A guard: it passes on the untouched workspace, so it checks behavior that \
+                 already works, and it must stay green."
+                    .to_string(),
+            );
+        } else if green_at_start && keeps.is_none_or(|k| k < options.keeps_min) {
             reasons.push("green_at_start".to_string());
             messages.push(format!(
                 "{} passes on the untouched workspace, but its requirements ({}) ask for a change: \
@@ -587,12 +610,22 @@ pub async fn verify<R: Runner>(
             .and_then(|a| a.noul("exact"));
         let decided = decides.is_none_or(|d| d >= options.decides_min);
         let covered = !mine.is_empty() && decided && exact.is_none_or(|e| e >= options.exact_min);
+        let only_guards = options.guards
+            && !mine.is_empty()
+            && mine
+                .iter()
+                .all(|id| start.iter().any(|r| r.id == *id && r.green));
         if mine.is_empty() {
             out.gaps.push(super::Gap {
                 requirement: requirement.id.clone(),
                 why: "no accepted test names it".to_string(),
             });
             untested.push(requirement.id.clone());
+        } else if only_guards {
+            out.gaps.push(super::Gap {
+                requirement: requirement.id.clone(),
+                why: "only guards: every test of it passes on the untouched workspace".to_string(),
+            });
         } else if decided && !covered {
             out.gaps.push(super::Gap {
                 requirement: requirement.id.clone(),
@@ -659,6 +692,115 @@ pub async fn verify<R: Runner>(
             covered,
         });
     }
+    // The inventory: each module needs a test that names it, or a waiver.
+    let waived = super::waived(&facts, modules);
+    let mut unnamed: Vec<String> = Vec::new();
+    let mut inventory_rows: Vec<Value> = Vec::new();
+    let mut named: Vec<(String, Vec<String>)> = Vec::new();
+    for module in modules {
+        let naming: Vec<String> = surviving
+            .iter()
+            .filter(|t| {
+                !crate::micro::parallel::files_named(
+                    &with_helpers(dir, &t.source),
+                    std::slice::from_ref(module),
+                )
+                .is_empty()
+            })
+            .map(|t| t.id.clone())
+            .collect();
+        let waive = waived.contains(module);
+        if naming.is_empty() && !waive {
+            unnamed.push(module.clone());
+            out.gaps.push(super::Gap {
+                requirement: module.clone(),
+                why: "no test names this inventory module, and facts.md doesn't waive it"
+                    .to_string(),
+            });
+        }
+        if !naming.is_empty() {
+            named.push((module.clone(), naming.clone()));
+        }
+        inventory_rows.push(json!({ "module": module, "tests": naming, "waived": waive }));
+    }
+    if !unnamed.is_empty() {
+        messages.push(format!(
+            "No test names {} and facts.md doesn't waive {}: for each, add a test that fails on \
+             its current behavior and names the module, or a `{} path: why` line in facts.md.",
+            unnamed.join(", "),
+            if unnamed.len() == 1 { "it" } else { "them" },
+            super::WAIVE
+        ));
+    }
+    // One Jev request: does a test fail on each named module's current
+    // behavior? A doubt becomes a note on the tests that name it.
+    if !named.is_empty() {
+        let state = json!({
+            "task": task,
+            "modules": named.iter().map(|(module, _)| json!({
+                "path": module,
+                "source": crate::judge::clip(
+                    &std::fs::read_to_string(inputs.workspace.join(module)).unwrap_or_default(),
+                    2_500
+                ),
+            })).collect::<Vec<_>>(),
+            "tests": surviving.iter().map(|t| json!({
+                "id": t.id,
+                "what": t.what,
+                "source": crate::judge::clip(&t.source, 1_500),
+            })).collect::<Vec<_>>(),
+        });
+        let mut questions = Questions::new();
+        for index in 0..named.len() {
+            questions = questions.with(
+                format!("module_{index}"),
+                Noul::with_criteria(
+                    module_question(index).as_str(),
+                    NoulCriteria::new()
+                        .when_true("a test fails because of a defect in this module")
+                        .when_false("no test would fail because of a defect in this module"),
+                ),
+            );
+        }
+        let (key, asked) = ask_cached(
+            jev,
+            recorder,
+            cache,
+            "jev_accept_inventory",
+            format!("jev-accept-inventory-{round}"),
+            state,
+            questions,
+        )
+        .await;
+        if let Some(asked) = asked {
+            if asked.how == "live" {
+                out.jev_requests += 1;
+                out.jev_usd += usd(&asked);
+            }
+            if asked.answered() {
+                cache.0.insert(key, asked.clone());
+            }
+            for (index, (module, naming)) in named.iter().enumerate() {
+                let p = asked.noul(&format!("module_{index}"));
+                if let Some(row) = inventory_rows
+                    .iter_mut()
+                    .find(|row| row["module"] == module.as_str())
+                {
+                    row["fails_on_current"] = json!(p);
+                }
+                if p.is_some_and(|p| p < 0.3) {
+                    let note = format!(
+                        "Jev doubts any test fails on the current behavior of {module} ({:.2}): \
+                         read that module for its defect.",
+                        p.unwrap_or_default()
+                    );
+                    for id in naming {
+                        out.notes.entry(id.clone()).or_default().push(note.clone());
+                    }
+                }
+            }
+        }
+    }
     if !untested.is_empty() && !hard {
         messages.push(format!(
             "No accepted test decides {}: write tests that fail until each is met, or fix the \
@@ -672,7 +814,8 @@ pub async fn verify<R: Runner>(
             "The suite has no tests: write them under tests/ as tests/T1.sh and so on.".to_string(),
         );
     }
-    out.judged = json!({ "tests": judged, "coverage": coverage_judged });
+    out.judged =
+        json!({ "tests": judged, "coverage": coverage_judged, "inventory": inventory_rows });
     out.messages = messages;
     out
 }

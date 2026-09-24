@@ -2317,6 +2317,90 @@ pub fn charge(report: &Report) -> (&'static str, &'static str) {
     }
 }
 
+/// The changes from the copy `start` of a workspace to `workdir` now, as a
+/// recursive unified diff without caches and the Git database: what a
+/// workspace outside Git shows instead of `git diff`. The file list when
+/// `diff` can't run.
+#[must_use]
+pub fn changes_since(start: &Path, workdir: &Path) -> String {
+    let output = std::process::Command::new("diff")
+        .args([
+            "-ruN",
+            "-x",
+            ".git",
+            "-x",
+            "__pycache__",
+            "-x",
+            "*.pyc",
+            "-x",
+            ".pytest_cache",
+        ])
+        .arg(start)
+        .arg(workdir)
+        .output();
+    let text = match output {
+        Ok(out) if out.status.code().is_some_and(|c| c <= 1) => {
+            String::from_utf8_lossy(&out.stdout).replace(&start.display().to_string(), "(start)")
+        }
+        _ => {
+            let (before, after) = (
+                crate::micro::parallel::tree(start),
+                crate::micro::parallel::tree(workdir),
+            );
+            let mut lines = Vec::new();
+            for (path, sha) in &after {
+                match before.get(path) {
+                    None => lines.push(format!("added {path}")),
+                    Some(old) if old != sha => lines.push(format!("changed {path}")),
+                    Some(_) => {}
+                }
+            }
+            for path in before.keys().filter(|p| !after.contains_key(*p)) {
+                lines.push(format!("removed {path}"));
+            }
+            lines.join("\n")
+        }
+    };
+    if text.trim().is_empty() {
+        "Nothing changed since the start.".to_string()
+    } else {
+        clip(&text, 12_000)
+    }
+}
+
+/// A copy of a workspace outside Git taken before the executor starts, so
+/// the closing check can see a real diff: `None` in a Git work tree or
+/// when the workspace is over 50 MiB or 5,000 files.
+fn start_copy(workdir: &Path) -> Option<PathBuf> {
+    if git(workdir, &["rev-parse", "--is-inside-work-tree"]).trim() == "true" {
+        return None;
+    }
+    let mut stack = vec![workdir.to_path_buf()];
+    let (mut files, mut bytes) = (0usize, 0u64);
+    while let Some(at) = stack.pop() {
+        for entry in std::fs::read_dir(&at).ok()?.flatten() {
+            let kind = entry.file_type().ok()?;
+            if kind.is_dir() {
+                stack.push(entry.path());
+            } else {
+                files += 1;
+                bytes += entry.metadata().map(|m| m.len()).unwrap_or(0);
+                if files > 5_000 || bytes > 50 * 1024 * 1024 {
+                    return None;
+                }
+            }
+        }
+    }
+    let copy = std::env::temp_dir().join(format!(
+        "coder-one-start-{}-{}",
+        std::process::id(),
+        atif::now_ms()
+    ));
+    crate::handoff::copy_tree(workdir, &copy)
+        .ok()
+        .map(|()| copy)
+}
+
 /// What changed in the working directory, for the closing check: Git's
 /// status and a capped diff in a work tree.
 #[must_use]
@@ -2599,6 +2683,9 @@ where
         .with_effects(),
     );
     checkpoint(state);
+    // A workspace outside Git has no diff for the closing check, so a copy
+    // taken now stands in for its start.
+    let start = start_copy(&workdir);
     let report = delegate(
         executor,
         &briefing,
@@ -2664,7 +2751,14 @@ where
         )
         .named("closing check"),
     );
-    let changed = changes(&workdir, plan.base);
+    let changed = match &start {
+        Some(copy) => {
+            let changed = changes_since(copy, &workdir);
+            let _ = std::fs::remove_dir_all(copy);
+            changed
+        }
+        None => changes(&workdir, plan.base),
+    };
     let close = judge
         .jev_mut()
         .close(state, &report.output(), &changed)
@@ -2718,6 +2812,28 @@ fn hex(bytes: &[u8]) -> String {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+
+    /// A workspace outside Git shows the closing check a real diff against
+    /// the copy taken at its start.
+    #[test]
+    fn changes_since_a_start_copy_read_as_a_diff() {
+        let root = tempfile::tempdir().unwrap();
+        let (start, now) = (root.path().join("start"), root.path().join("now"));
+        std::fs::create_dir_all(&start).unwrap();
+        std::fs::write(start.join("stats.py"), "biased = True\n").unwrap();
+        crate::handoff::copy_tree(&start, &now).unwrap();
+        assert_eq!(
+            changes_since(&start, &now),
+            "Nothing changed since the start."
+        );
+        std::fs::write(now.join("stats.py"), "biased = False\n").unwrap();
+        std::fs::write(now.join("new.py"), "x = 1\n").unwrap();
+        let diff = changes_since(&start, &now);
+        assert!(diff.contains("-biased = True"), "{diff}");
+        assert!(diff.contains("+biased = False"), "{diff}");
+        assert!(diff.contains("new.py"), "{diff}");
+        assert!(diff.contains("(start)"), "{diff}");
+    }
     use crate::state::{Environment, Issue, Observation};
 
     fn state() -> State {
