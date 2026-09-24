@@ -1119,6 +1119,22 @@ def cmd_replay(args: argparse.Namespace) -> int:
     return 1 if summary["errors"] else 0
 
 
+def cmd_candidates(args: argparse.Namespace) -> int:
+    """Grade all retained candidates from completed trials."""
+    from . import candidates, replay
+
+    try:
+        trials = [replay.find_trial(ref) for ref in args.trial]
+        report = candidates.batch(trials, Path(args.output).expanduser(), jobs=args.jobs,
+                                  deduplicate=args.deduplicate)
+    except (OSError, ValueError, replay.ReplayError) as error:
+        print(f"candidates: {error}", file=sys.stderr)
+        return 1
+    print(json.dumps({key: report[key] for key in
+                     ("wall_seconds", "verifier_executions", "reused_grades", "invalid_candidates", "errors", "oracle")}, indent=2))
+    return 1 if report["errors"] or report["invalid_candidates"] else 0
+
+
 def cmd_verify(args: argparse.Namespace) -> int:
     """Run a task's verifier on a candidate directory or a trial."""
     import tempfile
@@ -1500,6 +1516,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     replay_parser.add_argument("--json", action="store_true", help="print JSON")
     replay_parser.set_defaults(func=cmd_replay)
+
+    candidates_parser = sub.add_parser(
+        "candidates", help="grade retained sequential candidates after trials finish"
+    )
+    candidates_parser.add_argument("trial", nargs="+", help="trial paths or names")
+    candidates_parser.add_argument("--output", required=True, help="a new output directory outside the trials")
+    candidates_parser.add_argument("--jobs", type=int, default=2, help="verifiers at once, 1 to 8 (default 2)")
+    candidates_parser.add_argument("--deduplicate", action="store_true", help="reuse identical inputs within this batch; assumes a deterministic verifier")
+    candidates_parser.set_defaults(func=cmd_candidates)
 
     verify_parser = sub.add_parser(
         "verify", help="run a task's verifier on a candidate directory or a trial"

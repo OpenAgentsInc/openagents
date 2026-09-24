@@ -340,8 +340,9 @@ pub fn body(request: &Request) -> Value {
         "include": ["reasoning.encrypted_content"],
         "prompt_cache_key": request.cache_key,
     });
+    body["reasoning"] = json!({ "summary": "auto" });
     if let Some(effort) = &request.effort {
-        body["reasoning"] = json!({ "effort": effort, "summary": "auto" });
+        body["reasoning"]["effort"] = json!(effort);
     }
     body
 }
@@ -697,6 +698,7 @@ mod tests {
         assert_eq!(body["stream"], true);
         assert_eq!(body["prompt_cache_key"], "task-1");
         assert_eq!(body["reasoning"]["effort"], "low");
+        assert_eq!(body["reasoning"]["summary"], "auto");
         assert_eq!(body["include"][0], "reasoning.encrypted_content");
     }
 
@@ -724,6 +726,39 @@ mod tests {
                 output: 7,
                 reasoning: 2
             }
+        );
+    }
+
+    #[test]
+    fn summaries_are_requested_without_overriding_the_default_effort() {
+        let request = Request {
+            parallel_tools: false,
+            model: "gpt-6-luna".into(),
+            instructions: "Review the code.".into(),
+            input: vec![],
+            tools: vec![],
+            effort: None,
+            cache_key: "summary-default".into(),
+        };
+        assert_eq!(body(&request)["reasoning"], json!({"summary": "auto"}));
+    }
+
+    #[test]
+    fn readable_summaries_survive_an_empty_completed_output() {
+        let mut events = Events::default();
+        let stream = concat!(
+            "data: {\"type\":\"response.output_item.done\",\"item\":{\"type\":\"reasoning\",",
+            "\"summary\":[{\"type\":\"summary_text\",\"text\":\"Check expiration.\"},",
+            "{\"type\":\"summary_text\",\"text\":\"Check replacement.\"}]}}\n\n",
+            "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"r1\",",
+            "\"model\":\"gpt-6-luna\",\"output\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":2}}}\n\n",
+        );
+        for piece in stream.as_bytes().chunks(13) {
+            events.push(piece).unwrap();
+        }
+        assert_eq!(
+            events.finish().unwrap().reasoning(),
+            "Check expiration.\nCheck replacement."
         );
     }
 
