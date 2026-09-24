@@ -130,3 +130,10 @@ Each run's ATIF trace is under `~/.openagents/traces/` on the machine
 that measured it, named in the raw records' `trace` field, from
 `20260923T183432Z-6bc46267` (prompt 1, delegate) to
 `20260923T183732Z-88d000e2` (prompt 8, Gemini).
+
+## A Microluna arm
+
+[Microluna on the eight delegate prompts](2026-09-24-microluna-terminal.md)
+reruns these prompts through Coder Terminal's default executor since
+2026-09-24: seven of eight correct and one partly, a median 22.6 seconds,
+and $0.0022 a turn.

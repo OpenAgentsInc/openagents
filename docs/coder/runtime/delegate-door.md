@@ -149,7 +149,8 @@ draws the way a generated one does:
 Microluna's `run_command` and `read_file` calls are commands in the
 terminal, and its patches and writes are `Judgment` lines, so the
 operator watches each mini-handoff happen. `coder -p --json` streams the
-same events as `judgment`, `shell_proposed`, and `shell_ran` objects.
+same events as `judgment`, `shell_proposed`, `shell_outcome`, and `delta`
+objects.
 
 Claude Code reports a finished tool by its tool-use ID and reports every
 tool's result, while only `Bash` starts a command, so a finished command is
