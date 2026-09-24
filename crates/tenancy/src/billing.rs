@@ -1462,7 +1462,7 @@ impl std::fmt::Display for Refusal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::NoSubscription(workspace) => {
-                write!(f, "workspace `{workspace}` holds no subscription")
+                write!(f, "workspace `{workspace}` has no subscription")
             }
             Self::SubscriptionExpired(workspace) => {
                 write!(f, "the subscription on `{workspace}` has expired")
@@ -1470,38 +1470,46 @@ impl std::fmt::Display for Refusal {
             Self::SubscriptionClosed(workspace) => {
                 write!(
                     f,
-                    "the subscription on `{workspace}` is closed to this change"
+                    "the subscription on `{workspace}` can't be changed in its current state"
                 )
             }
             Self::AlreadySubscribed { workspace, plan } => {
-                write!(f, "workspace `{workspace}` already holds plan `{plan}`")
+                write!(f, "workspace `{workspace}` is already on plan `{plan}`")
             }
             Self::CheckoutRequired(plan) => {
-                write!(f, "plan `{plan}` is paid — open a checkout")
+                write!(
+                    f,
+                    "plan `{plan}` is a paid plan; start a checkout to subscribe"
+                )
             }
             Self::CheckoutPending(workspace) => {
                 write!(f, "workspace `{workspace}` already has a pending checkout")
             }
             Self::FreePlan(plan) => {
-                write!(f, "plan `{plan}` is free — subscribe directly")
+                write!(
+                    f,
+                    "plan `{plan}` is free; subscribe to it directly without a checkout"
+                )
             }
-            Self::UnknownPlan(plan) => write!(f, "no configured plan `{plan}`"),
+            Self::UnknownPlan(plan) => write!(f, "plan `{plan}` doesn't exist"),
             Self::PlanExcludesModel {
                 workspace,
                 plan,
                 model,
             } => write!(
                 f,
-                "workspace `{workspace}` is on `{plan}`, which does not cover `{model}`"
+                "workspace `{workspace}` is on plan `{plan}`, which doesn't include model `{model}`"
             ),
-            Self::DuplicateEvent(key) => write!(f, "event `{key}` is already journaled"),
+            Self::DuplicateEvent(key) => write!(f, "event `{key}` was already recorded"),
             Self::EventsBounded(bound) => {
-                write!(f, "the event journal is at its {bound}-event bound")
+                write!(f, "the event log is full at its {bound}-event limit")
             }
-            Self::UnknownEvent(key) => write!(f, "event `{key}` is not journaled"),
-            Self::UnknownGrant(source) => write!(f, "grant `{source}` is not issued"),
-            Self::Unavailable => write!(f, "the mint's entropy source failed"),
-            Self::Store(detail) => write!(f, "the billing store failed: {detail}"),
+            Self::UnknownEvent(key) => write!(f, "event `{key}` isn't recorded"),
+            Self::UnknownGrant(source) => write!(f, "credit grant `{source}` doesn't exist"),
+            Self::Unavailable => write!(f, "the service couldn't generate a secure ID; try again"),
+            Self::Store(detail) => {
+                write!(f, "the billing records couldn't be read or saved: {detail}")
+            }
         }
     }
 }

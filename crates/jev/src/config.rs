@@ -174,7 +174,7 @@ impl Config {
         let api_key = match (self.local_only, self.api_key) {
             (true, Some(_)) => {
                 return Err(Error::Config(
-                    "a local-only client cannot carry an API key".into(),
+                    "a local-only client can't use an API key; remove `Config::api_key`".into(),
                 ));
             }
             (true, None) => None,
@@ -195,7 +195,7 @@ impl Config {
             .map_err(|error| Error::Config(format!("`base_url` is not a URL: {error}")))?;
         if !matches!(parsed.scheme(), "http" | "https") {
             return Err(Error::Config(format!(
-                "`base_url` uses the {} scheme, and the API speaks http or https",
+                "`base_url` uses the {} scheme; use http or https",
                 parsed.scheme()
             )));
         }
@@ -212,13 +212,13 @@ impl Config {
                 || parsed.fragment().is_some()
             {
                 return Err(Error::Config(
-                    "local-only requires a loopback IP URL without credentials, query, or fragment"
+                    "a local-only client needs a loopback IP address URL, such as http://127.0.0.1:8080, with no user name, password, query, or fragment"
                         .into(),
                 ));
             }
             if self.http_client.is_some() {
                 return Err(Error::Config(
-                    "local-only cannot use a custom HTTP client".into(),
+                    "a local-only client can't use a custom HTTP client".into(),
                 ));
             }
             crate::transport::headers(&self.default_headers, &HeaderMap::new(), None, false)?;
@@ -229,7 +229,7 @@ impl Config {
             .unwrap_or_else(|| defaults::MODEL.to_string());
         if self.local_only && default_model.trim().is_empty() {
             return Err(Error::Config(
-                "local-only requires an explicit nonempty model".into(),
+                "a local-only client needs a model name; set `Config::default_model`".into(),
             ));
         }
         let timeout = self.timeout.unwrap_or(defaults::TIMEOUT);
@@ -252,7 +252,7 @@ impl Config {
                     builder
                 };
                 builder.build().map_err(|error| {
-                    Error::Config(format!("the HTTP client failed to build: {error}"))
+                    Error::Config(format!("the SDK couldn't set up its HTTP client: {error}"))
                 })?
             }
         };

@@ -6,14 +6,14 @@
       "openWorldHint": true,
       "readOnlyHint": true
     },
-    "description": "Return the gateway's GET /v1/models document: the doors the configured credential may name, each with its bound artifact, lane, and classification discovery object.",
+    "description": "Return the service's GET /v1/models document: the models your API key can use, each with the model version it serves, its capacity tier, and the classification options it supports.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {},
       "type": "object"
     },
     "name": "list_models",
-    "title": "List reachable doors"
+    "title": "List the models you can use"
   },
   {
     "annotations": {
@@ -22,16 +22,16 @@
       "openWorldHint": true,
       "readOnlyHint": false
     },
-    "description": "POST an openagents.classify.v1 envelope to the configured gateway's /v1/classify and return the report verbatim: ordered per-input results, selections, per-unit aggregates, and usage. This can consume quota or money even if no content changes.",
+    "description": "Send an openagents.classify.v1 request to the service's /v1/classify and return the report unchanged: results in input order, selections, totals per unit, and usage. This call can use your quota or cost money.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
         "request": {
-          "description": "The openagents.classify.v1 envelope: v, model, capacity, policy, inputs, and labels, levels, or dimensions.",
+          "description": "The openagents.classify.v1 request: v, model, capacity, policy, inputs, and labels, levels, or dimensions.",
           "type": "object"
         },
         "request_id": {
-          "description": "An idempotency key for the call; retries reuse it and bump the attempt.",
+          "description": "An idempotency key for the call. Retries reuse it, so a retry isn't charged twice.",
           "maxLength": 512,
           "type": "string"
         }
@@ -42,7 +42,7 @@
       "type": "object"
     },
     "name": "classify",
-    "title": "Classify inputs through a door"
+    "title": "Classify inputs with a model"
   },
   {
     "annotations": {
@@ -51,13 +51,13 @@
       "openWorldHint": true,
       "readOnlyHint": false
     },
-    "description": "One categorical judgment per text: the labels form one distribution and each input selects one label or the no-match outcome. Returns the full ordered report \u2014 use count_labels when only aggregates matter.",
+    "description": "Choose exactly one label, or no match, for each text. The label probabilities for a text add up to one. Returns the full report in input order; use count_labels if you only need totals.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
         "capacity": {
           "default": "shared",
-          "description": "The capacity lane the binding declares \u2014 `shared` unless the caller's lane differs.",
+          "description": "The capacity tier your API key uses for this model: `shared` unless your account has a dedicated tier.",
           "type": "string"
         },
         "instructions": {
@@ -66,7 +66,7 @@
           "type": "string"
         },
         "labels": {
-          "description": "The label set: ids, or {id, description} objects the judgment reads as criteria.",
+          "description": "The labels to choose from: IDs, or {id, description} objects. The model reads each description as the meaning of that label.",
           "items": {
             "anyOf": [
               {
@@ -95,17 +95,17 @@
           "type": "array"
         },
         "min_probability": {
-          "description": "Abstain to the no-match outcome below this top probability.",
+          "description": "If the top probability is below this value, return no match instead of a label.",
           "maximum": 1,
           "minimum": 0,
           "type": "number"
         },
         "model": {
-          "description": "The bound door name; absent falls back to the configured default model.",
+          "description": "The model to use. If you leave it out, the tool uses the configured default model.",
           "type": "string"
         },
         "request_id": {
-          "description": "An idempotency key for the call; retries reuse it and bump the attempt.",
+          "description": "An idempotency key for the call. Retries reuse it, so a retry isn't charged twice.",
           "maxLength": 512,
           "type": "string"
         },
@@ -120,7 +120,7 @@
           "type": "array"
         },
         "uncertain_below": {
-          "description": "Flag the unit `uncertain` below this top probability.",
+          "description": "Mark a result `uncertain` if its top probability is below this value.",
           "maximum": 1,
           "minimum": 0,
           "type": "number"
@@ -142,17 +142,17 @@
       "openWorldHint": true,
       "readOnlyHint": false
     },
-    "description": "Several independent judgments over the same inputs \u2014 each dimension carries its own mode and label set or rubric. Returns the full ordered report.",
+    "description": "Classify the same inputs on several separate dimensions, each with its own mode and its own labels or scoring levels. Returns the full report in input order.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
         "capacity": {
           "default": "shared",
-          "description": "The capacity lane the binding declares \u2014 `shared` unless the caller's lane differs.",
+          "description": "The capacity tier your API key uses for this model: `shared` unless your account has a dedicated tier.",
           "type": "string"
         },
         "dimensions": {
-          "description": "Named dimensions judged independently: single-label needs labels; multi-label and binary need labels plus a request-level threshold; score needs levels.",
+          "description": "Named dimensions, each classified separately. A single-label dimension needs labels; multi-label and binary dimensions need labels and the request's threshold; a score dimension needs levels.",
           "items": {
             "additionalProperties": false,
             "properties": {
@@ -163,7 +163,7 @@
                 "type": "string"
               },
               "labels": {
-                "description": "The label set: ids, or {id, description} objects the judgment reads as criteria.",
+                "description": "The labels to choose from: IDs, or {id, description} objects. The model reads each description as the meaning of that label.",
                 "items": {
                   "anyOf": [
                     {
@@ -220,7 +220,7 @@
           "type": "array"
         },
         "inputs": {
-          "description": "The inputs: texts, or {id, text|record} objects.",
+          "description": "The inputs: texts, or {id, text} or {id, record} objects.",
           "items": {
             "anyOf": [
               {
@@ -257,27 +257,27 @@
           "type": "string"
         },
         "model": {
-          "description": "The bound door name; absent falls back to the configured default model.",
+          "description": "The model to use. If you leave it out, the tool uses the configured default model.",
           "type": "string"
         },
         "request_id": {
-          "description": "An idempotency key for the call; retries reuse it and bump the attempt.",
+          "description": "An idempotency key for the call. Retries reuse it, so a retry isn't charged twice.",
           "maxLength": 512,
           "type": "string"
         },
         "threshold": {
-          "description": "Required when any dimension is multi-label or binary: the probability a label must reach to be selected.",
+          "description": "Required if any dimension is multi-label or binary: the probability a label must reach to be selected.",
           "maximum": 1,
           "minimum": 0,
           "type": "number"
         },
         "top_n": {
-          "description": "A cap on selected labels for multi-label dimensions.",
+          "description": "The most labels to select for each multi-label dimension.",
           "minimum": 1,
           "type": "integer"
         },
         "uncertain_below": {
-          "description": "Flag units `uncertain` below this top probability.",
+          "description": "Mark a result `uncertain` if its top probability is below this value.",
           "maximum": 1,
           "minimum": 0,
           "type": "number"
@@ -299,13 +299,13 @@
       "openWorldHint": true,
       "readOnlyHint": false
     },
-    "description": "One independent probability per text per label \u2014 labels do not sum to one. Every label at or above the caller's threshold is selected. Returns the full ordered report.",
+    "description": "Get a separate probability for each label on each text; the probabilities don't add up to one. Every label at or above your threshold is selected. Returns the full report in input order.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
         "capacity": {
           "default": "shared",
-          "description": "The capacity lane the binding declares \u2014 `shared` unless the caller's lane differs.",
+          "description": "The capacity tier your API key uses for this model: `shared` unless your account has a dedicated tier.",
           "type": "string"
         },
         "instructions": {
@@ -314,7 +314,7 @@
           "type": "string"
         },
         "labels": {
-          "description": "The label set: ids, or {id, description} objects the judgment reads as criteria.",
+          "description": "The labels to choose from: IDs, or {id, description} objects. The model reads each description as the meaning of that label.",
           "items": {
             "anyOf": [
               {
@@ -343,11 +343,11 @@
           "type": "array"
         },
         "model": {
-          "description": "The bound door name; absent falls back to the configured default model.",
+          "description": "The model to use. If you leave it out, the tool uses the configured default model.",
           "type": "string"
         },
         "request_id": {
-          "description": "An idempotency key for the call; retries reuse it and bump the attempt.",
+          "description": "An idempotency key for the call. Retries reuse it, so a retry isn't charged twice.",
           "maxLength": 512,
           "type": "string"
         },
@@ -362,18 +362,18 @@
           "type": "array"
         },
         "threshold": {
-          "description": "The probability a label must reach to be selected \u2014 required; the caller's own cut, not a default.",
+          "description": "Required. The probability a label must reach to be selected. There is no default; choose a value that fits your data.",
           "maximum": 1,
           "minimum": 0,
           "type": "number"
         },
         "top_n": {
-          "description": "A cap on selected labels per input.",
+          "description": "The most labels to select for each input.",
           "minimum": 1,
           "type": "integer"
         },
         "uncertain_below": {
-          "description": "Flag the unit `uncertain` when any label's winning side is below this.",
+          "description": "Mark a result `uncertain` if, for any label, the more likely of yes or no has a probability below this value.",
           "maximum": 1,
           "minimum": 0,
           "type": "number"
@@ -396,13 +396,13 @@
       "openWorldHint": true,
       "readOnlyHint": false
     },
-    "description": "The same single-label judgment as classify_texts, but returns only aggregates: per-label counts, the no-match and unavailable counts, and usage. Per-input selections never enter the context.",
+    "description": "Classify texts the same way as classify_texts, but return only totals: the count for each label, the no-match and unavailable counts, and usage. The result for each text is left out, which keeps the response small.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
         "capacity": {
           "default": "shared",
-          "description": "The capacity lane the binding declares \u2014 `shared` unless the caller's lane differs.",
+          "description": "The capacity tier your API key uses for this model: `shared` unless your account has a dedicated tier.",
           "type": "string"
         },
         "instructions": {
@@ -411,7 +411,7 @@
           "type": "string"
         },
         "labels": {
-          "description": "The label set: ids, or {id, description} objects the judgment reads as criteria.",
+          "description": "The labels to choose from: IDs, or {id, description} objects. The model reads each description as the meaning of that label.",
           "items": {
             "anyOf": [
               {
@@ -440,17 +440,17 @@
           "type": "array"
         },
         "min_probability": {
-          "description": "Abstain to the no-match outcome below this top probability.",
+          "description": "If the top probability is below this value, return no match instead of a label.",
           "maximum": 1,
           "minimum": 0,
           "type": "number"
         },
         "model": {
-          "description": "The bound door name; absent falls back to the configured default model.",
+          "description": "The model to use. If you leave it out, the tool uses the configured default model.",
           "type": "string"
         },
         "request_id": {
-          "description": "An idempotency key for the call; retries reuse it and bump the attempt.",
+          "description": "An idempotency key for the call. Retries reuse it, so a retry isn't charged twice.",
           "maxLength": 512,
           "type": "string"
         },
@@ -481,13 +481,13 @@
       "openWorldHint": true,
       "readOnlyHint": false
     },
-    "description": "Runs the single-label judgment with the caller's uncertainty cut and returns the flagged items \u2014 input id, selection, and top probability \u2014 bounded by `show`, plus outcome counts. With `reviewer`, the flagged units are re-judged by that door first.",
+    "description": "Classify texts with one label each, and return the results whose top probability is below `uncertain_below`: the input ID, the selected label, and the top probability, up to `show` items, plus counts by outcome. With `reviewer`, that model classifies the uncertain results again first.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
         "capacity": {
           "default": "shared",
-          "description": "The capacity lane the binding declares \u2014 `shared` unless the caller's lane differs.",
+          "description": "The capacity tier your API key uses for this model: `shared` unless your account has a dedicated tier.",
           "type": "string"
         },
         "instructions": {
@@ -496,7 +496,7 @@
           "type": "string"
         },
         "labels": {
-          "description": "The label set: ids, or {id, description} objects the judgment reads as criteria.",
+          "description": "The labels to choose from: IDs, or {id, description} objects. The model reads each description as the meaning of that label.",
           "items": {
             "anyOf": [
               {
@@ -525,21 +525,21 @@
           "type": "array"
         },
         "model": {
-          "description": "The bound door name; absent falls back to the configured default model.",
+          "description": "The model to use. If you leave it out, the tool uses the configured default model.",
           "type": "string"
         },
         "request_id": {
-          "description": "An idempotency key for the call; retries reuse it and bump the attempt.",
+          "description": "An idempotency key for the call. Retries reuse it, so a retry isn't charged twice.",
           "maxLength": 512,
           "type": "string"
         },
         "reviewer": {
-          "description": "A bound door that re-judges the flagged units through the facade's review phase \u2014 bounds 200 items, 400 attempts, 30 s, keep-original on failure.",
+          "description": "A second model that classifies the uncertain results again. It reviews at most 200 items with at most 400 attempts in 30 seconds, and keeps the original result for any item it can't review.",
           "type": "string"
         },
         "show": {
           "default": 25,
-          "description": "The most uncertain items to list; the corpus itself never enters the context.",
+          "description": "How many of the most uncertain items to list. The other inputs are left out of the response.",
           "maximum": 100,
           "minimum": 1,
           "type": "integer"
@@ -555,7 +555,7 @@
           "type": "array"
         },
         "uncertain_below": {
-          "description": "Required: flag a unit `uncertain` when its top label probability is below this.",
+          "description": "Required. Mark a result `uncertain` if its top label probability is below this value.",
           "maximum": 1,
           "minimum": 0,
           "type": "number"
@@ -578,27 +578,27 @@
       "openWorldHint": true,
       "readOnlyHint": false
     },
-    "description": "POSTs /v1/systemone directly: Noul, Choice, and Score questions over one state, answered with the door's own probabilities. Returns the typed answers verbatim.",
+    "description": "Send Noul, Choice, and Score questions about one state to POST /v1/systemone, and return the typed answers and their probabilities unchanged.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
         "model": {
-          "description": "The bound door name; absent falls back to the configured default model.",
+          "description": "The model to use. If you leave it out, the tool uses the configured default model.",
           "type": "string"
         },
         "questions": {
-          "description": "Typed questions by caller-chosen id: {type: noul|choice|score, instructions, criteria?}.",
+          "description": "Questions keyed by an ID you choose: {type: noul|choice|score, instructions, criteria?}.",
           "maxProperties": 64,
           "minProperties": 1,
           "type": "object"
         },
         "request_id": {
-          "description": "An idempotency key for the call; retries reuse it and bump the attempt.",
+          "description": "An idempotency key for the call. Retries reuse it, so a retry isn't charged twice.",
           "maxLength": 512,
           "type": "string"
         },
         "state": {
-          "description": "The JSON or text under judgment."
+          "description": "The JSON or text the questions are about."
         }
       },
       "required": [
@@ -608,7 +608,7 @@
       "type": "object"
     },
     "name": "decide",
-    "title": "Answer typed questions over a state"
+    "title": "Answer typed questions about a state"
   },
   {
     "annotations": {
@@ -617,12 +617,12 @@
       "openWorldHint": false,
       "readOnlyHint": true
     },
-    "description": "List bundled documentation metadata",
+    "description": "List the documentation this server includes",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
         "cursor": {
-          "description": "Cursor from this tool for the same corpus and query.",
+          "description": "The cursor this tool returned for the same query.",
           "maxLength": 160,
           "type": "string"
         },
@@ -644,12 +644,12 @@
       "openWorldHint": false,
       "readOnlyHint": true
     },
-    "description": "Read a bounded UTF-8 page by stable document ID",
+    "description": "Read one page of a document by its ID",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
         "cursor": {
-          "description": "Cursor from this tool for the same corpus and query.",
+          "description": "The cursor this tool returned for the same query.",
           "maxLength": 160,
           "type": "string"
         },
@@ -676,12 +676,12 @@
       "openWorldHint": false,
       "readOnlyHint": true
     },
-    "description": "Search the bundled corpus; return at most one bounded snippet per document",
+    "description": "Search the documentation and return at most one short excerpt per document",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
         "cursor": {
-          "description": "Cursor from this tool for the same corpus and query.",
+          "description": "The cursor this tool returned for the same query.",
           "maxLength": 160,
           "type": "string"
         },
@@ -710,12 +710,12 @@
       "openWorldHint": false,
       "readOnlyHint": true
     },
-    "description": "List bundled examples; use read_doc to retrieve their contents",
+    "description": "List the included examples; use read_doc to read one",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
         "cursor": {
-          "description": "Cursor from this tool for the same corpus and query.",
+          "description": "The cursor this tool returned for the same query.",
           "maxLength": 160,
           "type": "string"
         },

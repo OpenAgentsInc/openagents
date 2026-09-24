@@ -28,10 +28,10 @@ use oak::mcp_http::{HttpOptions, serve};
 
 fn usage() -> ! {
     eprintln!(
-        "usage: oak-mcp-http [--listen ADDR] [--url URL] [--config PATH]\n       \
+        "Usage: oak-mcp-http [--listen ADDR] [--url URL] [--config PATH]\n       \
          [--workspace ID] [--timeout SECS] [--retries N]\n       \
          [--allow-origin ORIGIN]...\n\n  \
-         serves POST /mcp — JSON-RPC over Streamable HTTP; supported\n  \
+         Serves JSON-RPC over Streamable HTTP at POST /mcp. Supported\n  \
          protocol versions: {}",
         PROTOCOL_VERSIONS.join(", ")
     );
@@ -87,7 +87,7 @@ async fn main() {
     let listener = match tokio::net::TcpListener::bind(listen).await {
         Ok(listener) => listener,
         Err(error) => {
-            eprintln!("oak-mcp-http: cannot listen on {listen}: {error}");
+            eprintln!("oak-mcp-http: can't listen on {listen}: {error}");
             std::process::exit(1);
         }
     };

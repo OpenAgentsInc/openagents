@@ -85,7 +85,7 @@ impl std::fmt::Display for Refusal {
         match self {
             Self::Duplicate => write!(
                 f,
-                "this monetary attempt already exists; reconcile or use a new attempt"
+                "This request and attempt were already charged. Send a new `X-Attempt` number, or a new `Idempotency-Key` for new work."
             ),
             Self::Funds(message) | Self::Price(message) | Self::Ledger(message) => {
                 write!(f, "{message}")
@@ -143,32 +143,34 @@ pub fn reserve(
     let price = &priced.price;
     if price.policy != POLICY {
         return Err(Refusal::Price(format!(
-            "the price names policy `{}`, which this gateway does not implement (`{POLICY}`)",
+            "The model's price uses the pricing policy `{}`, which this service doesn't support (it supports `{POLICY}`). Contact the operator.",
             price.policy
         )));
     }
     if price.model != model {
         return Err(Refusal::Price(format!(
-            "the price's model `{}` does not match the bound artifact `{model}`",
+            "The model's price is set for `{}`, not for the model `{model}` that serves it. Contact the operator.",
             price.model
         )));
     }
     if price.capacity != capacity {
         return Err(Refusal::Price(format!(
-            "the price's capacity `{}` does not match the door's `{capacity}` lane",
+            "The model's price is set for `{}` capacity, not the `{capacity}` capacity it runs at. Contact the operator.",
             price.capacity
         )));
     }
     let worst = price.quote(&priced.maximum_usage).map_err(Refusal::Price)?;
     let balance = ledger.balance(workspace).map_err(|_| {
         Refusal::Funds(format!(
-            "workspace `{workspace}` holds no provisioned monetary account"
+            "Workspace `{workspace}` has no billing balance. Add credit before you make paid calls."
         ))
     })?;
     if worst > balance.available.min(balance.spend_remaining) {
         return Err(Refusal::Funds(format!(
-            "workspace `{workspace}` cannot cover the worst-case hold of {worst} {} \
-             millionths ({} available, {} spend remaining)",
+            "Workspace `{workspace}` doesn't have enough credit for this call. Each call \
+             sets aside its highest possible cost, {worst} millionths of {}, and the \
+             workspace has {} available with {} left under its spend limit. Add credit \
+             or raise the spend limit.",
             balance.currency, balance.available, balance.spend_remaining
         )));
     }

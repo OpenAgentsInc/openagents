@@ -491,7 +491,7 @@ pub(crate) async fn models(
         return Err(gateway_error(
             403,
             "out_of_scope",
-            "the credential's declared scope does not permit the `models` action",
+            "Your API key's scope doesn't allow listing models.",
         ));
     }
     let manifest = registry.manifest();
@@ -557,28 +557,28 @@ async fn balance(
         return Err(gateway_error(
             403,
             "out_of_scope",
-            "the credential's declared scope does not permit the `balance` action",
+            "Your API key's scope doesn't allow reading the balance.",
         ));
     }
     let Some(workspace) = caller.workspace else {
         return Err(gateway_error(
             400,
             "workspace_required",
-            "one X-Workspace-Id header is required",
+            "Send exactly one `X-Workspace-Id` header that names your workspace.",
         ));
     };
     let Some(ledger) = &state.money else {
         return Err(gateway_error(
             404,
             "unmetered",
-            "this gateway does not run monetary admission",
+            "This service doesn't charge per call, so there's no balance to read.",
         ));
     };
     let balance = ledger.lock().await.balance(&workspace).map_err(|error| {
         gateway_error(
             404,
             "account_missing",
-            &format!("workspace `{workspace}` holds no monetary account: {error}"),
+            &format!("Workspace `{workspace}` has no billing balance: {error}"),
         )
     })?;
     let prices: serde_json::Map<String, Value> = state
@@ -708,7 +708,7 @@ pub(crate) fn authenticate(
             return Err((
                 StatusCode::UNAUTHORIZED,
                 "unauthenticated",
-                "workspace membership requires a bearer key".into(),
+                "Send an API key in the `Authorization: Bearer` header.".into(),
             ));
         }
         return Ok((
@@ -725,14 +725,14 @@ pub(crate) fn authenticate(
         (
             StatusCode::BAD_REQUEST,
             "malformed" as &'static str,
-            "the Authorization header is not text".to_string(),
+            "The `Authorization` header contains characters that aren't valid text.".to_string(),
         )
     })?;
     let token = header.strip_prefix("Bearer ").ok_or_else(|| {
         (
             StatusCode::UNAUTHORIZED,
             "unauthenticated" as &'static str,
-            "the credential is not a `Bearer oak_<id>.<secret>` token".to_string(),
+            "The `Authorization` header must be `Bearer oak_<id>.<secret>`.".to_string(),
         )
     })?;
     if token.starts_with("sess_") {
@@ -743,7 +743,7 @@ pub(crate) fn authenticate(
             (
                 StatusCode::UNAUTHORIZED,
                 "unauthenticated" as &'static str,
-                format!("the credential was refused: {refusal}"),
+                format!("Your API key was rejected: {refusal}"),
             )
         })?;
     let mut workspace = None;
@@ -757,21 +757,21 @@ pub(crate) fn authenticate(
                 (
                     StatusCode::BAD_REQUEST,
                     "workspace_required",
-                    "one X-Workspace-Id header is required".into(),
+                    "Send exactly one `X-Workspace-Id` header that names your workspace.".into(),
                 )
             })?;
         if values.next().is_some() {
             return Err((
                 StatusCode::BAD_REQUEST,
                 "workspace_required",
-                "one X-Workspace-Id header is required".into(),
+                "Send exactly one `X-Workspace-Id` header that names your workspace.".into(),
             ));
         }
         let accounts = tenancy::Accounts::open(&state.dir).map_err(|_| {
             (
                 StatusCode::SERVICE_UNAVAILABLE,
                 "membership_unavailable",
-                "the workspace membership store is unavailable".into(),
+                "The service can't check workspace membership right now. Try again later.".into(),
             )
         })?;
         accounts
@@ -780,17 +780,18 @@ pub(crate) fn authenticate(
                 tenancy::accounts::Refusal::Store(_) => (
                     StatusCode::SERVICE_UNAVAILABLE,
                     "membership_unavailable",
-                    "the workspace membership store is unavailable".into(),
+                    "The service can't check workspace membership right now. Try again later."
+                        .into(),
                 ),
                 tenancy::accounts::Refusal::Authentication(_) => (
                     StatusCode::UNAUTHORIZED,
                     "unauthenticated",
-                    "the credential is no longer valid".into(),
+                    "Your API key is no longer valid. Create a new key.".into(),
                 ),
                 _ => (
                     StatusCode::FORBIDDEN,
                     "workspace_forbidden",
-                    "the credential has no active membership in this workspace and tenant".into(),
+                    "Your API key doesn't belong to an active member of this workspace.".into(),
                 ),
             })?;
         workspace = Some(named.to_string());
@@ -840,7 +841,7 @@ fn authenticate_session(
         (
             StatusCode::UNAUTHORIZED,
             "unauthenticated" as &'static str,
-            "the session token names no session this service holds".to_string(),
+            "Your session token isn't recognized. Sign in again.".to_string(),
         )
     })?;
     let now = std::time::SystemTime::now()
@@ -852,7 +853,7 @@ fn authenticate_session(
         return Err((
             StatusCode::UNAUTHORIZED,
             "session_closed" as &'static str,
-            format!("the session is {standing} — it answers nothing"),
+            format!("Your session is {standing}. Sign in again."),
         ));
     }
     match session.kind {
@@ -861,8 +862,8 @@ fn authenticate_session(
                 return Err((
                     StatusCode::FORBIDDEN,
                     "workspace_required" as &'static str,
-                    "an anonymous session holds no membership — workspace \
-                     membership requires a member's credential"
+                    "An anonymous session can't use a workspace. Sign in, or use a \
+                     workspace member's API key."
                         .into(),
                 ));
             }
@@ -907,14 +908,15 @@ fn authenticate_session(
                     (
                         StatusCode::BAD_REQUEST,
                         "workspace_required" as &'static str,
-                        "a session names its workspace with one X-Workspace-Id header".into(),
+                        "Send exactly one `X-Workspace-Id` header that names your workspace."
+                            .into(),
                     )
                 })?;
             if values.next().is_some() {
                 return Err((
                     StatusCode::BAD_REQUEST,
                     "workspace_required" as &'static str,
-                    "a session names its workspace with one X-Workspace-Id header".into(),
+                    "Send exactly one `X-Workspace-Id` header that names your workspace.".into(),
                 ));
             }
             let accounts = tenancy::Accounts::open(&state.dir).map_err(|trouble| {
@@ -937,7 +939,7 @@ fn authenticate_session(
                     (
                         StatusCode::NOT_FOUND,
                         "unknown_workspace" as &'static str,
-                        format!("`{workspace}` is not a workspace this store holds"),
+                        format!("Workspace `{workspace}` doesn't exist."),
                     )
                 })?;
             accounts
@@ -947,8 +949,8 @@ fn authenticate_session(
                         StatusCode::FORBIDDEN,
                         "workspace_forbidden" as &'static str,
                         format!(
-                            "the session's account has no active membership in this \
-                             workspace: {refusal}"
+                            "Your account isn't an active member of this workspace: \
+                             {refusal}"
                         ),
                     )
                 })?;
@@ -1083,11 +1085,7 @@ async fn owned_request(
     match tokio::spawn(async move {
         let started = Instant::now();
         let Ok(envelope) = serde_json::from_slice::<Value>(&body) else {
-            return gateway_error(
-                400,
-                "invalid_request",
-                "the body is not a JSON request envelope",
-            );
+            return gateway_error(400, "invalid_request", "The request body isn't valid JSON.");
         };
         let request_digest = digest_request(&envelope);
         let request = request_id(&state, &headers);
@@ -1115,7 +1113,7 @@ async fn owned_request(
         Err(_) => gateway_error(
             503,
             "unavailable",
-            "request execution stopped; completion requires reconciliation",
+            "The request stopped before it finished, and the service can't tell whether it completed. Retry with the same `Idempotency-Key`.",
         ),
     }
 }
@@ -1225,9 +1223,7 @@ fn authorized(
         return Err(Verdict::Refused {
             status: StatusCode::FORBIDDEN,
             code: "out_of_scope",
-            message: format!(
-                "the credential's declared scope does not name door `{door}` for inference"
-            ),
+            message: format!("Your API key's scope doesn't allow calls to the model `{door}`."),
             outcome: Outcome::Refused,
             ctx: ctx.clone(),
         });
@@ -1252,7 +1248,16 @@ fn authorized(
         .map_err(|refusal| Verdict::Refused {
             status: StatusCode::FORBIDDEN,
             code: "door_not_bound",
-            message: refusal.to_string(),
+            message: match refusal {
+                tenancy::Refusal::UnknownTenant(_) => {
+                    "Your API key's account isn't set up to call models. Contact the operator."
+                        .to_string()
+                }
+                _ => format!(
+                    "You can't use the model `{door}`. Call `GET /v1/models` to list the \
+                     models you can use."
+                ),
+            },
             outcome: Outcome::Refused,
             ctx: ctx.clone(),
         })?;
@@ -1270,7 +1275,7 @@ fn authorized(
         return Err(Verdict::Refused {
             status: StatusCode::SERVICE_UNAVAILABLE,
             code: "door_unavailable",
-            message: format!("door `{door}` is bound but no backend is configured for it"),
+            message: format!("The model `{door}` isn't available right now. Try again later."),
             outcome: Outcome::Refused,
             ctx: ctx.clone(),
         });
@@ -1295,7 +1300,9 @@ async fn bounded(
             return Err(Verdict::Refused {
                 status: StatusCode::TOO_MANY_REQUESTS,
                 code: "busy",
-                message: format!("door `{door}`'s forward slots are full; retry shortly"),
+                message: format!(
+                    "The model `{door}` is handling as many calls as it can. Retry shortly."
+                ),
                 outcome: Outcome::Refused,
                 ctx: ctx.clone(),
             });
@@ -1305,7 +1312,7 @@ async fn bounded(
         return Err(Verdict::Refused {
             status: StatusCode::TOO_MANY_REQUESTS,
             code: "overloaded",
-            message: "the gateway's forward bound is full; retry shortly".to_string(),
+            message: "The service is handling as many calls as it can. Retry shortly.".to_string(),
             outcome: Outcome::Refused,
             ctx: ctx.clone(),
         });
@@ -1360,7 +1367,7 @@ async fn windowed(
                     status: StatusCode::TOO_MANY_REQUESTS,
                     code: "rate_limited",
                     message: format!(
-                        "door `{door}` admits {} calls a minute under this binding",
+                        "The model `{door}` accepts {} calls a minute from your account. Retry after the `Retry-After` delay.",
                         bounds.rate
                     ),
                     outcome: Outcome::Refused,
@@ -1461,7 +1468,7 @@ async fn verified(
             status: StatusCode::SERVICE_UNAVAILABLE,
             code: "identity_mismatch",
             message: format!(
-                "the door's published batching does not match the declared {:?}",
+                "The model server's batching setting doesn't match the expected {:?} setting.",
                 expected.kind
             ),
             outcome: Outcome::Unattempted,
@@ -1512,7 +1519,7 @@ async fn money_hold(
         return Err(Verdict::Refused {
             status: StatusCode::BAD_REQUEST,
             code: "workspace_required",
-            message: "monetary admission requires an authenticated workspace".to_string(),
+            message: "Paid calls need a workspace. Send an `X-Workspace-Id` header.".to_string(),
             outcome: Outcome::Refused,
             ctx: ctx.clone(),
         });
@@ -1523,8 +1530,8 @@ async fn money_hold(
             status: StatusCode::SERVICE_UNAVAILABLE,
             code: "unpriced",
             message: format!(
-                "door `{door}` has no configured price — the gateway does not \
-                 invent one to keep it serving"
+                "The model `{door}` has no price set, so the service can't charge \
+                 for it. Contact the operator."
             ),
             outcome: Outcome::Refused,
             ctx: ctx.clone(),
@@ -1624,7 +1631,7 @@ async fn cancelled_before_dispatch(
     Verdict::Refused {
         status: StatusCode::SERVICE_UNAVAILABLE,
         code: "cancelled",
-        message: "caller disconnected before inference dispatch".into(),
+        message: "The connection closed before the request was sent to the model.".into(),
         outcome: Outcome::Unattempted,
         ctx: ctx.clone(),
     }
@@ -1655,7 +1662,7 @@ async fn forward_cancellable(
     tokio::select! {
         biased;
         _ = cancellation.wait() => Forwarded::Unavailable {
-            message: "caller disconnected after dispatch; completion is unknown".into(),
+            message: "The connection closed after the request was sent to the model, so the result is unknown.".into(),
         },
         result = forward(state, endpoint, body) => result,
     }
@@ -1684,7 +1691,7 @@ async fn admitted(
         return Verdict::Refused {
             status: StatusCode::UNPROCESSABLE_ENTITY,
             code: "invalid_request",
-            message: "the envelope names no `model` door".to_string(),
+            message: "The request doesn't name a model. Set the `model` field.".to_string(),
             outcome: Outcome::Refused,
             ctx,
         };
@@ -1706,7 +1713,7 @@ async fn admitted(
                 status: StatusCode::UNPROCESSABLE_ENTITY,
                 code: "too_many_questions",
                 message: format!(
-                    "the request carries {} questions; this gateway admits {}",
+                    "The request has {} questions. This service accepts at most {}.",
                     questions.len(),
                     state.config.max_questions
                 ),
@@ -1719,7 +1726,7 @@ async fn admitted(
                 status: StatusCode::UNPROCESSABLE_ENTITY,
                 code: "too_many_options",
                 message: format!(
-                    "the request carries {options} options; this gateway admits {}",
+                    "The request has {options} options. This service accepts at most {}.",
                     state.config.max_options
                 ),
                 outcome: Outcome::Refused,
@@ -1897,7 +1904,7 @@ pub(crate) fn validate_classify(
             status: StatusCode::UNPROCESSABLE_ENTITY,
             code: "unsupported_capacity",
             message: format!(
-                "door `{}` binds the `{}` lane; the request names `{}`",
+                "The model `{}` runs with `{}` capacity, but the request asks for `{}`.",
                 request.model,
                 lane_name(admission.binding.lane),
                 request.capacity
@@ -1916,8 +1923,8 @@ pub(crate) fn validate_classify(
                 status: StatusCode::UNPROCESSABLE_ENTITY,
                 code: "unsupported_limits",
                 message: format!(
-                    "door `{}` declares no classify bounds — the facade does not \
-                     infer support it was not told about",
+                    "The model `{}` doesn't support `/v1/classify`. Use a model \
+                     that lists classification support in `GET /v1/models`.",
                     request.model
                 ),
                 outcome: Outcome::Refused,
@@ -1946,7 +1953,7 @@ pub(crate) fn validate_classify(
                 status: StatusCode::UNPROCESSABLE_ENTITY,
                 code: "context_limit",
                 message: format!(
-                    "input `{}` exceeds the door's native request byte limit of {}",
+                    "Input `{}` is larger than the model's request limit of {} bytes.",
                     input.id, limits.max_forward_bytes
                 ),
                 outcome: Outcome::Refused,
@@ -2109,7 +2116,7 @@ pub(crate) async fn classify_run(
                 &request.inputs[index].id,
                 &plan,
                 "unavailable",
-                "the input's forward never reported",
+                "The model never returned a result for this input.",
                 None,
             ),
             usage: None,
@@ -2368,8 +2375,7 @@ async fn classify_queue(
     let refuse = || Verdict::Refused {
         status: StatusCode::TOO_MANY_REQUESTS,
         code: "classification_queue_full",
-        message: "the global or tenant classification input allowance cannot fit this request"
-            .into(),
+        message: "The classification queue is full. Retry shortly with fewer inputs.".into(),
         outcome: Outcome::Refused,
         ctx: ctx.clone(),
     };
@@ -2468,8 +2474,8 @@ async fn classify_item(work: ItemWork) -> ItemResult {
             let queue_ms = queued_at.elapsed().as_millis() as u64;
             let mut item = failed_item(&input, &plan,
                 if attempted { "unavailable" } else { "unattempted" },
-                if attempted { "caller disconnected after dispatch; completion is unknown" }
-                else { "caller disconnected before dispatch" }, None);
+                if attempted { "The connection closed after this input was sent to the model, so the result is unknown." }
+                else { "The connection closed before this input was sent to the model." }, None);
             item["queue_ms"] = json!(queue_ms);
             ItemResult {
                 index,
@@ -2520,13 +2526,13 @@ async fn classify_item_running(work: ItemWork, dispatched: Arc<AtomicBool>) -> I
     // how a stopped call frees its queue instead of waiting it out.
     let cutoff = tokio::time::Instant::from_std(deadline);
     let Ok(Ok(_item)) = tokio::time::timeout_at(cutoff, slots.clone().acquire_owned()).await else {
-        return unattempted("the call stopped before this input's forward");
+        return unattempted("The call stopped before this input was sent to the model.");
     };
     let Some(_) = deadline.checked_duration_since(Instant::now()) else {
-        return unattempted("the call's execution deadline passed before its forward ran");
+        return unattempted("The call ran out of time before this input was sent to the model.");
     };
     if halt.load(Ordering::SeqCst) {
-        return unattempted("the call stopped before this input's forward");
+        return unattempted("The call stopped before this input was sent to the model.");
     }
     // The tenant's forward share, when the operator declared one — the
     // fairness bound that keeps one tenant's call from holding every
@@ -2536,7 +2542,7 @@ async fn classify_item_running(work: ItemWork, dispatched: Arc<AtomicBool>) -> I
             Ok(Ok(permit)) => Some(permit),
             _ => {
                 return unattempted(
-                    "the call's execution deadline passed while the tenant's slots were full",
+                    "The call ran out of time while waiting for your account's share of capacity.",
                 );
             }
         },
@@ -2549,7 +2555,7 @@ async fn classify_item_running(work: ItemWork, dispatched: Arc<AtomicBool>) -> I
             Ok(Ok(permit)) => Some(permit),
             _ => {
                 return unattempted(
-                    "the call's execution deadline passed while the door's slots were full",
+                    "The call ran out of time while waiting for the model to have capacity.",
                 );
             }
         },
@@ -2560,23 +2566,23 @@ async fn classify_item_running(work: ItemWork, dispatched: Arc<AtomicBool>) -> I
         Ok(Ok(permit)) => permit,
         _ => {
             return unattempted(
-                "the call's execution deadline passed while the gateway's slots were full",
+                "The call ran out of time while waiting for the service to have capacity.",
             );
         }
     };
     if halt.load(Ordering::SeqCst) {
-        return unattempted("the call stopped before this input's forward");
+        return unattempted("The call stopped before this input was sent to the model.");
     }
     let item_started = Instant::now();
     if Instant::now() >= deadline {
-        return unattempted("the call's execution deadline passed before dispatch");
+        return unattempted("The call ran out of time before this input was sent to the model.");
     }
     let queue_ms = queued_at.elapsed().as_millis() as u64;
     dispatched.store(true, Ordering::SeqCst);
     let forwarded = tokio::time::timeout_at(cutoff, forward(&state, &endpoint, &body))
         .await
         .unwrap_or_else(|_| Forwarded::Unavailable {
-            message: "the classification call exceeded its execution deadline".to_string(),
+            message: "The classification call ran out of time.".to_string(),
         });
     let latency = item_started.elapsed();
     let (mut item, usage) = match forwarded {
@@ -2707,7 +2713,7 @@ fn fail(verdict: Verdict) -> Fail {
         Verdict::Forwarded { .. } => Fail {
             outcome: Outcome::Unavailable,
             code: "unavailable".to_string(),
-            message: "the dispatch produced no typed refusal".to_string(),
+            message: "The model returned no answer and no error code.".to_string(),
         },
     }
 }
@@ -2872,8 +2878,7 @@ async fn dispatch_admitted(
             return Err(Fail {
                 outcome: Outcome::Refused,
                 code: "context_limit".to_string(),
-                message: "the secondary request exceeds the door's native request byte limit"
-                    .to_string(),
+                message: "The review request is larger than the model's request limit.".to_string(),
             });
         }
     }
@@ -2881,13 +2886,12 @@ async fn dispatch_admitted(
         return Err(Fail {
             outcome: Outcome::Unattempted,
             code: "identity_mismatch".to_string(),
-            message: "the secondary door's artifact changed after the parent call was admitted"
-                .to_string(),
+            message: "The review model changed after the call started.".to_string(),
         });
     }
     if Instant::now() >= sub.deadline {
         return Err(Fail::unattempted(
-            "the secondary dispatch deadline passed during admission",
+            "The review ran out of time during the access check.",
         ));
     }
     let capacity = admission.binding.capacity.clone().unwrap_or_default();
@@ -2902,7 +2906,7 @@ async fn dispatch_admitted(
             Ok(Ok(permit)) => Some(permit),
             _ => {
                 return Err(Fail::unattempted(
-                    "the phase's deadline passed while the door's slots were full",
+                    "The review ran out of time while waiting for the model to have capacity.",
                 ));
             }
         },
@@ -2913,7 +2917,7 @@ async fn dispatch_admitted(
         Ok(Ok(permit)) => permit,
         _ => {
             return Err(Fail::unattempted(
-                "the phase's deadline passed while the gateway's slots were full",
+                "The review ran out of time while waiting for the service to have capacity.",
             ));
         }
     };
@@ -2944,7 +2948,7 @@ async fn dispatch_admitted(
             state.release(naming.request, naming.attempt).await;
             ctx.settlement = money_release(state, &hold).await;
             return Err(Fail::unattempted(
-                "the secondary dispatch deadline passed during identity verification",
+                "The review ran out of time during identity verification of the model.",
             ));
         }
     }
@@ -2957,7 +2961,7 @@ async fn dispatch_admitted(
         state.release(naming.request, naming.attempt).await;
         ctx.settlement = money_release(state, &hold).await;
         return Err(Fail::unattempted(
-            "the secondary dispatch deadline passed before forwarding",
+            "The review ran out of time before the request was sent to the model.",
         ));
     }
     let forwarded = tokio::time::timeout_at(
@@ -2966,7 +2970,7 @@ async fn dispatch_admitted(
     )
     .await
     .unwrap_or_else(|_| Forwarded::Unavailable {
-        message: "the dispatch exceeded the review phase's deadline".to_string(),
+        message: "The review ran out of time.".to_string(),
     });
     let outcome = match &forwarded {
         Forwarded::Served { .. } => Outcome::Answered,
@@ -3057,23 +3061,27 @@ fn phase_stop(
     cancellation: &Cancellation,
 ) -> Option<&'static str> {
     if cancellation.stopped() {
-        return Some("caller disconnected before secondary dispatch");
+        return Some("The connection closed before the review started.");
     }
     if book.attempts >= policy.max_attempts {
-        return Some("the review policy's `max_attempts` bound is spent");
+        return Some("The review used all attempts that its `max_attempts` limit allows.");
     }
     if Instant::now() >= deadline {
-        return Some("the review phase's `latency_ms` bound is spent");
+        return Some("The review used all the time that its `latency_ms` limit allows.");
     }
     if policy.max_spend.is_some() && quote.is_none() {
-        return Some("the review policy's `max_spend` requires a known configured price");
+        return Some(
+            "The review's `max_spend` limit needs a known configured price for the model.",
+        );
     }
     if let Some(quote) = quote {
         let Some(total) = book.spend.checked_add(quote) else {
-            return Some("the review phase's spend accounting would overflow");
+            return Some("The review's cost is too large to count.");
         };
         if policy.max_spend.is_some_and(|maximum| total > maximum) {
-            return Some("the review policy's `max_spend` cannot cover the door's worst-case hold");
+            return Some(
+                "The review's `max_spend` limit can't cover the model's highest possible charge.",
+            );
         }
     }
     None
@@ -3261,7 +3269,7 @@ async fn review_phase(
             item["fallback"] = json!({
                 "on": class.name(),
                 "outcome": "skipped",
-                "cause": "the policy names no fallback for this cause",
+                "cause": "The review policy names no fallback for this error.",
             });
             continue;
         };
@@ -3276,7 +3284,7 @@ async fn review_phase(
             item["fallback"] = json!({
                 "on": class.name(),
                 "outcome": "skipped",
-                "cause": "the refusal's cause is not among the entry's declared `codes`",
+                "cause": "The error code isn't one of the fallback's listed `codes`.",
             });
             continue;
         }
@@ -3368,7 +3376,7 @@ async fn review_phase(
                     &input,
                     plan,
                     "unavailable",
-                    "the fallback answered nothing",
+                    "The fallback model returned no answer.",
                     Some(result.latency),
                 ),
             },
@@ -3452,7 +3460,7 @@ async fn review_phase(
             // A bound that stops the dispatch is itself recorded —
             // an exhausted budget is visible on the unit it stopped.
             let stop = if book.reviewed >= policy.max_items {
-                Some("the review policy's `max_items` bound is spent")
+                Some("The review reached its `max_items` limit.")
             } else {
                 phase_stop(
                     &book,
@@ -3571,7 +3579,7 @@ async fn review_phase(
                     None => Some(unit_failure(
                         &plan.units[unit_index],
                         "unavailable",
-                        "the reviewer's answer did not parse or names another model",
+                        "The review answer isn't valid, or it names a different model.",
                     )),
                 }
             } else {
@@ -3641,7 +3649,7 @@ async fn review_phase(
                             *unit = unit_failure(
                                 &plan.units[unit_index],
                                 &outcome,
-                                cause.as_deref().unwrap_or("the review did not answer"),
+                                cause.as_deref().unwrap_or("The review returned no answer."),
                             );
                             unit["original"] = old;
                             unit["review"] = review;
@@ -4109,7 +4117,7 @@ fn served_item(
     for (unit_index, unit) in plan.units.iter().enumerate() {
         let result = match answers.as_ref() {
             Some(answers) => unit_result(unit_index, unit, plan, asked, answers),
-            None => unit_failure(unit, "unavailable", "the door's answer did not parse"),
+            None => unit_failure(unit, "unavailable", "The model's answer isn't valid JSON."),
         };
         if result.get("outcome").and_then(Value::as_str) == Some("answered") {
             answered += 1;
@@ -4216,26 +4224,34 @@ fn unit_result(
     match unit.mode {
         Mode::SingleLabel => {
             let Some(rule) = plan.policy.select.single_label.as_ref() else {
-                return unit_failure(unit, "unavailable", "no declared selection rule");
+                return unit_failure(
+                    unit,
+                    "unavailable",
+                    "The request declares no selection rule.",
+                );
             };
             let Some(answer) = asked.next().and_then(|(_, qid, _)| answers.get(qid)) else {
-                return unit_failure(unit, "unavailable", "the door answered no choice");
+                return unit_failure(unit, "unavailable", "The model returned no choice answer.");
             };
             if !valid_primitive(answer, "choice") {
-                return unit_failure(unit, "unavailable", "the answer is not a choice");
+                return unit_failure(
+                    unit,
+                    "unavailable",
+                    "The model returned the wrong answer type. Expected a choice answer.",
+                );
             }
             let Some(probabilities) = answer.get("probabilities").and_then(Value::as_object) else {
                 return unit_failure(
                     unit,
                     "unavailable",
-                    "the choice answer names no distribution",
+                    "The choice answer has no probabilities.",
                 );
             };
             if probabilities.len() != unit.labels.len() {
                 return unit_failure(
                     unit,
                     "unavailable",
-                    "the distribution has a different label set",
+                    "The answer's probabilities cover different labels than the request.",
                 );
             }
             let mut pairs = Vec::with_capacity(unit.labels.len());
@@ -4248,7 +4264,7 @@ fn unit_result(
                         return unit_failure(
                             unit,
                             "unavailable",
-                            "the distribution does not cover the label set",
+                            "The answer's probabilities don't cover every label.",
                         );
                     }
                 }
@@ -4273,7 +4289,11 @@ fn unit_result(
         }
         Mode::MultiLabel => {
             let Some(rule) = plan.policy.select.multi_label.as_ref() else {
-                return unit_failure(unit, "unavailable", "no declared selection rule");
+                return unit_failure(
+                    unit,
+                    "unavailable",
+                    "The request declares no selection rule.",
+                );
             };
             let mut raw = serde_json::Map::new();
             let mut pairs = Vec::with_capacity(unit.labels.len());
@@ -4281,16 +4301,28 @@ fn unit_result(
                 debug_assert_eq!(*index, unit_index);
                 let Some(label) = label else { continue };
                 let Some(answer) = answers.get(qid) else {
-                    return unit_failure(unit, "unavailable", "the door answered no noul");
+                    return unit_failure(unit, "unavailable", "The model returned no noul answer.");
                 };
                 if !valid_primitive(answer, "noul") {
-                    return unit_failure(unit, "unavailable", "the answer is not a noul");
+                    return unit_failure(
+                        unit,
+                        "unavailable",
+                        "The model returned the wrong answer type. Expected a noul answer.",
+                    );
                 }
                 let Some(probability) = answer.get("noul").and_then(Value::as_f64) else {
-                    return unit_failure(unit, "unavailable", "a noul answer holds no probability");
+                    return unit_failure(
+                        unit,
+                        "unavailable",
+                        "The noul answer has no probability.",
+                    );
                 };
                 if !(0.0..=1.0).contains(&probability) {
-                    return unit_failure(unit, "unavailable", "a noul answer is not a probability");
+                    return unit_failure(
+                        unit,
+                        "unavailable",
+                        "The noul answer isn't a probability between 0 and 1.",
+                    );
                 }
                 raw.insert(label.clone(), answer.clone());
                 pairs.push((label.clone(), probability));
@@ -4316,19 +4348,31 @@ fn unit_result(
         }
         Mode::Binary => {
             let Some(rule) = plan.policy.select.binary.as_ref() else {
-                return unit_failure(unit, "unavailable", "no declared selection rule");
+                return unit_failure(
+                    unit,
+                    "unavailable",
+                    "The request declares no selection rule.",
+                );
             };
             let Some(answer) = asked.next().and_then(|(_, qid, _)| answers.get(qid)) else {
-                return unit_failure(unit, "unavailable", "the door answered no noul");
+                return unit_failure(unit, "unavailable", "The model returned no noul answer.");
             };
             if !valid_primitive(answer, "noul") {
-                return unit_failure(unit, "unavailable", "the answer is not a noul");
+                return unit_failure(
+                    unit,
+                    "unavailable",
+                    "The model returned the wrong answer type. Expected a noul answer.",
+                );
             }
             let Some(probability) = answer.get("noul").and_then(Value::as_f64) else {
-                return unit_failure(unit, "unavailable", "a noul answer holds no probability");
+                return unit_failure(unit, "unavailable", "The noul answer has no probability.");
             };
             if !(0.0..=1.0).contains(&probability) {
-                return unit_failure(unit, "unavailable", "a noul answer is not a probability");
+                return unit_failure(
+                    unit,
+                    "unavailable",
+                    "The noul answer isn't a probability between 0 and 1.",
+                );
             }
             let selected = if rule.selects(probability) {
                 json!(unit.labels[0].id)
@@ -4349,13 +4393,13 @@ fn unit_result(
         }
         Mode::Score => {
             let Some(answer) = asked.next().and_then(|(_, qid, _)| answers.get(qid)) else {
-                return unit_failure(unit, "unavailable", "the door answered no score");
+                return unit_failure(unit, "unavailable", "The model returned no score answer.");
             };
             let Some(scored) = valid_score(answer, unit.levels.len()) else {
                 return unit_failure(
                     unit,
                     "unavailable",
-                    "the answer is not a score on this rubric",
+                    "The model's answer isn't a score on this rubric.",
                 );
             };
             let selected = selected_level(&scored).map_or(Value::Null, |level| json!(level));
@@ -4508,31 +4552,34 @@ async fn published_identity(
         .get(format!("{endpoint}/v1/models"))
         .send()
         .await
-        .map_err(|error| format!("the door's identity could not be read: {error}"))?;
+        .map_err(|error| {
+            format!("The service couldn't read the model server's model list: {error}")
+        })?;
     if !response.status().is_success() {
         return Err(format!(
-            "the door's identity check answered {}",
+            "The model server's model list returned HTTP {}.",
             response.status()
         ));
     }
     let bytes = backend_response_bytes(response, state.config.max_response_bytes).await?;
     let body: Value = serde_json::from_slice(&bytes)
-        .map_err(|error| format!("the door's identity did not parse: {error}"))?;
+        .map_err(|error| format!("The model server's model list isn't valid JSON: {error}"))?;
     let cards = body
         .get("models")
         .and_then(Value::as_array)
-        .ok_or_else(|| "the door's identity document carries no `models`".to_string())?;
+        .ok_or_else(|| "The model server's model list has no `models` field.".to_string())?;
     let card = cards
         .iter()
         .find(|card| card.get("id").and_then(Value::as_str) == Some(model))
-        .ok_or_else(|| format!("the door publishes no card for `{model}`"))?;
+        .ok_or_else(|| format!("The model server doesn't list the model `{model}`."))?;
     // The adapter's batching declaration, when the card carries one.
     // A malformed field is an identity fault, not an absent claim.
     let batching = match card.get("batching") {
         None => None,
         Some(value) => Some(
-            serde_json::from_value::<tenancy::backend::Batching>(value.clone())
-                .map_err(|error| format!("the door's `batching` did not parse: {error}"))?,
+            serde_json::from_value::<tenancy::backend::Batching>(value.clone()).map_err(
+                |error| format!("The model server's `batching` field isn't valid: {error}"),
+            )?,
         ),
     };
     Ok((
@@ -4607,16 +4654,18 @@ async fn backend_response_bytes(
         .content_length()
         .is_some_and(|length| length > limit as u64)
     {
-        return Err(format!("the door's response exceeded {limit} bytes"));
+        return Err(format!(
+            "The model server's response exceeded {limit} bytes."
+        ));
     }
     let mut bytes = Vec::new();
-    while let Some(chunk) = response
-        .chunk()
-        .await
-        .map_err(|error| format!("the door's response could not be read: {error}"))?
-    {
+    while let Some(chunk) = response.chunk().await.map_err(|error| {
+        format!("The service couldn't read the model server's response: {error}")
+    })? {
         if chunk.len() > limit.saturating_sub(bytes.len()) {
-            return Err(format!("the door's response exceeded {limit} bytes"));
+            return Err(format!(
+                "The model server's response exceeded {limit} bytes."
+            ));
         }
         bytes.extend_from_slice(&chunk);
     }
@@ -4637,14 +4686,14 @@ async fn forward(state: &ServeState, endpoint: &str, body: &Bytes) -> Forwarded 
         Ok(response) => response,
         Err(error) => {
             return Forwarded::Unavailable {
-                message: format!("the door could not be reached: {error}"),
+                message: format!("The service couldn't reach the model server: {error}"),
             };
         }
     };
     let status = response.status();
     if status.is_redirection() {
         return Forwarded::Unavailable {
-            message: "the configured door redirected inference; no redirect was followed".into(),
+            message: "The model server tried to redirect the request. The service doesn't follow redirects.".into(),
         };
     }
     let body = match backend_response_bytes(response, state.config.max_response_bytes).await {
@@ -4671,7 +4720,7 @@ async fn forward(state: &ServeState, endpoint: &str, body: &Bytes) -> Forwarded 
         }
     } else {
         Forwarded::Unavailable {
-            message: format!("the door answered {status}"),
+            message: format!("The model server returned HTTP {status}."),
         }
     }
 }

@@ -29,12 +29,12 @@
     {
       "input": "second",
       "outcome": "unavailable",
-      "cause": "the door answered 503 Service Unavailable",
+      "cause": "The model server returned HTTP 503 Service Unavailable.",
       "units": [
         {
           "mode": "single-label",
           "outcome": "unavailable",
-          "cause": "the door answered 503 Service Unavailable",
+          "cause": "The model server returned HTTP 503 Service Unavailable.",
           "selected": null
         }
       ],

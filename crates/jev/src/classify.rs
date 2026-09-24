@@ -68,8 +68,11 @@ impl<'a> Classify<'a> {
 
     /// The call both paths share.
     async fn dispatch(&self, request: &ClassifyRequest) -> Result<crate::RawResponse> {
-        let body = serde_json::to_vec(&request.envelope)
-            .map_err(|error| Error::Config(format!("the envelope is not JSON: {error}")))?;
+        let body = serde_json::to_vec(&request.envelope).map_err(|error| {
+            Error::Config(format!(
+                "the classification request can't be encoded as JSON: {error}"
+            ))
+        })?;
         self.client
             .request_read(
                 Method::POST,
@@ -105,7 +108,7 @@ impl ClassifyRequest {
             .is_some_and(|v| v == SCHEMA);
         if !envelope.is_object() || !valid {
             return Err(Error::Config(format!(
-                "the envelope is not a `{SCHEMA}` object"
+                "the classification request must be a JSON object with `\"v\": \"{SCHEMA}\"`"
             )));
         }
         Ok(Self {

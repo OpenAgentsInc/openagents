@@ -27,7 +27,7 @@ use std::path::Path;
 use tenancy::money::{Ledger, Phase};
 
 fn usage() -> ! {
-    eprintln!("usage:\n  tenant-money --ledger PATH [--workspace NAME]");
+    eprintln!("Usage:\n  tenant-money --ledger PATH [--workspace NAME]");
     std::process::exit(2);
 }
 

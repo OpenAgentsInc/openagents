@@ -358,11 +358,11 @@ pub enum CorpusFault {
 impl fmt::Display for CorpusFault {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Malformed(detail) => write!(f, "the corpus is not readable: {detail}"),
+            Self::Malformed(detail) => write!(f, "the corpus file isn't valid: {detail}"),
             Self::Schema { found } => {
                 write!(
                     f,
-                    "the document is tagged {found}, which is not {CORPUS_SCHEMA}"
+                    "the document's schema is {found}; expected {CORPUS_SCHEMA}"
                 )
             }
             Self::Tampered { recorded, computed } => write!(
@@ -377,14 +377,14 @@ impl fmt::Display for CorpusFault {
                 write!(f, "the corpus's {role} partition is empty")
             }
             Self::DuplicateItem { id } => {
-                write!(f, "the corpus names the item {id} more than once")
+                write!(f, "the corpus lists item {id} more than once")
             }
             Self::Undocumented { id, missing } => {
                 write!(f, "corpus item {id} has no {missing}")
             }
             Self::GroupSpills { group, roles } => write!(
                 f,
-                "group {group} appears in {} partitions ({}); a session's items take one role",
+                "group {group} appears in {} partitions ({}); all items in a group must be in the same partition",
                 roles.len(),
                 roles
                     .iter()
@@ -394,7 +394,7 @@ impl fmt::Display for CorpusFault {
             ),
             Self::UnconfirmedLabel { id } => write!(
                 f,
-                "corpus item {id}'s label is model output with no reviewer confirmation"
+                "corpus item {id} has a label a model wrote that no reviewer has confirmed"
             ),
             Self::Leak(leak) => write!(
                 f,
@@ -404,10 +404,10 @@ impl fmt::Display for CorpusFault {
             Self::Oversized { items, bound } => {
                 write!(
                     f,
-                    "the training partition holds {items} items; the bound is {bound}"
+                    "the training partition has {items} items; the limit is {bound}"
                 )
             }
-            Self::Deleted => write!(f, "the corpus was deleted under its retention terms"),
+            Self::Deleted => write!(f, "the corpus was deleted under its retention policy"),
         }
     }
 }
@@ -736,18 +736,18 @@ pub enum RecipeFault {
 impl fmt::Display for RecipeFault {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Malformed(detail) => write!(f, "the recipe is not readable: {detail}"),
+            Self::Malformed(detail) => write!(f, "the recipe file isn't valid: {detail}"),
             Self::Schema { found } => {
                 write!(
                     f,
-                    "the document is tagged {found}, which is not {RECIPE_SCHEMA}"
+                    "the document's schema is {found}; expected {RECIPE_SCHEMA}"
                 )
             }
             Self::Tampered { recorded, computed } => write!(
                 f,
                 "the recipe digest does not match its fields: recorded {recorded}, computed {computed}"
             ),
-            Self::Unbounded(what) => write!(f, "the recipe leaves {what} unbounded"),
+            Self::Unbounded(what) => write!(f, "the recipe doesn't set a limit for {what}"),
         }
     }
 }
@@ -888,11 +888,11 @@ pub enum TrialFault {
 impl fmt::Display for TrialFault {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Malformed(detail) => write!(f, "the trial record is not readable: {detail}"),
+            Self::Malformed(detail) => write!(f, "the trial record isn't valid: {detail}"),
             Self::Schema { found } => {
                 write!(
                     f,
-                    "the document is tagged {found}, which is not {TRIAL_SCHEMA}"
+                    "the document's schema is {found}; expected {TRIAL_SCHEMA}"
                 )
             }
             Self::ForeignSeed { seed } => write!(
@@ -900,9 +900,9 @@ impl fmt::Display for TrialFault {
                 "the trial ran seed {seed}, which its recipe's seed policy does not allow"
             ),
             Self::TrialCap { cap } => {
-                write!(f, "the recipe is at its {cap}-trial cap")
+                write!(f, "the recipe has reached its limit of {cap} trials")
             }
-            Self::NoArtifacts => write!(f, "a kept trial carries no artifacts to seal"),
+            Self::NoArtifacts => write!(f, "a kept trial must list the artifacts to seal"),
         }
     }
 }
@@ -1034,11 +1034,11 @@ pub enum HeadroomFault {
 impl fmt::Display for HeadroomFault {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Malformed(detail) => write!(f, "the scores file is not readable: {detail}"),
+            Self::Malformed(detail) => write!(f, "the scores file isn't valid: {detail}"),
             Self::Schema { found } => {
                 write!(
                     f,
-                    "the document is tagged {found}, which is not {SCORES_SCHEMA}"
+                    "the document's schema is {found}; expected {SCORES_SCHEMA}"
                 )
             }
             Self::ForeignItem { id } => write!(
@@ -1046,7 +1046,10 @@ impl fmt::Display for HeadroomFault {
                 "the scores name item {id}, which is not in the corpus's development partition"
             ),
             Self::Incomplete { missing } => {
-                write!(f, "the scores leave {missing} development items unmeasured")
+                write!(
+                    f,
+                    "the scores file has no score for {missing} development items"
+                )
             }
         }
     }
@@ -1245,16 +1248,16 @@ pub enum SealFault {
 impl fmt::Display for SealFault {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Malformed(detail) => write!(f, "the candidate is not readable: {detail}"),
+            Self::Malformed(detail) => write!(f, "the candidate file isn't valid: {detail}"),
             Self::Schema { found } => {
                 write!(
                     f,
-                    "the document is tagged {found}, which is not {CANDIDATE_SCHEMA}"
+                    "the document's schema is {found}; expected {CANDIDATE_SCHEMA}"
                 )
             }
             Self::Unknown { what } => write!(f, "{what}"),
-            Self::Unpinned(what) => write!(f, "{what} names no artifact digest"),
-            Self::NoKeptTrial => write!(f, "the evidence names no kept trial"),
+            Self::Unpinned(what) => write!(f, "{what} doesn't give an artifact digest"),
+            Self::NoKeptTrial => write!(f, "the evidence doesn't name a kept trial"),
         }
     }
 }
@@ -1302,7 +1305,7 @@ impl fmt::Display for Trouble {
             Self::Trial(fault) => write!(f, "{fault}"),
             Self::Headroom(fault) => write!(f, "{fault}"),
             Self::Seal(fault) => write!(f, "{fault}"),
-            Self::NotFound(what) => write!(f, "{what} is not in the training store"),
+            Self::NotFound(what) => write!(f, "{what} isn't in the training store"),
             Self::Store(detail) => write!(f, "training store: {detail}"),
         }
     }

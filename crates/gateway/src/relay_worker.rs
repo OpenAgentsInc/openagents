@@ -687,7 +687,8 @@ impl Worker {
                 &delivery,
                 &call.body.request,
                 call.body.attempt,
-                Refusal::new("not_admitted").message("this worker does not answer this signer"),
+                Refusal::new("not_admitted")
+                    .message("This worker doesn't accept jobs signed by your key."),
             );
             return;
         };
@@ -710,7 +711,7 @@ impl Worker {
                     &call.body.request,
                     call.body.attempt,
                     Refusal::new("idempotency_conflict")
-                        .message("this (request, attempt) pair is taken by different content"),
+                        .message("This request ID and attempt number were already used for a different request. Use a new request ID or attempt number."),
                 );
                 return;
             }
@@ -837,7 +838,9 @@ impl Worker {
                         &body.request,
                         body.attempt,
                         Refusal::new("busy")
-                            .message("the worker's job bound is full")
+                            .message(
+                                "This worker is running as many jobs as it can. Retry shortly.",
+                            )
                             .retry_after_ms(BUSY_RETRY_MS),
                     );
                 }
@@ -950,7 +953,7 @@ impl Worker {
             },
             cause: Some("cancelled".to_string()),
             code: Some("cancelled".to_string()),
-            message: Some("the caller cancelled this job".to_string()),
+            message: Some("You cancelled this job.".to_string()),
             retry_after_ms: None,
             response: None,
             served_model: None,
@@ -1165,7 +1168,7 @@ impl Worker {
                 outcome: "unavailable".to_string(),
                 cause: Some("unavailable".to_string()),
                 code: Some("unavailable".to_string()),
-                message: Some(format!("the upstream call failed: {error}")),
+                message: Some(format!("The call to the model server failed: {error}")),
                 retry_after_ms: None,
                 response: None,
                 served_model: None,
@@ -1179,7 +1182,9 @@ impl Worker {
                 outcome: "unavailable".to_string(),
                 cause: Some("timeout".to_string()),
                 code: Some("unavailable".to_string()),
-                message: Some("the deadline or upstream timeout elapsed".to_string()),
+                message: Some(
+                    "The job ran out of time before the model server answered.".to_string(),
+                ),
                 retry_after_ms: None,
                 response: None,
                 served_model: None,
@@ -1257,7 +1262,7 @@ impl Worker {
                     error
                         .get("message")
                         .and_then(Value::as_str)
-                        .unwrap_or("the upstream refused")
+                        .unwrap_or("The model server refused the request.")
                         .chars()
                         .take(decision::MAX_MESSAGE_BYTES)
                         .collect::<String>(),
@@ -1266,7 +1271,7 @@ impl Worker {
             .unwrap_or_else(|| {
                 (
                     "unavailable".to_string(),
-                    format!("the upstream answered {status} without a typed error"),
+                    format!("The model server returned HTTP {status} without an error code."),
                 )
             });
         let outcome = match code.as_str() {

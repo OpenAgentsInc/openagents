@@ -50,26 +50,27 @@ const EXIT_MIXED: i32 = oak::EXIT_MIXED;
 
 fn usage() -> ! {
     eprintln!(
-        "usage:\n  \
+        "Usage:\n  \
          oak ask --questions PATH [--input state|lines|ndjson] [STATE] [FLAGS]\n  \
          oak models [FLAGS]\n  \
          oak classify --envelope PATH [FLAGS]\n\n  \
-         flags:\n    \
-         --url URL              service root (OPENAGENTS_BASE_URL, or `base_url` in the file)\n    \
-         --model DOOR           door to ask (OPENAGENTS_MODEL, or `model` in the file)\n    \
-         --workspace ID         workspace for X-Workspace-Id (OPENAGENTS_WORKSPACE,\n    \
-         \x20                       or `workspace` in the file)\n    \
-         --config PATH          credential file (OPENAGENTS_CONFIG,\n    \
+         Flags:\n    \
+         --url URL              service address (OPENAGENTS_BASE_URL, or `base_url` in the config file)\n    \
+         --model MODEL          model to ask (OPENAGENTS_MODEL, or `model` in the config file)\n    \
+         --workspace ID         workspace to bill, sent as X-Workspace-Id (OPENAGENTS_WORKSPACE,\n    \
+         \x20                       or `workspace` in the config file)\n    \
+         --config PATH          config file that holds your API key (OPENAGENTS_CONFIG,\n    \
          \x20                       default ~/.config/openagents/oak.json)\n    \
-         --envelope PATH        the openagents.classify.v1 envelope; `-` reads stdin\n    \
+         --envelope PATH        openagents.classify.v1 request file; `-` reads standard input\n    \
          --input MODE           state | lines | ndjson (default: state)\n    \
-         --concurrency N        in-flight calls for batch input (default: 4)\n    \
-         --retries N            retries per call, honoring Retry-After (default: 3)\n    \
-         --timeout SECS         per-attempt timeout (default: 60)\n    \
-         --request-id KEY       idempotency key; batch rows derive KEY/<id>\n    \
-         --select ID            emit only these question ids (repeatable)\n    \
-         --uncertain-below P    tag rows whose winning probability falls under P\n    \
-         --quiet                no progress on standard error"
+         --concurrency N        calls to run at once for batch input (default: 4)\n    \
+         --retries N            retries per call, waiting as long as Retry-After says (default: 3)\n    \
+         --timeout SECS         seconds to wait for each attempt (default: 60)\n    \
+         --request-id KEY       idempotency key, so a retry isn't charged twice;\n    \
+         \x20                       batch rows use KEY/<row ID>\n    \
+         --select ID            print only the answer to this question ID (repeatable)\n    \
+         --uncertain-below P    mark rows whose top probability is below P\n    \
+         --quiet                don't print progress to standard error"
     );
     std::process::exit(EXIT_USAGE);
 }
@@ -315,7 +316,7 @@ fn models(common: &Common) -> i32 {
         Ok(Reply::Document { body, .. }) => {
             let mut out = BufWriter::new(std::io::stdout().lock());
             let Some(cards) = body.get("models").and_then(Value::as_array) else {
-                return fatal("the listing did not carry a `models` array");
+                return fatal("the service response has no `models` list");
             };
             for card in cards {
                 if writeln!(out, "{}", serde_json::to_string(card).unwrap_or_default()).is_err() {
@@ -323,7 +324,7 @@ fn models(common: &Common) -> i32 {
                 }
             }
             if !common.quiet {
-                eprintln!("oak: {} doors", cards.len());
+                eprintln!("oak: {} models available to your API key", cards.len());
             }
             EXIT_ANSWERED
         }
@@ -350,7 +351,9 @@ fn models(common: &Common) -> i32 {
 fn classify(envelope: &str, common: &Common) -> i32 {
     let bytes = if envelope == "-" {
         if std::io::stdin().is_terminal() {
-            eprintln!("oak: --envelope - reads the envelope from standard input");
+            eprintln!(
+                "oak: `--envelope -` reads the request from standard input; pipe a file to it"
+            );
             return EXIT_USAGE;
         }
         match read_bounded(std::io::stdin().lock(), MAX_ENVELOPE_BYTES, "envelope") {
@@ -364,7 +367,7 @@ fn classify(envelope: &str, common: &Common) -> i32 {
         let file = match std::fs::File::open(envelope) {
             Ok(file) => file,
             Err(error) => {
-                eprintln!("oak: cannot read {envelope}: {error}");
+                eprintln!("oak: can't read {envelope}: {error}");
                 return EXIT_USAGE;
             }
         };
@@ -379,12 +382,12 @@ fn classify(envelope: &str, common: &Common) -> i32 {
     let parsed: Value = match serde_json::from_slice(&bytes) {
         Ok(parsed) => parsed,
         Err(error) => {
-            eprintln!("oak: the envelope does not parse as JSON: {error}");
+            eprintln!("oak: the request file isn't valid JSON: {error}");
             return EXIT_USAGE;
         }
     };
     if !parsed.is_object() || parsed.get("v").and_then(Value::as_str) != Some(CLASSIFY_SCHEMA) {
-        eprintln!("oak: the envelope is not a `{CLASSIFY_SCHEMA}` document");
+        eprintln!("oak: the request file needs `\"v\": \"{CLASSIFY_SCHEMA}\"`");
         return EXIT_USAGE;
     }
     let settings = match common.settings() {
@@ -493,15 +496,15 @@ fn run(ask: Ask) -> i32 {
     };
     let Some(model) = settings.model.clone() else {
         eprintln!(
-            "oak: no door named — pass --model, set OPENAGENTS_MODEL, or name \
-             `model` in the config file"
+            "oak: no model named. Pass --model, set OPENAGENTS_MODEL, or set \
+             `model` in the config file."
         );
         return EXIT_USAGE;
     };
     let text = match std::fs::read_to_string(&ask.questions) {
         Ok(text) => text,
         Err(error) => {
-            eprintln!("oak: cannot read {}: {error}", ask.questions.display());
+            eprintln!("oak: can't read {}: {error}", ask.questions.display());
             return EXIT_USAGE;
         }
     };
@@ -509,7 +512,7 @@ fn run(ask: Ask) -> i32 {
         Ok(body) => body,
         Err(error) => {
             eprintln!(
-                "oak: {} does not parse as a questions object: {error}",
+                "oak: {} isn't a valid questions file (a JSON object of questions): {error}",
                 ask.questions.display()
             );
             return EXIT_USAGE;
@@ -529,7 +532,7 @@ fn run(ask: Ask) -> i32 {
         Err(code) => return code,
     };
     if items.is_empty() {
-        eprintln!("oak: nothing to ask — the input carried no rows");
+        eprintln!("oak: nothing to ask; the input has no rows");
         return EXIT_USAGE;
     }
 
@@ -554,7 +557,7 @@ fn run(ask: Ask) -> i32 {
                     stop.store(true, Ordering::SeqCst);
                     let _ = done.send((
                         usize::MAX,
-                        json!({"message": "the client did not build"}),
+                        json!({"message": "oak couldn't set up its HTTP client"}),
                         Outcome::Unavailable,
                     ));
                     return;
@@ -660,12 +663,14 @@ fn read_items(ask: &Ask) -> Result<Vec<Item>, i32> {
                 Some(state) => state.clone(),
                 None => {
                     if std::io::stdin().is_terminal() {
-                        eprintln!("oak: no state — pass one as an argument or on standard input");
+                        eprintln!(
+                            "oak: no state to ask about. Pass it as an argument or on standard input."
+                        );
                         return Err(EXIT_USAGE);
                     }
                     let mut raw = String::new();
                     if std::io::stdin().read_to_string(&mut raw).is_err() {
-                        eprintln!("oak: cannot read standard input");
+                        eprintln!("oak: can't read standard input");
                         return Err(EXIT_FAILURE);
                     }
                     raw
@@ -681,12 +686,12 @@ fn read_items(ask: &Ask) -> Result<Vec<Item>, i32> {
         }
         Input::Lines | Input::Ndjson => {
             if std::io::stdin().is_terminal() {
-                eprintln!("oak: --input reads rows from standard input");
+                eprintln!("oak: --input reads rows from standard input; pipe a file to it");
                 return Err(EXIT_USAGE);
             }
             let mut raw = String::new();
             if std::io::stdin().read_to_string(&mut raw).is_err() {
-                eprintln!("oak: cannot read standard input");
+                eprintln!("oak: can't read standard input");
                 return Err(EXIT_FAILURE);
             }
             let mut items = Vec::new();
@@ -730,7 +735,7 @@ fn read_items(ask: &Ask) -> Result<Vec<Item>, i32> {
                         Err(error) => Item {
                             id: id.clone(),
                             state: None,
-                            invalid: Some(format!("not JSON: {error}")),
+                            invalid: Some(format!("this line isn't valid JSON: {error}")),
                             request_id: keyed(&id, None),
                         },
                     },
@@ -779,7 +784,10 @@ fn call(
                 None,
                 None,
                 None,
-                Some(("invalid_row", "the idempotency key is not a header value")),
+                Some((
+                    "invalid_row",
+                    "the request ID can't be sent as an HTTP header; use printable ASCII",
+                )),
             ),
             Outcome::Invalid,
         );

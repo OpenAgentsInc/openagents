@@ -85,9 +85,9 @@ pub(crate) fn page(title: &str, workspace: Option<&str>, body: &str) -> Html<Str
         Some(ws) => {
             let ws = esc(ws);
             format!(
-                r#"<nav aria-label="Workspace"><a href="/dashboard">workspaces</a> / <strong>{ws}</strong>
-                <span class="tabs"><a href="/dashboard/w/{ws}">overview</a><a href="/dashboard/w/{ws}/usage">usage</a><a href="/dashboard/w/{ws}/activity">activity</a><a href="/dashboard/w/{ws}/members">members</a><a href="/dashboard/w/{ws}/keys">keys</a><a href="/dashboard/w/{ws}/billing">billing</a></span></nav>
-                <form method="post" action="/dashboard/sign-out" class="out"><button type="submit">sign out</button></form>"#
+                r#"<nav aria-label="Workspace"><a href="/dashboard">Workspaces</a> / <strong>{ws}</strong>
+                <span class="tabs"><a href="/dashboard/w/{ws}">Overview</a><a href="/dashboard/w/{ws}/usage">Usage</a><a href="/dashboard/w/{ws}/activity">Activity</a><a href="/dashboard/w/{ws}/members">Members</a><a href="/dashboard/w/{ws}/keys">API keys</a><a href="/dashboard/w/{ws}/billing">Billing</a></span></nav>
+                <form method="post" action="/dashboard/sign-out" class="out"><button type="submit">Sign out</button></form>"#
             )
         }
         None => String::new(),
@@ -135,7 +135,7 @@ pub(crate) fn page_error(status: StatusCode, title: &str, detail: &str) -> Respo
             title,
             None,
             &format!(
-                r#"<h1>{title}</h1><p class="err">{}</p><p><a href="/dashboard">back to sign-in</a></p>"#,
+                r#"<h1>{title}</h1><p class="err">{}</p><p><a href="/dashboard">Back to sign-in</a></p>"#,
                 esc(detail)
             ),
         ),
@@ -167,8 +167,8 @@ pub(crate) fn principal_of(
     let token = cookie_token(headers).ok_or_else(|| {
         page_error(
             StatusCode::UNAUTHORIZED,
-            "sign in required",
-            "no session cookie — sign in with a session token",
+            "Sign-in required",
+            "You're not signed in. Sign in with a session token.",
         )
     })?;
     let mut forwarded = HeaderMap::new();
@@ -178,8 +178,8 @@ pub(crate) fn principal_of(
     accounts::principal(state, &forwarded).map_err(|response| {
         page_error(
             response.status(),
-            "sign in refused",
-            "the session token did not resolve to an active account session — sign in again",
+            "Sign-in failed",
+            "Your session has expired or isn't valid. Sign in again.",
         )
     })
 }
@@ -192,16 +192,16 @@ fn member_of(state: &ServeState, headers: &HeaderMap, workspace: &str) -> Result
         .map_err(|response| {
             page_error(
                 response.status(),
-                "no account",
-                "an anonymous session has no workspace view — sign in with a user session",
+                "No account",
+                "An anonymous session can't view workspaces. Sign in with your account's session token.",
             )
         })?
         .to_string();
     accounts::member(state, &account, workspace).map_err(|response| {
         page_error(
             response.status(),
-            "not a member",
-            "this account is not an active member of the workspace",
+            "Not a member",
+            "Your account isn't an active member of this workspace.",
         )
     })?;
     Ok(account)
@@ -212,23 +212,23 @@ fn member_of(state: &ServeState, headers: &HeaderMap, workspace: &str) -> Result
 async fn home(State(state): State<Arc<ServeState>>, headers: HeaderMap) -> Response {
     let Ok(principal) = principal_of(&state, &headers) else {
         return page(
-            "sign in",
+            "Sign in",
             None,
             r#"<h1>OpenAgents dashboard</h1>
-            <p>Paste a session token (<code>sess_…</code>) to view your workspaces.</p>
+            <p>To view your workspaces, sign in with a session token (<code>sess_…</code>).</p>
             <form method="post" action="/dashboard/session">
-            <label>session token <input name="token" type="password" size="48" required autocomplete="off"></label>
-            <button type="submit">sign in</button></form>
-            <p class="dim">Mint a session with <code>POST /v1/sessions</code> — the token is stored
-            in an HttpOnly cookie and can be revoked by signing out or closing the session.</p>"#,
+            <label>Your session token <input name="token" type="password" size="48" required autocomplete="off"></label>
+            <button type="submit">Sign in</button></form>
+            <p class="dim">To get a session token, call <code>POST /v1/sessions</code>. This page keeps the token
+            in an HttpOnly cookie. To end it, sign out or close the session.</p>"#,
         )
         .into_response();
     };
     let Some(account_id) = principal.account().map(|account| account.to_string()) else {
         return page_error(
             StatusCode::FORBIDDEN,
-            "no account",
-            "an anonymous session has no workspace view — sign in with a user session",
+            "No account",
+            "An anonymous session can't view workspaces. Sign in with your account's session token.",
         );
     };
     let accounts = match accounts::accounts_store(&state) {
@@ -240,7 +240,7 @@ async fn home(State(state): State<Arc<ServeState>>, headers: HeaderMap) -> Respo
         Err(trouble) => {
             return page_error(
                 StatusCode::SERVICE_UNAVAILABLE,
-                "accounts unavailable",
+                "Accounts unavailable",
                 &trouble.to_string(),
             );
         }
@@ -267,15 +267,15 @@ async fn home(State(state): State<Arc<ServeState>>, headers: HeaderMap) -> Respo
     }
     let body = if rows.is_empty() {
         format!(
-            r#"<h1>workspaces</h1><p class="dim">{} holds no active workspace membership.</p>"#,
+            r#"<h1>Workspaces</h1><p class="dim">Account {} isn't an active member of any workspace.</p>"#,
             esc(&account_id)
         )
     } else {
         format!(
-            r#"<h1>workspaces</h1><table><tr><th>id</th><th>name</th><th>kind</th><th>role</th></tr>{rows}</table>"#
+            r#"<h1>Workspaces</h1><table><tr><th>ID</th><th>Name</th><th>Type</th><th>Your role</th></tr>{rows}</table>"#
         )
     };
-    page("workspaces", None, &body).into_response()
+    page("Workspaces", None, &body).into_response()
 }
 
 #[derive(Deserialize)]
@@ -293,16 +293,16 @@ pub(crate) async fn session(
     let Ok(value) = HeaderValue::from_str(&format!("Bearer {}", form.token.trim())) else {
         return page_error(
             StatusCode::BAD_REQUEST,
-            "bad token",
-            "the token is not a valid header value",
+            "Invalid token",
+            "The session token contains characters that aren't allowed. Copy it again and paste it.",
         );
     };
     forwarded.insert(axum::http::header::AUTHORIZATION, value);
     if let Err(response) = accounts::principal(&state, &forwarded) {
         return page_error(
             response.status(),
-            "sign in refused",
-            "the token did not resolve — check it is a live session token",
+            "Sign-in failed",
+            "That session token isn't recognized or has expired. Check that you pasted a current session token.",
         );
     }
     let cookie = format!(
@@ -355,7 +355,7 @@ async fn overview(
         Err(trouble) => {
             return page_error(
                 StatusCode::SERVICE_UNAVAILABLE,
-                "accounts unavailable",
+                "Accounts unavailable",
                 &trouble.to_string(),
             );
         }
@@ -363,8 +363,8 @@ async fn overview(
     let Some(ws) = store.workspaces.get(&workspace) else {
         return page_error(
             StatusCode::NOT_FOUND,
-            "unknown workspace",
-            "the workspace is gone",
+            "Workspace not found",
+            "This workspace no longer exists.",
         );
     };
     let role = ws
@@ -381,7 +381,7 @@ async fn overview(
                 Err(cause) => {
                     return page_error(
                         StatusCode::SERVICE_UNAVAILABLE,
-                        "balance unavailable",
+                        "Balance unavailable",
                         &cause,
                     );
                 }
@@ -407,27 +407,27 @@ async fn overview(
                 .join("");
             format!(
                 r#"<div class="cards">
-                <div class="card"><div class="n">{}</div><div class="l">credited {}</div></div>
-                <div class="card"><div class="n">{}</div><div class="l">reserved</div></div>
-                <div class="card"><div class="n">{}</div><div class="l">settled spend</div></div>
-                <div class="card"><div class="n">{}</div><div class="l">available</div></div></div>
-                <h2>outstanding reservations</h2>{}"#,
+                <div class="card"><div class="n">{}</div><div class="l">Credit added ({})</div></div>
+                <div class="card"><div class="n">{}</div><div class="l">Held for calls in progress</div></div>
+                <div class="card"><div class="n">{}</div><div class="l">Spent</div></div>
+                <div class="card"><div class="n">{}</div><div class="l">Available</div></div></div>
+                <h2>Calls not yet charged</h2>{}"#,
                 amount(balance.credited),
                 esc(&balance.currency),
                 amount(balance.reserved),
                 amount(balance.settled),
                 amount(balance.available),
                 if outstanding.is_empty() {
-                    r#"<p class="dim">no outstanding reservations</p>"#.to_string()
+                    r#"<p class="dim">None. Every call has been charged.</p>"#.to_string()
                 } else {
                     format!(
-                        r#"<table><tr><th>hold</th><th>reserved</th><th>phase</th></tr>{outstanding}</table>"#
+                        r#"<table><tr><th>Call and attempt</th><th>Amount held</th><th>Status</th></tr>{outstanding}</table>"#
                     )
                 },
             )
         }
         None => {
-            r#"<p class="dim">this deployment runs no monetary admission — usage is unpriced</p>"#
+            r#"<p class="dim">This service doesn't charge per call, so there's no balance to show.</p>"#
                 .to_string()
         }
     };
@@ -443,11 +443,11 @@ async fn overview(
         .unwrap_or(0);
 
     page(
-        &format!("{} · overview", ws.name),
+        &format!("{} · Overview", ws.name),
         Some(&workspace),
         &format!(
             r#"<h1>{} <span class="dim">{}</span></h1>
-            <p class="dim">signed in as <code>{}</code> · role {} · today <code>{}</code>: {} calls</p>
+            <p class="dim">Signed in as <code>{}</code> · Role: {} · Calls today (<code>{}</code>, UTC): {}</p>
             {balance_html}"#,
             esc(&ws.name),
             esc(&workspace),
@@ -534,11 +534,11 @@ async fn usage_page(
         .join("");
 
     let window = format!(
-        r#"<form method="get" class="filters"><label>from <input name="from" value="{}" placeholder="2026-01-01"></label>
-        <label>to <input name="to" value="{}" placeholder="2026-02-01"></label>
-        <label>model <input name="model" value="{}" size="12"></label>
-        <label>outcome <select name="outcome"><option value="">any</option>{}</select></label>
-        <button type="submit">filter</button> <a href="/dashboard/w/{}/usage">reset</a></form>"#,
+        r#"<form method="get" class="filters"><label>From <input name="from" value="{}" placeholder="2026-01-01"></label>
+        <label>To <input name="to" value="{}" placeholder="2026-02-01"></label>
+        <label>Model <input name="model" value="{}" size="12"></label>
+        <label>Outcome <select name="outcome"><option value="">Any</option>{}</select></label>
+        <button type="submit">Filter</button> <a href="/dashboard/w/{}/usage">Clear filters</a></form>"#,
         esc(filter.from.as_deref().unwrap_or("")),
         esc(filter.to.as_deref().unwrap_or("")),
         esc(filter.model.as_deref().unwrap_or("")),
@@ -564,19 +564,19 @@ async fn usage_page(
     );
 
     page(
-        "usage",
+        "Usage",
         Some(&workspace),
         &format!(
-            r#"<h1>usage</h1>{window}
+            r#"<h1>Usage</h1>{window}
             <div class="cards">
-            <div class="card"><div class="n">{}</div><div class="l">calls</div></div>
-            <div class="card"><div class="n">{}</div><div class="l">answered</div></div>
-            <div class="card"><div class="n">{}</div><div class="l">questions</div></div>
-            <div class="card"><div class="n">{}</div><div class="l">input bytes</div></div>
-            <div class="card"><div class="n">{}</div><div class="l">retail spend</div></div></div>
-            <h2>calls per day <span class="dim">UTC</span></h2>
+            <div class="card"><div class="n">{}</div><div class="l">Calls</div></div>
+            <div class="card"><div class="n">{}</div><div class="l">Answered</div></div>
+            <div class="card"><div class="n">{}</div><div class="l">Questions</div></div>
+            <div class="card"><div class="n">{}</div><div class="l">Input bytes</div></div>
+            <div class="card"><div class="n">{}</div><div class="l">Amount charged</div></div></div>
+            <h2>Calls per day <span class="dim">UTC</span></h2>
             <div class="bar">{bars}</div><div>{day_labels}</div>
-            <p class="dim">exact sums over {} receipts — unattributed {}, other-workspace {}, unverifiable {}</p>"#,
+            <p class="dim">Exact totals from {} call receipts. Receipts skipped: {} with no workspace, {} from other workspaces, and {} that failed their integrity check.</p>"#,
             scan.receipts.len(),
             answered,
             questions,
@@ -664,7 +664,7 @@ async fn activity_page(
         .join("");
     let more = if has_more {
         format!(
-            r#"<p><a href="/dashboard/w/{}/activity?limit={}">show {} more</a></p>"#,
+            r#"<p><a href="/dashboard/w/{}/activity?limit={}">Show {} more</a></p>"#,
             esc(&workspace),
             limit + 50,
             50,
@@ -673,15 +673,15 @@ async fn activity_page(
         String::new()
     };
     page(
-        "activity",
+        "Activity",
         Some(&workspace),
         &format!(
-            r#"<h1>activity</h1>
-            <p class="dim">newest first · {} receipts in window{}</p>
-            <table><tr><th>receipt</th><th>resolved (UTC)</th><th>model</th><th>outcome</th><th>key</th><th>ms</th></tr>{}</table>{}
-            <p><a href="/v1/workspaces/{}/usage/export">export NDJSON</a> <span class="dim">— the sealed receipts, verbatim</span></p>"#,
+            r#"<h1>Activity</h1>
+            <p class="dim">Newest first · {} call receipts in this period{}</p>
+            <table><tr><th>Receipt</th><th>Finished (UTC)</th><th>Model</th><th>Outcome</th><th>API key</th><th>Time (ms)</th></tr>{}</table>{}
+            <p><a href="/v1/workspaces/{}/usage/export">Download all call receipts as NDJSON</a></p>"#,
             scan.receipts.len(),
-            if scan.truncated { " (scan truncated)" } else { "" },
+            if scan.truncated { " (list cut short; narrow the dates to see all)" } else { "" },
             rows,
             more,
             esc(&workspace),
@@ -709,8 +709,8 @@ async fn receipt_page(
     let Some(receipt) = scan.receipts.iter().find(|r| r.digest == digest) else {
         return page_error(
             StatusCode::NOT_FOUND,
-            "unknown receipt",
-            "no receipt of this workspace carries that digest",
+            "Receipt not found",
+            "This workspace has no receipt with that hash.",
         );
     };
     let holds = usage_holds(&state, &workspace).await;
@@ -721,7 +721,7 @@ async fn receipt_page(
         .map(|reservation| reservation.units.clone());
     let cost_html = match hold {
         Some(hold) => format!(
-            r#"<tr><th>cost</th><td>retail {} · provider {} · hosting {} · refunded {} · {}</td></tr>"#,
+            r#"<tr><th>Cost</th><td>Charged {} · Provider cost {} · Hosting cost {} · Refunded {} · {}</td></tr>"#,
             hold.retail_charge.map(amount).unwrap_or_else(|| "—".into()),
             hold.provider_cost.map(amount).unwrap_or_else(|| "—".into()),
             hold.hosting_cost.map(amount).unwrap_or_else(|| "—".into()),
@@ -733,15 +733,15 @@ async fn receipt_page(
                 Phase::Released => "released",
             },
         ),
-        None => r#"<tr><th>cost</th><td class="dim">unpriced — no monetary admission</td></tr>"#
+        None => r#"<tr><th>Cost</th><td class="dim">Not charged. This service doesn't charge per call.</td></tr>"#
             .to_string(),
     };
     let units_html = match units {
         Some(units) => format!(
-            r#"<tr><th>quota units</th><td>{} questions · {} input bytes · {} options</td></tr>"#,
+            r#"<tr><th>Counted toward quota</th><td>{} questions · {} input bytes · {} options</td></tr>"#,
             units.questions, units.input_bytes, units.options,
         ),
-        None => r#"<tr><th>quota units</th><td class="dim">no reservation recorded</td></tr>"#
+        None => r#"<tr><th>Counted toward quota</th><td class="dim">Nothing recorded</td></tr>"#
             .to_string(),
     };
     let outcome = match receipt.outcome {
@@ -752,26 +752,26 @@ async fn receipt_page(
         receipts::execution::Outcome::Unknown => "unknown",
     };
     page(
-        "receipt",
+        "Receipt",
         Some(&workspace),
         &format!(
-            r#"<h1>receipt <code>{}</code></h1>
+            r#"<h1>Receipt <code>{}</code></h1>
             <table>
-            <tr><th>request</th><td><code>{}</code> attempt {}</td></tr>
-            <tr><th>attempt id</th><td><code>{}</code></td></tr>
-            <tr><th>transport</th><td>{}</td></tr>
-            <tr><th>key</th><td><code>{}</code></td></tr>
-            <tr><th>requested model</th><td><code>{}</code></td></tr>
-            <tr><th>served model</th><td><code>{}</code></td></tr>
-            <tr><th>served artifact</th><td><code>{}</code></td></tr>
-            <tr><th>outcome</th><td>{}{}</td></tr>
-            <tr><th>timing</th><td>queued {} ms · served {} ms · resolved {}</td></tr>
-            <tr><th>request digest</th><td><code>{}</code></td></tr>
-            <tr><th>result digest</th><td><code>{}</code></td></tr>
+            <tr><th>Request ID</th><td><code>{}</code>, attempt {}</td></tr>
+            <tr><th>Attempt ID</th><td><code>{}</code></td></tr>
+            <tr><th>Sent over</th><td>{}</td></tr>
+            <tr><th>API key</th><td><code>{}</code></td></tr>
+            <tr><th>Model requested</th><td><code>{}</code></td></tr>
+            <tr><th>Model that answered</th><td><code>{}</code></td></tr>
+            <tr><th>Model version</th><td><code>{}</code></td></tr>
+            <tr><th>Outcome</th><td>{}{}</td></tr>
+            <tr><th>Timing</th><td>Waited {} ms · Ran {} ms · Finished {}</td></tr>
+            <tr><th>Request hash (SHA-256)</th><td><code>{}</code></td></tr>
+            <tr><th>Result hash (SHA-256)</th><td><code>{}</code></td></tr>
             {units_html}{cost_html}
-            <tr><th>receipt digest</th><td><code>{}</code></td></tr>
+            <tr><th>Receipt hash (SHA-256)</th><td><code>{}</code></td></tr>
             </table>
-            <p class="dim">raw request state and answers are not held by the receipt — the digests attest them.</p>"#,
+            <p class="dim">The receipt doesn't store your request or the answers. It stores their hashes, so you can check that a copy you kept matches.</p>"#,
             esc(&receipt.digest),
             esc(&receipt.request),
             receipt.attempt,
@@ -826,7 +826,7 @@ async fn members_page(
         Err(trouble) => {
             return page_error(
                 StatusCode::SERVICE_UNAVAILABLE,
-                "accounts unavailable",
+                "Accounts unavailable",
                 &trouble.to_string(),
             );
         }
@@ -834,8 +834,8 @@ async fn members_page(
     let Some(ws) = store.workspaces.get(&workspace) else {
         return page_error(
             StatusCode::NOT_FOUND,
-            "unknown workspace",
-            "the workspace is gone",
+            "Workspace not found",
+            "This workspace no longer exists.",
         );
     };
     let caller_admin = ws
@@ -885,27 +885,27 @@ async fn members_page(
         .join("");
     let seats = ws
         .seats
-        .map(|seats| format!(" · seats {seats}"))
+        .map(|seats| format!(" · Seats: {seats}"))
         .unwrap_or_default();
     page(
-        "members",
+        "Members",
         Some(&workspace),
         &format!(
-            r#"<h1>members</h1><p class="dim">epoch {}{}</p>
-            <table><tr><th>account</th><th>role</th><th>status</th><th>granted</th></tr>{rows}</table>
-            <h2>pending invitations</h2>{}
-            <p class="dim">member and invitation changes go through the JSON API{}.</p>"#,
+            r#"<h1>Members</h1><p class="dim">Membership version {}{}</p>
+            <table><tr><th>Account</th><th>Role</th><th>Status</th><th>Joined</th></tr>{rows}</table>
+            <h2>Pending invitations</h2>{}
+            <p class="dim">To change members or invitations, use the JSON API{}.</p>"#,
             ws.members_epoch,
             seats,
             if invites.is_empty() {
-                r#"<p class="dim">none</p>"#.to_string()
+                r#"<p class="dim">None</p>"#.to_string()
             } else {
-                format!(r#"<table><tr><th>id</th><th>role</th><th>principal</th><th>expires</th></tr>{invites}</table>"#)
+                format!(r#"<table><tr><th>ID</th><th>Role</th><th>Invited by</th><th>Expires (Unix time)</th></tr>{invites}</table>"#)
             },
             if caller_admin {
-                " — your role permits them"
+                ". Your role can make these changes"
             } else {
-                " — an admin or owner runs them"
+                ". Only an admin or the owner can make these changes"
             },
         ),
     )
@@ -933,7 +933,7 @@ async fn keys_page(
         Err(trouble) => {
             return page_error(
                 StatusCode::SERVICE_UNAVAILABLE,
-                "accounts unavailable",
+                "Accounts unavailable",
                 &trouble.to_string(),
             );
         }
@@ -941,8 +941,8 @@ async fn keys_page(
     let Some(ws) = store.workspaces.get(&workspace) else {
         return page_error(
             StatusCode::NOT_FOUND,
-            "unknown workspace",
-            "the workspace is gone",
+            "Workspace not found",
+            "This workspace no longer exists.",
         );
     };
     let admin = ws
@@ -954,7 +954,7 @@ async fn keys_page(
         Err(trouble) => {
             return page_error(
                 StatusCode::SERVICE_UNAVAILABLE,
-                "keys unavailable",
+                "API keys unavailable",
                 &trouble.to_string(),
             );
         }
@@ -996,26 +996,26 @@ async fn keys_page(
                     .as_ref()
                     .map(|set| set.iter().cloned().collect::<Vec<_>>().join(","))
                     .unwrap_or_else(|| "*".to_string());
-                format!("models:{models} actions:{actions}")
+                format!("models: {models}, actions: {actions}")
             })
-            .unwrap_or_else(|| "unscoped".to_string());
+            .unwrap_or_else(|| "all".to_string());
         rows.push_str(&format!(
             r#"<tr><td><code>{}</code></td><td>{}</td><td>{}</td><td><code>{}</code></td><td>{}</td></tr>"#,
             esc(&key.id),
             esc(key.name.as_deref().unwrap_or("—")),
             status,
             esc(&scopes),
-            esc(owner.as_deref().unwrap_or("unbound")),
+            esc(owner.as_deref().unwrap_or("none")),
         ));
     }
     page(
-        "keys",
+        "API keys",
         Some(&workspace),
         &format!(
-            r#"<h1>keys</h1>
-            <p class="dim">{} · secrets are never shown — a key's secret is returned once, at issue</p>
-            <table><tr><th>id</th><th>name</th><th>status</th><th>scopes</th><th>account</th></tr>{}</table>"#,
-            if admin { "all workspace keys" } else { "your keys" },
+            r#"<h1>API keys</h1>
+            <p class="dim">{} · This page never shows a key's secret. You see the secret only once, when the key is created.</p>
+            <table><tr><th>ID</th><th>Name</th><th>Status</th><th>Allowed models and actions</th><th>Account</th></tr>{}</table>"#,
+            if admin { "All API keys in this workspace" } else { "Your API keys" },
             rows,
         ),
     )
@@ -1035,9 +1035,9 @@ async fn billing_page(
     }
     let Some(_billing_config) = &state.config.billing else {
         return page(
-            "billing",
+            "Billing",
             Some(&workspace),
-            r#"<h1>billing</h1><p class="dim">this deployment runs no billing — there is no plan, no checkout, and no invoice</p>"#,
+            r#"<h1>Billing</h1><p class="dim">This service doesn't bill for use, so there are no plans or invoices.</p>"#,
         )
         .into_response();
     };
@@ -1047,17 +1047,17 @@ async fn billing_page(
         Err(trouble) => {
             return page_error(
                 StatusCode::SERVICE_UNAVAILABLE,
-                "billing unavailable",
+                "Billing unavailable",
                 &trouble.to_string(),
             );
         }
     };
     let subscription_html = match book.subscription_for(&workspace) {
         Some(subscription) => format!(
-            r#"<table><tr><th>subscription</th><td><code>{}</code></td></tr>
-            <tr><th>plan</th><td><code>{}</code> v{}</td></tr>
-            <tr><th>state</th><td>{}</td></tr>
-            <tr><th>period</th><td>{} · ends {}</td></tr>{}</table>"#,
+            r#"<table><tr><th>Subscription</th><td><code>{}</code></td></tr>
+            <tr><th>Plan</th><td><code>{}</code> version {}</td></tr>
+            <tr><th>Status</th><td>{}</td></tr>
+            <tr><th>Billing period</th><td>{} · Ends {}</td></tr>{}</table>"#,
             esc(&subscription.id),
             esc(&subscription.plan),
             esc(&subscription.plan_version),
@@ -1066,10 +1066,10 @@ async fn billing_page(
             subscription.period_ends,
             subscription
                 .cancel_at
-                .map(|at| format!(r#"<tr><th>cancels</th><td>{at}</td></tr>"#))
+                .map(|at| format!(r#"<tr><th>Cancels on</th><td>{at}</td></tr>"#))
                 .unwrap_or_default(),
         ),
-        None => r#"<p class="dim">no subscription — the workspace has no billing entitlement</p>"#
+        None => r#"<p class="dim">This workspace has no subscription. Subscribe to a plan to make paid calls.</p>"#
             .to_string(),
     };
     let invoices = book
@@ -1089,17 +1089,17 @@ async fn billing_page(
         .collect::<Vec<_>>()
         .join("");
     page(
-        "billing",
+        "Billing",
         Some(&workspace),
         &format!(
-            r#"<h1>billing</h1><h2>subscription</h2>{subscription_html}
-            <h2>invoices</h2>{}
-            <p class="dim">plan changes, checkouts, and provider details run through the owner-only JSON API — read
+            r#"<h1>Billing</h1><h2>Subscription</h2>{subscription_html}
+            <h2>Invoices</h2>{}
+            <p class="dim">To change plans or pay, the workspace owner uses the JSON API. For details, see
             <code>docs/decision-models/service/billing.md</code>.</p>"#,
             if invoices.is_empty() {
-                r#"<p class="dim">none</p>"#.to_string()
+                r#"<p class="dim">None</p>"#.to_string()
             } else {
-                format!(r#"<table><tr><th>id</th><th>period</th><th>amount</th><th>state</th></tr>{invoices}</table>"#)
+                format!(r#"<table><tr><th>ID</th><th>Billing period</th><th>Amount</th><th>Status</th></tr>{invoices}</table>"#)
             },
         ),
     )

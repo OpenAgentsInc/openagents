@@ -108,7 +108,7 @@ Refusals are typed JSON, not bare status codes:
 
 ```json
 {"error": {"code": "unauthenticated",
-           "message": "the credential was refused: unknown key",
+           "message": "Your API key was rejected: API key `k_example` doesn't exist",
            "request": "req-…", "attempt": 1}}
 ```
 

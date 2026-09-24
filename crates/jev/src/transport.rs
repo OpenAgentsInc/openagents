@@ -63,7 +63,7 @@ pub(crate) fn headers(
     merged.remove(RETRY_COUNT_HEADER);
     if let Some(key) = key {
         let bearer = HeaderValue::from_str(&format!("Bearer {}", key.expose())).map_err(|_| {
-            Error::Config("the API key holds a character a header cannot carry".into())
+            Error::Config("the API key contains a character that can't be sent in an HTTP header; check it for spaces or line breaks".into())
         })?;
         merged.insert(AUTHORIZATION, bearer);
     } else if merged.keys().any(|name| {
@@ -74,7 +74,7 @@ pub(crate) fn headers(
             || name.as_str().contains("secret")
     }) {
         return Err(Error::Config(
-            "local-only requests cannot carry credential headers".into(),
+            "a local-only client can't send authorization or other credential headers".into(),
         ));
     }
     merged.insert(ACCEPT, HeaderValue::from_static(JSON));
@@ -90,12 +90,13 @@ pub(crate) fn headers(
 /// One header name, which every caller here supplies as lowercase ASCII.
 fn name(text: &str) -> Result<HeaderName> {
     HeaderName::from_bytes(text.as_bytes())
-        .map_err(|_| Error::Config(format!("{text} is not a header name")))
+        .map_err(|_| Error::Config(format!("{text} isn't a valid HTTP header name")))
 }
 
 /// One header value from text this crate built.
 fn value(text: &str) -> Result<HeaderValue> {
-    HeaderValue::from_str(text).map_err(|_| Error::Config(format!("{text} is not a header value")))
+    HeaderValue::from_str(text)
+        .map_err(|_| Error::Config(format!("{text} isn't a valid HTTP header value")))
 }
 
 /// Headers as one line for a log, with every credential masked.

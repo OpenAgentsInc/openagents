@@ -225,24 +225,24 @@ impl std::fmt::Display for Refusal {
         match self {
             Self::ContentConflict { request, attempt } => write!(
                 f,
-                "request `{request}` attempt {attempt} was already reserved for \
-                 different content — an idempotency key does not rename a new request"
+                "request `{request}` attempt {attempt} was already used with \
+                 different content; use a new idempotency key for a new request"
             ),
             Self::Resolved { request, attempt } => write!(
                 f,
-                "request `{request}` attempt {attempt} is already resolved"
+                "request `{request}` attempt {attempt} has already finished"
             ),
             Self::Exhausted { tenant, bound } => {
-                write!(f, "tenant `{tenant}` is over its {bound} budget")
+                write!(f, "account `{tenant}` has reached its `{bound}` limit")
             }
             Self::UnknownPolicy { tenant, policy } => write!(
                 f,
-                "tenant `{tenant}` names settlement policy `{policy}`, which this \
-                 build does not implement"
+                "tenant `{tenant}` uses billing policy `{policy}`, which this \
+                 version of the service doesn't support"
             ),
             Self::Unreserved { request, attempt } => write!(
                 f,
-                "no reservation exists for request `{request}` attempt {attempt}"
+                "no quota is held for request `{request}` attempt {attempt}"
             ),
             Self::Ledger(trouble) => write!(f, "{trouble}"),
         }
@@ -297,9 +297,9 @@ impl std::fmt::Display for LedgerTrouble {
             Self::Corrupt(message) => write!(f, "{message}"),
             Self::Locked(path) => write!(
                 f,
-                "another writer holds {path}. The ledger takes one writer at a \
-                 time: wait for it to finish, or remove the lock file if no \
-                 writer is running"
+                "another process is writing {path}. Only one process can write the \
+                 ledger at a time: wait for it to finish, or remove the lock file \
+                 if no other process is running"
             ),
         }
     }

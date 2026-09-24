@@ -202,7 +202,9 @@ impl Settings {
         if let Some(workspace) = &workspace
             && HeaderValue::from_str(workspace).is_err()
         {
-            return Err("the workspace id is not a header value".to_string());
+            return Err(
+                "the workspace ID can't be sent as an HTTP header; use printable ASCII".to_string(),
+            );
         }
         Ok(Self {
             api_key,
@@ -236,8 +238,9 @@ impl Settings {
     pub fn overlay_headers(&self) -> Result<HeaderMap, String> {
         let mut headers = HeaderMap::new();
         if let Some(workspace) = &self.workspace {
-            let value = HeaderValue::from_str(workspace)
-                .map_err(|_| "the workspace id is not a header value".to_string())?;
+            let value = HeaderValue::from_str(workspace).map_err(|_| {
+                "the workspace ID can't be sent as an HTTP header; use printable ASCII".to_string()
+            })?;
             headers.insert(WORKSPACE_HEADER, value);
         }
         Ok(headers)
@@ -277,21 +280,21 @@ pub fn load_config(path: Option<PathBuf>) -> Result<FileConfig, String> {
     {
         use std::os::unix::fs::PermissionsExt;
         let mode = std::fs::metadata(&path)
-            .map_err(|error| format!("cannot stat {}: {error}", path.display()))?
+            .map_err(|error| format!("can't check {}: {error}", path.display()))?
             .permissions()
             .mode();
         if mode & 0o077 != 0 {
             return Err(format!(
-                "{} is readable by group or others; run `chmod 600 {}`",
+                "other users can read {}, which holds your API key; run `chmod 600 {}`",
                 path.display(),
                 path.display()
             ));
         }
     }
     let text = std::fs::read_to_string(&path)
-        .map_err(|error| format!("cannot read {}: {error}", path.display()))?;
+        .map_err(|error| format!("can't read {}: {error}", path.display()))?;
     serde_json::from_str(&text)
-        .map_err(|error| format!("{} does not parse: {error}", path.display()))
+        .map_err(|error| format!("{} isn't valid JSON: {error}", path.display()))
 }
 
 /// Read a bounded input: a file, a pipe, or a tool argument's bytes. A
@@ -302,9 +305,12 @@ pub fn read_bounded(mut reader: impl Read, limit: u64, what: &str) -> Result<Vec
         .by_ref()
         .take(limit.saturating_add(1))
         .read_to_end(&mut bytes)
-        .map_err(|error| format!("cannot read {what}: {error}"))?;
+        .map_err(|error| format!("can't read the {what}: {error}"))?;
     if bytes.len() as u64 > limit {
-        return Err(format!("the {what} exceeds the {}-byte bound", limit));
+        return Err(format!(
+            "the {what} is larger than the {}-byte limit",
+            limit
+        ));
     }
     Ok(bytes)
 }
@@ -401,11 +407,11 @@ impl Transport {
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
-            .map_err(|error| format!("the runtime did not build: {error}"))?;
+            .map_err(|error| format!("oak couldn't start its async runtime: {error}"))?;
         let http = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
             .build()
-            .map_err(|error| format!("the HTTP client did not build: {error}"))?;
+            .map_err(|error| format!("oak couldn't set up its HTTP client: {error}"))?;
         Ok(Self {
             runtime,
             http,
@@ -438,7 +444,7 @@ impl Transport {
         {
             return Err(CallError {
                 code: "invalid_response",
-                message: "the service did not return a decision answer".into(),
+                message: "the service response isn't a decision answer".into(),
             });
         }
         Ok(reply)
@@ -464,7 +470,7 @@ impl Transport {
         {
             return Err(CallError {
                 code: "invalid_response",
-                message: "the service did not return a classification report".into(),
+                message: "the service response isn't a classification report".into(),
             });
         }
         Ok(reply)
@@ -528,7 +534,7 @@ impl Transport {
                     }
                     return Err(CallError {
                         code: "unavailable",
-                        message: format!("the call did not reach the service: {error}"),
+                        message: format!("oak couldn't reach the service: {error}"),
                     });
                 }
             };
@@ -556,7 +562,9 @@ impl Transport {
             if oversized {
                 return Err(CallError {
                     code: "response_too_large",
-                    message: format!("the response exceeds the {MAX_RESPONSE_BYTES}-byte bound"),
+                    message: format!(
+                        "the response is larger than the {MAX_RESPONSE_BYTES}-byte limit"
+                    ),
                 });
             }
             if let Some(error) = body_error {
@@ -567,7 +575,7 @@ impl Transport {
                 }
                 return Err(CallError {
                     code: "unavailable",
-                    message: format!("the response body did not read: {error}"),
+                    message: format!("oak couldn't read the response body: {error}"),
                 });
             }
             let reply = reply_of(status, &headers, &bytes);
@@ -609,7 +617,7 @@ fn reply_of(status: u16, headers: &HeaderMap, bytes: &[u8]) -> Reply {
             .get("message")
             .and_then(Value::as_str)
             .map(str::to_string)
-            .unwrap_or_else(|| format!("the service answered {status}"));
+            .unwrap_or_else(|| format!("the service returned HTTP {status}"));
         return Reply::Refused {
             status,
             code,
@@ -630,7 +638,7 @@ fn reply_of(status: u16, headers: &HeaderMap, bytes: &[u8]) -> Reply {
         status,
         code: format!("http_{status}"),
         message: if text.trim().is_empty() {
-            format!("the service answered {status} with no body")
+            format!("the service returned HTTP {status} with an empty body")
         } else {
             text.chars().take(200).collect()
         },
@@ -747,7 +755,7 @@ pub mod mcp {
                         &error(
                             Value::Null,
                             INVALID_REQUEST,
-                            "the message exceeds the byte bound",
+                            "the message is larger than the size limit",
                         ),
                     ) {
                         return 0;
@@ -756,7 +764,7 @@ pub mod mcp {
                 }
                 Ok(Line::Read) => {}
                 Err(error) => {
-                    let _ = writeln!(log, "oak-mcp: cannot read standard input: {error}");
+                    let _ = writeln!(log, "oak-mcp: can't read standard input: {error}");
                     return 1;
                 }
             }
@@ -890,7 +898,7 @@ pub mod mcp {
                 (None, None) => Some(error(
                     id.unwrap_or(Value::Null),
                     INVALID_REQUEST,
-                    "the message is not a request, notification, or response",
+                    "the message isn't a request, notification, or response",
                 )),
                 _ => None,
             };
@@ -899,14 +907,14 @@ pub mod mcp {
             return Some(error(
                 id.unwrap_or(Value::Null),
                 INVALID_REQUEST,
-                "the method is not a string",
+                "`method` must be a string",
             ));
         };
         if message.get("jsonrpc") != Some(&json!("2.0")) {
             return Some(error(
                 id.unwrap_or(Value::Null),
                 INVALID_REQUEST,
-                "the message does not declare `jsonrpc: \"2.0\"`",
+                "the message must include `jsonrpc: \"2.0\"`",
             ));
         }
         let Some(id) = id else {
@@ -927,7 +935,7 @@ pub mod mcp {
             "tools/list" | "tools/call" => Some(error(
                 id,
                 INVALID_PARAMS,
-                "the session is not initialized — send `initialize`, then `notifications/initialized`",
+                "the session is not initialized yet; send `initialize`, then `notifications/initialized`",
             )),
             _ => Some(error(id, METHOD_NOT_FOUND, "method not found")),
         }
@@ -950,7 +958,7 @@ pub mod mcp {
             return Some(error(
                 id.clone(),
                 INVALID_PARAMS,
-                "initialize params must carry `protocolVersion`",
+                "`initialize` params must include `protocolVersion`",
             ));
         };
         if !params
@@ -966,7 +974,7 @@ pub mod mcp {
             return Some(error(
                 id.clone(),
                 INVALID_PARAMS,
-                "initialize requires capabilities and clientInfo name/version",
+                "`initialize` needs `capabilities` and a `clientInfo` with `name` and `version`",
             ));
         }
         // The negotiated version: the client's when this build serves
@@ -985,10 +993,10 @@ pub mod mcp {
                 "capabilities": {"tools": {"listChanged": false}},
                 "serverInfo": {
                     "name": SERVER_NAME,
-                    "title": "oak — the decision API caller",
+                    "title": "oak, the OpenAgents decision API client",
                     "version": env!("CARGO_PKG_VERSION"),
                 },
-                "instructions": "Documentation tools read the versioned bundled corpus without credentials. Inference may consume quota or money. `list_models` lists the doors the configured credential may name; `classify` posts an openagents.classify.v1 envelope to /v1/classify and returns the report.",
+                "instructions": "The documentation tools read the OpenAgents documentation bundled with this server and don't need an API key. Every other tool calls a model, which can use your quota or cost money. `list_models` lists the models your API key can use; `classify` sends an openagents.classify.v1 request to /v1/classify and returns the report.",
             }),
         ))
     }
@@ -1000,8 +1008,8 @@ pub mod mcp {
             "tools": [
                 {
                     "name": "list_models",
-                    "title": "List reachable doors",
-                    "description": "Return the gateway's GET /v1/models document: the doors the configured credential may name, each with its bound artifact, lane, and classification discovery object.",
+                    "title": "List the models you can use",
+                    "description": "Return the service's GET /v1/models document: the models your API key can use, each with the model version it serves, its capacity tier, and the classification options it supports.",
                     "inputSchema": {
                         "type": "object",
                         "properties": {},
@@ -1010,18 +1018,18 @@ pub mod mcp {
                 },
                 {
                     "name": "classify",
-                    "title": "Classify inputs through a door",
-                    "description": "POST an openagents.classify.v1 envelope to the configured gateway's /v1/classify and return the report verbatim: ordered per-input results, selections, per-unit aggregates, and usage. This can consume quota or money even if no content changes.",
+                    "title": "Classify inputs with a model",
+                    "description": "Send an openagents.classify.v1 request to the service's /v1/classify and return the report unchanged: results in input order, selections, totals per unit, and usage. This call can use your quota or cost money.",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
                             "request": {
                                 "type": "object",
-                                "description": "The openagents.classify.v1 envelope: v, model, capacity, policy, inputs, and labels, levels, or dimensions.",
+                                "description": "The openagents.classify.v1 request: v, model, capacity, policy, inputs, and labels, levels, or dimensions.",
                             },
                             "request_id": {
                                 "type": "string",
-                                "description": "An idempotency key for the call; retries reuse it and bump the attempt.",
+                                "description": "An idempotency key for the call. Retries reuse it, so a retry isn't charged twice.",
                                 "maxLength": MAX_REQUEST_ID_CHARS,
                             },
                         },
@@ -1058,13 +1066,13 @@ pub mod mcp {
                 {"type": "string", "minLength": 1},
                 {"type": "object", "properties": {"id": {"type": "string"}, "description": {"type": "string"}}, "required": ["id"], "additionalProperties": false},
             ]},
-            "description": "The label set: ids, or {id, description} objects the judgment reads as criteria.",
+            "description": "The labels to choose from: IDs, or {id, description} objects. The model reads each description as the meaning of that label.",
         });
         let cut =
             |what: &str| json!({"type": "number", "minimum": 0, "maximum": 1, "description": what});
-        let model = json!({"type": "string", "description": "The bound door name; absent falls back to the configured default model."});
-        let capacity = json!({"type": "string", "description": "The capacity lane the binding declares — `shared` unless the caller's lane differs.", "default": "shared"});
-        let request_id = json!({"type": "string", "maxLength": MAX_REQUEST_ID_CHARS, "description": "An idempotency key for the call; retries reuse it and bump the attempt."});
+        let model = json!({"type": "string", "description": "The model to use. If you leave it out, the tool uses the configured default model."});
+        let capacity = json!({"type": "string", "description": "The capacity tier your API key uses for this model: `shared` unless your account has a dedicated tier.", "default": "shared"});
+        let request_id = json!({"type": "string", "maxLength": MAX_REQUEST_ID_CHARS, "description": "An idempotency key for the call. Retries reuse it, so a retry isn't charged twice."});
         let instructions = json!({"type": "string", "maxLength": 16384, "description": "Instructions shared by every judgment in the request."});
         let meta = |required: &[&str]| {
             let mut properties = serde_json::Map::new();
@@ -1083,17 +1091,17 @@ pub mod mcp {
         props.insert("labels".into(), labels.clone());
         props.insert(
             "min_probability".into(),
-            cut("Abstain to the no-match outcome below this top probability."),
+            cut("If the top probability is below this value, return no match instead of a label."),
         );
         props.insert(
             "uncertain_below".into(),
-            cut("Flag the unit `uncertain` below this top probability."),
+            cut("Mark a result `uncertain` if its top probability is below this value."),
         );
         vec![
             tool(
                 "classify_texts",
                 "Classify texts into one label",
-                "One categorical judgment per text: the labels form one distribution and each input selects one label or the no-match outcome. Returns the full ordered report — use count_labels when only aggregates matter.",
+                "Choose exactly one label, or no match, for each text. The label probabilities for a text add up to one. Returns the full report in input order; use count_labels if you only need totals.",
                 single,
             ),
             {
@@ -1107,7 +1115,7 @@ pub mod mcp {
                         {"type": "string", "minLength": 1},
                         {"type": "object", "properties": {"id": {"type": "string"}, "text": {"type": "string"}, "record": {"type": "object"}}, "required": ["id"], "additionalProperties": false},
                     ]},
-                    "description": "The inputs: texts, or {id, text|record} objects.",
+                    "description": "The inputs: texts, or {id, text} or {id, record} objects.",
                 }));
                 props.insert("dimensions".into(), json!({
                     "type": "array", "minItems": 1, "maxItems": 20,
@@ -1118,18 +1126,18 @@ pub mod mcp {
                         "levels": {"type": "array", "minItems": 2, "maxItems": 10, "items": {"type": "string"}},
                         "instructions": {"type": "string"},
                     }, "required": ["id", "mode"], "additionalProperties": false},
-                    "description": "Named dimensions judged independently: single-label needs labels; multi-label and binary need labels plus a request-level threshold; score needs levels.",
+                    "description": "Named dimensions, each classified separately. A single-label dimension needs labels; multi-label and binary dimensions need labels and the request's threshold; a score dimension needs levels.",
                 }));
-                props.insert("threshold".into(), cut("Required when any dimension is multi-label or binary: the probability a label must reach to be selected."));
-                props.insert("top_n".into(), json!({"type": "integer", "minimum": 1, "description": "A cap on selected labels for multi-label dimensions."}));
+                props.insert("threshold".into(), cut("Required if any dimension is multi-label or binary: the probability a label must reach to be selected."));
+                props.insert("top_n".into(), json!({"type": "integer", "minimum": 1, "description": "The most labels to select for each multi-label dimension."}));
                 props.insert(
                     "uncertain_below".into(),
-                    cut("Flag units `uncertain` below this top probability."),
+                    cut("Mark a result `uncertain` if its top probability is below this value."),
                 );
                 tool(
                     "classify_dimensions",
                     "Classify inputs on named dimensions",
-                    "Several independent judgments over the same inputs — each dimension carries its own mode and label set or rubric. Returns the full ordered report.",
+                    "Classify the same inputs on several separate dimensions, each with its own mode and its own labels or scoring levels. Returns the full report in input order.",
                     schema,
                 )
             },
@@ -1140,16 +1148,16 @@ pub mod mcp {
                     .expect("an object schema");
                 props.insert("texts".into(), texts.clone());
                 props.insert("labels".into(), labels.clone());
-                props.insert("threshold".into(), cut("The probability a label must reach to be selected — required; the caller's own cut, not a default."));
-                props.insert("top_n".into(), json!({"type": "integer", "minimum": 1, "description": "A cap on selected labels per input."}));
+                props.insert("threshold".into(), cut("Required. The probability a label must reach to be selected. There is no default; choose a value that fits your data."));
+                props.insert("top_n".into(), json!({"type": "integer", "minimum": 1, "description": "The most labels to select for each input."}));
                 props.insert(
                     "uncertain_below".into(),
-                    cut("Flag the unit `uncertain` when any label's winning side is below this."),
+                    cut("Mark a result `uncertain` if, for any label, the more likely of yes or no has a probability below this value."),
                 );
                 tool(
                     "classify_multi_label",
                     "Classify texts with independent labels",
-                    "One independent probability per text per label — labels do not sum to one. Every label at or above the caller's threshold is selected. Returns the full ordered report.",
+                    "Get a separate probability for each label on each text; the probabilities don't add up to one. Every label at or above your threshold is selected. Returns the full report in input order.",
                     schema,
                 )
             },
@@ -1162,12 +1170,12 @@ pub mod mcp {
                 props.insert("labels".into(), labels.clone());
                 props.insert(
                     "min_probability".into(),
-                    cut("Abstain to the no-match outcome below this top probability."),
+                    cut("If the top probability is below this value, return no match instead of a label."),
                 );
                 tool(
                     "count_labels",
                     "Count texts per label",
-                    "The same single-label judgment as classify_texts, but returns only aggregates: per-label counts, the no-match and unavailable counts, and usage. Per-input selections never enter the context.",
+                    "Classify texts the same way as classify_texts, but return only totals: the count for each label, the no-match and unavailable counts, and usage. The result for each text is left out, which keeps the response small.",
                     schema,
                 )
             },
@@ -1178,27 +1186,27 @@ pub mod mcp {
                     .expect("an object schema");
                 props.insert("texts".into(), texts.clone());
                 props.insert("labels".into(), labels.clone());
-                props.insert("uncertain_below".into(), cut("Required: flag a unit `uncertain` when its top label probability is below this."));
-                props.insert("reviewer".into(), json!({"type": "string", "description": "A bound door that re-judges the flagged units through the facade's review phase — bounds 200 items, 400 attempts, 30 s, keep-original on failure."}));
-                props.insert("show".into(), json!({"type": "integer", "minimum": 1, "maximum": 100, "default": 25, "description": "The most uncertain items to list; the corpus itself never enters the context."}));
+                props.insert("uncertain_below".into(), cut("Required. Mark a result `uncertain` if its top label probability is below this value."));
+                props.insert("reviewer".into(), json!({"type": "string", "description": "A second model that classifies the uncertain results again. It reviews at most 200 items with at most 400 attempts in 30 seconds, and keeps the original result for any item it can't review."}));
+                props.insert("show".into(), json!({"type": "integer", "minimum": 1, "maximum": 100, "default": 25, "description": "How many of the most uncertain items to list. The other inputs are left out of the response."}));
                 tool(
                     "review_uncertain",
                     "List uncertain classifications",
-                    "Runs the single-label judgment with the caller's uncertainty cut and returns the flagged items — input id, selection, and top probability — bounded by `show`, plus outcome counts. With `reviewer`, the flagged units are re-judged by that door first.",
+                    "Classify texts with one label each, and return the results whose top probability is below `uncertain_below`: the input ID, the selected label, and the top probability, up to `show` items, plus counts by outcome. With `reviewer`, that model classifies the uncertain results again first.",
                     schema,
                 )
             },
             {
                 let schema = json!({"type": "object", "properties": {
-                    "state": {"description": "The JSON or text under judgment."},
-                    "questions": {"type": "object", "minProperties": 1, "maxProperties": 64, "description": "Typed questions by caller-chosen id: {type: noul|choice|score, instructions, criteria?}."},
+                    "state": {"description": "The JSON or text the questions are about."},
+                    "questions": {"type": "object", "minProperties": 1, "maxProperties": 64, "description": "Questions keyed by an ID you choose: {type: noul|choice|score, instructions, criteria?}."},
                     "model": model,
                     "request_id": request_id,
                 }, "required": ["state", "questions"], "additionalProperties": false});
                 tool(
                     "decide",
-                    "Answer typed questions over a state",
-                    "POSTs /v1/systemone directly: Noul, Choice, and Score questions over one state, answered with the door's own probabilities. Returns the typed answers verbatim.",
+                    "Answer typed questions about a state",
+                    "Send Noul, Choice, and Score questions about one state to POST /v1/systemone, and return the typed answers and their probabilities unchanged.",
                     schema,
                 )
             },
@@ -1222,7 +1230,7 @@ pub mod mcp {
             return Some(error(
                 id.clone(),
                 INVALID_PARAMS,
-                "tools/call params must carry a tool `name`",
+                "`tools/call` params must include a tool `name`",
             ));
         };
         let arguments = params
@@ -1275,7 +1283,7 @@ pub mod mcp {
                                 id.clone(),
                                 INVALID_PARAMS,
                                 &format!(
-                                    "unknown argument `{key}` — the endpoint and credential come from operator configuration"
+                                    "unknown argument `{key}`; the service address and API key come from the server's configuration, not from tool arguments"
                                 ),
                             ));
                         }
@@ -1295,7 +1303,7 @@ pub mod mcp {
                             return Some(error(
                                 id.clone(),
                                 INVALID_PARAMS,
-                                "`request_id` is empty, overlong, or not a header value",
+                                "`request_id` must be 1 to 512 printable ASCII characters",
                             ));
                         }
                         request_id = Some(text.to_string());
@@ -1312,7 +1320,7 @@ pub mod mcp {
                     return Some(error(
                         id.clone(),
                         INVALID_PARAMS,
-                        "`request` must be the openagents.classify.v1 envelope object",
+                        "`request` must be an openagents.classify.v1 request object",
                     ));
                 }
                 let envelope = serde_json::to_vec(request).unwrap_or_default();
@@ -1320,7 +1328,7 @@ pub mod mcp {
                     return Some(error(
                         id.clone(),
                         INVALID_PARAMS,
-                        "the envelope exceeds the byte bound",
+                        "the request is larger than the size limit",
                     ));
                 }
                 if request.get("v").and_then(Value::as_str) != Some(CLASSIFY_SCHEMA) {
@@ -1370,7 +1378,9 @@ pub mod mcp {
                 return Err(format!("unknown argument `{key}`"));
             }
             if value.is_null() {
-                return Err(format!("`{key}` is null — omit optional arguments"));
+                return Err(format!(
+                    "`{key}` is null; leave out optional arguments instead"
+                ));
             }
         }
         Ok(())
@@ -1406,7 +1416,7 @@ pub mod mcp {
     fn count_arg(arguments: &Map<String, Value>, key: &str) -> Result<Option<u64>, String> {
         match arguments.get(key).and_then(Value::as_u64) {
             Some(value) if value >= 1 => Ok(Some(value)),
-            Some(_) => Err(format!("`{key}` of 0 admits no work")),
+            Some(_) => Err(format!("`{key}` must be at least 1")),
             None if arguments.contains_key(key) => {
                 Err(format!("`{key}` must be a positive integer"))
             }
@@ -1423,7 +1433,7 @@ pub mod mcp {
             || text.chars().count() > MAX_REQUEST_ID_CHARS
             || reqwest::header::HeaderValue::from_str(text).is_err()
         {
-            return Err("`request_id` is empty, overlong, or not a header value".to_string());
+            return Err("`request_id` must be 1 to 512 printable ASCII characters".to_string());
         }
         Ok(Some(text.to_string()))
     }
@@ -1438,7 +1448,7 @@ pub mod mcp {
                 for key in object.keys() {
                     if key != "id" && key != "description" {
                         return Err(format!(
-                            "a label carries only `id` and `description`, not `{key}`"
+                            "a label can have only `id` and `description`, not `{key}`"
                         ));
                     }
                 }
@@ -1447,7 +1457,7 @@ pub mod mcp {
                     .and_then(Value::as_str)
                     .ok_or_else(|| "a label's `id` must be a string".to_string())?;
                 if id.is_empty() || id.chars().count() > 256 {
-                    return Err("a label's `id` is empty or overlong".to_string());
+                    return Err("a label's `id` is empty or too long".to_string());
                 }
                 match object.get("description") {
                     None | Some(Value::Null) => Ok(json!({"id": id})),
@@ -1455,7 +1465,7 @@ pub mod mcp {
                     _ => Err("a label's `description` must be a string".to_string()),
                 }
             }
-            _ => Err("a label is an id string or an {id, description} object".to_string()),
+            _ => Err("a label must be an ID string or an {id, description} object".to_string()),
         }
     }
 
@@ -1527,7 +1537,7 @@ pub mod mcp {
                     for key in object.keys() {
                         if key != "id" && key != "text" && key != "record" {
                             return Err(format!(
-                                "an input carries only `id`, `text`, and `record`, not `{key}`"
+                                "an input can have only `id`, `text`, and `record`, not `{key}`"
                             ));
                         }
                     }
@@ -1555,7 +1565,7 @@ pub mod mcp {
                 }
                 _ => {
                     return Err(format!(
-                        "input {index} must be a text or an {{id, text|record}} object"
+                        "input {index} must be a text, an {{id, text}} object, or an {{id, record}} object"
                     ));
                 }
             };
@@ -1584,7 +1594,7 @@ pub mod mcp {
             }
             "multi-label" => {
                 let threshold = probability_arg(arguments, "threshold")?.ok_or_else(|| {
-                    "`threshold` is required for multi-label work — it is the caller's cut, not a default".to_string()
+                    "`threshold` is required for multi-label classification; there is no default, so choose a value that fits your data".to_string()
                 })?;
                 rule.insert("threshold".into(), json!(threshold));
                 rule.insert("ties".into(), json!("include-all"));
@@ -1595,7 +1605,7 @@ pub mod mcp {
             }
             "binary" => {
                 let threshold = probability_arg(arguments, "threshold")?.ok_or_else(|| {
-                    "`threshold` is required for binary work — it is the caller's cut, not a default".to_string()
+                    "`threshold` is required for binary classification; there is no default, so choose a value that fits your data".to_string()
                 })?;
                 rule.insert("threshold".into(), json!(threshold));
             }
@@ -1605,7 +1615,11 @@ pub mod mcp {
                     rule.insert("top_n".into(), json!(cap));
                 }
             }
-            _ => return Err(format!("mode `{mode}` is not a facade mode")),
+            _ => {
+                return Err(format!(
+                    "`{mode}` isn't a supported mode; use single-label, multi-label, binary, or score"
+                ));
+            }
         }
         if let Some(cut) = uncertain {
             rule.insert("uncertain_below".into(), json!(cut));
@@ -1645,15 +1659,15 @@ pub mod mcp {
         request.insert("policy".into(), policy);
         if let Some(instructions) = string_arg(arguments, "instructions")? {
             if instructions.len() > 16_384 {
-                return Err("`instructions` exceeds the 16384-byte bound".to_string());
+                return Err("`instructions` is longer than the 16384-byte limit".to_string());
             }
             request.insert("instructions".into(), json!(instructions));
         }
         request.insert("inputs".into(), json!(inputs));
         let envelope = serde_json::to_vec(&Value::Object(request))
-            .map_err(|error| format!("the envelope did not serialize: {error}"))?;
+            .map_err(|error| format!("oak couldn't encode the request: {error}"))?;
         if envelope.len() as u64 > MAX_ENVELOPE_BYTES {
-            return Err("the envelope exceeds the byte bound".to_string());
+            return Err("the request is larger than the size limit".to_string());
         }
         Ok(envelope)
     }
@@ -1665,7 +1679,7 @@ pub mod mcp {
             .map(str::to_string)
             .or_else(|| settings.model.clone())
             .ok_or_else(|| {
-                "name a `model` — or set OPENAGENTS_MODEL / `model` in the config file".to_string()
+                "name a `model`, or set OPENAGENTS_MODEL or `model` in the config file".to_string()
             })
     }
 
@@ -1746,7 +1760,7 @@ pub mod mcp {
                     let inputs = texts_arg(arguments)?;
                     if inputs.len() * labels.len() > 1000 {
                         return Err(format!(
-                            "{} inputs times {} labels plans {} judgments — the call's bound is 1000",
+                            "{} inputs times {} labels is {} judgments; one call allows at most 1000",
                             inputs.len(),
                             labels.len(),
                             inputs.len() * labels.len()
@@ -1794,7 +1808,7 @@ pub mod mcp {
                         })?;
                         for key in object.keys() {
                             if !["id", "mode", "labels", "levels", "instructions"].contains(&key.as_str()) {
-                                return Err(format!("a dimension carries only id/mode/labels/levels/instructions, not `{key}`"));
+                                return Err(format!("a dimension can have only `id`, `mode`, `labels`, `levels`, and `instructions`, not `{key}`"));
                             }
                         }
                         let mode = object
@@ -1842,26 +1856,26 @@ pub mod mcp {
                                 }
                                 dim.insert("labels".into(), json!(labels));
                             }
-                            other => return Err(format!("dimension mode `{other}` is not a facade mode")),
+                            other => return Err(format!("`{other}` isn't a supported dimension mode; use single-label, multi-label, binary, or score")),
                         }
                         if let Some(instructions) = object
                             .get("instructions")
                             .and_then(Value::as_str)
                         {
                             if instructions.len() > 16_384 {
-                                return Err("a dimension's `instructions` exceeds the bound".into());
+                                return Err("a dimension's `instructions` is longer than the size limit".into());
                             }
                             dim.insert("instructions".into(), json!(instructions));
                         }
                         let (key, rule) = select_for(mode, &dim_args)?;
                         if select.insert(key.clone(), rule).is_some() {
-                            return Err(format!("mode `{mode}` appears more than once — one selection rule serves every {mode} dimension"));
+                            return Err(format!("more than one dimension uses mode `{mode}`; a request can have only one dimension per mode because each mode has one selection rule"));
                         }
                         out.push(Value::Object(dim));
                     }
                     if inputs.len() * out.len() > 1000 {
                         return Err(format!(
-                            "{} inputs times {} dimensions plans {} judgments — the call's bound is 1000",
+                            "{} inputs times {} dimensions is {} judgments; one call allows at most 1000",
                             inputs.len(),
                             out.len(),
                             inputs.len() * out.len()
@@ -1918,7 +1932,7 @@ pub mod mcp {
                     return Err("`labels` needs at least two labels for a categorical choice".into());
                 }
                 probability_arg(arguments, "uncertain_below")?
-                    .ok_or_else(|| "`uncertain_below` is required — it is the caller's review cut".to_string())?;
+                    .ok_or_else(|| "`uncertain_below` is required; it sets which results count as uncertain".to_string())?;
                 if let Some(show) = count_arg(arguments, "show")?
                     && show > MAX_UNCERTAIN_SHOWN
                 {
@@ -1930,7 +1944,7 @@ pub mod mcp {
                 select.insert(key, rule);
                 let review = match string_arg(arguments, "reviewer")? {
                     Some(reviewer) if reviewer.trim().is_empty() => {
-                        return Err("`reviewer` must name a bound door".into());
+                        return Err("`reviewer` must name a model your API key can use".into());
                     }
                     Some(reviewer) => Some(json!({
                         "v": CLASSIFY_REVIEW_SCHEMA,
@@ -2011,7 +2025,7 @@ pub mod mcp {
                     .ok_or_else(|| format!("question `{qid}` needs a `type`"))?;
                 if !matches!(kind, "noul" | "choice" | "score") {
                     return Err(format!(
-                        "question `{qid}` has type `{kind}` — the contract serves noul, choice, and score"
+                        "question `{qid}` has type `{kind}`; use noul, choice, or score"
                     ));
                 }
                 if !question.get("instructions").is_some_and(|v| v.is_string()) {
@@ -2026,9 +2040,9 @@ pub mod mcp {
                 request["model"] = json!(model);
             }
             let bytes = serde_json::to_vec(&request)
-                .map_err(|error| format!("the request did not serialize: {error}"))?;
+                .map_err(|error| format!("oak couldn't encode the request: {error}"))?;
             if bytes.len() as u64 > MAX_ENVELOPE_BYTES {
-                return Err("the request exceeds the byte bound".into());
+                return Err("the request is larger than the size limit".into());
             }
             Ok(bytes)
         })();

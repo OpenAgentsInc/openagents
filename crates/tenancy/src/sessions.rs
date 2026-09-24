@@ -430,52 +430,58 @@ impl std::fmt::Display for Refusal {
         match self {
             Self::SignInDenied => write!(f, "sign-in denied"),
             Self::Unavailable => {
-                write!(f, "no randomness was available to mint the token")
+                write!(f, "the service couldn't generate a secure token; try again")
             }
             Self::MalformedDigest(field) => write!(
                 f,
-                "{field} must be 64 hex characters — a SHA-256 digest, never the secret"
+                "{field} must be a SHA-256 hash (64 hex characters), not the secret itself"
             ),
-            Self::UnknownUser(user) => write!(
-                f,
-                "user `{user}` holds no credential — there is nothing to recover"
-            ),
+            Self::UnknownUser(user) => write!(f, "user `{user}` has no sign-in method to recover"),
             Self::UnknownSession(id) => {
-                write!(f, "session `{id}` is not one this book holds")
+                write!(f, "session `{id}` doesn't exist")
             }
             Self::SessionClosed { state } => {
-                write!(f, "the session is {state} — it answers nothing")
+                write!(f, "the session is {state}; sign in again")
             }
             Self::AnonymousSession => {
-                write!(f, "an anonymous session holds no membership")
+                write!(f, "you need to sign in to use workspaces")
             }
             Self::Store(trouble) => write!(f, "{trouble}"),
             Self::UnknownRecovery => {
-                write!(f, "the digest names no recovery this book holds")
+                write!(
+                    f,
+                    "the recovery token isn't valid; ask a workspace admin for a new one"
+                )
             }
-            Self::RecoveryExpired => write!(f, "the recovery token has expired"),
+            Self::RecoveryExpired => write!(
+                f,
+                "the recovery token has expired; ask a workspace admin for a new one"
+            ),
             Self::RecoveryClosed { state } => write!(
                 f,
-                "the recovery token is already {state} — a recovery token is single-use"
+                "the recovery token is already {state}; each recovery token works only once"
             ),
             Self::DuplicateBudget { budget } => {
-                write!(f, "an anonymous budget named `{budget}` already exists")
+                write!(f, "a free anonymous budget named `{budget}` already exists")
             }
             Self::UnknownBudget { budget } => {
-                write!(f, "`{budget}` names no anonymous budget this book holds")
+                write!(f, "free anonymous budget `{budget}` doesn't exist")
             }
             Self::AnonymousBudgetExpired { budget } => {
-                write!(f, "the anonymous budget `{budget}` has expired")
+                write!(
+                    f,
+                    "the free anonymous budget `{budget}` has ended; sign in to keep going"
+                )
             }
             Self::AnonymousBudgetSpent { budget, bound } => write!(
                 f,
-                "the anonymous budget `{budget}` is spent — its {bound}-request \
-                 bound is exhausted"
+                "the free anonymous budget `{budget}` has used all {bound} requests; \
+                 sign in to keep going"
             ),
             Self::AnonymousSessionCapped { budget, cap } => write!(
                 f,
-                "the session has drawn its {cap}-request cap against the \
-                 anonymous budget `{budget}`"
+                "this anonymous session has used its {cap} free requests from \
+                 `{budget}`; sign in to keep going"
             ),
             Self::Membership(refusal) => write!(f, "{refusal}"),
         }

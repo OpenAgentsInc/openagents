@@ -102,7 +102,7 @@ pub enum Error {
     },
 
     /// A 2xx body was missing a field, or carried one the SDK cannot read.
-    #[error("invalid response data at {field_path:?}")]
+    #[error("the response has a missing or unreadable field at {field_path:?}")]
     ResponseValidation {
         /// The response status.
         status: u16,
@@ -128,7 +128,7 @@ pub enum Error {
     },
 
     /// A typed accessor named an answer the response does not carry.
-    #[error("the response carries no answer named {id:?}")]
+    #[error("the response has no answer named {id:?}")]
     MissingAnswer {
         /// The question id.
         id: String,

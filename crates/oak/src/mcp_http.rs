@@ -113,7 +113,7 @@ async fn no_stream() -> (StatusCode, Json<Value>) {
     (
         StatusCode::METHOD_NOT_ALLOWED,
         Json(json!({
-            "error": "no SSE stream — this server never initiates messages; every answer arrives in the POST response",
+            "error": "this server has no SSE stream; it never starts a message, and every reply comes in the response to your POST",
         })),
     )
 }
@@ -152,16 +152,13 @@ async fn post_message(
     let message: Value = match serde_json::from_slice(&body) {
         Ok(message) => message,
         Err(_) => {
-            return problem(
-                StatusCode::BAD_REQUEST,
-                "the body is not a JSON-RPC message",
-            );
+            return problem(StatusCode::BAD_REQUEST, "the body isn't a JSON-RPC message");
         }
     };
     if message.is_array() {
         return problem(
             StatusCode::BAD_REQUEST,
-            "batched requests are not served — send one message per POST",
+            "this server doesn't accept batched requests; send one message per POST",
         );
     }
     let initializing = message.get("method").and_then(Value::as_str) == Some("initialize");
@@ -179,7 +176,7 @@ async fn post_message(
             None => {
                 return problem(
                     StatusCode::SERVICE_UNAVAILABLE,
-                    "the session bound is held — end a session or retry",
+                    "the server has reached its session limit; end a session or retry later",
                 );
             }
         },
@@ -204,7 +201,7 @@ async fn post_message(
         {
             return problem(
                 StatusCode::BAD_REQUEST,
-                "`MCP-Protocol-Version` must be the version `initialize` settled on",
+                "`MCP-Protocol-Version` must match the version `initialize` agreed on",
             );
         }
     }
@@ -230,7 +227,10 @@ async fn post_message(
     let reply = match dispatched {
         Ok(reply) => reply,
         Err(_) => {
-            return problem(StatusCode::INTERNAL_SERVER_ERROR, "the dispatch failed");
+            return problem(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "the server failed while handling the message",
+            );
         }
     };
     let mut response_headers = HeaderMap::new();
@@ -315,7 +315,7 @@ fn check_origin(server: &Server, headers: &HeaderMap) -> Option<Response> {
     } else {
         Some(problem(
             StatusCode::FORBIDDEN,
-            "the `Origin` is not one this server accepts",
+            "this server doesn't accept requests from this `Origin`",
         ))
     }
 }

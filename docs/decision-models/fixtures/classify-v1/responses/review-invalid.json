@@ -66,7 +66,7 @@
             "artifact": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
             "outcome": "unavailable",
             "selected": null,
-            "cause": "the answer is not a choice"
+            "cause": "The model returned the wrong answer type. Expected a choice answer."
           },
           "final_source": "primary"
         }
@@ -134,7 +134,7 @@
             "artifact": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
             "outcome": "unavailable",
             "selected": null,
-            "cause": "the answer is not a choice"
+            "cause": "The model returned the wrong answer type. Expected a choice answer."
           },
           "final_source": "primary"
         }

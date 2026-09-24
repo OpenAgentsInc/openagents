@@ -382,7 +382,7 @@ impl DirectoryBook {
                     });
                 }
                 return Err(Refusal::Conflict(format!(
-                    "version {} of {} already exists at a different digest — submit a new version",
+                    "version {} of {} already exists with different content; submit it under a new version number",
                     draft.version, draft.name
                 )));
             }
@@ -478,7 +478,7 @@ impl DirectoryBook {
         }
         if draft.bytes > self.policy().max_body_bytes {
             return Err(Refusal::Invalid(format!(
-                "submission exceeds {} bytes",
+                "the submission is larger than the {}-byte limit",
                 self.policy().max_body_bytes
             )));
         }
@@ -487,7 +487,9 @@ impl DirectoryBook {
         valid_field(&draft.license, "license", 128).map_err(Refusal::Invalid)?;
         valid_name_field(&draft.category, "category").map_err(Refusal::Invalid)?;
         if draft.tags.len() > TAGS_MAX {
-            return Err(Refusal::Invalid(format!("at most {TAGS_MAX} tags")));
+            return Err(Refusal::Invalid(format!(
+                "a skill can have at most {TAGS_MAX} tags"
+            )));
         }
         for tag in &draft.tags {
             valid_name_field(tag, "tag").map_err(Refusal::Invalid)?;
@@ -498,7 +500,7 @@ impl DirectoryBook {
             .is_some_and(|hex| hex.len() == 64 && hex.bytes().all(|b| b.is_ascii_hexdigit()))
         {
             return Err(Refusal::Invalid(
-                "digest must be a `sha256:` content identity".into(),
+                "`digest` must be `sha256:` followed by 64 hex characters".into(),
             ));
         }
         if let Some(evidence) = &draft.evidence {
@@ -524,12 +526,14 @@ impl DirectoryBook {
         let target = self.version_mut(name, version)?;
         if target.state != VersionState::UnderReview {
             return Err(Refusal::State(format!(
-                "{name} {version} is {}, not under review",
+                "{name} {version} is {}, not waiting for review",
                 target.state.name()
             )));
         }
         if target.review.len() >= REVIEW_MAX {
-            return Err(Refusal::Invalid("review stage bound reached".into()));
+            return Err(Refusal::Invalid(
+                "this version has reached its limit of review steps".into(),
+            ));
         }
         target.review.push(stage);
         let _ = now;
@@ -555,7 +559,7 @@ impl DirectoryBook {
             let target = self.version_mut(name, version)?;
             if target.state != VersionState::UnderReview {
                 return Err(Refusal::State(format!(
-                    "{name} {version} is {}, not under review",
+                    "{name} {version} is {}, not waiting for review",
                     target.state.name()
                 )));
             }
@@ -567,12 +571,12 @@ impl DirectoryBook {
             };
             if !passed("static") {
                 return Err(Refusal::State(format!(
-                    "{name} {version} has no passed static review"
+                    "{name} {version} hasn't passed the automated checks yet"
                 )));
             }
             if !passed("reasoning") && !passed("moderation") {
                 return Err(Refusal::State(format!(
-                    "{name} {version} has no passed admission review"
+                    "{name} {version} hasn't passed content review yet"
                 )));
             }
             target.state = VersionState::Published;
@@ -609,7 +613,7 @@ impl DirectoryBook {
         let target = self.version_mut(name, version)?;
         if target.state != VersionState::UnderReview {
             return Err(Refusal::State(format!(
-                "{name} {version} is {}, not under review",
+                "{name} {version} is {}, not waiting for review",
                 target.state.name()
             )));
         }
@@ -733,14 +737,16 @@ impl DirectoryBook {
                 VersionState::UnderReview => {}
                 _ => {
                     return Err(Refusal::State(format!(
-                        "{name} {version} is {} — only an under-review or rejected \
-                         version may be admitted",
+                        "{name} {version} is {}; you can approve only a version that is \
+                         waiting for review or was rejected",
                         target.state.name()
                     )));
                 }
             }
             if target.review.len() >= REVIEW_MAX {
-                return Err(Refusal::Invalid("review stage bound reached".into()));
+                return Err(Refusal::Invalid(
+                    "this version has reached its limit of review steps".into(),
+                ));
             }
             target.review.push(stage);
         }
@@ -769,14 +775,18 @@ impl DirectoryBook {
             .is_some_and(|version| version.state == VersionState::Rejected);
         if !rejected {
             return Err(Refusal::State(
-                "only a rejected submission may be appealed".into(),
+                "you can appeal only a rejected submission".into(),
             ));
         }
         if record.appeals.len() >= APPEALS_MAX {
-            return Err(Refusal::Invalid("appeal bound reached".into()));
+            return Err(Refusal::Invalid(
+                "this submission has reached its appeal limit".into(),
+            ));
         }
         if reason.len() > 1024 {
-            return Err(Refusal::Invalid("appeal exceeds 1024 bytes".into()));
+            return Err(Refusal::Invalid(
+                "the appeal is longer than 1024 bytes".into(),
+            ));
         }
         record.appeals.push(Appeal {
             reason: reason.to_string(),
@@ -961,7 +971,7 @@ fn valid_name(name: &str) -> Result<(), String> {
         || name.starts_with('-')
         || name.ends_with('-')
     {
-        return Err("name must be lowercase alphanumerics and dashes".into());
+        return Err("the name can contain only lowercase letters, digits, and dashes".into());
     }
     Ok(())
 }
@@ -982,7 +992,7 @@ fn valid_name_field(value: &str, label: &str) -> Result<(), String> {
         .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
     {
         return Err(format!(
-            "{label} must be lowercase alphanumerics and dashes"
+            "{label} can contain only lowercase letters, digits, and dashes"
         ));
     }
     Ok(())
@@ -991,25 +1001,25 @@ fn valid_name_field(value: &str, label: &str) -> Result<(), String> {
 /// A semver — `MAJOR.MINOR.PATCH` with an optional `-pre.release`.
 fn valid_version(version: &str) -> Result<(), String> {
     if version.len() > 32 {
-        return Err("version exceeds 32 bytes".into());
+        return Err("the version is longer than 32 bytes".into());
     }
     let (release, pre) = version.split_once('-').unwrap_or((version, ""));
     let mut parts = release.split('.');
     for _ in 0..3 {
         match parts.next() {
             Some(part) if !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit()) => {}
-            _ => return Err("version must be MAJOR.MINOR.PATCH".into()),
+            _ => return Err("the version must look like MAJOR.MINOR.PATCH, such as 1.0.0".into()),
         }
     }
     if parts.next().is_some() {
-        return Err("version must be MAJOR.MINOR.PATCH".into());
+        return Err("the version must look like MAJOR.MINOR.PATCH, such as 1.0.0".into());
     }
     if !pre.is_empty()
         && !pre
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'.')
     {
-        return Err("version pre-release must be alphanumerics, dashes, and dots".into());
+        return Err("the pre-release part of the version can contain only letters, digits, dashes, and dots".into());
     }
     Ok(())
 }
@@ -1084,15 +1094,23 @@ impl std::fmt::Display for Refusal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Invalid(detail) => write!(f, "{detail}"),
-            Self::Store(detail) => write!(f, "skill store: {detail}"),
-            Self::NotFound(what) => write!(f, "{what} is not in the directory"),
-            Self::Forbidden => write!(f, "the credential does not own this entry"),
-            Self::Conflict(detail) => write!(f, "{detail}"),
-            Self::RateLimited => write!(f, "the day's submission bound is reached"),
-            Self::TooManyPending => {
-                write!(f, "too many submissions are still under review")
+            Self::Store(detail) => {
+                write!(f, "the skill directory couldn't be read or saved: {detail}")
             }
-            Self::ConsentRequired => write!(f, "publication consent is required"),
+            Self::NotFound(what) => write!(f, "{what} isn't in the skill directory"),
+            Self::Forbidden => write!(f, "you don't own this skill"),
+            Self::Conflict(detail) => write!(f, "{detail}"),
+            Self::RateLimited => write!(
+                f,
+                "you've reached today's submission limit; try again tomorrow"
+            ),
+            Self::TooManyPending => {
+                write!(
+                    f,
+                    "you have too many submissions waiting for review; wait for some to finish"
+                )
+            }
+            Self::ConsentRequired => write!(f, "you need to agree to publish the skill"),
             Self::State(detail) => write!(f, "{detail}"),
         }
     }

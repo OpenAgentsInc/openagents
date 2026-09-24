@@ -76,7 +76,7 @@
           "model": "kev-0.6b",
           "outcome": "unavailable",
           "attempt_id": "fixture-reference-0",
-          "cause": "the door answered 503 Service Unavailable",
+          "cause": "The model server returned HTTP 503 Service Unavailable.",
           "latency_ms": 0
         },
         {
@@ -97,12 +97,12 @@
       "original": {
         "input": "one",
         "outcome": "unavailable",
-        "cause": "the door answered 503 Service Unavailable",
+        "cause": "The model server returned HTTP 503 Service Unavailable.",
         "units": [
           {
             "mode": "single-label",
             "outcome": "unavailable",
-            "cause": "the door answered 503 Service Unavailable",
+            "cause": "The model server returned HTTP 503 Service Unavailable.",
             "selected": null
           }
         ],
@@ -115,7 +115,7 @@
             "model": "kev-0.6b",
             "outcome": "unavailable",
             "attempt_id": "fixture-reference-0",
-            "cause": "the door answered 503 Service Unavailable",
+            "cause": "The model server returned HTTP 503 Service Unavailable.",
             "latency_ms": 0
           },
           {

@@ -164,19 +164,25 @@ pub enum AuthRefusal {
 impl std::fmt::Display for AuthRefusal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Missing => write!(f, "no credential was presented"),
+            Self::Missing => write!(
+                f,
+                "the request has no API key; send one in the `Authorization: Bearer` header"
+            ),
             Self::Malformed => {
-                write!(f, "the credential is not an `{PREFIX}_<id>.<secret>` key")
+                write!(
+                    f,
+                    "the API key isn't in the `{PREFIX}_<id>.<secret>` format"
+                )
             }
-            Self::Unknown(id) => write!(f, "key `{id}` is not one this store issued"),
-            Self::Paused(id) => write!(f, "key `{id}` is paused"),
-            Self::Revoked(id) => write!(f, "key `{id}` is revoked"),
+            Self::Unknown(id) => write!(f, "API key `{id}` doesn't exist"),
+            Self::Paused(id) => write!(f, "API key `{id}` is paused"),
+            Self::Revoked(id) => write!(f, "API key `{id}` is revoked; create a new key"),
             Self::WrongSecret(id) => {
-                write!(f, "key `{id}`'s secret does not match")
+                write!(f, "the secret for API key `{id}` is wrong")
             }
             Self::TenantGone { tenant, key } => write!(
                 f,
-                "key `{key}` is valid but tenant `{tenant}` is not in the registry"
+                "API key `{key}` is valid, but its account `{tenant}` no longer exists"
             ),
         }
     }
@@ -202,10 +208,10 @@ impl std::fmt::Display for KeyTrouble {
             Self::Invalid(message) => write!(f, "{message}"),
             Self::UnknownTenant(tenant) => write!(
                 f,
-                "tenant `{tenant}` is not in the registry — bind the tenant \
-                 before issuing it a key"
+                "tenant `{tenant}` isn't in the registry; add the tenant to \
+                 `registry.json` before you issue it a key"
             ),
-            Self::UnknownKey(id) => write!(f, "key `{id}` is not one this store holds"),
+            Self::UnknownKey(id) => write!(f, "key `{id}` isn't in `keys.json`"),
         }
     }
 }

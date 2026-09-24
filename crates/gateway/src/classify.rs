@@ -477,13 +477,13 @@ impl Review {
     fn check(&self) -> Result<(), Refusal> {
         if self.v != REVIEW_SCHEMA {
             return Err(Refusal::InvalidRequest(format!(
-                "the review policy's `v` is `{}`, not `{REVIEW_SCHEMA}`",
+                "The review policy's `v` is `{}`. Set it to `{REVIEW_SCHEMA}`.",
                 self.v
             )));
         }
         if self.reviewer.trim().is_empty() {
             return Err(Refusal::InvalidRequest(
-                "the review policy's `reviewer` is empty".to_string(),
+                "Set the review policy's `reviewer` to a model name.".to_string(),
             ));
         }
         for (field, value) in [
@@ -493,20 +493,20 @@ impl Review {
         ] {
             if value == 0 {
                 return Err(Refusal::InvalidRequest(format!(
-                    "the review policy's `{field}` of 0 admits no work"
+                    "The review policy's `{field}` is 0, which allows no review. Set it to 1 or more."
                 )));
             }
         }
         if self.max_spend == Some(0) {
             return Err(Refusal::InvalidRequest(
-                "the review policy's `max_spend` of 0 reserves no spend".to_string(),
+                "The review policy's `max_spend` is 0, which allows no review. Set it above 0, or leave it out.".to_string(),
             ));
         }
         let mut covered = HashSet::new();
         for entry in &self.fallback {
             if entry.model.trim().is_empty() {
                 return Err(Refusal::InvalidRequest(
-                    "a fallback's `model` is empty".to_string(),
+                    "Each fallback needs a `model`.".to_string(),
                 ));
             }
             match entry.on {
@@ -515,8 +515,8 @@ impl Review {
                         if !codes.is_empty() && codes.iter().all(|code| !code.is_empty()) => {}
                     _ => {
                         return Err(Refusal::InvalidRequest(
-                            "a `refused` fallback must name the refusal `codes` it may \
-                             carry — a semantic refusal never falls back by default"
+                            "A fallback with `on: refused` must list the error `codes` it \
+                             applies to. Refused requests don't fall back by default."
                                 .to_string(),
                         ));
                     }
@@ -524,14 +524,14 @@ impl Review {
                 _ => {
                     if entry.codes.is_some() {
                         return Err(Refusal::InvalidRequest(
-                            "only a `refused` fallback carries `codes`".to_string(),
+                            "Only a fallback with `on: refused` can have `codes`.".to_string(),
                         ));
                     }
                 }
             }
             if !covered.insert(entry.on) {
                 return Err(Refusal::InvalidRequest(format!(
-                    "the review policy declares `on: {}` twice",
+                    "The review policy has two fallbacks with `on: {}`. Keep one.",
                     entry.on.name()
                 )));
             }
@@ -633,19 +633,19 @@ impl BackendLimits {
         for (name, declared, maximum) in fields {
             if declared == 0 {
                 return Err(Refusal::UnsupportedLimits(format!(
-                    "the backend's `{name}` is zero — it admits no {name} at all"
+                    "The model server's `{name}` is 0, which allows no requests. Set it to 1 or more."
                 )));
             }
             if declared > maximum {
                 return Err(Refusal::UnsupportedLimits(format!(
-                    "the backend's `{name}` of {declared} exceeds the facade's {maximum}"
+                    "The model server's `{name}` is {declared}, which is more than the service maximum of {maximum}."
                 )));
             }
         }
         if self.max_levels < MIN_SCORE_LEVELS {
             return Err(Refusal::UnsupportedLimits(format!(
-                "the backend's `max_levels` of {} admits no rubric — a score needs \
-                 at least {MIN_SCORE_LEVELS} levels",
+                "The model server's `max_levels` is {}, which is too small for any \
+                 rubric. A score needs at least {MIN_SCORE_LEVELS} levels.",
                 self.max_levels
             )));
         }
@@ -673,7 +673,8 @@ impl Policy {
             }
             if rule.top_n == Some(0) {
                 return Err(Refusal::InvalidRequest(
-                    "the policy's `top_n` of 0 selects no labels".to_string(),
+                    "The policy's `top_n` is 0, which selects no labels. Set it to 1 or more."
+                        .to_string(),
                 ));
             }
         }
@@ -689,7 +690,8 @@ impl Policy {
             }
             if rule.top_n == Some(0) {
                 return Err(Refusal::InvalidRequest(
-                    "the policy's `top_n` of 0 ranks no inputs".to_string(),
+                    "The policy's `top_n` is 0, which ranks no inputs. Set it to 1 or more."
+                        .to_string(),
                 ));
             }
         }
@@ -816,7 +818,7 @@ impl MultiSelect {
 fn check_probability(field: &'static str, value: f64) -> Result<(), Refusal> {
     if !(0.0..=1.0).contains(&value) {
         return Err(Refusal::InvalidRequest(format!(
-            "the policy's `{field}` of {value} is not a probability"
+            "The policy's `{field}` is {value}. Set it to a number from 0 to 1."
         )));
     }
     Ok(())
@@ -948,24 +950,27 @@ impl std::fmt::Display for Refusal {
         match self {
             Self::Malformed(message) => write!(f, "{message}"),
             Self::UnsupportedSchema(got) => {
-                write!(f, "schema `{got}` is not `{SCHEMA}`")
+                write!(f, "The request's `v` is `{got}`. Set it to `{SCHEMA}`.")
             }
             Self::InvalidRequest(message) => write!(f, "{message}"),
             Self::UnsupportedMode(message) => write!(f, "{message}"),
             Self::UnsupportedLimits(message) => write!(f, "{message}"),
             Self::InvalidId { field, reason } => {
-                write!(f, "a {field} id is invalid: {reason}")
+                write!(f, "One of the {field} IDs isn't valid because {reason}.")
             }
             Self::DuplicateId { field, id } => {
-                write!(f, "the {field} id `{id}` appears twice")
+                write!(
+                    f,
+                    "The {field} ID `{id}` appears more than once. Use unique IDs."
+                )
             }
             Self::TooMany { what, got, limit } => {
-                write!(f, "the request carries {got} {what}; the bound is {limit}")
+                write!(f, "The request has {got} {what}. The limit is {limit}.")
             }
             Self::Oversize { what, got, limit } => {
-                write!(f, "the {what} is {got} bytes; the bound is {limit}")
+                write!(f, "The {what} is {got} bytes. The limit is {limit} bytes.")
             }
-            Self::Overflow => write!(f, "the request's judgment count overflowed"),
+            Self::Overflow => write!(f, "The request asks for too many answers to count."),
         }
     }
 }
@@ -1071,8 +1076,11 @@ impl Request {
     /// itself is checked by [`Request::plan`] so it can refuse as
     /// `unsupported_schema`.
     pub fn parse(body: &[u8]) -> Result<Self, Refusal> {
-        serde_json::from_slice(body)
-            .map_err(|error| Refusal::Malformed(format!("the envelope did not parse: {error}")))
+        serde_json::from_slice(body).map_err(|error| {
+            Refusal::Malformed(format!(
+                "The request body isn't a valid classify request: {error}"
+            ))
+        })
     }
 
     /// Validate the request against the backend's declared limits and
@@ -1093,13 +1101,13 @@ impl Request {
         ] {
             if value.trim().is_empty() {
                 return Err(Refusal::InvalidRequest(format!(
-                    "the envelope's `{field}` is empty"
+                    "The request's `{field}` is empty."
                 )));
             }
         }
         if self.policy.v != POLICY_SCHEMA {
             return Err(Refusal::InvalidRequest(format!(
-                "the policy's `v` is `{}`, not `{POLICY_SCHEMA}`",
+                "The policy's `v` is `{}`. Set it to `{POLICY_SCHEMA}`.",
                 self.policy.v
             )));
         }
@@ -1119,7 +1127,7 @@ impl Request {
         let units: Vec<UnitRef> = if self.dimensions.is_empty() {
             if self.mode.is_none() {
                 return Err(Refusal::InvalidRequest(
-                    "the envelope names no `mode`".to_string(),
+                    "Set the request's `mode`.".to_string(),
                 ));
             }
             vec![UnitRef {
@@ -1131,8 +1139,8 @@ impl Request {
         } else {
             if self.mode.is_some() || !self.labels.is_empty() || !self.levels.is_empty() {
                 return Err(Refusal::InvalidRequest(
-                    "a dimensional request carries `mode`, `labels`, and `levels` on \
-                     each dimension, not on the envelope"
+                    "A request with `dimensions` sets `mode`, `labels`, and `levels` on \
+                     each dimension, not at the top level."
                         .to_string(),
                 ));
             }
@@ -1180,14 +1188,14 @@ impl Request {
                 Mode::SingleLabel => {
                     let rule = self.policy.select.single_label.as_ref().ok_or_else(|| {
                         Refusal::InvalidRequest(
-                            "the policy declares no `single_label` selection rule".to_string(),
+                            "Add a `single_label` rule to the policy's `select`.".to_string(),
                         )
                     })?;
                     if let NoMatch::Label { label } = &rule.no_match
                         && !unit.labels.iter().any(|candidate| &candidate.id == label)
                     {
                         return Err(Refusal::InvalidRequest(format!(
-                            "the policy's no-match label `{label}` is not in the label set{}",
+                            "The policy's no-match label `{label}` isn't one of the labels{}.",
                             context(),
                         )));
                     }
@@ -1195,14 +1203,14 @@ impl Request {
                 Mode::MultiLabel => {
                     let rule = self.policy.select.multi_label.as_ref().ok_or_else(|| {
                         Refusal::InvalidRequest(
-                            "the policy declares no `multi_label` selection rule".to_string(),
+                            "Add a `multi_label` rule to the policy's `select`.".to_string(),
                         )
                     })?;
                     if let Some(top_n) = rule.top_n
                         && top_n > unit.labels.len() as u64
                     {
                         return Err(Refusal::InvalidRequest(format!(
-                            "the policy's `top_n` of {top_n} exceeds the {} labels{}",
+                            "The policy's `top_n` is {top_n}, but there are only {} labels{}.",
                             unit.labels.len(),
                             context(),
                         )));
@@ -1211,21 +1219,21 @@ impl Request {
                 Mode::Binary => {
                     if self.policy.select.binary.is_none() {
                         return Err(Refusal::InvalidRequest(
-                            "the policy declares no `binary` selection rule".to_string(),
+                            "Add a `binary` rule to the policy's `select`.".to_string(),
                         ));
                     }
                 }
                 Mode::Score => {
                     let rule = self.policy.select.score.as_ref().ok_or_else(|| {
                         Refusal::InvalidRequest(
-                            "the policy declares no `score` selection rule".to_string(),
+                            "Add a `score` rule to the policy's `select`.".to_string(),
                         )
                     })?;
                     if let Some(top_n) = rule.top_n
                         && top_n > self.inputs.len() as u64
                     {
                         return Err(Refusal::InvalidRequest(format!(
-                            "the policy's `top_n` of {top_n} exceeds the {} inputs",
+                            "The policy's `top_n` is {top_n}, but there are only {} inputs.",
                             self.inputs.len(),
                         )));
                     }
@@ -1322,7 +1330,7 @@ impl Request {
     fn check_inputs(&self, limits: &BackendLimits) -> Result<(), Refusal> {
         if self.inputs.is_empty() {
             return Err(Refusal::InvalidRequest(
-                "the envelope carries no inputs".to_string(),
+                "Add at least one input to `inputs`.".to_string(),
             ));
         }
         if self.inputs.len() as u64 > limits.max_inputs {
@@ -1342,13 +1350,13 @@ impl Request {
                     .unwrap_or(u64::MAX),
                 (None, None) => {
                     return Err(Refusal::InvalidRequest(format!(
-                        "input `{}` carries neither `text` nor `record`",
+                        "Input `{}` needs either `text` or `record`.",
                         input.id
                     )));
                 }
                 (Some(_), Some(_)) => {
                     return Err(Refusal::InvalidRequest(format!(
-                        "input `{}` carries both `text` and `record`",
+                        "Input `{}` has both `text` and `record`. Use only one.",
                         input.id
                     )));
                 }
@@ -1378,20 +1386,20 @@ fn check_unit(unit: &UnitRef<'_>, limits: &BackendLimits) -> Result<(), Refusal>
     if unit.mode == Mode::Score {
         if !unit.labels.is_empty() {
             return Err(Refusal::InvalidRequest(
-                "a score unit carries `levels`, not `labels`".to_string(),
+                "A `score` question uses `levels`, not `labels`.".to_string(),
             ));
         }
         return check_levels(unit.levels, limits);
     }
     if !unit.levels.is_empty() {
         return Err(Refusal::InvalidRequest(format!(
-            "a {} unit carries `labels`, not `levels`",
+            "A `{}` question uses `labels`, not `levels`.",
             unit.mode.name()
         )));
     }
     if unit.mode == Mode::Binary && unit.labels.len() != 1 {
         return Err(Refusal::InvalidRequest(format!(
-            "a binary unit carries exactly one label, and this one carries {}",
+            "A `binary` question needs exactly one label, but this one has {}.",
             unit.labels.len()
         )));
     }
@@ -1403,7 +1411,7 @@ fn check_unit(unit: &UnitRef<'_>, limits: &BackendLimits) -> Result<(), Refusal>
 fn check_levels(levels: &[String], limits: &BackendLimits) -> Result<(), Refusal> {
     if (levels.len() as u64) < MIN_SCORE_LEVELS {
         return Err(Refusal::InvalidRequest(format!(
-            "a rubric needs at least {MIN_SCORE_LEVELS} levels, and this one carries {}",
+            "A rubric needs at least {MIN_SCORE_LEVELS} levels, but this one has {}.",
             levels.len()
         )));
     }
@@ -1417,7 +1425,7 @@ fn check_levels(levels: &[String], limits: &BackendLimits) -> Result<(), Refusal
     for level in levels {
         if level.trim().is_empty() {
             return Err(Refusal::InvalidRequest(
-                "a rubric level's description is empty".to_string(),
+                "Each rubric level needs a description.".to_string(),
             ));
         }
         check_bytes("level", level.len() as u64, limits.max_label_bytes)?;
@@ -1435,7 +1443,7 @@ fn check_labels(labels: &[Label], mode: Mode, limits: &BackendLimits) -> Result<
     };
     if (labels.len() as u64) < minimum {
         return Err(Refusal::InvalidRequest(format!(
-            "a {} label set needs at least {minimum} labels, and this one carries {}",
+            "A `{}` question needs at least {minimum} labels, but this one has {}.",
             mode.name(),
             labels.len(),
         )));
@@ -1464,19 +1472,19 @@ fn check_id(field: &'static str, id: &str, max_chars: u64) -> Result<(), Refusal
     if id.is_empty() {
         return Err(Refusal::InvalidId {
             field,
-            reason: "it is empty",
+            reason: "it's empty",
         });
     }
     if id.chars().count() as u64 > max_chars {
         return Err(Refusal::InvalidId {
             field,
-            reason: "it exceeds the character bound",
+            reason: "it has too many characters",
         });
     }
     if id.chars().any(bidirectional_or_invisible) {
         return Err(Refusal::InvalidId {
             field,
-            reason: "it holds a control or invisible format character",
+            reason: "it contains a control character or an invisible formatting character",
         });
     }
     Ok(())

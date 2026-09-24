@@ -291,18 +291,18 @@ struct Args {
 fn offset(cursor: Option<&str>, scope: &str) -> Result<usize, Error> {
     let Some(cursor) = cursor else { return Ok(0) };
     if cursor.len() > 160 {
-        return Err(invalid("cursor exceeds its bound"));
+        return Err(invalid("the cursor is too long"));
     }
     let parts: Vec<&str> = cursor.split(':').collect();
     if parts.len() != 3 || parts[0] != version() || parts[1] != digest(scope.as_bytes()) {
         return Err(Error {
             code: "stale_cursor",
-            message: "cursor does not match this corpus and query",
+            message: "the cursor is from a different query or documentation version; start again without a cursor",
         });
     }
     parts[2]
         .parse()
-        .map_err(|_| invalid("cursor position is invalid"))
+        .map_err(|_| invalid("the cursor isn't valid"))
 }
 
 fn cursor(scope: &str, position: usize) -> String {
@@ -333,16 +333,20 @@ pub fn call(name: &str, arguments: Value) -> Result<Value, Error> {
         "list_docs" | "get_examples" => &["cursor", "limit"],
         "search_docs" => &["query", "cursor", "limit"],
         "read_doc" => &["id", "cursor", "max_bytes"],
-        _ => return Err(invalid("unknown documentation tool")),
+        _ => return Err(invalid("there is no documentation tool with this name")),
     };
     let object = arguments
         .as_object()
         .ok_or_else(|| invalid("documentation arguments must be an object"))?;
     if object.keys().any(|key| !allowed.contains(&key.as_str())) {
-        return Err(invalid("this tool does not accept the supplied argument"));
+        return Err(invalid(
+            "this tool doesn't accept one of the arguments you sent",
+        ));
     }
     if object.values().any(Value::is_null) {
-        return Err(invalid("omit optional arguments instead of supplying null"));
+        return Err(invalid(
+            "leave out optional arguments instead of sending null",
+        ));
     }
     let args: Args = serde_json::from_value(arguments)
         .map_err(|_| invalid("invalid documentation arguments"))?;
@@ -350,17 +354,17 @@ pub fn call(name: &str, arguments: Value) -> Result<Value, Error> {
         return read(args);
     }
     if !matches!(name, "list_docs" | "search_docs" | "get_examples") {
-        return Err(invalid("unknown documentation tool"));
+        return Err(invalid("there is no documentation tool with this name"));
     }
     if args.id.is_some() || args.max_bytes.is_some() {
-        return Err(invalid("this tool does not accept id or max_bytes"));
+        return Err(invalid("this tool doesn't accept id or max_bytes"));
     }
     let query = match (name, args.query.as_deref()) {
         ("search_docs", Some(query)) if !query.trim().is_empty() && query.len() <= 256 => {
             Some(query)
         }
         ("search_docs", _) => return Err(invalid("search query must contain 1 to 256 bytes")),
-        (_, Some(_)) => return Err(invalid("this tool does not accept a search query")),
+        (_, Some(_)) => return Err(invalid("this tool doesn't accept a search query")),
         _ => None,
     };
     let limit = args.limit.unwrap_or(10);
@@ -389,7 +393,7 @@ pub fn call(name: &str, arguments: Value) -> Result<Value, Error> {
         })
         .collect();
     if start > rows.len() {
-        return Err(invalid("cursor is beyond the result set"));
+        return Err(invalid("the cursor is past the last result"));
     }
     let end = start.saturating_add(limit).min(rows.len());
     let mut result = envelope();
@@ -403,11 +407,11 @@ pub fn call(name: &str, arguments: Value) -> Result<Value, Error> {
 
 fn read(args: Args) -> Result<Value, Error> {
     if args.query.is_some() || args.limit.is_some() {
-        return Err(invalid("read_doc does not accept query or limit"));
+        return Err(invalid("read_doc doesn't accept query or limit"));
     }
     let id = args
         .id
-        .ok_or_else(|| invalid("read_doc requires a document id"))?;
+        .ok_or_else(|| invalid("read_doc needs a document id"))?;
     let doc = DOCUMENTS.iter().find(|doc| doc.id == id).ok_or(Error {
         code: "document_not_found",
         message: "no document has this id",
@@ -419,7 +423,9 @@ fn read(args: Args) -> Result<Value, Error> {
     let scope = format!("read_doc:{id}");
     let start = offset(args.cursor.as_deref(), &scope)?;
     if start > doc.content.len() || !doc.content.is_char_boundary(start) {
-        return Err(invalid("cursor is not a valid document boundary"));
+        return Err(invalid(
+            "the cursor isn't a valid position in this document",
+        ));
     }
     let mut end = start.saturating_add(maximum).min(doc.content.len());
     while !doc.content.is_char_boundary(end) {
@@ -439,13 +445,13 @@ fn read(args: Args) -> Result<Value, Error> {
 /// Tool schemas and annotations for the credential-free documentation lane.
 #[must_use]
 pub fn tools() -> Vec<Value> {
-    let paging = json!({"type":"string","maxLength":160,"description":"Cursor from this tool for the same corpus and query."});
+    let paging = json!({"type":"string","maxLength":160,"description":"The cursor this tool returned for the same query."});
     let limit = json!({"type":"integer","minimum":1,"maximum":50});
     [
-        ("list_docs","List bundled documentation metadata",json!({"cursor":paging,"limit":limit}),vec![]),
-        ("read_doc","Read a bounded UTF-8 page by stable document ID",json!({"id":{"type":"string"},"cursor":paging,"max_bytes":{"type":"integer","minimum":4,"maximum":MAX_PAGE_BYTES}}),vec!["id"]),
-        ("search_docs","Search the bundled corpus; return at most one bounded snippet per document",json!({"query":{"type":"string","minLength":1,"maxLength":256},"cursor":paging,"limit":limit}),vec!["query"]),
-        ("get_examples","List bundled examples; use read_doc to retrieve their contents",json!({"cursor":paging,"limit":limit}),vec![]),
+        ("list_docs","List the documentation this server includes",json!({"cursor":paging,"limit":limit}),vec![]),
+        ("read_doc","Read one page of a document by its ID",json!({"id":{"type":"string"},"cursor":paging,"max_bytes":{"type":"integer","minimum":4,"maximum":MAX_PAGE_BYTES}}),vec!["id"]),
+        ("search_docs","Search the documentation and return at most one short excerpt per document",json!({"query":{"type":"string","minLength":1,"maxLength":256},"cursor":paging,"limit":limit}),vec!["query"]),
+        ("get_examples","List the included examples; use read_doc to read one",json!({"cursor":paging,"limit":limit}),vec![]),
     ].into_iter().map(|(name,description,properties,required)|json!({"name":name,"description":description,"inputSchema":{"type":"object","properties":properties,"required":required,"additionalProperties":false},"annotations":{"readOnlyHint":true,"destructiveHint":false,"idempotentHint":true,"openWorldHint":false}})).collect()
 }
 

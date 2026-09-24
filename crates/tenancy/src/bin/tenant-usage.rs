@@ -19,7 +19,7 @@ use std::path::Path;
 use tenancy::{Registry, quota};
 
 fn usage() -> ! {
-    eprintln!("usage:\n  tenant-usage --registry DIR [--tenant NAME]");
+    eprintln!("Usage:\n  tenant-usage --registry DIR [--tenant NAME]");
     std::process::exit(2);
 }
 

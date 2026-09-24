@@ -71,7 +71,7 @@ pub(crate) async fn submit(
         return fb_error(
             StatusCode::BAD_REQUEST,
             "invalid_request",
-            "the body is not a JSON submission envelope",
+            "The request body isn't valid JSON.",
             None,
         );
     };
@@ -93,7 +93,7 @@ pub(crate) async fn submit(
         return fb_error(
             StatusCode::UNAUTHORIZED,
             "unauthenticated",
-            "feedback requires a tenant bearer key",
+            "Send your API key in the `Authorization: Bearer` header to submit feedback.",
             None,
         );
     }
@@ -113,7 +113,7 @@ pub(crate) async fn submit(
                 None => fb_error(
                     StatusCode::GONE,
                     "submission_deleted",
-                    "the submission's record was deleted; it is not replayed",
+                    "This feedback was deleted, so the service doesn't store it again. Use a new `Idempotency-Key` to submit it again.",
                     Some(&entry.submission),
                 ),
             };
@@ -122,7 +122,7 @@ pub(crate) async fn submit(
             return fb_error(
                 StatusCode::CONFLICT,
                 "idempotency_conflict",
-                "the idempotency key already named a different submission",
+                "This `Idempotency-Key` was already used for different feedback. Use a new key.",
                 None,
             );
         }
@@ -132,7 +132,7 @@ pub(crate) async fn submit(
         return fb_error(
             StatusCode::TOO_MANY_REQUESTS,
             "capacity",
-            "too many open feedback submissions under this credential",
+            "Your API key has too many open feedback reports. Wait until some are resolved, and then try again.",
             None,
         );
     }
@@ -209,7 +209,7 @@ pub(crate) async fn status(
         return fb_error(
             StatusCode::NOT_FOUND,
             "submission_not_found",
-            "no such feedback submission",
+            "No feedback report has that ID.",
             None,
         );
     };
@@ -302,86 +302,86 @@ fn redact(dir: &Path) -> Result<(), String> {
 /// service can store.
 fn validate(envelope: &Value) -> Result<(), String> {
     let Some(object) = envelope.as_object() else {
-        return Err("the submission is not a JSON object".to_string());
+        return Err("The feedback must be a JSON object.".to_string());
     };
     if object.get("v").and_then(Value::as_str) != Some(SCHEMA) {
-        return Err(format!("the submission does not carry `v: {SCHEMA}`"));
+        return Err(format!("Set `v` to `{SCHEMA}`."));
     }
     let observation = object
         .get("observation")
         .and_then(Value::as_str)
         .filter(|value| !value.trim().is_empty())
-        .ok_or_else(|| "a submission needs a non-empty `observation`".to_string())?;
+        .ok_or_else(|| "Describe what you saw in `observation`.".to_string())?;
     bounded("observation", observation, OBSERVATION_MAX)?;
     for field in ["expected", "actual"] {
         if let Some(value) = object.get(field) {
             let value = value
                 .as_str()
-                .ok_or_else(|| format!("`{field}` is a string or absent"))?;
+                .ok_or_else(|| format!("`{field}` must be a string, or leave it out."))?;
             bounded(field, value, FIELD_MAX)?;
         }
     }
     if let Some(reproduction) = object.get("reproduction") {
         let reproduction = reproduction
             .as_str()
-            .ok_or_else(|| "`reproduction` is a string or absent".to_string())?;
+            .ok_or_else(|| "`reproduction` must be a string, or leave it out.".to_string())?;
         bounded("reproduction", reproduction, REPRODUCTION_MAX)?;
     }
     if let Some(environment) = object.get("environment") {
         let environment = environment
             .as_object()
-            .ok_or_else(|| "`environment` is an object or absent".to_string())?;
+            .ok_or_else(|| "`environment` must be an object, or leave it out.".to_string())?;
         for (field, value) in environment {
             let value = value
                 .as_str()
-                .ok_or_else(|| format!("`environment.{field}` is a string"))?;
+                .ok_or_else(|| format!("`environment.{field}` must be a string."))?;
             bounded(&format!("environment.{field}"), value, ENV_FIELD_MAX)?;
         }
     }
     if let Some(attachments) = object.get("attachments") {
         let attachments = attachments
             .as_array()
-            .ok_or_else(|| "`attachments` is an array or absent".to_string())?;
+            .ok_or_else(|| "`attachments` must be an array, or leave it out.".to_string())?;
         if attachments.len() > ATTACHMENT_MAX {
-            return Err(format!("at most {ATTACHMENT_MAX} attachments"));
+            return Err(format!("Attach at most {ATTACHMENT_MAX} files."));
         }
         let mut total = 0usize;
         for attachment in attachments {
             let attachment = attachment
                 .as_object()
-                .ok_or_else(|| "an attachment is an object".to_string())?;
+                .ok_or_else(|| "Each attachment must be an object.".to_string())?;
             let name = attachment
                 .get("name")
                 .and_then(Value::as_str)
-                .ok_or_else(|| "an attachment needs a `name`".to_string())?;
+                .ok_or_else(|| "Each attachment needs a `name`.".to_string())?;
             bounded("attachment name", name, ENV_FIELD_MAX)?;
             let encoded = attachment
                 .get("content_base64")
                 .and_then(Value::as_str)
-                .ok_or_else(|| "an attachment needs `content_base64`".to_string())?;
+                .ok_or_else(|| "Each attachment needs `content_base64`.".to_string())?;
             let bytes = decode_base64(encoded)
-                .ok_or_else(|| format!("attachment `{name}` is not base64"))?;
+                .ok_or_else(|| format!("Attachment `{name}` isn't valid base64."))?;
             if bytes.len() > ATTACHMENT_BYTES_MAX {
                 return Err(format!(
-                    "attachment `{name}` exceeds {ATTACHMENT_BYTES_MAX} bytes"
+                    "Attachment `{name}` is larger than the {ATTACHMENT_BYTES_MAX}-byte limit."
                 ));
             }
             total += bytes.len();
         }
         if total > ATTACHMENTS_TOTAL_MAX {
             return Err(format!(
-                "attachments exceed {ATTACHMENTS_TOTAL_MAX} bytes in total"
+                "The attachments together are larger than the {ATTACHMENTS_TOTAL_MAX}-byte limit."
             ));
         }
     }
     if let Some(consent) = object.get("consent") {
         let consent = consent
             .as_object()
-            .ok_or_else(|| "`consent` is an object or absent".to_string())?;
+            .ok_or_else(|| "`consent` must be an object, or leave it out.".to_string())?;
         if let Some(forward) = consent.get("forward")
             && !forward.is_boolean()
         {
-            return Err("`consent.forward` is a boolean".to_string());
+            return Err("`consent.forward` must be `true` or `false`.".to_string());
         }
     }
     Ok(())
@@ -389,7 +389,7 @@ fn validate(envelope: &Value) -> Result<(), String> {
 
 fn bounded(field: &str, value: &str, max: usize) -> Result<(), String> {
     if value.len() > max {
-        return Err(format!("`{field}` exceeds {max} bytes"));
+        return Err(format!("`{field}` is larger than the {max}-byte limit."));
     }
     Ok(())
 }

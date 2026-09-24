@@ -65,7 +65,7 @@ fn options(args: &[String]) -> Result<Options, String> {
             "emit" => {
                 kind = Some(
                     args.next()
-                        .ok_or_else(|| "emit names an event kind".to_string())?
+                        .ok_or_else(|| "`emit` needs an event kind".to_string())?
                         .clone(),
                 );
             }
@@ -81,7 +81,7 @@ fn options(args: &[String]) -> Result<Options, String> {
     }
     Ok(Options {
         registry: registry.ok_or_else(|| "--registry is required".to_string())?,
-        kind: kind.ok_or_else(|| "emit <kind> is required".to_string())?,
+        kind: kind.ok_or_else(|| "Name an event kind: `emit <kind>`".to_string())?,
         fields,
         secret_env,
         print_only,
@@ -148,7 +148,7 @@ fn main() -> ExitCode {
                 event.period = match value.parse() {
                     Ok(period) => period,
                     Err(_) => {
-                        eprintln!("billing-sandbox: --period takes a number");
+                        eprintln!("billing-sandbox: --period takes a whole number");
                         return ExitCode::from(2);
                     }
                 };
@@ -157,7 +157,7 @@ fn main() -> ExitCode {
                 event.amount = match value.parse() {
                     Ok(amount) => amount,
                     Err(_) => {
-                        eprintln!("billing-sandbox: --amount takes millionths");
+                        eprintln!("billing-sandbox: --amount takes a whole number of millionths");
                         return ExitCode::from(2);
                     }
                 };

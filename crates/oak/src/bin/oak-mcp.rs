@@ -21,10 +21,10 @@ use oak::mcp::{Options, PROTOCOL_VERSIONS, serve};
 
 fn usage() -> ! {
     eprintln!(
-        "usage: oak-mcp [--url URL] [--config PATH] [--workspace ID]\n       \
+        "Usage: oak-mcp [--url URL] [--config PATH] [--workspace ID]\n       \
          [--timeout SECS] [--retries N]\n\n  \
-         reads JSON-RPC messages on standard input and answers on standard\n  \
-         output; supported protocol versions: {}",
+         Reads JSON-RPC messages on standard input and answers on standard\n  \
+         output. Supported protocol versions: {}",
         PROTOCOL_VERSIONS.join(", ")
     );
     std::process::exit(2);

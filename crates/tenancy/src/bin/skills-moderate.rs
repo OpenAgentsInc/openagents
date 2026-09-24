@@ -23,7 +23,7 @@ use tenancy::skills::{self, Directory, Evidence};
 
 fn usage() -> ! {
     eprintln!(
-        "usage:\n  \
+        "Usage:\n  \
          skills-moderate list      --registry DIR [--state STATE]\n  \
          skills-moderate show      --registry DIR --name NAME --version VER\n  \
          skills-moderate takedown  --registry DIR --name NAME --version VER --reason TEXT\n  \
@@ -81,7 +81,7 @@ fn main() {
     let result: Result<(), skills::Refusal> = match verb.as_str() {
         "list" => {
             let Ok(store) = directory.store() else {
-                eprintln!("the skill directory is unavailable");
+                eprintln!("can't read the skill directory in `skills.json`");
                 std::process::exit(1);
             };
             for entry in store.book.entries.values() {
@@ -107,7 +107,7 @@ fn main() {
         "show" => {
             let (name, version) = named(name, version);
             let Ok(store) = directory.store() else {
-                eprintln!("the skill directory is unavailable");
+                eprintln!("can't read the skill directory in `skills.json`");
                 std::process::exit(1);
             };
             let Some(version) = store
@@ -116,7 +116,7 @@ fn main() {
                 .get(&name)
                 .and_then(|entry| entry.versions.get(&version))
             else {
-                eprintln!("{name} {version} is not in the directory");
+                eprintln!("{name} {version} isn't in the skill directory");
                 std::process::exit(1);
             };
             println!(
@@ -130,13 +130,13 @@ fn main() {
             let Some(reason) = reason else { usage() };
             directory
                 .mutate(|book, _, now| book.takedown(&name, &version, "operator", &reason, now))
-                .map(|()| println!("took down `{name} {version}`"))
+                .map(|()| println!("Took down `{name} {version}`; it is no longer listed."))
         }
         "reinstate" => {
             let (name, version) = named(name, version);
             directory
                 .mutate(|book, _, now| book.reinstate(&name, &version, "operator", now))
-                .map(|()| println!("reinstated `{name} {version}`"))
+                .map(|()| println!("Reinstated `{name} {version}`; it is listed again."))
         }
         "admit" => {
             let (name, version) = named(name, version);
@@ -145,7 +145,7 @@ fn main() {
                 .mutate(|book, _, now| {
                     book.moderate_admit(&name, &version, "operator", &reason, now)
                 })
-                .map(|()| println!("admitted `{name} {version}`"))
+                .map(|()| println!("Approved and published `{name} {version}`."))
         }
         "evidence" => {
             let (name, version) = named(name, version);
@@ -167,7 +167,7 @@ fn main() {
                         now,
                     )
                 })
-                .map(|()| println!("attached evidence to `{name} {version}`"))
+                .map(|()| println!("Attached evidence to `{name} {version}`."))
         }
         _ => usage(),
     };

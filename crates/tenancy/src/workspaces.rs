@@ -484,10 +484,9 @@ pub enum Refusal {
 impl std::fmt::Display for Refusal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::NotMember { workspace, user } => write!(
-                f,
-                "user `{user}` holds no membership in workspace `{workspace}`"
-            ),
+            Self::NotMember { workspace, user } => {
+                write!(f, "user `{user}` isn't a member of workspace `{workspace}`")
+            }
             Self::NotActive {
                 workspace,
                 user,
@@ -502,7 +501,7 @@ impl std::fmt::Display for Refusal {
                 action,
             } => write!(
                 f,
-                "user `{user}`'s role in workspace `{workspace}` does not cover {action}"
+                "user `{user}`'s role in workspace `{workspace}` doesn't allow {action}"
             ),
             Self::AlreadyMember { workspace, user } => write!(
                 f,
@@ -510,21 +509,21 @@ impl std::fmt::Display for Refusal {
             ),
             Self::PersonalWorkspace(workspace) => write!(
                 f,
-                "workspace `{workspace}` is personal — it holds its owner and no one else"
+                "workspace `{workspace}` is a personal workspace, so only its owner can be a member"
             ),
             Self::LastOwner { workspace } => write!(
                 f,
-                "workspace `{workspace}` would be left without an active owner — \
-                 transfer ownership first"
+                "this change would leave workspace `{workspace}` without an active owner; \
+                 transfer ownership to another member first"
             ),
             Self::OwnershipByTransfer { workspace } => write!(
                 f,
-                "workspace `{workspace}` grants ownership only through transfer"
+                "to make someone an owner of workspace `{workspace}`, transfer ownership to them"
             ),
             Self::SeatLimit { workspace, seats } => write!(
                 f,
-                "workspace `{workspace}` is at its {seats}-seat limit — a seat frees \
-                 when a member leaves or an invitation lapses"
+                "workspace `{workspace}` has used all {seats} seats. Remove a member \
+                 or cancel an invitation to free a seat"
             ),
             Self::SeatsBelowMembers {
                 workspace,
@@ -532,30 +531,30 @@ impl std::fmt::Display for Refusal {
                 members,
             } => write!(
                 f,
-                "workspace `{workspace}` holds {members} active members — seats cannot \
-                 drop to {seats} below them"
+                "workspace `{workspace}` has {members} active members, so you can't \
+                 reduce its seats to {seats}"
             ),
             Self::UnknownInvitation => {
-                write!(f, "the digest names no invitation this workspace holds")
+                write!(f, "this workspace has no matching invitation")
             }
             Self::DuplicateInvitation => {
-                write!(f, "an invitation already carries this token digest")
+                write!(f, "an invitation with this token already exists")
             }
             Self::InvitationExpired => write!(f, "the invitation has expired"),
             Self::InvitationClosed { state } => write!(
                 f,
-                "the invitation is already {state} — an invitation is single-use"
+                "the invitation is already {state}; each invitation works only once"
             ),
             Self::DuplicateKey { key } => {
-                write!(f, "key `{key}` already exists in this workspace")
+                write!(f, "API key `{key}` already exists in this workspace")
             }
             Self::UnknownKey { key } => {
-                write!(f, "key `{key}` is not one this workspace holds")
+                write!(f, "API key `{key}` doesn't belong to this workspace")
             }
-            Self::KeyClosed { key } => write!(f, "key `{key}` is no longer active"),
+            Self::KeyClosed { key } => write!(f, "API key `{key}` is no longer active"),
             Self::MalformedDigest(field) => write!(
                 f,
-                "{field} must be 64 hex characters — a SHA-256 digest, never the secret"
+                "{field} must be a SHA-256 hash (64 hex characters), not the secret itself"
             ),
         }
     }

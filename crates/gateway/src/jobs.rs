@@ -89,7 +89,7 @@ pub(crate) async fn submit(
         return job_error(
             StatusCode::BAD_REQUEST,
             "invalid_request",
-            "the body is not a JSON request envelope",
+            "The request body isn't valid JSON.",
             None,
         );
     };
@@ -97,7 +97,7 @@ pub(crate) async fn submit(
         return job_error(
             StatusCode::UNPROCESSABLE_ENTITY,
             "invalid_request",
-            "the envelope does not carry `v: openagents.job.v1`",
+            "Set `v` to `openagents.job.v1`.",
             None,
         );
     }
@@ -105,7 +105,7 @@ pub(crate) async fn submit(
         return job_error(
             StatusCode::UNPROCESSABLE_ENTITY,
             "unsupported_kind",
-            "the only job kind is `classify`",
+            "Set `kind` to `classify`. It's the only job kind.",
             None,
         );
     }
@@ -113,7 +113,7 @@ pub(crate) async fn submit(
         return job_error(
             StatusCode::UNPROCESSABLE_ENTITY,
             "invalid_request",
-            "the envelope carries no `request` object",
+            "Add a `request` object that holds the classify request.",
             None,
         );
     };
@@ -182,7 +182,7 @@ pub(crate) async fn submit(
                     return job_error(
                         StatusCode::GONE,
                         "job_deleted",
-                        "the job's record was deleted; the submission is not replayed",
+                        "This job was deleted, so the service doesn't run it again. Use a new `Idempotency-Key` to submit it again.",
                         Some(&entry.job),
                     );
                 }
@@ -192,7 +192,7 @@ pub(crate) async fn submit(
             return job_error(
                 StatusCode::CONFLICT,
                 "idempotency_conflict",
-                "the idempotency key already named a different submission",
+                "This `Idempotency-Key` was already used for a different request. Use a new key.",
                 None,
             );
         }
@@ -335,7 +335,7 @@ pub(crate) async fn results(
                     return job_error(
                         StatusCode::GONE,
                         "cursor_expired",
-                        "the cursor outlived its ttl; read again from the start",
+                        "This cursor has expired. Read the results again from the start.",
                         Some(&id),
                     );
                 }
@@ -345,7 +345,7 @@ pub(crate) async fn results(
                 return job_error(
                     StatusCode::BAD_REQUEST,
                     "bad_cursor",
-                    "the cursor is not one this gateway issued",
+                    "This cursor isn't valid. Use the `next_cursor` value from the previous page.",
                     Some(&id),
                 );
             }
@@ -392,7 +392,7 @@ pub(crate) async fn remove(
         return job_error(
             StatusCode::CONFLICT,
             "job_running",
-            "a running job cannot be deleted — cancel it first",
+            "You can't delete a running job. Cancel it first.",
             Some(&id),
         );
     }
@@ -422,7 +422,7 @@ pub(crate) async fn rotate_notify(
         return job_error(
             StatusCode::UNPROCESSABLE_ENTITY,
             "notify_not_configured",
-            "the job declared no notification destination",
+            "This job has no `notify` URL, so there are no notifications to send.",
             Some(&id),
         );
     }
@@ -846,11 +846,11 @@ impl Notify {
 fn validate_notify(notify: &Value) -> Result<Notify, String> {
     let url = notify["url"]
         .as_str()
-        .ok_or_else(|| "the notify object carries no `url`".to_string())?;
-    let parsed =
-        reqwest::Url::parse(url).map_err(|_| format!("the notify url `{url}` does not parse"))?;
+        .ok_or_else(|| "The `notify` object needs a `url`.".to_string())?;
+    let parsed = reqwest::Url::parse(url)
+        .map_err(|_| format!("The `notify` URL `{url}` isn't a valid URL."))?;
     if !parsed.username().is_empty() || parsed.password().is_some() {
-        return Err("the notify url must not carry credentials".to_string());
+        return Err("The `notify` URL can't include a user name or password.".to_string());
     }
     match parsed.scheme() {
         "https" => {}
@@ -866,10 +866,14 @@ fn validate_notify(notify: &Value) -> Result<Notify, String> {
                 })
                 .unwrap_or(false);
             if !loopback {
-                return Err("an `http` notify url must name a loopback host".to_string());
+                return Err("An `http` `notify` URL must point to this machine, such as `127.0.0.1`. Use `https` for other hosts.".to_string());
             }
         }
-        scheme => return Err(format!("the notify url scheme `{scheme}` is unsupported")),
+        scheme => {
+            return Err(format!(
+                "The `notify` URL must use `https`, not `{scheme}`."
+            ));
+        }
     }
     let provided = notify["secret"].as_str().map(str::to_string);
     Ok(Notify {
@@ -1149,7 +1153,7 @@ fn not_found(id: &str) -> Response {
     job_error(
         StatusCode::NOT_FOUND,
         "job_not_found",
-        "no job by that id is visible to this credential",
+        "No job with that ID exists for your API key.",
         Some(id),
     )
 }

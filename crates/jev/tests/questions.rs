@@ -320,7 +320,10 @@ fn a_question_failure_reads_with_its_id() {
     );
     let whole = Error::Question {
         id: String::new(),
-        message: "a request asks at least one question".to_string(),
+        message: "a request must ask at least one question".to_string(),
     };
-    assert_eq!(whole.to_string(), "a request asks at least one question");
+    assert_eq!(
+        whole.to_string(),
+        "a request must ask at least one question"
+    );
 }

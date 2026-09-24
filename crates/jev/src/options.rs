@@ -61,8 +61,11 @@ impl CallOptions {
     ///
     /// Returns [`Error::Config`] when the key is not a header value.
     pub fn idempotency_key(mut self, key: &str) -> Result<Self> {
-        let value = HeaderValue::from_str(key)
-            .map_err(|_| Error::Config("the idempotency key is not a header value".into()))?;
+        let value = HeaderValue::from_str(key).map_err(|_| {
+            Error::Config(
+                "the idempotency key can't be sent as an HTTP header; use printable ASCII".into(),
+            )
+        })?;
         self.headers.insert(IDEMPOTENCY, value);
         Ok(self)
     }
@@ -74,8 +77,11 @@ impl CallOptions {
     ///
     /// Returns [`Error::Config`] when the id is not a header value.
     pub fn workspace(mut self, workspace: &str) -> Result<Self> {
-        let value = HeaderValue::from_str(workspace)
-            .map_err(|_| Error::Config("the workspace id is not a header value".into()))?;
+        let value = HeaderValue::from_str(workspace).map_err(|_| {
+            Error::Config(
+                "the workspace ID can't be sent as an HTTP header; use printable ASCII".into(),
+            )
+        })?;
         self.headers.insert(WORKSPACE, value);
         Ok(self)
     }

@@ -43,8 +43,11 @@ impl<'a> Jobs<'a> {
     /// envelope is not JSON, and [`Error::ResponseValidation`] when a
     /// successful body does not decode.
     pub async fn submit(&self, request: JobSubmit) -> Result<JobStatus> {
-        let body = serde_json::to_vec(&request.body())
-            .map_err(|error| Error::Config(format!("the submission is not JSON: {error}")))?;
+        let body = serde_json::to_vec(&request.body()).map_err(|error| {
+            Error::Config(format!(
+                "the job submission can't be encoded as JSON: {error}"
+            ))
+        })?;
         let raw = self
             .client
             .request_read(

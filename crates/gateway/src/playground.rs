@@ -66,8 +66,8 @@ fn signed_in(state: &ServeState, headers: &HeaderMap) -> Result<String, Response
     cookie_token(headers).ok_or_else(|| {
         page_error(
             StatusCode::UNAUTHORIZED,
-            "sign in required",
-            "no session cookie — sign in with a session token",
+            "Sign-in required",
+            "You're not signed in. Sign in with a session token.",
         )
     })
 }
@@ -149,22 +149,22 @@ fn items_of(form: &RunForm) -> Result<Vec<(String, String)>, Response> {
     if items.is_empty() {
         return Err(page_error(
             StatusCode::UNPROCESSABLE_ENTITY,
-            "no items",
-            "paste at least one item — one per line, or upload a dataset file",
+            "No items",
+            "Paste at least one item, one per line, or upload a file.",
         ));
     }
     if items.len() > MAX_ITEMS {
         return Err(page_error(
             StatusCode::UNPROCESSABLE_ENTITY,
-            "too many items",
-            &format!("the playground bounds a run at {MAX_ITEMS} items"),
+            "Too many items",
+            &format!("The playground runs at most {MAX_ITEMS} items at a time."),
         ));
     }
     if let Some((id, _)) = items.iter().find(|(_, text)| text.len() > MAX_ITEM_BYTES) {
         return Err(page_error(
             StatusCode::UNPROCESSABLE_ENTITY,
-            "item too large",
-            &format!("{id} exceeds the {MAX_ITEM_BYTES}-byte item bound"),
+            "Item too large",
+            &format!("{id} is larger than the {MAX_ITEM_BYTES}-byte limit for an item."),
         ));
     }
     Ok(items)
@@ -185,8 +185,8 @@ fn labels_of(form: &RunForm) -> Result<Vec<classify::Label>, Response> {
     if labels.len() > MAX_LABELS {
         return Err(page_error(
             StatusCode::UNPROCESSABLE_ENTITY,
-            "too many labels",
-            &format!("the playground bounds a label set at {MAX_LABELS}"),
+            "Too many labels",
+            &format!("The playground accepts at most {MAX_LABELS} labels."),
         ));
     }
     Ok(labels)
@@ -204,8 +204,8 @@ fn envelope(form: &RunForm, items: &[(String, String)]) -> Result<Value, Respons
         _ => {
             return Err(page_error(
                 StatusCode::UNPROCESSABLE_ENTITY,
-                "unknown mode",
-                "mode is one of single-label, multi-label, binary, score",
+                "Unknown mode",
+                "Choose one of these modes: single-label, multi-label, binary, or score.",
             ));
         }
     };
@@ -264,8 +264,8 @@ fn envelope(form: &RunForm, items: &[(String, String)]) -> Result<Value, Respons
         if !(2..=10).contains(&levels.len()) {
             return Err(page_error(
                 StatusCode::UNPROCESSABLE_ENTITY,
-                "score needs a rubric",
-                "a score run declares 2–10 comma-separated rubric levels",
+                "Score needs a rubric",
+                "For score mode, enter 2–10 rubric levels, separated by commas.",
             ));
         }
         request["mode"] = json!("score");
@@ -274,8 +274,8 @@ fn envelope(form: &RunForm, items: &[(String, String)]) -> Result<Value, Respons
         if labels.is_empty() {
             return Err(page_error(
                 StatusCode::UNPROCESSABLE_ENTITY,
-                "no labels",
-                "declare at least one comma-separated label",
+                "No labels",
+                "Enter at least one label. Separate labels with commas.",
             ));
         }
         request["mode"] = json!(mode);
@@ -294,22 +294,22 @@ fn run_request(form: &RunForm, items: &[(String, String)]) -> Result<Value, Resp
     if pasted.len() > MAX_UPLOAD_BYTES {
         return Err(page_error(
             StatusCode::UNPROCESSABLE_ENTITY,
-            "envelope too large",
-            &format!("a pasted envelope is bounded at {MAX_UPLOAD_BYTES} bytes"),
+            "Request too large",
+            &format!("A pasted request can be at most {MAX_UPLOAD_BYTES} bytes."),
         ));
     }
     let request: Value = serde_json::from_str(pasted).map_err(|_| {
         page_error(
             StatusCode::UNPROCESSABLE_ENTITY,
-            "envelope does not parse",
-            "the override must be a JSON object",
+            "Request isn't valid JSON",
+            "The pasted request must be a JSON object.",
         )
     })?;
     if request["v"].as_str() != Some(classify::SCHEMA) {
         return Err(page_error(
             StatusCode::UNPROCESSABLE_ENTITY,
-            "not a classify envelope",
-            &format!("the override must declare `v: {}`", classify::SCHEMA),
+            "Not a classify request",
+            &format!("Set `v` to `{}` in the pasted request.", classify::SCHEMA),
         ));
     }
     Ok(request)
@@ -510,7 +510,7 @@ fn native_rows(body: &Value) -> String {
             let value = answer[kind].clone();
             let detail = match kind {
                 "choice" | "score" => format!(
-                    "{} <span class=\"dim\">confidence {}</span>",
+                    "{} <span class=\"dim\">(confidence {})</span>",
                     value, answer["confidence"]
                 ),
                 _ => value.to_string(),
@@ -531,7 +531,7 @@ fn native_rows(body: &Value) -> String {
         }
     }
     if rows.is_empty() {
-        rows.push_str("<tr><td colspan=\"3\" class=\"dim\">no answers</td></tr>");
+        rows.push_str("<tr><td colspan=\"3\" class=\"dim\">No answers</td></tr>");
     }
     rows
 }
@@ -561,7 +561,7 @@ fn result_rows(body: &Value) -> String {
                 detail.push_str(&format!(" score {:.2}", score));
             }
             if unit["uncertain"].as_bool() == Some(true) {
-                detail.push_str(" <strong>review</strong>");
+                detail.push_str(" <strong>needs review</strong>");
             }
             if let Some(review) = unit.get("review") {
                 detail.push_str(&format!(" reviewed: {}", esc(&review.to_string())));
@@ -581,7 +581,7 @@ fn result_rows(body: &Value) -> String {
         ));
     }
     if rows.is_empty() {
-        rows.push_str("<tr><td colspan=\"3\" class=\"dim\">no results</td></tr>");
+        rows.push_str("<tr><td colspan=\"3\" class=\"dim\">No results</td></tr>");
     }
     rows
 }
@@ -597,25 +597,25 @@ fn run_footer(
 ) -> String {
     let usage = body.get("usage").cloned().unwrap_or(json!({}));
     let receipt = receipt
-        .map(|digest| format!("<p>receipt <code>{}</code></p>", esc(digest)))
+        .map(|digest| format!("<p>Call receipt: <code>{}</code></p>", esc(digest)))
         .unwrap_or_default();
     let served = body["served"]["model"]
         .as_str()
-        .map(|model| format!("served by <code>{}</code>", esc(model)))
+        .map(|model| format!("answered by <code>{}</code>", esc(model)))
         .unwrap_or_default();
     let badge = if simulated {
-        r#"<p class="err"><strong>SIMULATED</strong> — deterministic synthetic answers; nothing was forwarded and nothing was billed.</p>"#
+        r#"<p class="err"><strong>SIMULATED</strong>: These answers are made up for testing. No model was called, and you weren't charged.</p>"#
     } else {
         ""
     };
     let request_json = esc(&serde_json::to_string_pretty(request).unwrap_or_default());
     format!(
         r#"{badge}
-        <h2>call</h2>
-        <p class="dim">model <code>{}</code> {served} · {} ms · usage <code>{}</code></p>
+        <h2>Call details</h2>
+        <p class="dim">Model <code>{}</code> {served} · {} ms · Usage <code>{}</code></p>
         {receipt}
-        <h2>export</h2>
-        <p class="dim">Equivalent request — <code>POST {verb}</code>:</p>
+        <h2>Same request from your code</h2>
+        <p class="dim">To make this call yourself, send this body to <code>POST {verb}</code>:</p>
         <pre><code>{request_json}</code></pre>"#,
         esc(body["model"].as_str().unwrap_or("simulated")),
         elapsed_ms,
@@ -628,16 +628,16 @@ fn run_footer(
 async fn form_page(State(state): State<Arc<ServeState>>, headers: HeaderMap) -> Response {
     if principal_of(&state, &headers).is_err() {
         return page(
-            "playground",
+            "Playground",
             None,
-            r#"<h1>playground</h1>
-            <p>Sign in with a session token to try decision workflows — the same
-            <code>sess_…</code> the dashboard uses.</p>
+            r#"<h1>Playground</h1>
+            <p>To try the decision API, sign in with a session token. It's the same
+            <code>sess_…</code> token the dashboard uses.</p>
             <form method="post" action="/playground/session">
-            <label>session token <input name="token" type="password" size="48" required autocomplete="off"></label>
-            <button type="submit">sign in</button></form>
-            <p class="dim">Runs against your own workspaces and doors; the simulated lane needs
-            no backend and bills nothing.</p>"#,
+            <label>Your session token <input name="token" type="password" size="48" required autocomplete="off"></label>
+            <button type="submit">Sign in</button></form>
+            <p class="dim">Calls run in your own workspaces with the models your account can use.
+            Simulated runs call no model and cost nothing.</p>"#,
         )
         .into_response();
     }
@@ -664,54 +664,54 @@ async fn form_page(State(state): State<Arc<ServeState>>, headers: HeaderMap) -> 
         }
     }
     page(
-        "playground",
+        "Playground",
         None,
         &format!(
-            r#"<h1>playground</h1>
-            <p>Run a bounded classification and inspect the exact request, answers,
-            uncertainty, usage, and receipt. Check <strong>simulate</strong> for a
-            deterministic synthetic run that bills nothing.</p>
+            r#"<h1>Playground</h1>
+            <p>Classify a few items and see the exact request, the answers, how
+            confident each answer is, the usage, and the receipt. To test without calling a
+            model or being charged, select <strong>Simulate</strong>.</p>
             <form method="post" action="/playground/run">
-            <p><label>workspace <input name="workspace" size="28" required></label>
-            <label>model <input name="model" list="doors" size="20" required>
+            <p><label>Workspace <input name="workspace" size="28" required></label>
+            <label>Model <input name="model" list="doors" size="20" required>
             <datalist id="doors">{options}</datalist></label>
-            <label>mode <select name="mode">
+            <label>Mode <select name="mode">
             <option>single-label</option><option>multi-label</option>
             <option>binary</option><option>score</option></select></label></p>
-            <p><label>labels <input name="labels" size="40" placeholder="a,b,c"></label>
-            <label>score rubric <input name="levels" size="30" placeholder="low,medium,high"></label></p>
-            <p><label>threshold <input name="threshold" size="6" placeholder="0.5"></label>
-            <label>review below <input name="uncertain_below" size="6" placeholder="0.7"></label>
-            <label>instructions <input name="instructions" size="30"></label></p>
-            <p><label>items, one per line<br>
+            <p><label>Labels, separated by commas <input name="labels" size="40" placeholder="a,b,c"></label>
+            <label>Score levels, lowest first <input name="levels" size="30" placeholder="low,medium,high"></label></p>
+            <p><label>Threshold <input name="threshold" size="6" placeholder="0.5"></label>
+            <label>Flag for review below <input name="uncertain_below" size="6" placeholder="0.7"></label>
+            <label>Instructions <input name="instructions" size="30"></label></p>
+            <p><label>Items, one per line<br>
             <textarea name="items" rows="8" cols="72"></textarea></label></p>
-            <details><summary>envelope override — dimensions, capacity, and review the form does not name</summary>
-            <p><label><code>openagents.classify.v1</code> document<br>
+            <details><summary>Paste a full request (for dimensions, capacity, or review settings that this form doesn't have)</summary>
+            <p><label>An <code>openagents.classify.v1</code> request<br>
             <textarea name="envelope" rows="6" cols="72" placeholder='{{"v":"openagents.classify.v1", …}}'></textarea></label>
-            <span class="dim">when set, the document runs verbatim — only workspace and the
-            simulate flag still apply.</span></p></details>
-            <p><label>or upload a file
-            <input type="file" form="upload" disabled title="use POST /playground/upload"></label>
-            <label><input type="checkbox" name="simulate"> simulate — deterministic, unbilled</label></p>
-            <p><button type="submit">run</button>
-            <a href="/playground/chat">chat demo</a></p>
+            <span class="dim">If you paste a request, it runs exactly as written. Only the
+            Workspace field and the Simulate checkbox still apply.</span></p></details>
+            <p><label>Or upload a file
+            <input type="file" form="upload" disabled title="Use the upload form below"></label>
+            <label><input type="checkbox" name="simulate"> Simulate (made-up answers, no charge)</label></p>
+            <p><button type="submit">Run</button>
+            <a href="/playground/chat">Try the chat demo</a></p>
             </form>
-            <h2>native judgments — <code>POST /v1/systemone</code></h2>
+            <h2>Ask typed questions with <code>POST /v1/systemone</code></h2>
             <form method="post" action="/playground/native">
-            <p><label>workspace <input name="workspace" size="28" required></label>
-            <label>model <input name="model" list="doors" size="20" required></label>
-            <label><input type="checkbox" name="simulate"> simulate</label></p>
-            <p><label>state<br><textarea name="state" rows="3" cols="72" required></textarea></label></p>
-            <p><label>questions — the JSON map <code>POST /v1/systemone</code> takes<br>
+            <p><label>Workspace <input name="workspace" size="28" required></label>
+            <label>Model <input name="model" list="doors" size="20" required></label>
+            <label><input type="checkbox" name="simulate"> Simulate</label></p>
+            <p><label>State (the text or JSON to judge)<br><textarea name="state" rows="3" cols="72" required></textarea></label></p>
+            <p><label>Questions, as the JSON object that <code>POST /v1/systemone</code> takes<br>
             <textarea name="questions" rows="6" cols="72" placeholder='{{"q":{{"type":"noul","instructions":"…","criteria":"…"}}}}' required></textarea></label></p>
-            <p><button type="submit">ask</button></p></form>
+            <p><button type="submit">Ask</button></p></form>
             <form method="post" action="/playground/upload" enctype="multipart/form-data" id="upload">
-            <p class="dim">dataset file (one item per line, ≤64 KiB):
+            <p class="dim">Upload a text file with one item per line, up to 64 KiB:
             <input type="file" name="file" required>
             <input type="hidden" name="workspace" value="">
-            <button type="submit">upload</button></p></form>
-            <p class="dim">Bounds: {MAX_ITEMS} items, {MAX_ITEM_BYTES} bytes each,
-            {MAX_LABELS} labels. Nothing is persisted — the results page is the whole record.</p>"#
+            <button type="submit">Upload</button></p></form>
+            <p class="dim">Limits: {MAX_ITEMS} items, {MAX_ITEM_BYTES} bytes per item, and
+            {MAX_LABELS} labels. The playground doesn't save your runs. The results page is the only copy.</p>"#
         ),
     )
     .into_response()
@@ -755,11 +755,11 @@ async fn run(
         });
         let rows = result_rows(&body);
         return page(
-            "simulated run",
+            "Simulated run",
             None,
             &format!(
-                r#"<h1>results</h1>
-                <table><tr><th>input</th><th>outcome</th><th>units</th></tr>{rows}</table>
+                r#"<h1>Results</h1>
+                <table><tr><th>Item</th><th>Outcome</th><th>Answers</th></tr>{rows}</table>
                 {}"#,
                 run_footer(
                     &body,
@@ -806,20 +806,16 @@ async fn run(
         let detail = body["error"]["message"]
             .as_str()
             .or_else(|| body["error"]["code"].as_str())
-            .unwrap_or("the call was refused");
-        return page_error(
-            status,
-            "call refused",
-            &format!("{} — see the equivalent request below", detail),
-        );
+            .unwrap_or("The call was refused.");
+        return page_error(status, "Call refused", detail);
     }
     let rows = result_rows(&body);
     page(
-        "run results",
+        "Run results",
         None,
         &format!(
-            r#"<h1>results</h1>
-            <table><tr><th>input</th><th>outcome</th><th>units</th></tr>{rows}</table>
+            r#"<h1>Results</h1>
+            <table><tr><th>Item</th><th>Outcome</th><th>Answers</th></tr>{rows}</table>
             {}"#,
             run_footer(
                 &body,
@@ -849,15 +845,15 @@ async fn native(
     if form.state.is_empty() || form.state.len() > MAX_ITEM_BYTES {
         return page_error(
             StatusCode::UNPROCESSABLE_ENTITY,
-            "state out of bounds",
-            &format!("a state runs 1–{MAX_ITEM_BYTES} bytes"),
+            "State is empty or too long",
+            &format!("Enter a state from 1 to {MAX_ITEM_BYTES} bytes long."),
         );
     }
     if form.questions.len() > MAX_UPLOAD_BYTES {
         return page_error(
             StatusCode::UNPROCESSABLE_ENTITY,
-            "questions too large",
-            &format!("a questions document is bounded at {MAX_UPLOAD_BYTES} bytes"),
+            "Questions too large",
+            &format!("The questions can be at most {MAX_UPLOAD_BYTES} bytes."),
         );
     }
     let questions: Value = match serde_json::from_str::<Value>(&form.questions) {
@@ -865,8 +861,8 @@ async fn native(
         _ => {
             return page_error(
                 StatusCode::UNPROCESSABLE_ENTITY,
-                "questions do not parse",
-                "the questions field takes the JSON map a `POST /v1/systemone` request takes",
+                "Questions aren't valid",
+                "Enter the questions as the JSON object that a `POST /v1/systemone` request takes.",
             );
         }
     };
@@ -876,11 +872,11 @@ async fn native(
         let body = simulated_answers(&request);
         let rows = native_rows(&body);
         return page(
-            "simulated answers",
+            "Simulated answers",
             None,
             &format!(
-                r#"<h1>answers</h1>
-                <table><tr><th>question</th><th>type</th><th>answer</th></tr>{rows}</table>
+                r#"<h1>Answers</h1>
+                <table><tr><th>Question</th><th>Type</th><th>Answer</th></tr>{rows}</table>
                 {}"#,
                 run_footer(
                     &body,
@@ -926,20 +922,16 @@ async fn native(
         let detail = body["error"]["message"]
             .as_str()
             .or_else(|| body["error"]["code"].as_str())
-            .unwrap_or("the call was refused");
-        return page_error(
-            status,
-            "call refused",
-            &format!("{} — see the equivalent request below", detail),
-        );
+            .unwrap_or("The call was refused.");
+        return page_error(status, "Call refused", detail);
     }
     let rows = native_rows(&body);
     page(
-        "native answers",
+        "Answers",
         None,
         &format!(
-            r#"<h1>answers</h1>
-            <table><tr><th>question</th><th>type</th><th>answer</th></tr>{rows}</table>
+            r#"<h1>Answers</h1>
+            <table><tr><th>Question</th><th>Type</th><th>Answer</th></tr>{rows}</table>
             {}"#,
             run_footer(
                 &body,
@@ -964,8 +956,8 @@ async fn upload(
     if signed_in(&state, &headers).is_err() {
         return page_error(
             StatusCode::UNAUTHORIZED,
-            "sign in required",
-            "no session cookie — sign in with a session token",
+            "Sign-in required",
+            "You're not signed in. Sign in with a session token.",
         );
     }
     let mut text = String::new();
@@ -976,7 +968,7 @@ async fn upload(
                 Err(trouble) => {
                     return page_error(
                         StatusCode::UNPROCESSABLE_ENTITY,
-                        "upload failed",
+                        "Upload failed",
                         &trouble.to_string(),
                     );
                 }
@@ -984,8 +976,8 @@ async fn upload(
             if bytes.len() > MAX_UPLOAD_BYTES {
                 return page_error(
                     StatusCode::UNPROCESSABLE_ENTITY,
-                    "upload too large",
-                    &format!("dataset files are bounded at {MAX_UPLOAD_BYTES} bytes"),
+                    "File too large",
+                    &format!("The file can be at most {MAX_UPLOAD_BYTES} bytes."),
                 );
             }
             text = String::from_utf8_lossy(&bytes).to_string();
@@ -993,12 +985,12 @@ async fn upload(
     }
     let count = text.lines().filter(|line| !line.trim().is_empty()).count();
     page(
-        "uploaded",
+        "File uploaded",
         None,
         &format!(
-            r#"<h1>dataset uploaded</h1>
-            <p>{count} items parsed. Copy them into the run form:</p>
-            <form method="get" action="/playground"><button type="submit">back to playground</button></form>
+            r#"<h1>File uploaded</h1>
+            <p>The file has {count} items. Copy them into the Items field of the run form:</p>
+            <form method="get" action="/playground"><button type="submit">Back to the playground</button></form>
             <pre><code>{}</code></pre>"#,
             esc(&text)
         ),
@@ -1031,9 +1023,9 @@ fn transcript(history: &str) -> String {
     let mut rendered = String::new();
     for line in history.lines() {
         if let Some(message) = line.strip_prefix("user|") {
-            rendered.push_str(&format!("<p><strong>you:</strong> {}</p>", esc(message)));
+            rendered.push_str(&format!("<p><strong>You:</strong> {}</p>", esc(message)));
         } else if let Some(message) = line.strip_prefix("assistant|") {
-            rendered.push_str(&format!("<p><strong>demo:</strong> {}</p>", esc(message)));
+            rendered.push_str(&format!("<p><strong>Demo:</strong> {}</p>", esc(message)));
         }
     }
     rendered
@@ -1044,29 +1036,29 @@ async fn chat_page(State(state): State<Arc<ServeState>>, headers: HeaderMap) -> 
     if principal_of(&state, &headers).is_err() {
         return page_error(
             StatusCode::UNAUTHORIZED,
-            "sign in required",
-            "no session cookie — sign in with a session token",
+            "Sign-in required",
+            "You're not signed in. Sign in with a session token.",
         );
     }
     page(
-        "chat demo",
+        "Chat demo",
         None,
         &format!(
-            r#"<h1>chat demo</h1>
-            <p>A bounded conversation whose only tool is the classify facade. Every
-            turn shows the actual call and answer — the demo invents nothing.</p>
+            r#"<h1>Chat demo</h1>
+            <p>A short conversation where the only tool is <code>/v1/classify</code>. Each
+            reply shows the real call and its answer. The demo doesn't make anything up.</p>
             <form method="post" action="/playground/chat">
-            <p><label>workspace <input name="workspace" size="28" required></label>
-            <label>model <input name="model" size="20" required></label>
-            <label><input type="checkbox" name="simulate"> simulate</label></p>
-            <p><label>message <input name="message" size="64" maxlength="{MAX_MESSAGE_CHARS}" required></label>
-            <button type="submit">send</button></p>
+            <p><label>Workspace <input name="workspace" size="28" required></label>
+            <label>Model <input name="model" size="20" required></label>
+            <label><input type="checkbox" name="simulate"> Simulate</label></p>
+            <p><label>Message <input name="message" size="64" maxlength="{MAX_MESSAGE_CHARS}" required></label>
+            <button type="submit">Send</button></p>
             <input type="hidden" name="history" value="">
             </form>
-            <p class="dim">Caps: {MAX_TURNS} turns, 1 tool call per turn, each bounded by the
-            facade's own limits. History lives in this page only — closing it deletes the
-            transcript. No fetching or external content: everything the tool sees is typed here.</p>
-            <p><a href="/playground">back to playground</a></p>"#
+            <p class="dim">Limits: {MAX_TURNS} messages and one tool call per message, with the same
+            limits as <code>/v1/classify</code>. The conversation exists only in this page, so closing
+            the page deletes it. The tool sees only what you type here. It doesn't fetch anything.</p>
+            <p><a href="/playground">Back to the playground</a></p>"#
         ),
     )
     .into_response()
@@ -1091,15 +1083,15 @@ async fn chat_turn(
     if turns >= MAX_TURNS {
         return page_error(
             StatusCode::UNPROCESSABLE_ENTITY,
-            "conversation complete",
-            &format!("the demo bounds a conversation at {MAX_TURNS} turns"),
+            "Conversation limit reached",
+            &format!("The demo ends a conversation after {MAX_TURNS} turns. Start a new one."),
         );
     }
     if form.message.is_empty() || form.message.chars().count() > MAX_MESSAGE_CHARS {
         return page_error(
             StatusCode::UNPROCESSABLE_ENTITY,
-            "message out of bounds",
-            &format!("messages run 1–{MAX_MESSAGE_CHARS} characters"),
+            "Message is empty or too long",
+            &format!("Enter a message from 1 to {MAX_MESSAGE_CHARS} characters long."),
         );
     }
     // The tool call: classify the message's intent over a fixed set —
@@ -1125,7 +1117,7 @@ async fn chat_turn(
             .map(|(_, intent)| intent.to_string());
         (
             json!({"selected": picked, "uncertain": false}),
-            "SIMULATED — no backend was called and nothing was billed".to_string(),
+            "SIMULATED: no model was called, and you weren't charged".to_string(),
         )
     } else {
         let idempotency = format!(
@@ -1149,14 +1141,14 @@ async fn chat_turn(
         if body["error"].is_object() {
             (
                 json!({"refused": body["error"]["code"]}),
-                "the tool refused — the refusal is the answer".to_string(),
+                "the tool refused the call, and that refusal is the answer".to_string(),
             )
         } else {
             let unit = body["results"][0]["units"][0].clone();
             (
                 unit,
                 format!(
-                    "live call · outcome {}",
+                    "real call, outcome: {}",
                     body["outcome"].as_str().unwrap_or("?")
                 ),
             )
@@ -1169,7 +1161,7 @@ async fn chat_turn(
              To run it as a classification, paste it into the <a href=\"/playground\">playground</a>.",
             intent = esc(intent),
         ),
-        _ => format!("The tool did not select an intent ({note})."),
+        _ => format!("The tool didn't choose an intent ({note})."),
     };
     let history = format!(
         "{}user|{}\nassistant|{}",
@@ -1182,21 +1174,21 @@ async fn chat_turn(
         reply.replace(['\n', '|'], " "),
     );
     page(
-        "chat demo",
+        "Chat demo",
         None,
         &format!(
-            r#"<h1>chat demo</h1>
+            r#"<h1>Chat demo</h1>
             {}
             <form method="post" action="/playground/chat">
-            <p><label>message <input name="message" size="64" maxlength="{MAX_MESSAGE_CHARS}" required></label>
-            <button type="submit">send</button></p>
+            <p><label>Message <input name="message" size="64" maxlength="{MAX_MESSAGE_CHARS}" required></label>
+            <button type="submit">Send</button></p>
             <input type="hidden" name="workspace" value="{}">
             <input type="hidden" name="model" value="{}">
             <input type="hidden" name="history" value="{}">
             {}
             </form>
-            <p class="dim">turn {}/{MAX_TURNS} · the transcript is this page's form state — nothing is stored server-side</p>
-            <p><a href="/playground">back to playground</a></p>"#,
+            <p class="dim">This is turn {}/{MAX_TURNS}. The conversation exists only in this page. The server doesn't store it.</p>
+            <p><a href="/playground">Back to the playground</a></p>"#,
             transcript(&history),
             esc(&form.workspace),
             esc(&form.model),

@@ -470,8 +470,8 @@ impl std::fmt::Display for Trouble {
             Self::Invalid(message) => write!(f, "{message}"),
             Self::Locked(path) => write!(
                 f,
-                "another writer holds {path}. The store takes one writer at a time: \
-                 wait for it to finish, or remove the lock file if no writer is running"
+                "another process is writing {path}. Only one process can write at a time: \
+                 wait for it to finish, or remove the lock file if no other process is running"
             ),
             Self::UnknownRevision(digest) => {
                 write!(f, "no archived revision carries digest `{digest}`")
@@ -556,29 +556,32 @@ impl std::fmt::Display for Refusal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Authentication(cause) => write!(f, "{cause}"),
-            Self::TenantMismatch => write!(f, "the key does not belong to this workspace's tenant"),
+            Self::TenantMismatch => write!(f, "this API key doesn't belong to this workspace"),
             Self::Store(trouble) => write!(f, "{trouble}"),
             Self::UnknownAccount(account) => {
-                write!(f, "`{account}` is not an account this store holds")
+                write!(f, "account `{account}` doesn't exist")
             }
             Self::UnknownWorkspace(workspace) => {
-                write!(f, "`{workspace}` is not a workspace this store holds")
+                write!(f, "workspace `{workspace}` doesn't exist")
             }
             Self::UnknownPrincipal(principal) => {
-                write!(f, "principal `{principal}` resolves to no account")
+                write!(
+                    f,
+                    "sign-in identity `{principal}` isn't linked to an account"
+                )
             }
             Self::PrincipalTaken { principal, account } => write!(
                 f,
-                "principal `{principal}` is already bound to account `{account}`"
+                "sign-in identity `{principal}` is already linked to account `{account}`"
             ),
             Self::NotMember { workspace, account } => write!(
                 f,
-                "account `{account}` holds no active membership in workspace \
+                "account `{account}` isn't an active member of workspace \
                  `{workspace}`"
             ),
             Self::Revoked { workspace, account } => write!(
                 f,
-                "account `{account}`'s membership in workspace `{workspace}` is revoked"
+                "account `{account}` was removed from workspace `{workspace}`"
             ),
             Self::AlreadyMember { workspace, account } => write!(
                 f,
@@ -591,18 +594,18 @@ impl std::fmt::Display for Refusal {
                 action,
             } => write!(
                 f,
-                "account `{account}`'s role in workspace `{workspace}` does not cover \
+                "account `{account}`'s role in workspace `{workspace}` doesn't allow \
                  {action}"
             ),
             Self::PersonalWorkspace(workspace) => write!(
                 f,
-                "workspace `{workspace}` is personal — it holds its owner and no one \
-                 else"
+                "workspace `{workspace}` is a personal workspace, so only its owner \
+                 can be a member"
             ),
             Self::SeatLimit { workspace, seats } => write!(
                 f,
-                "workspace `{workspace}` is at its {seats}-seat limit — a seat frees \
-                 when a member is removed or an invitation lapses"
+                "workspace `{workspace}` has used all {seats} seats. Remove a member \
+                 or cancel an invitation to free a seat"
             ),
             Self::SeatsBelowMembers {
                 workspace,
@@ -610,42 +613,45 @@ impl std::fmt::Display for Refusal {
                 members,
             } => write!(
                 f,
-                "workspace `{workspace}` holds {members} active members — seats cannot \
-                 drop to {seats} below them"
+                "workspace `{workspace}` has {members} active members, so you can't \
+                 reduce its seats to {seats}"
             ),
             Self::LastOwner { workspace } => write!(
                 f,
-                "workspace `{workspace}` would be left without an owner — transfer \
-                 ownership first"
+                "this change would leave workspace `{workspace}` without an owner; \
+                 transfer ownership to another member first"
             ),
             Self::OwnerByInvitation { workspace } => write!(
                 f,
-                "workspace `{workspace}` cannot grant ownership by invitation — \
-                 ownership moves only by transfer"
+                "you can't invite someone as an owner of workspace `{workspace}`; \
+                 invite them as a member or admin, then transfer ownership"
             ),
             Self::OwnershipByTransfer { workspace } => write!(
                 f,
-                "workspace `{workspace}` grants ownership only through transfer"
+                "to make someone an owner of workspace `{workspace}`, transfer ownership to them"
             ),
             Self::MalformedInvitation => {
                 write!(
                     f,
-                    "the token is not an `{INVITE_PREFIX}_<id>.<secret>` invitation"
+                    "the invitation token isn't valid; ask for a new invitation"
                 )
             }
             Self::UnknownInvitation(id) => {
-                write!(f, "invitation `{id}` is not one this store issued")
+                write!(f, "invitation `{id}` doesn't exist")
             }
             Self::WrongSecret(id) => {
-                write!(f, "invitation `{id}`'s secret does not match")
+                write!(
+                    f,
+                    "the invitation token for `{id}` isn't valid; ask for a new invitation"
+                )
             }
             Self::InvitationClosed { id, status } => write!(
                 f,
-                "invitation `{id}` is already {} — an invitation is single-use",
+                "invitation `{id}` is already {}; each invitation works only once",
                 invite_status_name(*status)
             ),
             Self::InvitationExpired(id) => {
-                write!(f, "invitation `{id}` has expired")
+                write!(f, "invitation `{id}` has expired; ask for a new invitation")
             }
             Self::EmptyField(field) => write!(f, "{field} must not be empty"),
         }

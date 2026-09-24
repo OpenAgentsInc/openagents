@@ -115,7 +115,7 @@ fn store_of(state: &ServeState) -> Result<Billing, Response> {
         refused(
             StatusCode::SERVICE_UNAVAILABLE,
             "billing_unavailable",
-            format!("the billing store is unavailable: {trouble}"),
+            format!("The service can't read billing records right now. Try again later. Details: {trouble}"),
         )
     })
 }
@@ -165,7 +165,7 @@ fn owner(
         return Err(refused(
             StatusCode::FORBIDDEN,
             "forbidden",
-            "managing billing takes the workspace's owner",
+            "Only the workspace owner can manage billing.",
         ));
     }
     Ok((principal, member))
@@ -186,7 +186,7 @@ fn ledger_refusal(error: String) -> Response {
     refused(
         StatusCode::SERVICE_UNAVAILABLE,
         "ledger_unavailable",
-        format!("the money ledger refused the billing mutation: {error}"),
+        format!("The service couldn't update the workspace balance: {error}"),
     )
 }
 
@@ -439,8 +439,8 @@ async fn webhook(
                 StatusCode::SERVICE_UNAVAILABLE,
                 "webhook_unconfigured",
                 format!(
-                    "the webhook secret env `{}` is unset — provider events \
-                     cannot be verified",
+                    "The environment variable `{}` isn't set, so the service can't \
+                     verify payment provider events.",
                     config.webhook_secret_env
                 ),
             );
@@ -450,7 +450,7 @@ async fn webhook(
         return refused(
             StatusCode::UNAUTHORIZED,
             "bad_signature",
-            format!("a provider event carries `{SIGNATURE_HEADER}`"),
+            format!("The event is missing the `{SIGNATURE_HEADER}` header."),
         );
     };
     let mut timestamp = None;
@@ -467,7 +467,7 @@ async fn webhook(
         return refused(
             StatusCode::UNAUTHORIZED,
             "bad_signature",
-            format!("`{SIGNATURE_HEADER}` is `t=<unix>,v1=<hex>`"),
+            format!("The `{SIGNATURE_HEADER}` header must have the form `t=<unix>,v1=<hex>`."),
         );
     };
     let now = unix_now();
@@ -475,7 +475,7 @@ async fn webhook(
         return refused(
             StatusCode::UNAUTHORIZED,
             "bad_signature",
-            "the event's signature timestamp is outside the accepted skew",
+            "The event's signature timestamp is too far from the current time.",
         );
     }
     let mut mac = <Hmac<Sha256> as Mac>::new_from_slice(secret.as_bytes())
@@ -487,14 +487,14 @@ async fn webhook(
         return refused(
             StatusCode::UNAUTHORIZED,
             "bad_signature",
-            "the event's signature is not hex",
+            "The event's signature isn't hexadecimal.",
         );
     };
     if mac.verify_slice(&tag).is_err() {
         return refused(
             StatusCode::UNAUTHORIZED,
             "bad_signature",
-            "the event's signature does not verify",
+            "The event's signature doesn't match its body.",
         );
     }
     let event: Event = match serde_json::from_slice(&body) {
@@ -503,7 +503,7 @@ async fn webhook(
             return refused(
                 StatusCode::BAD_REQUEST,
                 "malformed",
-                format!("the event body is not a provider event: {error}"),
+                format!("The request body isn't a valid payment provider event: {error}"),
             );
         }
     };
@@ -512,7 +512,7 @@ async fn webhook(
             StatusCode::BAD_REQUEST,
             "unknown_provider",
             format!(
-                "provider `{}` is not the configured `{}`",
+                "The event is from the provider `{}`, but this service uses `{}`.",
                 event.provider, config.provider
             ),
         );
@@ -702,7 +702,7 @@ async fn checkout(
                 return refused(
                     StatusCode::BAD_REQUEST,
                     "malformed",
-                    "a top-up names its `amount` in millionths",
+                    "Set `amount` to the top-up amount in millionths of the currency.",
                 );
             }
         };
@@ -710,7 +710,7 @@ async fn checkout(
             return refused(
                 StatusCode::BAD_REQUEST,
                 "malformed",
-                "a top-up amount must be positive",
+                "The top-up `amount` must be greater than zero.",
             );
         }
         let currency = top_up
@@ -734,7 +734,7 @@ async fn checkout(
             return refused(
                 StatusCode::PAYMENT_REQUIRED,
                 "no_subscription",
-                "a top-up rides on an active subscription — subscribe first",
+                "Subscribe to a plan before you add credit.",
             );
         };
         let plan = match config
@@ -747,7 +747,7 @@ async fn checkout(
                 return refused(
                     StatusCode::SERVICE_UNAVAILABLE,
                     "unknown_plan",
-                    format!("plan `{}` is no longer configured", subscription.plan),
+                    format!("The plan `{}` is no longer offered.", subscription.plan),
                 );
             }
         };
@@ -755,14 +755,14 @@ async fn checkout(
             return refused(
                 StatusCode::FORBIDDEN,
                 "topups_closed",
-                format!("plan `{}` does not take top-ups", plan.id),
+                format!("The plan `{}` doesn't allow adding credit.", plan.id),
             );
         }
         if subscription.state == SubscriptionState::Expired {
             return refused(
                 StatusCode::PAYMENT_REQUIRED,
                 "subscription_expired",
-                "the subscription has expired — renew before topping up",
+                "Your subscription has expired. Renew it before you add credit.",
             );
         }
         // A top-up settles in the account's currency — buying credit in
@@ -773,7 +773,7 @@ async fn checkout(
                 StatusCode::BAD_REQUEST,
                 "currency_mismatch",
                 format!(
-                    "a top-up settles in the plan's currency `{}`",
+                    "Pay for a top-up in the plan's currency, `{}`.",
                     plan.price.currency
                 ),
             );
@@ -899,8 +899,8 @@ async fn plan_change(
                     StatusCode::CONFLICT,
                     "seats_below_members",
                     format!(
-                        "plan `{}` covers {seats} seats but the workspace holds \
-                         {active} active members",
+                        "The plan `{}` with {seats} seats is too small: the workspace \
+                         has {active} active members. Remove members or choose more seats.",
                         plan.id
                     ),
                 );
@@ -933,7 +933,7 @@ async fn plan_change(
         StatusCode::OK,
         json!({
             "subscription": subscription,
-            "notice": format!("the change to `{}` lands at the next paid renewal", plan.id),
+            "notice": format!("Your plan changes to `{}` at your next paid renewal.", plan.id),
         }),
     )
 }
@@ -1320,7 +1320,7 @@ pub(crate) fn entitled(
     let workspace = workspace.ok_or((
         StatusCode::PAYMENT_REQUIRED,
         "no_subscription",
-        "billing admission requires a workspace".to_string(),
+        "Paid calls need a workspace. Send an `X-Workspace-Id` header.".to_string(),
     ))?;
     let store = Billing::open(&state.dir)
         .and_then(|billing| billing.store())
@@ -1328,7 +1328,7 @@ pub(crate) fn entitled(
             (
                 StatusCode::SERVICE_UNAVAILABLE,
                 "billing_unavailable",
-                format!("the billing store is unavailable: {trouble}"),
+                format!("The service can't read billing records right now. Try again later. Details: {trouble}"),
             )
         })?;
     store

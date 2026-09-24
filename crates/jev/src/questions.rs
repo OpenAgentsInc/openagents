@@ -48,8 +48,9 @@ impl Entry {
     ///
     /// Returns [`Error::Config`] when the value does not serialize.
     pub fn json<T: Serialize>(value: &T) -> Result<Self> {
-        let value = serde_json::to_value(value)
-            .map_err(|error| Error::Config(format!("the value is not JSON: {error}")))?;
+        let value = serde_json::to_value(value).map_err(|error| {
+            Error::Config(format!("the value can't be encoded as JSON: {error}"))
+        })?;
         Ok(Self::from(value))
     }
 
@@ -441,7 +442,7 @@ impl Questions {
         if self.0.is_empty() {
             return Err(Error::Question {
                 id: String::new(),
-                message: "a request asks at least one question".to_string(),
+                message: "a request must ask at least one question".to_string(),
             });
         }
         for (id, question) in self.iter() {
@@ -485,7 +486,7 @@ fn check_score(id: &str, levels: usize) -> Result<()> {
         return Err(Error::Question {
             id: id.to_string(),
             message: format!(
-                "a Score question names at least {MIN_SCORE_LEVELS} levels, and this one names {levels}"
+                "a Score question needs at least {MIN_SCORE_LEVELS} levels, but this one has {levels}"
             ),
         });
     }
@@ -493,7 +494,7 @@ fn check_score(id: &str, levels: usize) -> Result<()> {
         return Err(Error::Question {
             id: id.to_string(),
             message: format!(
-                "a Score question names at most {MAX_SCORE_LEVELS} levels, and this one names {levels}"
+                "a Score question can have at most {MAX_SCORE_LEVELS} levels, but this one has {levels}"
             ),
         });
     }
@@ -506,7 +507,7 @@ fn check_choice(id: &str, options: usize) -> Result<()> {
         return Err(Error::Question {
             id: id.to_string(),
             message: format!(
-                "a Choice question names at most {MAX_CHOICE_OPTIONS} options, and this one names {options}"
+                "a Choice question can have at most {MAX_CHOICE_OPTIONS} options, but this one has {options}"
             ),
         });
     }
@@ -522,12 +523,12 @@ fn check_raw(id: &str, value: &Value) -> Result<()> {
         .filter(|kind| !kind.is_empty())
         .ok_or_else(|| Error::Question {
             id: id.to_string(),
-            message: "a question written out as JSON names a nonempty `type`".to_string(),
+            message: "a question written as JSON needs a nonempty `type`".to_string(),
         })?;
     if matches!(kind, "choice" | "score") && value.get("criteria").is_none() {
         return Err(Error::Question {
             id: id.to_string(),
-            message: format!("a {kind} question names `criteria`"),
+            message: format!("a {kind} question needs `criteria`"),
         });
     }
     match kind {

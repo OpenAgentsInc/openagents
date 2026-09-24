@@ -137,8 +137,9 @@ impl SystemOneRequest {
         );
         body.insert(
             "questions".to_string(),
-            serde_json::to_value(&self.questions)
-                .map_err(|error| Error::Config(format!("the questions are not JSON: {error}")))?,
+            serde_json::to_value(&self.questions).map_err(|error| {
+                Error::Config(format!("the questions can't be encoded as JSON: {error}"))
+            })?,
         );
         for (name, value) in &self.extra_body {
             body.insert(name.clone(), value.clone());
@@ -311,8 +312,11 @@ impl Client {
     /// attempt.
     fn prepare_system_one(&self, request: &SystemOneRequest) -> Result<Prepared> {
         let body = request.body(&self.inner.default_model)?;
-        let encoded = serde_json::to_vec(&Value::Object(body))
-            .map_err(|error| Error::Config(format!("the request body is not JSON: {error}")))?;
+        let encoded = serde_json::to_vec(&Value::Object(body)).map_err(|error| {
+            Error::Config(format!(
+                "the request body can't be encoded as JSON: {error}"
+            ))
+        })?;
         self.prepare(
             Method::POST,
             SYSTEM_ONE_PATH,
@@ -724,7 +728,9 @@ impl BlockingClient {
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
-            .map_err(|error| Error::Config(format!("the runtime did not start: {error}")))?;
+            .map_err(|error| {
+                Error::Config(format!("the SDK couldn't start its async runtime: {error}"))
+            })?;
         Ok(Self {
             client: Client::new(config)?,
             runtime,

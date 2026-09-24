@@ -115,13 +115,13 @@ static DOCUMENTS: &[Document] = &[
     ),
     doc(
         "/plugins/claude/.claude-plugin/plugin.json",
-        "claude plugin manifest",
+        "Claude Code plugin manifest",
         plugins::CLAUDE_MANIFEST,
         Repr::Json,
     ),
     doc(
         "/plugins/claude/.mcp.json",
-        "claude MCP servers",
+        "Claude Code MCP servers",
         plugins::CLAUDE_MCP,
         Repr::Json,
     ),
@@ -133,13 +133,13 @@ static DOCUMENTS: &[Document] = &[
     ),
     doc(
         "/plugins/codex/.codex-plugin/plugin.json",
-        "codex plugin manifest",
+        "Codex plugin manifest",
         plugins::CODEX_MANIFEST,
         Repr::Json,
     ),
     doc(
         "/plugins/codex/.mcp.json",
-        "codex MCP servers",
+        "Codex MCP servers",
         plugins::CODEX_MCP,
         Repr::Json,
     ),
@@ -154,27 +154,27 @@ static DOCUMENTS: &[Document] = &[
 /// The generated-document routes: computed per request so the served
 /// origin folds into every link and canonical.
 const GENERATED: &[(&str, &str)] = &[
-    ("/api", "API index — every surface, its version, its auth"),
-    ("/.well-known/agent-card.json", "A2A-format agent card"),
     (
-        "/.well-known/agent-skills/index.json",
-        "agent-skills discovery index",
+        "/api",
+        "API index: every API, its version, and how to authenticate",
     ),
+    ("/.well-known/agent-card.json", "A2A-format agent card"),
+    ("/.well-known/agent-skills/index.json", "Agent skills index"),
     (
         "/mcp/server-card.json",
-        "MCP server card — transport, sessions, tools",
+        "MCP server card: transport, sessions, and tools",
     ),
-    ("/sitemap.xml", "crawler sitemap"),
-    ("/robots.txt", "crawl rules"),
+    ("/sitemap.xml", "Sitemap for search engines"),
+    ("/robots.txt", "Rules for web crawlers"),
 ];
 
 /// The versioned docs API — the same corpus the MCP documentation
 /// tools read, over unauthenticated HTTP.
 const DOCS_API: &[(&str, &str)] = &[
-    ("/v1/docs", "list bundled documentation"),
-    ("/v1/docs/search?q=quota", "search the corpus"),
-    ("/v1/docs/examples", "list bundled examples"),
-    ("/v1/docs/caller", "read a bounded page by document id"),
+    ("/v1/docs", "List the documentation"),
+    ("/v1/docs/search?q=quota", "Search the documentation"),
+    ("/v1/docs/examples", "List the examples"),
+    ("/v1/docs/caller", "Read one page of a document by its ID"),
 ];
 
 /// The route table the public surface mounts, as `(path, handler)`
@@ -370,7 +370,7 @@ async fn api_index(State(state): State<Arc<ServeState>>, headers: HeaderMap) -> 
                     "API index",
                     &canonical,
                     &format!(
-                        "<h1>API index</h1><table><tr><th>path</th><th>schema</th><th>auth</th><th>contract</th></tr>{rows}</table>\
+                        "<h1>API index</h1><table><tr><th>Path</th><th>Schema</th><th>Authentication</th><th>Contract</th></tr>{rows}</table>\
                          <h2>Discovery</h2><ul>{links}</ul>"
                     ),
                 ),

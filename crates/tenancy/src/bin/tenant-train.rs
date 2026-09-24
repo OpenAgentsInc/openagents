@@ -25,7 +25,7 @@ use tenancy::training::Book;
 
 fn usage() -> ! {
     eprintln!(
-        "usage:\n  \
+        "Usage:\n  \
          tenant-train check    --registry DIR --corpus FILE\n  \
          tenant-train headroom --registry DIR --corpus NAME --scores FILE\n  \
          tenant-train freeze   --registry DIR --recipe FILE\n  \
@@ -77,7 +77,7 @@ fn main() {
         match fs::read_to_string(path) {
             Ok(text) => text,
             Err(error) => {
-                eprintln!("read {path}: {error}");
+                eprintln!("can't read {path}: {error}");
                 exit(1);
             }
         }
@@ -91,7 +91,7 @@ fn main() {
     match verb.as_str() {
         "check" => match book.register_corpus(&read(&corpus)) {
             Ok(corpus) => {
-                println!("corpus {} registered", corpus.name);
+                println!("Registered corpus {}. Items per partition:", corpus.name);
                 for (role, count) in corpus.counts() {
                     println!("  {role}: {count}");
                 }
@@ -107,7 +107,7 @@ fn main() {
             match book.assess(&name, &read(&scores), &now()) {
                 Ok(report) => {
                     println!(
-                        "headroom over {}: {} scored, {} failed",
+                        "Headroom against baseline model {}: {} items scored, {} failed. Failures by cause:",
                         report.baseline_door, report.scored, report.failed
                     );
                     for (cause, count) in &report.causes {
@@ -126,14 +126,19 @@ fn main() {
             }
         }
         "freeze" => match book.freeze_recipe(&read(&recipe)) {
-            Ok(recipe) => println!("recipe {} frozen\n  digest: {}", recipe.name, recipe.digest),
+            Ok(recipe) => println!(
+                "Froze recipe {}; it can no longer change.\n  digest: {}",
+                recipe.name, recipe.digest
+            ),
             Err(trouble) => {
                 eprintln!("{trouble}");
                 exit(1);
             }
         },
         "trial" => match book.record_trial(&read(&record)) {
-            Ok(position) => println!("trial recorded at ledger position {position}"),
+            Ok(position) => {
+                println!("Recorded the trial at position {position} in the trials ledger.")
+            }
             Err(trouble) => {
                 eprintln!("{trouble}");
                 exit(1);
@@ -141,7 +146,7 @@ fn main() {
         },
         "seal" => match book.seal_candidate(&read(&candidate)) {
             Ok(candidate) => println!(
-                "candidate {} sealed\n  signature: {}",
+                "Sealed candidate {}; it can no longer change and isn't served.\n  signature: {}",
                 candidate.name, candidate.signature
             ),
             Err(trouble) => {
@@ -155,7 +160,7 @@ fn main() {
                 Ok(candidate) => match serde_json::to_string_pretty(&candidate) {
                     Ok(text) => println!("{text}"),
                     Err(error) => {
-                        eprintln!("render {name}: {error}");
+                        eprintln!("can't format candidate {name} as JSON: {error}");
                         exit(1);
                     }
                 },
@@ -171,7 +176,7 @@ fn main() {
             };
             match book.delete_corpus(&name, &now(), &reason) {
                 Ok(tombstone) => println!(
-                    "corpus {name} deleted at {}; {} item digests retained",
+                    "Deleted corpus {name} at {}. Kept the SHA-256 digests of its {} items as a record of what was deleted.",
                     tombstone.deleted_at,
                     tombstone.item_digests.len()
                 ),

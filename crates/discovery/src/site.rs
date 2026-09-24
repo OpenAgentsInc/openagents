@@ -160,7 +160,7 @@ pub fn escape(text: &str) -> String {
 pub fn agent_card(origin: &str) -> Value {
     json!({
         "name": "OpenAgents decision API",
-        "description": "A keyed HTTP service that answers typed decisions — noul, choice, and score questions with probabilities — plus batch classification over the same admission path.",
+        "description": "An HTTP service that answers typed questions (noul, choice, and score) with probabilities, and classifies batches of text. Calls need an API key.",
         "version": env!("CARGO_PKG_VERSION"),
         "protocolVersion": "openagents.systemone.v1",
         "provider": {
@@ -178,16 +178,16 @@ pub fn agent_card(origin: &str) -> Value {
             "extendedAgentCard": false,
         },
         "securitySchemes": {
-            "bearer": {"type": "http", "scheme": "bearer", "description": "an `oak_<id>.<secret>` key issued by the operator; see /auth.md"}
+            "bearer": {"type": "http", "scheme": "bearer", "description": "An API key in the `oak_<id>.<secret>` format. See /auth.md to get one."}
         },
         "security": [{"bearer": []}],
         "defaultInputModes": ["application/json"],
         "defaultOutputModes": ["application/json"],
         "skills": [
-            {"id": "typed-decision", "name": "Typed decision", "description": "Answer a map of noul, choice, and score questions over caller state, each with probabilities.", "tags": ["decision", "classification", "scoring"]},
-            {"id": "batch-classification", "name": "Batch classification", "description": "Classify bounded input batches under single-label, multi-label, dimensional, binary, and score policies.", "tags": ["classification", "batch"]},
-            {"id": "durable-jobs", "name": "Durable jobs", "description": "Persist a batch as a resumable job with status, cancellation, and result export.", "tags": ["jobs", "batch"]},
-            {"id": "documentation", "name": "Bundled documentation", "description": "List, read, search, and page the versioned documentation corpus without a credential.", "tags": ["docs"]},
+            {"id": "typed-decision", "name": "Typed decision", "description": "Answer noul, choice, and score questions about a state you send, each with probabilities.", "tags": ["decision", "classification", "scoring"]},
+            {"id": "batch-classification", "name": "Batch classification", "description": "Classify batches of inputs with one label, several labels, several dimensions, a yes-or-no label, or a score.", "tags": ["classification", "batch"]},
+            {"id": "durable-jobs", "name": "Durable jobs", "description": "Run a batch as a job that you can check, cancel, and download results from later.", "tags": ["jobs", "batch"]},
+            {"id": "documentation", "name": "Bundled documentation", "description": "List, read, and search the OpenAgents documentation. No API key needed.", "tags": ["docs"]},
         ],
         "documentationUrl": format!("{origin}/agents.md"),
     })
@@ -202,7 +202,7 @@ pub fn skills_index(origin: &str) -> Value {
         "skills": [{
             "name": "openagents-decision-api",
             "type": "skill-md",
-            "description": "Authenticate to and call the OpenAgents decision API — typed decisions, classification, and durable jobs — through oak, oak-mcp, or raw HTTP.",
+            "description": "Call the OpenAgents decision API for typed decisions, classification, and batch jobs through oak, oak-mcp, or HTTP, and authenticate with an API key.",
             "url": format!("{origin}/.well-known/agent-skills/openagents-decision-api/SKILL.md"),
             "digest": format!("sha256:{}", digest_hex(crate::plugins::CANONICAL_SKILL.as_bytes())),
         }],
@@ -292,7 +292,7 @@ pub fn mcp_card(tools: Value) -> Value {
     json!({
         "v": "openagents.mcp-server.v1",
         "name": MCP_SERVER_NAME,
-        "title": "oak — the decision API caller",
+        "title": "oak, the OpenAgents decision API client",
         "version": env!("CARGO_PKG_VERSION"),
         "transport": "streamable-http",
         "endpoint": "/mcp",
@@ -306,7 +306,7 @@ pub fn mcp_card(tools: Value) -> Value {
         },
         "auth": {
             "scheme": "bearer",
-            "detail": "an `oak_` key forwarded for that call only; no key falls back to the operator's OPENAGENTS_API_KEY or config file",
+            "detail": "Send an `oak_` API key; the server uses it for that call only. Without one, the server uses the OPENAGENTS_API_KEY or config file it was started with.",
         },
         "tools": tools,
     })

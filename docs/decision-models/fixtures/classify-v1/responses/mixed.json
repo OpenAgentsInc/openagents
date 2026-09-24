@@ -57,12 +57,12 @@
     {
       "input": "first",
       "outcome": "unavailable",
-      "cause": "the door answered 503 Service Unavailable",
+      "cause": "The model server returned HTTP 503 Service Unavailable.",
       "units": [
         {
           "mode": "single-label",
           "outcome": "unavailable",
-          "cause": "the door answered 503 Service Unavailable",
+          "cause": "The model server returned HTTP 503 Service Unavailable.",
           "selected": null
         }
       ],
@@ -72,12 +72,12 @@
     {
       "input": "third",
       "outcome": "unattempted",
-      "cause": "the call stopped before this input's forward",
+      "cause": "The call stopped before this input was sent to the model.",
       "units": [
         {
           "mode": "single-label",
           "outcome": "unattempted",
-          "cause": "the call stopped before this input's forward",
+          "cause": "The call stopped before this input was sent to the model.",
           "selected": null
         }
       ],

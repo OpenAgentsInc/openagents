@@ -18,7 +18,7 @@ use tenancy::{Registry, keys};
 
 fn usage() -> ! {
     eprintln!(
-        "usage:\n  \
+        "Usage:\n  \
          tenant-keys issue  --registry DIR --tenant NAME\n  \
          tenant-keys rotate --registry DIR --key ID\n  \
          tenant-keys revoke --registry DIR --key ID\n  \
@@ -60,19 +60,26 @@ fn main() {
                 // The one place a secret is printed — once, to the
                 // operator's terminal, never to the store or a log.
                 println!("{}", issued.token);
-                println!("issued `{}` for tenant `{}`", issued.key.id, tenant);
+                println!(
+                    "Issued API key `{}` for tenant `{}`. Copy the secret on the line above now; it isn't shown again.",
+                    issued.key.id, tenant
+                );
             })
         }
         "rotate" => {
             let Some(key) = key else { usage() };
             keys::rotate(dir, &key).map(|issued| {
                 println!("{}", issued.token);
-                println!("rotated `{key}` into `{}`", issued.key.id);
+                println!(
+                    "Replaced API key `{key}` with `{}`; `{key}` no longer works. Copy the secret on the line above now; it isn't shown again.",
+                    issued.key.id
+                );
             })
         }
         "revoke" => {
             let Some(key) = key else { usage() };
-            keys::revoke(dir, &key).map(|()| println!("revoked `{key}`"))
+            keys::revoke(dir, &key)
+                .map(|()| println!("Revoked API key `{key}`; it no longer works."))
         }
         "list" => keys::load(dir).map(|store| {
             for record in store.keys.values() {

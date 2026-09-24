@@ -108,7 +108,7 @@ async fn submit(
             StatusCode::PAYLOAD_TOO_LARGE,
             "submission_too_large",
             format!(
-                "the document exceeds {} bytes",
+                "The skill document is larger than the {}-byte limit.",
                 skills_config.max_body_bytes
             ),
         );
@@ -258,7 +258,8 @@ async fn run_review(state: &Arc<ServeState>, submission: &str, markdown: &str) {
             return;
         }
         if outcome == StageOutcome::Fail {
-            let reason = detail.unwrap_or_else(|| "static validation failed".into());
+            let reason =
+                detail.unwrap_or_else(|| "The skill document failed the format checks.".into());
             directory
                 .mutate(|book, _, now| book.reject(&name, &version, &reason, "system", now))
                 .ok();
@@ -443,30 +444,33 @@ async fn decision_review(
             .send(),
     )
     .await
-    .map_err(|_| "the review backend timed out".to_string())?
-    .map_err(|error| format!("the review backend is unreachable: {error}"))?;
+    .map_err(|_| "The review model didn't answer in time.".to_string())?
+    .map_err(|error| format!("The service couldn't reach the review model: {error}"))?;
     if !response.status().is_success() {
-        return Err(format!("the review backend refused: {}", response.status()));
+        return Err(format!(
+            "The review model returned HTTP {}.",
+            response.status()
+        ));
     }
     let body: Value = response
         .json()
         .await
-        .map_err(|error| format!("the review backend answered unreadably: {error}"))?;
+        .map_err(|error| format!("The review model's answer isn't valid JSON: {error}"))?;
     let answers = body
         .get("answers")
-        .ok_or_else(|| "the review answer carries no `answers` map".to_string())?;
+        .ok_or_else(|| "The review model's answer has no `answers` field.".to_string())?;
     let noul = |id: &str| -> Result<f64, String> {
         answers
             .get(id)
             .and_then(|answer| answer.get("noul"))
             .and_then(Value::as_f64)
-            .ok_or_else(|| format!("the review answer lacks `{id}`"))
+            .ok_or_else(|| format!("The review model's answer is missing `{id}`."))
     };
     let raw = answers
         .get("quality")
         .and_then(|answer| answer.get("score"))
         .and_then(Value::as_f64)
-        .ok_or_else(|| "the review answer lacks `quality`".to_string())?;
+        .ok_or_else(|| "The review model's answer is missing `quality`.".to_string())?;
     // The raw score is the weighted level position — normalize it onto
     // the `0–1` scale `admit_score` is declared in.
     let quality = (raw / QUALITY_LEVELS).clamp(0.0, 1.0);
@@ -498,21 +502,24 @@ async fn decision_review(
 fn gate_detail(answers: &DecisionAnswers, admit_score: f64) -> String {
     let mut failures = Vec::new();
     if answers.safe < SAFE_FLOOR {
-        failures.push(format!("safety {:.3} below {SAFE_FLOOR}", answers.safe));
+        failures.push(format!(
+            "safety score {:.3} is below the minimum of {SAFE_FLOOR}",
+            answers.safe
+        ));
     }
     if answers.coherent < COHERENT_FLOOR {
         failures.push(format!(
-            "coherence {:.3} below {COHERENT_FLOOR}",
+            "coherence score {:.3} is below the minimum of {COHERENT_FLOOR}",
             answers.coherent
         ));
     }
     if answers.quality < admit_score {
         failures.push(format!(
-            "quality {:.3} below {admit_score:.2}",
+            "quality score {:.3} is below the minimum of {admit_score:.2}",
             answers.quality
         ));
     }
-    format!("admission gates failed: {}", failures.join(", "))
+    format!("The skill didn't pass review: {}.", failures.join("; "))
 }
 
 /// `GET /v1/skills` — the published directory: search, category/tag/
@@ -813,7 +820,7 @@ fn directory(state: &ServeState) -> Result<Directory, Response> {
         accounts::refused(
             StatusCode::SERVICE_UNAVAILABLE,
             "skills_unavailable",
-            format!("the skill directory is unavailable: {trouble}"),
+            format!("The service can't read the skill directory right now. Try again later. Details: {trouble}"),
         )
     })
 }
@@ -825,7 +832,7 @@ fn store(state: &ServeState) -> Result<skills::Store, Response> {
             accounts::refused(
                 StatusCode::SERVICE_UNAVAILABLE,
                 "skills_unavailable",
-                format!("the skill directory is unavailable: {trouble}"),
+                format!("The service can't read the skill directory right now. Try again later. Details: {trouble}"),
             )
         })
     })
@@ -840,7 +847,7 @@ fn write_object(state: &ServeState, digest: &str, markdown: &str) -> Result<(), 
         return Err(accounts::refused(
             StatusCode::BAD_REQUEST,
             "invalid_submission",
-            "the digest is not a `sha256:` identity",
+            "The hash must start with `sha256:`.",
         ));
     };
     let dir = state.dir.join(OBJECTS);
@@ -872,7 +879,7 @@ fn read_object(state: &ServeState, digest: &str) -> Result<String, Response> {
         return Err(accounts::refused(
             StatusCode::BAD_REQUEST,
             "invalid_submission",
-            "the digest is not a `sha256:` identity",
+            "The hash must start with `sha256:`.",
         ));
     };
     let path = state.dir.join(OBJECTS).join(format!("{hex}.md"));
@@ -881,7 +888,7 @@ fn read_object(state: &ServeState, digest: &str) -> Result<String, Response> {
             accounts::refused(
                 StatusCode::SERVICE_UNAVAILABLE,
                 "skills_unavailable",
-                "the version's content object is missing",
+                "The file for this skill version is missing.",
             )
         } else {
             object_failure(&error)
@@ -891,7 +898,7 @@ fn read_object(state: &ServeState, digest: &str) -> Result<String, Response> {
         return Err(accounts::refused(
             StatusCode::SERVICE_UNAVAILABLE,
             "skills_unavailable",
-            "the version's content object does not match its recorded digest",
+            "The file for this skill version doesn't match its recorded hash.",
         ));
     }
     Ok(text)
@@ -901,7 +908,7 @@ fn object_failure(error: &std::io::Error) -> Response {
     accounts::refused(
         StatusCode::SERVICE_UNAVAILABLE,
         "skills_unavailable",
-        format!("the content object store is unavailable: {error}"),
+        format!("The service can't read skill files right now. Try again later. Details: {error}"),
     )
 }
 

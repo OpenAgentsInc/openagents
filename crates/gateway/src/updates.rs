@@ -44,7 +44,7 @@ pub(crate) async fn subscribe(
         return refused(
             StatusCode::UNPROCESSABLE_ENTITY,
             "invalid_request",
-            format!("v must be {V}"),
+            format!("Set `v` to `{V}`."),
         );
     }
     let topics = match body["topics"].as_object() {
@@ -61,7 +61,7 @@ pub(crate) async fn subscribe(
             return refused(
                 StatusCode::UNPROCESSABLE_ENTITY,
                 "invalid_request",
-                "topics.product and topics.support booleans are required".into(),
+                "Set both `topics.product` and `topics.support` to `true` or `false`.".into(),
             );
         }
     };
@@ -72,14 +72,14 @@ pub(crate) async fn subscribe(
                 return refused(
                     StatusCode::UNPROCESSABLE_ENTITY,
                     "invalid_request",
-                    "contact.email is the only supported contact".into(),
+                    "The only supported contact is `contact.email`.".into(),
                 );
             };
             if email.len() > MAX_CONTACT || !email.contains('@') {
                 return refused(
                     StatusCode::UNPROCESSABLE_ENTITY,
                     "invalid_request",
-                    "contact.email must be an email-shaped string of at most 256 bytes".into(),
+                    "`contact.email` must be an email address of at most 256 bytes.".into(),
                 );
             }
             Some(email.to_string())
@@ -125,7 +125,7 @@ pub(crate) async fn view(State(state): State<Arc<ServeState>>, headers: HeaderMa
         None => refused(
             StatusCode::NOT_FOUND,
             "subscription_not_found",
-            "this credential holds no updates subscription".into(),
+            "Your API key or session isn't subscribed to updates.".into(),
         ),
     }
 }
@@ -144,7 +144,7 @@ pub(crate) async fn unsubscribe(
         return refused(
             StatusCode::NOT_FOUND,
             "subscription_not_found",
-            "this credential holds no updates subscription".into(),
+            "Your API key or session isn't subscribed to updates.".into(),
         );
     };
     record["status"] = json!("unsubscribed");
@@ -170,7 +170,7 @@ fn identified(state: &ServeState, headers: &HeaderMap) -> Result<String, Respons
         Ok(_) => Err(refused(
             StatusCode::UNAUTHORIZED,
             "unauthenticated",
-            "an identified credential is required to subscribe".into(),
+            "To subscribe, sign in or send your API key. Anonymous callers can't subscribe.".into(),
         )),
         Err((status, code, message)) => Err(refused(status, code, message)),
     }

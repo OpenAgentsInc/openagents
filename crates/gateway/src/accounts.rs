@@ -169,14 +169,14 @@ fn bearer(headers: &HeaderMap) -> Result<String, Response> {
         refused(
             StatusCode::UNAUTHORIZED,
             "unauthenticated",
-            "a Bearer credential is required — an `oak_` key or a `sess_` session token",
+            "Sign in first. Send an `oak_` API key or a `sess_` session token in the `Authorization: Bearer` header.",
         )
     })?;
     let header = header.to_str().map_err(|_| {
         refused(
             StatusCode::BAD_REQUEST,
             "malformed",
-            "the Authorization header is not text",
+            "The `Authorization` header contains characters that aren't valid text.",
         )
     })?;
     header
@@ -186,7 +186,7 @@ fn bearer(headers: &HeaderMap) -> Result<String, Response> {
             refused(
                 StatusCode::UNAUTHORIZED,
                 "unauthenticated",
-                "the credential is not a Bearer token",
+                "The `Authorization` header must start with `Bearer `.",
             )
         })
 }
@@ -197,7 +197,9 @@ pub(crate) fn accounts_store(state: &ServeState) -> Result<Accounts, Response> {
     Accounts::open(&state.dir).map_err(|trouble| {
         unavailable(
             "accounts_unavailable",
-            format!("the account store is unavailable: {trouble}"),
+            format!(
+                "The service can't read accounts right now. Try again later. Details: {trouble}"
+            ),
         )
     })
 }
@@ -207,7 +209,9 @@ fn sessions_store(state: &ServeState) -> Result<sessions::Sessions, Response> {
     sessions::Sessions::open(&state.dir).map_err(|trouble| {
         unavailable(
             "sessions_unavailable",
-            format!("the session store is unavailable: {trouble}"),
+            format!(
+                "The service can't read sessions right now. Try again later. Details: {trouble}"
+            ),
         )
     })
 }
@@ -218,7 +222,7 @@ fn registry(state: &ServeState) -> Result<Registry, Response> {
     Registry::open(&state.dir).map_err(|trouble| {
         unavailable(
             "registry_unavailable",
-            format!("the registry is unavailable: {trouble}"),
+            format!("The service can't read its model settings right now. Try again later. Details: {trouble}"),
         )
     })
 }
@@ -243,7 +247,7 @@ pub(crate) fn principal(state: &ServeState, headers: &HeaderMap) -> Result<Princ
             refused(
                 StatusCode::UNAUTHORIZED,
                 "unauthenticated",
-                "the session token names no session this service holds",
+                "Your session token isn't recognized. Sign in again.",
             )
         })?;
         if session.standing(unix_now()) != sessions::SessionState::Active {
@@ -251,7 +255,7 @@ pub(crate) fn principal(state: &ServeState, headers: &HeaderMap) -> Result<Princ
                 StatusCode::UNAUTHORIZED,
                 "session_closed",
                 format!(
-                    "the session is {} — it answers nothing",
+                    "Your session is {}. Sign in again.",
                     session.standing(unix_now())
                 ),
             ));
@@ -272,7 +276,7 @@ pub(crate) fn principal(state: &ServeState, headers: &HeaderMap) -> Result<Princ
             refused(
                 StatusCode::UNAUTHORIZED,
                 "unauthenticated",
-                format!("the credential was refused: {cause}"),
+                format!("Your API key was rejected: {cause}"),
             )
         })?;
     if authenticated
@@ -283,7 +287,7 @@ pub(crate) fn principal(state: &ServeState, headers: &HeaderMap) -> Result<Princ
         return Err(refused(
             StatusCode::FORBIDDEN,
             "out_of_scope",
-            "the credential's declared scope does not permit the `accounts` action",
+            "Your API key's scope doesn't allow account actions.",
         ));
     }
     let accounts = accounts_store(state)?;
@@ -294,8 +298,8 @@ pub(crate) fn principal(state: &ServeState, headers: &HeaderMap) -> Result<Princ
             refused(
                 StatusCode::FORBIDDEN,
                 "no_account",
-                "the key authenticates but is bound to no account — a \
-                 workspace member's key carries a `key:<id>` principal binding",
+                "This API key is valid but isn't linked to an account. Use an API \
+                 key that a workspace member created.",
             )
         })?;
     Ok(Principal::Account {
@@ -310,8 +314,8 @@ pub(crate) fn member_account(principal: &Principal) -> Result<&str, Response> {
         refused(
             StatusCode::FORBIDDEN,
             "membership_required",
-            "an anonymous session holds no account — this route needs a \
-             signed-in member's credential",
+            "An anonymous session has no account. Sign in, or use a workspace \
+             member's API key.",
         )
     })
 }
@@ -474,8 +478,8 @@ async fn sign_in(State(state): State<Arc<ServeState>>, headers: HeaderMap) -> Re
         return refused(
             StatusCode::BAD_REQUEST,
             "already_signed_in",
-            "the request already carries a session token — sign-in \
-             exchanges an `oak_` key or no credential",
+            "You're already signed in with a session token. To sign in again, \
+             send an `oak_` API key or no `Authorization` header.",
         );
     }
     let registry = match registry(&state) {
@@ -488,7 +492,7 @@ async fn sign_in(State(state): State<Arc<ServeState>>, headers: HeaderMap) -> Re
             return refused(
                 StatusCode::UNAUTHORIZED,
                 "unauthenticated",
-                format!("the credential was refused: {cause}"),
+                format!("Your API key was rejected: {cause}"),
             );
         }
     };
@@ -505,7 +509,7 @@ async fn sign_in(State(state): State<Arc<ServeState>>, headers: HeaderMap) -> Re
             return refused(
                 StatusCode::FORBIDDEN,
                 "no_account",
-                "the key authenticates but is bound to no account",
+                "This API key is valid but isn't linked to an account.",
             );
         }
         Err(response) => return response,
@@ -527,7 +531,7 @@ async fn sign_in(State(state): State<Arc<ServeState>>, headers: HeaderMap) -> Re
         None => {
             return unavailable(
                 "keys_unavailable",
-                "the authenticated key has no readable record",
+                "The service can't read the record for this API key.",
             );
         }
     };
@@ -577,8 +581,8 @@ async fn anonymous_sign_in(state: Arc<ServeState>) -> Response {
         return refused(
             StatusCode::FORBIDDEN,
             "anonymous_disabled",
-            "this deployment funds no anonymous lane — sign in with an \
-             `oak_` key or create an account",
+            "This service doesn't offer free anonymous use. Sign in with an \
+             `oak_` API key, or create an account.",
         );
     };
     let sessions = match sessions_store(&state) {
@@ -648,8 +652,8 @@ async fn session_status(State(state): State<Arc<ServeState>>, headers: HeaderMap
         return refused(
             StatusCode::BAD_REQUEST,
             "not_a_session",
-            "the credential is an `oak_` key, not a session — it has no \
-             session to describe",
+            "You sent an `oak_` API key, not a session token, so there's no \
+             session to show.",
         );
     };
     let sessions = match sessions_store(&state) {
@@ -699,8 +703,8 @@ async fn logout(State(state): State<Arc<ServeState>>, headers: HeaderMap) -> Res
         return refused(
             StatusCode::BAD_REQUEST,
             "not_a_session",
-            "the credential is an `oak_` key, not a session — revoke the \
-             key to end what it opens",
+            "You sent an `oak_` API key, not a session token, so there's no \
+             session to sign out of. To stop the key from working, revoke it.",
         );
     };
     let sessions = match sessions_store(&state) {
@@ -739,8 +743,8 @@ async fn sign_up(State(state): State<Arc<ServeState>>, Json(body): Json<Value>) 
         return refused(
             StatusCode::FORBIDDEN,
             "signup_disabled",
-            "this deployment does not offer self-serve sign-up — the \
-             operator provisions accounts",
+            "This service doesn't offer sign-up. Ask the operator to create \
+             an account for you.",
         );
     };
     let label = match field(&body, "label") {
@@ -761,7 +765,9 @@ async fn sign_up(State(state): State<Arc<ServeState>>, Json(body): Json<Value>) 
     if !registry.manifest().tenants.contains_key(&tenant) {
         return unavailable(
             "signup_unavailable",
-            format!("the sign-up tenant `{tenant}` is not bound in the registry"),
+            format!(
+                "Sign-up isn't available: the sign-up account `{tenant}` isn't set up. Contact the operator."
+            ),
         );
     }
     let accounts = match accounts_store(&state) {
@@ -882,7 +888,7 @@ async fn account_view(State(state): State<Arc<ServeState>>, headers: HeaderMap) 
             return refused(
                 StatusCode::NOT_FOUND,
                 "unknown_account",
-                "the credential resolves to no account this store holds",
+                "No account matches your API key or session.",
             );
         }
     };
@@ -967,8 +973,8 @@ async fn workspace_create(
         return refused(
             StatusCode::FORBIDDEN,
             "signup_disabled",
-            "this deployment provisions workspaces — self-serve \
-             organization workspaces ride the sign-up tenant",
+            "This service doesn't let you create organization workspaces. \
+             Ask the operator to create one for you.",
         );
     };
     let name = match field(&body, "name") {
@@ -1159,7 +1165,7 @@ async fn workspace_update(
         return refused(
             StatusCode::BAD_REQUEST,
             "invalid_request",
-            "the update names neither `name` nor `seats`",
+            "Set `name`, `seats`, or both.",
         );
     }
     record(
@@ -1175,7 +1181,7 @@ async fn workspace_update(
             return refused(
                 StatusCode::NOT_FOUND,
                 "unknown_workspace",
-                "the workspace is gone",
+                "This workspace no longer exists.",
             );
         }
         Err(trouble) => return unavailable("accounts_unavailable", trouble.to_string()),
@@ -1215,8 +1221,8 @@ async fn invitation_issue(
         "owner" => Err(refused(
             StatusCode::BAD_REQUEST,
             "owner_by_invitation",
-            "an invitation grants `admin` or `member` — ownership moves \
-             only through transfer",
+            "An invitation can make someone an `admin` or a `member`. To make \
+             someone the owner, transfer ownership instead.",
         )),
         _ => Err(refused(
             StatusCode::BAD_REQUEST,
@@ -1559,7 +1565,7 @@ async fn recovery_issue(
         return refused(
             StatusCode::FORBIDDEN,
             "forbidden",
-            "issuing a recovery token takes an admin or the owner",
+            "Only a workspace admin or the owner can create a recovery token.",
         );
     }
     // The member must hold an active membership and a bound key —
@@ -1577,7 +1583,7 @@ async fn recovery_issue(
         return refused(
             StatusCode::NOT_FOUND,
             "unknown_workspace",
-            "the workspace is gone",
+            "This workspace no longer exists.",
         );
     };
     match ws.members.get(&target) {
@@ -1586,14 +1592,14 @@ async fn recovery_issue(
             return refused(
                 StatusCode::FORBIDDEN,
                 "membership_revoked",
-                "the member was removed — there is nothing to recover",
+                "This member was removed from the workspace, so there's no access to recover.",
             );
         }
         None => {
             return refused(
                 StatusCode::FORBIDDEN,
                 "not_member",
-                "the account holds no membership in this workspace",
+                "This account isn't a member of this workspace.",
             );
         }
     }
@@ -1601,7 +1607,7 @@ async fn recovery_issue(
         return refused(
             StatusCode::NOT_FOUND,
             "unknown_account",
-            "the account is gone",
+            "This account no longer exists.",
         );
     };
     let Some(key_id) = account_record
@@ -1612,8 +1618,8 @@ async fn recovery_issue(
         return refused(
             StatusCode::CONFLICT,
             "no_credential",
-            "the member holds no bound key — recovery rotates a key, \
-             and there is none to rotate",
+            "This member has no API key, so there's no key to replace. \
+             Recovery works only for members who have a key.",
         );
     };
     let key_digest = match keys::load(&state.dir)
@@ -1625,7 +1631,7 @@ async fn recovery_issue(
             return refused(
                 StatusCode::CONFLICT,
                 "no_credential",
-                "the member's bound key has no readable record",
+                "The service can't read the record for this member's API key.",
             );
         }
     };
@@ -1701,7 +1707,7 @@ async fn recovery_redeem(
                 return refused(
                     StatusCode::FORBIDDEN,
                     "recovery_expired",
-                    "the recovery token has expired",
+                    "This recovery token has expired. Ask a workspace admin for a new one.",
                 );
             }
             Some(recovery) => {
@@ -1709,7 +1715,7 @@ async fn recovery_redeem(
                     StatusCode::CONFLICT,
                     "recovery_closed",
                     format!(
-                        "the recovery token is already {} — a recovery token is single-use",
+                        "This recovery token is already {}. Each recovery token works only once.",
                         recovery.state
                     ),
                 );
@@ -1718,7 +1724,7 @@ async fn recovery_redeem(
                 return refused(
                     StatusCode::FORBIDDEN,
                     "invalid_recovery",
-                    "the token names no recovery this service holds",
+                    "This recovery token isn't recognized.",
                 );
             }
         }
@@ -1735,7 +1741,7 @@ async fn recovery_redeem(
         return refused(
             StatusCode::NOT_FOUND,
             "unknown_account",
-            "the recovery names an account that is gone",
+            "The account this recovery token is for no longer exists.",
         );
     };
     let Some(key_id) = account_record
@@ -1747,7 +1753,7 @@ async fn recovery_redeem(
         return refused(
             StatusCode::CONFLICT,
             "no_credential",
-            "the account holds no bound key to rotate",
+            "This account has no API key to replace.",
         );
     };
     let issued = match keys::rotate(&state.dir, &key_id) {
@@ -1859,7 +1865,7 @@ async fn keys_list(
         return refused(
             StatusCode::NOT_FOUND,
             "unknown_workspace",
-            "the workspace is gone",
+            "This workspace no longer exists.",
         );
     };
     let key_store = match keys::load(&state.dir) {
@@ -1932,7 +1938,7 @@ async fn key_issue(
         return refused(
             StatusCode::NOT_FOUND,
             "unknown_workspace",
-            "the workspace is gone",
+            "This workspace no longer exists.",
         );
     };
     let name = match body.get("name") {
@@ -2041,7 +2047,7 @@ fn key_context(
         return Err(refused(
             StatusCode::NOT_FOUND,
             "unknown_workspace",
-            "the workspace is gone",
+            "This workspace no longer exists.",
         ));
     };
     let key_store = keys::load(&state.dir).map_err(keys_refusal)?;
@@ -2049,14 +2055,14 @@ fn key_context(
         refused(
             StatusCode::NOT_FOUND,
             "unknown_key",
-            "the key id names no key this service holds",
+            "No API key has this ID.",
         )
     })?;
     if key.tenant != ws.tenant {
         return Err(refused(
             StatusCode::FORBIDDEN,
             "tenant_mismatch",
-            "the key does not belong to this workspace's tenant",
+            "This API key doesn't belong to this workspace.",
         ));
     }
     let owner = accounts
@@ -2067,8 +2073,8 @@ fn key_context(
         return Err(refused(
             StatusCode::FORBIDDEN,
             "forbidden",
-            "the key belongs to another member — an admin or the owner \
-             manages it",
+            "This API key belongs to another member. Only a workspace admin \
+             or the owner can manage it.",
         ));
     }
     Ok(KeyContext {
@@ -2165,7 +2171,7 @@ fn key_status_op(
             return refused(
                 StatusCode::NOT_FOUND,
                 "unknown_key",
-                "the key id names no key this service holds",
+                "No API key has this ID.",
             );
         }
     };

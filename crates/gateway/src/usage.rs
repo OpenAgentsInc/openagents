@@ -147,7 +147,7 @@ pub(crate) fn scan(
             return Err(refused(
                 StatusCode::SERVICE_UNAVAILABLE,
                 "usage_unavailable",
-                format!("the receipt log cannot be read: {error}"),
+                format!("The service can't read usage records right now: {error}"),
             ));
         }
     };
@@ -283,11 +283,11 @@ fn outcome_name(outcome: &Outcome) -> &'static str {
 /// contract the caller reads before trusting a number.
 fn disclosure(scan: &Scan) -> Value {
     json!({
-        "source": "the workspace's receipts joined to the money ledger's holds and the quota ledger's reservations — exact ledger reads, never sampled or estimated",
-        "scale": "amounts are fixed-point millionths of the account currency",
-        "timezone": "UTC — `resolved_at` is RFC 3339, day buckets split at 00:00 UTC",
-        "lag": "a receipt writes when the attempt resolves; an `unknown` or outstanding hold settles later — outstanding spend is reported separately, not estimated",
-        "retention": "the receipt log and the ledgers are append-only; export reflects everything retained",
+        "source": "Every number comes from this workspace's call receipts, matched to the amounts set aside for each call. Nothing is sampled or estimated.",
+        "scale": "Amounts are whole numbers of millionths of the account currency. For example, 1000000 is one whole unit.",
+        "timezone": "Times are UTC. `resolved_at` uses RFC 3339, and each day starts at 00:00 UTC.",
+        "lag": "A receipt appears when a call finishes. A call whose result is unknown is charged later, and its cost shows separately as outstanding instead of being estimated.",
+        "retention": "Usage records are never edited or deleted, and an export includes all of them.",
         "unattributed": scan.unattributed,
         "other_workspace": scan.other_workspace,
         "unverifiable": scan.unverifiable,
@@ -630,7 +630,7 @@ async fn activity(
                 return refused(
                     StatusCode::BAD_REQUEST,
                     "invalid_cursor",
-                    "the cursor did not decode — use the `cursor` value the last page returned",
+                    "The cursor isn't valid. Use the `cursor` value from the previous page.",
                 );
             }
         },
@@ -799,7 +799,7 @@ async fn receipt(
         return refused(
             StatusCode::NOT_FOUND,
             "unknown_receipt",
-            "no receipt of this workspace carries that digest",
+            "This workspace has no receipt with that hash.",
         );
     };
     let hold = holds.get(&hold_key(receipt));

@@ -83,14 +83,14 @@ impl std::fmt::Display for Refusal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::UnknownTenant(tenant) => {
-                write!(f, "`{tenant}` is not a tenant this registry knows")
+                write!(f, "account `{tenant}` doesn't exist")
             }
             Self::DoorNotBound { tenant, door } => write!(
                 f,
-                "tenant `{tenant}` holds no binding for `{door}`, and `{door}` is not shared"
+                "account `{tenant}` doesn't have access to model `{door}`"
             ),
             Self::NotShared(door) => {
-                write!(f, "`{door}` is not a shared door")
+                write!(f, "model `{door}` isn't available to all accounts")
             }
         }
     }
