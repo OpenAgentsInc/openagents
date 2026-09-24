@@ -548,9 +548,10 @@ pub fn microluna_policy(read_only: bool) -> crate::micro::Policy {
 /// and a check before `done`; a terminal request is often a question, and
 /// on 2026-09-24 two of eight questions ended with an unrequested edit.
 pub const MICROLUNA_QUESTIONS: &str = "If the request is a question and asks \
-for no change, the answer is the whole result: change no file, and call finish \
-with status done and the answer as soon as the evidence supports it. This \
-outranks any session guidance that asks for an edit.";
+for no change, the answer is the whole result and changes no file: search and \
+read the workspace until what you found answers it, then call finish with \
+status done and the answer, citing the paths you read. This outranks any \
+session guidance that asks for an edit.";
 
 /// What a Microluna turn reads from [`answer`] once the survey is done.
 struct Turn<'a> {
