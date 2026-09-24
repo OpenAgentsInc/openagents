@@ -91,6 +91,11 @@ failing tests of 27 to 2, over seven sessions and about $12.75. It hasn't
 turned a failure into a pass yet. Most persistence rounds change little;
 the stop rules let rounds run that don't move any test.
 
+Tunable v8 ([results](2026-09-23-persist-v8.md)) stops a round that moves no
+test or check, runs later rounds on GPT-6 Sol, and caps the rounds' spending.
+Persistence cost fell to $2.63 a trial, but the executor's own tests passed in
+every round while the verifier failed, so the rounds still moved no test.
+
 **Follow-up:** in the [matched targeted test](2026-09-23-matched-controller-targeted.md),
 v8's persistence turned `mvcc-lsm-compaction` from 0 of 3 into 3 of 3,
 where the executor alone stopped after a minute. It also ran on every

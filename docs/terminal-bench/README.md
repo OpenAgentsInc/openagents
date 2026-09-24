@@ -6,6 +6,16 @@ evidence; it does not report the execution host's live queue.
 
 ## Latest status
 
+**Tunable v8 persistence on three near-miss tasks: cheaper rounds, no
+credited pass.** Over three attempts per task, `production-planning` passed 2
+of 3 and `bun-sourcemap-leak` 1 of 3, and `cargo-flight-dispatch` passed 0
+of 3. The guard kept the `production-planning` passes by putting back a
+persistence round that made a check fail. The executor's own tests passed in
+every round, so no round showed progress through them. Persistence cost $2.63
+a trial and the whole trial $6.53, against v6's $8.26 mean on other tasks. See the
+[results](2026-09-23-persist-v8.md) (issue
+[#9570](https://github.com/OpenAgentsInc/openagents/issues/9570)).
+
 **Matched controller test on 10 TB4 tasks: no measurable pass-rate gain, 68%
 more cost.** With Claude Code on Opus 5.5 at medium effort in both arms,
 Coder One's v8 controller passed 18 of 30 attempts (42–75%) and the plain

@@ -1,0 +1,847 @@
+[
+  {
+    "job": "tb4--coder-one-tunable-v8--bun-sourcemap-leak--v8-persist-9570-ca-r1",
+    "trial": "bun-sourcemap-leak__F4t2d8w",
+    "task": "bun-sourcemap-leak",
+    "reward": 0.0,
+    "exception": null,
+    "cost_usd": 4.661351517999999,
+    "trial_sec": 1718.6,
+    "agent_sec": 1661.1,
+    "jev_usd": 0.012498318000000003,
+    "delegate_usd": 4.6488532,
+    "verifier_tests": {
+      "passed": 30,
+      "failed": 6,
+      "total": 36
+    },
+    "dispatches": [
+      {
+        "role": "primary",
+        "model": "claude-opus-5-5",
+        "usd": 1.1297048000000005,
+        "status": "answered"
+      },
+      {
+        "role": "second",
+        "model": "gpt-6-astra",
+        "usd": 1.044018,
+        "status": "answered"
+      },
+      {
+        "role": "persist-1",
+        "model": "claude-opus-5-5",
+        "usd": 2.0690815999999996,
+        "status": "answered"
+      },
+      {
+        "role": "persist-2",
+        "model": "gpt-6-sol",
+        "usd": 0.40604880000000004,
+        "status": "answered"
+      }
+    ],
+    "persist": {
+      "stopped": "the next round would cost about $2.07, over the $1.44 left of the $3.91 cap",
+      "totals": {
+        "tests_fixed": 0,
+        "tests_broken": 0,
+        "cost_usd": 2.4751304,
+        "escalations": 1
+      },
+      "spend": {
+        "spent_before_usd": 2.1789692720000002,
+        "cap_usd": 3.910515364
+      },
+      "rounds": [
+        {
+          "round": 1,
+          "class": "strong",
+          "executor": "claude-code/claude-opus-5-5",
+          "cost_usd": 2.0690815999999996,
+          "status": "answered",
+          "checks_failed_before": 0,
+          "checks_failed_after": 0,
+          "own_tests": {
+            "passed": 33,
+            "failed": 0
+          },
+          "delta": {
+            "tests_fixed": 0,
+            "tests_broken": 0,
+            "tests_added": 33,
+            "progress": null
+          },
+          "kept": true,
+          "next": null
+        },
+        {
+          "round": 2,
+          "class": "cheap",
+          "executor": "codex/gpt-6-sol",
+          "cost_usd": 0.40604880000000004,
+          "status": "answered",
+          "checks_failed_before": 0,
+          "checks_failed_after": 0,
+          "own_tests": {
+            "passed": 41,
+            "failed": 0
+          },
+          "delta": {
+            "tests_fixed": 0,
+            "tests_broken": 0,
+            "tests_added": 8,
+            "progress": false
+          },
+          "kept": true,
+          "next": "escalate"
+        }
+      ]
+    }
+  },
+  {
+    "job": "tb4--coder-one-tunable-v8--bun-sourcemap-leak--v8-persist-9570-ca-r2",
+    "trial": "bun-sourcemap-leak__YgVxiUg",
+    "task": "bun-sourcemap-leak",
+    "reward": 0.0,
+    "exception": null,
+    "cost_usd": 5.3155502619999995,
+    "trial_sec": 2055.4,
+    "agent_sec": 2014.6,
+    "jev_usd": 0.012020861999999997,
+    "delegate_usd": 5.3035293999999995,
+    "verifier_tests": {
+      "passed": 34,
+      "failed": 2,
+      "total": 36
+    },
+    "dispatches": [
+      {
+        "role": "primary",
+        "model": "claude-opus-5-5",
+        "usd": 1.0077158000000002,
+        "status": "answered"
+      },
+      {
+        "role": "second",
+        "model": "gpt-6-astra",
+        "usd": 1.696766,
+        "status": "answered"
+      },
+      {
+        "role": "persist-1",
+        "model": "claude-opus-5-5",
+        "usd": 1.9941672,
+        "status": "answered"
+      },
+      {
+        "role": "persist-2",
+        "model": "gpt-6-sol",
+        "usd": 0.6048804,
+        "status": "answered"
+      }
+    ],
+    "persist": {
+      "stopped": "the next round would cost about $1.99, over the $1.05 left of the $3.65 cap",
+      "totals": {
+        "tests_fixed": 0,
+        "tests_broken": 0,
+        "cost_usd": 2.5990476,
+        "escalations": 1
+      },
+      "spend": {
+        "spent_before_usd": 2.709552796,
+        "cap_usd": 3.6452236019999997
+      },
+      "rounds": [
+        {
+          "round": 1,
+          "class": "strong",
+          "executor": "claude-code/claude-opus-5-5",
+          "cost_usd": 1.9941672,
+          "status": "answered",
+          "checks_failed_before": 0,
+          "checks_failed_after": 0,
+          "own_tests": {
+            "passed": 39,
+            "failed": 0
+          },
+          "delta": {
+            "tests_fixed": 0,
+            "tests_broken": 0,
+            "tests_added": 39,
+            "progress": null
+          },
+          "kept": true,
+          "next": null
+        },
+        {
+          "round": 2,
+          "class": "cheap",
+          "executor": "codex/gpt-6-sol",
+          "cost_usd": 0.6048804,
+          "status": "answered",
+          "checks_failed_before": 0,
+          "checks_failed_after": 0,
+          "own_tests": {
+            "passed": 49,
+            "failed": 0
+          },
+          "delta": {
+            "tests_fixed": 0,
+            "tests_broken": 0,
+            "tests_added": 10,
+            "progress": false
+          },
+          "kept": true,
+          "next": "escalate"
+        }
+      ]
+    }
+  },
+  {
+    "job": "tb4--coder-one-tunable-v8--bun-sourcemap-leak--v8-persist-9570-ca-r3",
+    "trial": "bun-sourcemap-leak__AhfCw5c",
+    "task": "bun-sourcemap-leak",
+    "reward": 1.0,
+    "exception": null,
+    "cost_usd": 5.702415278000001,
+    "trial_sec": 2186.5,
+    "agent_sec": 2151.1,
+    "jev_usd": 0.012547878000000004,
+    "delegate_usd": 5.689867400000001,
+    "verifier_tests": {
+      "passed": 36,
+      "failed": 0,
+      "total": 36
+    },
+    "dispatches": [
+      {
+        "role": "primary",
+        "model": "claude-opus-5-5",
+        "usd": 0.9535228,
+        "status": "answered"
+      },
+      {
+        "role": "second",
+        "model": "gpt-6-astra",
+        "usd": 1.409446,
+        "status": "answered"
+      },
+      {
+        "role": "persist-1",
+        "model": "claude-opus-5-5",
+        "usd": 2.9122562000000003,
+        "status": "answered"
+      },
+      {
+        "role": "persist-2",
+        "model": "gpt-6-sol",
+        "usd": 0.4146424,
+        "status": "answered"
+      }
+    ],
+    "persist": {
+      "stopped": "the next round would cost about $2.91, over the $0.49 left of the $3.82 cap",
+      "totals": {
+        "tests_fixed": 0,
+        "tests_broken": 0,
+        "cost_usd": 3.3268986000000003,
+        "escalations": 1
+      },
+      "spend": {
+        "spent_before_usd": 2.367593924,
+        "cap_usd": 3.8162030380000003
+      },
+      "rounds": [
+        {
+          "round": 1,
+          "class": "strong",
+          "executor": "claude-code/claude-opus-5-5",
+          "cost_usd": 2.9122562000000003,
+          "status": "answered",
+          "checks_failed_before": 0,
+          "checks_failed_after": 0,
+          "own_tests": {
+            "passed": 217,
+            "failed": 0
+          },
+          "delta": {
+            "tests_fixed": 0,
+            "tests_broken": 0,
+            "tests_added": 217,
+            "progress": null
+          },
+          "kept": true,
+          "next": null
+        },
+        {
+          "round": 2,
+          "class": "cheap",
+          "executor": "codex/gpt-6-sol",
+          "cost_usd": 0.4146424,
+          "status": "answered",
+          "checks_failed_before": 0,
+          "checks_failed_after": 0,
+          "own_tests": {
+            "passed": 231,
+            "failed": 0
+          },
+          "delta": {
+            "tests_fixed": 0,
+            "tests_broken": 0,
+            "tests_added": 14,
+            "progress": false
+          },
+          "kept": true,
+          "next": "escalate"
+        }
+      ]
+    }
+  },
+  {
+    "job": "tb4--coder-one-tunable-v8--bun-sourcemap-leak--v8-persist-9570-r1",
+    "trial": "bun-sourcemap-leak__wPKtee2",
+    "task": "bun-sourcemap-leak",
+    "reward": null,
+    "exception": "CancelledError",
+    "cost_usd": 0.0013671,
+    "trial_sec": 13397.5,
+    "agent_sec": 13374.9,
+    "jev_usd": 0.0013671,
+    "delegate_usd": 0.0
+  },
+  {
+    "job": "tb4--coder-one-tunable-v8--bun-sourcemap-leak--v8-persist-9570-r2",
+    "trial": "bun-sourcemap-leak__5sZ7gks",
+    "task": "bun-sourcemap-leak",
+    "reward": null,
+    "exception": "CancelledError",
+    "cost_usd": 0.0013671,
+    "trial_sec": 10367.3,
+    "agent_sec": 10348.3,
+    "jev_usd": 0.0013671,
+    "delegate_usd": 0.0
+  },
+  {
+    "job": "tb4--coder-one-tunable-v8--cargo-flight-dispatch--v8-persist-9570-r1",
+    "trial": "cargo-flight-dispatch__aeL8YcQ",
+    "task": "cargo-flight-dispatch",
+    "reward": null,
+    "exception": "OSError",
+    "cost_usd": null,
+    "trial_sec": 2251.0,
+    "agent_sec": 2230.1
+  },
+  {
+    "job": "tb4--coder-one-tunable-v8--cargo-flight-dispatch--v8-persist-9570-r2",
+    "trial": "cargo-flight-dispatch__jTTHMeh",
+    "task": "cargo-flight-dispatch",
+    "reward": 0.0,
+    "exception": null,
+    "cost_usd": 6.729132082,
+    "trial_sec": 2287.5,
+    "agent_sec": 2250.2,
+    "jev_usd": 0.009400481999999998,
+    "delegate_usd": 6.719731599999999,
+    "verifier_tests": {
+      "passed": 19,
+      "failed": 8,
+      "total": 27
+    },
+    "dispatches": [
+      {
+        "role": "primary",
+        "model": "claude-opus-5-5",
+        "usd": 2.0047476000000004,
+        "status": "answered"
+      },
+      {
+        "role": "second",
+        "model": "gpt-6-astra",
+        "usd": 1.63649,
+        "status": "answered"
+      },
+      {
+        "role": "persist-1",
+        "model": "gpt-6-astra",
+        "usd": 1.556276,
+        "status": "answered"
+      },
+      {
+        "role": "persist-2",
+        "model": "gpt-6-sol",
+        "usd": 0.155002,
+        "status": "answered"
+      }
+    ],
+    "persist": {
+      "stopped": "the next round would cost about $1.56, over the $0.78 left of the $2.49 cap",
+      "totals": {
+        "tests_fixed": 0,
+        "tests_broken": 0,
+        "cost_usd": 1.711278,
+        "escalations": 1
+      },
+      "spend": {
+        "spent_before_usd": 5.014271398,
+        "cap_usd": 2.492864301
+      },
+      "rounds": [
+        {
+          "round": 1,
+          "class": "strong",
+          "executor": "codex/gpt-6-astra",
+          "cost_usd": 1.556276,
+          "status": "answered",
+          "checks_failed_before": 0,
+          "checks_failed_after": 0,
+          "own_tests": {
+            "passed": 50,
+            "failed": 0
+          },
+          "delta": {
+            "tests_fixed": 0,
+            "tests_broken": 0,
+            "tests_added": 50,
+            "progress": null
+          },
+          "kept": true,
+          "next": null
+        },
+        {
+          "round": 2,
+          "class": "cheap",
+          "executor": "codex/gpt-6-sol",
+          "cost_usd": 0.155002,
+          "status": "answered",
+          "checks_failed_before": 0,
+          "checks_failed_after": 1,
+          "own_tests": {
+            "passed": 53,
+            "failed": 0
+          },
+          "delta": {
+            "tests_fixed": 0,
+            "tests_broken": 0,
+            "tests_added": 3,
+            "progress": false
+          },
+          "kept": false,
+          "next": "escalate"
+        }
+      ]
+    }
+  },
+  {
+    "job": "tb4--coder-one-tunable-v8--cargo-flight-dispatch--v8-persist-9570-r3",
+    "trial": "cargo-flight-dispatch__kzGkiRi",
+    "task": "cargo-flight-dispatch",
+    "reward": 0.0,
+    "exception": null,
+    "cost_usd": 8.389785612,
+    "trial_sec": 3019.1,
+    "agent_sec": 2984.2,
+    "jev_usd": 0.010213812000000001,
+    "delegate_usd": 8.3795718,
+    "verifier_tests": {
+      "passed": 19,
+      "failed": 8,
+      "total": 27
+    },
+    "dispatches": [
+      {
+        "role": "primary",
+        "model": "claude-opus-5-5",
+        "usd": 1.5905590000000005,
+        "status": "answered"
+      },
+      {
+        "role": "second",
+        "model": "gpt-6-astra",
+        "usd": 1.59634,
+        "status": "answered"
+      },
+      {
+        "role": "persist-1",
+        "model": "gpt-6-astra",
+        "usd": 1.40264,
+        "status": "answered"
+      },
+      {
+        "role": "persist-2",
+        "model": "gpt-6-sol",
+        "usd": 0.29445520000000003,
+        "status": "answered"
+      }
+    ],
+    "persist": {
+      "stopped": "the rounds spent $1.70 of their $1.66 cap",
+      "totals": {
+        "tests_fixed": 0,
+        "tests_broken": 0,
+        "cost_usd": 1.6970952000000001,
+        "escalations": 1
+      },
+      "spend": {
+        "spent_before_usd": 6.688234842000001,
+        "cap_usd": 1.6558825789999996
+      },
+      "rounds": [
+        {
+          "round": 1,
+          "class": "strong",
+          "executor": "codex/gpt-6-astra",
+          "cost_usd": 1.40264,
+          "status": "answered",
+          "checks_failed_before": 0,
+          "checks_failed_after": 0,
+          "own_tests": {
+            "passed": 50,
+            "failed": 0
+          },
+          "delta": {
+            "tests_fixed": 0,
+            "tests_broken": 0,
+            "tests_added": 50,
+            "progress": null
+          },
+          "kept": true,
+          "next": null
+        },
+        {
+          "round": 2,
+          "class": "cheap",
+          "executor": "codex/gpt-6-sol",
+          "cost_usd": 0.29445520000000003,
+          "status": "answered",
+          "checks_failed_before": 0,
+          "checks_failed_after": 0,
+          "own_tests": {
+            "passed": 55,
+            "failed": 0
+          },
+          "delta": {
+            "tests_fixed": 0,
+            "tests_broken": 0,
+            "tests_added": 5,
+            "progress": false
+          },
+          "kept": true,
+          "next": "escalate"
+        }
+      ]
+    }
+  },
+  {
+    "job": "tb4--coder-one-tunable-v8--cargo-flight-dispatch--v8-persist-9570-r4",
+    "trial": "cargo-flight-dispatch__gsjsQr3",
+    "task": "cargo-flight-dispatch",
+    "reward": 0.0,
+    "exception": null,
+    "cost_usd": 6.805884452000001,
+    "trial_sec": 2317.8,
+    "agent_sec": 2279.0,
+    "jev_usd": 0.009215052000000001,
+    "delegate_usd": 6.796669400000001,
+    "verifier_tests": {
+      "passed": 19,
+      "failed": 8,
+      "total": 27
+    },
+    "dispatches": [
+      {
+        "role": "primary",
+        "model": "claude-opus-5-5",
+        "usd": 1.1354492,
+        "status": "answered"
+      },
+      {
+        "role": "second",
+        "model": "gpt-6-astra",
+        "usd": 1.748538,
+        "status": "answered"
+      },
+      {
+        "role": "persist-1",
+        "model": "gpt-6-astra",
+        "usd": 1.062064,
+        "status": "answered"
+      },
+      {
+        "role": "persist-2",
+        "model": "gpt-6-sol",
+        "usd": 0.2389568,
+        "status": "answered"
+      }
+    ],
+    "persist": {
+      "stopped": "the next round would cost about $1.06, over the $0.95 left of the $2.25 cap",
+      "totals": {
+        "tests_fixed": 0,
+        "tests_broken": 0,
+        "cost_usd": 1.3010207999999999,
+        "escalations": 1
+      },
+      "spend": {
+        "spent_before_usd": 5.50172201,
+        "cap_usd": 2.249138995
+      },
+      "rounds": [
+        {
+          "round": 1,
+          "class": "strong",
+          "executor": "codex/gpt-6-astra",
+          "cost_usd": 1.062064,
+          "status": "answered",
+          "checks_failed_before": 0,
+          "checks_failed_after": 0,
+          "own_tests": {
+            "passed": 42,
+            "failed": 0
+          },
+          "delta": {
+            "tests_fixed": 0,
+            "tests_broken": 0,
+            "tests_added": 42,
+            "progress": null
+          },
+          "kept": true,
+          "next": null
+        },
+        {
+          "round": 2,
+          "class": "cheap",
+          "executor": "codex/gpt-6-sol",
+          "cost_usd": 0.2389568,
+          "status": "answered",
+          "checks_failed_before": 0,
+          "checks_failed_after": 0,
+          "own_tests": {
+            "passed": 48,
+            "failed": 0
+          },
+          "delta": {
+            "tests_fixed": 0,
+            "tests_broken": 0,
+            "tests_added": 6,
+            "progress": false
+          },
+          "kept": true,
+          "next": "escalate"
+        }
+      ]
+    }
+  },
+  {
+    "job": "tb4--coder-one-tunable-v8--production-planning--v8-persist-9570-r1",
+    "trial": "production-planning__9aiHxr3",
+    "task": "production-planning",
+    "reward": null,
+    "exception": "OSError",
+    "cost_usd": null,
+    "trial_sec": 2994.4,
+    "agent_sec": 2974.4
+  },
+  {
+    "job": "tb4--coder-one-tunable-v8--production-planning--v8-persist-9570-r2",
+    "trial": "production-planning__yzdyUnm",
+    "task": "production-planning",
+    "reward": 0.0,
+    "exception": null,
+    "cost_usd": 7.224678471999999,
+    "trial_sec": 3084.3,
+    "agent_sec": 3041.5,
+    "jev_usd": 0.010962672000000008,
+    "delegate_usd": 7.213715799999999,
+    "verifier_tests": {
+      "passed": 19,
+      "failed": 1,
+      "total": 20
+    },
+    "dispatches": [
+      {
+        "role": "primary",
+        "model": "claude-opus-5-5",
+        "usd": 2.9838552,
+        "status": "answered"
+      },
+      {
+        "role": "persist-1",
+        "model": "claude-opus-5-5",
+        "usd": 4.229860599999999,
+        "status": "answered"
+      }
+    ],
+    "persist": {
+      "stopped": "the rounds spent $4.23 of their $3.51 cap",
+      "totals": {
+        "tests_fixed": 0,
+        "tests_broken": 0,
+        "cost_usd": 4.229860599999999,
+        "escalations": 0
+      },
+      "spend": {
+        "spent_before_usd": 2.989568502,
+        "cap_usd": 3.505215749
+      },
+      "rounds": [
+        {
+          "round": 1,
+          "class": "strong",
+          "executor": "claude-code/claude-opus-5-5",
+          "cost_usd": 4.229860599999999,
+          "status": "answered",
+          "checks_failed_before": 0,
+          "checks_failed_after": 0,
+          "own_tests": {
+            "passed": 59,
+            "failed": 0
+          },
+          "delta": {
+            "tests_fixed": 0,
+            "tests_broken": 0,
+            "tests_added": 59,
+            "progress": null
+          },
+          "kept": true,
+          "next": null
+        }
+      ]
+    }
+  },
+  {
+    "job": "tb4--coder-one-tunable-v8--production-planning--v8-persist-9570-r3",
+    "trial": "production-planning__Vb5Fddr",
+    "task": "production-planning",
+    "reward": 1.0,
+    "exception": null,
+    "cost_usd": 8.068756386,
+    "trial_sec": 2287.8,
+    "agent_sec": 2249.3,
+    "jev_usd": 0.009917586000000004,
+    "delegate_usd": 8.0588388,
+    "verifier_tests": {
+      "passed": 20,
+      "failed": 0,
+      "total": 20
+    },
+    "dispatches": [
+      {
+        "role": "primary",
+        "model": "claude-opus-5-5",
+        "usd": 2.8678435999999996,
+        "status": "answered"
+      },
+      {
+        "role": "persist-1",
+        "model": "claude-opus-5-5",
+        "usd": 3.176044,
+        "status": "answered"
+      }
+    ],
+    "persist": {
+      "stopped": "round 1 on the strong executor made no progress",
+      "totals": {
+        "tests_fixed": 0,
+        "tests_broken": 0,
+        "cost_usd": 3.176044,
+        "escalations": 0
+      },
+      "spend": {
+        "spent_before_usd": 4.888901935999999,
+        "cap_usd": 2.5555490320000005
+      },
+      "rounds": [
+        {
+          "round": 1,
+          "class": "strong",
+          "executor": "claude-code/claude-opus-5-5",
+          "cost_usd": 3.176044,
+          "status": "answered",
+          "checks_failed_before": 0,
+          "checks_failed_after": 1,
+          "own_tests": {
+            "passed": 53,
+            "failed": 0
+          },
+          "delta": {
+            "tests_fixed": 0,
+            "tests_broken": 0,
+            "tests_added": 53,
+            "progress": false
+          },
+          "kept": false,
+          "next": null
+        }
+      ]
+    }
+  },
+  {
+    "job": "tb4--coder-one-tunable-v8--production-planning--v8-persist-9570-r4",
+    "trial": "production-planning__FRFigLe",
+    "task": "production-planning",
+    "reward": 1.0,
+    "exception": null,
+    "cost_usd": 5.827951952,
+    "trial_sec": 1689.1,
+    "agent_sec": 1653.2,
+    "jev_usd": 0.007873151999999998,
+    "delegate_usd": 5.8200788,
+    "verifier_tests": {
+      "passed": 20,
+      "failed": 0,
+      "total": 20
+    },
+    "dispatches": [
+      {
+        "role": "primary",
+        "model": "claude-opus-5-5",
+        "usd": 2.6905844000000005,
+        "status": "answered"
+      },
+      {
+        "role": "persist-1",
+        "model": "claude-opus-5-5",
+        "usd": 3.1294943999999996,
+        "status": "answered"
+      }
+    ],
+    "persist": {
+      "stopped": "round 1 on the strong executor made no progress",
+      "totals": {
+        "tests_fixed": 0,
+        "tests_broken": 0,
+        "cost_usd": 3.1294943999999996,
+        "escalations": 0
+      },
+      "spend": {
+        "spent_before_usd": 2.6945178260000007,
+        "cap_usd": 3.652741087
+      },
+      "rounds": [
+        {
+          "round": 1,
+          "class": "strong",
+          "executor": "claude-code/claude-opus-5-5",
+          "cost_usd": 3.1294943999999996,
+          "status": "answered",
+          "checks_failed_before": 0,
+          "checks_failed_after": 1,
+          "own_tests": {
+            "passed": 68,
+            "failed": 0
+          },
+          "delta": {
+            "tests_fixed": 0,
+            "tests_broken": 0,
+            "tests_added": 68,
+            "progress": false
+          },
+          "kept": false,
+          "next": null
+        }
+      ]
+    }
+  }
+]
