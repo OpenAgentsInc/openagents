@@ -115,7 +115,7 @@ pub fn strategy_section(strategy: &[Value]) -> String {
          build, test, verify, finish): the step of its first edit, its test count, its \
          verification after the last edit, its retries, whether it ran the task's example \
          before editing, and its phase sequence (`O3 R5 E1`, `?` unplaced). Step numbers \
-         here are fingerprint steps, which `gym runs fingerprint RUN` lists; they are not \
+         here are fingerprint steps, which `gym runs fingerprint RUN --no-jev` lists; they are not \
          the transcript's `step` field, so don't cite them as steps. Fable trajectories are \
          public trial IDs, not `job/trial`, so the citation check can't open them: cite local \
          runs as usual and name Fable trials in the claim's text. A candidate move is a \

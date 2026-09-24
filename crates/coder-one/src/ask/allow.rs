@@ -125,6 +125,15 @@ impl Allowlist {
                 if !ranks && args.iter().any(|arg| arg == "--record") {
                     return Err("--record writes a file; an ask only reads".to_string());
                 }
+                let strategy = matches!(next, "fingerprint" | "fingerprints" | "moves");
+                let offline = args.iter().any(|arg| arg == "--no-jev")
+                    || (next == "moves" && args.iter().any(|arg| arg == "--cached"));
+                if strategy && !offline {
+                    return Err(format!(
+                        "`gym runs {next}` can spend Jev requests on unplaced steps; add \
+                         --no-jev to read stored answers"
+                    ));
+                }
                 if matches!(next, "mark" | "unmark") {
                     return Err(format!(
                         "`gym runs {next}` writes a person's mark; an ask only reads marks, \
@@ -309,6 +318,9 @@ mod tests {
             "gym runs marks --json",
             "gym runs highlights --json",
             "gym runs --marked --json",
+            "gym runs fingerprint tb4--x/y__1 --no-jev",
+            "gym runs fingerprints --task cad-model --json --no-jev",
+            "gym runs moves --cached --json",
             "gym terminal-bench attempt JOB TRIAL --timeline --json",
             "gym coder matrix --json",
             "/elsewhere/gym coder study --json",
@@ -322,6 +334,8 @@ mod tests {
             "gym runs --record x.json",
             "gym runs mark tb4--x/y__1 --tag looped",
             "gym runs unmark tb4--x/y__1",
+            "gym runs fingerprint tb4--x/y__1",
+            "gym runs moves --json",
             "gym terminal-bench run --profile tb4",
             "gym terminal-bench materialize",
             "gym terminal-bench resume",
