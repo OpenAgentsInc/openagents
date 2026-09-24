@@ -386,7 +386,7 @@ cheapest passing Microluna version per task is shown.
 
 | Task | Best Microluna result | Agent time | Cost | Fable low: mean time, mean cost | Fable all efforts: mean time |
 | --- | --- | ---: | ---: | --- | ---: |
-| `embedding-drift-monitor` | v13, v15, v17: pass (5 of 5 attempts) | 5 min 54 s (v15) | $0.0152 (v15) | 3.1 min, $0.87 | 14.9 min |
+| `embedding-drift-monitor` | v13 to v17: pass (6 of 6 attempts) | 5 min 54 s (v15) | $0.0152 (v15) | 3.1 min, $0.87 | 14.9 min |
 | `sound-change-cascade` | Fail; best 520 of 780 training pairs (v9) | 28 min 22 s | $0.1049 | 22.5 min, $5.20 | 28.8 min |
 | `interleaved-vigenere` | Fail; best 16.5% of the sample's letters (v14) | 20 min 8 s | $0.0815 | 24.7 min, $4.67 | 33.9 min |
 
@@ -398,7 +398,7 @@ beats Fable's all-effort mean time, but not its low-effort mean.
 | Mechanism | Verdict | Evidence |
 | --- | --- | --- |
 | The lean loop: no acceptance suite, one strong first session, a fresh self-check | Keep | No run reversed a fix; the suite reversals of v6 to v8 are gone by construction |
-| Suspects ranked by Jev (`rationale`) | Keep, pending the test set | 5 of 5 `embedding-drift-monitor` passes with it, 0 of 7 lean runs without it; in-sample |
+| Suspects ranked by Jev (`rationale`) | Keep, pending the test set | 6 of 6 `embedding-drift-monitor` passes with it (v13 twice, v14 to v17); without it, 0 of 4 lean runs here and 2 of 3 v12 runs in the [candidate-evidence experiment](2026-09-24-microluna-candidate-evidence.md); in-sample |
 | Host turn-back of a finish (`persist`) | Keep | Solo left 47 to 52 of 60 turns unused; with it, sessions work to their bounds |
 | Frozen score and keep-best | Keep | It restored the better workspace twice and never reverted a pass |
 | Record-based hard-coding scan | Keep | Field-based scan misfired on a word list (v9); no false flag since |
