@@ -2,19 +2,22 @@
 
 Open Gym, press `p` from the Runs list or an open run, and choose a task and
 an attempt on each side. The left side defaults to Coder One; the right
-side defaults to the public Claude Code / Fable 5.1 attempts, with max
-first. All versions and repetitions remain separate choices. A task with
+side defaults to the public Claude Code / Fable 5.1 attempts. Tasks and
+attempts start in chronological order, newest first. All versions and
+repetitions remain separate choices. A task with
 only one available side can play on its own.
 
 ```sh
 CARGO_TARGET_DIR=~/.cache/openagents/gym-target \
   cargo run -p gym --features tui --bin gym-terminal -- \
-  --terminal-bench --head-to-head --no-jev
+  --terminal-bench --head-to-head
 ```
 
-Replay reads files. It does not rerun commands, invoke a model, or charge
-for inference. `--print` prints the selection screen without entering the
-terminal. The ordinary Runs view remains available with Escape.
+Transcript playback reads files without rerunning commands or calling a
+model. Pressing `l` requests optional Jev analysis; add `--no-jev` to
+disable new calls while reading cached assessments. `--print` prints the
+selection screen without entering the terminal. The ordinary Runs view
+remains available with Escape.
 
 ## Choose a comparison
 
@@ -27,6 +30,7 @@ terminal. The ordinary Runs view remains available with Escape.
 | `c` | Clear the task filter. |
 | `a` | Switch the left side between Coder One and all local agents. |
 | `o` | Switch the opponent between public Fable attempts and local attempts. |
+| `l` | Toggle chronological order (newest first) and Jev's learning order. |
 | `Enter` | Load the selected transcripts, initially paused. |
 | `Esc` | Return to Runs. |
 
@@ -36,6 +40,62 @@ current local job takes precedence; the host mirror takes precedence over
 a smaller committed bundle. Outcome, model, effort or Coder version, and
 attempt identity remain visible. This is a trace comparison, not a claim
 that different models, budgets, or harness settings were controlled.
+
+## Learn from comparisons
+
+Press `l` in the picker to rank both collections with the same
+`runs-learning-v1` questions as the main Runs screen: 18 probability
+judgments and an overall score. The learning value combines the overall
+score with the strongest reason, weighted by how rare that reason is
+among the assessed replay attempts. See the
+[learning-order explanation](terminal-bench-tui.md#read-recent-runs)
+for the question categories. Public attempts use their published ATIF
+transcripts, reward, model, effort, and reported cost. Individual verifier
+results and agent-only duration remain unknown when the public manifest
+does not provide them.
+
+Tasks sort by their highest-scoring visible attempt; attempts sort by
+their own score. Unranked attempts follow ranked attempts. Newest first
+breaks ties, and attempts with unknown dates follow dated attempts.
+Scores update as batches finish, while the selected task and attempt IDs
+stay selected. Press Home in a column to jump to its highest-ranked item.
+The picker shows each attempt's score and the selected pair's leading
+judgments below the lists on taller terminals.
+
+During replay, `l` pauses playback and shows each run's complete assessment
+in its own scrollable pane. Tab selects a side; arrows and Page Up/Down
+scroll it. Press `l` again to return to the transcripts at the same time
+and scroll position. Space resumes playback. Assessments describe the
+**whole completed run**, including events after the paused replay clock.
+These are Jev's judgments and hypotheses, not verifier findings or a
+causal explanation established by a controlled experiment.
+
+Analysis starts only when you request it with `l`. It uses the existing
+Jev client, credentials, question set, evidence summary, and score formula
+from Runs. The selected task goes first, then the remaining completed
+attempts in both collections. Eight attempts form each background batch;
+the UI keeps working while the batch runs. The footer reports progress,
+unavailable attempts, request count, and token-based estimated cost.
+Turning the picker back to chronological order lets the current pass
+continue. Leaving head-to-head stops after the in-flight batch; completed
+answers remain cached. Reopen head-to-head to retry failed assessments or
+pick up newly downloaded evidence.
+
+Matching main-screen answers are reused. Additional answers live in
+`~/.openagents/gym/learning/head-to-head/`, with a separate index so the
+two screens' workers cannot replace each other's indexes. Fingerprints
+include evidence file metadata and comparison context; public identities
+also include manifest metadata and the pinned body digest. On reopening
+the picker, changed evidence is reassessed. The question set, retained evidence summary, raw
+judgments, and model identity stay in each cached answer. Scores can
+change as more answers affect reason rarity, without another model call.
+
+The comparison context is the main Runs catalog and its pinned leaderboard
+reference. Fable transcripts do not supply unpublished verifier details.
+Missing files and failed integrity checks receive no new judgment; their
+cause stays visible. With no Jev credential, `GYM_JEV=off`, or `--no-jev`,
+cached answers remain usable and unassessed attempts say why they are
+waiting. Repeated toggles reuse answers instead of buying another pass.
 
 ## Play and inspect
 
@@ -47,6 +107,7 @@ other continues.
 | Key | Action |
 | --- | --- |
 | Space | Play or pause both sides. |
+| `l` | Pause and show both Jev assessments, or return to chronological replay. |
 | `+` or `=` / `-` | Increase/decrease speed: 1×, 2×, 5×, 10×. |
 | Left/right arrows or `[`/`]` | Seek backward/forward 30 seconds. |
 | `n` / `b` | Seek to the next/previous event on either side. |
@@ -236,3 +297,43 @@ The full follow-up gate, `20260924T055413Z-982924`, again passed the
 non-test phases, including PostgreSQL acceptance. Both workspace test
 phases stopped at the same pre-existing Coder One scratch-path assertion
 described above; the full gate remains failed.
+
+The Jev learning toggle passed **19 replay tests**, including public
+evidence extraction, reuse of main-screen answers, offline cache reuse,
+changed-evidence invalidation, missing and corrupt public bodies, stable
+pair selection, search input, background updates during replay, and clock
+preservation. Strict all-target Gym Clippy passed. The full manual gate
+`20260924T062940Z-8f3260` passed every non-test phase, including PostgreSQL
+acceptance; both workspace test phases stopped at the same existing Coder
+One scratch-path assertion. Focused tests and Clippy also passed after
+the live acceptance selector was corrected to require a completed run.
+
+The [learning acceptance record](measurements/2026-09-24-head-to-head-learning.json)
+retains the results. The live pass saved 953 complete Jev assessments:
+749 local and 204 public, each with all 18 judgments. Their 3,143,390 input
+tokens cost an estimated **$0.1320** at the learning module's configured
+rate. This is a partial collection, not a claim that every attempt has
+been assessed. A completed Coder/Fable `data-anonymization` pair rendered
+both assessments, preserved its replay clock, and reopened with zero new
+calls when Jev was disabled.
+
+A real PTY session also exercised `l` in the picker, both assessment
+panes, the return to transcripts, playback at 10×, and a clean quit.
+It used cached answers with `--no-jev`.
+
+Run the live acceptance check explicitly; it requires downloaded evidence
+and a configured Jev credential and can make billable analysis calls:
+
+```sh
+CARGO_TARGET_DIR=~/.cache/openagents/gym-target \
+GYM_REPLAY_LEARNING_LIVE=1 \
+GYM_REPLAY_AUDIT_DIR=/tmp/gym-replay-learning-acceptance \
+  cargo test -p gym --features tui --test replay_acceptance \
+  jev_assesses_a_real_pair_and_cached_replay_makes_no_calls -- \
+  --ignored --nocapture
+```
+
+This check writes `jev-replay-audit.json`, `jev-replay-screen.txt`, and
+`jev-replay-cached-screen.txt` to the chosen output directory. It selects
+a completed Coder attempt explicitly: the chronological picker can also
+contain unfinished attempts, which correctly remain unranked.

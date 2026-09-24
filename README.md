@@ -101,7 +101,7 @@ streams. See [traces](docs/coder/runtime/traces.md) and
 Open the Terminal-Bench Runs view:
 
 ```sh
-cargo run -p gym --features tui --bin gym-terminal -- --terminal-bench --no-jev
+cargo run -p gym --features tui --bin gym-terminal -- --terminal-bench
 ```
 
 Press `Enter` for a run summary, `t` for its transcript, or **`p` for
@@ -109,9 +109,23 @@ head-to-head replay**. Choose a task and one attempt on each side. Coder
 One versions and repeated attempts remain separate choices. You can also
 compare two local attempts or view a public attempt on its own.
 
+Press **`l` in the head-to-head picker** to switch between newest first
+and Jev's learning order. Both Coder and Fable attempts receive the same
+learning judgments used in Runs. The picker shows scores and reasons;
+the selected task and attempts stay selected as scores arrive. During
+replay, **`l` pauses the clock and shows both full Jev assessments**;
+press it again to return to the transcripts at the same point.
+
+New analysis uses `TYPESAFE_API_KEY` or `~/.openagents/jev.json` and shows
+progress and estimated cost. Answers are cached. Add `--no-jev` to disable
+new calls while keeping cached assessments available. Transcript playback
+itself makes no model calls. See [learning from comparisons](docs/gym/head-to-head.md#learn-from-comparisons)
+for scoring, cache behavior, and evidence limits.
+
 | Replay key | Action |
 | --- | --- |
 | Space | Play or pause both transcripts. |
+| `l` | Switch between chronological replay and both runs' Jev assessments. |
 | `+` / `-` | Change speed through 1×, 2×, 5×, and 10×. |
 | Left/right arrows | Seek backward/forward 30 seconds. |
 | `n` / `b` | Jump to the next/previous event. |
@@ -168,6 +182,18 @@ noninteractive view. The plain `gym-terminal` command without
 `--terminal-bench` opens the decision-model views.
 
 ## Coder One benchmark evidence
+
+The September 24 follow-ups found two limits in the current controller:
+
+- [Escalation after a failed check](docs/terminal-bench/2026-09-24-escalation-on-failed-check.md)
+  rescued **0 of 12 escalated trials**, at $20.40 of GPT-6 Astra usage.
+- [Per-task effort routing](docs/terminal-bench/2026-09-24-effort-routing.md)
+  passed **8/15**, against fixed xhigh's **10/14**, while costing 76% of
+  fixed xhigh—above the experiment's 60% cost ceiling.
+
+The [Luna pivot proposal](docs/coder/design/luna-pivot.md) sets the next
+design focus. These experiments do not establish a controller efficiency
+gain and do not evaluate that proposed design.
 
 The latest retained matched-controller experiment, published September 23,
 holds Claude Code, Opus 5.5, medium effort, tools, system prompt, and outer
@@ -271,8 +297,8 @@ require link, path, and artifact checks rather than the Rust gate. Required
 checks run on contributor machines or non-GitHub infrastructure; this
 repository does not use GitHub-billed automation.
 
-The September 24 replay update passed all 13 replay tests, strict Gym
-Clippy, formatting, and a desktop replay check. Its full workspace gate
+The September 24 Jev replay update passed all 19 replay tests, strict Gym
+Clippy, and a real Coder/Fable assessment and cache check. Its full workspace gate
 remained failed at an existing Coder One scratch-path test; the
 [verification record](docs/gym/head-to-head.md#verification) documents the
 scope. Feature-specific success does not mean the full repository gate is

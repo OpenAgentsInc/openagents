@@ -1,0 +1,74 @@
+{
+  "schema": "openagents.gym.head-to-head-learning-acceptance.v1",
+  "date": "2026-09-24",
+  "base_commit": "47d540a80a329da3138995334de09ec0365cf279",
+  "unit_tests": {
+    "filter": "runs_replay",
+    "passed": 19,
+    "failed": 0
+  },
+  "live_pair": {
+    "task": "data-anonymization",
+    "pair_assessed": true,
+    "cached_pair_calls": 0,
+    "clock_preserved_ms": 177.0,
+    "status_when_pair_ready": "Jev ranking\u2026 \u00b7 960/2405 ranked \u00b7 9 unavailable \u00b7 0 calls \u00b7 $0.0000 estimated \u00b7",
+    "whole_run_analysis": true,
+    "note": "The selected pair is the acceptance scope. Ranking may finish one additional batch after leaving the pane."
+  },
+  "saved_answers": {
+    "saved_live_answers": 953,
+    "public_answers": 204,
+    "local_answers": 749,
+    "models": {
+      "jev-1.13.0": 953
+    },
+    "input_tokens": 3143390,
+    "output_tokens": 329738,
+    "question_count_each": [
+      18
+    ],
+    "estimated_cost_usd": 0.13202238
+  },
+  "live_check_notes": [
+    "The first live pass selected an unfinished Coder attempt. The UI correctly withheld its assessment; the acceptance check timed out while waiting for two completed assessments.",
+    "The corrected check explicitly selects a passed Coder attempt. Both sides display cached live Jev answers and preserve the replay clock. Reopening with Jev off makes zero calls.",
+    "Saved-answer totals describe this local verification pass, not analysis of the entire public collection. The price estimate uses the existing learning module rate and is not an invoice."
+  ],
+  "verification": {
+    "strict_gym_clippy": "passed",
+    "full_gate_run": "20260924T062940Z-8f3260",
+    "full_gate_result": "failed",
+    "phases": {
+      "preflight": "passed",
+      "gate-tooling": "passed",
+      "artifacts": "passed",
+      "delegation": "passed",
+      "backup": "passed",
+      "fmt": "passed",
+      "clippy": "passed",
+      "clippy-features": "passed",
+      "tests": "failed",
+      "tests-features": "failed",
+      "deps": "passed",
+      "postgres": "passed"
+    },
+    "failures": [
+      "Both workspace test phases stop at the pre-existing coder-one support::tests::evidence_puts_the_contradicted_requirement_first_and_scrubs_scratch_paths failure on this Mac."
+    ],
+    "scope_note": "The focused replay tests, live acceptance, and strict all-target Gym Clippy also ran after the acceptance selector was changed to require a completed run.",
+    "optional_checks_not_run": [
+      "Metal",
+      "long relay soak"
+    ]
+  },
+  "terminal_session": {
+    "pty": true,
+    "l_picker": true,
+    "l_assessment": true,
+    "return_to_replay": true,
+    "playback_10x": true,
+    "no_jev": true,
+    "exit": 0
+  }
+}

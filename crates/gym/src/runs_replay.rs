@@ -41,6 +41,36 @@ pub enum Source {
 }
 
 impl Source {
+    pub fn started_ms(&self) -> Option<i64> {
+        match self {
+            Self::Local(run) => run.started_ms,
+            Self::Public { trial, .. } => trial.started_at.as_deref().and_then(timestamp_ms),
+        }
+    }
+
+    /// Checks a public body's identity before either replay or analysis reads it.
+    pub(crate) fn verify(&self) -> Result<(), String> {
+        let Self::Public { trial, cache } = self else {
+            return Ok(());
+        };
+        let path = cache.join(&trial.file);
+        let bytes = std::fs::read(&path).map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                format!(
+                    "Fable transcript is not on this computer.\n\nGit includes the attempt list, but transcript files must be downloaded on each computer.\n\nFrom the openagents repository, run:\ncd bench/terminal-bench\nuv run python -m tbench.public_replays\n\nThen press Esc and Enter to reload the pair.\n\nFile: {}",
+                    path.display()
+                )
+            } else {
+                format!("Cannot read Fable transcript: {e}\nFile: {}", path.display())
+            }
+        })?;
+        let actual = format!("{:x}", Sha256::digest(&bytes));
+        if trial.sha256.as_deref() != Some(&actual) {
+            return Err(format!("Integrity check failed: {}", path.display()));
+        }
+        Ok(())
+    }
+
     pub fn id(&self) -> String {
         match self {
             Self::Local(run) => run.id(),
@@ -526,20 +556,7 @@ impl Replay {
         let (events, start, end, origin) = match source {
             Source::Public { trial, cache } => {
                 let path = cache.join(&trial.file);
-                let bytes = std::fs::read(&path).map_err(|e| {
-                    if e.kind() == std::io::ErrorKind::NotFound {
-                        format!(
-                            "Fable transcript is not on this computer.\n\nGit includes the attempt list, but transcript files must be downloaded on each computer.\n\nFrom the openagents repository, run:\ncd bench/terminal-bench\nuv run python -m tbench.public_replays\n\nThen press Esc and Enter to reload the pair.\n\nFile: {}",
-                            path.display()
-                        )
-                    } else {
-                        format!("Cannot read Fable transcript: {e}\nFile: {}", path.display())
-                    }
-                })?;
-                let actual = format!("{:x}", Sha256::digest(&bytes));
-                if trial.sha256.as_deref() != Some(&actual) {
-                    return Err(format!("Integrity check failed: {}", path.display()));
-                }
+                source.verify()?;
                 (
                     trajectory(&path)?,
                     trial.started_at.as_deref().and_then(timestamp_ms),

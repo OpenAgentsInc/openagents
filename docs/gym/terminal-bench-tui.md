@@ -39,7 +39,13 @@ Press `p` from the Runs list or an open run to compare any Coder One
 attempt with a public Fable 5.1 attempt on the same task. The two full
 transcripts share an elapsed-time clock, with pause, seeking, independent
 scrolling, and `+`/`-` speed controls up to 10×. The picker includes all
-five Fable effort settings. See [head-to-head replay](head-to-head.md) for
+five Fable effort settings. Press `l` in its picker to switch between
+newest first and Jev's learning order for tasks and attempts. During
+replay, `l` pauses the clock and shows the same 18 learning judgments for
+each side; press it again to return to the transcripts. New assessments
+run in the background, with cached answers, progress, and estimated cost.
+`--no-jev` keeps cached assessments available without making new calls.
+See [head-to-head replay](head-to-head.md) for
 controls, the acquired corpus, timing limits, and host synchronization.
 
 ## Read recent runs

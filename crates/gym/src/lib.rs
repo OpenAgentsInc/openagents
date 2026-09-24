@@ -89,6 +89,8 @@ pub mod runs_highlights;
 pub mod runs_learning;
 pub mod runs_marks;
 pub mod runs_replay;
+#[cfg(feature = "tui")]
+mod runs_replay_learning;
 pub mod runs_story;
 pub mod runs_transcript;
 pub mod spread;

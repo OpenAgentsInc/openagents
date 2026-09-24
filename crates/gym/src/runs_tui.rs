@@ -574,7 +574,13 @@ impl Pane {
             .as_ref()
             .map(|o| &o.detail.run)
             .or_else(|| self.selected_run());
-        self.replay = Some(crate::runs_replay_tui::Pane::new(&self.catalog, selected));
+        self.replay = Some(
+            crate::runs_replay_tui::Pane::new(&self.catalog, selected).with_learning(
+                self.learning.store.clone(),
+                self.learning.judge.clone(),
+                self.learning.context.clone(),
+            ),
+        );
     }
 
     pub fn replaying(&self) -> bool {

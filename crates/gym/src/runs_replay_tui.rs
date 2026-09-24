@@ -9,6 +9,7 @@ use ratatui::{buffer::Buffer, layout::Rect};
 
 use crate::runs::{Agent, Catalog};
 use crate::runs_replay::{Playback, Replay, Source};
+use crate::runs_replay_learning::Learning;
 use crate::runs_tui::{Key, Reply};
 
 struct Wrapped {
@@ -199,6 +200,9 @@ pub struct Pane {
     right_local: bool,
     screens: Option<[Option<Screen>; 2]>,
     side_errors: [Option<String>; 2],
+    learning: Learning,
+    analysis: bool,
+    analysis_scroll: [Cell<usize>; 2],
     pub clock: Playback,
     pub errors: Vec<String>,
 }
@@ -238,10 +242,18 @@ impl Pane {
             right_local: false,
             screens: None,
             side_errors: [None, None],
+            learning: Learning::default(),
+            analysis: false,
+            analysis_scroll: [Cell::new(0), Cell::new(0)],
             clock: Playback::new(0),
             errors,
         };
         if let Some(run) = selected {
+            pane.task = pane
+                .visible_tasks()
+                .iter()
+                .position(|task| *task == run.task)
+                .unwrap_or(0);
             pane.cursors[0] = pane
                 .choices(0)
                 .iter()
@@ -250,12 +262,63 @@ impl Pane {
         }
         pane
     }
+    pub fn with_learning(
+        mut self,
+        store: crate::runs_learning::Store,
+        judge: crate::runs_learning::Judge,
+        context: crate::runs_learning::Context,
+    ) -> Self {
+        self.learning = Learning::new(
+            self.local.iter().chain(&self.public).cloned(),
+            store,
+            judge,
+            context,
+        );
+        self
+    }
     fn visible_tasks(&self) -> Vec<&str> {
-        self.tasks
+        let mut tasks: Vec<_> = self
+            .tasks
             .iter()
             .filter(|task| task.contains(&self.query.to_lowercase()))
             .map(String::as_str)
-            .collect()
+            .collect();
+        // Task order uses the best visible attempt; attempts without a score
+        // remain after ranked attempts, with newest first as the tie-breaker.
+        let mut values = std::collections::HashMap::new();
+        for source in self
+            .local
+            .iter()
+            .chain(&self.public)
+            .filter(|s| self.admitted(s))
+        {
+            let value = values
+                .entry(source.task())
+                .or_insert((None::<f64>, None::<i64>));
+            if let Some(score) = self.learning.score(source) {
+                value.0 = Some(value.0.map_or(score, |old| old.max(score)));
+            }
+            value.1 = value.1.max(source.started_ms());
+        }
+        tasks.sort_by(|a, b| {
+            let a_value = values.get(a).copied().unwrap_or_default();
+            let b_value = values.get(b).copied().unwrap_or_default();
+            let rank = if self.learning.enabled {
+                score_order(a_value.0, b_value.0)
+            } else {
+                std::cmp::Ordering::Equal
+            };
+            rank.then(b_value.1.cmp(&a_value.1)).then(a.cmp(b))
+        });
+        tasks
+    }
+    fn admitted(&self, source: &Source) -> bool {
+        match source {
+            Source::Local(run) => {
+                self.right_local || self.all_agents || run.agent == Agent::CoderOne
+            }
+            Source::Public { .. } => !self.right_local,
+        }
     }
     fn task_name(&self) -> Option<&str> {
         self.visible_tasks().get(self.task).copied()
@@ -266,23 +329,76 @@ impl Pane {
         } else {
             &self.public
         };
-        sources
+        let task = self.task_name();
+        let mut choices: Vec<_> = sources
             .iter()
-            .filter(|s| Some(s.task()) == self.task_name())
+            .filter(|s| Some(s.task()) == task)
             .filter(|s| {
                 side == 1
                     || self.all_agents
                     || matches!(s, Source::Local(run) if run.agent == Agent::CoderOne)
             })
-            .collect()
+            .collect();
+        choices.sort_by(|a, b| {
+            let rank = if self.learning.enabled {
+                score_order(self.learning.score(a), self.learning.score(b))
+            } else {
+                std::cmp::Ordering::Equal
+            };
+            rank.then(b.started_ms().cmp(&a.started_ms()))
+                .then(a.id().cmp(&b.id()))
+        });
+        choices
     }
     pub fn active(&self) -> bool {
         self.screens.is_some()
     }
     pub fn advance(&mut self, elapsed: Duration) {
-        if self.active() {
+        if self.learning.ranking() {
+            let kept = self.selection();
+            if self.learning.poll() {
+                self.restore(kept);
+            }
+        }
+        if self.active() && !self.analysis {
             self.clock.advance(elapsed);
         }
+    }
+    fn selection(&self) -> (Option<String>, [Option<String>; 2]) {
+        (
+            self.task_name().map(str::to_owned),
+            std::array::from_fn(|side| self.choices(side).get(self.cursors[side]).map(|s| s.id())),
+        )
+    }
+    fn restore(&mut self, (task, attempts): (Option<String>, [Option<String>; 2])) {
+        self.task = self
+            .visible_tasks()
+            .iter()
+            .position(|t| Some(*t) == task.as_deref())
+            .unwrap_or(0);
+        for (side, id) in attempts.iter().enumerate() {
+            self.cursors[side] = self
+                .choices(side)
+                .iter()
+                .position(|s| Some(s.id()).as_ref() == id.as_ref())
+                .unwrap_or(0);
+        }
+    }
+    fn toggle_learning(&mut self) {
+        let kept = self.selection();
+        if self.active() {
+            self.analysis = !self.analysis;
+            if self.analysis {
+                self.clock.playing = false;
+                self.learning.enabled = true;
+            }
+        } else {
+            self.learning.enabled = !self.learning.enabled;
+        }
+        if self.learning.enabled {
+            self.learning.start(kept.0.as_deref());
+        }
+        self.restore(kept);
     }
     fn start(&mut self) {
         let selected: Vec<Option<Source>> = (0..2)
@@ -321,6 +437,8 @@ impl Pane {
                 .unwrap_or(0),
         );
         self.screens = Some(screens);
+        self.analysis = false;
+        self.analysis_scroll = [Cell::new(0), Cell::new(0)];
         self.focus = 0;
     }
     /// Returns `None` when Escape leaves head-to-head mode.
@@ -340,6 +458,30 @@ impl Pane {
             }
             self.task = 0;
             self.cursors = [0; 2];
+            return Some(Reply::Handled);
+        }
+        if key == Key::Char('l') {
+            self.toggle_learning();
+            return Some(Reply::Handled);
+        }
+        if self.active() && self.analysis {
+            let scroll = &self.analysis_scroll[self.focus];
+            match key {
+                Key::Back => {
+                    self.screens = None;
+                    self.analysis = false;
+                    self.focus = 0;
+                }
+                Key::Char('q') => return Some(Reply::Quit),
+                Key::Tab => self.focus = 1 - self.focus,
+                Key::Up | Key::Char('k') => scroll.set(scroll.get().saturating_sub(1)),
+                Key::Down | Key::Char('j') => scroll.set(scroll.get().saturating_add(1)),
+                Key::PageUp => scroll.set(scroll.get().saturating_sub(20)),
+                Key::PageDown => scroll.set(scroll.get().saturating_add(20)),
+                Key::Home | Key::Char('g') => scroll.set(0),
+                Key::End | Key::Char('G') => scroll.set(usize::MAX),
+                _ => {}
+            }
             return Some(Reply::Handled);
         }
         if let Some(screens) = &mut self.screens {
@@ -430,12 +572,14 @@ impl Pane {
             Key::Enter => self.start(),
             Key::Char('/') => self.typing = true,
             Key::Char('a') => {
+                let kept = self.selection();
                 self.all_agents = !self.all_agents;
-                self.cursors[0] = 0;
+                self.restore(kept);
             }
             Key::Char('o') => {
+                let kept = self.selection();
                 self.right_local = !self.right_local;
-                self.cursors[1] = 0;
+                self.restore(kept);
             }
             Key::Char('c') => {
                 self.query.clear();
@@ -492,7 +636,9 @@ impl Pane {
                 0,
                 &format!(
                     "Head-to-head · {} · {} / {} · {}× · Tab selects {}",
-                    if self.clock.playing {
+                    if self.analysis {
+                        "Jev analysis"
+                    } else if self.clock.playing {
                         "playing"
                     } else {
                         "paused"
@@ -509,7 +655,11 @@ impl Pane {
                 buf,
                 area,
                 1,
-                "Space play/pause · +/- speed · ←/→ seek 30s · n/b event · r restart · End complete",
+                if self.analysis {
+                    "l chronological replay · Tab choose side · ↑/↓ PgUp/PgDn scroll assessment"
+                } else {
+                    "l Jev analysis · Space play/pause · +/- speed · ←/→ seek 30s · n/b event · r restart · End complete"
+                },
                 ladder,
                 Intensity::Half,
             );
@@ -517,7 +667,11 @@ impl Pane {
             let right = Rect::new(left.right(), left.y, area.width - left.width, left.height);
             for (index, side) in [left, right].into_iter().enumerate() {
                 if let Some(screen) = &screens[index] {
-                    screen.render(side, buf, ladder, &self.clock, self.focus == index);
+                    if self.analysis {
+                        self.render_assessment(screen, index, side, buf, ladder);
+                    } else {
+                        screen.render(side, buf, ladder, &self.clock, self.focus == index);
+                    }
                 } else {
                     frame(side, buf, ladder.style(Intensity::Quarter));
                     let inner = Rect::new(
@@ -540,7 +694,11 @@ impl Pane {
                 buf,
                 area,
                 bottom,
-                "↑/↓ PgUp/PgDn scroll · g top · f follow · d full record/text · Esc choose pair · q quit",
+                if self.analysis {
+                    "Whole-run judgments include future replay events · l transcripts · Esc choose pair · q quit"
+                } else {
+                    "↑/↓ PgUp/PgDn scroll · g top · f follow · d full record/text · Esc choose pair · q quit"
+                },
                 ladder,
                 Intensity::Half,
             );
@@ -550,7 +708,12 @@ impl Pane {
                 area,
                 0,
                 &format!(
-                    "Head-to-head · {} local · {} public attempts · / {}{}",
+                    "Head-to-head · {} · {} local · {} public attempts · / {}{}",
+                    if self.learning.enabled {
+                        "Jev learning order"
+                    } else {
+                        "chronological: newest first"
+                    },
                     self.local.len(),
                     self.public.len(),
                     self.query,
@@ -563,20 +726,26 @@ impl Pane {
                 buf,
                 area,
                 1,
-                "Tab/←/→ choose column · ↑/↓ choose task or attempt · Enter load · / search tasks",
+                "l chronological/Jev order · Tab/←/→ column · ↑/↓ choose · Enter load · / search tasks",
                 ladder,
                 Intensity::Half,
             );
             let task_width = area.width / 4;
             let side_width = (area.width - task_width) / 2;
+            let hints = if self.learning.enabled && area.height >= 22 {
+                4
+            } else {
+                0
+            };
+            let height = area.height - 5 - hints;
             let rects = [
-                Rect::new(area.x, area.y + 2, task_width, area.height - 5),
-                Rect::new(area.x + task_width, area.y + 2, side_width, area.height - 5),
+                Rect::new(area.x, area.y + 2, task_width, height),
+                Rect::new(area.x + task_width, area.y + 2, side_width, height),
                 Rect::new(
                     area.x + task_width + side_width,
                     area.y + 2,
                     area.width - task_width - side_width,
-                    area.height - 5,
+                    height,
                 ),
             ];
             let tasks = self
@@ -587,12 +756,12 @@ impl Pane {
             let left = self
                 .choices(0)
                 .iter()
-                .map(|s| s.label())
+                .map(|s| self.learning.label(s))
                 .collect::<Vec<_>>();
             let right = self
                 .choices(1)
                 .iter()
-                .map(|s| s.label())
+                .map(|s| self.learning.label(s))
                 .collect::<Vec<_>>();
             for (index, (values, cursor, label)) in [
                 (&tasks, self.task, "Task"),
@@ -628,6 +797,36 @@ impl Pane {
                     self.focus == index,
                 );
             }
+            if hints > 0 {
+                for side in 0..2 {
+                    if let Some(source) = self.choices(side).get(self.cursors[side]) {
+                        let rect = rects[side + 1];
+                        let lines = self.learning.assessment(source);
+                        let text = if self.learning.score(source).is_some() {
+                            lines
+                                .iter()
+                                .skip(1)
+                                .take(3)
+                                .cloned()
+                                .collect::<Vec<_>>()
+                                .join("\n")
+                        } else {
+                            lines.join("\n")
+                        };
+                        paragraph(
+                            buf,
+                            Rect::new(
+                                rect.x + 1,
+                                rect.bottom(),
+                                rect.width.saturating_sub(2),
+                                hints,
+                            ),
+                            &text,
+                            ladder,
+                        );
+                    }
+                }
+            }
             line(
                 buf,
                 area,
@@ -637,7 +836,16 @@ impl Pane {
                 Intensity::Half,
             );
         }
-        if let Some(error) = self.errors.first() {
+        if self.analysis || self.learning.enabled {
+            line(
+                buf,
+                area,
+                bottom - 1,
+                &self.learning.status(),
+                ladder,
+                Intensity::Full,
+            );
+        } else if let Some(error) = self.errors.first() {
             line(
                 buf,
                 area,
@@ -651,6 +859,64 @@ impl Pane {
                 Intensity::Full,
             );
         }
+    }
+    fn render_assessment(
+        &self,
+        screen: &Screen,
+        index: usize,
+        area: Rect,
+        buf: &mut Buffer,
+        ladder: Ladder,
+    ) {
+        frame(
+            area,
+            buf,
+            ladder.style(if self.focus == index {
+                Intensity::Full
+            } else {
+                Intensity::Quarter
+            }),
+        );
+        let inner = Rect::new(
+            area.x + 1,
+            area.y + 1,
+            area.width.saturating_sub(2),
+            area.height.saturating_sub(2),
+        );
+        line(
+            buf,
+            inner,
+            0,
+            &screen.source.label(),
+            ladder,
+            Intensity::Full,
+        );
+        let text = self.learning.assessment(&screen.source).join("\n\n");
+        let rows = wrap_rows(&text, usize::from(inner.width));
+        let height = usize::from(inner.height.saturating_sub(2));
+        let start = self.analysis_scroll[index]
+            .get()
+            .min(rows.len().saturating_sub(height));
+        self.analysis_scroll[index].set(start);
+        for (i, span) in rows.into_iter().skip(start).take(height).enumerate() {
+            line(
+                buf,
+                inner,
+                i as u16 + 2,
+                &text[span],
+                ladder,
+                Intensity::Half,
+            );
+        }
+    }
+}
+
+fn score_order(a: Option<f64>, b: Option<f64>) -> std::cmp::Ordering {
+    match (a, b) {
+        (Some(a), Some(b)) => b.total_cmp(&a),
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (None, None) => std::cmp::Ordering::Equal,
     }
 }
 
@@ -747,6 +1013,117 @@ fn clock(ms: u64) -> String {
 mod tests {
     use super::*;
     use crate::runs::Sources;
+
+    #[test]
+    fn learning_order_preserves_pair_and_analysis_preserves_replay_position() {
+        use crate::runs_learning::{Context, Judge, Store};
+        use crate::runs_replay_learning::tests::{public, seed};
+        let (dir, sources) = crate::runs::fixture_sources();
+        let catalog = Catalog::load(sources);
+        let mut older = catalog
+            .runs
+            .iter()
+            .find(|r| r.agent == Agent::CoderOne && crate::runs_learning::rankable(r))
+            .unwrap()
+            .clone();
+        older.task = "parser".to_owned();
+        older.started_ms = Some(1000);
+        let mut newer = older.clone();
+        newer.task = "recent-task".to_owned();
+        newer.trial = "newer".to_owned();
+        newer.variant = Some("newer".to_owned());
+        newer.started_ms = Some(i64::MAX);
+        let local = vec![
+            Source::Local(Box::new(older)),
+            Source::Local(Box::new(newer)),
+        ];
+        let opponent = public(dir.path(), "aa");
+        let mut store = Store::default();
+        let context = Context::default();
+        seed(&mut store, &local[0], &context, 4.0);
+        seed(&mut store, &local[1], &context, 0.0);
+        seed(&mut store, &opponent, &context, 3.0);
+        let mut pane = Pane::from_sources(local, vec![opponent], vec![], None).with_learning(
+            store,
+            Judge::Off("offline".to_owned()),
+            context,
+        );
+        assert_eq!(pane.visible_tasks()[0], "recent-task");
+        let kept = pane.selection();
+        pane.key(Key::Char('l'));
+        assert!(pane.learning.enabled);
+        assert_eq!(pane.visible_tasks()[0], "parser");
+        assert_eq!(pane.selection(), kept);
+        pane.key(Key::Home);
+        pane.key(Key::Enter);
+        assert!(
+            pane.screens.as_ref().unwrap().iter().all(Option::is_some),
+            "{:?}",
+            pane.errors
+        );
+        pane.key(Key::Char('n'));
+        pane.key(Key::Char(' '));
+        let elapsed = pane.clock.elapsed_ms;
+        pane.key(Key::Char('l'));
+        assert!(pane.analysis);
+        assert!(!pane.clock.playing);
+        pane.advance(Duration::from_secs(30));
+        assert_eq!(pane.clock.elapsed_ms, elapsed);
+        let area = Rect::new(0, 0, 160, 48);
+        let mut buffer = Buffer::empty(area);
+        pane.render(area, &mut buffer, Ladder::default());
+        let text = contents(&buffer);
+        assert!(text.contains("Jev analysis"), "{text}");
+        assert!(text.contains("Fable 5.1"), "{text}");
+        assert_eq!(text.matches("Learning value").count(), 2, "{text}");
+        pane.key(Key::Char('l'));
+        assert!(!pane.analysis);
+        assert_eq!(pane.clock.elapsed_ms, elapsed);
+        pane.key(Key::Back);
+        pane.key(Key::Char('l'));
+        assert!(!pane.learning.enabled);
+        assert_eq!(pane.visible_tasks()[0], "recent-task");
+    }
+
+    #[test]
+    fn analysis_updates_while_replaying_and_search_l_remains_text() {
+        use crate::runs_learning::{Context, Judge, Store};
+        use crate::runs_replay_learning::tests::{public, recorded};
+        let dir = tempfile::tempdir().unwrap();
+        let sources = vec![public(dir.path(), "aa"), public(dir.path(), "bb")];
+        let context = Context::default();
+        let judge = Judge::Recorded(recorded(&sources, &context));
+        let mut pane = Pane::from_sources(vec![], sources, vec![], None).with_learning(
+            Store::default(),
+            judge,
+            context,
+        );
+        pane.key(Key::Char('/'));
+        pane.key(Key::Char('l'));
+        assert_eq!(pane.query, "l");
+        assert!(!pane.learning.enabled);
+        pane.key(Key::Back);
+        let kept = pane.selection();
+        pane.key(Key::Enter);
+        pane.key(Key::Char('l'));
+        let deadline = std::time::Instant::now() + Duration::from_secs(15);
+        while pane.learning.ranking() {
+            assert!(std::time::Instant::now() < deadline);
+            pane.advance(Duration::from_millis(10));
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert_eq!(pane.selection(), kept);
+        assert!(
+            pane.choices(1)
+                .iter()
+                .all(|s| pane.learning.score(s).is_some())
+        );
+        for area in [Rect::new(0, 0, 60, 14), Rect::new(2, 3, 120, 28)] {
+            let mut buffer = Buffer::empty(area);
+            pane.render(area, &mut buffer, Ladder::default());
+            assert!(contents(&buffer).contains("Jev analysis"));
+        }
+    }
 
     fn pane() -> (tempfile::TempDir, Pane) {
         let (dir, sources) = crate::runs::fixture_sources();
