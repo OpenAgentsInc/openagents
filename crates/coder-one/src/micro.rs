@@ -67,6 +67,11 @@ pub const HANDOFF_COMPONENT: &str = "microluna.handoff";
 /// The component name of the per-part check.
 pub const PARTS_COMPONENT: &str = "microluna.parts";
 
+/// How sure Jev must be that a part is met for it to count. At 0.5,
+/// cost and time parts rated 0.64 passed on figures for the cheapest case
+/// alone, and the retry that would have fixed them never ran.
+const PART_MET: f64 = 0.75;
+
 /// The most parts of a focus the per-part check asks about.
 const PARTS_MAX: usize = 10;
 
@@ -76,7 +81,9 @@ requirement in `parts.{id}`, read with the whole `requirement` for context, with
 concrete facts, numbers, names, or code where the part calls for them, not a vague mention? \
 When the requirement names several places for its content, such as a document and a view, \
 the part is met only if every one of those places carries it; a test file is not such a \
-place. Answer from the diff alone.";
+place. A part that asks how long something takes or what it costs is met only by \
+figures for every case the repository records, not the cheapest one alone. Answer from the \
+diff alone.";
 
 /// The parts of one requirement line such as `- R1 (deliverable): text`:
 /// its clauses, cut at commas, semicolons, colons, and "and", without
@@ -4537,7 +4544,7 @@ impl Micro {
             .filter(|(i, _)| {
                 asked
                     .noul(&format!("part_{}", i + 1))
-                    .is_some_and(|p| p < 0.5)
+                    .is_some_and(|p| p < PART_MET)
             })
             .map(|(_, part)| part)
             .collect();

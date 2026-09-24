@@ -676,12 +676,17 @@ fn style_problems(diff: &str) -> Vec<String> {
                     ));
                 }
             }
-            if let Some(at) = text.find('~')
-                && text[at + 1..]
+            if let Some(at) = text.find(['~', '≈'])
+                && text[at..]
+                    .chars()
+                    .skip(1)
+                    .collect::<String>()
                     .trim_start()
                     .starts_with(|c: char| c.is_ascii_digit())
             {
-                problems.push(format!("{file}: \"~\" before a number; write \"about\""));
+                problems.push(format!(
+                    "{file}: \"~\" or \"≈\" before a number; write \"about\""
+                ));
             }
         }
         if markdown && !fenced {
@@ -999,7 +1004,7 @@ mod tests {
 
     #[test]
     fn style_problems_find_per_slashes_and_tildes() {
-        let diff = "+++ b/src/v.rs\n+    \"scripted ~1 s; Opus $0.0537/run, 3/4 passed\"\n";
+        let diff = "+++ b/src/v.rs\n+    \"scripted ≈1 s; Opus $0.0537/run, 3/4 passed\"\n";
         let problems = style_problems(diff);
         assert_eq!(problems.len(), 2, "{problems:#?}");
         assert!(problems[0].contains("\"per\""));
