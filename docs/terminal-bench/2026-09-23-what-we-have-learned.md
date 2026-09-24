@@ -116,6 +116,12 @@ The family-routing table in v4 is fitted on the same 66 tasks it would be
 scored on. There's no evidence yet that Coder picks configurations per
 task better than a fixed choice.
 
+**Follow-up:** tunable v9 routes effort per task from Jev features fitted on
+the unused pool. In the [targeted test](2026-09-24-effort-routing.md) it cost
+76% of fixed xhigh with one task fewer in passes: it sent `gsea-proteomics`
+to medium, which failed it 3 of 3, and raised two tasks that medium passes.
+Per-task routing still hasn't beaten a fixed choice.
+
 ### 8. Infrastructure failures cost more trials than the agents did
 
 In one day, trials were lost or corrupted by:

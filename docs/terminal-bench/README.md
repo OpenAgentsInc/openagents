@@ -6,6 +6,17 @@ evidence; it does not report the execution host's live queue.
 
 ## Latest status
 
+**Per-task effort on six TB4 tasks: routing missed the cost bar and one
+task.** Tunable v9 picks medium or xhigh per task from Jev's features,
+fitted on the unused task pool. It passed 8 of 15 graded attempts (30–75%),
+against fixed xhigh's 10 of 14 (45–88%) and fixed medium's 7 of 15
+(25–70%), for 76% of fixed xhigh's cost, above the 60% ceiling. It ran
+`gsea-proteomics` at medium and failed it 3 of 3, where xhigh passed 2 of 3,
+and it raised two tasks that medium already passes. Stopped at 44 of 54
+attempts once no winner was possible. See the
+[results](2026-09-24-effort-routing.md) (issue
+[#9569](https://github.com/OpenAgentsInc/openagents/issues/9569)).
+
 **Tunable v8 persistence on three near-miss tasks: cheaper rounds, no
 credited pass.** Over three attempts per task, `production-planning` passed 2
 of 3 and `bun-sourcemap-leak` 1 of 3, and `cargo-flight-dispatch` passed 0
@@ -115,6 +126,7 @@ still need the quota audit. See [harness validation](tb4-results.md#harness-vali
 
 | Document | Contents |
 | --- | --- |
+| [Per-task effort on six TB4 tasks](2026-09-24-effort-routing.md) | Tunable v9's effort routing against fixed medium (v2) and fixed xhigh (v3): the pool fit, Wilson intervals, the exact McNemar test, cost and time per arm and task, why `gsea-proteomics` was routed to medium, and every attempt. |
 | [Matched controller test on 10 TB4 tasks](2026-09-23-matched-controller-targeted.md) | Plain Claude Code against Coder One's v8 controller on the same Opus executor, three interleaved attempts on each of 10 tasks: Wilson intervals, the exact McNemar test, cost and time per arm and task, every attempt, and each controller component's share. |
 | [Matched Opus controller experiment](2026-09-23-matched-opus-controller.md) | Twelve fresh attempts with executor controls held fixed: cost, time, steps, failure analysis, sensitivity, retained traces, and explicit retention gaps. |
 | [Check recall on retained TB4 trials](2026-09-23-check-recall.md) | The labeled set of 61 graded trials, how often each version of the checks flags the verifier's failures and passes, what flagged each failure, and a live confirmation on the target tasks. |
