@@ -49,11 +49,14 @@ fn binary() -> Command {
 
 /// Runs the binary with `arguments`, recording into `traces`.
 fn coder(arguments: &[&str], traces: &Path) -> Output {
+    // Clearing the environment does not hide the operator's Jev key file.
+    let home = tempfile::tempdir().expect("an isolated test home");
     let mut command = binary();
     for name in CREDENTIALS {
         command.env_remove(name);
     }
     command
+        .env("HOME", home.path())
         .env_remove("CODER_TRACE")
         .env("CODER_TRACE_DIR", traces)
         .args(arguments)
