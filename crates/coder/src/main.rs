@@ -206,6 +206,9 @@ struct App {
     tick: u64,
     /// When the turn in flight started, for the status rail's stopwatch.
     busy_since: Option<Instant>,
+    /// The turn's latest progress line, such as `survey ▸ …`, which the
+    /// working line carries after its stopwatch. The rail stays short.
+    phase: String,
     /// Draw detail lines (verdicts, whys, exit codes, judge lines) —
     /// toggled by `⌥V` or `/verbose`, off by default.
     verbose: bool,
@@ -389,6 +392,7 @@ async fn run(
         scroll: 0,
         tick: 0,
         busy_since: None,
+        phase: String::new(),
         verbose: false,
     };
 
@@ -435,6 +439,7 @@ async fn run(
             }
             app.busy = false;
             app.busy_since = None;
+            app.phase.clear();
             app.status = "ready".to_string();
         }
         if turn.is_none()
@@ -546,11 +551,17 @@ impl App {
             Work::Judgment(line) => {
                 // A delegated turn's progress lines name their own phase,
                 // such as `survey ▸ …`; a relay worker's line is a
-                // classify verdict. The latest progress also rides the
-                // status, so a turn that is probing does not look wedged.
+                // classify verdict. The latest progress rides the working
+                // line, so a turn that is probing does not look wedged. The
+                // issue flow's milestones stay in the transcript.
                 if line.contains(" ▸ ") {
-                    self.status = line.clone();
-                    self.push_detail("  ", line);
+                    self.status = "working".to_string();
+                    self.phase = line.clone();
+                    if line.starts_with("issue ▸") {
+                        self.push(Intensity::Half, "  ", line);
+                    } else {
+                        self.push_detail("  ", line);
+                    }
                 } else {
                     self.push_detail("  ", format!("classify → {line}"));
                 }
@@ -622,6 +633,7 @@ fn start_turn(
     };
     app.busy = true;
     app.busy_since = Some(Instant::now());
+    app.phase.clear();
     app.status = "classifying".to_string();
     app.pending.clear();
     let tx = tx.clone();
@@ -698,12 +710,23 @@ fn draw(
             } else {
                 format!("{elapsed}s")
             };
+            // The latest progress follows the stopwatch on one row, cut
+            // to fit rather than wrapped.
+            let mut working = format!("{} working ({clock})", frame_for(app.tick));
+            if !app.phase.is_empty() {
+                working = format!("{working} · {}", app.phase);
+            }
+            let room = width.saturating_sub(3);
+            if working.chars().count() > room {
+                working = working.chars().take(room.saturating_sub(1)).collect();
+                working.push('…');
+            }
             expand(
                 &mut live,
                 Intensity::Half,
                 false,
                 "  ",
-                &Marked::plain(format!("{} working ({clock})", frame_for(app.tick))),
+                &Marked::plain(working),
                 0,
                 width,
             );
