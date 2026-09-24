@@ -28,6 +28,7 @@ discovery, and package distribution.
 | [rebuild-plan](rebuild-plan.md) | Coder agent and terminal rebuild plan |
 | [relay-backend-plan](relay-backend-plan.md) | Relay backend plan: coder on `relay.openagents.com` |
 | [service-spec](service-spec.md) | Coder service: Nostr auth, free usage, and deployment |
+| [thesis](thesis.md) | The determinism thesis: why deterministic contracts plus a cheap model should beat model-driven harnesses, and what would prove it wrong |
 | [thoughts-on-a-typesafe-coding-agent](thoughts-on-a-typesafe-coding-agent.md) | [public] thoughts on a typesafe coding agent |
 | [typesafe-agent-analysis](typesafe-agent-analysis.md) | A TypeSafe-native Coder |
 | [typesafe-agent-protocol-addendum](typesafe-agent-protocol-addendum.md) | Complete proposal coverage: Nostr specifications and host/client implementation responsibilities |

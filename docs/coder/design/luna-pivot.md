@@ -7,6 +7,9 @@ cites are in [`docs/terminal-bench/`](../../terminal-bench/README.md).
 
 ## The thesis
 
+The general argument, with its predictions and what would falsify it, is
+in [the determinism thesis](thesis.md). This section applies it to Luna.
+
 Coder's standing goal is to be the cheapest and the best on every task.
 The last two days of Terminal-Bench work spent most of their effort on
 configuration: which executor, which effort level, when to escalate, how
