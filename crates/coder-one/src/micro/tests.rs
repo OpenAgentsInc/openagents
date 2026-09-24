@@ -1440,6 +1440,7 @@ fn lean_shape() -> lean::Lean {
         rationale: false,
         lanes: 0,
         lane_sec: 0,
+        failures: false,
     }
 }
 

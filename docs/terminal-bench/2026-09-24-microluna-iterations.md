@@ -248,6 +248,7 @@ generalizes.
 | Task | Verifier | Agent time | Cost | Sessions and scores |
 | --- | --- | ---: | ---: | --- |
 | `embedding-drift-monitor` | **Pass, 11 of 11** | 6 min 30 s | $0.0153 | Session 1 done at score 11 of 11 (299 s); self-check done |
+| `embedding-drift-monitor`, second attempt | **Pass, 11 of 11** | 7 min 18 s | $0.0142 | Session 1 done at 11 of 11 (376 s); self-check done |
 | `sound-change-cascade` | Fail, 5 of 7 | 20 min 8 s | $0.0425 | Held-out score 86, then 103 of 156; time ran out |
 | `interleaved-vigenere` | Fail, 5 of 6 | 20 min 26 s | $0.0416 | Score 0 of 1 throughout |
 
@@ -261,4 +262,34 @@ generalizes.
   Fable's all-effort mean of 14.9 minutes and slower than its low-effort
   mean of 3.1.
 - The search tasks are unchanged: capability, not guidance, limits them.
-- Spend: $0.100.
+- Spend: $0.114, the second attempt included.
+
+## Iteration 6: `microluna-v14`, best of three first attempts
+
+**Change.** `microluna-v13` plus `lanes: 3`. A scorer session writes only
+the evaluation script, and the host freezes it. Three first attempts then
+run at once, each in a private copy of the workspace with a different
+approach (the likeliest, a substantially different one, and one that
+questions the most natural assumption), each scored by the frozen script
+rebased to its copy. The best unflagged copy replaces the workspace
+before the sequential sessions. Provenance: every run on the two search
+tasks stalled on its first approach from v9 to v13.
+
+**Dev results.** Artifact `coder-one 0.1.0 (0728844cbe4d)`.
+
+| Task | Verifier | Agent time | Cost | Scorer, lanes, and scores |
+| --- | --- | ---: | ---: | --- |
+| `embedding-drift-monitor` | **Pass, 11 of 11** | 17 min 57 s | $0.0403 | Untouched 14 of 23; lanes 23, 23, and 23 of 23; lane 1 kept |
+| `sound-change-cascade` | Fail, 5 of 7 | 20 min 41 s | $0.0493 | Untouched 0 of 780; lanes 239, 157, and 171; 239 after session 5 |
+| `interleaved-vigenere` | Fail, 5 of 6 | 20 min 8 s | $0.0815 | Untouched 0 of 2,545 letters; lanes 421, 183, and 252; 421 after session 5 |
+
+- **The lanes work as machinery and don't find the insight.** No copy
+  leaked into the real workspace, and the score told the lanes apart. The
+  best `interleaved-vigenere` lane recovered 16.5% of the sample's
+  letters, up from about 7% in every earlier run, and far from the
+  near-perfect recovery the task requires.
+- **They cost the task that passed.** `embedding-drift-monitor` passed
+  again, in 18 minutes and $0.040 against v13's 6.5 minutes and $0.015:
+  three lanes and a scorer where one session sufficed. v14 is slower than
+  Fable's all-effort mean there, so lanes stay off.
+- Spend: $0.171.
