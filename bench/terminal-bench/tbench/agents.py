@@ -135,7 +135,10 @@ def _load_agent(agent_id: str, raw: dict[str, Any]) -> AgentProfile:
 def _agent_network(agent_id: str, raw: dict[str, Any]) -> str:
     from .netpolicy import MODES
 
-    mode = raw.get("agent_network", "harbor")
+    # A Coder One arm defaults to the allowlist, so a new arm that omits
+    # the field doesn't run its agent phase open.
+    coder_one = (raw.get("harbor_import_path") or "").startswith("tbench.coder_one:")
+    mode = raw.get("agent_network", "allowlist" if coder_one else "harbor")
     if mode not in MODES:
         raise ValueError(
             f"agent {agent_id!r}: agent_network must be one of {', '.join(MODES)}, not {mode!r}"

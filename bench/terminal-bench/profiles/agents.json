@@ -2883,6 +2883,7 @@
         "api.typesafe.ai",
         "chatgpt.com"
       ],
+      "agent_network": "allowlist",
       "cost_provenance": "mixed",
       "cost_note": "Microluna's dispatches are list-price estimates from the exact token usage each Luna request reports, at OpenAI's standard short-context prices, supplied manually by the operator on 2026-09-22; Jev is a price estimate at the published input-token rate. Every dispatch (the first and the repair) is a delegate call in evaluation/usage.json. No Claude.",
       "env_forward": [
