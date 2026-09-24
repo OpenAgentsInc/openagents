@@ -319,3 +319,5 @@ still need the quota audit. See [harness validation](tb4-results.md#harness-vali
 After a run, follow the [publication procedure](runbook.md#after-each-run).
 Keep this page to current status and links; add detailed results and
 analyses to the documents above or a new dated report.
+
+- [Microluna v6 to v8 report](2026-09-24-microluna-v6-v8-report.md): every graded trial, why each version got worse, integrity fixes, and where the thesis stands.
