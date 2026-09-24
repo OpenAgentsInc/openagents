@@ -245,11 +245,47 @@ fn a_contradicting_check_keeps_the_loop_on_its_group() {
         commands: Vec::new(),
         changed: Vec::new(),
     };
-    assert_eq!(settle(Some(Move::Next), &ran, false, 1, 2).0, Move::Next);
-    assert_eq!(settle(Some(Move::Done), &ran, true, 1, 2).0, Move::Retry);
-    assert_eq!(settle(Some(Move::Next), &ran, true, 2, 2).0, Move::Stuck);
-    assert_eq!(settle(None, &ran, false, 1, 2).0, Move::Next);
-    assert_eq!(settle(Some(Move::Retry), &ran, false, 2, 2).0, Move::Stuck);
+    let at = |contradicted, verdict_fail, last, attempts| Signals {
+        contradicted,
+        verdict_fail,
+        last,
+        attempts,
+        max_attempts: 2,
+    };
+    assert_eq!(
+        settle(Some(Move::Next), &ran, at(false, false, false, 1)).0,
+        Move::Next
+    );
+    assert_eq!(
+        settle(Some(Move::Done), &ran, at(true, false, false, 1)).0,
+        Move::Retry
+    );
+    assert_eq!(
+        settle(Some(Move::Next), &ran, at(true, false, false, 2)).0,
+        Move::Stuck
+    );
+    assert_eq!(settle(None, &ran, at(false, false, false, 1)).0, Move::Next);
+    assert_eq!(
+        settle(Some(Move::Retry), &ran, at(false, false, false, 2)).0,
+        Move::Stuck
+    );
+    // A combined verdict of fail keeps the loop from ending, and only that.
+    assert_eq!(
+        settle(Some(Move::Next), &ran, at(false, true, false, 1)).0,
+        Move::Next
+    );
+    assert_eq!(
+        settle(Some(Move::Next), &ran, at(false, true, true, 1)).0,
+        Move::Retry
+    );
+    assert_eq!(
+        settle(Some(Move::Done), &ran, at(false, true, false, 1)).0,
+        Move::Retry
+    );
+    assert_eq!(
+        settle(Some(Move::Done), &ran, at(false, true, false, 2)).0,
+        Move::Stuck
+    );
 }
 
 #[tokio::test]

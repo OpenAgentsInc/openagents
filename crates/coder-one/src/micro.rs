@@ -14,10 +14,12 @@
 //!   context is rebuilt from scratch: the task first, so every session of
 //!   the task shares the cached prefix, then the group's requirements and
 //!   only the evidence that informs them, then the current state. After
-//!   each session, code runs the checks and Jev chooses the next move:
-//!   `next`, `retry`, `stuck`, or `done`. Code keeps the last word: a move
-//!   past a requirement a check contradicts becomes a retry, and every
-//!   loop is bounded by sessions, spend, and time.
+//!   each session, code runs the checks, asks for the combined verdict
+//!   (`checks::verdict`, issue #9584) over the session's report, and Jev
+//!   chooses the next move: `next`, `retry`, `stuck`, or `done`. Code keeps
+//!   the last word: a move past a requirement a check contradicts becomes a
+//!   retry, a verdict of fail keeps the loop from ending, and every loop is
+//!   bounded by sessions, spend, and time.
 //!
 //! # The record
 //!
@@ -566,16 +568,31 @@ impl Checked {
     }
 }
 
-/// The code rule over Jev's pick: a check that contradicts the group keeps
-/// it from moving on, attempts are bounded, and without an answer the
-/// session's own typed status decides.
-fn settle(
-    picked: Option<Move>,
-    ran: &Ran,
+/// What the code rule reads besides Jev's pick.
+#[derive(Clone, Copy, Debug, Default)]
+struct Signals {
+    /// A check contradicts a requirement of the group.
     contradicted: bool,
+    /// The combined verdict (`checks::verdict`) calls the candidate failed.
+    verdict_fail: bool,
+    /// The group is the last one.
+    last: bool,
     attempts: u32,
     max_attempts: u32,
-) -> (Move, Option<String>) {
+}
+
+/// The code rule over Jev's pick: a check that contradicts the group keeps
+/// it from moving on; a combined verdict of fail keeps the loop from
+/// ending, by `done` or past the last group; attempts are bounded; and
+/// without an answer the session's own typed status decides.
+fn settle(picked: Option<Move>, ran: &Ran, signals: Signals) -> (Move, Option<String>) {
+    let Signals {
+        contradicted,
+        verdict_fail,
+        last,
+        attempts,
+        max_attempts,
+    } = signals;
     let finished_done = matches!(
         ran.finish.as_ref().map(|f| f.status),
         Some(microluna::FinishStatus::Done)
@@ -595,6 +612,14 @@ fn settle(
     if contradicted && matches!(chosen, Move::Next | Move::Done) {
         why = Some(format!(
             "a check contradicts the focus, so {} became retry",
+            chosen.word()
+        ));
+        chosen = Move::Retry;
+    }
+    let ends = chosen == Move::Done || (last && chosen == Move::Next);
+    if verdict_fail && ends {
+        why = Some(format!(
+            "the combined verdict calls the candidate failed, so {} became retry",
             chosen.word()
         ));
         chosen = Move::Retry;
@@ -982,6 +1007,17 @@ impl Micro {
         checked: &Checked,
         attempts: u32,
     ) -> (Move, Value, f64) {
+        // The combined verdict over the task and this session's report:
+        // the handoff signal issue #9584 calibrated against the verifier.
+        let (_, verdict, verdict_asked) = checks::verdict::assess(
+            &prepared.jev,
+            &self.recorder,
+            &prepared.instruction,
+            &ran.summary(),
+            prepared.deadline.clone(),
+            &checks::verdict::fitted(),
+        )
+        .await;
         let state = json!({
             "task": clip_lines(&prepared.instruction, 4_000),
             "focus": group.lines,
@@ -1000,6 +1036,10 @@ impl Micro {
                 "ran": self.policy.checks,
                 "requirement_states": checked.states.iter().map(|(id, s)| json!({ "id": id, "state": s })).collect::<Vec<_>>(),
                 "failures_on_focus": checked.failures,
+            },
+            "verdict": {
+                "call": verdict.call,
+                "failure_probability": verdict.p_fail,
             },
         });
         let mut choice = jev::Choice::new(MOVE_QUESTION, indexmap::IndexMap::new());
@@ -1032,19 +1072,26 @@ impl Micro {
         let (chosen, overridden) = settle(
             picked,
             ran,
-            contradicted,
-            attempts,
-            self.policy.max_attempts,
+            Signals {
+                contradicted,
+                verdict_fail: verdict.call == "fail",
+                last: later.is_empty(),
+                attempts,
+                max_attempts: self.policy.max_attempts,
+            },
         );
-        let usd = asked.input_tokens.map_or(0.0, |tokens| {
-            tokens as f64 * jev_component::USD_PER_MILLION_INPUT / 1_000_000.0
-        });
+        let usd = [asked.input_tokens, verdict_asked.input_tokens]
+            .iter()
+            .flatten()
+            .map(|tokens| *tokens as f64 * jev_component::USD_PER_MILLION_INPUT / 1_000_000.0)
+            .sum::<f64>();
         let record = json!({
             "after_session": ran.number,
             "focus": group.ids,
             "jev": { "how": asked.how, "picked": picked.map(Move::word), "probabilities": p, "error": asked.error },
             "contradicted": contradicted,
             "checks": checked.summary,
+            "verdict": verdict,
             "attempts": attempts,
             "move": chosen.word(),
             "overridden": overridden,
