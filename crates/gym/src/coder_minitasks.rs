@@ -314,6 +314,10 @@ pub fn lines(runs: &[Run], errors: &[String], selected: Option<usize>) -> Vec<St
             "Coder One mini-task runs · {} runs · local episodes with their own graders, not Terminal-Bench attempts",
             runs.len()
         ),
+        "Four small local scenarios; each task-specific grader returns pass or fail.".to_owned(),
+        "This is a fast screen, not a Terminal-Bench 4.0 result.".to_owned(),
+        "A scripted run takes about one second without a model or container.".to_owned(),
+        "Real Opus runs averaged 22 seconds and $0.0537 each; see the guide for measurements.".to_owned(),
         HEADER.to_owned(),
     ];
     if runs.is_empty() {
@@ -489,6 +493,10 @@ pub(crate) mod tests {
         assert!(run.timeline.as_ref().unwrap().complete);
         let text = lines(&runs, &errors, Some(0)).join("\n");
         assert!(text.contains("not Terminal-Bench attempts"), "{text}");
+        let overview = lines(&runs, &errors, None).join("\n");
+        assert!(overview.contains("task-specific grader returns pass or fail"), "{overview}");
+        assert!(overview.contains("not a Terminal-Bench 4.0 result"), "{overview}");
+        assert!(overview.contains("$0.0537 each"), "{overview}");
         assert!(text.contains("Grade: failed"), "{text}");
         assert!(text.contains("Session control: start done"), "{text}");
         assert!(text.contains("Episode timeline"), "{text}");

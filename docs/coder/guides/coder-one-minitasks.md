@@ -12,6 +12,18 @@ components alone come first, in the
 [component guide](coder-one-components.md), and a Terminal-Bench trial comes
 after.
 
+Mini-tasks are four small, local, scripted coding scenarios, each aimed at
+one failure family. Each scenario receives a pass or fail from its own
+task-specific verifier, not a benchmark score. They provide a fast screen
+before a Terminal-Bench 4.0 run, but passing all four does not establish
+Terminal-Bench 4.0 performance.
+
+The scripted baseline completes in about one second without a model or
+container. Real Opus runs averaged 22 seconds and $0.0537 per task in the
+four-task comparison below. That comparison also reports the costs and times
+for other executors. Terminal-Bench 4.0 uses its own curated tasks and
+graders; mini-task results are not Terminal-Bench 4.0 attempts or results.
+
 ## The mini-tasks
 
 Each task covers one failure family from the v3 Luna trials, or a recovery:
