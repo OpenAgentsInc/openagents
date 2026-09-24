@@ -581,6 +581,20 @@ impl Pane {
         );
     }
 
+    /// Opens synchronized replay already playing one pair: see
+    /// [`crate::runs_replay_tui::Pane::preselect`].
+    pub fn open_replay_on(
+        &mut self,
+        task: &str,
+        left: Option<&str>,
+        right: Option<&str>,
+    ) -> Result<(), String> {
+        self.open_replay();
+        self.replay
+            .as_mut()
+            .map_or(Ok(()), |pane| pane.preselect(task, left, right))
+    }
+
     pub fn replaying(&self) -> bool {
         self.replay
             .as_ref()

@@ -66,7 +66,13 @@ Usage:
                             [--runs-dir PATH] [--minitasks-dir PATH] [--no-jobs] [--no-traces]
                             [--checks-dir PATH] [--no-samples] [--no-runs] [--no-minitasks]
                             [--no-checks] [--no-jev] [--head-to-head]
+                            [--task TASK [--left TEXT] [--right TEXT|pass]]
   gym-terminal --help     Print this message.
+
+--task opens head-to-head replay already playing one pair on TASK. --left
+and --right pick the attempt on each side whose identity or description
+contains TEXT; --right pass picks the newest public attempt that passed and
+is on this computer.
 
 The default decision-model views open a built-in fixture. Terminal-Bench
 views read local Harbor jobs and retained evidence. Neither mode runs a
@@ -127,6 +133,7 @@ fn terminal_bench_mode(arguments: &[String]) -> io::Result<()> {
     let mut checks = gym::coder_coverage::default_dir();
     let mut print_only = false;
     let mut head_to_head = false;
+    let (mut task, mut left, mut right) = (None, None, None);
     let mut jev = true;
     let mut index = 0;
     while index < arguments.len() {
@@ -141,6 +148,21 @@ fn terminal_bench_mode(arguments: &[String]) -> io::Result<()> {
             "--no-checks" => checks = None,
             "--no-jev" => jev = false,
             "--head-to-head" => head_to_head = true,
+            "--task" | "--left" | "--right" => {
+                let Some(value) = arguments.get(index + 1).cloned() else {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        format!("{} needs a value", arguments[index]),
+                    ));
+                };
+                match arguments[index].as_str() {
+                    "--task" => task = Some(value),
+                    "--left" => left = Some(value),
+                    _ => right = Some(value),
+                }
+                head_to_head = true;
+                index += 1;
+            }
             "--jobs-dir" | "--traces-dir" | "--samples-dir" | "--runs-dir" | "--minitasks-dir"
             | "--checks-dir" => {
                 let Some(path) = arguments.get(index + 1) else {
@@ -199,7 +221,10 @@ fn terminal_bench_mode(arguments: &[String]) -> io::Result<()> {
         .with_pulse(gym::terminal_bench_experiment::default_dir(), jobs.clone())
         .with_studies(studies, study_errors)
         .with_runs(terminal_bench_tui_runs(runs, jev && !print_only));
-    if head_to_head {
+    if let Some(task) = &task {
+        app.open_replay_on(task, left.as_deref(), right.as_deref())
+            .map_err(|message| io::Error::new(io::ErrorKind::NotFound, message))?;
+    } else if head_to_head {
         app.open_replay();
     }
     if print_only && head_to_head {

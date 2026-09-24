@@ -318,6 +318,42 @@ impl Pane {
         }
         pane
     }
+    /// Selects `task`, then the attempt on each side whose identity or
+    /// description contains the given text, and starts the pair. On the
+    /// right, `pass` picks the newest public attempt that passed and is on
+    /// this computer. Returns what couldn't be found.
+    pub fn preselect(
+        &mut self,
+        task: &str,
+        left: Option<&str>,
+        right: Option<&str>,
+    ) -> Result<(), String> {
+        self.query.clear();
+        self.all_agents = true;
+        self.task = self
+            .visible_tasks()
+            .iter()
+            .position(|t| *t == task)
+            .ok_or_else(|| format!("no replayable attempt for task {task}"))?;
+        for (side, wanted) in [left, right].into_iter().enumerate() {
+            let Some(wanted) = wanted else { continue };
+            let choices = self.choices(side);
+            let found = choices.iter().position(|s| match (wanted, s) {
+                ("pass", Source::Public { trial, cache }) => {
+                    trial.reward == Some(1.0) && cache.join(&trial.file).is_file()
+                }
+                _ => s.id().contains(wanted) || s.description().contains(wanted),
+            });
+            self.cursors[side] = found.ok_or_else(|| {
+                format!(
+                    "no {} attempt on {task} matches {wanted}",
+                    if side == 0 { "left" } else { "right" }
+                )
+            })?;
+        }
+        self.start();
+        Ok(())
+    }
     pub fn with_learning(
         mut self,
         store: crate::runs_learning::Store,

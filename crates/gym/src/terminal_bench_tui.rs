@@ -292,6 +292,19 @@ impl App {
         }
     }
 
+    /// Opens head-to-head replay already playing one pair on `task`.
+    pub fn open_replay_on(
+        &mut self,
+        task: &str,
+        left: Option<&str>,
+        right: Option<&str>,
+    ) -> Result<(), String> {
+        self.view = View::Runs;
+        self.runs
+            .as_mut()
+            .map_or(Ok(()), |pane| pane.open_replay_on(task, left, right))
+    }
+
     pub fn replaying(&self) -> bool {
         self.view == View::Runs
             && self
