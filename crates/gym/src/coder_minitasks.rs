@@ -311,9 +311,11 @@ pub const HEADER: &str = "started           task                   executor     
 pub fn lines(runs: &[Run], errors: &[String], selected: Option<usize>) -> Vec<String> {
     let mut lines = vec![
         format!(
-            "Coder One mini-task runs · {} runs · local episodes with their own graders, not Terminal-Bench attempts",
+            "Coder One mini-task runs · {} runs · fast local screens: focused tasks, graded after episode",
             runs.len()
         ),
+        "Scripted: about 1s/$0 · Opus: 22.0s, $0.05368 mean (minitask-patterns.json)".to_owned(),
+        "not Terminal-Bench attempts; not TB4 results.".to_owned(),
         HEADER.to_owned(),
     ];
     if runs.is_empty() {
@@ -488,6 +490,10 @@ pub(crate) mod tests {
         assert_eq!(run.verdict, "failed");
         assert!(run.timeline.as_ref().unwrap().complete);
         let text = lines(&runs, &errors, Some(0)).join("\n");
+        assert!(text.contains("fast local screens"), "{text}");
+        assert!(text.contains("graded after episode"), "{text}");
+        assert!(text.contains("$0.05368 mean (minitask-patterns.json)"), "{text}");
+        assert!(text.contains("not TB4 results."), "{text}");
         assert!(text.contains("not Terminal-Bench attempts"), "{text}");
         assert!(text.contains("Grade: failed"), "{text}");
         assert!(text.contains("Session control: start done"), "{text}");

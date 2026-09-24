@@ -6,6 +6,17 @@ in about a second and with no model or container. Run the same task with
 Claude Code or Codex to see whether a real executor uses what the
 components give it.
 
+Think of these as fast local screens for a focused failure family, not
+Terminal-Bench 4.0 (TB4) results. They borrow the episode path and the
+independent, post-episode grading idea, but use four small purpose-built
+tasks rather than TB4's curated benchmark suite. A pass here is not a TB4
+score and says nothing by itself about benchmark performance. The grader
+checks the task's concrete outcome after the agent finishes; it is hidden
+from the episode. Scripted runs take about a second and cost $0 in model
+calls. The retained four-task comparison models Opus at 22.0 seconds and
+$0.05368 mean per episode (`bench/terminal-bench/handoff/minitask-patterns.json`,
+summarized below).
+
 This is rung 2 and rung 3 of the ladder in
 [Coder as a tunable system](../../optimization/coder-components.md#test-each-component-in-isolation):
 components alone come first, in the
