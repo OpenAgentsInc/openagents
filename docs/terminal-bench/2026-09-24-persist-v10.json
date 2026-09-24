@@ -1,0 +1,152 @@
+{
+  "schema": "openagents.gym.terminal-bench-experiment.v1",
+  "experiment": "v10-persist-9570",
+  "profile": "tb4",
+  "source": "/home/christopherdavid/.openagents/terminal-bench/experiments/v10-persist-9570/status.json",
+  "state": "held",
+  "updated_at": "2026-09-24T07:00:41+00:00",
+  "arms": [
+    "coder-one-tunable-v7",
+    "coder-one-tunable-v10"
+  ],
+  "tasks": [
+    "cargo-flight-dispatch",
+    "production-planning",
+    "bun-sourcemap-leak",
+    "mvcc-lsm-compaction"
+  ],
+  "attempts_per_task_per_arm": 3,
+  "credential_source": "setup-token",
+  "complete": false,
+  "min_graded_attempts_per_task_per_arm": 1,
+  "lost_and_rerun": {
+    "credentials": 0,
+    "infrastructure": 0,
+    "quota": 0
+  },
+  "quota": {
+    "budget_usd": 1.0,
+    "used_usd": 23.622281,
+    "unpriced_sessions": 0,
+    "measure": "Claude Code total_cost_usd over graded and lost trials: a list-price value, not a cash charge"
+  },
+  "arm_results": [
+    {
+      "arm": "coder-one-tunable-v7",
+      "scheduled": 12,
+      "graded": 4,
+      "passes": 2,
+      "pass_rate": 0.5,
+      "wilson_95": [
+        0.15003898915214947,
+        0.8499610108478506
+      ],
+      "ungraded": 0,
+      "not_run": 8,
+      "lost_and_rerun": {
+        "credentials": 0,
+        "infrastructure": 0,
+        "quota": 0
+      },
+      "claude_quota_usd": 15.487503
+    },
+    {
+      "arm": "coder-one-tunable-v10",
+      "scheduled": 12,
+      "graded": 4,
+      "passes": 2,
+      "pass_rate": 0.5,
+      "wilson_95": [
+        0.15003898915214947,
+        0.8499610108478506
+      ],
+      "ungraded": 0,
+      "not_run": 8,
+      "lost_and_rerun": {
+        "credentials": 0,
+        "infrastructure": 0,
+        "quota": 0
+      },
+      "claude_quota_usd": 8.134778
+    }
+  ],
+  "tasks_by_arm": [
+    {
+      "task": "cargo-flight-dispatch",
+      "cells": [
+        {
+          "arm": "coder-one-tunable-v7",
+          "passes": 0,
+          "graded": 1
+        },
+        {
+          "arm": "coder-one-tunable-v10",
+          "passes": 0,
+          "graded": 1
+        }
+      ]
+    },
+    {
+      "task": "production-planning",
+      "cells": [
+        {
+          "arm": "coder-one-tunable-v7",
+          "passes": 1,
+          "graded": 1
+        },
+        {
+          "arm": "coder-one-tunable-v10",
+          "passes": 1,
+          "graded": 1
+        }
+      ]
+    },
+    {
+      "task": "bun-sourcemap-leak",
+      "cells": [
+        {
+          "arm": "coder-one-tunable-v7",
+          "passes": 0,
+          "graded": 1
+        },
+        {
+          "arm": "coder-one-tunable-v10",
+          "passes": 0,
+          "graded": 1
+        }
+      ]
+    },
+    {
+      "task": "mvcc-lsm-compaction",
+      "cells": [
+        {
+          "arm": "coder-one-tunable-v7",
+          "passes": 1,
+          "graded": 1
+        },
+        {
+          "arm": "coder-one-tunable-v10",
+          "passes": 1,
+          "graded": 1
+        }
+      ]
+    }
+  ],
+  "paired": [
+    {
+      "baseline": "coder-one-tunable-v7",
+      "arm": "coder-one-tunable-v10",
+      "pairs": 4,
+      "both_pass": 2,
+      "baseline_only": 0,
+      "arm_only": 0,
+      "both_fail": 2,
+      "mcnemar_exact_p": 1.0,
+      "tasks": 4,
+      "tasks_arm_better": 0,
+      "tasks_baseline_better": 0,
+      "tasks_tied": 4,
+      "sign_test_exact_p": 1.0
+    }
+  ]
+}

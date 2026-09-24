@@ -6,6 +6,16 @@ evidence; it does not report the execution host's live queue.
 
 ## Latest status
 
+**Tunable v10 against v7 on four near-miss tasks: equal passes, 23% less
+cost, no pass from persistence.** v10 judges persistence rounds against
+what the checks flag and runs them on GPT-6 Sol. Each arm passed 2 of 4
+first attempts (15–85%), with every task tied (exact McNemar p = 1), so the
+operator's rule stopped the experiment after attempt 1. v10 cost $4.43 an
+attempt against $5.74 and spent 75% less on persistence, but no round
+resolved a flagged failure, and the checks it keys on don't separate passes
+from failures. See the [results](2026-09-24-persist-v10.md) (issue
+[#9570](https://github.com/OpenAgentsInc/openagents/issues/9570)).
+
 **Escalation to GPT-6 Astra on a failed check: 12 escalations, no
 rescue.** Tunable v9-escalate runs Codex on GPT-6 Astra only when a check
 fails or the executor reports a failure. Over 31 graded trials on eight
@@ -144,6 +154,7 @@ still need the quota audit. See [harness validation](tb4-results.md#harness-vali
 
 | Document | Contents |
 | --- | --- |
+| [Tunable v10 against v7 on four near-miss tasks](2026-09-24-persist-v10.md) | Persistence judged against what the checks flag, on GPT-6 Sol, against the matched v7 arm: first attempts on four tasks, cost and rounds per attempt, persistence attribution, and why the checks can't key progress. |
 | [Per-task effort on six TB4 tasks](2026-09-24-effort-routing.md) | Tunable v9's effort routing against fixed medium (v2) and fixed xhigh (v3): the pool fit, Wilson intervals, the exact McNemar test, cost and time per arm and task, why `gsea-proteomics` was routed to medium, and every attempt. |
 | [Coder One's version arc](2026-09-24-version-arc.md) | Every version from the Gemini loop to tunable v10: what each changed, its hypothesis, tasks, passes, cost, and verdict; the strategies over time; what improves and what's stuck; measurement lessons; and the ranked next experiments. |
 | [Matched controller test on 10 TB4 tasks](2026-09-23-matched-controller-targeted.md) | Plain Claude Code against Coder One's v8 controller on the same Opus executor, three interleaved attempts on each of 10 tasks: Wilson intervals, the exact McNemar test, cost and time per arm and task, every attempt, and each controller component's share. |
