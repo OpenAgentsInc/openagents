@@ -47,7 +47,7 @@ use sha2::{Digest, Sha256};
 use crate::checks::{self, Subject};
 use crate::component::jev as jev_component;
 use crate::delegate::{Briefing, Executor, Prepared, Report, Status, Summary};
-use crate::record::{Cost, Finish, Implementation, Outcome, Recorder, Start};
+use crate::record::{Finish, Implementation, Outcome, Recorder, Start};
 use crate::requirements::Kind;
 use crate::session::{self, Observation, Version};
 use crate::stream::{Event, Kind as EventKind};
@@ -912,6 +912,9 @@ impl Micro {
             commands: commands.borrow().clone(),
             changed: changed.borrow().clone(),
         };
+        // The dispatch's exec.session carries the sessions' cost, as it
+        // does for a CLI; each session states its own share in its summary,
+        // so a reader that sums invocation costs counts it once.
         self.recorder.end(
             &invocation,
             Finish::new(match ran.ending {
@@ -924,19 +927,13 @@ impl Micro {
                 "turns": ran.turns,
                 "calls": ran.calls,
                 "usage": usage_json(ran.usage),
+                "cost_usd": ran.cost_usd,
+                "cost_provenance": match ran.ending {
+                    Ending::Deadline => "price_estimate_lower_bound",
+                    _ => "price_estimate",
+                },
                 "trace": ran.trace,
-            }))
-            .cost(match (ran.cost_usd, &ran.ending) {
-                (Some(usd), Ending::Deadline) => Cost {
-                    usd: Some(usd),
-                    provenance: "price_estimate_lower_bound".to_string(),
-                },
-                (Some(usd), _) => Cost {
-                    usd: Some(usd),
-                    provenance: "price_estimate".to_string(),
-                },
-                (None, _) => Cost::unknown(),
-            }),
+            })),
         );
         crate::say::line(&format!(
             "  microluna ▸ session {number} ({}) {} in {:.1}s · {} turns · {} calls · in {} (cached {}) out {} · ${:.5}",
@@ -1223,6 +1220,7 @@ impl Micro {
             handoff["to"] = json!(to);
             handoff["trigger"] = json!(trigger);
             handoff["pattern"] = json!("microluna-requirements");
+            handoff["action"] = json!(chosen.word());
             self.recorder.push(
                 Step::said(
                     Source::System,
