@@ -57,7 +57,7 @@ async fn a_conversation_records_itself_as_it_runs() {
         steps[1]["message"]
             .as_str()
             .unwrap()
-            .contains("decision door")
+            .contains("no classifier")
     );
     assert_eq!(steps[2]["source"], "system");
     assert_eq!(steps[2]["extra"]["kind"], "instructions");

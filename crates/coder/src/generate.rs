@@ -357,19 +357,24 @@ impl fmt::Display for GenerateError {
         match self {
             GenerateError::Config(why) => write!(f, "config: {why}"),
             GenerateError::Transport(error) => write!(f, "transport: {error}"),
-            GenerateError::Status(status, body) => write!(f, "door answered {status}: {body}"),
+            GenerateError::Status(status, body) => {
+                write!(f, "the model endpoint answered HTTP {status}: {body}")
+            }
             GenerateError::Stream(why) => write!(f, "stream: {why}"),
             GenerateError::Quiet {
                 heard: false,
                 reason,
             } => {
-                write!(f, "the door did not answer: {reason}")
+                write!(f, "the model endpoint did not answer: {reason}")
             }
             GenerateError::Quiet {
                 heard: true,
                 reason,
             } => {
-                write!(f, "the door went quiet mid-answer: {reason}")
+                write!(
+                    f,
+                    "the model endpoint stopped sending partway through its answer: {reason}"
+                )
             }
             GenerateError::Relay(why) => write!(f, "relay: {why}"),
             GenerateError::Silent {
@@ -670,7 +675,7 @@ impl Reader {
                     .as_str()
                     .unwrap_or("no reason given");
                 return Err(GenerateError::Stream(format!(
-                    "the door stopped short of an answer: {reason}"
+                    "the model endpoint ended its answer early: {reason}"
                 )));
             }
             "response.failed" | "error" => {
@@ -1156,7 +1161,7 @@ enum Asked {
 fn asked_for(key: Option<&str>, worker: bool, executor: bool) -> Result<Asked, String> {
     let mut named = Vec::new();
     if let Some(key) = key {
-        named.push(format!("{key} asks for an own-key door"));
+        named.push(format!("{key} asks for your own model endpoint"));
     }
     if worker {
         named.push(format!("{WORKER_VAR} asks for the relay"));
@@ -1169,7 +1174,7 @@ fn asked_for(key: Option<&str>, worker: bool, executor: bool) -> Result<Asked, S
     }
     if named.len() > 1 {
         return Err(format!(
-            "the environment names {} doors: {}. Unset all but one.",
+            "the environment sets {} ways to answer a turn: {}. Unset all but one.",
             named.len(),
             named.join(", ")
         ));
@@ -1389,13 +1394,13 @@ mod tests {
         assert_eq!(stalled.refusal(), None);
         assert_eq!(
             absent.to_string(),
-            "the door did not answer: no response headers in 30 seconds, over 3 attempts"
+            "the model endpoint did not answer: no response headers in 30 seconds, over 3 attempts"
         );
         // How long it waited and how much had arrived: "it hung" and "it
         // sent 400 characters and stopped" are different problems.
         assert_eq!(
             stalled.to_string(),
-            "the door went quiet mid-answer: 120 seconds of silence after 12 events \
+            "the model endpoint stopped sending partway through its answer: 120 seconds of silence after 12 events \
              and 400 characters"
         );
     }

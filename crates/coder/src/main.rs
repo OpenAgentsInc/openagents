@@ -268,9 +268,9 @@ impl App {
             Route::Respond => "respond".to_string(),
             Route::Clarify => "clarify".to_string(),
             Route::End => "end".to_string(),
-            Route::Halt(why) => format!("halt — {why}"),
+            Route::Halt(why) => format!("stop ({why})"),
         };
-        self.push_detail("  ", format!("classify → {route}"));
+        self.push_detail("  ", format!("classify chose {route}"));
         let mut detail = String::new();
         if let Some(action) = &verdict.judgment.action {
             let mut pairs: Vec<String> = action
@@ -280,7 +280,7 @@ impl App {
                 .collect();
             pairs.truncate(4);
             detail.push_str(&pairs.join(" · "));
-            detail.push_str(&format!(" · conf {:.2}", action.confidence));
+            detail.push_str(&format!(" · confidence {:.2}", action.confidence));
         }
         self.push_detail("    ", detail);
     }
@@ -293,7 +293,10 @@ impl App {
         self.push(
             Intensity::Half,
             "  ",
-            format!("verbose {}", if self.verbose { "on" } else { "off" }),
+            format!(
+                "detail lines {}",
+                if self.verbose { "shown" } else { "hidden" }
+            ),
         );
     }
 }
@@ -418,9 +421,14 @@ async fn run(
     // Where this conversation is being written down, so nobody has to guess.
     if let Some(agent) = agent_slot.as_ref() {
         match (agent.trace_path(), agent.trace_error()) {
-            (Some(path), _) => app.push_detail("  ", format!("trace → {}", path.display())),
-            (None, Some(error)) => app.push_detail("  ", format!("no trace — {error}")),
-            (None, None) => app.push_detail("  ", "no trace — CODER_TRACE is off"),
+            (Some(path), _) => app.push_detail(
+                "  ",
+                format!("recording this session to {}", path.display()),
+            ),
+            (None, Some(error)) => {
+                app.push_detail("  ", format!("not recording this session: {error}"))
+            }
+            (None, None) => app.push_detail("  ", "not recording this session: CODER_TRACE is off"),
         }
         // Which door answers and why stays out of the conversation: `coder
         // doctor` and the trace say it.
@@ -435,7 +443,7 @@ async fn run(
         if turn.as_ref().is_some_and(|handle| handle.is_finished()) {
             match turn.take().unwrap().await {
                 Ok(agent) => agent_slot = Some(agent),
-                Err(_) => app.push_loud("the turn task died"),
+                Err(_) => app.push_loud("the turn stopped unexpectedly; try again"),
             }
             app.busy = false;
             app.busy_since = None;
@@ -453,7 +461,9 @@ async fn run(
             app.push(
                 Intensity::Half,
                 "  ",
-                format!("preview fell behind — {dropped} bytes not drawn; the reply arrives whole"),
+                format!(
+                    "the live preview skipped {dropped} bytes; the full reply appears when it finishes"
+                ),
             );
         }
         draw(terminal, &ladder, &mut app, &model)?;
@@ -491,7 +501,7 @@ async fn run(
                                                 Intensity::Half,
                                                 "  ",
                                                 format!(
-                                                    "unknown command /{other} — /verbose toggles detail"
+                                                    "unknown command /{other}; type /verbose to show or hide detail lines"
                                                 ),
                                             ),
                                         }
@@ -500,7 +510,7 @@ async fn run(
                                     app.scroll = 0;
                                     if app.busy {
                                         app.queued = Some(draft);
-                                        app.push(Intensity::Half, "  ", "(queued)");
+                                        app.push(Intensity::Half, "  ", "(queued; runs when this turn finishes)");
                                     } else {
                                         start_turn(&mut app, &mut agent_slot, &mut turn, &tx, draft);
                                     }
@@ -563,7 +573,7 @@ impl App {
                         self.push_detail("  ", line);
                     }
                 } else {
-                    self.push_detail("  ", format!("classify → {line}"));
+                    self.push_detail("  ", format!("the worker's classify chose {line}"));
                 }
             }
             Work::Shell(event) => {
@@ -581,12 +591,12 @@ impl App {
                         self.push_detail("    ", outcome.line());
                     }
                     ShellEvent::Verdict(line) => {
-                        self.push_detail("  ", format!("shell → {line}"));
+                        self.push_detail("  ", format!("next step after the commands: {line}"));
                     }
                 }
             }
             Work::Program(slug) => {
-                self.push_detail("  ", format!("program → {slug}"));
+                self.push_detail("  ", format!("running program {slug}"));
                 self.status = format!("running {slug}");
             }
             Work::Delta(delta) => self.pending.push_str(&delta),
@@ -604,7 +614,7 @@ impl App {
                 // beside the tokens, and the scrollback keeps each turn's.
                 if let Some(usd) = cost {
                     self.tokens = format!("{} · ${usd:.4}", self.tokens);
-                    self.push_detail("  ", format!("spent ${usd:.4} this turn"));
+                    self.push_detail("  ", format!("this turn cost ${usd:.4}"));
                 }
             }
             Work::Finished(Err(why)) => {
@@ -628,13 +638,13 @@ fn start_turn(
         app.push(Intensity::Full, if i == 0 { "> " } else { "  " }, part);
     }
     let Some(mut agent) = agent_slot.take() else {
-        app.push_loud("the agent is gone");
+        app.push_loud("the agent is unavailable; restart coder");
         return;
     };
     app.busy = true;
     app.busy_since = Some(Instant::now());
     app.phase.clear();
-    app.status = "classifying".to_string();
+    app.status = "deciding".to_string();
     app.pending.clear();
     let tx = tx.clone();
     *turn = Some(tokio::spawn(async move {

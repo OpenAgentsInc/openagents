@@ -246,7 +246,7 @@ impl DecisionView {
             field(
                 &mut lines,
                 width,
-                "elided",
+                "not shown",
                 toned(&elided.join(", "), Intensity::Quarter),
             );
         }
@@ -771,12 +771,12 @@ mod tests {
     fn the_detail_names_what_the_summary_dropped() {
         // A wide summary fits whole, and no elided row appears.
         let wide = expanded_text(&metered_view(), 120);
-        assert!(!wide.contains("elided"), "{wide}");
+        assert!(!wide.contains("not shown"), "{wide}");
 
         // At 24 cells the summary keeps origin, profile, and part of the
         // destination; the rest is named in the detail.
         let text = expanded_text(&metered_view(), 24);
-        let at = text.find("elided").expect("an elided row");
+        let at = text.find("not shown").expect("an elided row");
         let after = &text[at..];
         assert!(after.contains("selection"), "{after}");
         assert!(after.contains("outcome"), "{after}");

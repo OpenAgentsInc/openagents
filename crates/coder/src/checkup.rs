@@ -34,7 +34,7 @@ fn report() -> (Vec<String>, bool) {
     let settings = match Settings::read() {
         Ok(settings) => settings,
         Err(why) => {
-            lines.push(format!("{:<10} refused: {why}", "door"));
+            lines.push(format!("{:<10} cannot start a turn: {why}", "replies"));
             return (lines, false);
         }
     };
@@ -45,13 +45,16 @@ fn report() -> (Vec<String>, bool) {
         Ok(choice) => {
             let door = match &choice.chosen {
                 Chosen::Delegate(target) => {
-                    format!("{} ({})", delegate_door::NAME, target.agent.word())
+                    format!("delegated to {}", target.agent.word())
                 }
-                Chosen::Fallback => "fallback".to_string(),
+                Chosen::Fallback => "from the fallback".to_string(),
             };
-            lines.push(format!("{:<10} {door} because {}", "door", choice.reason));
+            lines.push(format!(
+                "{:<10} {door} because {}",
+                "replies", choice.reason
+            ));
         }
-        Err(why) => lines.push(format!("{:<10} refused: {why}", "door")),
+        Err(why) => lines.push(format!("{:<10} cannot start a turn: {why}", "replies")),
     }
 
     lines.push(format!(
@@ -66,7 +69,7 @@ fn report() -> (Vec<String>, bool) {
         delegate_door::MODEL_VAR,
         settings.model.as_deref().unwrap_or("unset"),
     ));
-    lines.push("targets".to_string());
+    lines.push("delegation targets".to_string());
     for target in &settings.targets {
         let mark = match chosen {
             Some(Chosen::Delegate(picked)) if picked.agent == target.agent => "  (chosen)",
@@ -76,7 +79,7 @@ fn report() -> (Vec<String>, bool) {
             _ if !target.agent.is_cli() => microluna_state(),
             (None, _) => "not installed".to_string(),
             (Some(path), coder_one::delegate::Credential::Missing) => {
-                format!("{}, no credential", path.display())
+                format!("{}, not signed in", path.display())
             }
             (Some(path), credential) => {
                 format!(
@@ -104,7 +107,7 @@ fn report() -> (Vec<String>, bool) {
     if microluna {
         let bounds = coder_one::terminal::microluna_policy(false);
         lines.push(format!(
-            "{:<10} microluna on {model} in this process · {} mode · up to {} sessions, {} per requirement group · ${:.2} a turn · checks between sessions on writing turns · deadline {}s · probes and survey from policy {}",
+            "{:<10} microluna runs {model} in this process · {} mode · up to {} sessions, {} per group of requirements · up to ${:.2} a turn · runs checks between sessions when a turn changes files · stops after {}s · repository checks from policy {}",
             "executor",
             bounds.mode.word(),
             bounds.max_sessions,
@@ -115,7 +118,7 @@ fn report() -> (Vec<String>, bool) {
         ));
     } else {
         lines.push(format!(
-        "{:<10} {} on {model} · effort {} · tools {} · prompt cache {} · deadline {}s · policy {}",
+        "{:<10} {} runs {model} · effort {} · tools {} · prompt cache {} · stops after {}s · policy {}",
         "executor",
         executor.agent.agent().word(),
         executor.effort.as_deref().unwrap_or("default"),
@@ -130,7 +133,7 @@ fn report() -> (Vec<String>, bool) {
     lines.push(match jev {
         Some(_) => format!("{:<10} {source}", "jev"),
         None => format!(
-            "{:<10} missing: {source}. A delegated turn's briefing carries the request alone.",
+            "{:<10} missing: {source}. Without Jev, a delegated turn's briefing holds only your request.",
             "jev"
         ),
     });
@@ -138,13 +141,13 @@ fn report() -> (Vec<String>, bool) {
     let workdir = std::env::current_dir().unwrap_or_default();
     lines.push(match delegate_door::boundary_available(&workdir) {
         Ok(()) => format!(
-            "{:<10} available ({}): read-only turns cannot write the workspace",
-            "boundary",
+            "{:<10} available ({}): a turn that only reads cannot change files",
+            "sandbox",
             coder_boundary::backend_path()
         ),
         Err(why) => format!(
-            "{:<10} unavailable: {why}. A delegated turn fails rather than run unbounded.",
-            "boundary"
+            "{:<10} unavailable: {why}. A delegated turn fails instead of running without write limits.",
+            "sandbox"
         ),
     });
 
@@ -152,7 +155,7 @@ fn report() -> (Vec<String>, bool) {
     lines.push(format!(
         "{:<10} {}",
         "trace",
-        coder::trace::directory().map_or("off (CODER_TRACE)".to_string(), |dir| {
+        coder::trace::directory().map_or("off (CODER_TRACE=off)".to_string(), |dir| {
             dir.display().to_string()
         })
     ));
@@ -176,7 +179,7 @@ fn microluna_state() -> String {
                 |hours| format!("access token {hours:.1} hours left"),
             );
             format!(
-                "in process, Codex login at {} · {left}",
+                "runs in this process, Codex login at {} · {left}",
                 login.path.display()
             )
         }
@@ -194,10 +197,10 @@ fn fallback() -> String {
                 .filter(|url| !url.trim().is_empty())
                 .unwrap_or_else(|| DEFAULT_DOOR_URL.to_string());
             let model = Door::Live(door).model().to_string();
-            format!("live Open Responses door: {model} at {url}")
+            format!("Open Responses endpoint: {model} at {url}")
         }
         Ok(Door::Stub(_)) => "stub: no Open Responses key is set (CODER_DOOR_KEY or \
-             CODER_AI_GATEWAY_KEY), so a fallback turn answers with a canned line"
+             CODER_AI_GATEWAY_KEY), so a fallback turn replies with a fixed placeholder message"
             .to_string(),
         Ok(door) => format!("{} ({})", door.name(), door.label()),
         Err(why) => format!("refused: {why}"),

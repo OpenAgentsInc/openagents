@@ -519,7 +519,7 @@ impl RunView {
             field(
                 &mut lines,
                 width,
-                "elided",
+                "not shown",
                 &elided.join(", "),
                 Intensity::Quarter,
             );
@@ -1132,12 +1132,12 @@ mod tests {
     fn the_detail_names_what_the_summary_dropped() {
         // A wide summary fits whole, and no elided row appears.
         let wide = expanded_text(&running_view(), 120);
-        assert!(!wide.contains("elided"), "{wide}");
+        assert!(!wide.contains("not shown"), "{wide}");
 
         // At 24 cells the summary keeps the origin and the run, and the
         // detail names what it dropped.
         let text = expanded_text(&running_view(), 24);
-        let at = text.find("elided").expect("an elided row");
+        let at = text.find("not shown").expect("an elided row");
         let after = &text[at..];
         assert!(after.contains("current"), "{after}");
         assert!(after.contains("state"), "{after}");
@@ -1237,7 +1237,7 @@ mod tests {
         let line = view.collapsed(20);
         assert!(line.width() <= 20, "{} cells", line.width());
         assert!(line.text().ends_with("..."), "{}", line.text());
-        assert!(at("elided") > cost, "{}", text.join("\n"));
+        assert!(at("not shown") > cost, "{}", text.join("\n"));
     }
 
     #[test]

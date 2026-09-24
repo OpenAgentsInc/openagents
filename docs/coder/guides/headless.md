@@ -45,7 +45,7 @@ names: `TYPESAFE_API_KEY` turns classify on, `CODER_DOOR_KEY` with
 with `CODER_RELAY` routes the turn through the relay, and with none of
 them set the stub door answers. The first line on standard error names the
 door and why, such as
-`door → delegate (claude-code/claude-opus-5-5) because claude-code is installed at … and authenticated (cli_login)`.
+`answering with delegate (claude-code/claude-opus-5-5) because claude-code is installed at … and authenticated (cli_login)`.
 
 The environment also says what a turn may do to the machine, again
 exactly as in the terminal: `CODER_SHELL=off` withdraws execution, and a
@@ -154,7 +154,7 @@ turn — which is nearly every turn. A turn that runs a program takes no
 classify route, so `route` is null there and the two fields are never both
 set. The reply is the run's summary: which steps ran, how many delegations
 answered, and where it stopped if it stopped. Progress goes to standard
-error as `program → <slug>`, printed when the program is selected rather
+error as `running program <slug>`, printed when the program is selected rather
 than when it finishes, because a fan-out takes minutes.
 
 ## Why a turn did not finish

@@ -375,7 +375,7 @@ async fn serve(options: &Options) -> Result<(), String> {
         ),
         None => eprintln!("door    {} ({})", door.name(), door.model()),
     }
-    eprintln!("jobs    {jobs} at once; more are refused busy");
+    eprintln!("jobs    {jobs} at once; more are refused as busy");
     if let Some(code) = &options.decline {
         eprintln!("declining every job with {code}");
     }
@@ -893,12 +893,12 @@ impl Job {
         let (bound, stated) = match minutes {
             Some(minutes) => (
                 Duration::from_secs(minutes.saturating_mul(60)) + self.waits.grace,
-                format!("its {minutes} minute bound"),
+                format!("its {minutes}-minute limit"),
             ),
             None => (
                 self.waits.undelegated,
                 format!(
-                    "this worker's {} minute bound",
+                    "this worker's {}-minute limit",
                     self.waits.undelegated.as_secs() / 60
                 ),
             ),
@@ -911,7 +911,7 @@ impl Job {
             return refuse(
                 version,
                 "timed_out",
-                format!("the job ran past {stated} and this worker stopped waiting for it"),
+                format!("the job ran longer than {stated}, so this worker stopped waiting for it"),
             );
         };
 
@@ -1282,11 +1282,11 @@ mod tests {
         for (payload, stated) in [
             (
                 json!({"v":2,"task":"hello","delegation":{"writes":false,"minutes":0}}),
-                "its 0 minute bound",
+                "its 0-minute limit",
             ),
             (
                 json!({"v":2,"task":"hello"}),
-                "this worker's 0 minute bound",
+                "this worker's 0-minute limit",
             ),
         ] {
             let (door, _listener) = silent_door();

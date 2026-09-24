@@ -123,12 +123,12 @@ impl Exhausted {
     pub fn sentence(self) -> String {
         match self {
             Exhausted::Rounds(rounds) => {
-                format!("the command loop ran its {rounds} permitted rounds")
+                format!("the turn ran commands for {rounds} rounds, the most it allows")
             }
-            Exhausted::Stopped => "the judge stopped the command loop".to_string(),
+            Exhausted::Stopped => "the classifier said to stop running commands".to_string(),
             Exhausted::Retries(retries) => {
                 format!(
-                    "the judge asked for a retry {retries} rounds in a row, the most a turn allows"
+                    "the classifier asked to retry {retries} rounds in a row, the most a turn allows"
                 )
             }
         }
@@ -621,7 +621,7 @@ impl Agent {
     /// says what one door answered, and this says what the agent did next.
     pub async fn classify(&mut self) -> Classified {
         let Some(classify) = self.classify.clone() else {
-            let note = "no decision door is configured — generating unrouted".to_string();
+            let note = "no classifier is configured (no decision endpoint is set), so the reply is not routed".to_string();
             if let Some(trace) = &mut self.trace {
                 trace.note(&note);
             }
@@ -677,7 +677,9 @@ impl Agent {
                         milliseconds,
                     },
                 );
-                Classified::Skipped(format!("classify failed ({error}) — generating unrouted"))
+                Classified::Skipped(format!(
+                    "the classifier failed ({error}), so the reply is not routed"
+                ))
             }
         }
     }
@@ -1438,7 +1440,11 @@ mod tests {
             turned.ending
         );
         assert!(turned.text.contains("none of them ran"), "{}", turned.text);
-        assert!(turned.text.contains("permitted rounds"), "{}", turned.text);
+        assert!(
+            turned.text.contains("the most it allows"),
+            "{}",
+            turned.text
+        );
         assert!(
             turned.text.contains("observed 0") && turned.text.contains("exit 0"),
             "what ran is not in the reply: {}",
@@ -1621,7 +1627,7 @@ mod tests {
         let Classified::Skipped(note) = agent.classify().await else {
             panic!("expected a skipped classify");
         };
-        assert!(note.contains("decision door"));
+        assert!(note.contains("no classifier"));
     }
 
     #[tokio::test]

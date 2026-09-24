@@ -286,7 +286,7 @@ pub fn choose(
             )),
             _ => Ok(Choice {
                 chosen: Chosen::Fallback,
-                reason: format!("{explicit}, which outranks delegation"),
+                reason: format!("{explicit}, which takes precedence over delegation"),
             }),
         };
     }
@@ -305,7 +305,7 @@ pub fn choose(
         });
     }
     let found = if considered.is_empty() {
-        "no target was considered".to_string()
+        "no target matched the requested agent".to_string()
     } else {
         considered
             .iter()
@@ -319,7 +319,7 @@ pub fn choose(
         )),
         _ => Ok(Choice {
             chosen: Chosen::Fallback,
-            reason: format!("fallback: no delegation target is available ({found})"),
+            reason: format!("no delegation target is available ({found})"),
         }),
     }
 }
@@ -665,7 +665,7 @@ impl DelegateDoor {
             });
         if let Err(error) = spawned {
             return Err(GenerateError::Stream(format!(
-                "the delegate thread would not start: {error}"
+                "could not start the delegation thread: {error}"
             )));
         }
         let mut mapper = Mapper::default();
@@ -683,7 +683,7 @@ impl DelegateDoor {
                 }
                 FromThread::Failed(why) => {
                     return Err(GenerateError::Stream(format!(
-                        "the delegate thread could not run: {why}"
+                        "the delegation thread could not run: {why}"
                     )));
                 }
                 FromThread::Done(answer) => {
@@ -698,7 +698,7 @@ impl DelegateDoor {
             }
         }
         Err(GenerateError::Stream(
-            "the delegate thread ended without an answer".to_string(),
+            "the delegation thread ended without an answer".to_string(),
         ))
     }
 }
@@ -737,10 +737,10 @@ fn delegated(answer: &terminal::Answer, commands: usize) -> Delegated {
         }),
         DelegateStatus::TimedOut => Some(GenerateError::Quiet {
             heard: summary.result.is_some(),
-            reason: format!("{agent} ran past its deadline"),
+            reason: format!("{agent} did not finish before its time limit"),
         }),
         DelegateStatus::Failed(code) => Some(GenerateError::Stream(format!(
-            "{agent} exited {code}: {}",
+            "{agent} exited with code {code}: {}",
             report.output()
         ))),
         DelegateStatus::Harness(why) => Some(GenerateError::Stream(format!(
@@ -788,7 +788,9 @@ impl Mapper {
         match &event.kind {
             Kind::SessionStarted {
                 session_id: Some(id),
-            } => Some(Update::Line(format!("session ▸ {id}"))),
+            } => Some(Update::Line(format!(
+                "session ▸ the agent started session {id}"
+            ))),
             Kind::SessionStarted { session_id: None } => None,
             Kind::AssistantClaim { text } if !text.trim().is_empty() => {
                 Some(Update::Text(text.clone()))
@@ -1058,7 +1060,9 @@ mod tests {
         let fallback = chosen(&both(false, false));
         assert_eq!(fallback.chosen, Chosen::Fallback);
         assert!(
-            fallback.reason.starts_with("fallback: "),
+            fallback
+                .reason
+                .starts_with("no delegation target is available"),
             "{}",
             fallback.reason
         );
@@ -1100,7 +1104,7 @@ mod tests {
         let relay = "CODER_WORKER asks for the relay";
         let auto = choose(Mode::Auto, None, Some(relay), &both(true, true)).unwrap();
         assert_eq!(auto.chosen, Chosen::Fallback);
-        assert!(auto.reason.contains("outranks delegation"));
+        assert!(auto.reason.contains("takes precedence over delegation"));
         assert!(choose(Mode::Always, None, Some(relay), &both(true, true)).is_err());
     }
 

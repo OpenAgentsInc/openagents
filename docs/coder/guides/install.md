@@ -93,15 +93,15 @@ one:
 $ coder doctor
 coder 0.1.0 (OpenAgentsInc/openagents a55f667b04 clean)
 binary     ~/.openagents/versions/coder-openagents-a55f667b04
-door       delegate (claude-code) because claude-code is installed at ~/.local/bin/claude and authenticated (cli_login)
+replies    delegated to claude-code because claude-code is installed at ~/.local/bin/claude and authenticated (cli_login)
 settings   CODER_DELEGATE=auto · CODER_DELEGATE_AGENT=unset · CODER_DELEGATE_MODEL=unset
-targets
+delegation targets
   claude-code  ~/.local/bin/claude, credential found (cli_login)  (chosen)
   codex        ~/.local/bin/codex, credential found (codex_auth_json)
-executor   claude-code on claude-opus-5-5 · effort low · tools Bash,Read,Edit,Write,Glob,Grep · prompt cache 5m · deadline 600s · policy coder-one-jevprobe2-opus-lean-low-5m
+executor   claude-code runs claude-opus-5-5 · effort low · tools Bash,Read,Edit,Write,Glob,Grep · prompt cache 5m · stops after 600s · policy coder-one-jevprobe2-opus-lean-low-5m
 jev        jev-1.13.0 from ~/.openagents/jev.json
-boundary   available (/run/current-system/sw/bin/bwrap): read-only turns cannot write the workspace
-fallback   stub: no Open Responses key is set (CODER_DOOR_KEY or CODER_AI_GATEWAY_KEY), so a fallback turn answers with a canned line
+sandbox    available (/run/current-system/sw/bin/bwrap): a turn that only reads cannot change files
+fallback   stub: no Open Responses key is set (CODER_DOOR_KEY or CODER_AI_GATEWAY_KEY), so a fallback turn replies with a fixed placeholder message
 trace      ~/.openagents/traces
 ```
 

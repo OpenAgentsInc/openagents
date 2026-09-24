@@ -75,17 +75,17 @@ pub async fn print(options: Print) -> u8 {
                 &mut out,
             );
         }
-        eprintln!("no trace — {error}");
+        eprintln!("not recording this turn: {error}");
     } else {
         match agent.trace_path() {
-            Some(path) => eprintln!("trace → {}", path.display()),
-            None => eprintln!("no trace — CODER_TRACE is off"),
+            Some(path) => eprintln!("recording this turn to {}", path.display()),
+            None => eprintln!("not recording this turn: CODER_TRACE is off"),
         }
     }
     // Which door answers and why, before anything answers: a fallback
     // should never pass for the door the operator expected.
     eprintln!(
-        "door → {} ({}) because {}",
+        "answering with {} ({}) because {}",
         agent.door(),
         agent.model(),
         agent.door_reason()
@@ -115,7 +115,7 @@ async fn report(
     let mut events = |event: Event| {
         match &event {
             Event::Shell(ShellEvent::Proposed(proposal)) => eprintln!("$ {}", proposal.command),
-            Event::Program(slug) => eprintln!("program → {slug}"),
+            Event::Program(slug) => eprintln!("running program {slug}"),
             Event::Judgment(line) => eprintln!("  {line}"),
             _ => {}
         }
@@ -161,7 +161,7 @@ async fn report(
             } else {
                 say(out, &finished.reply);
                 if let Some(usd) = finished.cost_usd {
-                    eprintln!("spent ${usd:.4}");
+                    eprintln!("this turn cost ${usd:.4}");
                 }
             }
             code
@@ -474,15 +474,17 @@ mod tests {
         assert_eq!(object["action"]["confidence"], 0.9);
         assert_eq!(object["action"]["probabilities"]["respond"], 0.9);
 
-        let skipped =
-            Classified::Skipped("no decision door is configured — generating unrouted".to_string());
+        let skipped = Classified::Skipped(
+            "no classifier is configured (no decision endpoint is set), so the reply is not routed"
+                .to_string(),
+        );
         let object = event_object(&Event::Classified(skipped), false).unwrap();
         assert_eq!(object["route"], Value::Null);
         assert_eq!(object["halt"], Value::Null);
         assert_eq!(object["action"], Value::Null);
         assert_eq!(
             object["note"],
-            "no decision door is configured — generating unrouted"
+            "no classifier is configured (no decision endpoint is set), so the reply is not routed"
         );
 
         let object = event_object(&Event::Judgment("stop 0.71".to_string()), false).unwrap();

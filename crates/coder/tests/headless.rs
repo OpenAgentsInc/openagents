@@ -110,7 +110,7 @@ fn a_headless_turn_prints_a_reply_and_records_it() {
         steps[2]["message"]
             .as_str()
             .unwrap()
-            .contains("decision door")
+            .contains("no classifier")
     );
     assert_eq!(steps[3]["extra"]["kind"], "instructions");
     assert_eq!(steps[4]["source"], "agent");
@@ -642,7 +642,7 @@ fn a_turn_with_a_target_is_delegated_and_streams_its_progress() {
 
     assert_eq!(output.status.code(), Some(0), "{output:?}");
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("door → delegate"), "{stderr}");
+    assert!(stderr.contains("answering with delegate"), "{stderr}");
     let stdout = String::from_utf8(output.stdout).unwrap();
     let objects: Vec<Value> = stdout
         .lines()

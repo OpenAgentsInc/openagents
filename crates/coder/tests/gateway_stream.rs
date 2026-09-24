@@ -263,7 +263,7 @@ async fn a_door_that_never_answers_is_asked_again_and_then_reported() {
     assert_eq!(error.cause(), "door_absent");
     assert_eq!(
         error.to_string(),
-        "the door did not answer: no response headers in 0 seconds, over 3 attempts"
+        "the model endpoint did not answer: no response headers in 0 seconds, over 3 attempts"
     );
     assert_eq!(
         server.asked(),
@@ -291,7 +291,7 @@ async fn a_door_that_sends_headers_and_stops_is_not_asked_again() {
     assert_eq!(error.cause(), "door_stalled");
     assert_eq!(
         error.to_string(),
-        "the door went quiet mid-answer: 0 seconds of silence after 0 events and 0 characters"
+        "the model endpoint stopped sending partway through its answer: 0 seconds of silence after 0 events and 0 characters"
     );
     assert_eq!(server.asked(), 1, "a door that answered is not asked again");
     assert!(seen.is_empty());
@@ -312,7 +312,7 @@ async fn a_partial_answer_says_how_much_arrived_and_is_not_repeated() {
     assert_eq!(error.cause(), "door_stalled");
     assert_eq!(
         error.to_string(),
-        "the door went quiet mid-answer: 0 seconds of silence after 5 events and 4 characters"
+        "the model endpoint stopped sending partway through its answer: 0 seconds of silence after 5 events and 4 characters"
     );
     assert_eq!(seen, "One\n", "the deltas that arrived reached the caller");
     assert_eq!(

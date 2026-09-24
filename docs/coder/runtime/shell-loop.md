@@ -199,14 +199,14 @@ rounds for the token rail.
 
 ```
 > describe how we use jev in this project
-  classify → respond
+  classify chose respond
   $ git grep -rn "jev" crates/ --include="*.rs" -l
     find where jev is used
     exit 0 · 0.2s
   $ cargo doc -p jev --no-deps 2>&1 | head
     skim the crate's own docs
     exit 0 · 4.1s
-  shell → pass 0.93
+  next step after the commands: pass 0.93
   Jev is the System One crate …
 ```
 

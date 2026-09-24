@@ -167,13 +167,13 @@ impl ExecutorDoor {
             Status::TimedOut => Err(GenerateError::Quiet {
                 heard: !delegation.output.trim().is_empty(),
                 reason: format!(
-                    "{} ran past its {} minute bound",
+                    "{} did not finish within its {}-minute limit",
                     self.slug,
                     delegation.task.bounds.wall().as_secs() / 60
                 ),
             }),
             Status::Failed(code) => Err(GenerateError::Stream(format!(
-                "{} exited {code}: {}",
+                "{} exited with code {code}: {}",
                 self.slug,
                 delegation.recorded_output()
             ))),

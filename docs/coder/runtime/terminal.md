@@ -74,8 +74,8 @@ but `Feed::send` treats them differently:
 - A text event is queued while fewer than `TEXT_BACKLOG_MAX` bytes of
   text are in flight. Past that it is dropped and its size is counted.
   The draw loop reads the count with `Inbox::take_dropped` before each
-  frame and writes one line into the transcript — `preview fell behind —
-  N bytes not drawn; the reply arrives whole` — so a drop is visible
+  frame and writes one line into the transcript — `the live preview skipped
+  N bytes; the full reply appears when it finishes` — so a drop is visible
   rather than silent.
 
 `Inbox::drain` takes everything ready and merges adjacent text events, so

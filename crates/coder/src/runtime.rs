@@ -1398,7 +1398,7 @@ impl Runtime {
             true => Ok(()),
             false => refuse(
                 "door_unavailable",
-                format!("no decision door is configured, and {id} has to be asked of one"),
+                format!("no decision endpoint is configured, and the question set {id} needs one"),
             ),
         }
     }
@@ -3900,7 +3900,7 @@ impl Runtime {
                 "door_unavailable",
                 self.door_error
                     .clone()
-                    .unwrap_or_else(|| "no decision door is configured".to_string()),
+                    .unwrap_or_else(|| "no decision endpoint is configured".to_string()),
             )
         })?;
         // The set's policy binds before anything goes out: a state

@@ -55,51 +55,54 @@ pub const USAGE: &str = "\
 coder — the Coder agent, in a terminal or in a script.
 
 Usage:
-  coder                       Draw the terminal and talk.
-  coder -p <PROMPT>           Run one turn, write the reply to stdout, exit.
-  coder doctor                Report which door a turn would use and why.
-  coder --version             Name the repository, commit, and tree state.
+  coder                       Open the terminal and start a conversation.
+  coder -p <PROMPT>           Run one turn, write the reply to stdout, and exit.
+  coder doctor                Show what would answer a turn, and why.
+  coder --version             Show the repository, commit, and tree state.
 
 Options:
-  -p, --print <PROMPT>   Run one turn without a terminal.
+  -p, --print <PROMPT>   Run one turn without the terminal.
       --prompt-file <FILE>
                          Read the prompt from a file. Implies --print.
-      --trace <PATH>     Write this session's trace to PATH. Recording a
-                         named file outranks CODER_TRACE.
-      --json             With --print, report the turn as a JSON stream:
-                         one object per turn event on stdout, then the
+      --trace <PATH>     Record this session to PATH. This overrides
+                         CODER_TRACE.
+      --json             With --print, write the turn as a JSON stream:
+                         one object per turn event on stdout, then a
                          summary object.
-      --json-deltas      With --json, also stream the reply's deltas as
-                         `delta` objects. Off by default — deltas can
-                         flood a pipe.
-      --programs <SPEC>  Grant the named programs this session's runs, as
-                         CODER_PROGRAMS does: a comma-separated slug list
-                         or `all`. With neither set, a program a turn
-                         selects is refused rather than run — see
-                         docs/coder/guides/program-authority.md.
+      --json-deltas      With --json, also write each piece of the reply
+                         as it streams in, as `delta` objects. Off by
+                         default, because deltas can flood a pipe.
+      --programs <SPEC>  Allow this session to run the named programs, as
+                         CODER_PROGRAMS does: a comma-separated list of
+                         program names, or `all`. If neither is set, a
+                         program that a turn selects is refused instead of
+                         run. See docs/coder/guides/program-authority.md.
   -V, --version          Show the repository, commit, and tree state.
   -h, --help             Show this text.
 
 Exit codes with --print:
   0   The turn finished and the agent answered.
   1   The turn did not finish.
-  2   The turn finished and the router declined it.
+  2   The turn finished and the classifier declined it.
   64  The command line was wrong.
 
-The environment picks the door. A turn is delegated to Claude Code or
-Codex from a Jev briefing when either is installed and authenticated;
-CODER_DELEGATE=auto (the default), always, or off overrides that,
-CODER_DELEGATE_AGENT names claude-code or codex, and
-CODER_DELEGATE_MODEL names its model. With no target, the Open Responses
-door below is the fallback. CODER_DECISION_PROFILE and the
-CODER_DECISION_* settings name the decision profile classify asks
-through, falling back to the hosted door TYPESAFE_API_KEY opens;
-CODER_DOOR_KEY, CODER_DOOR_URL, and CODER_MODEL name an own-key door;
-CODER_WORKER and CODER_RELAY route the turn through the relay; with none
-of them set the stub door answers. CODER_SHELL=off runs no commands.
-CODER_PROGRAMS names the programs a session may run and
-CODER_PROGRAM_EFFECTS bounds what they may do. CODER_MODEL takes a lane —
-gemini or glm — or any model id the gateway serves.";
+Environment variables choose what answers a turn. If Claude Code or
+Codex is installed and signed in, Coder hands the turn to it with a
+briefing that Jev prepares. CODER_DELEGATE sets when that happens: auto
+(the default), always, or off. CODER_DELEGATE_AGENT picks claude-code or
+codex, and CODER_DELEGATE_MODEL picks its model. If no agent is
+available, Coder answers through an Open Responses endpoint instead.
+
+CODER_DECISION_PROFILE and the other CODER_DECISION_* variables set the
+decision service that classifies each turn. If they are unset, Coder
+uses the hosted service that TYPESAFE_API_KEY unlocks. CODER_DOOR_KEY,
+CODER_DOOR_URL, and CODER_MODEL point Coder at your own Open Responses
+endpoint. CODER_WORKER and CODER_RELAY send the turn to a worker through
+a Nostr relay. If none of these is set, a stub answers with a fixed
+message. CODER_SHELL=off stops Coder from running commands.
+CODER_PROGRAMS names the programs a session may run, and
+CODER_PROGRAM_EFFECTS limits what they may do. CODER_MODEL takes a model
+family, gemini or glm, or any model ID the gateway serves.";
 
 /// Reads the command line.
 ///
@@ -131,7 +134,10 @@ pub fn parse(arguments: &[String]) -> Result<Invocation, String> {
     while let Some(argument) = rest.next() {
         if literal {
             if prompt.replace(argument.clone()).is_some() {
-                return Err("one prompt, or --prompt-file".to_string());
+                return Err(
+                    "give exactly one prompt, either as an argument or with --prompt-file"
+                        .to_string(),
+                );
             }
             continue;
         }
@@ -160,7 +166,10 @@ pub fn parse(arguments: &[String]) -> Result<Invocation, String> {
                 if let Some(attached) = attached.clone()
                     && prompt.replace(attached).is_some()
                 {
-                    return Err("one prompt, or --prompt-file".to_string());
+                    return Err(
+                        "give exactly one prompt, either as an argument or with --prompt-file"
+                            .to_string(),
+                    );
                 }
             }
             "--json" => json = true,
@@ -184,7 +193,10 @@ pub fn parse(arguments: &[String]) -> Result<Invocation, String> {
             }
             _ => {
                 if prompt.replace(argument.clone()).is_some() {
-                    return Err("one prompt, or --prompt-file".to_string());
+                    return Err(
+                        "give exactly one prompt, either as an argument or with --prompt-file"
+                            .to_string(),
+                    );
                 }
             }
         }
@@ -211,7 +223,11 @@ pub fn parse(arguments: &[String]) -> Result<Invocation, String> {
     }
 
     let prompt = match (prompt, prompt_file) {
-        (Some(_), Some(_)) => return Err("one prompt, or --prompt-file".to_string()),
+        (Some(_), Some(_)) => {
+            return Err(
+                "give exactly one prompt, either as an argument or with --prompt-file".to_string(),
+            );
+        }
         (Some(prompt), None) => prompt,
         (None, Some(path)) => fs::read_to_string(&path)
             .map_err(|error| format!("cannot read {}: {error}", path.display()))?,
@@ -329,7 +345,10 @@ mod tests {
         for (arguments, expected) in [
             (vec!["-p"], "--print needs a prompt"),
             (vec!["-p", "  "], "the prompt is empty"),
-            (vec!["-p", "a", "b"], "one prompt, or --prompt-file"),
+            (
+                vec!["-p", "a", "b"],
+                "give exactly one prompt, either as an argument or with --prompt-file",
+            ),
             (vec!["--json"], "--json needs --print"),
             (
                 vec!["-p", "a", "--json-deltas"],
