@@ -595,6 +595,13 @@ impl Pane {
             .map_or(Ok(()), |pane| pane.preselect(task, left, right))
     }
 
+    /// Moves head-to-head replay's clock forward by `millis`.
+    pub fn seek_replay(&mut self, millis: i64) {
+        if let Some(replay) = self.replay.as_mut() {
+            replay.clock.seek(millis);
+        }
+    }
+
     pub fn replaying(&self) -> bool {
         self.replay
             .as_ref()
@@ -1476,6 +1483,123 @@ impl Pane {
         }
         lines
     }
+}
+
+/// Draws `blocks` the way the Runs pane draws a transcript, up to the
+/// blocks `elapsed_ms` into the run, for head-to-head replay. With `follow`
+/// the newest rows stay in view; otherwise `scroll` holds the first row.
+/// Returns how many blocks are shown.
+pub(crate) fn draw_transcript(
+    blocks: &[Block],
+    elapsed_ms: u64,
+    follow: bool,
+    scroll: &Cell<usize>,
+    area: Rect,
+    buf: &mut Buffer,
+    ladder: Ladder,
+) -> usize {
+    let start = blocks.iter().find_map(|block| block.at);
+    let shown_blocks = match start {
+        Some(start) => blocks
+            .iter()
+            .position(|block| {
+                block
+                    .at
+                    .is_some_and(|at| (at - start).max(0) as u64 > elapsed_ms)
+            })
+            .unwrap_or(blocks.len()),
+        None => blocks.len(),
+    };
+    let width = usize::from(area.width) + 1;
+    let mut rows: Vec<Row> = Vec::new();
+    let mut last_time = String::new();
+    for (index, block) in blocks.iter().take(shown_blocks).enumerate() {
+        let time = clock(block.at, start);
+        let shown = if time == last_time {
+            String::new()
+        } else {
+            time.clone()
+        };
+        if !time.is_empty() {
+            last_time = time;
+        }
+        let entry = Entry {
+            block: block.clone(),
+            index,
+            expanded: false,
+            time: shown,
+            ladder,
+            mark: None,
+        };
+        rows.extend(block_rows(&entry, width));
+    }
+    let room = usize::from(area.height);
+    let max = rows.len().saturating_sub(room);
+    let first = if follow { max } else { scroll.get().min(max) };
+    scroll.set(first);
+    let style = |intensity| ladder.style(intensity).bg(ladder.background());
+    // Rows start with the selection bar's cell, which replay leaves out.
+    let left = area.left().saturating_sub(1);
+    let visible: Vec<&Row> = rows.iter().skip(first).take(room).collect();
+    for (offset, row) in visible.iter().enumerate() {
+        let y = area.top() + offset as u16;
+        let mut x = area.left();
+        for (index, (text, span)) in row.spans.iter().enumerate() {
+            let text = if index == 0 {
+                text.strip_prefix(' ').unwrap_or(text)
+            } else {
+                text.as_str()
+            };
+            let room = area.right().saturating_sub(x);
+            let (next, _) = buf.set_stringn(x, y, text, usize::from(room), *span);
+            x = next;
+        }
+    }
+    let mut offset = 0;
+    while offset < visible.len() {
+        if visible[offset].boxed.is_none() {
+            offset += 1;
+            continue;
+        }
+        let block = visible[offset].block;
+        let begin = offset;
+        while offset < visible.len()
+            && visible[offset].block == block
+            && visible[offset].boxed.is_some()
+        {
+            offset += 1;
+        }
+        let x = left + MARGIN as u16 - 1;
+        let boxed = Rect::new(
+            x,
+            area.top() + begin as u16,
+            area.right().saturating_sub(x),
+            (offset - begin) as u16,
+        );
+        frame(boxed, buf, style(Intensity::Half));
+        if let Some(Boxed::Top {
+            title,
+            verdict,
+            loud,
+        }) = &visible[begin].boxed
+        {
+            rail(
+                boxed,
+                buf,
+                0,
+                Some((title, style(Intensity::Full))),
+                Some((
+                    verdict,
+                    style(if *loud {
+                        Intensity::Full
+                    } else {
+                        Intensity::Half
+                    }),
+                )),
+            );
+        }
+    }
+    shown_blocks
 }
 
 /// The list's column widths at a width.

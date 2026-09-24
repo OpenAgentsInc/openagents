@@ -66,7 +66,7 @@ Usage:
                             [--runs-dir PATH] [--minitasks-dir PATH] [--no-jobs] [--no-traces]
                             [--checks-dir PATH] [--no-samples] [--no-runs] [--no-minitasks]
                             [--no-checks] [--no-jev] [--head-to-head]
-                            [--task TASK [--left TEXT] [--right TEXT|pass|best]]
+                            [--task TASK [--left TEXT] [--right TEXT|pass|best] [--at SECONDS]]
   gym-terminal --help     Print this message.
 
 --task opens head-to-head replay already playing one pair on TASK. --left
@@ -135,6 +135,7 @@ fn terminal_bench_mode(arguments: &[String]) -> io::Result<()> {
     let mut print_only = false;
     let mut head_to_head = false;
     let (mut task, mut left, mut right) = (None, None, None);
+    let mut at: Option<i64> = None;
     let mut jev = true;
     let mut index = 0;
     while index < arguments.len() {
@@ -149,6 +150,16 @@ fn terminal_bench_mode(arguments: &[String]) -> io::Result<()> {
             "--no-checks" => checks = None,
             "--no-jev" => jev = false,
             "--head-to-head" => head_to_head = true,
+            "--at" => {
+                let seconds = arguments
+                    .get(index + 1)
+                    .and_then(|value| value.parse::<f64>().ok())
+                    .ok_or_else(|| {
+                        io::Error::new(io::ErrorKind::InvalidInput, "--at needs seconds")
+                    })?;
+                at = Some((seconds * 1000.0) as i64);
+                index += 1;
+            }
             "--task" | "--left" | "--right" => {
                 let Some(value) = arguments.get(index + 1).cloned() else {
                     return Err(io::Error::new(
@@ -228,6 +239,9 @@ fn terminal_bench_mode(arguments: &[String]) -> io::Result<()> {
     if let Some(task) = &task {
         app.open_replay_on(task, left.as_deref(), right.as_deref())
             .map_err(|message| io::Error::new(io::ErrorKind::NotFound, message))?;
+        if let Some(millis) = at {
+            app.seek_replay(millis);
+        }
     } else if head_to_head {
         app.open_replay();
     }

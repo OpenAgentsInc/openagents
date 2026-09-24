@@ -31,6 +31,9 @@ struct Screen {
     /// Each event's phases, from `runs_phases`: the rules, and Jev's stored
     /// answers for the steps the rules leave.
     phases: Vec<String>,
+    /// The side as the Runs pane's transcript reads it, drawn up to the
+    /// playback clock; `d` switches to the raw event record.
+    blocks: Vec<crate::runs_transcript::Block>,
 }
 impl Screen {
     fn new(source: Source) -> Result<Self, String> {
@@ -47,10 +50,17 @@ impl Screen {
             &crate::runs_phases::task_of(&replay, fallback),
             &crate::runs_phases::StepStore::open(crate::runs_phases::default_dir()),
         );
+        let blocks = match &source {
+            Source::Local(run) => crate::runs_story::load_transcript(run).blocks,
+            Source::Public { trial, cache } => {
+                crate::runs_transcript::trajectory(&cache.join(&trial.file), Vec::new()).blocks
+            }
+        };
         Ok(Self {
             source,
             replay,
             phases,
+            blocks,
             rows: RefCell::new(Wrapped {
                 width: 0,
                 ladder: Ladder::default(),
@@ -143,6 +153,18 @@ impl Screen {
                     clock(self.replay.events[0].elapsed_ms),
                     if playback.playing { "pauses" } else { "starts" },
                 ),
+                ladder,
+            );
+            return;
+        }
+        if !self.details && !self.blocks.is_empty() {
+            crate::runs_tui::draw_transcript(
+                &self.blocks,
+                elapsed,
+                self.follow.get(),
+                &self.scroll,
+                text,
+                buf,
                 ladder,
             );
             return;
@@ -1233,6 +1255,9 @@ mod tests {
                 }],
             },
         ];
+        // These cover the raw event record; the transcript view is
+        // tested through the Runs pane.
+        screen.blocks.clear();
         screen.replay.duration_ms = 5000;
         pane.clock = Playback::new(5000);
         for width in [150, 80, 180] {
@@ -1470,6 +1495,9 @@ mod tests {
             parts: vec![],
             record: "complete record".to_owned(),
         }];
+        // These cover the raw event record; the transcript view is
+        // tested through the Runs pane.
+        screen.blocks.clear();
         screen.replay.duration_ms = 0;
         let area = Rect::new(0, 0, 150, 38);
         let mut buf = Buffer::empty(area);
@@ -1494,6 +1522,9 @@ mod tests {
             parts: vec![],
             record: "FIRST RECORD".to_owned(),
         }];
+        // These cover the raw event record; the transcript view is
+        // tested through the Runs pane.
+        screen.blocks.clear();
         screen.replay.duration_ms = 5000;
         let area = Rect::new(0, 0, 150, 38);
         let mut buf = Buffer::empty(area);

@@ -305,6 +305,13 @@ impl App {
             .map_or(Ok(()), |pane| pane.open_replay_on(task, left, right))
     }
 
+    /// Moves head-to-head replay's clock forward by `millis`.
+    pub fn seek_replay(&mut self, millis: i64) {
+        if let Some(pane) = &mut self.runs {
+            pane.seek_replay(millis);
+        }
+    }
+
     pub fn replaying(&self) -> bool {
         self.view == View::Runs
             && self
