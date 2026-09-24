@@ -33,6 +33,64 @@ another location. Use `--no-jobs`, `--no-traces`, or `--no-samples` to omit
 one. If a configured directory is unavailable, the overview reports that
 condition; it does not silently substitute a sample.
 
+## Open from the startup index
+
+The terminal keeps what it parsed in a startup index under
+`~/.openagents/gym/index/`, so a start reads only the runs and attempts that
+changed since the last one (issue #9595). The index holds three files, one
+per reader and set of source directories:
+
+- `attempts-*.json`: each Terminal-Bench attempt the expert views read,
+  including its evidence checks.
+- `invocations-*.json`: each attempt's component invocations, which the
+  **Components** view counts.
+- `runs-*.json`: each finished run the Runs pane lists.
+
+Each entry records the files its parse read or checked, with the size and
+modification time of each, and a SHA-256 digest over them. A file that was
+absent is recorded as absent. At the next start, the terminal takes those
+stamps again. When the digest matches, it uses the entry. When a file
+changed, appeared, or disappeared, it parses that unit again. Evidence files
+are inputs too, so a digest mismatch still shows when an evidence file is
+edited. A run or attempt that is gone from disk is dropped from the index
+when the terminal saves it.
+
+A run that is still going is never kept: every read parses it again, and the
+Runs pane and the live view read it every two seconds while they're open.
+Each index file names the executable that wrote it. After a rebuild, the
+first start parses everything once and writes a new index. The index is only
+a cache, and deleting the directory costs one full parse. `--no-index`
+parses everything and keeps nothing.
+
+Transcripts, head-to-head replays, the Fable 5.1 manifest, phases, and a
+run's story load only when you open them. The live view checks each trial's
+status file first and parses the episode log only for a trial that is in
+progress or ended in the last few minutes.
+
+To see where startup time goes, set `GYM_STARTUP_TIMES=1`. The terminal
+prints each loading stage's time to standard error, and how many runs and
+attempts the index answered:
+
+```sh
+GYM_STARTUP_TIMES=1 gym-terminal --terminal-bench --print --no-jev > /dev/null
+```
+
+These times were measured on 2026-09-24 with 892 attempts and 889 runs
+(about 3 GB of jobs and 794 MB of retained traces):
+
+| Build | Before | First start after a build | Unchanged catalog |
+| --- | --- | --- | --- |
+| Release | 8.4 s | 4.9 s | 0.43 s |
+| Debug | 74.0 s | 50.5 s | 2.5 s |
+
+**Before** is the wall time of `--print` before the index, which includes
+about 0.15 s (release) or 1.7 s (debug) of printing. The other columns are the
+loading total up to the first frame. Before the index, a release start spent
+1.6 s on attempt records, 2.3 s on component invocations, and 4.0 s in the
+live view, which parsed the episode log of every trial that had one. With the
+index, the largest release stages are the attempt index itself (0.15 s,
+about 17 MB of JSON) and the Runs pane's learning answers (0.08 s).
+
 ## Replay head to head
 
 Press `p` from the Runs list or an open run to compare any Coder One

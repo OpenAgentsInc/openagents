@@ -19,7 +19,7 @@ use crate::terminal_bench::Records;
 pub const SCHEMA: &str = "openagents.coder-one.policy.v1";
 
 /// One resolved policy manifest.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PolicyRecord {
     /// The manifest digest, hex.
     pub digest: String,

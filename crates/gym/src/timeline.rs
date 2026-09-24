@@ -1080,7 +1080,10 @@ pub fn for_attempt(attempt: &Attempt) -> Option<Result<Timeline, String>> {
             .iter()
             .find(|evidence| evidence.kind == kind)
             .and_then(|evidence| evidence.path.clone())
-            .filter(|path| path.is_file())
+            .filter(|path| {
+                crate::index::touch(path);
+                path.is_file()
+            })
     };
     if let Some(log) = path_of("invocation_log") {
         return Some(read_log(&log));

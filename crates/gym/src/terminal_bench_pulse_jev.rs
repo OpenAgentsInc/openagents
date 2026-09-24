@@ -898,6 +898,7 @@ mod tests {
             jobs: Some(jobs.clone()),
             traces: None,
             tasks: Vec::new(),
+            index: None,
         };
         let pulse_dir = temp.path().join("pulse");
         let learning_dir = temp.path().join("learning");

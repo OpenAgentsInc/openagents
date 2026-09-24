@@ -41,6 +41,11 @@ pub struct Sources {
     /// Where the Terminal-Bench task definitions are, to read a task's
     /// instruction when a run's own record does not name its path.
     pub tasks: Vec<PathBuf>,
+    /// The startup index's directory (issue #9595): finished runs whose
+    /// files are unchanged are read from it instead of parsed. `None`, as
+    /// in [`Sources::standard`], parses every run; `gym-terminal` sets it
+    /// to [`crate::index::default_dir`].
+    pub index: Option<PathBuf>,
 }
 
 impl Sources {
@@ -72,12 +77,15 @@ impl Sources {
                 PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../bench/terminal-bench/traces"),
             ),
             tasks,
+            index: None,
         }
     }
 }
 
 /// Which agent ran.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
 pub enum Agent {
     CoderOne,
     ClaudeCode,
@@ -142,7 +150,7 @@ impl Agent {
 }
 
 /// How a run came out.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Outcome {
     /// The verifier gave full marks.
     Passed,
@@ -186,7 +194,7 @@ impl Outcome {
 }
 
 /// The verifier's test counts.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Tests {
     pub passed: u64,
     pub failed: u64,
@@ -195,7 +203,7 @@ pub struct Tests {
 
 /// Where a run's records are. Every path is optional: an older run, a
 /// retained run, and a running one each have some of them.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Files {
     /// The trial directory, or the retained `<trial>.episode` directory.
     pub dir: PathBuf,
@@ -215,7 +223,7 @@ pub struct Files {
 }
 
 /// One trial, read.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Run {
     pub job: String,
     pub trial: String,
@@ -323,14 +331,22 @@ pub struct Catalog {
     pub runs: Vec<Run>,
     pub errors: Vec<String>,
     tasks: HashMap<PathBuf, TaskInfo>,
+    /// Finished runs as last parsed, kept between loads.
+    index: Option<crate::index::Index<Run>>,
 }
 
 impl Catalog {
     /// Reads every run under `sources`.
     #[must_use]
     pub fn load(sources: Sources) -> Self {
+        let scope = format!(
+            "{:?} {:?} {:?}",
+            sources.jobs, sources.traces, sources.tasks
+        );
+        let index = crate::index::Index::open(sources.index.as_deref(), "runs", &scope);
         let mut catalog = Catalog {
             sources,
+            index: Some(index),
             ..Catalog::default()
         };
         catalog.refresh(now_ms());
@@ -345,6 +361,9 @@ impl Catalog {
             .filter(|run| run.outcome != Outcome::Running)
             .map(|run| (run.id(), run))
             .collect();
+        let mut index = self.index.take().unwrap_or_default();
+        // A run still going is parsed at every read and never kept.
+        let finished = |run: &Run| run.outcome != Outcome::Running;
         let mut runs = Vec::new();
         let mut seen = std::collections::HashSet::new();
         if let Some(jobs) = self.sources.jobs.clone() {
@@ -356,9 +375,17 @@ impl Catalog {
                     }
                     let id = format!("{job_name}/{}", file_name(&trial));
                     seen.insert(id.clone());
+                    let key = format!("local {id}");
                     match kept.remove(&id) {
-                        Some(run) => runs.push(run),
-                        None => runs.push(self.read_local(&job, &trial, now)),
+                        Some(run) => {
+                            index.keep(&key);
+                            runs.push(run);
+                        }
+                        None => runs.push(index.get_or_read(
+                            &key,
+                            || self.read_local(&job, &trial, now),
+                            finished,
+                        )),
                     }
                 }
             }
@@ -384,9 +411,17 @@ impl Catalog {
                     if !seen.insert(id.clone()) {
                         continue;
                     }
+                    let key = format!("retained {id}");
                     match kept.remove(&id) {
-                        Some(run) => runs.push(run),
-                        None => runs.push(self.read_retained(&job, &trial)),
+                        Some(run) => {
+                            index.keep(&key);
+                            runs.push(run);
+                        }
+                        None => runs.push(index.get_or_read(
+                            &key,
+                            || self.read_retained(&job, &trial),
+                            finished,
+                        )),
                     }
                 }
             }
@@ -398,6 +433,23 @@ impl Catalog {
                 .then(a.id().cmp(&b.id()))
         });
         self.runs = runs;
+        if let Err(error) = index.save()
+            && !self.errors.contains(&error)
+        {
+            self.errors
+                .push(format!("the startup index wasn't saved: {error}"));
+        }
+        self.index = Some(index);
+    }
+
+    /// How many runs the startup index answered, and how many were
+    /// parsed, since the catalog was loaded.
+    #[must_use]
+    pub fn index_stats(&self) -> crate::index::Stats {
+        self.index
+            .as_ref()
+            .map(|index| index.stats)
+            .unwrap_or_default()
     }
 
     /// Whether any run is still going.
@@ -447,6 +499,8 @@ impl Catalog {
         let Some(path) = path else {
             return (None, TaskInfo::default());
         };
+        crate::index::touch(&path.join("instruction.md"));
+        crate::index::touch(&path.join("task.toml"));
         let info = self
             .tasks
             .entry(path.clone())
@@ -459,7 +513,6 @@ impl Catalog {
         let job_name = file_name(job);
         let trial_name = file_name(trial);
         let agent_dir = trial.join("agent");
-        let existing = |path: PathBuf| path.exists().then_some(path);
         let native = existing(agent_dir.join("claude-code.txt"))
             .or_else(|| existing(agent_dir.join("codex.txt")));
         let files = Files {
@@ -524,7 +577,6 @@ impl Catalog {
 
     fn read_retained(&mut self, job: &Path, trial: &str) -> Run {
         let dir = job.join(format!("{trial}.episode"));
-        let existing = |path: PathBuf| path.exists().then_some(path);
         let files = Files {
             result: existing(dir.join("harbor-result.json")),
             config: None,
@@ -731,6 +783,7 @@ impl Catalog {
 /// the whole document.
 fn peek_model(path: &Path) -> Option<String> {
     use std::io::Read;
+    crate::index::touch(path);
     let mut head = vec![0_u8; 4096];
     let read = std::fs::File::open(path).ok()?.read(&mut head).ok()?;
     let head = String::from_utf8_lossy(&head[..read]);
@@ -835,7 +888,9 @@ fn read_tests(verifier: &Path) -> Option<Tests> {
             });
         }
     }
-    let stdout = std::fs::read_to_string(verifier.join("test-stdout.txt")).ok()?;
+    let stdout = verifier.join("test-stdout.txt");
+    crate::index::touch(&stdout);
+    let stdout = std::fs::read_to_string(stdout).ok()?;
     pytest_summary(&stdout)
 }
 
@@ -1168,7 +1223,14 @@ pub fn now_ms() -> i64 {
         })
 }
 
+/// `path`, when it exists, noted as an input of the parse in progress.
+fn existing(path: PathBuf) -> Option<PathBuf> {
+    crate::index::touch(&path);
+    path.exists().then_some(path)
+}
+
 fn modified_ms(path: &Path) -> Option<i64> {
+    crate::index::touch(path);
     let modified = std::fs::metadata(path).ok()?.modified().ok()?;
     let elapsed = modified.duration_since(UNIX_EPOCH).ok()?;
     i64::try_from(elapsed.as_millis()).ok()
@@ -1210,6 +1272,7 @@ pub fn network_policy(trial: &Path) -> Option<Network> {
 }
 
 pub(crate) fn read_json(path: &Path) -> Option<Value> {
+    crate::index::touch(path);
     let bytes = std::fs::read(path).ok()?;
     serde_json::from_slice(&bytes).ok()
 }
@@ -1913,6 +1976,7 @@ pub(crate) fn fixture_sources() -> (tempfile::TempDir, Sources) {
         jobs: Some(dir.path().join("jobs")),
         traces: Some(dir.path().join("traces")),
         tasks: Vec::new(),
+        index: None,
     };
     (dir, sources)
 }
@@ -2363,6 +2427,113 @@ mod tests {
         assert_eq!(
             filter.describe().as_deref(),
             Some("Coder One · passed · \"sqlite\"")
+        );
+    }
+
+    #[test]
+    fn the_startup_index_keeps_finished_runs_and_follows_new_changed_and_deleted_ones() {
+        let (dir, mut sources) = fixture_sources();
+        let index = tempfile::tempdir().unwrap();
+        sources.index = Some(index.path().to_path_buf());
+        let first = Catalog::load(sources.clone());
+        let plain = Catalog::load(Sources {
+            index: None,
+            ..sources.clone()
+        });
+        assert_eq!(first.runs, plain.runs);
+        let finished = first
+            .runs
+            .iter()
+            .filter(|run| run.outcome != Outcome::Running)
+            .count();
+        assert!(finished >= 3 && finished < first.runs.len());
+        assert_eq!(first.index_stats().hits, 0);
+
+        // Unchanged: every finished run comes from the index, and a
+        // running one is parsed again.
+        let second = Catalog::load(sources.clone());
+        assert_eq!(second.runs, first.runs);
+        assert_eq!(
+            second.index_stats(),
+            crate::index::Stats {
+                hits: finished,
+                parsed: first.runs.len() - finished,
+            }
+        );
+
+        // A changed run: the verifier's grade is rewritten.
+        let jobs = dir.path().join("jobs");
+        let trial = jobs
+            .join("tb4--claude-code-opus--wal-recovery-ordering/wal-recovery-ordering__9xaN7wM");
+        let mut result = read_json(&trial.join("result.json")).unwrap();
+        result["verifier_result"]["rewards"]["reward"] = json!(1.0);
+        std::fs::write(
+            trial.join("result.json"),
+            serde_json::to_vec_pretty(&result).unwrap(),
+        )
+        .unwrap();
+        // A new run: the same trial under another job.
+        let new =
+            jobs.join("tb4--claude-code-opus--wal-recovery-ordering-2/wal-recovery-ordering__new");
+        std::fs::create_dir_all(new.join("agent")).unwrap();
+        for file in ["config.json", "result.json", "agent/trajectory.json"] {
+            std::fs::copy(trial.join(file), new.join(file)).unwrap();
+        }
+        // A deleted run.
+        std::fs::remove_dir_all(jobs.join("tb4--coder-one-tunable-v6--fin-saccr-rwa")).unwrap();
+
+        let third = Catalog::load(sources.clone());
+        let wal = third
+            .runs
+            .iter()
+            .find(|run| {
+                run.id()
+                    == "tb4--claude-code-opus--wal-recovery-ordering/wal-recovery-ordering__9xaN7wM"
+            })
+            .unwrap();
+        assert_eq!(wal.outcome, Outcome::Passed);
+        assert!(
+            third
+                .runs
+                .iter()
+                .any(|run| run.trial == "wal-recovery-ordering__new")
+        );
+        assert!(third.runs.iter().all(|run| run.task != "fin-saccr-rwa"));
+        assert_eq!(third.runs.len(), first.runs.len());
+        let plain = Catalog::load(Sources {
+            index: None,
+            ..sources.clone()
+        });
+        assert_eq!(third.runs, plain.runs);
+
+        // The deleted run's entry is gone: every finished run the next
+        // load finds comes from the index.
+        let fourth = Catalog::load(sources);
+        let finished = fourth
+            .runs
+            .iter()
+            .filter(|run| run.outcome != Outcome::Running)
+            .count();
+        assert_eq!(fourth.index_stats().hits, finished);
+        let kept: Value = serde_json::from_slice(
+            &std::fs::read(
+                std::fs::read_dir(index.path())
+                    .unwrap()
+                    .flatten()
+                    .next()
+                    .unwrap()
+                    .path(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(kept["entries"].as_object().unwrap().len(), finished);
+        assert!(
+            kept["entries"]
+                .as_object()
+                .unwrap()
+                .keys()
+                .all(|key| !key.contains("fin-saccr-rwa"))
         );
     }
 }

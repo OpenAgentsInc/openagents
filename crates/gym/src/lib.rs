@@ -80,6 +80,7 @@ pub mod commitment;
 pub mod coverage;
 pub mod eval;
 pub mod gate;
+pub mod index;
 pub mod jobs;
 pub mod questions;
 pub mod regress;

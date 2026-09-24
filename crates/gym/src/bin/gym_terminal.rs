@@ -68,7 +68,7 @@ Usage:
   gym-terminal --terminal-bench [--print] [--jobs-dir PATH] [--traces-dir PATH] [--samples-dir PATH]
                             [--runs-dir PATH] [--minitasks-dir PATH] [--no-jobs] [--no-traces]
                             [--checks-dir PATH] [--no-samples] [--no-runs] [--no-minitasks]
-                            [--no-checks] [--no-jev] [--head-to-head]
+                            [--no-checks] [--no-jev] [--no-index] [--head-to-head]
                             [--task TASK [--left TEXT] [--right TEXT|pass|best] [--at SECONDS]]
   gym-terminal --help     Print this message.
 
@@ -82,6 +82,12 @@ The default decision-model views open a built-in fixture. Terminal-Bench
 views read local Harbor jobs and retained evidence. Neither mode runs a
 door; the Runs pane asks Jev only in the learning order, and --no-jev
 stops that too.
+
+Terminal-Bench views open from the startup index in ~/.openagents/gym/index:
+a run or attempt whose files are unchanged since the last start is read
+from it, and only new and changed ones are parsed. --no-index parses
+everything and keeps nothing. GYM_STARTUP_TIMES=1 prints each loading
+stage's time to stderr.
 
 Terminal-Bench opens on the Runs pane: recent runs in plain words.
   arrows, j, k   Move.
@@ -140,6 +146,7 @@ fn terminal_bench_mode(arguments: &[String]) -> io::Result<()> {
     let (mut task, mut left, mut right) = (None, None, None);
     let mut at: Option<i64> = None;
     let mut jev = true;
+    let mut index_dir = gym::index::default_dir();
     let mut index = 0;
     while index < arguments.len() {
         match arguments[index].as_str() {
@@ -152,6 +159,7 @@ fn terminal_bench_mode(arguments: &[String]) -> io::Result<()> {
             "--no-minitasks" => minitasks = None,
             "--no-checks" => checks = None,
             "--no-jev" => jev = false,
+            "--no-index" => index_dir = None,
             "--head-to-head" => head_to_head = true,
             "--at" => {
                 let seconds = arguments
@@ -203,42 +211,69 @@ fn terminal_bench_mode(arguments: &[String]) -> io::Result<()> {
     if !print_only {
         eprintln!("gym-terminal: loading Terminal-Bench records, runs, and replays...");
     }
-    let records =
-        terminal_bench::Records::load(jobs.as_deref(), traces.as_deref(), samples.as_deref());
-    let components = gym::coder_components::report(runs.as_deref(), &records)
+    let mut clock = Stopwatch::from_environment();
+    let index = index_dir.as_deref();
+    let records = terminal_bench::Records::load_indexed(
+        jobs.as_deref(),
+        traces.as_deref(),
+        samples.as_deref(),
+        index,
+    );
+    clock.lap("records");
+    let components = gym::coder_components::report_indexed(runs.as_deref(), &records, index)
         .with_repair(gym::coder_repair::default_dir().as_deref());
+    clock.lap("components");
     let requirements = gym::coder_requirements::report(runs.as_deref(), &records);
+    clock.lap("requirements");
     let (minitask_runs, minitask_errors) = minitasks
         .as_deref()
         .map(gym::coder_minitasks::load)
         .unwrap_or_default();
+    clock.lap("minitasks");
     let briefing = gym::coder_briefing::report(runs.as_deref(), &records);
+    clock.lap("briefing");
     let live = gym::coder_live::Sources {
         minitasks: minitasks.clone(),
         jobs: jobs.clone(),
         ..gym::coder_live::Sources::default()
     };
     let (studies, study_errors) = gym::coder_study::load(&gym::coder_study::default_dirs());
+    clock.lap("studies");
     let runs = gym::runs::Catalog::load(gym::runs::Sources {
         jobs: jobs.clone(),
         traces: traces.clone(),
+        index: index_dir.clone(),
         ..gym::runs::Sources::standard()
     });
-    let mut app = terminal_bench_tui::App::new(records)
+    clock.lap("runs catalog");
+    clock.note(&format!(
+        "index: {} attempts and {} runs read from it, {} and {} parsed",
+        records.index.hits,
+        runs.index_stats().hits,
+        records.index.parsed,
+        runs.index_stats().parsed
+    ));
+    let app = terminal_bench_tui::App::new(records);
+    clock.lap("expert views");
+    let coverage = checks
+        .as_deref()
+        .map(gym::coder_coverage::load_dir)
+        .unwrap_or_default();
+    clock.lap("coverage");
+    let pane = terminal_bench_tui_runs(runs, jev && !print_only);
+    clock.lap("runs pane");
+    let mut app = app
         .with_components(components)
         .with_requirements(requirements)
         .with_minitasks(minitask_runs, minitask_errors)
         .with_briefing(briefing)
-        .with_coverage(
-            checks
-                .as_deref()
-                .map(gym::coder_coverage::load_dir)
-                .unwrap_or_default(),
-        )
+        .with_coverage(coverage)
         .with_live(live)
         .with_pulse(gym::terminal_bench_experiment::default_dir(), jobs.clone())
         .with_studies(studies, study_errors)
-        .with_runs(terminal_bench_tui_runs(runs, jev && !print_only));
+        .with_runs(pane);
+    clock.lap("assembly");
+    clock.total();
     if let Some(task) = &task {
         app.open_replay_on(task, left.as_deref(), right.as_deref())
             .map_err(|message| io::Error::new(io::ErrorKind::NotFound, message))?;
@@ -261,6 +296,52 @@ fn terminal_bench_mode(arguments: &[String]) -> io::Result<()> {
         return Ok(());
     }
     run_tbench(app)
+}
+
+/// Startup timings on stderr when `GYM_STARTUP_TIMES` is set: each
+/// stage's time since the last, then the total.
+struct Stopwatch {
+    start: std::time::Instant,
+    last: std::time::Instant,
+    on: bool,
+}
+
+impl Stopwatch {
+    fn from_environment() -> Self {
+        let now = std::time::Instant::now();
+        Stopwatch {
+            start: now,
+            last: now,
+            on: std::env::var_os("GYM_STARTUP_TIMES").is_some(),
+        }
+    }
+
+    fn lap(&mut self, stage: &str) {
+        let now = std::time::Instant::now();
+        if self.on {
+            eprintln!(
+                "gym-terminal: {stage:<14} {:>8.1} ms",
+                (now - self.last).as_secs_f64() * 1e3
+            );
+        }
+        self.last = now;
+    }
+
+    fn note(&self, text: &str) {
+        if self.on {
+            eprintln!("gym-terminal: {text}");
+        }
+    }
+
+    fn total(&self) {
+        if self.on {
+            eprintln!(
+                "gym-terminal: {:<14} {:>8.1} ms",
+                "total",
+                self.start.elapsed().as_secs_f64() * 1e3
+            );
+        }
+    }
 }
 
 /// The Runs pane over `catalog`, with the rankings kept under

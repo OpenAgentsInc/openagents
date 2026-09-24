@@ -282,6 +282,12 @@ fn subdirs(dir: &Path) -> Vec<PathBuf> {
 /// wrote one, whether the trial is still going or not.
 #[must_use]
 pub fn read_trial(trial: &Path, now: u64, sources: &Sources) -> Option<Attempt> {
+    Some(read(found_trial(trial)?, now, sources))
+}
+
+/// One trial directory's live tail, before its log is read: the status
+/// file alone says whether the trial is still going.
+fn found_trial(trial: &Path) -> Option<Found> {
     let live = trial.join("agent/live");
     let text = std::fs::read_to_string(live.join("status.json")).ok()?;
     let status = serde_json::from_str::<Value>(&text).ok()?;
@@ -301,18 +307,14 @@ pub fn read_trial(trial: &Path, now: u64, sources: &Sources) -> Option<Attempt> 
         trial.parent().map(name).unwrap_or_default(),
         name(trial)
     );
-    Some(read(
-        Found {
-            kind: "terminal-bench",
-            id,
-            dir: trial.to_path_buf(),
-            log: live.join("episode.atif.jsonl"),
-            in_progress,
-            tail: Some(status),
-        },
-        now,
-        sources,
-    ))
+    Some(Found {
+        kind: "terminal-bench",
+        id,
+        dir: trial.to_path_buf(),
+        log: live.join("episode.atif.jsonl"),
+        in_progress,
+        tail: Some(status),
+    })
 }
 
 /// Every attempt in progress, and every one that ended within the recent
@@ -354,10 +356,13 @@ pub fn discover(sources: &Sources, now: u64) -> Vec<Attempt> {
             for trial in subdirs(&job) {
                 let log = trial.join("agent/live/episode.atif.jsonl");
                 let recently = modified(&log).is_some_and(|at| now.saturating_sub(at) <= recent);
-                if let Some(attempt) = read_trial(&trial, now, sources)
-                    && (attempt.in_progress || recently)
+                // The status file decides before the log is read: an
+                // ended trial's whole log is parsed only while it is
+                // recent.
+                if let Some(found) = found_trial(&trial)
+                    && (found.in_progress || recently)
                 {
-                    attempts.push(attempt);
+                    attempts.push(read(found, now, sources));
                 }
             }
         }

@@ -7,6 +7,8 @@ use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
+use crate::index::Index;
+
 const ATTEMPT_SCHEMA: &str = "openagents.tbench.attempt.v1";
 const MANIFEST_SCHEMA: &str = "openagents.tbench.episode-manifest.v1";
 const RETENTION_SCHEMA: &str = "openagents.tbench.retention.v1";
@@ -37,7 +39,7 @@ fn usage_limit_note(limit: &Value) -> Option<String> {
     ))
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum EvidenceState {
     Verified,
     Missing,
@@ -62,7 +64,7 @@ impl EvidenceState {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Evidence {
     pub kind: String,
     pub path: Option<PathBuf>,
@@ -70,7 +72,7 @@ pub struct Evidence {
     pub note: Option<String>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Attempt {
     pub source: String,
     pub job: String,
@@ -254,6 +256,17 @@ pub struct Records {
     pub sources: Vec<String>,
     pub report_label: Option<String>,
     pub report_warnings: Vec<String>,
+    /// How many attempts the startup index answered and how many were
+    /// parsed.
+    pub index: crate::index::Stats,
+}
+
+/// One attempt file, parsed: the attempt or why it couldn't be read, and
+/// the errors reading its companion files raised.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+struct Parsed {
+    attempt: Result<Attempt, String>,
+    errors: Vec<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -349,13 +362,27 @@ impl ComparisonGroup {
 impl Records {
     /// Read local Harbor jobs and the sanitized evidence kept in the checkout.
     pub fn load(jobs: Option<&Path>, traces: Option<&Path>, samples: Option<&Path>) -> Self {
+        Self::load_indexed(jobs, traces, samples, None)
+    }
+
+    /// [`Records::load`] through the startup index in `index`: an attempt
+    /// whose files are unchanged since the last load is read from the
+    /// index, and only new and changed ones are parsed (issue #9595).
+    pub fn load_indexed(
+        jobs: Option<&Path>,
+        traces: Option<&Path>,
+        samples: Option<&Path>,
+        index: Option<&Path>,
+    ) -> Self {
         let mut records = Self::default();
         let mut seen = BTreeSet::new();
+        let scope = format!("{jobs:?} {traces:?}");
+        let mut parsed: Index<Parsed> = Index::open(index, "attempts", &scope);
         for (root, name, reader) in [
             (
                 jobs,
                 "local jobs",
-                read_jobs as fn(&Path, &mut Records, &mut BTreeSet<String>),
+                read_jobs as fn(&Path, &mut Records, &mut BTreeSet<String>, &mut Index<Parsed>),
             ),
             (traces, "retained traces", read_traces),
             (samples, "checked samples", read_samples),
@@ -363,7 +390,7 @@ impl Records {
             if let Some(root) = root {
                 if root.is_dir() {
                     records.sources.push(format!("{name}: {}", root.display()));
-                    reader(root, &mut records, &mut seen);
+                    reader(root, &mut records, &mut seen, &mut parsed);
                 } else {
                     records
                         .errors
@@ -373,7 +400,7 @@ impl Records {
         }
         if let Some(jobs) = jobs {
             let report = jobs.join("tbench-report.json");
-            if report.is_file() {
+            if present(&report) {
                 match read_json(&report) {
                     Ok(value)
                         if string(&value, "/schema").as_deref()
@@ -410,6 +437,12 @@ impl Records {
                 }
             }
         }
+        if let Err(error) = parsed.save() {
+            records
+                .errors
+                .push(format!("the startup index wasn't saved: {error}"));
+        }
+        records.index = parsed.stats;
         records.attempts.sort_by(|a, b| {
             a.task
                 .cmp(&b.task)
@@ -439,35 +472,26 @@ impl Records {
     }
 }
 
-fn read_jobs(root: &Path, records: &mut Records, seen: &mut BTreeSet<String>) {
+fn read_jobs(
+    root: &Path,
+    records: &mut Records,
+    seen: &mut BTreeSet<String>,
+    index: &mut Index<Parsed>,
+) {
     for job in children(root) {
         let attempts = job.join("tbench/attempts");
         for path in children(&attempts)
             .into_iter()
             .filter(|p| p.extension().is_some_and(|e| e == "json"))
         {
-            match read_json(&path).and_then(|value| parse_attempt(&value, &path, "local job", &job))
-            {
-                Ok(mut attempt) => {
-                    let manifest = job
-                        .join("tbench/manifests")
-                        .join(format!("{}.json", attempt.trial));
-                    attach_manifest(&mut attempt, &manifest, None, records);
-                    let episode = job.join(&attempt.trial).join("agent/episode");
-                    attach_episode(
-                        &mut attempt,
-                        &episode.join("manifest.json"),
-                        &episode,
-                        records,
-                    );
-                    attach_usage(
-                        &mut attempt,
-                        &episode.join("evaluation/usage.json"),
-                        records,
-                    );
-                    apply_manual_price(&mut attempt);
-                    let verifier = job.join(&attempt.trial).join("verifier/ctrf.json");
-                    attach_verifier(&mut attempt, &verifier);
+            let parsed = index.get_or_read(
+                &path.to_string_lossy(),
+                || read_job_attempt(&job, &path),
+                |_| true,
+            );
+            records.errors.extend(parsed.errors);
+            match parsed.attempt {
+                Ok(attempt) => {
                     if seen.insert(format!("{}: {}", attempt.job, attempt.trial)) {
                         records.attempts.push(attempt);
                     }
@@ -478,7 +502,45 @@ fn read_jobs(root: &Path, records: &mut Records, seen: &mut BTreeSet<String>) {
     }
 }
 
-fn read_samples(root: &Path, records: &mut Records, seen: &mut BTreeSet<String>) {
+/// One local job's attempt file and the records beside it.
+fn read_job_attempt(job: &Path, path: &Path) -> Parsed {
+    let mut records = Records::default();
+    let attempt = read_json(path)
+        .and_then(|value| parse_attempt(&value, path, "local job", job))
+        .map(|mut attempt| {
+            let manifest = job
+                .join("tbench/manifests")
+                .join(format!("{}.json", attempt.trial));
+            attach_manifest(&mut attempt, &manifest, None, &mut records);
+            let episode = job.join(&attempt.trial).join("agent/episode");
+            attach_episode(
+                &mut attempt,
+                &episode.join("manifest.json"),
+                &episode,
+                &mut records,
+            );
+            attach_usage(
+                &mut attempt,
+                &episode.join("evaluation/usage.json"),
+                &mut records,
+            );
+            apply_manual_price(&mut attempt);
+            let verifier = job.join(&attempt.trial).join("verifier/ctrf.json");
+            attach_verifier(&mut attempt, &verifier);
+            attempt
+        });
+    Parsed {
+        attempt,
+        errors: records.errors,
+    }
+}
+
+fn read_samples(
+    root: &Path,
+    records: &mut Records,
+    seen: &mut BTreeSet<String>,
+    _: &mut Index<Parsed>,
+) {
     let mut pending = vec![root.to_path_buf()];
     while let Some(directory) = pending.pop() {
         for child in children(&directory) {
@@ -488,7 +550,7 @@ fn read_samples(root: &Path, records: &mut Records, seen: &mut BTreeSet<String>)
         }
         let sample = directory;
         let path = sample.join("attempt.json");
-        if !path.is_file() {
+        if !present(&path) {
             continue;
         }
         match read_json(&path)
@@ -511,7 +573,12 @@ fn read_samples(root: &Path, records: &mut Records, seen: &mut BTreeSet<String>)
     }
 }
 
-fn read_traces(root: &Path, records: &mut Records, seen: &mut BTreeSet<String>) {
+fn read_traces(
+    root: &Path,
+    records: &mut Records,
+    seen: &mut BTreeSet<String>,
+    index: &mut Index<Parsed>,
+) {
     for job in children(root) {
         if !job.is_dir() {
             continue;
@@ -528,104 +595,132 @@ fn read_traces(root: &Path, records: &mut Records, seen: &mut BTreeSet<String>) 
             if seen.contains(&format!("{job_name}: {trial}")) {
                 continue;
             }
-            let episode = job.join(format!("{trial}.episode"));
-            let harbor = episode.join("harbor-result.json");
-            if !harbor.is_file() {
-                let mut attempt = empty_attempt("retained trace", &job_name, &trial);
-                attempt.task = trial.split("__").next().unwrap_or("unknown").to_owned();
-                attempt.status = "unverifiable".to_owned();
-                attempt
-                    .notes
-                    .push("No retained Harbor result; reward and timing are unknown.".to_owned());
-                attempt.evidence.push(Evidence {
-                    kind: "trajectory".to_owned(),
-                    path: Some(path.clone()),
-                    state: EvidenceState::Unchecked,
-                    note: None,
-                });
-                attach_trajectory(&mut attempt, &path);
-                records.attempts.push(attempt);
-                seen.insert(format!("{job_name}: {trial}"));
-                continue;
-            }
-            match read_json(&harbor) {
-                Ok(value) => {
-                    let mut attempt = empty_attempt("retained trace", &job_name, &trial);
-                    attempt.task = string(&value, "/task_name").unwrap_or_else(|| {
-                        trial.split("__").next().unwrap_or("unknown").to_owned()
-                    });
-                    attempt.reward = value
-                        .pointer("/verifier_result/rewards/reward")
-                        .and_then(Value::as_f64);
-                    attempt.status = retained_status(&value, attempt.reward).to_owned();
-                    if attempt.status == USAGE_LIMITED {
-                        attempt.status = "completed".to_owned();
-                        attempt.mark_usage_limited(&Value::Null);
-                    }
-                    attempt.started_at = string(&value, "/started_at");
-                    attempt.phases_ms = [
-                        "/environment_setup",
-                        "/agent_setup",
-                        "/agent_execution",
-                        "/verifier",
-                        "",
-                    ]
-                    .map(|p| elapsed(&value, p));
-                    attempt.input_tokens = value
-                        .pointer("/agent_result/n_input_tokens")
-                        .and_then(Value::as_u64);
-                    attempt.cache_tokens = value
-                        .pointer("/agent_result/n_cache_tokens")
-                        .and_then(Value::as_u64);
-                    attempt.output_tokens = value
-                        .pointer("/agent_result/n_output_tokens")
-                        .and_then(Value::as_u64);
-                    attempt.cost_usd = value
-                        .pointer("/agent_result/cost_usd")
-                        .and_then(Value::as_f64);
-                    attempt.usage_coverage =
-                        coverage(attempt.input_tokens, attempt.output_tokens).to_owned();
-                    attempt.cost_provenance =
-                        if attempt.cost_usd.is_some() && attempt.arm.starts_with("claude-code") {
-                            "CLI list price; subscription reference"
-                        } else {
-                            "unknown"
-                        }
-                        .to_owned();
-                    attempt.evidence.push(Evidence {
-                        kind: "trajectory".to_owned(),
-                        path: Some(path.clone()),
-                        state: EvidenceState::Unchecked,
-                        note: None,
-                    });
-                    attach_trajectory(&mut attempt, &path);
-                    attempt.evidence.push(Evidence {
-                        kind: "Harbor result".to_owned(),
-                        path: Some(harbor),
-                        state: EvidenceState::Unchecked,
-                        note: None,
-                    });
-                    let manifest = episode.join("manifest.json");
-                    attach_episode(&mut attempt, &manifest, &episode, records);
-                    // Older retention kept usage beside the manifest;
-                    // `tbench retain` mirrors the episode's own layout.
-                    let usage = episode.join("usage.json");
-                    let usage = if usage.is_file() {
-                        usage
-                    } else {
-                        episode.join("evaluation/usage.json")
-                    };
-                    attach_usage(&mut attempt, &usage, records);
-                    attach_retention(&mut attempt, &job, &episode, records);
-                    attach_setup(&mut attempt, &episode.join("setup/toolchain-setup.json"));
-                    attach_verifier(&mut attempt, &episode.join("verifier/ctrf.json"));
-                    apply_manual_price(&mut attempt);
+            let parsed = index.get_or_read(
+                &path.to_string_lossy(),
+                || read_trace(&job, &job_name, &trial, &path),
+                |_| true,
+            );
+            records.errors.extend(parsed.errors);
+            match parsed.attempt {
+                Ok(attempt) => {
                     records.attempts.push(attempt);
                     seen.insert(format!("{job_name}: {trial}"));
                 }
                 Err(error) => records.errors.push(error),
             }
         }
+    }
+}
+
+/// One retained trace and the episode kept beside it.
+fn read_trace(job: &Path, job_name: &str, trial: &str, path: &Path) -> Parsed {
+    let mut records = Records::default();
+    let attempt = read_trace_attempt(job, job_name, trial, path, &mut records);
+    Parsed {
+        attempt,
+        errors: records.errors,
+    }
+}
+
+fn read_trace_attempt(
+    job: &Path,
+    job_name: &str,
+    trial: &str,
+    path: &Path,
+    records: &mut Records,
+) -> Result<Attempt, String> {
+    let episode = job.join(format!("{trial}.episode"));
+    let harbor = episode.join("harbor-result.json");
+    if !present(&harbor) {
+        let mut attempt = empty_attempt("retained trace", job_name, trial);
+        attempt.task = trial.split("__").next().unwrap_or("unknown").to_owned();
+        attempt.status = "unverifiable".to_owned();
+        attempt
+            .notes
+            .push("No retained Harbor result; reward and timing are unknown.".to_owned());
+        attempt.evidence.push(Evidence {
+            kind: "trajectory".to_owned(),
+            path: Some(path.to_path_buf()),
+            state: EvidenceState::Unchecked,
+            note: None,
+        });
+        attach_trajectory(&mut attempt, path);
+        return Ok(attempt);
+    }
+    match read_json(&harbor) {
+        Ok(value) => {
+            let mut attempt = empty_attempt("retained trace", job_name, trial);
+            attempt.task = string(&value, "/task_name")
+                .unwrap_or_else(|| trial.split("__").next().unwrap_or("unknown").to_owned());
+            attempt.reward = value
+                .pointer("/verifier_result/rewards/reward")
+                .and_then(Value::as_f64);
+            attempt.status = retained_status(&value, attempt.reward).to_owned();
+            if attempt.status == USAGE_LIMITED {
+                attempt.status = "completed".to_owned();
+                attempt.mark_usage_limited(&Value::Null);
+            }
+            attempt.started_at = string(&value, "/started_at");
+            attempt.phases_ms = [
+                "/environment_setup",
+                "/agent_setup",
+                "/agent_execution",
+                "/verifier",
+                "",
+            ]
+            .map(|p| elapsed(&value, p));
+            attempt.input_tokens = value
+                .pointer("/agent_result/n_input_tokens")
+                .and_then(Value::as_u64);
+            attempt.cache_tokens = value
+                .pointer("/agent_result/n_cache_tokens")
+                .and_then(Value::as_u64);
+            attempt.output_tokens = value
+                .pointer("/agent_result/n_output_tokens")
+                .and_then(Value::as_u64);
+            attempt.cost_usd = value
+                .pointer("/agent_result/cost_usd")
+                .and_then(Value::as_f64);
+            attempt.usage_coverage =
+                coverage(attempt.input_tokens, attempt.output_tokens).to_owned();
+            attempt.cost_provenance =
+                if attempt.cost_usd.is_some() && attempt.arm.starts_with("claude-code") {
+                    "CLI list price; subscription reference"
+                } else {
+                    "unknown"
+                }
+                .to_owned();
+            attempt.evidence.push(Evidence {
+                kind: "trajectory".to_owned(),
+                path: Some(path.to_path_buf()),
+                state: EvidenceState::Unchecked,
+                note: None,
+            });
+            attach_trajectory(&mut attempt, path);
+            attempt.evidence.push(Evidence {
+                kind: "Harbor result".to_owned(),
+                path: Some(harbor),
+                state: EvidenceState::Unchecked,
+                note: None,
+            });
+            let manifest = episode.join("manifest.json");
+            attach_episode(&mut attempt, &manifest, &episode, records);
+            // Older retention kept usage beside the manifest;
+            // `tbench retain` mirrors the episode's own layout.
+            let usage = episode.join("usage.json");
+            let usage = if present(&usage) {
+                usage
+            } else {
+                episode.join("evaluation/usage.json")
+            };
+            attach_usage(&mut attempt, &usage, records);
+            attach_retention(&mut attempt, job, &episode, records);
+            attach_setup(&mut attempt, &episode.join("setup/toolchain-setup.json"));
+            attach_verifier(&mut attempt, &episode.join("verifier/ctrf.json"));
+            apply_manual_price(&mut attempt);
+            Ok(attempt)
+        }
+        Err(error) => Err(error),
     }
 }
 
@@ -751,7 +846,7 @@ fn parse_attempt(
         ("verifier reward", "verifier/reward.txt"),
     ] {
         let path = trial_dir.join(relative);
-        if path.is_file() {
+        if present(&path) {
             attempt.evidence.push(Evidence {
                 kind: kind.to_owned(),
                 state: EvidenceState::Unchecked,
@@ -821,7 +916,7 @@ fn attach_manifest(
     sample_evidence: Option<&Path>,
     records: &mut Records,
 ) {
-    if !path.is_file() {
+    if !present(path) {
         attempt.notes.push("Episode manifest missing.".to_owned());
         return;
     }
@@ -881,7 +976,7 @@ fn collect_evidence(value: &Value, attempt: &mut Attempt, sample_evidence: Optio
                     EvidenceState::NotPresent
                 }
                 (Some(false), _, _) | (_, None, _) => EvidenceState::Unresolved,
-                (_, Some(path), _) if !path.is_file() => EvidenceState::Missing,
+                (_, Some(path), _) if !present(path) => EvidenceState::Missing,
                 (_, Some(path), Some(digest)) => {
                     if sha256(path).as_deref() == Some(digest) {
                         EvidenceState::Verified
@@ -915,7 +1010,7 @@ fn collect_evidence(value: &Value, attempt: &mut Attempt, sample_evidence: Optio
 }
 
 fn attach_episode(attempt: &mut Attempt, path: &Path, episode: &Path, records: &mut Records) {
-    if !path.is_file() {
+    if !present(path) {
         return;
     }
     match read_json(path) {
@@ -958,12 +1053,12 @@ fn attach_episode(attempt: &mut Attempt, path: &Path, episode: &Path, records: &
                     // Retention before `tbench retain` flattened the
                     // episode, keeping `evaluation/usage.json` as `usage.json`.
                     if let Some(flat) = Path::new(relative).file_name().map(|n| episode.join(n))
-                        && !full.is_file()
-                        && flat.is_file()
+                        && !present(&full)
+                        && present(&flat)
                     {
                         full = flat;
                     }
-                    let state = if !full.is_file() {
+                    let state = if !present(&full) {
                         EvidenceState::Missing
                     } else if file
                         .get("sha256")
@@ -1044,7 +1139,7 @@ fn attach_episode(attempt: &mut Attempt, path: &Path, episode: &Path, records: &
 /// retention could not copy stays visible as missing.
 fn attach_retention(attempt: &mut Attempt, job: &Path, episode: &Path, records: &mut Records) {
     let path = episode.join("retention.json");
-    if !path.is_file() {
+    if !present(&path) {
         return;
     }
     let value = match read_json(&path) {
@@ -1091,7 +1186,7 @@ fn attach_retention(attempt: &mut Attempt, job: &Path, episode: &Path, records: 
         if known.contains(&full) {
             continue;
         }
-        let state = if !full.is_file() {
+        let state = if !present(&full) {
             EvidenceState::Missing
         } else {
             match file.get("sha256").and_then(Value::as_str) {
@@ -1150,7 +1245,7 @@ fn attach_setup(attempt: &mut Attempt, path: &Path) {
 }
 
 fn attach_usage(attempt: &mut Attempt, path: &Path, records: &mut Records) {
-    if !path.is_file() {
+    if !present(path) {
         return;
     }
     match read_json(path) {
@@ -1378,7 +1473,14 @@ fn children(path: &Path) -> Vec<PathBuf> {
         .unwrap_or_default()
 }
 
+/// Whether `path` is a file, noted as an input of the parse in progress.
+fn present(path: &Path) -> bool {
+    crate::index::touch(path);
+    path.is_file()
+}
+
 fn read_json(path: &Path) -> Result<Value, String> {
+    crate::index::touch(path);
     let bytes = fs::read(path).map_err(|error| format!("{}: {error}", path.display()))?;
     serde_json::from_slice(&bytes).map_err(|error| format!("{}: {error}", path.display()))
 }
@@ -1525,6 +1627,7 @@ pub(crate) fn timestamp_ms(text: &str) -> Option<i64> {
 }
 
 fn sha256(path: &Path) -> Option<String> {
+    crate::index::touch(path);
     let mut file = fs::File::open(path).ok()?;
     let mut digest = Sha256::new();
     let mut buffer = [0_u8; 64 * 1024];
@@ -1946,5 +2049,39 @@ mod tests {
                 .iter()
                 .any(|warning| warning.contains("stale"))
         );
+    }
+
+    #[test]
+    fn the_startup_index_reads_unchanged_attempts_and_parses_changed_ones() {
+        let (dir, _) = crate::runs::fixture_sources();
+        let traces = dir.path().join("traces");
+        let index = tempfile::tempdir().unwrap();
+        let load = || Records::load_indexed(None, Some(&traces), None, Some(index.path()));
+        let plain = Records::load(None, Some(&traces), None);
+        let first = load();
+        assert_eq!(first.attempts.len(), 1, "{:?}", first.errors);
+        assert_eq!(first.index.parsed, 1);
+        assert_eq!(
+            format!("{:?}", first.attempts),
+            format!("{:?}", plain.attempts)
+        );
+
+        let second = load();
+        assert_eq!(second.index, crate::index::Stats { hits: 1, parsed: 0 });
+        assert_eq!(
+            format!("{:?}", second.attempts),
+            format!("{:?}", plain.attempts)
+        );
+
+        // The verifier's grade changes: the attempt is parsed again.
+        let result = traces.join(
+            "extended--codex-gpt-6-luna--cancel-async-tasks/cancel-async-tasks__QsgoyqM.episode/harbor-result.json",
+        );
+        let mut value = read_json(&result).unwrap();
+        value["verifier_result"]["rewards"]["reward"] = serde_json::json!(1.0);
+        fs::write(&result, serde_json::to_vec_pretty(&value).unwrap()).unwrap();
+        let third = load();
+        assert_eq!(third.index, crate::index::Stats { hits: 0, parsed: 1 });
+        assert_eq!(third.attempts[0].reward, Some(1.0));
     }
 }

@@ -201,6 +201,7 @@ pub fn sources(catalog: &Catalog) -> (Vec<Source>, Vec<Source>, Vec<String>) {
             jobs: Some(mirrored),
             traces: None,
             tasks: catalog.sources.tasks.clone(),
+            index: catalog.sources.index.clone(),
         });
         for run in mirror.runs {
             if runs.get(&run.id()).is_none_or(|existing| existing.retained) {

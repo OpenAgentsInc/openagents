@@ -276,26 +276,97 @@ pub fn load_suites(dir: &Path) -> (Vec<Suite>, Vec<String>) {
     (suites, errors)
 }
 
+/// One invocation, as [`episode_use`] counts it.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+struct Invocation {
+    component: String,
+    duration_ms: Option<u64>,
+    /// Whether no other invocation is its child: only leaves carry cost.
+    leaf: bool,
+    cost_usd: Option<f64>,
+    cost_provenance: Option<String>,
+    outcome: String,
+}
+
+/// What one attempt's timeline gives [`episode_use`].
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+enum Invocations {
+    /// The attempt has no timeline to read.
+    None,
+    /// Its trajectory is unreadable and it has no invocation log.
+    Unreadable,
+    Read {
+        source: String,
+        invocations: Vec<Invocation>,
+    },
+}
+
+/// Reads one attempt's timeline down to what [`episode_use`] counts.
+fn invocations(attempt: &crate::terminal_bench::Attempt) -> Invocations {
+    let timeline = match timeline::for_attempt(attempt) {
+        Some(Ok(timeline)) => timeline,
+        Some(Err(_)) => return Invocations::Unreadable,
+        None => return Invocations::None,
+    };
+    let parents: std::collections::HashSet<&str> = timeline
+        .entries
+        .iter()
+        .filter_map(|entry| entry.parent.as_deref())
+        .collect();
+    Invocations::Read {
+        source: timeline.source.label().to_owned(),
+        invocations: timeline
+            .entries
+            .iter()
+            .filter(|entry| entry.component != "episode" && !entry.component.is_empty())
+            .map(|entry| Invocation {
+                component: entry.component.clone(),
+                duration_ms: entry.duration_ms,
+                leaf: !parents.contains(entry.id.as_str()),
+                cost_usd: entry.cost_usd,
+                cost_provenance: entry.cost_provenance.clone(),
+                outcome: entry.outcome.clone(),
+            })
+            .collect(),
+    }
+}
+
 /// Every component's invocations across the attempts in `records`.
 #[must_use]
 pub fn episode_use(records: &Records) -> (BTreeMap<String, EpisodeUse>, Vec<String>) {
+    episode_use_indexed(records, None)
+}
+
+/// [`episode_use`] through the startup index in `index`: an attempt's
+/// timeline is parsed again only when its log or trajectory changed
+/// (issue #9595).
+#[must_use]
+pub fn episode_use_indexed(
+    records: &Records,
+    index: Option<&Path>,
+) -> (BTreeMap<String, EpisodeUse>, Vec<String>) {
+    let scope = records.sources.join("\n");
+    let mut read: crate::index::Index<Invocations> =
+        crate::index::Index::open(index, "invocations", &scope);
     let mut uses: BTreeMap<String, EpisodeUse> = BTreeMap::new();
     let mut unreadable = 0;
     for attempt in &records.attempts {
-        let timeline = match timeline::for_attempt(attempt) {
-            Some(Ok(timeline)) => timeline,
+        let key = format!("{}\n{}\n{}", attempt.source, attempt.job, attempt.trial);
+        let (source, invocations) = match read.get_or_read(&key, || invocations(attempt), |_| true)
+        {
+            Invocations::Read {
+                source,
+                invocations,
+            } => (source, invocations),
             // The attempt view already notes an unreadable trajectory.
-            Some(Err(_)) => {
+            Invocations::Unreadable => {
                 unreadable += 1;
                 continue;
             }
-            None => continue,
+            Invocations::None => continue,
         };
         let mut seen = std::collections::BTreeSet::new();
-        for entry in &timeline.entries {
-            if entry.component == "episode" || entry.component.is_empty() {
-                continue;
-            }
+        for entry in invocations {
             let usage = uses
                 .entry(entry.component.clone())
                 .or_insert_with(|| EpisodeUse {
@@ -308,11 +379,7 @@ pub fn episode_use(records: &Records) -> (BTreeMap<String, EpisodeUse>, Vec<Stri
             }
             usage.durations.extend(entry.duration_ms);
             // Only leaves carry cost; a parent's cost is its children's.
-            let leaf = !timeline
-                .entries
-                .iter()
-                .any(|other| other.parent.as_deref() == Some(&entry.id));
-            if leaf {
+            if entry.leaf {
                 let provenance = entry.cost_provenance.clone().unwrap_or_else(|| {
                     if entry.cost_usd.is_some() {
                         "reported".to_owned()
@@ -334,28 +401,35 @@ pub fn episode_use(records: &Records) -> (BTreeMap<String, EpisodeUse>, Vec<Stri
                     _ => None,
                 };
             }
-            *usage.outcomes.entry(entry.outcome.clone()).or_default() += 1;
-            *usage
-                .sources
-                .entry(timeline.source.label().to_owned())
-                .or_default() += 1;
+            *usage.outcomes.entry(entry.outcome).or_default() += 1;
+            *usage.sources.entry(source.clone()).or_default() += 1;
         }
     }
-    let errors = if unreadable == 0 {
+    let mut errors = if unreadable == 0 {
         Vec::new()
     } else {
         vec![format!(
             "{unreadable} attempts have an unreadable trajectory and no invocation log; their invocations are not counted"
         )]
     };
+    if let Err(error) = read.save() {
+        errors.push(format!("the startup index wasn't saved: {error}"));
+    }
     (uses, errors)
 }
 
 /// The report: runs from `runs_dir` and episodes from `records`.
 #[must_use]
 pub fn report(runs_dir: Option<&Path>, records: &Records) -> Report {
+    report_indexed(runs_dir, records, None)
+}
+
+/// [`report`] with the episodes' timelines read through the startup index
+/// in `index`.
+#[must_use]
+pub fn report_indexed(runs_dir: Option<&Path>, records: &Records, index: Option<&Path>) -> Report {
     let (mut suites, mut errors) = runs_dir.map(load_suites).unwrap_or_default();
-    let (mut uses, episode_errors) = episode_use(records);
+    let (mut uses, episode_errors) = episode_use_indexed(records, index);
     errors.extend(episode_errors);
     suites.sort_by(|a, b| b.started_at.cmp(&a.started_at).then(b.log.cmp(&a.log)));
     let mut ids: Vec<String> = KNOWN.iter().map(|id| (*id).to_owned()).collect();

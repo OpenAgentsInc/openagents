@@ -320,7 +320,14 @@ pub fn questions_body() -> Value {
 /// The question set's digest.
 #[must_use]
 pub fn questions_digest() -> String {
-    atif::digest(&json!({ "set": QUESTION_SET, "questions": questions_body() }))
+    // Every run's fingerprint names it; the set is fixed, so it is taken
+    // once.
+    static DIGEST: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    DIGEST
+        .get_or_init(|| {
+            atif::digest(&json!({ "set": QUESTION_SET, "questions": questions_body() }))
+        })
+        .clone()
 }
 
 /// The answer key: the digest of the state and the question set, exactly
