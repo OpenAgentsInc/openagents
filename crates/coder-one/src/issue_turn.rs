@@ -254,33 +254,38 @@ pub async fn run(
     // the view that highlights row `2 + cursor` went two rows off with
     // every test green.
     let finished = matches!(answer.report.status, crate::delegate::Status::Answered);
+    let mut remaining: Vec<String> = Vec::new();
     if finished && let Some(text) = review_request(&workdir, reference.number) {
         say!("issue ▸ checking the code that uses what changed");
-        let review = Request {
-            request: text,
-            review: true,
-            artifacts: inner.artifacts.with_file_name("review"),
-            ..inner.clone()
-        };
-        let mut reviewed = Box::pin(crate::terminal::answer(&review, on)).await;
-        answer.steps.append(&mut reviewed.steps);
-        for summary in reviewed.summaries {
-            if !answer.summaries.contains(&summary) {
-                answer.summaries.push(format!("Review: {summary}"));
+        let mut request = text;
+        // The review, then up to two fix rounds on what the host still
+        // finds: sessions' own reports once said "no bug found" on a view
+        // two rows off, and opened a pull request whose tests failed.
+        for round in 0..=FIX_ROUNDS {
+            let review = Request {
+                request,
+                review: true,
+                artifacts: inner.artifacts.with_file_name(format!("review-{round}")),
+                ..inner.clone()
+            };
+            let reviewed = Box::pin(crate::terminal::answer(&review, on.clone())).await;
+            absorb(&mut answer, reviewed);
+            say!("issue ▸ running the tests and checks on the change");
+            remaining = gate(&workdir);
+            if remaining.is_empty() {
+                say!("issue ▸ the tests pass and the checks found nothing");
+                break;
             }
-        }
-        if let (Some(before), Some(added)) = (
-            answer
-                .usage
-                .pointer("/cost/amount_usd")
-                .and_then(serde_json::Value::as_f64),
-            reviewed
-                .usage
-                .pointer("/cost/amount_usd")
-                .and_then(serde_json::Value::as_f64),
-        ) && let Some(cost) = answer.usage.pointer_mut("/cost/amount_usd")
-        {
-            *cost = json!(before + added);
+            say!(
+                "issue ▸ {} problem{} left: {}",
+                remaining.len(),
+                if remaining.len() == 1 { "" } else { "s" },
+                crate::judge::clip(&remaining.join("; "), 300)
+            );
+            if round == FIX_ROUNDS {
+                break;
+            }
+            request = fix_request(&workdir, reference.number, &remaining);
         }
     }
 
@@ -298,7 +303,15 @@ pub async fn run(
             .collect::<Vec<_>>()
             .join("\n")
     };
-    let outcome = land(&workdir, &branch, &issue, &what, finished, answer.stuck);
+    let outcome = land(
+        &workdir,
+        &branch,
+        &issue,
+        &what,
+        finished,
+        answer.stuck,
+        &remaining,
+    );
     if outcome
         .as_ref()
         .is_ok_and(|line| line.starts_with("Opened"))
@@ -492,6 +505,7 @@ fn land(
     reply: &str,
     finished: bool,
     stuck: bool,
+    remaining: &[String],
 ) -> Result<String, String> {
     command(workdir, "git", &["add", "-A"])?;
     let changed = !Command::new("git")
@@ -534,8 +548,20 @@ fn land(
     } else {
         ""
     };
+    let problems = if remaining.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "**The host's tests and checks still find problems:**\n\n{}\n\n",
+            remaining
+                .iter()
+                .map(|problem| format!("- {}", problem.replace('\n', " ")))
+                .collect::<Vec<_>>()
+                .join("\n")
+        )
+    };
     let body = format!(
-        "{warning}{summary}\n\n{stat}\n\nCloses {}\n\n---\nOpened by Coder.",
+        "{warning}{problems}{summary}\n\n{stat}\n\nCloses {}\n\n---\nOpened by Coder.",
         issue.url
     );
     let pr = command(
@@ -554,6 +580,231 @@ fn land(
         ],
     )?;
     Ok(format!("Opened draft pull request {}.", pr.trim()))
+}
+
+/// Fix rounds after the review when the host's gate still finds problems.
+const FIX_ROUNDS: usize = 2;
+
+/// Folds a follow-up session's answer into the turn's: its steps, its
+/// summaries, and its cost.
+fn absorb(answer: &mut Answer, mut reviewed: Answer) {
+    answer.steps.append(&mut reviewed.steps);
+    for summary in reviewed.summaries {
+        if !answer.summaries.iter().any(|seen| seen.ends_with(&summary)) {
+            answer.summaries.push(format!("Review: {summary}"));
+        }
+    }
+    if let (Some(before), Some(added)) = (
+        answer
+            .usage
+            .pointer("/cost/amount_usd")
+            .and_then(serde_json::Value::as_f64),
+        reviewed
+            .usage
+            .pointer("/cost/amount_usd")
+            .and_then(serde_json::Value::as_f64),
+    ) && let Some(cost) = answer.usage.pointer_mut("/cost/amount_usd")
+    {
+        *cost = json!(before + added);
+    }
+}
+
+/// What the host finds wrong with the staged change, without a model:
+/// failing tests in the Rust packages it touches, style problems, and
+/// added figures that appear nowhere else in the repository.
+fn gate(workdir: &Path) -> Vec<String> {
+    let _ = command(workdir, "git", &["add", "-A"]);
+    let diff = command(workdir, "git", &["diff", "--cached", "-U0"]).unwrap_or_default();
+    let mut problems = test_failures(workdir, &diff);
+    problems.extend(style_problems(&diff));
+    problems.extend(unsourced_figures(workdir, &diff));
+    problems
+}
+
+/// The request for a fix round: the problems, then the diff.
+fn fix_request(workdir: &Path, number: u64, problems: &[String]) -> String {
+    let diff = command(workdir, "git", &["diff", "--cached", "-U3"]).unwrap_or_default();
+    format!(
+        "# Fix these problems in the change for issue #{number} before it lands\n\nThe host \
+         found them by running the tests and checking the diff; fix each one, then run the \
+         failing tests again.\n\n{}\n\n## The diff\n\n```diff\n{}\n```\n",
+        problems
+            .iter()
+            .map(|problem| format!("- {problem}"))
+            .collect::<Vec<_>>()
+            .join("\n"),
+        crate::judge::clip(&diff, 14_000)
+    )
+}
+
+/// The Cargo packages whose directories `diff` touches, by name.
+fn changed_packages(workdir: &Path, diff: &str) -> Vec<String> {
+    let mut packages: Vec<String> = Vec::new();
+    for line in diff.lines() {
+        let Some(path) = line.strip_prefix("+++ b/") else {
+            continue;
+        };
+        let mut dir = Path::new(path).parent();
+        while let Some(at) = dir {
+            let manifest = workdir.join(at).join("Cargo.toml");
+            if let Ok(text) = std::fs::read_to_string(&manifest)
+                && text.contains("[package]")
+            {
+                let name = text
+                    .lines()
+                    .skip_while(|l| l.trim() != "[package]")
+                    .find_map(|l| {
+                        l.trim()
+                            .strip_prefix("name")
+                            .and_then(|rest| rest.trim().strip_prefix('='))
+                            .map(|v| v.trim().trim_matches('"').to_string())
+                    });
+                if let Some(name) = name
+                    && !packages.contains(&name)
+                {
+                    packages.push(name);
+                }
+                break;
+            }
+            dir = at.parent();
+        }
+    }
+    packages
+}
+
+/// The most test output kept for one failing package.
+const TEST_OUTPUT_KEPT: usize = 3_000;
+
+/// Runs each changed package's tests with every feature on, in a target
+/// directory shared across issue runs, and reports the failing ones with
+/// the end of their output.
+fn test_failures(workdir: &Path, diff: &str) -> Vec<String> {
+    let target = crate::credentials::openagents_dir()
+        .map(|dir| dir.join("coder-one").join("target"))
+        .unwrap_or_else(|| workdir.join("target"));
+    let mut failures = Vec::new();
+    for package in changed_packages(workdir, diff) {
+        say!("issue ▸ running the {package} tests");
+        let output = Command::new("timeout")
+            .args([
+                "1200",
+                "cargo",
+                "test",
+                "-q",
+                "-p",
+                &package,
+                "--all-features",
+            ])
+            .env("CARGO_TARGET_DIR", &target)
+            .current_dir(workdir)
+            .output();
+        match output {
+            Ok(out) if out.status.success() => {}
+            Ok(out) => {
+                let text = format!(
+                    "{}{}",
+                    String::from_utf8_lossy(&out.stdout),
+                    String::from_utf8_lossy(&out.stderr)
+                );
+                let lines: Vec<&str> = text
+                    .lines()
+                    .filter(|l| {
+                        l.contains("FAILED")
+                            || l.contains("panicked")
+                            || l.starts_with("error")
+                            || l.contains("assertion")
+                            || l.trim_start().starts_with("left")
+                            || l.trim_start().starts_with("right")
+                    })
+                    .collect();
+                failures.push(format!(
+                    "the {package} tests fail (`cargo test -p {package} --all-features`): {}",
+                    crate::judge::clip(&lines.join("\n"), TEST_OUTPUT_KEPT)
+                ));
+            }
+            Err(error) => failures.push(format!("the {package} tests could not run: {error}")),
+        }
+    }
+    failures
+}
+
+/// Figures the change adds to prose or to strings, such as `$0.0041` or
+/// `27 s`, that appear nowhere in the repository before the change: a
+/// session once cited "12 Luna runs averaged 27 s and $0.0041", which no
+/// file records.
+fn unsourced_figures(workdir: &Path, diff: &str) -> Vec<String> {
+    let mut problems = Vec::new();
+    let mut file = String::new();
+    let mut seen: Vec<String> = Vec::new();
+    for line in diff.lines() {
+        if let Some(path) = line.strip_prefix("+++ b/") {
+            file = path.to_string();
+            continue;
+        }
+        let Some(added) = line.strip_prefix('+') else {
+            continue;
+        };
+        let texts = if file.ends_with(".md") {
+            vec![strip_code(added)]
+        } else if file.ends_with(".rs") {
+            string_literals(added)
+        } else {
+            continue;
+        };
+        for text in texts {
+            for figure in figures(&text) {
+                if seen.contains(&figure) {
+                    continue;
+                }
+                seen.push(figure.clone());
+                let found = Command::new("git")
+                    .args(["grep", "-q", "-F", "-e", &figure, "HEAD", "--", "."])
+                    .current_dir(workdir)
+                    .status()
+                    .is_ok_and(|status| status.success());
+                if !found {
+                    problems.push(format!(
+                        "{file}: the figure \"{figure}\" appears nowhere else in the repository; \
+                         cite the file it comes from and quote it exactly, or remove it"
+                    ));
+                }
+            }
+        }
+    }
+    problems
+}
+
+/// The figures in `text` worth sourcing: amounts with a `$`, and numbers
+/// with a decimal point. Plain small integers are left out.
+fn figures(text: &str) -> Vec<String> {
+    let mut found = Vec::new();
+    let chars: Vec<char> = text.chars().collect();
+    let mut i = 0;
+    while i < chars.len() {
+        let dollar = chars[i] == '$';
+        let start = if dollar { i + 1 } else { i };
+        if start < chars.len()
+            && chars[start].is_ascii_digit()
+            && (i == 0 || !chars[i - 1].is_alphanumeric())
+        {
+            let mut end = start;
+            while end < chars.len() && (chars[end].is_ascii_digit() || chars[end] == '.') {
+                end += 1;
+            }
+            let number: String = chars[start..end]
+                .iter()
+                .collect::<String>()
+                .trim_end_matches('.')
+                .to_string();
+            if dollar || number.contains('.') {
+                found.push(if dollar { format!("${number}") } else { number });
+            }
+            i = end.max(i + 1);
+        } else {
+            i += 1;
+        }
+    }
+    found
 }
 
 /// The most changed names whose callers the review reads.
@@ -1009,6 +1260,14 @@ mod tests {
         assert_eq!(problems.len(), 2, "{problems:#?}");
         assert!(problems[0].contains("\"per\""));
         assert!(problems[1].contains("\"about\""));
+    }
+
+    #[test]
+    fn figures_are_amounts_and_decimals() {
+        assert_eq!(
+            figures("12 Luna runs averaged 27 s and $0.0041; 22.0 s and $0 for v1.2, or 1.5 s."),
+            ["$0.0041", "22.0", "$0", "1.5"]
+        );
     }
 
     #[test]

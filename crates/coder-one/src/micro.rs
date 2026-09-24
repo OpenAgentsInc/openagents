@@ -79,11 +79,7 @@ const PARTS_MAX: usize = 10;
 pub const PART_QUESTION: &str = "Does the change in `diff_by_file` meet the part of the \
 requirement in `parts.{id}`, read with the whole `requirement` for context, with specifics: \
 concrete facts, numbers, names, or code where the part calls for them, not a vague mention? \
-When the requirement names several places for its content, such as a document and a view, \
-the part is met only if every one of those places carries it; a test file is not such a \
-place. A part that asks how long something takes or what it costs is met only by \
-figures for every case the repository records, not the cheapest one alone. Answer from the \
-diff alone.";
+Answer from the diff alone.";
 
 /// The parts of one requirement line such as `- R1 (deliverable): text`:
 /// its clauses, cut at commas, semicolons, colons, and "and", without
@@ -2397,10 +2393,7 @@ impl Micro {
             let parts_met = judged.as_ref().is_some_and(Vec::is_empty);
             let gaps = judged.unwrap_or_default();
             if !gaps.is_empty() {
-                crate::say::line(&format!(
-                    "  microluna ▸ parts not met yet: {}",
-                    gaps.join("; ")
-                ));
+                crate::say::line(&format!("  parts ▸ not met yet: {}", gaps.join("; ")));
             }
             let (chosen, record, usd) = self
                 .decide(
