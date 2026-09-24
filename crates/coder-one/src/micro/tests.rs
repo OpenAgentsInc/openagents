@@ -1440,6 +1440,8 @@ fn lean_shape() -> lean::Lean {
         example_first: false,
         standard_forms: false,
         rationale: false,
+        lanes: 0,
+        lane_sec: 0,
     }
 }
 
@@ -1816,4 +1818,89 @@ fn a_comment_that_gives_a_reason_is_a_suspect() {
     let found = crate::accept::rationale_choices(dir.path());
     assert_eq!(found.len(), 1, "{found:?}");
     assert!(found[0].starts_with("window.py:3:"), "{found:?}");
+}
+
+#[test]
+fn a_rebase_changes_whole_path_mentions_only() {
+    assert_eq!(
+        lean::rebase_text(
+            "cd /app && cat /app/x '/app' /apple /app_b",
+            "/app",
+            "/tmp/l"
+        ),
+        "cd /tmp/l && cat /tmp/l/x '/tmp/l' /apple /app_b"
+    );
+}
+
+#[tokio::test]
+async fn lanes_run_at_once_and_the_best_scoring_copy_is_kept() {
+    let dir = tempfile::tempdir().unwrap();
+    let work = dir.path().join("work");
+    let eval = lean::eval_dir(&work, Isolation::TaskContainer);
+    let _ = std::fs::remove_dir_all(&eval);
+    // The score reads the workspace by its absolute path, as a task's
+    // scripts do, so each lane's copy is rebased.
+    let score = format!(
+        "mkdir -p {e} && printf '%s\\n' 'if grep -q good {w}/answer.txt 2>/dev/null; then echo SCORE 1 1; else echo SCORE 0 1; fi' > {e}/score.sh",
+        e = eval.display(),
+        w = work
+            .canonicalize()
+            .unwrap_or_else(|_| work.clone())
+            .display()
+    );
+    let mut executor = micro(
+        dir.path(),
+        vec![
+            call(
+                "s1",
+                "run_command",
+                &json!({ "command": score, "timeout_seconds": null }),
+                usage(1_000, 0, 30),
+            ),
+            finish("s2", "done", "Wrote the score."),
+            // The fake transport answers the two lanes in turn.
+            call(
+                "l1",
+                "write_file",
+                &json!({ "path": "answer.txt", "contents": "bad\n" }),
+                usage(1_000, 0, 30),
+            ),
+            call(
+                "l2",
+                "write_file",
+                &json!({ "path": "answer.txt", "contents": "good\n" }),
+                usage(1_000, 0, 30),
+            ),
+            finish("l3", "done", "Wrote an answer."),
+            finish("l4", "done", "Wrote an answer."),
+            finish("c1", "done", "Checked."),
+        ],
+        lean_policy(lean::Lean {
+            sessions: 1,
+            self_check: false,
+            keep_best: true,
+            lanes: 2,
+            ..lean_shape()
+        }),
+    );
+    executor.prepared = Some(prepared());
+    executor.execute(&briefing(TASK)).await;
+    let record = executor.last.clone().unwrap();
+    let moves = record["moves"].as_array().unwrap();
+    let lanes = moves
+        .iter()
+        .find(|m| m["kind"] == "lean.lanes")
+        .expect("a lanes record");
+    let scores: Vec<u64> = lanes["lanes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|l| l["score"]["passed"].as_u64().unwrap())
+        .collect();
+    assert_eq!(scores.iter().sum::<u64>(), 1, "{lanes}");
+    assert_eq!(
+        std::fs::read_to_string(work.join("answer.txt")).unwrap(),
+        "good\n"
+    );
+    assert_eq!(lanes["leaked"], false);
 }

@@ -154,6 +154,104 @@ pub struct Lean {
     /// suspects each session must decide on.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub rationale: bool,
+    /// Attempts at the first work session that run at once, each in its
+    /// own copy of the workspace with a different approach, before the
+    /// sequential sessions: the host keeps the best by the frozen score.
+    /// Above 1 it needs `keep_best`, and a scorer session writes the
+    /// evaluation script first. 0 or 1 runs one first session in place.
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub lanes: u32,
+    /// The lanes' wall-time bound in seconds; 0 leaves the loop's.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub lane_sec: u64,
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_zero_u32(n: &u32) -> bool {
+    *n == 0
+}
+
+/// What the scorer session is told: write the evaluation script only.
+#[must_use]
+pub fn scorer_guidance(eval: &Path) -> String {
+    format!(
+        "This session writes only the evaluation script; other sessions write the solution \
+         afterwards. Don't change the solution or the task's files. Read the task and the \
+         evidence, then write `{eval}/score.sh`. It runs the solution in the workspace the way \
+         the task will be judged and prints, as its last line, `SCORE <passed> <total>`: how \
+         many of the task's stated checks pass, or how many held-out examples come out exactly \
+         right. Make it fine-grained, so partial progress raises the score, keep it under 60 \
+         seconds, and make it score the untouched workspace low without failing to run. Run it \
+         once on the untouched workspace, then call finish.",
+        eval = eval.display()
+    )
+}
+
+/// The approach each lane is told to take, by lane.
+pub const LANE_APPROACHES: [&str; 4] = [
+    "Take the approach you judge most likely to work.",
+    "Take a substantially different approach from the most obvious one.",
+    "Question the most natural assumption about the task, and take the approach that follows \
+     if it is wrong.",
+    "Start from the smallest example the task gives, get it exactly right, and generalize from \
+     there.",
+];
+
+/// What a lane session is told about its copy.
+#[must_use]
+pub fn lane_note(k: usize, n: usize, lane: &Path, real: &Path, scorer: &Path) -> String {
+    format!(
+        "{n} sessions attempt this task at the same time, each in a private copy of the \
+         workspace, and the host keeps the best by the frozen evaluation score. You are attempt \
+         {k} of {n}, and you work in `{lane}`, a copy of `{real}`: wherever the task or the \
+         evidence names `{real}`, use `{lane}` instead, and never write under `{real}`. The \
+         evaluation script for your copy is `{scorer}/score.sh`; run `sh {scorer}/score.sh` to \
+         see your score. {}",
+        LANE_APPROACHES[(k - 1) % LANE_APPROACHES.len()],
+        lane = lane.display(),
+        real = real.display(),
+        scorer = scorer.display(),
+    )
+}
+
+/// `text` with every whole-path mention of `from` changed to `to`: `from`
+/// followed by a path separator, a quote, a space, a bracket, or the end.
+#[must_use]
+pub fn rebase_text(text: &str, from: &str, to: &str) -> String {
+    if from.is_empty() {
+        return text.to_string();
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find(from) {
+        let after = rest[at + from.len()..].chars().next();
+        out.push_str(&rest[..at]);
+        if after.is_none_or(|c| !(c.is_alphanumeric() || c == '_' || c == '-' || c == '.')) {
+            out.push_str(to);
+        } else {
+            out.push_str(from);
+        }
+        rest = &rest[at + from.len()..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// A copy of the frozen scorer in `to` that scores `lane` instead of
+/// `real`.
+fn rebase_scorer(frozen: &Path, to: &Path, real: &Path, lane: &Path) -> Result<(), String> {
+    crate::handoff::copy_tree(frozen, to)?;
+    let (real, lane) = (real.display().to_string(), lane.display().to_string());
+    for file in parallel::workspace_files(to) {
+        let path = to.join(&file);
+        if let Ok(text) = std::fs::read_to_string(&path) {
+            let rebased = rebase_text(&text, &real, &lane);
+            if rebased != text {
+                std::fs::write(&path, rebased).map_err(|e| format!("{}: {e}", path.display()))?;
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Jev's question on each comment that gives a reason for a choice.
@@ -208,6 +306,10 @@ impl Lean {
         }
         if self.score_sec == 0 {
             problems.push("executor.microluna.lean.score_sec must be at least 1".to_string());
+        }
+        if self.protect_candidates && self.lanes > 1 {
+            problems
+                .push("candidate protection currently supports one first-attempt lane".to_string());
         }
         if self.protect_candidates && !self.keep_best {
             problems.push("protect_candidates requires keep_best".to_string());
@@ -593,6 +695,184 @@ impl Micro {
     }
 }
 
+/// A lane's outcome: its session, its copy, score, and flag.
+struct LaneRun {
+    ran: Ran,
+    dir: PathBuf,
+    score: Option<(u64, u64)>,
+    flagged: bool,
+}
+
+impl Micro {
+    /// Runs `lanes` first attempts at once, each in a copy of the
+    /// workspace with a different approach, scores each copy with the
+    /// frozen scorer rebased to it, and puts the best one in the workspace.
+    /// Returns the sessions, the record, and the kept lane with its score
+    /// and a snapshot of it.
+    #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
+    async fn lean_lanes(
+        &self,
+        prepared: &Prepared,
+        lean: &Lean,
+        lanes: usize,
+        general: &str,
+        rules: &str,
+        evidence: &[Evidence],
+        samples: &[Evidence],
+        frozen: &Path,
+        fields: &BTreeMap<String, BTreeSet<String>>,
+        start_tree: &BTreeMap<String, String>,
+        wall_left: &dyn Fn() -> Option<Duration>,
+        spent: f64,
+    ) -> (
+        Vec<Ran>,
+        Value,
+        Option<(usize, Option<(u64, u64)>, PathBuf)>,
+    ) {
+        let real_before = parallel::tree(&self.workdir);
+        let mut dirs = Vec::new();
+        for _ in 0..lanes {
+            let dir = scratch("lean-lane");
+            let scorer = scratch("lean-lane-score");
+            if crate::handoff::copy_tree(&self.workdir, &dir).is_err()
+                || rebase_scorer(frozen, &scorer, &self.workdir, &dir).is_err()
+            {
+                let _ = std::fs::remove_dir_all(&dir);
+                let _ = std::fs::remove_dir_all(&scorer);
+                continue;
+            }
+            dirs.push((dir, scorer));
+        }
+        let n = dirs.len();
+        let deadline = match (wall_left(), lean.lane_sec) {
+            (Some(left), 0) => Some(left),
+            (Some(left), sec) => Some(left.min(Duration::from_secs(sec))),
+            (None, 0) => None,
+            (None, sec) => Some(Duration::from_secs(sec)),
+        };
+        let share = (self.policy.spend_usd - spent).max(0.0) / n.max(1) as f64;
+        let numbers: Vec<u32> = (0..n).map(|k| 2 + u32::try_from(k).unwrap_or(0)).collect();
+        let runs =
+            futures_util::future::join_all(dirs.iter().enumerate().map(|(k, (dir, scorer))| {
+                let mut guidance = general.to_string();
+                guidance.push_str("\n\n");
+                guidance.push_str(&lane_note(k + 1, n, dir, &self.workdir, scorer));
+                guidance.push_str(rules);
+                let mut lane_evidence = evidence.to_vec();
+                lane_evidence.extend(self.sources_within(dir, &[], lean.source_chars));
+                lane_evidence.extend(samples.iter().cloned());
+                let brief = Brief {
+                    task: prepared.instruction.clone(),
+                    guidance,
+                    evidence: lane_evidence,
+                    state: vec![format!("Attempt {} of {n}, session {}.", k + 1, numbers[k])],
+                };
+                let persist = lean.persist.as_ref().map(|gate| microluna::Persist {
+                    max_returns: gate.max_returns,
+                    not_done: gate.not_done,
+                    score_command: Some(format!("sh {}/score.sh", scorer.display())),
+                    reserve_turns: gate.reserve_turns,
+                    reserve_sec: gate.reserve_sec,
+                });
+                let place = Place {
+                    workdir: Some(dir.clone()),
+                    group: Some(format!("attempt {} of {n}", k + 1)),
+                    batch: "lanes".to_string(),
+                    parallel_with: numbers
+                        .iter()
+                        .copied()
+                        .filter(|m| *m != numbers[k])
+                        .collect(),
+                    persist,
+                    deadline,
+                    spend_usd: lean.session_spend.then_some(share),
+                    command_max: (lean.command_sec > 0)
+                        .then(|| Duration::from_secs(lean.command_sec)),
+                    ..Place::default()
+                };
+                let number = numbers[k];
+                async move {
+                    self.session_at(
+                        number,
+                        &[format!("attempt {}", k + 1)],
+                        "the lean loop runs several first attempts at once",
+                        &brief,
+                        false,
+                        place,
+                    )
+                    .await
+                }
+            }))
+            .await;
+        let mut outcomes = Vec::new();
+        for (ran, (dir, scorer)) in runs.into_iter().zip(dirs.iter()) {
+            let (score, _) = self
+                .lean_score_in(scorer, lean, dir, wall_left().unwrap_or(Duration::MAX))
+                .await;
+            let flagged = !literal_examples(dir, start_tree, fields).is_empty();
+            let _ = std::fs::remove_dir_all(scorer);
+            outcomes.push(LaneRun {
+                ran,
+                dir: dir.clone(),
+                score,
+                flagged,
+            });
+        }
+        let leaked = parallel::tree(&self.workdir) != real_before;
+        // The best lane: not flagged, then the score, then a done finish.
+        let chosen = outcomes
+            .iter()
+            .enumerate()
+            .filter(|(_, o)| !o.flagged)
+            .max_by(|(ia, a), (ib, b)| {
+                fraction(a.score)
+                    .total_cmp(&fraction(b.score))
+                    .then((a.ran.status() == "done").cmp(&(b.ran.status() == "done")))
+                    .then(ib.cmp(ia))
+            })
+            .map(|(k, _)| k);
+        let mut kept = None;
+        if let Some(k) = chosen
+            && crate::compose::replace_contents(&self.workdir, &outcomes[k].dir).is_ok()
+        {
+            let snapshot = scratch("lean-best");
+            if crate::handoff::copy_tree(&self.workdir, &snapshot).is_ok() {
+                kept = Some((k + 1, outcomes[k].score, snapshot));
+            }
+        }
+        let record = json!({
+            "kind": "lean.lanes",
+            "lanes": outcomes.iter().enumerate().map(|(k, o)| json!({
+                "lane": k + 1,
+                "session": o.ran.number,
+                "status": o.ran.status(),
+                "score": o.score.map(|(p, t)| json!({"passed": p, "total": t})),
+                "flagged": o.flagged,
+                "cost_usd": o.ran.cost_usd,
+            })).collect::<Vec<_>>(),
+            "kept": chosen.map(|k| k + 1),
+            "leaked": leaked,
+        });
+        crate::say::line(&format!(
+            "  microluna ▸ lean: {n} attempts scored {}; kept {}",
+            outcomes
+                .iter()
+                .map(|o| o
+                    .score
+                    .map_or("none".to_string(), |(p, t)| format!("{p}/{t}")))
+                .collect::<Vec<_>>()
+                .join(", "),
+            chosen.map_or("none".to_string(), |k| format!("attempt {}", k + 1))
+        ));
+        let mut ran = Vec::new();
+        for o in outcomes {
+            let _ = std::fs::remove_dir_all(&o.dir);
+            ran.push(o.ran);
+        }
+        (ran, record, kept)
+    }
+}
+
 /// The best workspace so far.
 struct Best {
     session: u32,
@@ -636,6 +916,18 @@ impl Micro {
         lean: &Lean,
         remaining: Duration,
     ) -> (Option<(u64, u64)>, String) {
+        self.lean_score_in(frozen, lean, &self.workdir, remaining)
+            .await
+    }
+
+    /// Runs the score script in `frozen` with `dir` as its working directory.
+    async fn lean_score_in(
+        &self,
+        frozen: &Path,
+        lean: &Lean,
+        dir: &Path,
+        remaining: Duration,
+    ) -> (Option<(u64, u64)>, String) {
         let script = frozen.join("score.sh");
         if !script.is_file() {
             return (None, "no score script".to_string());
@@ -650,7 +942,7 @@ impl Micro {
         let ended = match self.isolation {
             Isolation::TaskContainer => {
                 let mut command = std::process::Command::new("/bin/sh");
-                command.arg(&script).current_dir(&self.workdir);
+                command.arg(&script).current_dir(dir);
                 microluna::tools::withhold_credentials(&mut command);
                 supervise::Job::from_command(command)
                     .bounded(supervise::Limits::within(wall).keeping(64 * 1024))
@@ -661,7 +953,7 @@ impl Micro {
                 let spec = if self.isolation == Isolation::ReadOnly {
                     coder_boundary::Boundary::readonly()
                 } else {
-                    coder_boundary::Boundary::writing(&self.workdir)
+                    coder_boundary::Boundary::writing(dir)
                 };
                 let boundary = match spec.owned_scratch_under(std::env::temp_dir()).build() {
                     Ok(boundary) => boundary,
@@ -671,7 +963,7 @@ impl Micro {
                     Ok(command) => command,
                     Err(error) => return (None, error.to_string()),
                 };
-                command.current_dir(&self.workdir);
+                command.current_dir(dir);
                 microluna::tools::withhold_credentials(&mut command);
                 supervise::Job::from_command(command)
                     .bounded(supervise::Limits::within(wall).keeping(64 * 1024))
@@ -865,12 +1157,108 @@ impl Micro {
         let mut history: Vec<String> = Vec::new();
         let mut flag_note: Option<String> = None;
         let mut stopped = String::new();
-        let total = lean.sessions + u32::from(lean.self_check);
-        let mut number = 0;
+        let lanes = if lean.keep_best && lean.lanes > 1 && parallel::copyable(&self.workdir) {
+            lean.lanes as usize
+        } else {
+            1
+        };
+        let mut offset = 0u32;
+        if lanes > 1 {
+            // The scorer session: the evaluation script only.
+            let mut guidance = scorer_guidance(&eval);
+            guidance.push_str(&rules);
+            let mut scorer_evidence = evidence.clone();
+            scorer_evidence.extend(self.sources_within(&self.workdir, &named, lean.source_chars));
+            scorer_evidence.extend(samples.iter().cloned());
+            let ran = self
+                .session_at(
+                    1,
+                    &["the evaluation script".to_string()],
+                    "the lean loop's scorer writes the evaluation script before any attempt",
+                    &Brief {
+                        task: prepared.instruction.clone(),
+                        guidance,
+                        evidence: scorer_evidence,
+                        state: vec!["Session 1: the scorer.".to_string()],
+                    },
+                    false,
+                    Place {
+                        group: Some("the evaluation script".to_string()),
+                        deadline: wall_left(),
+                        command_max: (lean.command_sec > 0)
+                            .then(|| Duration::from_secs(lean.command_sec)),
+                        ..Place::default()
+                    },
+                )
+                .await;
+            spent += ran.cost_usd.unwrap_or(0.0);
+            sessions.push(ran);
+            offset = 1;
+            if eval.join("score.sh").is_file() {
+                have_score = crate::handoff::copy_tree(&eval, &frozen).is_ok();
+                if have_score {
+                    evaluator_digest = evidence_tree(&frozen).ok();
+                }
+            }
+            let (untouched, _) = if have_score {
+                self.lean_score(
+                    &frozen,
+                    lean,
+                    time_left().min(wall_left().unwrap_or(Duration::MAX)),
+                )
+                .await
+            } else {
+                (None, String::new())
+            };
+            moves.push(json!({
+                "kind": "lean.scorer",
+                "frozen": have_score,
+                "untouched": untouched.map(|(p, t)| json!({"passed": p, "total": t})),
+            }));
+            if have_score {
+                let (ran_lanes, record, kept) = self
+                    .lean_lanes(
+                        prepared,
+                        lean,
+                        lanes,
+                        &general,
+                        &rules,
+                        &evidence,
+                        &samples,
+                        &frozen,
+                        &fields,
+                        &start_tree,
+                        &|| Some(time_left().min(wall_left().unwrap_or(Duration::MAX))),
+                        spent,
+                    )
+                    .await;
+                for ran in &ran_lanes {
+                    spent += ran.cost_usd.unwrap_or(0.0);
+                }
+                offset += u32::try_from(ran_lanes.len()).unwrap_or(0);
+                sessions.extend(ran_lanes);
+                if let Some((lane, score, dir)) = kept {
+                    history.push(format!(
+                        "{lanes} attempts ran at once; the host kept attempt {lane}'s workspace, \
+                         which scored {}.",
+                        score.map_or("nothing".to_string(), |(p, t)| format!("{p} of {t}"))
+                    ));
+                    best_cleanup.push(dir.clone());
+                    best = Some(Best {
+                        session: offset,
+                        score,
+                        dir,
+                    });
+                }
+                moves.push(record);
+            }
+        }
+        let total = offset + lean.sessions + u32::from(lean.self_check);
+        let mut number = offset;
         let mut checking = false;
         loop {
             number += 1;
-            if !checking && number > lean.sessions {
+            if !checking && number > offset + lean.sessions {
                 stopped = format!("the lean loop used its {} sessions", lean.sessions);
                 if !lean.self_check {
                     break;
@@ -903,7 +1291,7 @@ impl Micro {
                 OBSERVE_GUIDANCE.to_string()
             } else if checking {
                 CHECK_GUIDANCE.to_string()
-            } else if number == 1 {
+            } else if sessions.is_empty() {
                 general.clone()
             } else {
                 format!("{general}\n\n{CONTINUE_GUIDANCE}")
@@ -924,7 +1312,7 @@ impl Micro {
                 "Session {number} of at most {total}{}.",
                 if checking { ", the self-check" } else { "" }
             )];
-            if number > 1 {
+            if !sessions.is_empty() {
                 for ran in sessions.iter().rev().take(3).rev() {
                     state.push(format!(
                         "Session {} ended {}: {}",
@@ -962,7 +1350,7 @@ impl Micro {
             };
             let why = if checking {
                 "the self-check reviews the result on a fresh context".to_string()
-            } else if number == 1 {
+            } else if sessions.is_empty() {
                 "the lean loop's first session takes the whole task".to_string()
             } else {
                 "the lean loop continues the task".to_string()
@@ -1207,7 +1595,7 @@ impl Micro {
                     m["score"]["total"].as_u64()?,
                 ))
             });
-            if b.session != sessions.len() as u32
+            if Some(b.session) != sessions.last().map(|r| r.number)
                 && (lean.protect_candidates
                     || last_flagged
                     || fraction(b.score) > fraction(last_score))
