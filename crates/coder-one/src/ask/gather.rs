@@ -362,6 +362,24 @@ pub fn named_tasks(question: &str, tasks: &Value) -> Vec<String> {
     kept.into_iter().take(3).collect()
 }
 
+/// Whether a question asks about strategies: Fable's moves, phases, or
+/// fingerprints. Such a question reads `gym runs moves --cached`.
+#[must_use]
+pub fn asks_strategy(question: &str) -> bool {
+    let lower = question.to_lowercase();
+    [
+        "fable",
+        "strategy",
+        "strategies",
+        "fingerprint",
+        "moves",
+        "phase",
+        "winners do",
+    ]
+    .iter()
+    .any(|word| lower.contains(word))
+}
+
 /// Jev's question set for which reasons a question asks about.
 #[must_use]
 pub fn reason_questions(count: usize) -> Questions {
@@ -603,6 +621,14 @@ mod tests {
         assert_eq!(summary["tests"], "3/4");
         assert_eq!(summary["reasons"][0], "near_miss 0.91");
         assert_eq!(summary["cost_usd"], 0.123);
+    }
+
+    #[test]
+    fn a_question_about_fable_s_moves_asks_for_strategy() {
+        assert!(asks_strategy(
+            "What does Fable do on mvcc-lsm-compaction that Luna skips?"
+        ));
+        assert!(!asks_strategy("Which runs failed on cad-model?"));
     }
 
     #[test]

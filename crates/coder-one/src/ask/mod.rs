@@ -1057,6 +1057,26 @@ async fn gather_gym(
     }
     let extra_probes: Vec<Probe> =
         join_all(extra.iter().map(|args| reader.gym(args.clone()))).await;
+    // Strategy fingerprints for the named tasks, and the candidate moves
+    // when the question asks about strategies. Neither asks Jev anything.
+    let mut strategy: Vec<Vec<String>> = named
+        .iter()
+        .map(|task| strings(&["runs", "fingerprints", "--task", task, "--json", "--no-jev"]))
+        .collect();
+    if gather::asks_strategy(&options.question) {
+        strategy.push(strings(&["runs", "moves", "--cached", "--json"]));
+    }
+    let strategy_probes: Vec<Probe> =
+        join_all(strategy.iter().map(|args| reader.gym(args.clone()))).await;
+    if !strategy_probes.is_empty() {
+        gather::record_probes(
+            recorder,
+            "strategy probes",
+            &strategy_probes.iter().collect::<Vec<_>>(),
+            progress,
+        );
+    }
+    gathered.inputs.strategy = strategy_probes.iter().filter_map(Probe::json).collect();
     if !extra_probes.is_empty() {
         gather::record_probes(
             recorder,

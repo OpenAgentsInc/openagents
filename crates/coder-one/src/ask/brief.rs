@@ -99,6 +99,113 @@ pub struct Inputs {
     /// For a highlights ask, the highlights to draft, as `gym runs
     /// highlights --json` gives them.
     pub highlights: Vec<Value>,
+    /// Strategy evidence: `gym runs fingerprints --task T --json` per named
+    /// task, and `gym runs moves --cached --json` when the question asks
+    /// about strategies.
+    pub strategy: Vec<Value>,
+}
+
+/// The strategy fingerprints and candidate moves, compactly: one line per
+/// trajectory, and the strongest moves with their citations.
+#[must_use]
+pub fn strategy_section(strategy: &[Value]) -> String {
+    let mut out = String::from(
+        "# Strategy fingerprints and candidate moves\n\n\
+         A fingerprint summarizes one trajectory's steps by phase (orient, read, plan, edit, \
+         build, test, verify, finish): the step of its first edit, its test count, its \
+         verification after the last edit, its retries, whether it ran the task's example \
+         before editing, and its phase sequence (`O3 R5 E1`, `?` unplaced). Step numbers \
+         here are fingerprint steps, which `gym runs fingerprint RUN` lists; they are not \
+         the transcript's `step` field, so don't cite them as steps. Fable trajectories are \
+         public trial IDs, not `job/trial`, so the citation check can't open them: cite local \
+         runs as usual and name Fable trials in the claim's text. A candidate move is a \
+         difference that repeats across tasks, a hypothesis rather than a finding.\n\n",
+    );
+    for value in strategy {
+        if let Some(prints) = value["fingerprints"].as_array() {
+            let tasks: Vec<&str> = value["tasks"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .collect();
+            out.push_str(&format!(
+                "Fingerprints for {} ({} trajectories; `gym runs fingerprints --task T`):\n",
+                tasks.join(", "),
+                prints.len()
+            ));
+            for print in prints.iter().take(45) {
+                let first_edit = print["first_edit_step"]
+                    .as_u64()
+                    .map_or("never".to_string(), |n| format!("step {n}"));
+                let example = if print["task_has_example"] == true {
+                    if print["ran_example_before_edit"] == true {
+                        "ran the example first"
+                    } else {
+                        "didn't run the example first"
+                    }
+                } else {
+                    "no example named"
+                };
+                out.push_str(&format!(
+                    "- {} · {} · {} · {} steps · first edit {} · {} tests · {} checks after the last edit · {} retries · {} · {}\n",
+                    print["run"].as_str().unwrap_or("?"),
+                    print["arm"].as_str().unwrap_or("?"),
+                    print["outcome"].as_str().unwrap_or("?"),
+                    print["steps"],
+                    first_edit,
+                    print["tests"],
+                    print["verification"]["after_last_edit"],
+                    print["retries"]["repeated_failed"].as_u64().unwrap_or(0)
+                        + print["retries"]["by_jev"].as_u64().unwrap_or(0),
+                    example,
+                    clip(print["sequence"].as_str().unwrap_or(""), 90),
+                ));
+            }
+            out.push('\n');
+        }
+        if let Some(moves) = value
+            .pointer("/report/candidates")
+            .and_then(Value::as_array)
+        {
+            out.push_str(
+                "Candidate moves across the Luna baseline subset, strongest first (`gym runs moves`):\n",
+            );
+            for one in moves.iter().take(10) {
+                let cites: Vec<String> = one["citations"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .take(3)
+                    .map(|c| {
+                        format!(
+                            "{}: {} vs {}",
+                            c["task"].as_str().unwrap_or("?"),
+                            c["a_run"].as_str().unwrap_or("?"),
+                            c["b_run"].as_str().unwrap_or("?")
+                        )
+                    })
+                    .collect();
+                out.push_str(&format!(
+                    "- {} {} {}: {} of {} tasks, mean Cliff's delta {:+.2} ({}). {}\n",
+                    one["a"].as_str().unwrap_or("?"),
+                    if one["direction"] == "more" {
+                        "does more:"
+                    } else {
+                        "does less:"
+                    },
+                    one["what"].as_str().unwrap_or("?"),
+                    one["tasks_agreeing"],
+                    one["tasks_with_data"],
+                    one["mean_delta"].as_f64().unwrap_or(0.0),
+                    one["comparison"].as_str().unwrap_or("?"),
+                    cites.join("; ")
+                ));
+            }
+            out.push('\n');
+        }
+    }
+    out
 }
 
 /// Builds the briefing.
@@ -206,6 +313,10 @@ pub fn build(inputs: &Inputs) -> String {
             ));
         }
         out.push('\n');
+    }
+
+    if !inputs.strategy.is_empty() {
+        out.push_str(&strategy_section(&inputs.strategy));
     }
 
     if !inputs.opened.is_empty() {
