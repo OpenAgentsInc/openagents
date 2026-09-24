@@ -320,31 +320,49 @@ impl Docker {
         let id = docker(&args)?;
         docker(&["start", &id])?;
         if let Some(candidate) = &self.candidate {
-            let clear = format!(
-                "find {} -mindepth 1 -maxdepth 1 -exec rm -rf {{}} +",
-                sh_quote(&self.workdir)
+            // The image may run as another user: the host's own steps run
+            // as root, and the candidate keeps the workdir's owner.
+            let workdir = sh_quote(&self.workdir);
+            let prepare = format!(
+                "owner=$(stat -c %u:%g {workdir}) && \
+                 find {workdir} -mindepth 1 -maxdepth 1 -exec rm -rf {{}} + && \
+                 echo \"$owner\""
             );
-            docker(&["exec", &id, "sh", "-c", &clear])?;
+            let owner = docker(&["exec", "-u", "0", &id, "sh", "-c", &prepare])?;
             let from = format!("{}/.", candidate.display());
             docker(&["cp", &from, &format!("{id}:/")])?;
+            let chown = format!("chown -R {} {workdir}", sh_quote(owner.trim()));
+            docker(&["exec", "-u", "0", &id, "sh", "-c", &chown])?;
         }
         if let Some(setup) = &self.setup {
             // A failed setup is the candidate's problem, as it would be
             // the verifier's: the tests run and say so.
-            let _ = docker(&["exec", "-w", &self.workdir, &id, "sh", "-c", setup]);
+            let _ = docker(&[
+                "exec",
+                "-u",
+                "0",
+                "-w",
+                &self.workdir,
+                &id,
+                "sh",
+                "-c",
+                setup,
+            ]);
         }
         Ok(id)
     }
 
     fn setup(&self, suite_dir: &Path) -> Result<String, String> {
         let id = self.start(None)?;
-        let copied = docker(&["exec", &id, "mkdir", "-p", "/accept"]).and_then(|_| {
-            docker(&[
-                "cp",
-                &format!("{}/.", suite_dir.display()),
-                &format!("{id}:/accept/"),
-            ])
-        });
+        let copied = docker(&["exec", "-u", "0", &id, "mkdir", "-p", "/accept"])
+            .and_then(|_| {
+                docker(&[
+                    "cp",
+                    &format!("{}/.", suite_dir.display()),
+                    &format!("{id}:/accept/"),
+                ])
+            })
+            .and_then(|_| docker(&["exec", "-u", "0", &id, "chmod", "-R", "a+rX", "/accept"]));
         if let Err(error) = copied {
             let _ = docker(&["rm", "-f", &id]);
             return Err(error);
@@ -401,8 +419,9 @@ impl Runner for Docker {
 # Runs the acceptance tests in the task's container, from the workspace
 # root, as the host does. Usage: sh run.sh [TEST_ID ...]
 here=$(cd "$(dirname "$0")" && pwd)
-docker exec {dev} sh -c 'rm -rf /accept && mkdir -p /accept' >/dev/null 2>&1 &&
-  docker cp "$here/." {dev}:/accept/ >/dev/null 2>&1 ||
+docker exec -u 0 {dev} sh -c 'rm -rf /accept && mkdir -p /accept' >/dev/null 2>&1 &&
+  docker cp "$here/." {dev}:/accept/ >/dev/null 2>&1 &&
+  docker exec -u 0 {dev} chmod -R a+rX /accept >/dev/null 2>&1 ||
   {{ echo "could not copy the suite into the task's container"; exit 2; }}
 green=0
 red=0
