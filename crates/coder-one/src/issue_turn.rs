@@ -666,9 +666,10 @@ or a row number, and does the change alter that number or those positions withou
 being updated to match?";
 
 /// How sure Jev must be that a place depends on a changed count to flag
-/// it: the stale `2 + cursor` offset read 0.68, and correct code beside a
-/// fix read 0.52 and 0.54.
-const DEPENDS_FLAG: f64 = 0.6;
+/// it. The stale `2 + cursor` offset read between 0.55 and 0.68 across
+/// runs; the false alarms, 0.52 and 0.54, were on code the change had
+/// edited, which the check now skips.
+const DEPENDS_FLAG: f64 = 0.5;
 
 /// The new-side line numbers a zero-context diff adds or changes, by file.
 fn edited_lines(bare: &str) -> Vec<(String, usize)> {
@@ -850,7 +851,7 @@ fn slug(heading: &str) -> String {
 }
 
 /// Fix rounds after the review when the host's gate still finds problems.
-const FIX_ROUNDS: usize = 2;
+const FIX_ROUNDS: usize = 3;
 
 /// Folds a follow-up session's answer into the turn's: its steps, its
 /// summaries, and its cost.
@@ -909,6 +910,15 @@ async fn unclear_text(diff: &str, jev: Option<&jev::Client>, recorder: &Recorder
     let mut texts: Vec<(String, String)> = Vec::new();
     let mut file = String::new();
     let mut fenced = false;
+    // Copy the change kept from before, such as a title it shortened, is
+    // not the change's to answer for: the check once flagged a view's
+    // original "Coder One mini-task runs · {} runs" and spent a fix round.
+    let removed: Vec<String> = diff
+        .lines()
+        .filter_map(|line| line.strip_prefix('-'))
+        .filter(|line| !line.starts_with("--"))
+        .map(str::to_string)
+        .collect();
     for line in diff.lines() {
         if let Some(path) = line.strip_prefix("+++ b/") {
             file = path.to_string();
@@ -931,7 +941,9 @@ async fn unclear_text(diff: &str, jev: Option<&jev::Client>, recorder: &Recorder
         };
         for text in candidates {
             let text = text.trim().to_string();
-            if text.split_whitespace().count() >= 4 && !texts.iter().any(|(_, seen)| *seen == text)
+            if text.split_whitespace().count() >= 4
+                && !removed.iter().any(|old| old.contains(&text))
+                && !texts.iter().any(|(_, seen)| *seen == text)
             {
                 texts.push((file.clone(), text));
             }
