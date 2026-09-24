@@ -64,6 +64,63 @@ pub const SESSION_COMPONENT: &str = "microluna.session";
 /// The component each move between sessions is recorded under.
 pub const HANDOFF_COMPONENT: &str = "microluna.handoff";
 
+/// The component name of the per-part check.
+pub const PARTS_COMPONENT: &str = "microluna.parts";
+
+/// The most parts of a focus the per-part check asks about.
+const PARTS_MAX: usize = 10;
+
+/// The Noul the per-part check asks for each part; `{id}` names it.
+pub const PART_QUESTION: &str = "Does the change in `diff` meet the part of the requirement in \
+`parts.{id}`, read with the whole `requirement` for context, with specifics: concrete facts, \
+numbers, names, or code where the part calls for them, not a vague mention? Answer from the \
+diff alone.";
+
+/// The parts of one requirement line such as `- R1 (deliverable): text`:
+/// its clauses, cut at commas, semicolons, colons, and "and", without
+/// the ones too short to check alone.
+#[must_use]
+pub fn parts(line: &str) -> Vec<String> {
+    let text = line.split_once("): ").map_or(line, |(_, text)| text);
+    let mut found: Vec<String> = Vec::new();
+    for clause in text.split([',', ';', ':']).flat_map(|c| c.split(" and ")) {
+        let clause = clause
+            .trim()
+            .trim_start_matches("and ")
+            .trim_start_matches("or ")
+            .trim_end_matches('.')
+            .trim();
+        if clause.split_whitespace().count() >= 2 && !found.iter().any(|f| f == clause) {
+            found.push(clause.to_string());
+        }
+    }
+    found
+}
+
+/// What the workspace at `dir` changed against its Git `HEAD`, with the
+/// text of new files, or `None` when it isn't a Git work tree.
+fn workspace_diff(dir: &Path) -> Option<String> {
+    let run = |args: &[&str]| {
+        std::process::Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .output()
+            .ok()
+            .filter(|out| out.status.success())
+            .map(|out| String::from_utf8_lossy(&out.stdout).into_owned())
+    };
+    let mut diff = run(&["diff", "HEAD"])?;
+    for file in run(&["ls-files", "--others", "--exclude-standard"])?.lines() {
+        if let Ok(text) = std::fs::read_to_string(dir.join(file)) {
+            diff.push_str(&format!(
+                "\nnew file {file}:\n{}\n",
+                crate::judge::clip(&text, 3_000)
+            ));
+        }
+    }
+    Some(diff)
+}
+
 /// The schema of the loop's record.
 pub const LOOP_SCHEMA: &str = "openagents.coder-one.microluna-loop.v1";
 
@@ -164,6 +221,14 @@ pub struct Policy {
     /// group, as v1 through v4 do.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub focus_actionable: bool,
+    /// After each edit session, Jev checks every part of the focus against
+    /// the workspace's diff, and the next session is told which parts it
+    /// doesn't meet with specifics yet. Off by default: an unmeasured
+    /// change to the benchmark loop. The issue flow turns it on, because a
+    /// retry with no stated gap once reran the tests and left "what they
+    /// cost" unanswered three times.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub parts_check: bool,
     /// Drive the loop by an acceptance suite (`accept.define`, issue
     /// #9588): before any fix, a Microluna session writes executable tests
     /// from the task, code proves them red on the untouched workspace and
@@ -401,6 +466,7 @@ impl Default for Policy {
             read_first: false,
             accept: false,
             focus_actionable: false,
+            parts_check: false,
             suite: false,
             suite_writer: None,
             overlap_suite: false,
@@ -2043,6 +2109,7 @@ impl Micro {
         ran: &Ran,
         checked: &Checked,
         attempts: u32,
+        gaps: &[String],
     ) -> (Move, Value, f64) {
         // The combined verdict over the task and this session's report:
         // the handoff signal issue #9584 calibrated against the verifier.
@@ -2079,6 +2146,10 @@ impl Micro {
                 "failure_probability": verdict.p_fail,
             },
         });
+        let mut state = state;
+        if self.policy.parts_check {
+            state["parts_not_met"] = json!(gaps);
+        }
         let mut choice = jev::Choice::new(MOVE_QUESTION, indexmap::IndexMap::new());
         for (name, meaning) in MOVES {
             choice = choice.option(name, meaning);
@@ -2174,6 +2245,9 @@ impl Micro {
         let mut read_done = vec![false; groups.len()];
         let mut cursor = 0;
         let mut last_checked: Option<Checked> = None;
+        // The parts of the focus the last session left unmet; a retry is
+        // told them.
+        let mut last_gaps: Vec<String> = Vec::new();
         let mut stopped = "every requirement group had its turn".to_string();
         while cursor < groups.len() {
             let number = u32::try_from(sessions.len()).unwrap_or(u32::MAX) + 1;
@@ -2212,6 +2286,11 @@ impl Micro {
                 &sessions,
                 last_checked.as_ref(),
                 is_read,
+                if attempts[cursor] > 1 {
+                    &last_gaps
+                } else {
+                    &[]
+                },
             );
             let why = if is_read {
                 format!(
@@ -2256,6 +2335,18 @@ impl Micro {
             } else {
                 Checked::default()
             };
+            let (gaps, gap_usd) = if self.policy.parts_check && !is_read {
+                self.part_gaps(prepared, group, ran.number).await
+            } else {
+                (Vec::new(), 0.0)
+            };
+            spent += gap_usd;
+            if !gaps.is_empty() {
+                crate::say::line(&format!(
+                    "  microluna ▸ parts not met yet: {}",
+                    gaps.join("; ")
+                ));
+            }
             let (chosen, record, usd) = self
                 .decide(
                     prepared,
@@ -2264,9 +2355,11 @@ impl Micro {
                     &ran,
                     &checked,
                     attempts[cursor],
+                    &gaps,
                 )
                 .await;
             spent += usd;
+            last_gaps = gaps;
             if is_read {
                 read_done[cursor] = true;
             }
@@ -2322,7 +2415,10 @@ impl Micro {
             last_checked = Some(checked);
             match chosen {
                 Move::Retry => {}
-                Move::Next | Move::Stuck => cursor += 1,
+                Move::Next | Move::Stuck => {
+                    cursor += 1;
+                    last_gaps.clear();
+                }
                 Move::Done => {
                     stopped = format!("Jev judged the task done after session {number}");
                     break;
@@ -4320,6 +4416,75 @@ impl Micro {
     /// One session's brief: the task first, then the group and its
     /// evidence, then the state.
     #[allow(clippy::too_many_arguments)]
+    /// The parts of `group` the workspace's change doesn't meet with
+    /// specifics, as Jev reads its diff, and what asking cost. With no Git
+    /// diff, no parts, or no answer, nothing is reported missing.
+    async fn part_gaps(
+        &self,
+        prepared: &Prepared,
+        group: &Group,
+        session: u32,
+    ) -> (Vec<String>, f64) {
+        let parts: Vec<String> = group
+            .lines
+            .iter()
+            .flat_map(|line| parts(line))
+            .take(PARTS_MAX)
+            .collect();
+        if parts.len() < 2 {
+            return (Vec::new(), 0.0);
+        }
+        let Some(diff) = workspace_diff(&self.workdir) else {
+            return (Vec::new(), 0.0);
+        };
+        if diff.trim().is_empty() {
+            return (parts, 0.0);
+        }
+        let mut questions = jev::Questions::new();
+        let mut named = Map::new();
+        for (i, part) in parts.iter().enumerate() {
+            let id = format!("p{}", i + 1);
+            named.insert(id.clone(), json!(part));
+            questions = questions.with(
+                format!("part_{}", i + 1),
+                jev::Noul::new(PART_QUESTION.replace("{id}", &id)),
+            );
+        }
+        let asked = jev_component::ask(
+            &prepared.jev,
+            &self.recorder,
+            jev_component::Ask {
+                component: PARTS_COMPONENT,
+                name: "jev_parts_met",
+                id: format!("jev-parts-{}-{session}", self.dispatch()),
+                state: json!({
+                    "requirement": group.lines.join("\n"),
+                    "parts": named,
+                    "diff": clip_lines(&diff, 12_000),
+                }),
+                questions,
+                parent: None,
+                deadline: prepared.deadline.clone(),
+            },
+        )
+        .await;
+        let usd = asked.input_tokens.map_or(0.0, |tokens| {
+            tokens as f64 * jev_component::USD_PER_MILLION_INPUT / 1_000_000.0
+        });
+        let gaps = parts
+            .into_iter()
+            .enumerate()
+            .filter(|(i, _)| {
+                asked
+                    .noul(&format!("part_{}", i + 1))
+                    .is_some_and(|p| p < 0.5)
+            })
+            .map(|(_, part)| part)
+            .collect();
+        (gaps, usd)
+    }
+
+    #[allow(clippy::too_many_arguments)]
     fn brief(
         &self,
         prepared: &Prepared,
@@ -4329,6 +4494,7 @@ impl Micro {
         sessions: &[Ran],
         checked: Option<&Checked>,
         read_only: bool,
+        gaps: &[String],
     ) -> Brief {
         let group = &groups[cursor];
         let later: Vec<String> = groups[cursor + 1..]
@@ -4428,6 +4594,16 @@ impl Micro {
                     lines.join("; ")
                 ));
             }
+        }
+        if !gaps.is_empty() {
+            state.push(format!(
+                "Jev checked each part of the focus against the change. These parts aren't met \
+                 with specifics yet, so this session must add them:\n{}",
+                gaps.iter()
+                    .map(|gap| format!("- {gap}"))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            ));
         }
         Brief {
             task: prepared.instruction.clone(),

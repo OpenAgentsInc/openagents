@@ -593,10 +593,144 @@ fn review_request(workdir: &Path, number: u64) -> Option<String> {
     if callers.is_empty() {
         callers = "No caller outside the change was found.\n".to_string();
     }
+    let problems = style_problems(&diff);
+    let problems = if problems.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "## Style problems the host found in the added lines\n\nFix each one.\n\n{}\n\n",
+            problems
+                .iter()
+                .map(|problem| format!("- {problem}"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        )
+    };
     Some(format!(
-        "# Review the change for issue #{number} before it lands\n\n## The diff\n\n```diff\n{}\n```\n\n## Code that uses what changed\n\n{callers}",
+        "# Review the change for issue #{number} before it lands\n\n{problems}## The diff\n\n```diff\n{}\n```\n\n## Code that uses what changed\n\n{callers}",
         crate::judge::clip(&diff, 14_000)
     ))
+}
+
+/// The longest text line a terminal view should draw.
+const UI_LINE_MAX: usize = 100;
+
+/// Style problems in the lines `diff` adds: a slash standing for "or"
+/// in prose, a Markdown line that breaks a hyphenated word, and a Rust
+/// string literal longer than a terminal line. Each names its file.
+fn style_problems(diff: &str) -> Vec<String> {
+    let mut problems = Vec::new();
+    let mut file = String::new();
+    let mut fenced = false;
+    for line in diff.lines() {
+        if let Some(path) = line.strip_prefix("+++ b/") {
+            file = path.to_string();
+            fenced = false;
+            continue;
+        }
+        let Some(added) = line.strip_prefix('+') else {
+            if let Some(kept) = line.strip_prefix(' ')
+                && kept.trim_start().starts_with("```")
+            {
+                fenced = !fenced;
+            }
+            continue;
+        };
+        let markdown = file.ends_with(".md");
+        let rust = file.ends_with(".rs");
+        if markdown && added.trim_start().starts_with("```") {
+            fenced = !fenced;
+            continue;
+        }
+        let prose: Vec<String> = if markdown && !fenced {
+            vec![strip_code(added)]
+        } else if rust {
+            string_literals(added)
+        } else {
+            Vec::new()
+        };
+        for text in &prose {
+            for word in text.split_whitespace() {
+                let word = word.trim_matches(|c: char| !c.is_alphanumeric() && c != '/');
+                let halves: Vec<&str> = word.split('/').collect();
+                if halves.len() >= 2
+                    && halves
+                        .iter()
+                        .all(|h| h.len() >= 2 && h.chars().all(char::is_alphabetic))
+                {
+                    problems.push(format!(
+                        "{file}: \"{word}\" uses a slash for \"or\"; write the words out"
+                    ));
+                }
+            }
+        }
+        if markdown && !fenced {
+            let trimmed = added.trim_end();
+            let before = trimmed.chars().rev().nth(1);
+            if trimmed.ends_with('-') && before.is_some_and(char::is_alphabetic) {
+                problems.push(format!(
+                    "{file}: a line ends in \"{}\", which breaks a hyphenated word across lines; Markdown renders it with a space",
+                    trimmed.split_whitespace().last().unwrap_or_default()
+                ));
+            }
+        }
+        if rust {
+            for literal in string_literals(added) {
+                if literal.chars().count() > UI_LINE_MAX {
+                    problems.push(format!(
+                        "{file}: a {}-character string is longer than a {UI_LINE_MAX}-column terminal line: \"{}…\"",
+                        literal.chars().count(),
+                        literal.chars().take(40).collect::<String>()
+                    ));
+                }
+            }
+        }
+    }
+    problems.dedup();
+    problems
+}
+
+/// `line` without its inline code spans and link targets.
+fn strip_code(line: &str) -> String {
+    let mut out = String::new();
+    // Odd pieces between backticks are code.
+    for (i, part) in line.split('`').enumerate() {
+        if i % 2 == 0 {
+            out.push_str(part);
+            out.push(' ');
+        }
+    }
+    // A link target or bare URL is a path, not prose.
+    out.split_whitespace()
+        .filter(|word| !word.contains("://") && !word.contains("]("))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// The contents of the double-quoted string literals on one Rust line.
+fn string_literals(line: &str) -> Vec<String> {
+    let mut found = Vec::new();
+    let mut current: Option<String> = None;
+    let mut escaped = false;
+    for c in line.chars() {
+        match &mut current {
+            Some(text) => {
+                if escaped {
+                    text.push(c);
+                    escaped = false;
+                } else if c == '\\' {
+                    escaped = true;
+                } else if c == '"' {
+                    found.push(current.take().unwrap_or_default());
+                } else {
+                    text.push(c);
+                }
+            }
+            None if c == '"' => current = Some(String::new()),
+            None => {}
+        }
+    }
+    found
 }
 
 /// The Rust functions and constants whose bodies or definitions the
@@ -799,6 +933,29 @@ mod tests {
         assert!(text.contains("# Review the change for issue #7"), "{text}");
         assert!(text.contains("src/app.rs:5 uses `lines`"), "{text}");
         assert!(text.contains("1 + cursor"), "{text}");
+    }
+
+    #[test]
+    fn style_problems_find_slashes_broken_hyphens_and_long_strings() {
+        let long = "x ".repeat(60);
+        let diff = format!(
+            "+++ b/docs/a.md\n+Grades are pass/fail, see `a/b` and https://x.io/a/b.\n+a hidden-from-the-\n+- a list item\n+++ b/src/v.rs\n+    lines.push(\"{long}\".into());\n+    let path = \"src/main.rs\";\n"
+        );
+        let problems = style_problems(&diff);
+        assert_eq!(problems.len(), 3, "{problems:#?}");
+        assert!(problems[0].contains("\"pass/fail\""));
+        assert!(problems[1].contains("hidden-from-the-"));
+        assert!(problems[2].contains("120-character string"));
+    }
+
+    #[test]
+    fn parts_cut_a_requirement_into_its_clauses() {
+        let got = crate::micro::parts(
+            "- R1 (deliverable): A short explanation, in the docs and in the Gym's view, of what they are, how long they take, what they cost, and how they relate to TB4: a fast screen.",
+        );
+        assert!(got.contains(&"how long they take".to_string()), "{got:?}");
+        assert!(got.contains(&"what they cost".to_string()), "{got:?}");
+        assert!(got.contains(&"in the Gym's view".to_string()), "{got:?}");
     }
 
     #[test]

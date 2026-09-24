@@ -109,8 +109,10 @@ you finish. When the issue names something the program shows, such as a \
 view, a screen, or a command's output, change the code that draws it and \
 its tests: a document that describes it is not it. An earlier session's \
 summary is its claim, not a fact: check it against the files before you \
-rely on it. End with a short summary of what you changed and how you \
-checked it.";
+rely on it. When the issue asks how long something takes or what it \
+costs, give measured figures from the repository, such as its docs and \
+recorded runs, and say where they come from, instead of saying it varies. \
+End with a short summary of what you changed and how you checked it.";
 
 /// What a review session adds to [`ISSUE_DIRECTIONS`].
 pub const REVIEW_DIRECTIONS: &str = "This session reviews the change before \
@@ -710,6 +712,8 @@ pub fn issue_policy() -> crate::micro::Policy {
         max_groups: 5,
         session_sec: 480,
         spend_usd: 1.0,
+        max_attempts: 3,
+        parts_check: true,
         ..microluna_policy(false)
     }
 }
