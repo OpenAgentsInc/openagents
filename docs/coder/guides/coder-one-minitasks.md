@@ -6,6 +6,16 @@ in about a second and with no model or container. Run the same task with
 Claude Code or Codex to see whether a real executor uses what the
 components give it.
 
+Mini-tasks are small, local checks for individual failure families or
+recovery behavior, each judged by its own task grader. They are a fast local
+screen for Coder One—not a Terminal-Bench 4.0 (TB4) benchmark result, and
+their grades do not establish TB4 performance. For a concrete cost or time
+reference, the retained scripted handoff comparison models Opus at about 22
+seconds per task and $0.00244 per episode second ($0.0532 per 22-second
+dispatch); these are modeled rates, not measured real-executor mini-task
+runs. See `bench/terminal-bench/handoff/minitask-patterns.json` for the
+measurement basis.
+
 This is rung 2 and rung 3 of the ladder in
 [Coder as a tunable system](../../optimization/coder-components.md#test-each-component-in-isolation):
 components alone come first, in the
