@@ -131,9 +131,12 @@ impl Tier {
     /// Returns each problem found.
     pub fn validate(&self, field: &str) -> Vec<String> {
         let mut problems = Vec::new();
-        if !matches!(self.agent.as_str(), "claude-code" | "codex" | "scripted") {
+        if !matches!(
+            self.agent.as_str(),
+            "claude-code" | "codex" | "microluna" | "scripted"
+        ) {
             problems.push(format!(
-                "{field}.agent must be claude-code, codex, or scripted, not {}",
+                "{field}.agent must be claude-code, codex, microluna, or scripted, not {}",
                 self.agent
             ));
         }
@@ -180,6 +183,7 @@ impl Tier {
         match self.agent.as_str() {
             "claude-code" => crate::adapter::capabilities(Agent::ClaudeCode).0,
             "codex" => crate::adapter::capabilities(Agent::Codex).0,
+            "microluna" => crate::adapter::capabilities(Agent::Microluna).0,
             _ => Capabilities::all(),
         }
     }
@@ -2114,6 +2118,7 @@ pub fn manifest_candidate(manifest: &crate::policy::Manifest) -> Candidate {
             match executor.agent {
                 crate::policy::AgentName::ClaudeCode => "claude-code",
                 crate::policy::AgentName::Codex => "codex",
+                crate::policy::AgentName::Microluna => "microluna",
             },
             &executor.model,
         ),

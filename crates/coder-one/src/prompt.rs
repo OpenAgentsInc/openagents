@@ -199,7 +199,7 @@ fn list_text(record: &Value) -> String {
 fn reference(agent: Agent) -> Result<Manifest, String> {
     let name = match agent {
         Agent::ClaudeCode => "jevprobe2-opus-lean-low-5m.json",
-        Agent::Codex => "jevprobe3-luna.json",
+        Agent::Codex | Agent::Microluna => "jevprobe3-luna.json",
     };
     let text = REFERENCE
         .iter()

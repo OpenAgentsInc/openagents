@@ -64,6 +64,10 @@ pub fn capabilities(agent: Agent) -> (Capabilities, &'static str) {
             Capabilities::all(),
             "Demonstrated by coder_one::adapter's tests against a stand-in CLI and, with `coder-one capabilities --demonstrate`, against Claude Code 2.1.280 and a local model server: start with --session-id, observe the stream as it arrives, stop with an empty process group, resume with --resume, and steer through --input-format stream-json.",
         ),
+        Agent::Microluna => (
+            Capabilities::start_only(),
+            "Microluna runs in this process: coder_one::micro starts each short session and records its events as they happen, and the host doesn't stop, resume, or steer it; its own bounds end it.",
+        ),
         Agent::Codex => (
             Capabilities {
                 steer: false,
@@ -289,7 +293,7 @@ impl<'a> CliSession<'a> {
     fn format(&self) -> Format {
         match self.cli.agent {
             Agent::ClaudeCode => Format::Claude,
-            Agent::Codex => Format::Codex,
+            Agent::Codex | Agent::Microluna => Format::Codex,
         }
     }
 
@@ -471,7 +475,7 @@ impl Session for CliSession<'_> {
                 self.session_id = Some(id.clone());
                 SessionArg::New(Some(id))
             }
-            (None, Agent::Codex) => SessionArg::New(None),
+            (None, Agent::Codex | Agent::Microluna) => SessionArg::New(None),
         };
         let started = self.launch(session, &briefing.text).await;
         if let Err(error) = &started {
@@ -816,7 +820,7 @@ mod tests {
     fn cli(agent: Agent, dir: &Path, env: &[(&str, &str)]) -> Cli {
         let (name, script) = match agent {
             Agent::ClaudeCode => ("claude", standin::CLAUDE),
-            Agent::Codex => ("codex", standin::CODEX),
+            Agent::Codex | Agent::Microluna => ("codex", standin::CODEX),
         };
         let binary = standin::install(&dir.join("bin"), name, script);
         Cli {

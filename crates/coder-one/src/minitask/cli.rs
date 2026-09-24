@@ -13,7 +13,8 @@ use crate::session::Controls;
 
 /// The mini-task commands' usage.
 pub const USAGE: &str = "usage: coder-one minitask list [--json]
-       coder-one minitask run ID [--executor scripted|claude-code|codex]
+       coder-one minitask run ID [--executor scripted|claude-code|codex|microluna]
+                                 [--microluna single|requirements]
                                  [--script good|bad|FILE] [--model MODEL]
                                  [--jev off|live] [--speed X] [--deadline SECONDS]
                                  [--controls FILE] [--no-checks] [--monitor]
@@ -26,7 +27,11 @@ explore steps, and grades it. The scripted executor (the default) plays the
 task's good or bad script, or a script file, on virtual time unless --speed
 gives real milliseconds per scripted one. claude-code and codex run the real
 CLI inside a coder-boundary filesystem boundary; codex with --model
-gpt-6-luna is the Luna arm. --controls names a JSON file of session
+gpt-6-luna is the Luna arm. microluna runs Microluna in this process on the
+Codex login, with each command inside a coder-boundary boundary: --microluna
+requirements (the default) runs short sessions one requirement group at a
+time, with the checks and a Jev move between them, and --microluna single
+runs one session on the briefing. --controls names a JSON file of session
 controls (deadline_ms, tick_ms, steer, stop_when, resume) for the scripted
 executor. verify.checks observes the workspace before the grader runs
 unless --no-checks is given. --monitor watches the session with
@@ -64,6 +69,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
     let mut repair = None;
     let mut repair_brief = "packet".to_string();
     let mut repair_trigger = "detected".to_string();
+    let mut microluna_mode = "requirements".to_string();
     let mut iter = rest.iter();
     while let Some(arg) = iter.next() {
         let mut value = |name: &str| {
@@ -94,6 +100,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
             "--repair" => repair = Some(value("--repair")?),
             "--repair-brief" => repair_brief = value("--repair-brief")?,
             "--repair-trigger" => repair_trigger = value("--repair-trigger")?,
+            "--microluna" => microluna_mode = value("--microluna")?,
             other if other.starts_with("--") => return Err(format!("unknown option {other}")),
             other => positional.push(other.to_string()),
         }
@@ -134,6 +141,24 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
                         script: custom,
                     }
                 }
+                "microluna" => ExecutorChoice::Microluna {
+                    model: model
+                        .clone()
+                        .unwrap_or_else(|| Agent::Microluna.default_model().to_string()),
+                    policy: crate::micro::Policy {
+                        mode: match microluna_mode.as_str() {
+                            "single" => crate::micro::Mode::Single,
+                            "requirements" => crate::micro::Mode::Requirements,
+                            other => {
+                                return Err(format!(
+                                    "--microluna takes single or requirements, not {other}"
+                                ));
+                            }
+                        },
+                        session_sec: deadline.min(600),
+                        ..crate::micro::Policy::default()
+                    },
+                },
                 word => {
                     let agent = Agent::parse(word)?;
                     ExecutorChoice::Cli {

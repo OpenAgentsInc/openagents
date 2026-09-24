@@ -48,6 +48,12 @@ pub enum ExecutorChoice {
     /// Claude Code or Codex, inside a `coder-boundary` filesystem boundary
     /// that lets it write only the run's directories and its own state.
     Cli { agent: Agent, model: String },
+    /// Microluna in this process, each command inside a `coder-boundary`
+    /// boundary that lets it write only the task's directory.
+    Microluna {
+        model: String,
+        policy: crate::micro::Policy,
+    },
 }
 
 impl ExecutorChoice {
@@ -57,6 +63,9 @@ impl ExecutorChoice {
         match self {
             ExecutorChoice::Scripted { variant, .. } => format!("scripted-{variant}"),
             ExecutorChoice::Cli { agent, model } => format!("{}-{model}", agent.word()),
+            ExecutorChoice::Microluna { model, policy } => {
+                format!("microluna-{}-{model}", policy.mode.word())
+            }
         }
     }
 }
@@ -324,9 +333,14 @@ pub async fn run(options: Options) -> Result<Ran, String> {
             (Some(script), record)
         }
         ExecutorChoice::Cli { .. } => (None, Value::Null),
+        ExecutorChoice::Microluna { policy, .. } => (None, json!({ "microluna": policy })),
     };
     let executor_record = json!({
-        "kind": if script.is_some() { "scripted" } else { "cli" },
+        "kind": match &options.executor {
+            ExecutorChoice::Scripted { .. } => "scripted",
+            ExecutorChoice::Cli { .. } => "cli",
+            ExecutorChoice::Microluna { .. } => "microluna",
+        },
         "label": label,
         "script": script_record,
     });
@@ -421,10 +435,14 @@ pub async fn run(options: Options) -> Result<Ran, String> {
         cap: brief.cap,
         packer: brief.packer,
         pack: brief.pack_params(),
-        isolation: if script.is_some() {
-            "a scratch directory"
-        } else {
-            "coder-boundary: writes confined to the run's directories"
+        isolation: match &options.executor {
+            ExecutorChoice::Scripted { .. } => "a scratch directory",
+            ExecutorChoice::Cli { .. } => {
+                "coder-boundary: writes confined to the run's directories"
+            }
+            ExecutorChoice::Microluna { .. } => {
+                "coder-boundary: each command's writes confined to the task's directory"
+            }
         },
         base: base.as_deref(),
     };
@@ -489,6 +507,34 @@ pub async fn run(options: Options) -> Result<Ran, String> {
             )
             .await;
             let record = executor.cli.control.last.clone().unwrap_or(Value::Null);
+            (ended, delegated, record)
+        }
+        (ExecutorChoice::Microluna { model, policy }, _) => {
+            let mut executor = crate::micro::Micro::new(
+                model,
+                None,
+                options.deadline,
+                &work,
+                &artifacts,
+                recorder.clone(),
+                0,
+                policy.clone(),
+                microluna::Isolation::Boundary,
+            );
+            executor.episode = episode_deadline.clone();
+            executor.subject = Some(crate::checks::Subject::mini(&task));
+            let (ended, delegated) = delegate::explore_then_delegate(
+                &mut state,
+                &plan,
+                &mut judge,
+                &mut generator,
+                &mut shell,
+                &mut executor,
+                &recorder,
+                &mut checkpoint,
+            )
+            .await;
+            let record = executor.last.clone().unwrap_or(Value::Null);
             (ended, delegated, record)
         }
         (ExecutorChoice::Scripted { .. }, None) => unreachable!("a scripted choice has a script"),

@@ -326,6 +326,19 @@ fn keys(requirement: &crate::requirements::Requirement) -> Vec<String> {
     keys.into_iter().collect()
 }
 
+/// Which requirements each item informs, by item ID: by Jev's coverage
+/// judgment when `coverage` holds one, else by the requirement's paths and
+/// constants appearing in the item.
+#[must_use]
+pub fn informed(
+    items: &[Item],
+    map: &RequirementMap,
+    coverage: Option<&Coverage>,
+    params: Params,
+) -> BTreeMap<String, Vec<String>> {
+    informs(items, map, coverage, params)
+}
+
 /// Which requirements each item informs.
 fn informs(
     items: &[Item],

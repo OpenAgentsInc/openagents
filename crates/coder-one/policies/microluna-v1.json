@@ -1,0 +1,78 @@
+{
+  "schema": "openagents.coder-one.policy.v1",
+  "name": "coder-one-microluna-v1",
+  "note": "tunable-luna-pack-solo with Microluna as the executor: GPT-6 Luna in this process on the Codex login, with five native tools and no CLI. The dispatch runs the mini-handoff loop (executor.microluna): the requirement map split into at most four groups, short sessions per group with the context rebuilt from scratch (task first, then the group and only its evidence, then the state), the checks and a Jev move (next, retry, stuck, or done) between sessions, and bounds of 8 sessions, 2 attempts per group, 10 minutes per session, and $0.50 per dispatch. Nothing escalates to Claude Code on Opus 5.5. The deep Jev briefing, the coverage packer, verify.checks, and the one verify.repair are unchanged; the repair runs on Microluna. control.monitor is removed: Microluna's own bounds end its sessions. Written for issue #9585.",
+  "policy": {
+    "jev": {
+      "mode": "deep",
+      "model": "jev-1.13.0",
+      "question_sets": "builtin-v1"
+    },
+    "evidence": {
+      "probes": "v2",
+      "survey_files": 40
+    },
+    "control": {
+      "delegate": "always",
+      "explore_steps": 0,
+      "max_steps": 50,
+      "command_timeout_sec": 300,
+      "lane": "free",
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "horizon": {
+        "first_share": 0.55,
+        "later_share": 0.75,
+        "min_dispatch_sec": 300,
+        "check_share": 0.05,
+        "long_after_sec": 3600,
+        "long_effort": "high",
+        "long_command_sec": 3600
+      }
+    },
+    "brief": {
+      "cap": 12000,
+      "directions": "batch-checked",
+      "packer": "coverage-jev"
+    },
+    "executor": {
+      "agent": "microluna",
+      "version": null,
+      "model": "gpt-6-luna",
+      "effort": null,
+      "tools": null,
+      "prompt_cache_ttl": null,
+      "deadline_sec": 600,
+      "microluna": {
+        "mode": "requirements",
+        "max_sessions": 8,
+        "max_attempts": 2,
+        "max_groups": 4,
+        "session_turns": 30,
+        "session_sec": 600,
+        "spend_usd": 0.5,
+        "evidence_chars": 14000,
+        "checks": true
+      }
+    },
+    "verify": {
+      "checks": true,
+      "support": false,
+      "repair": {
+        "brief": "packet",
+        "trigger": "detected"
+      }
+    }
+  },
+  "protected": {
+    "isolation": "task-container",
+    "effect_policy": "executor-bypasses-its-own-sandbox",
+    "acceptance": "task-verifier",
+    "ceilings": {
+      "episode_deadline_sec": null,
+      "reserve_sec": 30,
+      "spend_soft_usd": null,
+      "spend_hard_usd": null
+    }
+  }
+}

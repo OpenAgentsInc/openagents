@@ -397,6 +397,9 @@ fn capture_in(plan: &Plan, scratch: &Path) -> Result<Capture, String> {
     let server = Server::start()?;
     let binary = match plan.agent {
         Agent::ClaudeCode => plan.binary.clone(),
+        Agent::Microluna => {
+            return Err("Microluna runs in this process and has no CLI to capture".to_string());
+        }
         Agent::Codex => codex_wrapper(
             scratch,
             &plan.binary,
@@ -415,7 +418,7 @@ fn capture_in(plan: &Plan, scratch: &Path) -> Result<Capture, String> {
         env: Vec::new(),
         credential: match plan.agent {
             Agent::ClaudeCode => Credential::OauthToken,
-            Agent::Codex => Credential::OpenAiKey,
+            Agent::Codex | Agent::Microluna => Credential::OpenAiKey,
         },
         effort: plan.effort.clone(),
         tools: plan.tools.clone(),
@@ -544,7 +547,7 @@ fn capture_in(plan: &Plan, scratch: &Path) -> Result<Capture, String> {
             json!(match plan.agent {
                 Agent::ClaudeCode => Value::Null,
                 Agent::Codex if plan.codex_catalog.is_some() => json!("codex models cache"),
-                Agent::Codex => json!("fallback metadata"),
+                Agent::Codex | Agent::Microluna => json!("fallback metadata"),
             }),
         );
         map.insert(
@@ -563,7 +566,9 @@ fn capture_in(plan: &Plan, scratch: &Path) -> Result<Capture, String> {
 fn model_path(agent: Agent, path: &str) -> bool {
     match agent {
         Agent::ClaudeCode => path.starts_with("/v1/messages") && !path.contains("count_tokens"),
-        Agent::Codex => path.ends_with("/responses") || path.contains("/responses?"),
+        Agent::Codex | Agent::Microluna => {
+            path.ends_with("/responses") || path.contains("/responses?")
+        }
     }
 }
 
@@ -749,7 +754,7 @@ pub fn measure(agent: Agent, body: &Value, variant: Option<&Variant>) -> Value {
                 }
             }
         }
-        Agent::Codex => {
+        Agent::Codex | Agent::Microluna => {
             if let Some(instructions) = body.get("instructions").and_then(Value::as_str) {
                 parts.push(json!({ "part": "instructions", "chars": chars(instructions), "cache": Value::Null }));
             }

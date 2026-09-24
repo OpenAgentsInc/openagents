@@ -236,6 +236,9 @@ async fn demonstrate_in(agent: Agent, binary: &Path, scratch: &Path) -> Result<V
         .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string());
     let binary = match agent {
         Agent::ClaudeCode => binary.to_path_buf(),
+        Agent::Microluna => {
+            return Err("Microluna runs in this process and has no CLI to demonstrate".to_string());
+        }
         Agent::Codex => {
             let catalog = scratch.join("catalog.json");
             let cache = std::env::var_os("HOME")
@@ -258,7 +261,7 @@ async fn demonstrate_in(agent: Agent, binary: &Path, scratch: &Path) -> Result<V
         env: Vec::new(),
         credential: match agent {
             Agent::ClaudeCode => Credential::OauthToken,
-            Agent::Codex => Credential::OpenAiKey,
+            Agent::Codex | Agent::Microluna => Credential::OpenAiKey,
         },
         effort: None,
         tools: None,

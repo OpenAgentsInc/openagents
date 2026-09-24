@@ -927,6 +927,7 @@ pub fn decide_with_families(
 pub enum Exec {
     Cli(Box<Cli>),
     Scripted(Box<Scripted>),
+    Micro(Box<crate::micro::Micro>),
 }
 
 impl Exec {
@@ -936,6 +937,7 @@ impl Exec {
         match self {
             Exec::Cli(cli) => cli.control.last.clone().unwrap_or(Value::Null),
             Exec::Scripted(scripted) => scripted.last.clone().unwrap_or(Value::Null),
+            Exec::Micro(micro) => micro.last.clone().unwrap_or(Value::Null),
         }
     }
 
@@ -944,6 +946,8 @@ impl Exec {
         match self {
             Exec::Cli(cli) => cli.control.monitor = monitor,
             Exec::Scripted(scripted) => scripted.monitor = monitor,
+            // Microluna's own bounds end its sessions; nothing watches them.
+            Exec::Micro(_) => {}
         }
     }
 
@@ -953,6 +957,7 @@ impl Exec {
         match self {
             Exec::Cli(cli) => cli.runs,
             Exec::Scripted(scripted) => scripted.runs,
+            Exec::Micro(micro) => micro.runs,
         }
     }
 }
@@ -962,48 +967,63 @@ impl Executor for Exec {
         match self {
             Exec::Cli(cli) => cli.agent(),
             Exec::Scripted(scripted) => scripted.agent(),
+            Exec::Micro(micro) => micro.agent(),
         }
     }
     fn cost_provenance(&self) -> &'static str {
         match self {
             Exec::Cli(cli) => cli.cost_provenance(),
             Exec::Scripted(scripted) => scripted.cost_provenance(),
+            Exec::Micro(micro) => micro.cost_provenance(),
         }
     }
     fn model(&self) -> &str {
         match self {
             Exec::Cli(cli) => cli.model(),
             Exec::Scripted(scripted) => scripted.model(),
+            Exec::Micro(micro) => micro.model(),
         }
     }
     fn deadline(&self) -> Duration {
         match self {
             Exec::Cli(cli) => cli.deadline(),
             Exec::Scripted(scripted) => scripted.deadline(),
+            Exec::Micro(micro) => micro.deadline(),
         }
     }
     fn describe(&self) -> Map<String, Value> {
         match self {
             Exec::Cli(cli) => cli.describe(),
             Exec::Scripted(scripted) => scripted.describe(),
+            Exec::Micro(micro) => micro.describe(),
         }
     }
     async fn execute(&mut self, briefing: &Briefing) -> Report {
         match self {
             Exec::Cli(cli) => cli.execute(briefing).await,
             Exec::Scripted(scripted) => scripted.execute(briefing).await,
+            Exec::Micro(micro) => micro.execute(briefing).await,
         }
     }
     fn system_options(&self) -> Vec<String> {
         match self {
             Exec::Cli(cli) => cli.system_options(),
             Exec::Scripted(scripted) => scripted.system_options(),
+            Exec::Micro(micro) => micro.system_options(),
         }
     }
     fn select_system(&mut self, answers: Vec<(String, Option<f64>)>) {
         match self {
             Exec::Cli(cli) => cli.select_system(answers),
             Exec::Scripted(scripted) => scripted.select_system(answers),
+            Exec::Micro(micro) => micro.select_system(answers),
+        }
+    }
+    fn take_evidence(&mut self, prepared: &crate::delegate::Prepared) {
+        match self {
+            Exec::Cli(cli) => cli.take_evidence(prepared),
+            Exec::Scripted(scripted) => scripted.take_evidence(prepared),
+            Exec::Micro(micro) => micro.take_evidence(prepared),
         }
     }
 }
@@ -2595,6 +2615,7 @@ async fn plan_first<F: Factory>(
             match &mut exec {
                 Exec::Cli(cli) => cli.workdir.clone_from(&scratch),
                 Exec::Scripted(scripted) => scripted.workdir.clone_from(&scratch),
+                Exec::Micro(micro) => micro.workdir.clone_from(&scratch),
             }
             exec
         });

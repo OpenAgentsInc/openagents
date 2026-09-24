@@ -48,6 +48,9 @@ pub enum Agent {
     ClaudeCode,
     /// Codex CLI, `codex exec`.
     Codex,
+    /// Microluna, in this process: short GPT-6 Luna sessions on the Codex
+    /// login, with no CLI ([`crate::micro`]).
+    Microluna,
 }
 
 impl Agent {
@@ -56,8 +59,9 @@ impl Agent {
         match text.trim() {
             "claude-code" | "claude" | "" => Ok(Agent::ClaudeCode),
             "codex" => Ok(Agent::Codex),
+            "microluna" => Ok(Agent::Microluna),
             other => Err(format!(
-                "delegate agent must be claude-code or codex, not {other}"
+                "delegate agent must be claude-code, codex, or microluna, not {other}"
             )),
         }
     }
@@ -68,6 +72,7 @@ impl Agent {
         match self {
             Agent::ClaudeCode => "claude-code",
             Agent::Codex => "codex",
+            Agent::Microluna => "microluna",
         }
     }
 
@@ -76,15 +81,17 @@ impl Agent {
     pub fn default_model(self) -> &'static str {
         match self {
             Agent::ClaudeCode => DEFAULT_MODEL,
-            Agent::Codex => DEFAULT_CODEX_MODEL,
+            Agent::Codex | Agent::Microluna => DEFAULT_CODEX_MODEL,
         }
     }
 
-    /// The binary's name on `PATH`.
+    /// The binary's name on `PATH`. Microluna runs in this process, so its
+    /// name finds nothing to spawn.
     pub fn program(self) -> &'static str {
         match self {
             Agent::ClaudeCode => "claude",
             Agent::Codex => "codex",
+            Agent::Microluna => "microluna",
         }
     }
 
@@ -94,7 +101,15 @@ impl Agent {
         match self {
             Agent::ClaudeCode => "CODER_ONE_CLAUDE_BIN",
             Agent::Codex => "CODER_ONE_CODEX_BIN",
+            Agent::Microluna => "CODER_ONE_MICROLUNA_BIN",
         }
+    }
+
+    /// Whether the agent is a CLI child process rather than an executor in
+    /// this process.
+    #[must_use]
+    pub fn is_cli(self) -> bool {
+        self != Agent::Microluna
     }
 }
 
@@ -965,7 +980,7 @@ impl SummaryReader {
     pub fn of(agent: Agent, model: &str) -> Self {
         match agent {
             Agent::ClaudeCode => Self::claude(),
-            Agent::Codex => Self::codex(model),
+            Agent::Codex | Agent::Microluna => Self::codex(model),
         }
     }
 
@@ -1373,7 +1388,16 @@ pub fn resolve(
             &env,
             codex_auth_file(&env).is_some_and(|path| path.is_file()),
         ),
+        // Microluna reads only the Codex login's file, never an API key.
+        Agent::Microluna => {
+            if codex_auth_file(&env).is_some_and(|path| path.is_file()) {
+                Credential::CodexAuthFile
+            } else {
+                Credential::Missing
+            }
+        }
     };
+    let found = if agent.is_cli() { found } else { None };
     (found, credential)
 }
 
@@ -1470,6 +1494,29 @@ impl Report {
     }
 }
 
+/// What a briefing was packed from, for an executor that rebuilds its own
+/// context per session instead of reading one briefing: the requirement
+/// map, every evidence item, which requirements each item informs, and
+/// the Jev the host asks.
+#[derive(Clone)]
+pub struct Prepared {
+    /// The task's own words.
+    pub instruction: String,
+    /// The task's title, for Jev's state.
+    pub title: String,
+    /// The briefing's closing directions.
+    pub directions: String,
+    pub requirements: crate::requirements::RequirementMap,
+    /// Every evidence item, whole, in input order.
+    pub items: Vec<crate::pack::Item>,
+    /// For each item ID, the requirement IDs it informs.
+    pub informs: BTreeMap<String, Vec<String>>,
+    /// How the host asks Jev.
+    pub jev: crate::component::jev::JevMode,
+    /// The episode deadline Jev requests are bounded by.
+    pub deadline: Option<crate::deadline::Deadline>,
+}
+
 /// Who runs a briefing. The real one is [`Cli`]; tests use a fake.
 pub trait Executor {
     /// The agent's name in the record, such as `claude-code`.
@@ -1492,6 +1539,9 @@ pub trait Executor {
     }
     /// Takes Jev's answers for the optional sections.
     fn select_system(&mut self, _answers: Vec<(String, Option<f64>)>) {}
+    /// Takes what the briefing was packed from, just before the dispatch.
+    /// A CLI reads only the briefing, so the default ignores it.
+    fn take_evidence(&mut self, _prepared: &Prepared) {}
 }
 
 /// A delegate CLI, Claude Code in print mode or `codex exec`, run through
@@ -1604,11 +1654,11 @@ impl Cli {
         match (self.agent, variant.policy.mode) {
             (Agent::ClaudeCode, SystemMode::Replace) => (path, String::new()),
             (Agent::ClaudeCode, SystemMode::Append) => (String::new(), path),
-            (Agent::Codex, SystemMode::Replace) => (
+            (Agent::Codex | Agent::Microluna, SystemMode::Replace) => (
                 format!("model_instructions_file={}", toml(&path)),
                 String::new(),
             ),
-            (Agent::Codex, SystemMode::Append) => (
+            (Agent::Codex | Agent::Microluna, SystemMode::Append) => (
                 String::new(),
                 format!("developer_instructions={}", toml(&variant.text())),
             ),
@@ -1632,7 +1682,7 @@ impl Cli {
             }
             // The task container or the fresh clone is the boundary, so
             // Codex runs without its own sandbox or approval prompts.
-            Agent::Codex => {
+            Agent::Codex | Agent::Microluna => {
                 "exec \"$0\" exec --json --skip-git-repo-check -m \"$1\" \
                  ${5:+-c \"model_reasoning_effort=$5\"} ${6:+-c \"$6\"} ${7:+-c \"$7\"} \
                  --dangerously-bypass-approvals-and-sandbox - < \"$2\" > \"$3\""
@@ -1741,7 +1791,7 @@ impl Cli {
                     args.extend(["--append-system-prompt-file".to_string(), append]);
                 }
             }
-            Agent::Codex => {
+            Agent::Codex | Agent::Microluna => {
                 args.push("exec".to_string());
                 if let SessionArg::Resume(id) = &launch.session {
                     args.extend(["resume".to_string(), id.clone()]);
@@ -1809,7 +1859,7 @@ impl Executor for Cli {
     fn cost_provenance(&self) -> &'static str {
         match self.agent {
             Agent::ClaudeCode => self.credential.cost_provenance(),
-            Agent::Codex => "price_estimate",
+            Agent::Codex | Agent::Microluna => "price_estimate",
         }
     }
 
@@ -2438,6 +2488,7 @@ where
         .named("briefing")
         .reading(&serde_json::to_value(&inputs).unwrap_or(Value::Null)),
     );
+    let mut informs = None;
     let (briefing, pack_record) = if coverage_packer {
         let whole = crate::pack::whole(state, &inputs);
         let map = judge.jev().requirements.clone();
@@ -2457,6 +2508,10 @@ where
             None
         };
         let packed = crate::pack::pack(&whole, &map, coverage.as_ref(), params);
+        informs = Some((
+            crate::pack::items(&whole),
+            crate::pack::informed(&crate::pack::items(&whole), &map, coverage.as_ref(), params),
+        ));
         let record = json!({
             "record": packed.record,
             "coverage": coverage,
@@ -2480,6 +2535,23 @@ where
             plan.cap
         );
     }
+    // An executor that rebuilds its own context per session reads what the
+    // briefing was packed from, not only the briefing.
+    let (items, informed) = informs.unwrap_or_else(|| {
+        let items = crate::pack::items(&inputs);
+        let informed = crate::pack::informed(&items, &judge.jev().requirements, None, params);
+        (items, informed)
+    });
+    executor.take_evidence(&Prepared {
+        instruction: plan.instruction.to_string(),
+        title: state.issue.title.clone(),
+        directions: plan.directions.to_string(),
+        requirements: judge.jev().requirements.clone(),
+        items,
+        informs: informed,
+        jev: judge.jev().jev_mode(),
+        deadline: Some(judge.jev().episode_deadline()),
+    });
     // `exec.system`: Jev picks the optional prompt sections the task needs
     // before the executor starts.
     let options = executor.system_options();

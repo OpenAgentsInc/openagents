@@ -451,7 +451,7 @@ impl DelegateDoor {
     ) -> Self {
         let resolved = model.clone().unwrap_or_else(|| match target.agent {
             Cli::ClaudeCode => terminal::policy().policy.executor.model,
-            Cli::Codex => target.agent.default_model().to_string(),
+            Cli::Codex | Cli::Microluna => target.agent.default_model().to_string(),
         });
         DelegateDoor {
             label: format!("{}/{resolved}", target.agent.word()),

@@ -377,6 +377,11 @@ pub struct ExecutorPolicy {
     /// the manifest's digest is what it was before this field existed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub session: Option<SessionPolicy>,
+    /// Microluna's loop and bounds (`exec.microluna`), for the `microluna`
+    /// agent only. Absent, a Microluna executor runs the default loop, and
+    /// the manifest's digest is what it was before this field existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub microluna: Option<crate::micro::Policy>,
 }
 
 /// What a policy asks of a running executor session. Each rule needs a
@@ -429,6 +434,7 @@ impl SessionPolicy {
 pub enum AgentName {
     ClaudeCode,
     Codex,
+    Microluna,
 }
 
 impl AgentName {
@@ -437,6 +443,7 @@ impl AgentName {
         match self {
             AgentName::ClaudeCode => Agent::ClaudeCode,
             AgentName::Codex => Agent::Codex,
+            AgentName::Microluna => Agent::Microluna,
         }
     }
 
@@ -444,6 +451,7 @@ impl AgentName {
         match agent {
             Agent::ClaudeCode => AgentName::ClaudeCode,
             Agent::Codex => AgentName::Codex,
+            Agent::Microluna => AgentName::Microluna,
         }
     }
 }
@@ -551,6 +559,7 @@ impl Manifest {
                     deadline_sec: 600,
                     system: None,
                     session: None,
+                    microluna: None,
                 },
                 verify: None,
             },
@@ -658,7 +667,33 @@ impl Manifest {
                 "executor.effort must be one lowercase word, not {effort:?}"
             ));
         }
-        if executor.agent == AgentName::Codex {
+        if executor.agent == AgentName::Microluna {
+            if executor.version.is_some() {
+                problems.push(
+                    "executor.version pins a CLI; Microluna runs in this process, so it takes none"
+                        .to_string(),
+                );
+            }
+            if executor.system.is_some() {
+                problems.push(
+                    "executor.system applies to claude-code and codex; Microluna sends its own instructions"
+                        .to_string(),
+                );
+            }
+            if executor.session.is_some() {
+                problems.push(
+                    "executor.session needs stop, resume, or steer, which Microluna doesn't offer"
+                        .to_string(),
+                );
+            }
+        }
+        if let Some(micro) = &executor.microluna {
+            if executor.agent != AgentName::Microluna {
+                problems.push("executor.microluna applies only to the microluna agent".to_string());
+            }
+            problems.extend(micro.validate());
+        }
+        if executor.agent != AgentName::ClaudeCode {
             if executor.tools.is_some() {
                 problems.push("executor.tools applies only to claude-code".to_string());
             }
@@ -700,6 +735,7 @@ impl Manifest {
                 match executor.agent {
                     AgentName::ClaudeCode => "claude-code",
                     AgentName::Codex => "codex",
+                    AgentName::Microluna => "microluna",
                 },
                 &executor.model,
             );
@@ -1407,6 +1443,10 @@ pub const REFERENCE: &[(&str, &str)] = &[
     (
         "tunable-luna-pack-solo.json",
         include_str!("../policies/tunable-luna-pack-solo.json"),
+    ),
+    (
+        "microluna-v1.json",
+        include_str!("../policies/microluna-v1.json"),
     ),
 ];
 

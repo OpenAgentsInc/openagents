@@ -212,6 +212,10 @@ pub async fn doctor(contract: &str) -> Result<(), String> {
                 continue;
             }
             seen.push(agent);
+            if agent == Agent::Microluna {
+                problems.extend(crate::micro::check_login());
+                continue;
+            }
             let env = |name: &str| {
                 std::env::var(name)
                     .ok()
@@ -246,6 +250,9 @@ const CLAUDE_MIN: (u64, u64, u64) = (2, 1, 280);
 /// Checks that the delegate's `--version` runs, that Claude Code is new
 /// enough, and that a credential is present, without any inference.
 async fn check_delegate(settings: &Settings) -> Vec<String> {
+    if settings.policy().policy.executor.agent == crate::policy::AgentName::Microluna {
+        return crate::micro::check_login();
+    }
     check_cli(
         settings.policy().policy.executor.agent.agent(),
         settings.delegate_bin.as_deref(),
@@ -281,7 +288,7 @@ async fn check_cli(
             // `codex-cli 0.155.1` names the program first; Claude Code
             // prints the version first.
             let version_text = match agent {
-                Agent::Codex => text
+                Agent::Codex | Agent::Microluna => text
                     .split_whitespace()
                     .skip(1)
                     .collect::<Vec<_>>()
@@ -597,6 +604,7 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
                 episode: deadline.clone(),
                 system: policy.policy.executor.system.clone(),
                 session: policy.policy.executor.session.clone(),
+                microluna: policy.policy.executor.microluna.clone(),
                 soft: policy.protected.ceilings.spend_soft_usd,
                 command_env: match horizon.long_command_sec {
                     Some(seconds) if horizon.long(total) => vec![(
@@ -633,6 +641,32 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
             .await?;
             composition = Some(composed.record);
             (composed.ended, composed.delegated)
+        } else if policy.policy.executor.agent == crate::policy::AgentName::Microluna {
+            let executor_policy = &policy.policy.executor;
+            let mut micro = crate::micro::Micro::new(
+                &executor_policy.model,
+                executor_policy.effort.clone(),
+                Duration::from_secs(executor_policy.deadline_sec),
+                &workdir,
+                &args.output_dir.join("artifacts"),
+                recorder.clone(),
+                0,
+                executor_policy.microluna.clone().unwrap_or_default(),
+                // The task container is the boundary, as it is for the CLIs.
+                microluna::Isolation::TaskContainer,
+            );
+            micro.episode = deadline.clone();
+            delegate::explore_then_delegate(
+                &mut state,
+                &plan,
+                &mut judge,
+                &mut door,
+                &mut shell,
+                &mut micro,
+                &recorder,
+                &mut checkpoint,
+            )
+            .await
         } else {
             delegate::explore_then_delegate(
                 &mut state,
@@ -743,6 +777,7 @@ struct CliFactory {
     episode: Deadline,
     system: Option<crate::system::Policy>,
     session: Option<crate::policy::SessionPolicy>,
+    microluna: Option<crate::micro::Policy>,
     soft: Option<f64>,
     /// Variables a long task sets for Claude Code, such as its shell
     /// command cap.
@@ -757,6 +792,22 @@ impl crate::compose::Factory for CliFactory {
         runs: u32,
     ) -> Result<crate::compose::Exec, String> {
         let agent = Agent::parse(&tier.agent)?;
+        if agent == Agent::Microluna {
+            let mut micro = crate::micro::Micro::new(
+                &tier.model,
+                tier.effort.clone(),
+                deadline,
+                &self.workdir,
+                &self.artifacts,
+                self.recorder.clone(),
+                runs,
+                self.microluna.clone().unwrap_or_default(),
+                // The task container is the boundary, as it is for the CLIs.
+                microluna::Isolation::TaskContainer,
+            );
+            micro.episode = self.episode.clone();
+            return Ok(crate::compose::Exec::Micro(Box::new(micro)));
+        }
         let env = |name: &str| {
             std::env::var(name)
                 .ok()

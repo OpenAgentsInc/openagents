@@ -385,7 +385,7 @@ const fn default(
 pub fn defaults(agent: Agent) -> &'static [Section] {
     match agent {
         Agent::ClaudeCode => CLAUDE_CODE_DEFAULT,
-        Agent::Codex => CODEX_DEFAULT,
+        Agent::Codex | Agent::Microluna => CODEX_DEFAULT,
     }
 }
 
@@ -406,7 +406,7 @@ pub fn default_is_protected(agent: Agent) -> bool {
 pub fn default_label(agent: Agent) -> String {
     match agent {
         Agent::ClaudeCode => format!("claude-code {CLAUDE_CODE_VERSION}"),
-        Agent::Codex => format!("codex {CODEX_VERSION} ({CODEX_MODEL})"),
+        Agent::Codex | Agent::Microluna => format!("codex {CODEX_VERSION} ({CODEX_MODEL})"),
     }
 }
 
@@ -445,8 +445,8 @@ impl Mode {
         match (agent, self) {
             (Agent::ClaudeCode, Mode::Replace) => "--system-prompt-file",
             (Agent::ClaudeCode, Mode::Append) => "--append-system-prompt-file",
-            (Agent::Codex, Mode::Replace) => "model_instructions_file",
-            (Agent::Codex, Mode::Append) => "developer_instructions",
+            (Agent::Codex | Agent::Microluna, Mode::Replace) => "model_instructions_file",
+            (Agent::Codex | Agent::Microluna, Mode::Append) => "developer_instructions",
         }
     }
 }
@@ -493,6 +493,14 @@ impl Policy {
     /// Returns each problem found.
     pub fn validate(&self, agent: Agent) -> Vec<String> {
         let mut problems = Vec::new();
+        if agent == Agent::Microluna {
+            problems.push(
+                "executor.system applies to claude-code and codex; Microluna sends its own \
+                 instructions"
+                    .to_string(),
+            );
+            return problems;
+        }
         if self.sections.is_empty() {
             problems.push("executor.system.sections must name at least one section".to_string());
         }

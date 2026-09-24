@@ -37,6 +37,7 @@ pub mod generate;
 pub mod handoff;
 pub mod judge;
 pub mod limit;
+pub mod micro;
 pub mod minitask;
 pub mod monitor;
 pub mod ops;
