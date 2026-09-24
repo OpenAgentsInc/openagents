@@ -6,6 +6,16 @@ in about a second and with no model or container. Run the same task with
 Claude Code or Codex to see whether a real executor uses what the
 components give it.
 
+Mini-tasks are tiny, locally graded practice screens for specific behavior,
+not Terminal-Bench 4.0 (TB4) tasks or benchmark results. Their grader runs
+after the episode and decides pass/fail from the task's expected state. A
+scripted run takes about a second and costs nothing in model usage; model-backed
+runs take longer and incur the executor's ordinary model cost (for example,
+the guide's Opus measurements are about 22 seconds per task). Passing these
+screens is useful evidence that a component or executor handles that case,
+but says nothing conclusive about TB4 performance: run TB4 to make a benchmark
+claim.
+
 This is rung 2 and rung 3 of the ladder in
 [Coder as a tunable system](../../optimization/coder-components.md#test-each-component-in-isolation):
 components alone come first, in the

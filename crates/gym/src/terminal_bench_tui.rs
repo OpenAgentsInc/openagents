@@ -1375,6 +1375,8 @@ mod tests {
         app.open(View::MiniTasks);
         let text = app.to_text(150, 40);
         assert!(text.contains("mini-task runs"), "{text}");
+        assert!(text.contains("quick local screen only"), "{text}");
+        assert!(text.contains("no model cost"), "{text}");
         assert!(text.contains("log-severity"), "{text}");
         assert!(text.contains("Grade: failed"), "{text}");
         assert!(text.contains("Episode timeline"), "{text}");
