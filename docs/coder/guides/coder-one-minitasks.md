@@ -1,10 +1,14 @@
 # Run Coder One on a mini-task
 
-A mini-task is a small local task with its own grader. Run an episode on
-one with the scripted executor to test how Coder One's components compose,
-in about a second and with no model or container. Run the same task with
-Claude Code or Codex to see whether a real executor uses what the
-components give it.
+A Coder One mini-task is a small, local coding episode targeting one failure
+family, with a separate grader that checks the result after the episode (the
+agent cannot see the grader). The scripted executor takes about a second and
+uses no model or container; measured real-executor runs are about 22 seconds
+for Opus. Costs are not fixed: the retained-run model for these arms is
+$0.000064/sec for Luna, $0.00244/sec for Opus, and $0.00196/sec for Haiku.
+These are a fast local screen of components and policies, not a Terminal-Bench
+4.0 result. TB4 uses a curated benchmark task suite and its own harness; only
+a TB4 attempt supports a benchmark claim.
 
 This is rung 2 and rung 3 of the ladder in
 [Coder as a tunable system](../../optimization/coder-components.md#test-each-component-in-isolation):
