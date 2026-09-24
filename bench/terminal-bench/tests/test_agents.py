@@ -57,6 +57,7 @@ def test_known_arms(agents):
         "coder-one-microluna-v15",
         "coder-one-microluna-v14",
         "coder-one-microluna-v13",
+        "coder-one-microluna-v13-retained",
         "coder-one-microluna-v12",
         "coder-one-microluna-evidence-v1",
         "coder-one-microluna-v11",
