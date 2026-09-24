@@ -31,6 +31,8 @@
 //! beside them. Each move between sessions is a Jev decision and a
 //! `handoff` step, which the Gym shows as a hand-off.
 
+pub mod parallel;
+
 use std::cell::Cell;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -175,6 +177,35 @@ pub struct Policy {
     /// v6 does: one writer, rewrites on any problem, three rounds.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub suite_writer: Option<SuiteWriter>,
+    /// Start the first edit session in the workspace while `accept.define`
+    /// writes the suite and proves it red on a snapshot of the untouched
+    /// workspace, instead of after the freeze.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub overlap_suite: bool,
+    /// The most edit sessions that run at once in the suite loop. Above 1,
+    /// red tests Jev reads as touching different files run in separate
+    /// copies of the workspace, and code merges their changes back.
+    #[serde(default = "one", skip_serializing_if = "is_one")]
+    pub parallel_edits: u32,
+    /// Ask Jev after each suite-loop session whether the loop is done,
+    /// stuck, or should retry the same tests or move to the others, with
+    /// code keeping the last word; and stop when two runs in a row leave
+    /// the same red tests with the same output.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub handoff_jev: bool,
+    /// Once the suite is green, run the task's own visible tests once as a
+    /// final guard, give one session to a failure it shows, and stop.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub final_guard: bool,
+}
+
+fn one() -> u32 {
+    1
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_one(n: &u32) -> bool {
+    *n == 1
 }
 
 /// `executor.microluna.suite_writer`: how the suite is written, for a
@@ -258,6 +289,10 @@ impl Default for Policy {
             focus_actionable: false,
             suite: false,
             suite_writer: None,
+            overlap_suite: false,
+            parallel_edits: 1,
+            handoff_jev: false,
+            final_guard: false,
         }
     }
 }
@@ -270,6 +305,158 @@ red tests with the command the evidence gives before your first edit and after e
 read their output: each red test names the fact it checks. Use the exact rule, value, and format \
 the task states, not a simpler one. When every test passes, call finish with status done. If a \
 test seems to contradict the task, follow the task and say so in your summary.";
+
+/// What the first edit session is told when it runs while the suite is
+/// written.
+pub const EARLY_GUIDANCE: &str = "An acceptance suite for this task is being written while you \
+work, from a snapshot of the untouched workspace; it isn't ready yet. Make the change the task \
+needs: read the task and its evidence, reproduce the problem, edit, and run the task's own tests \
+or examples to see the change work. Use the exact rule, value, and format the task states, not a \
+simpler one, and prefer the standard definition of any method the task names over what a comment \
+in the code defends. When you're done, call finish with status done and say what you ran. The \
+next session starts from the suite's red tests.";
+
+/// The Jev question that picks the suite loop's move after a round.
+pub const SUITE_MOVE_QUESTION: &str = "Coding sessions work toward making every test in the frozen acceptance suite in `suite` pass for the task in `task`. `sessions` lists the sessions of the last round: what each worked on, how it ended, and what it changed. `suite` shows which tests are still red and what they print. What should the loop do next?";
+
+/// The suite loop's moves, in the order the question lists them.
+pub const SUITE_MOVES: [(&str, &str); 4] = [
+    (
+        "retry",
+        "Another session on the same red tests, starting from the current workspace, is likely to turn more of them green.",
+    ),
+    (
+        "next",
+        "The last sessions stalled on their red tests; a session should work on the other red tests first.",
+    ),
+    (
+        "stuck",
+        "Another session is unlikely to help: the sessions repeat an approach, are blocked by something they can't change, or the red tests contradict the task.",
+    ),
+    (
+        "done",
+        "The work is complete: nothing a session could still change would solve the task more.",
+    ),
+];
+
+/// A fresh directory name under the system's temporary directory, unique
+/// to this process and call: `name-<pid>-<ms>-<n>`.
+fn scratch(name: &str) -> PathBuf {
+    static MADE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    std::env::temp_dir().join(format!(
+        "{name}-{}-{}-{}",
+        std::process::id(),
+        atif::now_ms(),
+        MADE.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ))
+}
+
+/// What the suite loop ran and why it stopped.
+struct Looped {
+    sessions: Vec<Ran>,
+    moves: Vec<Value>,
+    stopped: String,
+    /// The timeline's summary ([`parallel::summary`]).
+    parallel: Value,
+}
+
+/// The writing sessions of a suite as timeline tracks, `from` the
+/// dispatch's start: one per round, or one per part of a round with
+/// several writers at once.
+fn writer_tracks(suite: &crate::accept::AcceptanceSuite, from: u64) -> Vec<parallel::Track> {
+    let track = |written: &crate::accept::Written, batch: String, group: Option<String>| {
+        written.started_at_ms.map(|at| parallel::Track {
+            label: written
+                .name
+                .clone()
+                .unwrap_or_else(|| "accept-writer".to_string()),
+            kind: "writer".to_string(),
+            batch,
+            group,
+            workspace: None,
+            start_ms: at.saturating_sub(from),
+            end_ms: (at + written.milliseconds).saturating_sub(from),
+            turns: written.turns,
+            input_tokens: 0,
+            cached_tokens: 0,
+            read_turns: 0,
+            cost_usd: written.usd,
+        })
+    };
+    let mut out = Vec::new();
+    for round in &suite.rounds {
+        if round.parts.is_empty() {
+            out.extend(track(
+                &round.writer,
+                format!("writer round {}", round.number),
+                None,
+            ));
+        } else {
+            for part in &round.parts {
+                out.extend(track(
+                    &part.writer,
+                    format!("writers round {}", round.number),
+                    Some(part.requirements.join(", ")),
+                ));
+            }
+        }
+    }
+    out
+}
+
+/// How many of the proof's tests fail differently in `now`, when more
+/// than half do: the frozen suite doesn't reproduce its proof.
+fn unreproduced(
+    suite: &crate::accept::AcceptanceSuite,
+    now: &crate::accept::RunResult,
+) -> Option<usize> {
+    let proof = suite.start.as_ref()?;
+    let differ = now
+        .tests
+        .iter()
+        .filter(|test| {
+            proof
+                .tests
+                .iter()
+                .find(|then| then.id == test.id)
+                .is_some_and(|then| then.green != test.green || then.exit != test.exit)
+        })
+        .count();
+    (differ * 2 > now.tests.len().max(1)).then_some(differ)
+}
+
+/// The command that runs the task's own visible tests, when this host
+/// knows how: pytest over the workspace's `test_*.py` files, or a
+/// `package.json` test script. It prints the tail of the output and exits
+/// with the tests' status.
+fn guard_command(workdir: &Path) -> Option<String> {
+    let files = parallel::workspace_files(workdir);
+    let pytest = files.iter().any(|f| {
+        let name = f.rsplit('/').next().unwrap_or(f);
+        (name.starts_with("test_") && name.ends_with(".py")) || name.ends_with("_test.py")
+    });
+    if pytest {
+        return Some(
+            "python3 -c 'import pytest' 2>/dev/null || { echo 'no pytest to run the task tests'; exit 0; }\n\
+             python3 -m pytest -q -x -p no:cacheprovider > \"$ACCEPT_TMP/guard.out\" 2>&1\n\
+             code=$?\n\
+             tail -n 40 \"$ACCEPT_TMP/guard.out\"\n\
+             exit $code"
+                .to_string(),
+        );
+    }
+    let package = std::fs::read_to_string(workdir.join("package.json")).ok()?;
+    let scripts: Value = serde_json::from_str(&package).ok()?;
+    scripts["scripts"]["test"].as_str()?;
+    Some(
+        "command -v npm >/dev/null 2>&1 || { echo 'no npm to run the task tests'; exit 0; }\n\
+         npm test --silent > \"$ACCEPT_TMP/guard.out\" 2>&1\n\
+         code=$?\n\
+         tail -n 40 \"$ACCEPT_TMP/guard.out\"\n\
+         exit $code"
+            .to_string(),
+    )
+}
 
 impl Policy {
     /// The problems with the bounds, for [`crate::policy::Manifest::validate`].
@@ -295,6 +482,21 @@ impl Policy {
             if !self.suite {
                 problems.push("executor.microluna.suite_writer needs suite".to_string());
             }
+        }
+        if !(1..=4).contains(&self.parallel_edits) {
+            problems.push("executor.microluna.parallel_edits must be from 1 to 4".to_string());
+        }
+        if !self.suite
+            && (self.overlap_suite
+                || self.parallel_edits > 1
+                || self.handoff_jev
+                || self.final_guard)
+        {
+            problems.push(
+                "executor.microluna's overlap_suite, parallel_edits, handoff_jev, and final_guard \
+                 need suite"
+                    .to_string(),
+            );
         }
         problems
     }
@@ -460,6 +662,46 @@ struct Ran {
     ran_command: bool,
     /// The session ran read-only, so it was never meant to edit.
     read_only: bool,
+    /// When it started and ended, in milliseconds since the Unix epoch.
+    started_at_ms: u64,
+    ended_at_ms: u64,
+    /// Where it worked, and what on, for the timeline.
+    place: Place,
+    /// Model requests whose every call only read.
+    read_turns: usize,
+}
+
+/// Where a session works and what it runs beside.
+#[derive(Clone, Debug, Default, PartialEq)]
+struct Place {
+    /// The directory it works in; the workspace when `None`.
+    workdir: Option<PathBuf>,
+    /// What it works on, for a person, such as `group 2 of 3: T3, T5`.
+    group: Option<String>,
+    /// The sessions started together with it; its own number's when empty.
+    batch: String,
+    /// The sessions it runs beside.
+    parallel_with: Vec<u32>,
+    /// What else runs beside it that isn't a session, such as
+    /// `accept.define`.
+    alongside: Option<String>,
+}
+
+impl Place {
+    fn parallel(&self) -> bool {
+        !self.parallel_with.is_empty() || self.alongside.is_some()
+    }
+
+    fn record(&self, number: u32, workdir: &Path) -> Value {
+        json!({
+            "session": number,
+            "group": self.group,
+            "batch": if self.batch.is_empty() { format!("session {number}") } else { self.batch.clone() },
+            "parallel_with": self.parallel_with,
+            "alongside": self.alongside,
+            "workspace": self.workdir.as_deref().unwrap_or(workdir).display().to_string(),
+        })
+    }
 }
 
 impl Ran {
@@ -520,7 +762,48 @@ impl Ran {
             "changed_workspace": self.changed_workspace,
             "ran_command": self.ran_command,
             "read_only": self.read_only,
+            "cause": self.finish.as_ref().map(|f| f.cause.word()),
+            "started_at_ms": self.started_at_ms,
+            "ended_at_ms": self.ended_at_ms,
+            "read_turns": self.read_turns,
+            "group": self.place.group,
+            "batch": self.place.batch,
+            "parallel_with": self.place.parallel_with,
+            "alongside": self.place.alongside,
+            "workspace": self.place.workdir,
         })
+    }
+
+    /// The session as a timeline track, `from` the dispatch's start.
+    fn track(&self, from: u64) -> parallel::Track {
+        parallel::Track {
+            label: format!("session {}", self.number),
+            kind: "edit".to_string(),
+            batch: if self.place.batch.is_empty() {
+                format!("session {}", self.number)
+            } else {
+                self.place.batch.clone()
+            },
+            group: self.place.group.clone(),
+            workspace: self.place.workdir.as_ref().map(|p| p.display().to_string()),
+            start_ms: self.started_at_ms.saturating_sub(from),
+            end_ms: self.ended_at_ms.saturating_sub(from),
+            turns: self.turns,
+            input_tokens: self.usage.input,
+            cached_tokens: self.usage.cached,
+            read_turns: self.read_turns,
+            cost_usd: self.cost_usd.unwrap_or(0.0),
+        }
+    }
+
+    fn blocked(&self) -> bool {
+        self.status() == "blocked"
+    }
+
+    fn cause(&self) -> microluna::Cause {
+        self.finish
+            .as_ref()
+            .map_or(microluna::Cause::None, |f| f.cause)
     }
 }
 
@@ -1024,7 +1307,8 @@ fn events_of(step: &Step) -> Vec<EventKind> {
 }
 
 impl Micro {
-    /// Runs one session, recording it; `why` names what it works on.
+    /// Runs one session in the workspace, recording it; `why` names what it
+    /// works on.
     async fn session(
         &self,
         number: u32,
@@ -1033,6 +1317,26 @@ impl Micro {
         brief: &Brief,
         read_only: bool,
     ) -> Ran {
+        self.session_at(number, focus, why, brief, read_only, Place::default())
+            .await
+    }
+
+    /// Runs one session where `place` says, recording it.
+    #[allow(clippy::too_many_lines)]
+    async fn session_at(
+        &self,
+        number: u32,
+        focus: &[String],
+        why: &str,
+        brief: &Brief,
+        read_only: bool,
+        place: Place,
+    ) -> Ran {
+        let started_at_ms = atif::now_ms();
+        let workdir = place
+            .workdir
+            .clone()
+            .unwrap_or_else(|| self.workdir.clone());
         let dispatch = self.dispatch();
         let session_id = format!("microluna-{dispatch}-{number}");
         let text: String = brief
@@ -1042,20 +1346,35 @@ impl Micro {
             .collect::<Vec<_>>()
             .join("\n");
         if self.policy.mode == Mode::Requirements {
-            // A section per session: the Gym shows each as a takeover.
-            self.recorder.push(crate::delegate::with_briefing(
-                Step::said(
-                    Source::System,
-                    &format!(
-                        "Delegating to {AGENT} ({}) because {why}. Briefing: {} characters, sha256 {}.",
-                        self.model,
-                        text.chars().count(),
-                        sha256(&text)
+            // A section per session: the Gym shows each as a takeover, and
+            // its lane says what it worked on and what ran beside it.
+            self.recorder.push(
+                crate::delegate::with_briefing(
+                    Step::said(
+                        Source::System,
+                        &format!(
+                            "Delegating to {AGENT} ({}) because {why}. Briefing: {} characters, sha256 {}.",
+                            self.model,
+                            text.chars().count(),
+                            sha256(&text)
+                        ),
                     ),
+                    &text,
+                )
+                .noting(
+                    parallel::LANE_EXTENSION,
+                    place.record(number, &self.workdir),
                 ),
-                &text,
-            ));
+            );
         }
+        // Concurrent sessions' lines interleave, so each carries its number.
+        let tag = if place.parallel() {
+            format!("[{number}] ")
+        } else {
+            String::new()
+        };
+        let read_turns = Rc::new(Cell::new(0usize));
+        let turn_reads = Rc::new(Cell::new(None::<bool>));
         let invocation = self.recorder.enter(
             Start::new(
                 SESSION_COMPONENT,
@@ -1082,7 +1401,7 @@ impl Micro {
             &session_id,
             &self.model,
             "codex-login",
-            &self.workdir.display().to_string(),
+            &workdir.display().to_string(),
             &crate::episode::version(),
         );
         atif_session.directive = why.to_string();
@@ -1097,7 +1416,7 @@ impl Micro {
         let ran_after_edit = Rc::new(Cell::new(false));
         // Set when any command that isn't a file read runs.
         let ran_command = Rc::new(Cell::new(false));
-        let before = git_signature(&self.workdir);
+        let before = git_signature(&workdir);
         let sink = {
             let recorder = self.recorder.clone();
             let session_id = session_id.clone();
@@ -1108,9 +1427,24 @@ impl Micro {
             let untested_edit = untested_edit.clone();
             let ran_after_edit = ran_after_edit.clone();
             let ran_command = ran_command.clone();
+            let read_turns = read_turns.clone();
+            let turn_reads = turn_reads.clone();
             move |step: &Step| {
                 if step.call.is_some() || step.source == atif::Source::Agent {
-                    crate::say::line(&format!("  {}", microluna::session::line(step)));
+                    crate::say::line(&format!("  {tag}{}", microluna::session::line(step)));
+                }
+                // A reply opens a turn; the turn only read when each of its
+                // calls did.
+                if step.source == atif::Source::Agent && step.call.is_none() {
+                    if turn_reads.get() == Some(true) {
+                        read_turns.set(read_turns.get() + 1);
+                    }
+                    turn_reads.set(None);
+                }
+                if let Some(call) = &step.call {
+                    let reads =
+                        microluna::tools::reads_only(&call.name, &call.arguments.to_string());
+                    turn_reads.set(Some(turn_reads.get().unwrap_or(true) && reads));
                 }
                 for kind in events_of(step) {
                     match &kind {
@@ -1183,7 +1517,7 @@ impl Micro {
             ),
             deadline: Some(Duration::from_secs(self.policy.session_sec).min(left)),
         };
-        let workspace = microluna::Workspace::new(&self.workdir).map(|workspace| {
+        let workspace = microluna::Workspace::new(&workdir).map(|workspace| {
             let workspace = workspace.isolated_by(self.isolation);
             if read_only {
                 workspace.reading_only()
@@ -1207,7 +1541,7 @@ impl Micro {
             (_, Err(error)) => microluna::Report {
                 ending: Ending::Transport(format!(
                     "the workspace {} can't be used: {error}",
-                    self.workdir.display()
+                    workdir.display()
                 )),
                 finish: None,
                 turns: 0,
@@ -1238,10 +1572,13 @@ impl Micro {
             edited: !changed.borrow().is_empty(),
             ran_after_edit: ran_after_edit.get(),
             changed_workspace: !changed.borrow().is_empty()
-                || git_signature(&self.workdir)
-                    .is_some_and(|after| Some(&after) != before.as_ref()),
+                || git_signature(&workdir).is_some_and(|after| Some(&after) != before.as_ref()),
             ran_command: ran_command.get(),
             read_only,
+            started_at_ms,
+            ended_at_ms: atif::now_ms(),
+            place,
+            read_turns: read_turns.get() + usize::from(turn_reads.get() == Some(true)),
         };
         // The dispatch's exec.session carries the sessions' cost, as it
         // does for a CLI; each session states its own share in its summary,
@@ -1264,14 +1601,23 @@ impl Micro {
                     _ => "price_estimate",
                 },
                 "trace": ran.trace,
+                "read_turns": ran.read_turns,
+                "cause": ran.finish.as_ref().map(|f| f.cause.word()),
+                "group": ran.place.group,
+                "parallel_with": ran.place.parallel_with,
             })),
         );
         crate::say::line(&format!(
-            "  microluna ▸ session {number} ({}) {} in {:.1}s · {} turns · {} calls · in {} (cached {}) out {} · ${:.5}",
+            "  microluna ▸ session {number} ({}) {}{} in {:.1}s · {} turns ({} read-only) · {} calls · in {} (cached {}) out {} · ${:.5}",
             focus.join(", "),
             ran.status(),
+            match ran.cause() {
+                microluna::Cause::None => String::new(),
+                cause => format!(" ({})", cause.word()),
+            },
             ran.milliseconds as f64 / 1000.0,
             ran.turns,
+            ran.read_turns,
             ran.calls,
             ran.usage.input,
             ran.usage.cached,
@@ -1441,7 +1787,11 @@ impl Micro {
     }
 
     /// The mini-handoff loop.
-    async fn requirements(&self, prepared: &Prepared) -> (Vec<Ran>, Vec<Value>, String) {
+    async fn requirements(
+        &self,
+        prepared: &Prepared,
+        prior: Vec<Ran>,
+    ) -> (Vec<Ran>, Vec<Value>, String) {
         let groups = groups(
             &prepared.requirements,
             self.policy.max_groups,
@@ -1453,11 +1803,13 @@ impl Micro {
             .parent()
             .map_or_else(|| self.artifacts.clone(), Path::to_path_buf);
         let started = Instant::now();
-        let mut sessions: Vec<Ran> = Vec::new();
+        // Sessions an abandoned suite loop already ran count against the
+        // bounds and keep their numbers.
+        let mut spent = prior.iter().filter_map(|r| r.cost_usd).sum::<f64>();
+        let mut sessions: Vec<Ran> = prior;
         let mut moves: Vec<Value> = Vec::new();
         let mut attempts = vec![0u32; groups.len()];
         let mut read_done = vec![false; groups.len()];
-        let mut spent = 0.0;
         let mut cursor = 0;
         let mut last_checked: Option<Checked> = None;
         let mut stopped = "every requirement group had its turn".to_string();
@@ -1620,14 +1972,25 @@ impl Micro {
 
     /// The suite loop: `accept.define` writes and freezes an acceptance
     /// suite, then edit sessions run until it's green or a bound is hit.
-    /// `None` when there's no transport or the suite has no tests, so the
-    /// caller falls back to the requirements loop.
+    ///
+    /// With `overlap_suite`, the first edit session works in the workspace
+    /// while the suite is written and proven red on a snapshot. With
+    /// `parallel_edits` above 1, red tests Jev reads as independent run in
+    /// separate copies at once and are merged back. With `handoff_jev`,
+    /// Jev picks the move after each round and code keeps the last word.
+    /// With `final_guard`, a green suite is checked once against the
+    /// task's own visible tests.
+    ///
+    /// `Err` with the sessions already run when there's no transport, the
+    /// suite has no tests, or the frozen suite can't reproduce its proof,
+    /// so the caller falls back to the requirements loop after them.
     #[allow(clippy::too_many_lines)]
-    async fn suite_loop(&self, prepared: &Prepared) -> Option<(Vec<Ran>, Vec<Value>, String)> {
+    async fn suite_loop(&self, prepared: &Prepared) -> Result<Looped, Vec<Ran>> {
         let Ok(wire) = &self.wire else {
-            return None;
+            return Err(Vec::new());
         };
         let started = Instant::now();
+        let started_at = atif::now_ms();
         let time_left = || {
             self.episode
                 .allowance()
@@ -1679,29 +2042,98 @@ impl Micro {
             confine,
             test_sec: 120,
         };
+        // A snapshot of the untouched workspace for the proof, so the first
+        // edit session can start in the workspace at once.
+        let snapshot = if self.policy.overlap_suite {
+            let dir = scratch("accept-base");
+            if !parallel::copyable(&self.workdir) {
+                crate::say::line(
+                    "  microluna ▸ the workspace is too large to snapshot, so the suite comes first",
+                );
+                None
+            } else {
+                match crate::handoff::copy_tree(&self.workdir, &dir) {
+                    Ok(()) => Some(dir),
+                    Err(error) => {
+                        crate::say::line(&format!(
+                            "  microluna ▸ no snapshot ({error}), so the suite comes first"
+                        ));
+                        None
+                    }
+                }
+            }
+        } else {
+            None
+        };
+        let real = self.workdir.display().to_string();
         let inputs = crate::accept::Inputs {
             task: &task,
             requirements: &prepared.requirements,
             evidence: &evidence,
-            workspace: &self.workdir,
+            workspace: snapshot.as_deref().unwrap_or(&self.workdir),
             suite_dir: &suite_dir,
-            workspace_note: format!(
-                "the task's workspace, {}, which your commands can read but you must not change",
-                self.workdir.display()
-            ),
-            target: None,
+            workspace_note: match &snapshot {
+                Some(snap) => format!(
+                    "a snapshot of the task's workspace at {snap}, copied from {real} before any \
+                     edit; your commands can read it but you must not change it. Another session \
+                     is editing {real} while you write, so read the snapshot, not {real}. In tests, \
+                     name the task's paths as the task states them: the host runs the tests \
+                     against the snapshot while it proves them red, and against {real} after",
+                    snap = snap.display()
+                ),
+                None => format!(
+                    "the task's workspace, {real}, which your commands can read but you must not \
+                     change"
+                ),
+            },
+            target: snapshot.as_ref().map(|_| self.workdir.as_path()),
         };
-        crate::say::line("  microluna ▸ writing the acceptance suite before any fix");
-        let suite = crate::accept::define(
-            &inputs,
-            &writer,
-            &runner,
-            &prepared.jev,
-            &self.recorder,
-            &written_by.map_or_else(crate::accept::Options::default, SuiteWriter::options),
-        )
-        .await;
-        crate::say::line(&format!("  microluna ▸ {}", suite.headline()));
+        let options = written_by.map_or_else(crate::accept::Options::default, SuiteWriter::options);
+        crate::say::line(if snapshot.is_some() {
+            "  microluna ▸ writing the acceptance suite on a snapshot while session 1 starts"
+        } else {
+            "  microluna ▸ writing the acceptance suite before any fix"
+        });
+        let define_started = atif::now_ms();
+        let define = async {
+            let suite = crate::accept::define(
+                &inputs,
+                &writer,
+                &runner,
+                &prepared.jev,
+                &self.recorder,
+                &options,
+            )
+            .await;
+            (suite, atif::now_ms())
+        };
+        let ((suite, define_ended), early) = if snapshot.is_some() {
+            let (defined, ran) =
+                futures_util::future::join(define, self.early_session(prepared, &evidence)).await;
+            (defined, Some(ran))
+        } else {
+            (define.await, None)
+        };
+        let mut tracks = vec![parallel::Track {
+            label: "accept.define".to_string(),
+            kind: "define".to_string(),
+            batch: "suite".to_string(),
+            group: Some(format!("{} tests", suite.tests.len())),
+            workspace: snapshot.as_ref().map(|s| s.display().to_string()),
+            start_ms: define_started.saturating_sub(started_at),
+            end_ms: define_ended.saturating_sub(started_at),
+            turns: suite.rounds.iter().map(|r| r.writer.turns).sum(),
+            input_tokens: 0,
+            cached_tokens: 0,
+            read_turns: 0,
+            cost_usd: suite.writer_usd + suite.jev_usd,
+        }];
+        tracks.extend(writer_tracks(&suite, started_at));
+        crate::say::line(&format!(
+            "  microluna ▸ {} in {:.1}s",
+            suite.headline(),
+            suite.milliseconds as f64 / 1000.0
+        ));
         let mut moves = vec![json!({
             "kind": "suite",
             "headline": suite.headline(),
@@ -1712,22 +2144,74 @@ impl Micro {
             "rounds": suite.rounds.len(),
             "gaps": suite.gaps,
             "writer_usd": suite.writer_usd,
+            "writer_usage": {
+                "input": suite.rounds.iter().map(|r| r.writer.input_tokens).sum::<u64>(),
+                "cached": suite.rounds.iter().map(|r| r.writer.cached_tokens).sum::<u64>(),
+                "output": suite.rounds.iter().map(|r| r.writer.output_tokens).sum::<u64>(),
+            },
             "jev_usd": suite.jev_usd,
             "milliseconds": suite.milliseconds,
+            "on_snapshot": snapshot.is_some(),
             "record": crate::accept::AcceptanceSuite::record_path(&suite_dir),
         })];
+        let mut sessions: Vec<Ran> = early.into_iter().collect();
+        let mut spent = suite.writer_usd
+            + suite.jev_usd
+            + sessions.iter().filter_map(|r| r.cost_usd).sum::<f64>();
         if suite.tests.is_empty() {
+            if let Some(snap) = &snapshot {
+                let _ = std::fs::remove_dir_all(snap);
+            }
             crate::say::line(
                 "  microluna ▸ the suite has no tests, so the requirements loop runs instead",
             );
-            return None;
+            return Err(sessions);
         }
-        let mut spent = suite.writer_usd + suite.jev_usd;
-        let mut sessions: Vec<Ran> = Vec::new();
+        // The frozen suite must fail the way its red-first proof did. With
+        // a snapshot, that check runs there, since session 1 has already
+        // changed the workspace.
+        if let Some(snap) = &snapshot {
+            let rebased = crate::accept::Rebased {
+                inner: &runner,
+                real: self.workdir.clone(),
+                snapshot: snap.clone(),
+                test_sec: 120,
+            };
+            let start = crate::accept::run(
+                &suite,
+                snap,
+                &rebased,
+                Some(&self.recorder),
+                "start (snapshot)",
+            )
+            .await;
+            let _ = std::fs::remove_dir_all(snap);
+            if let Ok(start) = &start
+                && let Some(differ) = unreproduced(&suite, start)
+            {
+                crate::say::line(&format!(
+                    "  microluna ▸ the frozen suite doesn't reproduce its proof on the snapshot \
+                     ({differ} of {} tests differ), so the requirements loop runs instead",
+                    start.tests.len()
+                ));
+                return Err(sessions);
+            }
+        }
         let mut best = 0usize;
         let mut since_progress = 0u32;
+        let mut number = u32::try_from(sessions.len()).unwrap_or(u32::MAX);
+        let mut rounds_blocked: Vec<bool> = sessions.iter().map(Ran::blocked).collect();
+        let mut last_round: Vec<u32> = sessions.iter().map(|r| r.number).collect();
+        let mut requeued: Vec<String> = Vec::new();
+        let mut notes: Vec<String> = Vec::new();
+        let mut merges: Vec<Value> = Vec::new();
+        let mut last_signature: Option<(u32, String)> = None;
+        let mut contradicted_rounds = 0u32;
+        let mut round = 0u32;
+        let mut guarded = false;
+        let mut guard_failure: Option<String> = None;
+        let mut first_run = true;
         let stopped;
-        let mut number = 0u32;
         loop {
             let label = if number == 0 {
                 "start".to_string()
@@ -1753,33 +2237,22 @@ impl Micro {
                 "  microluna ▸ suite {label}: {} of {} green",
                 result.passed, result.total
             ));
-            // The frozen suite must fail the way its red-first proof did. When
-            // most red tests now fail differently (a missing harness file, a
-            // shell error), no edit can turn them green, so the requirements
-            // loop takes over instead.
-            if number == 0
-                && let Some(proof) = suite.start.as_ref()
+            // The frozen suite must fail the way its red-first proof did.
+            // When most red tests now fail differently (a missing harness
+            // file, a shell error), no edit can turn them green, so the
+            // requirements loop takes over instead.
+            if first_run
+                && number == 0
+                && let Some(differ) = unreproduced(&suite, &result)
             {
-                let differ = result
-                    .tests
-                    .iter()
-                    .filter(|now| {
-                        proof
-                            .tests
-                            .iter()
-                            .find(|then| then.id == now.id)
-                            .is_some_and(|then| then.green != now.green || then.exit != now.exit)
-                    })
-                    .count();
-                if differ * 2 > result.tests.len().max(1) {
-                    crate::say::line(&format!(
-                        "  microluna ▸ the frozen suite doesn't reproduce its proof ({differ} of {} tests \
-                         differ), so the requirements loop runs instead",
-                        result.tests.len()
-                    ));
-                    return None;
-                }
+                crate::say::line(&format!(
+                    "  microluna ▸ the frozen suite doesn't reproduce its proof ({differ} of {} tests \
+                     differ), so the requirements loop runs instead",
+                    result.tests.len()
+                ));
+                return Err(sessions);
             }
+            first_run = false;
             moves.push(json!({
                 "kind": "run",
                 "after_session": number,
@@ -1790,17 +2263,102 @@ impl Micro {
                 "red": result.red_requirements(),
             }));
             if result.green {
-                stopped = format!(
-                    "the acceptance suite is green after session {number} ({} of {})",
-                    result.passed, result.total
-                );
-                break;
+                // Stop the moment the suite is green; with a final guard,
+                // the task's own visible tests run once first.
+                if self.policy.final_guard && !guarded {
+                    guarded = true;
+                    let guard_started = atif::now_ms();
+                    let guard = self.guard(&runner).await;
+                    let guard_ended = atif::now_ms();
+                    if let Some(guard) = &guard {
+                        tracks.push(parallel::Track {
+                            label: "final guard".to_string(),
+                            kind: "guard".to_string(),
+                            batch: "guard".to_string(),
+                            group: None,
+                            workspace: None,
+                            start_ms: guard_started.saturating_sub(started_at),
+                            end_ms: guard_ended.saturating_sub(started_at),
+                            turns: 0,
+                            input_tokens: 0,
+                            cached_tokens: 0,
+                            read_turns: 0,
+                            cost_usd: 0.0,
+                        });
+                        moves.push(json!({
+                            "kind": "guard",
+                            "after_session": number,
+                            "green": guard.green,
+                            "exit": guard.exit,
+                            "output": crate::judge::clip_tail(&guard.output, 1_500),
+                        }));
+                        crate::say::line(&format!(
+                            "  microluna ▸ final guard: the task's own tests {}",
+                            if guard.green { "pass" } else { "fail" }
+                        ));
+                    }
+                    match guard {
+                        Some(guard)
+                            if !guard.green
+                                && number < self.policy.max_sessions
+                                && spent < self.policy.spend_usd
+                                && time_left() >= Duration::from_secs(60) =>
+                        {
+                            guard_failure = Some(guard.output);
+                        }
+                        Some(guard) if !guard.green => {
+                            stopped = format!(
+                                "the acceptance suite is green after session {number} ({} of {}), \
+                                 but the task's own tests fail and no bound is left for a session",
+                                result.passed, result.total
+                            );
+                            break;
+                        }
+                        Some(_) => {
+                            stopped = format!(
+                                "the acceptance suite is green after session {number} ({} of {}), \
+                                 and the task's own tests pass",
+                                result.passed, result.total
+                            );
+                            break;
+                        }
+                        None => {
+                            stopped = format!(
+                                "the acceptance suite is green after session {number} ({} of {}); \
+                                 the task has no visible tests to guard with",
+                                result.passed, result.total
+                            );
+                            break;
+                        }
+                    }
+                } else {
+                    stopped = format!(
+                        "the acceptance suite is green after session {number} ({} of {})",
+                        result.passed, result.total
+                    );
+                    break;
+                }
             }
             if result.passed > best {
                 best = result.passed;
                 since_progress = 0;
             } else if number > 0 {
                 since_progress += 1;
+            }
+            // The same red tests with the same output after two rounds in a
+            // row: another session starts from where the last one did.
+            let signature = result.red_lines(&suite, 800).join("\n");
+            if self.policy.handoff_jev && !result.green && number > 0 {
+                if let Some((then, held)) = &last_signature
+                    && *held == signature
+                    && number > *then
+                {
+                    stopped = format!(
+                        "the same red tests failed the same way after sessions {then} and {number}"
+                    );
+                    break;
+                }
+                last_signature = Some((number, signature));
             }
             if number >= self.policy.max_sessions {
                 stopped = format!("the bound of {} sessions", self.policy.max_sessions);
@@ -1817,85 +2375,903 @@ impl Micro {
                 stopped = "the time bound".to_string();
                 break;
             }
-            number += 1;
-            let red_ids = result.red_requirements();
-            let mut guidance = SUITE_GUIDANCE.to_string();
-            let facts = constraints(&prepared.requirements);
-            if !facts.is_empty() {
-                guidance.push_str(&format!(
-                    "\n\nThe task's constraints hold throughout; honor each one exactly:\n\n{}",
-                    facts.join("\n")
-                ));
+            // Act on the typed causes the last round's sessions gave.
+            let ended: Vec<&Ran> = sessions
+                .iter()
+                .filter(|r| last_round.contains(&r.number))
+                .collect();
+            let mut contradicted = false;
+            for ran in &ended {
+                match ran.cause() {
+                    microluna::Cause::HarnessBroken => {
+                        let broken: Vec<String> = result
+                            .tests
+                            .iter()
+                            .filter(|t| !t.green)
+                            .filter_map(|t| {
+                                crate::accept::verify::broken_reason(t)
+                                    .map(|why| format!("{} ({why})", t.id))
+                            })
+                            .collect();
+                        if !broken.is_empty() {
+                            crate::say::line(&format!(
+                                "  microluna ▸ session {} found the harness broken ({}), so the \
+                                 requirements loop runs instead",
+                                ran.number,
+                                broken.join(", ")
+                            ));
+                            return Err(sessions);
+                        }
+                        notes.push(format!(
+                            "Session {} reported the test harness broken, but the host's run \
+                             shows every red test reaching its assertions: read each red test's \
+                             output again for the rule it checks.",
+                            ran.number
+                        ));
+                    }
+                    microluna::Cause::TestContradictsTask => {
+                        contradicted = true;
+                        notes.push(format!(
+                            "Session {} says a test contradicts the task: {} The suite is \
+                             frozen. Follow the task; if a test truly contradicts it, meet the \
+                             task, call finish with status blocked and cause \
+                             test_contradicts_task, and name the test.",
+                            ran.number,
+                            crate::judge::clip(&ran.summary(), 300)
+                        ));
+                    }
+                    microluna::Cause::MissingTool => notes.push(format!(
+                        "Session {} found a program the work needs missing: {} Don't try it \
+                         again; use what the workspace has.",
+                        ran.number,
+                        crate::judge::clip(&ran.summary(), 300)
+                    )),
+                    _ => {}
+                }
             }
-            let mut state = vec![format!(
-                "Session {number} of at most {}. The suite is {} of {} green; the best so far \
-                 is {best}.",
-                self.policy.max_sessions, result.passed, result.total
-            )];
-            if since_progress >= 3 {
-                state.push(format!(
-                    "The last {since_progress} sessions turned no new test green. Don't repeat \
-                     their approach: reread the task and each red test's output for the exact \
-                     rule it checks, and change what the earlier sessions left alone."
-                ));
-            }
-            state.push(format!(
-                "The red tests and their output:\n{}",
-                result.red_lines(&suite, 800).join("\n")
-            ));
-            for ran in sessions.iter().rev().take(4).rev() {
-                state.push(format!(
-                    "Session {} ended {}: {}",
-                    ran.number,
-                    ran.status(),
-                    crate::judge::clip(&ran.summary(), 400)
-                ));
-            }
-            if !sessions.is_empty() {
-                let changes = crate::delegate::changes(&self.workdir, None);
-                state.push(format!(
-                    "What the workspace shows as changed now:\n{}",
-                    crate::judge::clip(&changes, 1_500)
-                ));
-            }
-            let mut session_evidence = vec![suite.evidence()];
-            session_evidence.extend(evidence.iter().cloned());
-            let brief = Brief {
-                task: prepared.instruction.clone(),
-                guidance,
-                evidence: session_evidence,
-                state,
+            contradicted_rounds = if contradicted {
+                contradicted_rounds + 1
+            } else {
+                0
             };
-            let why = format!(
-                "session {number} works toward a green suite ({} of {} green; red: {})",
-                result.passed,
-                result.total,
-                red_ids.join(", ")
-            );
-            let ran = self.session(number, &red_ids, &why, &brief, false).await;
-            spent += ran.cost_usd.unwrap_or(0.0);
-            let lost = matches!(ran.ending, Ending::Transport(_));
-            sessions.push(ran);
-            if lost {
+            if contradicted_rounds >= 2 {
+                stopped = format!(
+                    "two rounds in a row say the suite contradicts the task (sessions up to \
+                     {number})"
+                );
+                break;
+            }
+            notes.truncate(6);
+            // Jev's move after the last round; code keeps the last word.
+            if self.policy.handoff_jev && number > 0 && guard_failure.is_none() {
+                let (chosen, record, usd) = self
+                    .suite_move(prepared, &suite, &result, &ended, since_progress)
+                    .await;
+                spent += usd;
+                let focus: Vec<String> = ended.iter().flat_map(|r| r.focus.clone()).collect();
+                self.recorder.push(
+                    Step::said(
+                        Source::System,
+                        &format!("After session {number}: {}.", chosen.word()),
+                    )
+                    .noting(
+                        crate::handoff::KEY,
+                        json!({
+                            "from": format!("{AGENT} session {number}"),
+                            "to": match chosen {
+                                Move::Stuck => "the host's closing checks".to_string(),
+                                _ => format!("{AGENT} session {}", number + 1),
+                            },
+                            "trigger": format!(
+                                "Jev chose {}{}; the suite is {} of {} green",
+                                record["jev"]["picked"].as_str().unwrap_or("nothing"),
+                                record["overridden"].as_str().map(|w| format!(" and code settled on {} because {w}", chosen.word())).unwrap_or_default(),
+                                result.passed,
+                                result.total
+                            ),
+                            "pattern": "microluna-suite",
+                            "action": chosen.word(),
+                        }),
+                    ),
+                );
+                crate::say::line(&format!(
+                    "  microluna ▸ after session {number}: {}{}",
+                    chosen.word(),
+                    record["overridden"]
+                        .as_str()
+                        .map(|w| format!(" ({w})"))
+                        .unwrap_or_default()
+                ));
+                moves.push(record);
+                match chosen {
+                    Move::Stuck => {
+                        stopped = format!("Jev judged the loop stuck after session {number}");
+                        break;
+                    }
+                    // Move on: the tests the last round didn't work on lead.
+                    Move::Next => {
+                        requeued = result
+                            .tests
+                            .iter()
+                            .filter(|t| {
+                                !t.green && !t.requirements.iter().any(|r| focus.contains(r))
+                            })
+                            .map(|t| t.id.clone())
+                            .collect();
+                    }
+                    Move::Retry | Move::Done => {}
+                }
+            }
+            // The next round: several sessions at once on independent red
+            // tests, or one on all of them.
+            let red: Vec<&crate::accept::TestRun> =
+                result.tests.iter().filter(|t| !t.green).collect();
+            let room = self.policy.max_sessions.saturating_sub(number);
+            let planned = if guard_failure.is_none()
+                && self.policy.parallel_edits > 1
+                && red.len() >= 2
+                && room >= 2
+                && parallel::copyable(&self.workdir)
+            {
+                let (lanes, record, usd) =
+                    self.plan_lanes(prepared, &suite, &result, &requeued).await;
+                spent += usd;
+                moves.push(record);
+                lanes
+            } else {
+                Vec::new()
+            };
+            round += 1;
+            let before = number;
+            if planned.len() >= 2 {
+                let lanes: Vec<parallel::Lane> = planned
+                    .into_iter()
+                    .take(room.min(self.policy.parallel_edits) as usize)
+                    .collect();
+                let (ran, merged) = self
+                    .parallel_round(
+                        prepared, &suite, &result, &lanes, &evidence, &sessions, &notes, round,
+                        number, best,
+                    )
+                    .await;
+                requeued = merged["requeued"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect();
+                notes.clear();
+                if let Some(note) = merged["note"].as_str() {
+                    notes.push(note.to_string());
+                }
+                merges.push(merged.clone());
+                moves.push(json!({ "kind": "merge", "round": round, "merge": merged }));
+                number += u32::try_from(ran.len()).unwrap_or(0);
+                spent += ran.iter().filter_map(|r| r.cost_usd).sum::<f64>();
+                sessions.extend(ran);
+            } else {
+                number += 1;
+                let brief = match &guard_failure {
+                    Some(output) => self.guard_brief(prepared, &suite, &evidence, number, output),
+                    None => self.suite_brief(
+                        prepared,
+                        &suite,
+                        &result,
+                        &evidence,
+                        &sessions,
+                        &notes,
+                        number,
+                        best,
+                        since_progress,
+                    ),
+                };
+                let red_ids = result.red_requirements();
+                let (focus, why) = match &guard_failure {
+                    Some(_) => (
+                        vec!["the task's own tests".to_string()],
+                        format!(
+                            "session {number} fixes what the task's own tests show, with the \
+                             acceptance suite green"
+                        ),
+                    ),
+                    None => (
+                        red_ids.clone(),
+                        format!(
+                            "session {number} works toward a green suite ({} of {} green; red: {})",
+                            result.passed,
+                            result.total,
+                            red_ids.join(", ")
+                        ),
+                    ),
+                };
+                guard_failure = None;
+                notes.clear();
+                let ran = self
+                    .session_at(
+                        number,
+                        &focus,
+                        &why,
+                        &brief,
+                        false,
+                        Place {
+                            batch: format!("round {round}"),
+                            ..Place::default()
+                        },
+                    )
+                    .await;
+                spent += ran.cost_usd.unwrap_or(0.0);
+                sessions.push(ran);
+            }
+            last_round = (before + 1..=number).collect();
+            let this_round: Vec<&Ran> = sessions
+                .iter()
+                .filter(|r| last_round.contains(&r.number))
+                .collect();
+            if this_round
+                .iter()
+                .any(|r| matches!(r.ending, Ending::Transport(_)))
+            {
                 stopped = format!("session {number} lost its provider");
                 break;
             }
-            // Two blocked sessions in a row: the next one would be blocked
-            // by the same thing.
-            if sessions.len() >= 2
-                && sessions[sessions.len() - 2..]
-                    .iter()
-                    .all(|ran| ran.status() == "blocked")
+            rounds_blocked.push(!this_round.is_empty() && this_round.iter().all(|r| r.blocked()));
+            // Two blocked rounds in a row: the next would be blocked by the
+            // same thing.
+            if rounds_blocked.len() >= 2
+                && rounds_blocked[rounds_blocked.len() - 2..] == [true, true]
             {
                 stopped = format!(
-                    "sessions {} and {number} were both blocked: {}",
-                    number - 1,
+                    "the last two rounds were blocked, up to session {number}: {}",
                     crate::judge::clip(&sessions[sessions.len() - 1].summary(), 300)
                 );
                 break;
             }
         }
-        Some((sessions, moves, stopped))
+        tracks.extend(sessions.iter().map(|r| r.track(started_at)));
+        tracks.sort_by_key(|t| (t.start_ms, t.end_ms));
+        let wall = millis(started);
+        let summary = parallel::summary(&tracks, wall, &merges);
+        crate::say::line(&format!(
+            "  microluna ▸ parallel: {}",
+            parallel::headline(&summary)
+        ));
+        self.recorder.push(
+            Step::said(
+                Source::System,
+                &format!("Parallel sessions: {}.", parallel::headline(&summary)),
+            )
+            .noting(parallel::SUMMARY_EXTENSION, summary.clone()),
+        );
+        Ok(Looped {
+            sessions,
+            moves,
+            stopped,
+            parallel: summary,
+        })
+    }
+
+    /// The first edit session, in the workspace, while `accept.define`
+    /// writes the suite on a snapshot.
+    async fn early_session(&self, prepared: &Prepared, evidence: &[Evidence]) -> Ran {
+        let mut guidance = EARLY_GUIDANCE.to_string();
+        let facts = constraints(&prepared.requirements);
+        if !facts.is_empty() {
+            guidance.push_str(&format!(
+                "\n\nThe task's constraints hold throughout; honor each one exactly:\n\n{}",
+                facts.join("\n")
+            ));
+        }
+        let brief = Brief {
+            task: prepared.instruction.clone(),
+            guidance,
+            evidence: evidence.to_vec(),
+            state: vec![format!(
+                "Session 1 of at most {}. It runs while the acceptance suite is written.",
+                self.policy.max_sessions
+            )],
+        };
+        self.session_at(
+            1,
+            &["the whole task".to_string()],
+            "session 1 starts on the task while the acceptance suite is written, in parallel \
+             with accept.define",
+            &brief,
+            false,
+            Place {
+                group: Some("the whole task, while the suite is written".to_string()),
+                batch: "suite".to_string(),
+                alongside: Some("accept.define".to_string()),
+                ..Place::default()
+            },
+        )
+        .await
+    }
+
+    /// One suite-loop session's brief: the task, the frozen tests and the
+    /// evidence, then the state: the suite now, the notes the host keeps,
+    /// the red tests' output, and the last sessions.
+    #[allow(clippy::too_many_arguments)]
+    fn suite_brief(
+        &self,
+        prepared: &Prepared,
+        suite: &crate::accept::AcceptanceSuite,
+        result: &crate::accept::RunResult,
+        evidence: &[Evidence],
+        sessions: &[Ran],
+        notes: &[String],
+        number: u32,
+        best: usize,
+        since_progress: u32,
+    ) -> Brief {
+        let mut state = vec![format!(
+            "Session {number} of at most {}. The suite is {} of {} green; the best so far is \
+             {best}.",
+            self.policy.max_sessions, result.passed, result.total
+        )];
+        if since_progress >= 3 {
+            state.push(format!(
+                "The last {since_progress} sessions turned no new test green. Don't repeat \
+                 their approach: reread the task and each red test's output for the exact \
+                 rule it checks, and change what the earlier sessions left alone."
+            ));
+        }
+        state.extend(notes.iter().cloned());
+        state.push(format!(
+            "The red tests and their output:\n{}",
+            result.red_lines(suite, 800).join("\n")
+        ));
+        for ran in sessions.iter().rev().take(4).rev() {
+            state.push(format!(
+                "Session {} ended {}: {}",
+                ran.number,
+                ran.status(),
+                crate::judge::clip(&ran.summary(), 400)
+            ));
+        }
+        if !sessions.is_empty() {
+            let changes = crate::delegate::changes(&self.workdir, None);
+            state.push(format!(
+                "What the workspace shows as changed now:\n{}",
+                crate::judge::clip(&changes, 1_500)
+            ));
+        }
+        let mut session_evidence = vec![suite.evidence()];
+        session_evidence.extend(evidence.iter().cloned());
+        Brief {
+            task: prepared.instruction.clone(),
+            guidance: self.suite_guidance(prepared),
+            evidence: session_evidence,
+            state,
+        }
+    }
+
+    fn suite_guidance(&self, prepared: &Prepared) -> String {
+        let mut guidance = SUITE_GUIDANCE.to_string();
+        let facts = constraints(&prepared.requirements);
+        if !facts.is_empty() {
+            guidance.push_str(&format!(
+                "\n\nThe task's constraints hold throughout; honor each one exactly:\n\n{}",
+                facts.join("\n")
+            ));
+        }
+        guidance
+    }
+
+    /// The brief for the one session a failing final guard gets.
+    fn guard_brief(
+        &self,
+        prepared: &Prepared,
+        suite: &crate::accept::AcceptanceSuite,
+        evidence: &[Evidence],
+        number: u32,
+        output: &str,
+    ) -> Brief {
+        let mut session_evidence = vec![suite.evidence()];
+        session_evidence.extend(evidence.iter().cloned());
+        Brief {
+            task: prepared.instruction.clone(),
+            guidance: self.suite_guidance(prepared),
+            evidence: session_evidence,
+            state: vec![
+                format!(
+                    "Session {number} of at most {}. The acceptance suite is green, but the \
+                     task's own tests fail. Fix what they show without turning any acceptance \
+                     test red, run both, and call finish.",
+                    self.policy.max_sessions
+                ),
+                format!(
+                    "The task's own tests:\n{}",
+                    crate::judge::clip_tail(output.trim(), 2_000)
+                ),
+            ],
+        }
+    }
+
+    /// The task's own visible tests, run once on the workspace: `None`
+    /// when the workspace has none this host knows how to run.
+    async fn guard(&self, runner: &crate::accept::Local) -> Option<crate::accept::TestRun> {
+        let command = guard_command(&self.workdir)?;
+        let dir = scratch("coder-one-guard");
+        std::fs::create_dir_all(dir.join(crate::accept::TESTS_DIR)).ok()?;
+        std::fs::write(
+            dir.join(crate::accept::TESTS_DIR).join("guard.sh"),
+            format!("#!/bin/sh\n{command}\n"),
+        )
+        .ok()?;
+        let test = crate::accept::Test {
+            id: "guard".to_string(),
+            requirements: Vec::new(),
+            kind: "guard".to_string(),
+            what: "the task's own visible tests pass".to_string(),
+            path: format!("{}/guard.sh", crate::accept::TESTS_DIR),
+            source: command,
+            notes: Vec::new(),
+        };
+        let mut runs = crate::accept::Runner::run_all(runner, &[test], &dir, &self.workdir).await;
+        let _ = std::fs::remove_dir_all(&dir);
+        runs.pop()
+    }
+
+    /// Jev's move after a suite-loop round, settled by code: `done` while
+    /// the suite is red becomes `retry`, and `stuck` after a round that
+    /// turned a test green becomes `retry`.
+    async fn suite_move(
+        &self,
+        prepared: &Prepared,
+        suite: &crate::accept::AcceptanceSuite,
+        result: &crate::accept::RunResult,
+        ended: &[&Ran],
+        since_progress: u32,
+    ) -> (Move, Value, f64) {
+        let red: Vec<Value> = result
+            .tests
+            .iter()
+            .filter(|t| !t.green)
+            .map(|t| {
+                json!({
+                    "id": t.id,
+                    "requirements": t.requirements,
+                    "what": suite.tests.iter().find(|s| s.id == t.id).map(|s| s.what.clone()),
+                    "output": crate::judge::clip_tail(t.output.trim(), 500),
+                })
+            })
+            .collect();
+        let state = json!({
+            "task": clip_lines(&prepared.instruction, 4_000),
+            "suite": {
+                "green": result.passed,
+                "total": result.total,
+                "red_tests": red,
+                "rounds_without_a_new_green_test": since_progress,
+            },
+            "sessions": ended.iter().map(|r| json!({
+                "number": r.number,
+                "worked_on": r.focus,
+                "status": r.status(),
+                "cause": r.cause().word(),
+                "report": clip_lines(&r.summary(), 1_000),
+                "changed_files": r.changed,
+            })).collect::<Vec<_>>(),
+        });
+        let mut choice = jev::Choice::new(SUITE_MOVE_QUESTION, indexmap::IndexMap::new());
+        for (name, meaning) in SUITE_MOVES {
+            choice = choice.option(name, meaning);
+        }
+        let asked = jev_component::ask(
+            &prepared.jev,
+            &self.recorder,
+            jev_component::Ask {
+                component: HANDOFF_COMPONENT,
+                name: "jev_suite_move",
+                id: format!(
+                    "jev-suite-move-{}-{}",
+                    self.dispatch(),
+                    ended.last().map_or(0, |r| r.number)
+                ),
+                state,
+                questions: jev::Questions::new().with("next_move", choice),
+                parent: None,
+                deadline: prepared.deadline.clone(),
+            },
+        )
+        .await;
+        let picked = asked.choice("next_move").and_then(Move::parse);
+        let (chosen, overridden) = match picked {
+            None => (
+                Move::Retry,
+                Some("Jev gave no answer, so the loop retries".to_string()),
+            ),
+            Some(Move::Done) => (
+                Move::Retry,
+                Some("the suite isn't green, so done became retry".to_string()),
+            ),
+            Some(Move::Stuck) if since_progress == 0 => (
+                Move::Retry,
+                Some("the last round turned a test green, so stuck became retry".to_string()),
+            ),
+            Some(chosen) => (chosen, None),
+        };
+        let usd = asked.input_tokens.map_or(0.0, |t| {
+            t as f64 * jev_component::USD_PER_MILLION_INPUT / 1_000_000.0
+        });
+        let record = json!({
+            "kind": "move",
+            "after_session": ended.last().map(|r| r.number),
+            "jev": {
+                "how": asked.how,
+                "picked": picked.map(Move::word),
+                "probabilities": asked.answers.as_ref().and_then(|a| a.pointer("/next_move/probabilities")).cloned(),
+                "error": asked.error,
+            },
+            "move": chosen.word(),
+            "overridden": overridden,
+            "jev_usd": usd,
+        });
+        (chosen, record, usd)
+    }
+
+    /// Plans the next round's lanes: the red tests as units, the files
+    /// their evidence names, Jev's Noul per pair on whether two units share
+    /// a file (the code rule where Jev gives none), and the units packed
+    /// into lanes. Returns the lanes, the record, and Jev's cost.
+    async fn plan_lanes(
+        &self,
+        prepared: &Prepared,
+        suite: &crate::accept::AcceptanceSuite,
+        result: &crate::accept::RunResult,
+        first: &[String],
+    ) -> (Vec<parallel::Lane>, Value, f64) {
+        let files = parallel::workspace_files(&self.workdir);
+        let text = |id: &str| {
+            prepared
+                .requirements
+                .requirements
+                .iter()
+                .find(|r| r.id == id)
+                .map(|r| format!("{id}: {}", r.text))
+                .unwrap_or_default()
+        };
+        let units = parallel::units(suite, result, &files, first, &text);
+        if units.len() < 2 {
+            return (
+                parallel::lanes(&units, &|_, _| true, 1),
+                json!({ "kind": "plan", "units": units, "lanes": 1 }),
+                0.0,
+            );
+        }
+        let (state, questions) = parallel::independence(&prepared.instruction, &units);
+        let asked = jev_component::ask(
+            &prepared.jev,
+            &self.recorder,
+            jev_component::Ask {
+                component: parallel::COMPONENT,
+                name: "jev_shared_files",
+                id: format!("jev-shared-files-{}-{}", self.dispatch(), atif::now_ms()),
+                state,
+                questions,
+                parent: None,
+                deadline: prepared.deadline.clone(),
+            },
+        )
+        .await;
+        let mut pairs = Vec::new();
+        let mut shared = std::collections::BTreeMap::new();
+        for a in 0..units.len() {
+            for b in a + 1..units.len() {
+                let p = asked.noul(&parallel::pair_key(a, b));
+                let (yes, by) = match p {
+                    Some(p) => (p >= parallel::SHARED_MIN, "jev"),
+                    None => (parallel::code_shared(&units[a], &units[b]), "code"),
+                };
+                shared.insert((a, b), yes);
+                pairs.push(json!({ "a": a, "b": b, "p": p, "shared": yes, "by": by }));
+            }
+        }
+        let lanes = parallel::lanes(
+            &units,
+            &|a, b| shared.get(&(a, b)).copied().unwrap_or(true),
+            self.policy.parallel_edits as usize,
+        );
+        let usd = asked.input_tokens.map_or(0.0, |t| {
+            t as f64 * jev_component::USD_PER_MILLION_INPUT / 1_000_000.0
+        });
+        crate::say::line(&format!(
+            "  microluna ▸ plan: {} red units in {} lane{} ({})",
+            units.len(),
+            lanes.len(),
+            if lanes.len() == 1 { "" } else { "s" },
+            lanes
+                .iter()
+                .map(|l| l.tests.join(", "))
+                .collect::<Vec<_>>()
+                .join(" | ")
+        ));
+        let record = json!({
+            "kind": "plan",
+            "units": units,
+            "pairs": pairs,
+            "lanes": lanes,
+            "jev": { "how": asked.how, "error": asked.error },
+            "jev_usd": usd,
+        });
+        (lanes, record, usd)
+    }
+
+    /// One round of sessions at once, each on its lane's red tests in its
+    /// own copy of the workspace, then the merge of their changes into the
+    /// workspace. Returns the sessions and the merge's record.
+    #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
+    async fn parallel_round(
+        &self,
+        prepared: &Prepared,
+        suite: &crate::accept::AcceptanceSuite,
+        result: &crate::accept::RunResult,
+        lanes: &[parallel::Lane],
+        evidence: &[Evidence],
+        sessions: &[Ran],
+        notes: &[String],
+        round: u32,
+        number: u32,
+        best: usize,
+    ) -> (Vec<Ran>, Value) {
+        let root = scratch(&format!("coder-one-lanes-{round}"));
+        let base = root.join("base");
+        let _ = std::fs::remove_dir_all(&root);
+        let mut places: Vec<(PathBuf, PathBuf)> = Vec::new();
+        let mut copied = crate::handoff::copy_tree(&self.workdir, &base);
+        for i in 1..=lanes.len() {
+            if copied.is_err() {
+                break;
+            }
+            let (copy, suite_copy) = (
+                root.join(format!("lane-{i}")),
+                root.join(format!("suite-{i}")),
+            );
+            copied = crate::handoff::copy_tree(&self.workdir, &copy).and_then(|()| {
+                crate::accept::runner::rebase_tree(
+                    &suite.dir,
+                    &suite_copy,
+                    &[(&suite.dir, &suite_copy), (&self.workdir, &copy)],
+                )
+            });
+            let _ = std::fs::write(
+                suite_copy.join("run.sh"),
+                crate::accept::runner::local_run_sh(&copy, 120),
+            );
+            places.push((copy, suite_copy));
+        }
+        if let Err(error) = copied {
+            let _ = std::fs::remove_dir_all(&root);
+            crate::say::line(&format!(
+                "  microluna ▸ no copies for a parallel round ({error}); one session runs"
+            ));
+            let number = number + 1;
+            let brief = self.suite_brief(
+                prepared, suite, result, evidence, sessions, notes, number, best, 0,
+            );
+            let ran = self
+                .session(
+                    number,
+                    &result.red_requirements(),
+                    "the copies failed",
+                    &brief,
+                    false,
+                )
+                .await;
+            return (vec![ran], json!({ "round": round, "skipped": error }));
+        }
+        let numbers: Vec<u32> = (1..=lanes.len())
+            .map(|i| number + u32::try_from(i).unwrap_or(0))
+            .collect();
+        let n = lanes.len();
+        crate::say::line(&format!(
+            "  microluna ▸ round {round}: sessions {} at once on {}",
+            numbers
+                .iter()
+                .map(u32::to_string)
+                .collect::<Vec<_>>()
+                .join(", "),
+            lanes
+                .iter()
+                .map(|l| l.tests.join(", "))
+                .collect::<Vec<_>>()
+                .join(" | ")
+        ));
+        let before = crate::delegate::fingerprint(&self.workdir);
+        let runs = futures_util::future::join_all(lanes.iter().enumerate().map(|(i, lane)| {
+            let (copy, suite_copy) = &places[i];
+            let others: Vec<String> = lanes
+                .iter()
+                .enumerate()
+                .filter(|(j, _)| *j != i)
+                .flat_map(|(_, l)| l.tests.clone())
+                .collect();
+            let lane_suite = crate::accept::AcceptanceSuite {
+                dir: suite_copy.clone(),
+                ..suite.clone()
+            };
+            let rebase = |text: &str| crate::compose::best_of::rebase(text, &self.workdir, copy);
+            let mut guidance = self.suite_guidance(prepared);
+            guidance.push_str(&format!(
+                "\n\nThis session works only on the red tests {tests} ({requirements}). Other \
+                 sessions work on the red tests {others} at the same time, each in its own copy \
+                 of the workspace; leave what their tests check to them. Your workspace is a \
+                 private copy of the task's workspace at `{copy}`: where the task or the \
+                 evidence names `{real}`, use `{copy}`. Run your tests with `sh {suite}/run.sh \
+                 {tests}`. When they pass, call finish: the host merges your changes into \
+                 `{real}` once every session of this round has ended.",
+                tests = lane.tests.join(", "),
+                requirements = lane.requirements.join(", "),
+                others = others.join(", "),
+                copy = copy.display(),
+                real = self.workdir.display(),
+                suite = suite_copy.display(),
+            ));
+            let red_lines: Vec<String> = result
+                .red_lines(suite, 800)
+                .into_iter()
+                .enumerate()
+                .filter(|(k, line)| {
+                    *k == 0
+                        || lane
+                            .tests
+                            .iter()
+                            .any(|t| line.starts_with(&format!("{t} (")))
+                })
+                .map(|(_, line)| rebase(&line))
+                .collect();
+            let mut state = vec![format!(
+                "Session {} of at most {}, group {} of {n}. The suite is {} of {} green; the \
+                 best so far is {best}.",
+                numbers[i],
+                self.policy.max_sessions,
+                i + 1,
+                result.passed,
+                result.total
+            )];
+            state.extend(notes.iter().map(|n| rebase(n)));
+            state.push(format!(
+                "Your red tests and their output:\n{}",
+                red_lines.join("\n")
+            ));
+            for ran in sessions.iter().rev().take(3).rev() {
+                state.push(format!(
+                    "Session {} ended {}: {}",
+                    ran.number,
+                    ran.status(),
+                    rebase(&crate::judge::clip(&ran.summary(), 300))
+                ));
+            }
+            let mut session_evidence = vec![lane_suite.evidence()];
+            session_evidence.extend(evidence.iter().map(|e| Evidence {
+                label: rebase(&e.label),
+                text: rebase(&e.text),
+            }));
+            let brief = Brief {
+                task: rebase(&prepared.instruction),
+                guidance,
+                evidence: session_evidence,
+                state,
+            };
+            let parallel_with: Vec<u32> = numbers
+                .iter()
+                .copied()
+                .filter(|m| *m != numbers[i])
+                .collect();
+            let why = format!(
+                "session {} works on {} ({}), group {} of {n}, in parallel with session{} {}",
+                numbers[i],
+                lane.tests.join(", "),
+                lane.requirements.join(", "),
+                i + 1,
+                if parallel_with.len() == 1 { "" } else { "s" },
+                parallel_with
+                    .iter()
+                    .map(u32::to_string)
+                    .collect::<Vec<_>>()
+                    .join(" and ")
+            );
+            let place = Place {
+                workdir: Some(copy.clone()),
+                group: Some(format!("group {} of {n}: {}", i + 1, lane.tests.join(", "))),
+                batch: format!("round {round}"),
+                parallel_with,
+                alongside: None,
+            };
+            let focus = lane.requirements.clone();
+            let number = numbers[i];
+            async move {
+                self.session_at(number, &focus, &why, &brief, false, place)
+                    .await
+            }
+        }))
+        .await;
+        let leaked = crate::delegate::fingerprint(&self.workdir) != before;
+        let copies: Vec<PathBuf> = places.iter().map(|(copy, _)| copy.clone()).collect();
+        let merged = parallel::merge(&self.workdir, &base, &copies);
+        let requeued: Vec<String> = merged
+            .conflicts
+            .iter()
+            .flat_map(|c| lanes[c.lane].tests.clone())
+            .collect();
+        let note = (!merged.conflicts.is_empty()).then(|| {
+            merged
+                .conflicts
+                .iter()
+                .map(|c| {
+                    format!(
+                        "Session {} worked on {} at the same time as others, but its changes to \
+                         {} clashed with an earlier session's and were discarded: start from the \
+                         merged workspace. It reported: {}",
+                        numbers[c.lane],
+                        lanes[c.lane].tests.join(", "),
+                        c.files.join(", "),
+                        crate::judge::clip(&runs[c.lane].summary(), 300)
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        });
+        crate::say::line(&format!(
+            "  microluna ▸ merged round {round}: {} of {n} sessions applied ({} files, {} joined line by line){}{}",
+            merged.applied.len(),
+            merged.files.len(),
+            merged.joined.len(),
+            if merged.conflicts.is_empty() {
+                String::new()
+            } else {
+                format!("; requeued {}", requeued.join(", "))
+            },
+            if leaked {
+                "; the workspace changed while the sessions ran"
+            } else {
+                ""
+            }
+        ));
+        let record = json!({
+            "round": round,
+            "sessions": numbers,
+            "lanes": lanes,
+            "applied": merged.applied.iter().map(|i| numbers[*i]).collect::<Vec<_>>(),
+            "conflicts": merged.conflicts.iter().map(|c| json!({ "session": numbers[c.lane], "files": c.files })).collect::<Vec<_>>(),
+            "files": merged.files,
+            "joined": merged.joined,
+            "requeued": requeued,
+            "leaked": leaked,
+            "note": note,
+        });
+        self.recorder.push(
+            Step::said(
+                Source::System,
+                &format!(
+                    "Merged sessions {}: {} applied, {} conflicted.",
+                    numbers
+                        .iter()
+                        .map(u32::to_string)
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                    merged.applied.len(),
+                    merged.conflicts.len()
+                ),
+            )
+            .noting(
+                crate::handoff::KEY,
+                json!({
+                    "from": format!("{AGENT} sessions {}", numbers.iter().map(u32::to_string).collect::<Vec<_>>().join(", ")),
+                    "to": "the workspace, merged",
+                    "trigger": format!(
+                        "{} of {n} sessions' changes merged ({} files){}",
+                        merged.applied.len(),
+                        merged.files.len(),
+                        if requeued.is_empty() { String::new() } else { format!("; {} requeued after a conflict", requeued.join(", ")) }
+                    ),
+                    "pattern": "microluna-parallel",
+                    "action": "merge",
+                }),
+            ),
+        );
+        let _ = std::fs::remove_dir_all(&root);
+        (runs, record)
     }
 
     /// One session's brief: the task first, then the group and its
@@ -2064,28 +3440,53 @@ impl Executor for Micro {
             )
             .is_empty()
         });
+        let mut parallel_summary = Value::Null;
         let (sessions, moves, stopped, mode) = match (&self.policy.mode, prepared) {
             (Mode::Requirements, Some(prepared)) => {
                 let suited = if self.policy.suite {
-                    self.suite_loop(&prepared).await
+                    Some(self.suite_loop(&prepared).await)
                 } else {
                     None
                 };
-                let (sessions, moves, stopped) = match suited {
-                    Some(done) => done,
-                    None => self.requirements(&prepared).await,
-                };
-                (sessions, moves, stopped, Mode::Requirements)
+                match suited {
+                    Some(Ok(looped)) => {
+                        parallel_summary = looped.parallel;
+                        (looped.sessions, looped.moves, looped.stopped, "suite")
+                    }
+                    Some(Err(prior)) => {
+                        let (sessions, moves, stopped) = self.requirements(&prepared, prior).await;
+                        (sessions, moves, stopped, "requirements")
+                    }
+                    None => {
+                        let (sessions, moves, stopped) =
+                            self.requirements(&prepared, Vec::new()).await;
+                        (sessions, moves, stopped, "requirements")
+                    }
+                }
             }
             _ => (
                 self.single(briefing).await,
                 Vec::new(),
                 "the one session ended".to_string(),
-                Mode::Single,
+                "single",
             ),
         };
-        let mut usage = TokenUsage::default();
-        let mut cost = Some(0.0);
+        // The suite writers are Luna sessions too: their cost and tokens
+        // count with the edit sessions'.
+        let (writer_usd, writer_usage) = moves.iter().filter(|m| m["kind"] == "suite").fold(
+            (0.0, TokenUsage::default()),
+            |(usd, mut usage), m| {
+                usage.add(TokenUsage {
+                    input: m["writer_usage"]["input"].as_u64().unwrap_or(0),
+                    cached: m["writer_usage"]["cached"].as_u64().unwrap_or(0),
+                    output: m["writer_usage"]["output"].as_u64().unwrap_or(0),
+                    reasoning: 0,
+                });
+                (usd + m["writer_usd"].as_f64().unwrap_or(0.0), usage)
+            },
+        );
+        let mut usage = writer_usage;
+        let mut cost = Some(writer_usd);
         for ran in &sessions {
             usage.add(ran.usage);
             cost = match (cost, ran.cost_usd) {
@@ -2117,10 +3518,9 @@ impl Executor for Micro {
         };
         let last = sessions.last();
         let mut result = format!(
-            "Microluna ran {} session{} ({}): {stopped}.",
+            "Microluna ran {} session{} ({mode}): {stopped}.",
             sessions.len(),
             if sessions.len() == 1 { "" } else { "s" },
-            mode.word()
         );
         for ran in &sessions {
             result.push_str(&format!(
@@ -2138,7 +3538,7 @@ impl Executor for Micro {
         }
         let record = json!({
             "schema": LOOP_SCHEMA,
-            "mode": mode.word(),
+            "mode": mode,
             "policy": self.policy,
             "model": self.model,
             "stopped": stopped,
@@ -2146,6 +3546,8 @@ impl Executor for Micro {
             "moves": moves,
             "usage": usage_json(usage),
             "cost_usd": cost,
+            "writer_usd": writer_usd,
+            "parallel": parallel_summary,
             "stopped_by": Value::Null,
             "session_id": last.map(|r| r.session_id.clone()),
         });
@@ -2164,7 +3566,7 @@ impl Executor for Micro {
                 has_result: true,
                 result: Some(result),
                 is_error: Some(all_lost),
-                subtype: Some(format!("microluna-{}", mode.word())),
+                subtype: Some(format!("microluna-{mode}")),
                 num_turns: u64::try_from(turns).ok(),
                 total_cost_usd: cost,
                 duration_ms: Some(milliseconds),

@@ -1308,6 +1308,9 @@ async fn write_parts<W: Writer, R: Runner>(
         trace: None,
         started_at_ms: started,
         name: Some("accept-writer-1".to_string()),
+        input_tokens: written.iter().map(|w| w.input_tokens).sum(),
+        cached_tokens: written.iter().map(|w| w.cached_tokens).sum(),
+        output_tokens: written.iter().map(|w| w.output_tokens).sum(),
     };
     let parts = written
         .into_iter()

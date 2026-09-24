@@ -70,6 +70,82 @@ pub struct Finish {
     pub summary: String,
     /// The answer to a question, or an empty string.
     pub answer: String,
+    /// Why the session is blocked or failed, typed, so the host can act on
+    /// it; `none` when it is done.
+    #[serde(default)]
+    pub cause: Cause,
+}
+
+/// Why a session couldn't finish the work, in the model's typed words.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Cause {
+    /// Nothing blocked the session.
+    #[default]
+    None,
+    /// The test harness itself fails: a missing file, a runner error, or
+    /// a test that errors before it asserts anything.
+    HarnessBroken,
+    /// A test asserts something the task contradicts.
+    TestContradictsTask,
+    /// A program or library the work needs isn't installed.
+    MissingTool,
+    /// The task leaves open something only its author can settle.
+    NeedsInformation,
+    /// Anything else.
+    Other,
+}
+
+impl Cause {
+    /// The cause as the tool spells it.
+    #[must_use]
+    pub fn word(self) -> &'static str {
+        match self {
+            Cause::None => "none",
+            Cause::HarnessBroken => "harness_broken",
+            Cause::TestContradictsTask => "test_contradicts_task",
+            Cause::MissingTool => "missing_tool",
+            Cause::NeedsInformation => "needs_information",
+            Cause::Other => "other",
+        }
+    }
+}
+
+/// Whether a call only reads: `read_file`, or a `run_command` whose every
+/// piece is a reading program (`cat`, `ls`, `grep`, `sed -n`, and the
+/// like) with no redirection. Reads can run at the same time, and a turn
+/// made only of reads is orientation rather than work.
+#[must_use]
+pub fn reads_only(name: &str, arguments: &str) -> bool {
+    match name {
+        "read_file" => true,
+        "run_command" => {
+            let command = serde_json::from_str::<Value>(arguments)
+                .ok()
+                .and_then(|v| v["command"].as_str().map(str::to_string))
+                .unwrap_or_default();
+            if command.trim().is_empty() || command.contains('>') || command.contains("tee ") {
+                return false;
+            }
+            command
+                .split(['|', ';', '&', '\n'])
+                .map(str::trim)
+                .filter(|piece| !piece.is_empty())
+                .all(|piece| {
+                    let mut words = piece.split_whitespace();
+                    let first = words.next().unwrap_or_default();
+                    let first = first.rsplit('/').next().unwrap_or(first);
+                    match first {
+                        "sed" => words.next() == Some("-n"),
+                        "cat" | "ls" | "head" | "tail" | "grep" | "rg" | "find" | "wc" | "nl"
+                        | "tree" | "pwd" | "stat" | "file" | "du" | "sort" | "uniq" | "cut"
+                        | "awk" | "echo" | "printf" | "which" | "type" | "cd" | "true" => true,
+                        _ => false,
+                    }
+                })
+        }
+        _ => false,
+    }
 }
 
 /// The tool declarations the model is sent, in a fixed order so they stay
@@ -125,7 +201,12 @@ pub fn declarations() -> Vec<Value> {
             json!({
                 "status": { "type": "string", "enum": ["done", "blocked", "failed"] },
                 "summary": { "type": "string", "description": "What was done, briefly." },
-                "answer": { "type": "string", "description": "The answer to a question, or an empty string." }
+                "answer": { "type": "string", "description": "The answer to a question, or an empty string." },
+                "cause": {
+                    "type": "string",
+                    "enum": ["none", "harness_broken", "test_contradicts_task", "missing_tool", "needs_information", "other"],
+                    "description": "Why the session is blocked or failed: the test harness itself fails, a test contradicts the task, a needed program is missing, the task needs information only its author has, or other. none when done."
+                }
             }),
         ),
     ]

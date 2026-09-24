@@ -308,6 +308,7 @@ fn a_contradicting_check_keeps_the_loop_on_its_group() {
             status: microluna::FinishStatus::Done,
             summary: "done".to_string(),
             answer: String::new(),
+            cause: microluna::Cause::None,
         }),
         turns: 1,
         calls: 1,
@@ -323,6 +324,10 @@ fn a_contradicting_check_keeps_the_loop_on_its_group() {
         changed_workspace: true,
         ran_command: true,
         read_only: false,
+        started_at_ms: 0,
+        ended_at_ms: 0,
+        place: Place::default(),
+        read_turns: 0,
     };
     let at = |contradicted, verdict_fail, last, attempts| Signals {
         contradicted,
@@ -570,5 +575,404 @@ async fn the_suite_loop_writes_a_suite_then_edits_until_it_is_green() {
     assert_eq!(
         std::fs::read_to_string(dir.path().join("work/hello.txt")).unwrap(),
         "hello\n"
+    );
+}
+
+const HELLO_TEST: &str = "#!/bin/sh\n# requirement: R1\n# kind: example\n# what: hello.txt holds hello\ngrep -qx hello hello.txt\n";
+const WORLD_TEST: &str = "#!/bin/sh\n# requirement: R2\n# kind: example\n# what: world.txt holds world\ngrep -qx world world.txt\n";
+
+/// A writer that writes both tests in one round.
+fn writes_the_suite(sleep: bool) -> Vec<microluna::Reply> {
+    let mut replies = Vec::new();
+    if sleep {
+        replies.push(call(
+            "w0",
+            "run_command",
+            &json!({ "command": "sleep 1", "timeout_seconds": null }),
+            usage(900, 0, 20),
+        ));
+    }
+    replies.extend([
+        call(
+            "w1",
+            "write_file",
+            &json!({ "path": "tests/T1.sh", "contents": HELLO_TEST }),
+            usage(900, 0, 40),
+        ),
+        call(
+            "w2",
+            "write_file",
+            &json!({ "path": "tests/T2.sh", "contents": WORLD_TEST }),
+            usage(900, 800, 40),
+        ),
+        finish("w3", "done", "Wrote T1 for R1 and T2 for R2."),
+    ]);
+    replies
+}
+
+/// A session that sleeps a second, writes `path`, and finishes.
+fn sleeps_then_writes(id: &str, path: &str, contents: &str) -> Vec<microluna::Reply> {
+    vec![
+        call(
+            &format!("{id}-sleep"),
+            "run_command",
+            &json!({ "command": "sleep 1", "timeout_seconds": null }),
+            usage(900, 0, 20),
+        ),
+        call(
+            &format!("{id}-write"),
+            "write_file",
+            &json!({ "path": path, "contents": contents }),
+            usage(900, 800, 40),
+        ),
+        finish(&format!("{id}-finish"), "done", &format!("Wrote {path}.")),
+    ]
+}
+
+fn fake(executor: &Micro) -> &FakeTransport {
+    match &executor.wire {
+        Ok(Wire::Fake(fake)) => fake,
+        _ => panic!("the test executor has a fake transport"),
+    }
+}
+
+/// v7's writer: one round, rewrites only for hard failures.
+fn one_round() -> Option<SuiteWriter> {
+    Some(SuiteWriter {
+        writers: 1,
+        rewrite: crate::accept::Rewrite::Hard,
+        rounds: 1,
+        turns: 10,
+        repair_turns: 4,
+        effort: None,
+        one_pass: true,
+        discover: false,
+    })
+}
+
+fn wrong_files(dir: &Path) {
+    std::fs::write(dir.join("work/hello.txt"), "nope\n").unwrap();
+    std::fs::write(dir.join("work/world.txt"), "nope\n").unwrap();
+}
+
+/// Two red tests on different files run as two sessions at once, each in
+/// its own copy; each sleeps a second, and the round takes about one
+/// second, not two. Their changes merge and the suite goes green.
+#[tokio::test]
+async fn independent_red_tests_run_at_once_and_merge() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut executor = micro(
+        dir.path(),
+        Vec::new(),
+        Policy {
+            suite: true,
+            checks: false,
+            suite_writer: one_round(),
+            parallel_edits: 2,
+            ..Policy::default()
+        },
+    );
+    wrong_files(dir.path());
+    fake(&executor).lane(
+        "Write an executable acceptance suite",
+        writes_the_suite(false),
+    );
+    fake(&executor).lane(
+        "only on the red tests T1 (",
+        sleeps_then_writes("a", "hello.txt", "hello\n"),
+    );
+    fake(&executor).lane(
+        "only on the red tests T2 (",
+        sleeps_then_writes("b", "world.txt", "world\n"),
+    );
+    executor.take_evidence(&prepared());
+    let report = executor.execute(&briefing(TASK)).await;
+    let record = executor.last.clone().unwrap();
+    assert_eq!(report.status, Status::Answered, "{record:#}");
+    assert!(
+        record["stopped"]
+            .as_str()
+            .unwrap()
+            .contains("green after session 2"),
+        "{record:#}"
+    );
+    assert_eq!(record["mode"], json!("suite"));
+    let read = |p: &str| std::fs::read_to_string(dir.path().join("work").join(p)).unwrap();
+    assert_eq!(read("hello.txt"), "hello\n");
+    assert_eq!(read("world.txt"), "world\n");
+    // The two sessions overlapped: the round's span is about one sleep.
+    let parallel = &record["parallel"];
+    let round = parallel["batches"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|b| b["batch"] == "round 1")
+        .unwrap();
+    let span = round["end_ms"].as_u64().unwrap() - round["start_ms"].as_u64().unwrap();
+    assert!(round["sum_ms"].as_u64().unwrap() >= 2_000, "{round:#}");
+    assert!(
+        span < 1_800,
+        "the sessions ran one after another: {round:#}"
+    );
+    assert_eq!(parallel["peak"], json!(2));
+    assert!(
+        parallel["overlaps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|o| o["a"] == "session 1" && o["b"] == "session 2"),
+        "{parallel:#}"
+    );
+    assert!(
+        parallel["concurrency"].as_f64().unwrap() > 1.0,
+        "{parallel:#}"
+    );
+    assert_eq!(parallel["merges"], json!(1));
+    assert_eq!(parallel["conflicts"], json!(0));
+    // Each session says its group and that it ran beside the other.
+    let sessions = record["sessions"].as_array().unwrap();
+    assert_eq!(sessions[0]["group"], json!("group 1 of 2: T1"));
+    assert_eq!(sessions[1]["parallel_with"], json!([1]));
+    let lanes: Vec<Value> = executor
+        .recorder
+        .steps()
+        .iter()
+        .filter_map(|s| s.extensions.get(parallel::LANE_EXTENSION).cloned())
+        .collect();
+    assert_eq!(lanes.len(), 2);
+    assert_eq!(lanes[0]["batch"], json!("round 1"));
+    assert!(
+        executor
+            .recorder
+            .steps()
+            .iter()
+            .any(|s| s.extensions.contains_key(parallel::SUMMARY_EXTENSION))
+    );
+}
+
+/// Two sessions at once that both write the same new file: the first
+/// session's change stands, the second's is discarded, its test is
+/// requeued, and the next round's one session finishes it.
+#[tokio::test]
+async fn a_conflicting_session_is_requeued() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut executor = micro(
+        dir.path(),
+        vec![
+            // The requeued round: one session on T2.
+            call(
+                "c1",
+                "write_file",
+                &json!({ "path": "world.txt", "contents": "world\n" }),
+                usage(900, 800, 40),
+            ),
+            finish("c2", "done", "Wrote world.txt."),
+        ],
+        Policy {
+            suite: true,
+            checks: false,
+            suite_writer: one_round(),
+            parallel_edits: 2,
+            ..Policy::default()
+        },
+    );
+    wrong_files(dir.path());
+    fake(&executor).lane(
+        "Write an executable acceptance suite",
+        writes_the_suite(false),
+    );
+    let clash = |id: &str, path: &str, contents: &str, note: &str| {
+        vec![
+            call(
+                &format!("{id}-note"),
+                "write_file",
+                &json!({ "path": "notes.txt", "contents": note }),
+                usage(900, 0, 20),
+            ),
+            call(
+                &format!("{id}-write"),
+                "write_file",
+                &json!({ "path": path, "contents": contents }),
+                usage(900, 800, 40),
+            ),
+            finish(&format!("{id}-finish"), "done", &format!("Wrote {path}.")),
+        ]
+    };
+    fake(&executor).lane(
+        "only on the red tests T1 (",
+        clash("a", "hello.txt", "hello\n", "from session 1\n"),
+    );
+    fake(&executor).lane(
+        "only on the red tests T2 (",
+        clash("b", "world.txt", "world\n", "from session 2\n"),
+    );
+    executor.take_evidence(&prepared());
+    let report = executor.execute(&briefing(TASK)).await;
+    let record = executor.last.clone().unwrap();
+    assert_eq!(report.status, Status::Answered, "{record:#}");
+    let merge = record["moves"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["kind"] == "merge")
+        .unwrap();
+    assert_eq!(merge["merge"]["applied"], json!([1]), "{merge:#}");
+    assert_eq!(merge["merge"]["conflicts"][0]["session"], json!(2));
+    assert_eq!(
+        merge["merge"]["conflicts"][0]["files"],
+        json!(["notes.txt"])
+    );
+    assert_eq!(merge["merge"]["requeued"], json!(["T2"]));
+    let read = |p: &str| std::fs::read_to_string(dir.path().join("work").join(p)).unwrap();
+    assert_eq!(
+        read("notes.txt"),
+        "from session 1\n",
+        "the first diff stands"
+    );
+    assert_eq!(read("world.txt"), "world\n");
+    assert!(
+        record["stopped"]
+            .as_str()
+            .unwrap()
+            .contains("green after session 3"),
+        "{record:#}"
+    );
+    assert_eq!(record["parallel"]["conflicts"], json!(1));
+    // The requeued session was told why.
+    let requests = fake(&executor).requests();
+    let last = serde_json::to_string(&requests.last().unwrap().input).unwrap();
+    assert!(last.contains("clashed with an earlier session"), "{last}");
+}
+
+/// The first edit session fixes hello.txt in the workspace while the
+/// suite is written: the proof ran on the snapshot, so T1 was red there
+/// and stays in the suite, the writer and the session overlapped, and the
+/// suite then runs on the real workspace with T1 already green.
+#[tokio::test]
+async fn the_first_session_edits_while_the_suite_is_proven_on_a_snapshot() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut executor = micro(
+        dir.path(),
+        vec![
+            call(
+                "e1",
+                "write_file",
+                &json!({ "path": "world.txt", "contents": "world\n" }),
+                usage(900, 800, 40),
+            ),
+            finish("e2", "done", "Wrote world.txt."),
+        ],
+        Policy {
+            suite: true,
+            checks: false,
+            suite_writer: one_round(),
+            overlap_suite: true,
+            ..Policy::default()
+        },
+    );
+    wrong_files(dir.path());
+    fake(&executor).lane(
+        "Write an executable acceptance suite",
+        writes_the_suite(true),
+    );
+    fake(&executor).lane(
+        "while the acceptance suite is written",
+        sleeps_then_writes("early", "hello.txt", "hello\n"),
+    );
+    executor.take_evidence(&prepared());
+    let report = executor.execute(&briefing(TASK)).await;
+    let record = executor.last.clone().unwrap();
+    assert_eq!(report.status, Status::Answered, "{record:#}");
+    let suite = &record["moves"][0];
+    assert_eq!(
+        suite["tests"],
+        json!(2),
+        "T1 was red on the snapshot: {suite:#}"
+    );
+    assert_eq!(suite["rejected"], json!(0));
+    assert_eq!(suite["on_snapshot"], json!(true));
+    let first_run = record["moves"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["kind"] == "run")
+        .unwrap();
+    assert_eq!(first_run["after_session"], json!(1));
+    assert_eq!(first_run["passed"], json!(1), "{first_run:#}");
+    assert!(
+        record["stopped"]
+            .as_str()
+            .unwrap()
+            .contains("green after session 2"),
+        "{record:#}"
+    );
+    let parallel = &record["parallel"];
+    assert!(
+        parallel["overlaps"].as_array().unwrap().iter().any(|o| {
+            (o["a"] == "accept.define" && o["b"] == "session 1")
+                || (o["a"] == "session 1" && o["b"] == "accept.define")
+        }),
+        "{parallel:#}"
+    );
+    let suite_ms = parallel["suite_ms"].as_u64().unwrap();
+    assert!(suite_ms >= 1_000, "{parallel:#}");
+    assert!(
+        parallel["suite_on_critical_path_ms"].as_u64().unwrap() < suite_ms,
+        "{parallel:#}"
+    );
+    let sessions = record["sessions"].as_array().unwrap();
+    assert_eq!(sessions[0]["alongside"], json!("accept.define"));
+    // The frozen suite names the real workspace, not the snapshot.
+    let run_sh = std::fs::read_to_string(dir.path().join("accept-suite-1/run.sh")).unwrap();
+    assert!(run_sh.contains(&dir.path().join("work").display().to_string()));
+}
+
+/// With `handoff_jev`, two sessions in a row that leave the same red
+/// tests with the same output stop the loop, and each move is recorded.
+#[tokio::test]
+async fn the_same_failure_twice_stops_the_loop() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut executor = micro(
+        dir.path(),
+        vec![
+            finish("s1", "done", "Looked around."),
+            finish("s2", "done", "Looked around again."),
+            finish("s3", "done", "Never reached."),
+        ],
+        Policy {
+            suite: true,
+            checks: false,
+            suite_writer: one_round(),
+            handoff_jev: true,
+            ..Policy::default()
+        },
+    );
+    wrong_files(dir.path());
+    fake(&executor).lane(
+        "Write an executable acceptance suite",
+        writes_the_suite(false),
+    );
+    executor.take_evidence(&prepared());
+    executor.execute(&briefing(TASK)).await;
+    let record = executor.last.clone().unwrap();
+    assert_eq!(
+        record["stopped"],
+        json!("the same red tests failed the same way after sessions 1 and 2"),
+        "{record:#}"
+    );
+    assert_eq!(record["sessions"].as_array().unwrap().len(), 2);
+    let moves: Vec<&Value> = record["moves"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|m| m["kind"] == "move")
+        .collect();
+    assert_eq!(moves.len(), 1, "one Jev move, after session 1");
+    assert_eq!(moves[0]["move"], json!("retry"));
+    assert!(
+        moves[0]["overridden"]
+            .as_str()
+            .unwrap()
+            .contains("no answer")
     );
 }

@@ -29,6 +29,14 @@ pub struct Written {
     /// The session's name, such as `accept-writer-1-2`, when it has one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+    /// Input tokens across its requests, cached ones included.
+    #[serde(default)]
+    pub input_tokens: u64,
+    /// The input tokens the provider served from its cache.
+    #[serde(default)]
+    pub cached_tokens: u64,
+    #[serde(default)]
+    pub output_tokens: u64,
 }
 
 /// Writes tests into a suite directory.
@@ -211,6 +219,9 @@ impl<T: Transport> MicrolunaWriter<'_, T> {
             trace,
             started_at_ms: Some(started_at_ms),
             name: Some(name.to_string()),
+            input_tokens: report.usage.input,
+            cached_tokens: report.usage.cached,
+            output_tokens: report.usage.output,
         }
     }
 }
