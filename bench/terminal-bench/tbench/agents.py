@@ -82,6 +82,11 @@ class AgentProfile:
     extra_allowed_hosts: tuple[str, ...]
     cost_provenance: str
     notes: tuple[str, ...]
+    # ``allowlist`` runs the agent phase with only ``extra_allowed_hosts``
+    # reachable, even on a task whose baseline is public; ``harbor`` keeps
+    # Harbor's own resolution. Either way the trial records what applied
+    # (``tbench.netpolicy``).
+    agent_network: str = "harbor"
 
     @property
     def is_control(self) -> bool:
@@ -123,7 +128,23 @@ def _load_agent(agent_id: str, raw: dict[str, Any]) -> AgentProfile:
         extra_allowed_hosts=tuple(raw.get("extra_allowed_hosts") or ()),
         cost_provenance=raw.get("cost_provenance", "unknown"),
         notes=tuple(notes),
+        agent_network=_agent_network(agent_id, raw),
     )
+
+
+def _agent_network(agent_id: str, raw: dict[str, Any]) -> str:
+    from .netpolicy import MODES
+
+    mode = raw.get("agent_network", "harbor")
+    if mode not in MODES:
+        raise ValueError(
+            f"agent {agent_id!r}: agent_network must be one of {', '.join(MODES)}, not {mode!r}"
+        )
+    if mode == "allowlist" and not raw.get("extra_allowed_hosts"):
+        raise ValueError(
+            f"agent {agent_id!r}: agent_network allowlist needs extra_allowed_hosts"
+        )
+    return mode
 
 
 def load_agents(path: Path | None = None) -> dict[str, AgentProfile]:

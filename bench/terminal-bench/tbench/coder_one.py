@@ -46,6 +46,11 @@ Every arm sizes its episode from the task's own agent timeout: the adapter
 reads the trial's ``lock.json`` and the task's ``task.toml`` for Harbor's
 timeout, runs the episode process 60 seconds inside it, and the episode
 keeps its own deadline 60 seconds inside that.
+
+Every arm runs the contamination guard (``tbench.contamination``, issue
+#9590) on the host: before setup, over its policy manifest and the
+guidance in the checkout, refusing the trial on a finding; and after the
+run, over the episode's own briefings, recording what it found.
 """
 
 from __future__ import annotations
@@ -61,6 +66,7 @@ from typing import Any, ClassVar
 
 from harbor.environments.base import BaseEnvironment
 
+from tbench import contamination
 from tbench.coder_v05 import INSTALL_ROOT, CoderV05, EpisodeContractError
 from tbench.paths import PACKAGE_DIR
 
@@ -69,11 +75,16 @@ REPO_ROOT = PACKAGE_DIR.parent.parent
 POLICY_SCHEMA = "openagents.coder-one.policy.v1"
 
 
+def policy_file(path: str) -> Path:
+    """A policy manifest's path, relative to the repository root unless
+    absolute."""
+    file = Path(path).expanduser()
+    return file if file.is_absolute() else REPO_ROOT / file
+
+
 def load_policy(path: str) -> dict[str, Any]:
     """Read a Coder One policy manifest; the episode validates it fully."""
-    file = Path(path).expanduser()
-    if not file.is_absolute():
-        file = REPO_ROOT / file
+    file = policy_file(path)
     try:
         manifest = json.loads(file.read_text())
     except (OSError, ValueError) as exc:
@@ -159,6 +170,8 @@ class CoderOne(CoderV05):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         policy = kwargs.pop("policy", None)
         self._policy: dict[str, Any] | None = load_policy(policy) if policy else None
+        self._policy_file: Path | None = policy_file(policy) if policy else None
+        self._instruction: str | None = None
         super().__init__(*args, **kwargs)
         # Without an explicit exec timeout, the process runs 60 seconds
         # inside Harbor's own agent timeout, so the episode ends and its
@@ -169,6 +182,35 @@ class CoderOne(CoderV05):
                 int(self._harbor_timeout_sec) - self.DEADLINE_MARGIN_SEC,
                 2 * self.DEADLINE_MARGIN_SEC,
             )
+
+    async def setup(self, environment: BaseEnvironment) -> None:
+        """Refuse the trial before its setup when the arm's manifest or
+        the guidance holds benchmark facts (``tbench.contamination``)."""
+        await asyncio.to_thread(
+            contamination.static_check,
+            self.logs_dir,
+            policy=self._policy_file,
+            artifact=self._artifact_path,
+        )
+        await super().setup(environment)
+
+    async def run(self, instruction: str, environment: BaseEnvironment, context) -> None:
+        self._instruction = instruction
+        await super().run(instruction, environment, context)
+
+    def populate_context_post_run(self, context) -> None:
+        """Fold the bundle in, then check the run's own briefings."""
+        super().populate_context_post_run(context)
+        report = contamination.run_check(
+            self.logs_dir, instruction=self._instruction, artifact=self._artifact_path
+        )
+        context.metadata = {
+            **(context.metadata or {}),
+            "contamination": {
+                "clean": report.get("clean"),
+                "findings": len(report.get("findings") or []),
+            },
+        }
 
     def _episode_env(self) -> dict[str, str]:
         env = super()._episode_env()

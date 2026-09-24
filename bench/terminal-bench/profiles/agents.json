@@ -167,6 +167,23 @@
       "cost_provenance": "none",
       "note": "Does nothing. The negative control: a nop pass means the verifier is not discriminating."
     },
+    "netprobe": {
+      "role": "control",
+      "harbor_import_path": "tbench.netprobe:NetProbe",
+      "version": null,
+      "model": null,
+      "kwargs": {},
+      "env_forward": [],
+      "extra_allowed_hosts": [
+        "openagents.com",
+        "api.typesafe.ai",
+        "chatgpt.com"
+      ],
+      "agent_network": "allowlist",
+      "auth_modes": {},
+      "cost_provenance": "none",
+      "note": "No model. Probes, from inside the task container during the agent phase, whether the model and Jev endpoints are reachable and whether other hosts are not, and records the policy the phase ran under (issue #9589)."
+    },
     "coder-one": {
       "role": "candidate",
       "harbor_import_path": "tbench.coder_one:CoderOne",
@@ -181,6 +198,7 @@
         "openagents.com",
         "api.typesafe.ai"
       ],
+      "agent_network": "allowlist",
       "cost_provenance": "mixed",
       "cost_note": "Generation cost is the door's provider-reported cost_microusd per call; Jev cost is a price estimate at the published input-token rate. Both are kept apart in evaluation/usage.json; unreported values are null, never zero.",
       "env_forward": [
@@ -215,6 +233,7 @@
         "openagents.com",
         "api.typesafe.ai"
       ],
+      "agent_network": "allowlist",
       "cost_provenance": "mixed",
       "cost_note": "Generation cost is the door's provider-reported cost_microusd per call; Jev cost is a price estimate at the published input-token rate. Both are kept apart in evaluation/usage.json; unreported values are null, never zero.",
       "env_forward": [
@@ -435,6 +454,7 @@
         "api.anthropic.com",
         "downloads.claude.ai"
       ],
+      "agent_network": "allowlist",
       "cost_provenance": "mixed",
       "cost_note": "Generation is the door's provider-reported cost_microusd per call; Jev is a price estimate at the published input-token rate; the delegate is Claude Code's own total_cost_usd, a list-price figure on a subscription token. evaluation/usage.json keeps the three apart under components and sums them in cost.amount_usd; unreported values are null, never zero.",
       "env_forward": [
@@ -498,6 +518,7 @@
         "api.anthropic.com",
         "downloads.claude.ai"
       ],
+      "agent_network": "allowlist",
       "cost_provenance": "mixed",
       "cost_note": "Generation is the door's provider-reported cost_microusd per call; Jev is a price estimate at the published input-token rate; the delegate is Claude Code's own total_cost_usd, a list-price figure on a subscription token. evaluation/usage.json keeps the three apart under components and sums them in cost.amount_usd; unreported values are null, never zero.",
       "env_forward": [
@@ -555,6 +576,7 @@
         "openagents.com",
         "api.typesafe.ai"
       ],
+      "agent_network": "allowlist",
       "cost_provenance": "mixed",
       "cost_note": "Generation cost is the door's provider-reported cost_microusd per call; Jev cost is a price estimate at the published input-token rate. Both are kept apart in evaluation/usage.json; unreported values are null, never zero.",
       "env_forward": [
@@ -601,6 +623,7 @@
         "api.openai.com",
         "registry.npmjs.org"
       ],
+      "agent_network": "allowlist",
       "cost_provenance": "mixed",
       "cost_note": "Generation is the door's provider-reported cost_microusd per call; Jev is a price estimate at the published input-token rate; the Codex delegate is a price estimate from its token counts at OpenAI's standard list prices, supplied manually by the operator on 2026-09-22, because Codex reports no cost. evaluation/usage.json keeps the three apart under components and sums them in cost.amount_usd; unreported values are null, never zero.",
       "env_forward": [
@@ -655,6 +678,7 @@
         "api.openai.com",
         "registry.npmjs.org"
       ],
+      "agent_network": "allowlist",
       "cost_provenance": "mixed",
       "cost_note": "Generation is the door's provider-reported cost_microusd per call; Jev is a price estimate at the published input-token rate; the Codex delegate is a price estimate from its token counts at OpenAI's standard list prices, supplied manually by the operator on 2026-09-22, because Codex reports no cost. evaluation/usage.json keeps the three apart under components and sums them in cost.amount_usd; unreported values are null, never zero.",
       "env_forward": [
@@ -710,6 +734,7 @@
         "api.openai.com",
         "registry.npmjs.org"
       ],
+      "agent_network": "allowlist",
       "cost_provenance": "mixed",
       "cost_note": "Generation is the door's provider-reported cost_microusd per call; Jev is a price estimate at the published input-token rate; the Codex delegate is a price estimate from its token counts at OpenAI's standard list prices, supplied manually by the operator on 2026-09-22, because Codex reports no cost. evaluation/usage.json keeps the three apart under components and sums them in cost.amount_usd; unreported values are null, never zero.",
       "env_forward": [
@@ -764,6 +789,7 @@
         "api.anthropic.com",
         "downloads.claude.ai"
       ],
+      "agent_network": "allowlist",
       "cost_provenance": "mixed",
       "cost_note": "Generation is the door's provider-reported cost_microusd per call; Jev is a price estimate at the published input-token rate; the delegate is Claude Code's own total_cost_usd, a list-price figure on a subscription token. evaluation/usage.json keeps the three apart under components and sums them in cost.amount_usd; unreported values are null, never zero.",
       "env_forward": [
@@ -831,6 +857,7 @@
         "api.anthropic.com",
         "downloads.claude.ai"
       ],
+      "agent_network": "allowlist",
       "cost_provenance": "mixed",
       "cost_note": "Generation is the door's provider-reported cost_microusd per call; Jev is a price estimate at the published input-token rate; the delegate is Claude Code's own total_cost_usd, a list-price figure on a subscription token. evaluation/usage.json keeps the three apart under components and sums them in cost.amount_usd; unreported values are null, never zero.",
       "env_forward": [
@@ -899,6 +926,7 @@
         "api.anthropic.com",
         "downloads.claude.ai"
       ],
+      "agent_network": "allowlist",
       "cost_provenance": "mixed",
       "cost_note": "Generation is the door's provider-reported cost_microusd per call; Jev is a price estimate at the published input-token rate; the delegate is Claude Code's own total_cost_usd, a list-price figure on a subscription token. evaluation/usage.json keeps the three apart under components and sums them in cost.amount_usd; unreported values are null, never zero.",
       "env_forward": [
@@ -970,6 +998,7 @@
         "api.openai.com",
         "registry.npmjs.org"
       ],
+      "agent_network": "allowlist",
       "cost_provenance": "mixed",
       "cost_note": "Generation is the door's provider-reported cost_microusd per call; Jev is a price estimate at the published input-token rate; the Codex delegate is a price estimate from its token counts at OpenAI's standard list prices, supplied manually by the operator on 2026-09-22, because Codex reports no cost. evaluation/usage.json keeps the three apart under components and sums them in cost.amount_usd; unreported values are null, never zero.",
       "env_forward": [
@@ -1027,6 +1056,7 @@
         "api.openai.com",
         "registry.npmjs.org"
       ],
+      "agent_network": "allowlist",
       "cost_provenance": "mixed",
       "cost_note": "Generation is the door's provider-reported cost_microusd per call; Jev is a price estimate at the published input-token rate; the Codex delegate is a price estimate from its token counts at OpenAI's standard list prices, supplied manually by the operator on 2026-09-22, because Codex reports no cost. evaluation/usage.json keeps the three apart under components and sums them in cost.amount_usd; unreported values are null, never zero.",
       "env_forward": [
@@ -1081,6 +1111,7 @@
         "api.openai.com",
         "registry.npmjs.org"
       ],
+      "agent_network": "allowlist",
       "cost_provenance": "mixed",
       "cost_note": "Generation is the door's provider-reported cost_microusd per call; Jev is a price estimate at the published input-token rate; the Codex delegate is a price estimate from its token counts at OpenAI's standard list prices, supplied manually by the operator on 2026-09-22, because Codex reports no cost. evaluation/usage.json keeps the three apart under components and sums them in cost.amount_usd; unreported values are null, never zero.",
       "env_forward": [
@@ -1132,6 +1163,7 @@
         "api.openai.com",
         "registry.npmjs.org"
       ],
+      "agent_network": "allowlist",
       "cost_provenance": "mixed",
       "cost_note": "Generation is the door's provider-reported cost_microusd per call; Jev is a price estimate at the published input-token rate; the Codex delegate is a price estimate from its token counts at OpenAI's standard list prices, supplied manually by the operator on 2026-09-22, because Codex reports no cost. evaluation/usage.json keeps the three apart under components and sums them in cost.amount_usd; unreported values are null, never zero.",
       "env_forward": [
@@ -1187,6 +1219,7 @@
         "api.openai.com",
         "registry.npmjs.org"
       ],
+      "agent_network": "allowlist",
       "cost_provenance": "mixed",
       "cost_note": "Generation is the door's provider-reported cost_microusd per call; Jev is a price estimate at the published input-token rate; the Codex delegate is a price estimate from its token counts at OpenAI's standard list prices, supplied manually by the operator on 2026-09-22, because Codex reports no cost. evaluation/usage.json keeps the three apart under components and sums them in cost.amount_usd; unreported values are null, never zero.",
       "env_forward": [
@@ -1243,6 +1276,7 @@
         "api.anthropic.com",
         "downloads.claude.ai"
       ],
+      "agent_network": "allowlist",
       "cost_provenance": "mixed",
       "cost_note": "Generation is the door's provider-reported cost_microusd per call; Jev is a price estimate at the published input-token rate; the delegate is Claude Code's own total_cost_usd, a list-price figure on a subscription token. evaluation/usage.json keeps the three apart under components and sums them in cost.amount_usd; unreported values are null, never zero.",
       "env_forward": [
@@ -1313,6 +1347,7 @@
         "api.anthropic.com",
         "downloads.claude.ai"
       ],
+      "agent_network": "allowlist",
       "cost_provenance": "mixed",
       "cost_note": "Generation is the door's provider-reported cost_microusd per call; Jev is a price estimate at the published input-token rate; the delegate is Claude Code's own total_cost_usd, a list-price figure on a subscription token. evaluation/usage.json keeps the three apart under components and sums them in cost.amount_usd; unreported values are null, never zero.",
       "env_forward": [
@@ -1382,6 +1417,7 @@
         "api.anthropic.com",
         "downloads.claude.ai"
       ],
+      "agent_network": "allowlist",
       "cost_provenance": "mixed",
       "cost_note": "Generation is the door's provider-reported cost_microusd per call; Jev is a price estimate at the published input-token rate; the delegate is Claude Code's own total_cost_usd, a list-price figure on a subscription token. evaluation/usage.json keeps the three apart under components and sums them in cost.amount_usd; unreported values are null, never zero.",
       "env_forward": [
@@ -1448,6 +1484,7 @@
         "api.anthropic.com",
         "downloads.claude.ai"
       ],
+      "agent_network": "allowlist",
       "cost_provenance": "mixed",
       "cost_note": "Generation is the door's provider-reported cost_microusd per call; Jev is a price estimate at the published input-token rate; the delegate is Claude Code's own total_cost_usd, a list-price figure on a subscription token. evaluation/usage.json keeps the three apart under components and sums them in cost.amount_usd; unreported values are null, never zero.",
       "env_forward": [
@@ -1521,6 +1558,7 @@
         "api.anthropic.com",
         "downloads.claude.ai"
       ],
+      "agent_network": "allowlist",
       "cost_provenance": "mixed",
       "cost_note": "Generation is the door's provider-reported cost_microusd per call; Jev is a price estimate at the published input-token rate; the delegate is Claude Code's own total_cost_usd, a list-price figure on a subscription token. evaluation/usage.json keeps the three apart under components and sums them in cost.amount_usd; unreported values are null, never zero.",
       "env_forward": [
@@ -1591,6 +1629,7 @@
         "api.anthropic.com",
         "downloads.claude.ai"
       ],
+      "agent_network": "allowlist",
       "cost_provenance": "mixed",
       "cost_note": "Generation is the door's provider-reported cost_microusd per call; Jev is a price estimate at the published input-token rate; the delegate is Claude Code's own total_cost_usd, a list-price figure on a subscription token. evaluation/usage.json keeps the three apart under components and sums them in cost.amount_usd; unreported values are null, never zero.",
       "env_forward": [
@@ -1664,6 +1703,7 @@
         "api.openai.com",
         "registry.npmjs.org"
       ],
+      "agent_network": "allowlist",
       "cost_provenance": "mixed",
       "cost_note": "Generation is the door's provider-reported cost_microusd per call; Jev is a price estimate at the published input-token rate; Claude Code's dispatches are its own total_cost_usd, a list-price figure on a subscription token; Codex's are price estimates from its token counts at OpenAI's standard list prices, supplied manually by the operator on 2026-09-22. Every dispatch (planner, first executor, escalation, repair) is a delegate call in evaluation/usage.json; unreported values are null, never zero.",
       "env_forward": [
@@ -1726,6 +1766,7 @@
         "api.openai.com",
         "registry.npmjs.org"
       ],
+      "agent_network": "allowlist",
       "cost_provenance": "mixed",
       "cost_note": "Generation is the door's provider-reported cost_microusd per call; Jev is a price estimate at the published input-token rate; Claude Code's dispatches are its own total_cost_usd, a list-price figure on a subscription token; Codex's are price estimates from its token counts at OpenAI's standard list prices, supplied manually by the operator on 2026-09-22. Every dispatch (planner, first executor, escalation, repair) is a delegate call in evaluation/usage.json; unreported values are null, never zero.",
       "env_forward": [
@@ -1788,6 +1829,7 @@
         "api.openai.com",
         "registry.npmjs.org"
       ],
+      "agent_network": "allowlist",
       "cost_provenance": "mixed",
       "cost_note": "Generation is the door's provider-reported cost_microusd per call; Jev is a price estimate at the published input-token rate; Claude Code's dispatches are its own total_cost_usd, a list-price figure on a subscription token; Codex's are price estimates from its token counts at OpenAI's standard list prices, supplied manually by the operator on 2026-09-22. Every dispatch (planner, first executor, escalation, repair) is a delegate call in evaluation/usage.json; unreported values are null, never zero.",
       "env_forward": [
@@ -1850,6 +1892,7 @@
         "api.openai.com",
         "registry.npmjs.org"
       ],
+      "agent_network": "allowlist",
       "cost_provenance": "mixed",
       "cost_note": "Generation is the door's provider-reported cost_microusd per call; Jev is a price estimate at the published input-token rate; Claude Code's dispatches are its own total_cost_usd, a list-price figure on a subscription token; Codex's are price estimates from its token counts at OpenAI's standard list prices, supplied manually by the operator on 2026-09-22. Every dispatch (planner, first executor, escalation, repair) is a delegate call in evaluation/usage.json; unreported values are null, never zero.",
       "env_forward": [
@@ -1912,6 +1955,7 @@
         "api.openai.com",
         "registry.npmjs.org"
       ],
+      "agent_network": "allowlist",
       "cost_provenance": "mixed",
       "cost_note": "Generation is the door's provider-reported cost_microusd per call; Jev is a price estimate at the published input-token rate; Claude Code's dispatches are its own total_cost_usd, a list-price figure on a subscription token; Codex's are price estimates from its token counts at OpenAI's standard list prices, supplied manually by the operator on 2026-09-22. Every dispatch (planner, first executor, escalation, repair, second executor, persist round) is a delegate call in evaluation/usage.json; unreported values are null, never zero.",
       "env_forward": [
@@ -1974,6 +2018,7 @@
         "api.openai.com",
         "registry.npmjs.org"
       ],
+      "agent_network": "allowlist",
       "cost_provenance": "mixed",
       "cost_note": "Generation is the door's provider-reported cost_microusd per call; Jev is a price estimate at the published input-token rate; Claude Code's dispatches are its own total_cost_usd, a list-price figure on a subscription token; Codex's are price estimates from its token counts at OpenAI's standard list prices, supplied manually by the operator on 2026-09-22. Every dispatch (planner, first executor, escalation, repair, second executor, persist round) is a delegate call in evaluation/usage.json; unreported values are null, never zero.",
       "env_forward": [
@@ -2036,6 +2081,7 @@
         "api.openai.com",
         "registry.npmjs.org"
       ],
+      "agent_network": "allowlist",
       "cost_provenance": "mixed",
       "cost_note": "Generation is the door's provider-reported cost_microusd per call; Jev is a price estimate at the published input-token rate; Claude Code's dispatches are its own total_cost_usd, a list-price figure on a subscription token; Codex's are price estimates from its token counts at OpenAI's standard list prices, supplied manually by the operator on 2026-09-22. Every dispatch (planner, first executor, escalation, repair, second executor, persist round) is a delegate call in evaluation/usage.json; unreported values are null, never zero.",
       "env_forward": [
@@ -2098,6 +2144,7 @@
         "api.openai.com",
         "registry.npmjs.org"
       ],
+      "agent_network": "allowlist",
       "cost_provenance": "mixed",
       "cost_note": "Generation is the door's provider-reported cost_microusd per call; Jev is a price estimate at the published input-token rate; Claude Code's dispatches are its own total_cost_usd, a list-price figure on a subscription token; Codex's are price estimates from its token counts at OpenAI's standard list prices, supplied manually by the operator on 2026-09-22. Every dispatch (planner, first executor, escalation, repair, second executor, persist round) is a delegate call in evaluation/usage.json; unreported values are null, never zero.",
       "env_forward": [
@@ -2160,6 +2207,7 @@
         "api.openai.com",
         "registry.npmjs.org"
       ],
+      "agent_network": "allowlist",
       "cost_provenance": "mixed",
       "cost_note": "Generation is the door's provider-reported cost_microusd per call; Jev is a price estimate at the published input-token rate; Claude Code's dispatches are its own total_cost_usd, a list-price figure on a subscription token; Codex's are price estimates from its token counts at OpenAI's standard list prices, supplied manually by the operator on 2026-09-22. Every dispatch (planner, first executor, escalation, repair) is a delegate call in evaluation/usage.json; unreported values are null, never zero.",
       "env_forward": [
@@ -2222,6 +2270,7 @@
         "api.openai.com",
         "registry.npmjs.org"
       ],
+      "agent_network": "allowlist",
       "cost_provenance": "mixed",
       "cost_note": "Generation is the door's provider-reported cost_microusd per call; Jev is a price estimate at the published input-token rate; Claude Code's dispatches are its own total_cost_usd, a list-price figure on a subscription token; Codex's are price estimates from its token counts at OpenAI's standard list prices, supplied manually by the operator on 2026-09-22. Every dispatch (planner, first executor, escalation, repair) is a delegate call in evaluation/usage.json; unreported values are null, never zero.",
       "env_forward": [
@@ -2284,6 +2333,7 @@
         "api.openai.com",
         "registry.npmjs.org"
       ],
+      "agent_network": "allowlist",
       "cost_provenance": "mixed",
       "cost_note": "Generation is the door's provider-reported cost_microusd per call; Jev is a price estimate at the published input-token rate; Claude Code's dispatches are its own total_cost_usd, a list-price figure on a subscription token; Codex's are price estimates from its token counts at OpenAI's standard list prices, supplied manually by the operator on 2026-09-22. Every dispatch (planner, first executor, escalation, repair, second executor, persist round) is a delegate call in evaluation/usage.json; unreported values are null, never zero.",
       "env_forward": [
@@ -2346,6 +2396,7 @@
         "api.openai.com",
         "registry.npmjs.org"
       ],
+      "agent_network": "allowlist",
       "cost_provenance": "mixed",
       "cost_note": "Generation is the door's provider-reported cost_microusd per call; Jev is a price estimate at the published input-token rate; Claude Code's dispatches are its own total_cost_usd, a list-price figure on a subscription token; Codex's are price estimates from its token counts at OpenAI's standard list prices, supplied manually by the operator on 2026-09-22. Every dispatch (planner, first executor, escalation, repair) is a delegate call in evaluation/usage.json; unreported values are null, never zero.",
       "env_forward": [
@@ -2408,6 +2459,7 @@
         "api.openai.com",
         "registry.npmjs.org"
       ],
+      "agent_network": "allowlist",
       "cost_provenance": "mixed",
       "cost_note": "Generation is the door's provider-reported cost_microusd per call; Jev is a price estimate at the published input-token rate; Claude Code's dispatches are its own total_cost_usd, a list-price figure on a subscription token; Codex's are price estimates from its token counts at OpenAI's standard list prices, supplied manually by the operator on 2026-09-22. Every dispatch (planner, first executor, escalation, repair) is a delegate call in evaluation/usage.json; unreported values are null, never zero.",
       "env_forward": [
@@ -2470,6 +2522,7 @@
         "api.openai.com",
         "registry.npmjs.org"
       ],
+      "agent_network": "allowlist",
       "cost_provenance": "mixed",
       "cost_note": "Generation is the door's provider-reported cost_microusd per call; Jev is a price estimate at the published input-token rate; Claude Code's dispatches are its own total_cost_usd, a list-price figure on a subscription token; Codex's are price estimates from its token counts at OpenAI's standard list prices, supplied manually by the operator on 2026-09-22. Every dispatch (planner, first executor, escalation, repair) is a delegate call in evaluation/usage.json; unreported values are null, never zero.",
       "env_forward": [
@@ -2524,6 +2577,7 @@
         "api.typesafe.ai",
         "chatgpt.com"
       ],
+      "agent_network": "allowlist",
       "cost_provenance": "mixed",
       "cost_note": "Microluna's dispatches are list-price estimates from the exact token usage each Luna request reports, at OpenAI's standard short-context prices, supplied manually by the operator on 2026-09-22; Jev is a price estimate at the published input-token rate. Every dispatch (the first and the repair) is a delegate call in evaluation/usage.json. No Claude.",
       "env_forward": [
@@ -2574,6 +2628,7 @@
         "api.typesafe.ai",
         "chatgpt.com"
       ],
+      "agent_network": "allowlist",
       "cost_provenance": "mixed",
       "cost_note": "Microluna's dispatches are list-price estimates from the exact token usage each Luna request reports, at OpenAI's standard short-context prices, supplied manually by the operator on 2026-09-22; Jev is a price estimate at the published input-token rate. Every dispatch (the first and the repair) is a delegate call in evaluation/usage.json. No Claude.",
       "env_forward": [
@@ -2624,6 +2679,7 @@
         "api.typesafe.ai",
         "chatgpt.com"
       ],
+      "agent_network": "allowlist",
       "cost_provenance": "mixed",
       "cost_note": "Microluna's dispatches are list-price estimates from the exact token usage each Luna request reports, at OpenAI's standard short-context prices, supplied manually by the operator on 2026-09-22; Jev is a price estimate at the published input-token rate. Every dispatch (the first and the repair) is a delegate call in evaluation/usage.json. No Claude.",
       "env_forward": [
@@ -2674,6 +2730,7 @@
         "api.typesafe.ai",
         "chatgpt.com"
       ],
+      "agent_network": "allowlist",
       "cost_provenance": "mixed",
       "cost_note": "Microluna's dispatches are list-price estimates from the exact token usage each Luna request reports, at OpenAI's standard short-context prices, supplied manually by the operator on 2026-09-22; Jev is a price estimate at the published input-token rate. Every dispatch (the first and the repair) is a delegate call in evaluation/usage.json. No Claude.",
       "env_forward": [
@@ -2724,6 +2781,7 @@
         "api.typesafe.ai",
         "chatgpt.com"
       ],
+      "agent_network": "allowlist",
       "cost_provenance": "mixed",
       "cost_note": "Microluna's dispatches are list-price estimates from the exact token usage each Luna request reports, at OpenAI's standard short-context prices, supplied manually by the operator on 2026-09-22; Jev is a price estimate at the published input-token rate. Every dispatch (the first and the repair) is a delegate call in evaluation/usage.json. No Claude.",
       "env_forward": [
@@ -2774,6 +2832,7 @@
         "api.typesafe.ai",
         "chatgpt.com"
       ],
+      "agent_network": "allowlist",
       "cost_provenance": "mixed",
       "cost_note": "Microluna's dispatches are list-price estimates from the exact token usage each Luna request reports, at OpenAI's standard short-context prices, supplied manually by the operator on 2026-09-22; Jev is a price estimate at the published input-token rate. Every dispatch (the first and the repair) is a delegate call in evaluation/usage.json. No Claude.",
       "env_forward": [
@@ -2882,6 +2941,7 @@
         "api.openai.com",
         "registry.npmjs.org"
       ],
+      "agent_network": "allowlist",
       "cost_provenance": "mixed",
       "cost_note": "Generation is the door's provider-reported cost_microusd per call; Jev is a price estimate at the published input-token rate; Claude Code's dispatches are its own total_cost_usd, a list-price figure on a subscription token; Codex's are price estimates from its token counts at OpenAI's standard list prices, supplied manually by the operator on 2026-09-22. Every dispatch (planner, first executor, escalation, repair) is a delegate call in evaluation/usage.json; unreported values are null, never zero.",
       "env_forward": [
@@ -2944,6 +3004,7 @@
         "api.openai.com",
         "registry.npmjs.org"
       ],
+      "agent_network": "allowlist",
       "cost_provenance": "mixed",
       "cost_note": "Generation is the door's provider-reported cost_microusd per call; Jev is a price estimate at the published input-token rate; Claude Code's dispatches are its own total_cost_usd, a list-price figure on a subscription token; Codex's are price estimates from its token counts at OpenAI's standard list prices, supplied manually by the operator on 2026-09-22. Every dispatch (planner, first executor, escalation, repair) is a delegate call in evaluation/usage.json; unreported values are null, never zero.",
       "env_forward": [
@@ -3046,6 +3107,7 @@
         "downloads.claude.ai",
         "registry.npmjs.org"
       ],
+      "agent_network": "allowlist",
       "cost_provenance": "mixed",
       "cost_note": "Jev is a price estimate at the published input-token rate; every Claude Code dispatch (first executor, escalation, repair, second executor, persistence round) is its own total_cost_usd, a list-price figure on a subscription token, recorded as a delegate call in evaluation/usage.json. Unreported values are null, never zero.",
       "env_forward": [

@@ -33,6 +33,7 @@ import os
 import shutil
 import signal
 import subprocess
+import sys
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -41,7 +42,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from . import paths
+from . import netpolicy, paths
 from .agents import AgentProfile, configured_auth_modes
 from .counts import counts_for_trial
 from .jobconfig import JobProfile, build_job_config, task_entry, write_job_config
@@ -372,6 +373,12 @@ def tbench_held_aside(job_dir: Path) -> Iterator[Path]:
             pass
 
 
+def network_plugin_args(request: RunRequest) -> list[str]:
+    """The Harbor plugin that records every trial's network policy and,
+    for an ``allowlist`` arm, holds the agent phase to its allowed hosts."""
+    return netpolicy.plugin_args(request.agent.agent_network)
+
+
 def run(request: RunRequest, *, harbor_argv0: str = "harbor") -> Path:
     """Materialize the job and run Harbor over it."""
     job_dir, config = materialize(request, record_refusal=True)
@@ -386,6 +393,7 @@ def run(request: RunRequest, *, harbor_argv0: str = "harbor") -> Path:
             "--job-name",
             config["job_name"],
             "--yes",
+            *network_plugin_args(request),
         ]
         returncode, got = run_harbor(command)
     return _finish(job_dir, request, "run", returncode, got)
@@ -399,6 +407,7 @@ def resume(request: RunRequest, *, harbor_argv0: str = "harbor") -> Path:
         harbor_argv0,
         "job",
         "resume",
+        *network_plugin_args(request),
         "--job-path",
         str(job_dir),
     ]
@@ -593,7 +602,25 @@ def collect(job_dir: Path, request: RunRequest) -> list[Path]:
         }
         manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
         written.extend([attempt_path, manifest_path])
+        warn_public_network(trial_dir.name, record, request.agent.agent_network)
     return written
+
+
+def warn_public_network(trial: str, record: dict[str, Any], mode: str) -> None:
+    """Say so when an allowlist arm's agent phase had public network, or
+    when a trial recorded no policy at all."""
+    network = record.get("network") or {}
+    if network.get("agent_phase_public"):
+        print(
+            f"tbench: warning: {trial} ran its agent phase with public network",
+            file=sys.stderr,
+        )
+    elif mode == "allowlist" and not network.get("recorded"):
+        print(
+            f"tbench: warning: {trial} recorded no network policy; "
+            "nothing says its agent phase was held to the allowlist",
+            file=sys.stderr,
+        )
 
 
 def harbor_available(argv0: str = "harbor") -> bool:

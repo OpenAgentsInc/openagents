@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from . import usage_limit
+from . import contamination, netpolicy, usage_limit
 
 ATTEMPT_SCHEMA = "openagents.tbench.attempt.v1"
 MANIFEST_SCHEMA = "openagents.tbench.episode-manifest.v1"
@@ -463,6 +463,10 @@ def attempt_record(
                 "estimate is not an observed incremental bill."
             ),
         },
+        # What the agent phase could reach (issue #9589), and what the
+        # contamination guard found (issue #9590).
+        "network": netpolicy.trial_network(trial_dir),
+        "contamination": contamination.trial_summary(trial_dir),
         "counts": counts or {"semantics": "unknown"},
         "evidence": evidence or {},
         "completeness": {

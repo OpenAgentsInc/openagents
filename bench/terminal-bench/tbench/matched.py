@@ -238,7 +238,8 @@ def main() -> None:
                         command = ["harbor", "run", "--config",
                                    str(held / runner.TrialPaths(job_dir).config_path.name),
                                    "--jobs-dir", str(config["jobs_dir"]),
-                                   "--job-name", request.job_name, "--yes"]
+                                   "--job-name", request.job_name, "--yes",
+                                   *runner.network_plugin_args(request)]
                         code, signal = runner.run_harbor(command)
                     runner._finish(job_dir, request, "matched run", code, signal)
                 finally:

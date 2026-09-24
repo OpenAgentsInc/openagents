@@ -1077,6 +1077,13 @@ pub fn details(detail: &Detail) -> Vec<(String, String)> {
             rows.push(("artifact".to_owned(), artifact));
         }
     }
+    if let Some(network) = crate::runs::network_policy(&run.files.dir) {
+        let flag = if network.public { " (flagged)" } else { "" };
+        rows.push((
+            "network".to_owned(),
+            format!("agent phase {}{flag}", network.agent_phase),
+        ));
+    }
     for note in &run.notes {
         rows.push(("note".to_owned(), note.clone()));
     }

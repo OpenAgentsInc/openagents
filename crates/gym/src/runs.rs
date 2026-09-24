@@ -477,6 +477,25 @@ impl Catalog {
             ),
         };
         let mut run = self.read(job_name, trial_name, files, false);
+        if network_policy(trial).is_some_and(|network| network.public) {
+            run.notes.push(
+                "its agent phase ran with public network, not the model and Jev allowlist"
+                    .to_owned(),
+            );
+        }
+        // The contamination guard's check of the run's own briefings
+        // (issue #9590).
+        if let Some(report) = read_json(&agent_dir.join("contamination-run.json"))
+            && report.get("clean") == Some(&Value::Bool(false))
+        {
+            let found = report
+                .get("findings")
+                .and_then(Value::as_array)
+                .map_or(0, Vec::len);
+            run.notes.push(format!(
+                "its briefings held {found} benchmark facts (contamination-run.json)"
+            ));
+        }
         if run.outcome == Outcome::Running {
             let active = [
                 run.files.live.clone(),
@@ -1153,6 +1172,41 @@ fn modified_ms(path: &Path) -> Option<i64> {
     let modified = std::fs::metadata(path).ok()?.modified().ok()?;
     let elapsed = modified.duration_since(UNIX_EPOCH).ok()?;
     i64::try_from(elapsed.as_millis()).ok()
+}
+
+/// The network policy a trial's agent phase ran under, from the
+/// `network-policy.json` the harness writes into the trial directory
+/// (issue #9589).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Network {
+    /// `public`, `no-network`, or `allowlist: host, host`.
+    pub agent_phase: String,
+    /// Whether the agent phase had public network.
+    pub public: bool,
+}
+
+/// Reads a trial's `network-policy.json`, when the harness wrote one.
+#[must_use]
+pub fn network_policy(trial: &Path) -> Option<Network> {
+    let record = read_json(&trial.join("network-policy.json"))?;
+    let phase = record.get("agent_phase")?;
+    let mode = text(phase, "/network_mode")?;
+    let hosts: Vec<&str> = phase
+        .get("allowed_hosts")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .collect();
+    let agent_phase = if hosts.is_empty() {
+        mode.clone()
+    } else {
+        format!("{mode}: {}", hosts.join(", "))
+    };
+    Some(Network {
+        public: mode == "public",
+        agent_phase,
+    })
 }
 
 pub(crate) fn read_json(path: &Path) -> Option<Value> {
@@ -1873,6 +1927,31 @@ mod tests {
             .iter()
             .find(|run| run.task == task)
             .unwrap_or_else(|| panic!("no {task} run"))
+    }
+
+    #[test]
+    fn a_trial_names_its_agent_network_and_a_public_one_is_flagged() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(network_policy(dir.path()), None);
+        let write = |phase: Value| {
+            std::fs::write(
+                dir.path().join("network-policy.json"),
+                json!({"agent_phase": phase}).to_string(),
+            )
+            .unwrap();
+        };
+        write(
+            json!({"network_mode": "allowlist", "allowed_hosts": ["chatgpt.com", "openagents.com"]}),
+        );
+        assert_eq!(
+            network_policy(dir.path()),
+            Some(Network {
+                agent_phase: "allowlist: chatgpt.com, openagents.com".to_owned(),
+                public: false,
+            })
+        );
+        write(json!({"network_mode": "public", "allowed_hosts": []}));
+        assert!(network_policy(dir.path()).is_some_and(|network| network.public));
     }
 
     #[test]
