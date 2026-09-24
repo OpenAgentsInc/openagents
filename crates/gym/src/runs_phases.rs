@@ -37,7 +37,7 @@ use crate::runs_transcript::{content_text, unwrap_shell};
 
 /// The rules' version. Change it with any change to [`steps`]' placement,
 /// so a fingerprint says which rules made it.
-pub const RULES_VERSION: &str = "runs-phases-rules-v1";
+pub const RULES_VERSION: &str = "runs-phases-rules-v2";
 
 /// The Jev question set's version. Change it with any change to a
 /// question's wording or to what [`state`] puts in a step's state.
@@ -485,7 +485,14 @@ pub fn extract(record: &Value) -> Extracted {
         return out;
     }
     // A Coder One or Microluna episode-log step: calls carry their output.
-    if let Some(calls) = record.get("calls").and_then(Value::as_array) {
+    // An ATIF log step holds one `call`; an exported document, `calls`.
+    let single = record.get("call").map(std::slice::from_ref);
+    if let Some(calls) = single.or_else(|| {
+        record
+            .get("calls")
+            .and_then(Value::as_array)
+            .map(Vec::as_slice)
+    }) {
         for call in calls {
             let name = string(call, "name");
             if name.starts_with("jev_")
@@ -889,7 +896,15 @@ fn piece(text: &str) -> Piece {
     if (program == "sed" || program == "perl")
         && words.iter().any(|w| w.starts_with("-i") || w == "-pi")
     {
-        return Piece::Write(words.last().cloned().unwrap_or_default());
+        // The file is the last word that isn't the script or a flag.
+        let file = words
+            .iter()
+            .skip(1)
+            .rev()
+            .find(|w| !w.starts_with('-') && !w.contains(['\\', ';', '\'', '"']))
+            .cloned()
+            .unwrap_or_default();
+        return Piece::Write(file);
     }
     if words
         .iter()
@@ -947,7 +962,7 @@ fn piece(text: &str) -> Piece {
             if words
                 .iter()
                 .skip(1)
-                .any(|w| w.contains("test") || w == "check")
+                .any(|w| w.contains("test") || w.contains("check") || w.contains("repro"))
             {
                 Piece::Test
             } else {
@@ -1775,6 +1790,11 @@ mod tests {
         assert_eq!(placed("python /tmp/repro.py"), Some(Phase::Test));
         assert_eq!(placed("rm -rf /tmp/work"), Some(Phase::Finish));
         assert_eq!(placed("git status"), Some(Phase::Orient));
+        assert_eq!(placed("make -C /app repro"), Some(Phase::Test));
+        assert_eq!(
+            place_command("sed -i 's/a;b/c/' src/lib.py", &HashSet::new(), 0).writes,
+            vec!["src/lib.py".to_owned()]
+        );
         // A program the rules can't name is left for Jev.
         assert_eq!(placed("python solve.py --input data.csv"), None);
         assert_eq!(placed("python3 - <<'PY'\nimport json\nPY"), None);

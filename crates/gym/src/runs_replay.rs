@@ -570,6 +570,34 @@ fn native(path: &Path, marks: &[(u64, i64)], warnings: &mut Vec<String>) -> Vec<
         .collect()
 }
 
+/// A Coder One episode's Microluna session logs, in session order.
+fn microluna_logs(episode: &Path) -> Vec<PathBuf> {
+    let mut logs: Vec<PathBuf> = std::fs::read_dir(episode.join("artifacts"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with("microluna-") && name.ends_with(".atif.jsonl"))
+        })
+        .collect();
+    // `microluna-1-10` sorts after `microluna-1-9`.
+    logs.sort_by_key(|path| {
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .map(|name| {
+                name.trim_end_matches(".atif.jsonl")
+                    .split('-')
+                    .filter_map(|part| part.parse::<u64>().ok())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default()
+    });
+    logs
+}
+
 fn episode(dir: &Path, log: &Path, warnings: &mut Vec<String>) -> Vec<Pending> {
     let records = lines(log, warnings);
     let mut clocks: HashMap<String, Vec<(u64, i64)>> = HashMap::new();
@@ -604,6 +632,22 @@ fn episode(dir: &Path, log: &Path, warnings: &mut Vec<String>) -> Vec<Pending> {
             found.push(id.to_owned());
         }
         streams.extend(native(&path, &marks, warnings));
+    }
+    // Microluna sessions keep their own ATIF logs, with a time on every
+    // step; they replace the host's shorter executor events.
+    for path in microluna_logs(dir) {
+        let records = lines(&path, warnings);
+        if let Some(id) = records
+            .iter()
+            .find_map(|(_, v)| v.pointer("/session/id").and_then(Value::as_str))
+        {
+            found.push(id.to_owned());
+        }
+        for (_, record) in &records {
+            if let Some(step) = record.get("step") {
+                streams.push(pending(step, time(step), "message timestamp"));
+            }
+        }
     }
     let missing = clocks.keys().filter(|id| !found.contains(id)).count();
     if missing > 0 {
@@ -801,6 +845,68 @@ mod tests {
     use super::*;
     use serde_json::json;
     use std::time::Duration;
+
+    #[test]
+    fn microluna_session_logs_replace_the_host_s_executor_events() {
+        let dir = tempfile::tempdir().unwrap();
+        let artifacts = dir.path().join("artifacts");
+        std::fs::create_dir_all(&artifacts).unwrap();
+        let host = [
+            json!({"record": "step", "step": {"at": 1000, "source": "User", "message": "Fix it."}}),
+            json!({"record": "step", "step": {"at": 1100, "source": "System", "message": "executor event 1",
+                "extensions": {"executor_event": {"session_id": "microluna-1-1",
+                    "event": {"line": 1, "kind": "command_started", "command": "ls"}}}}}),
+        ];
+        let log = dir.path().join("episode.atif.jsonl");
+        std::fs::write(
+            &log,
+            host.iter().map(|v| format!("{v}\n")).collect::<String>(),
+        )
+        .unwrap();
+        let session = [
+            json!({"record": "session", "session": {"id": "microluna-1-1"}}),
+            json!({"record": "step", "step": {"at": 1200, "source": "Agent", "message": "",
+                "call": {"id": "c1", "name": "run_command", "arguments": {"command": "ls /app"},
+                    "output": "[exit 0]\nsrc", "outcome": "completed", "milliseconds": 5}}}),
+        ];
+        std::fs::write(
+            artifacts.join("microluna-1-1.atif.jsonl"),
+            session.iter().map(|v| format!("{v}\n")).collect::<String>(),
+        )
+        .unwrap();
+        let mut warnings = Vec::new();
+        let events = episode(dir.path(), &log, &mut warnings);
+        assert!(warnings.is_empty(), "{warnings:?}");
+        // The task and the session's call; the host's shorter event is gone.
+        assert_eq!(events.len(), 2);
+        let calls: Vec<&str> = events
+            .iter()
+            .flat_map(|e| e.extracted.actions.iter().map(|a| a.input.as_str()))
+            .collect();
+        assert_eq!(calls, vec!["ls /app"]);
+    }
+
+    #[test]
+    fn microluna_logs_sort_by_session_number() {
+        let dir = tempfile::tempdir().unwrap();
+        let artifacts = dir.path().join("artifacts");
+        std::fs::create_dir_all(&artifacts).unwrap();
+        for name in [
+            "microluna-1-10.atif.jsonl",
+            "microluna-1-9.atif.jsonl",
+            "other.jsonl",
+        ] {
+            std::fs::write(artifacts.join(name), "").unwrap();
+        }
+        let names: Vec<String> = microluna_logs(dir.path())
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            names,
+            ["microluna-1-9.atif.jsonl", "microluna-1-10.atif.jsonl"]
+        );
+    }
 
     #[test]
     fn the_clock_preserves_pause_speed_seek_and_end() {
