@@ -1,10 +1,15 @@
 # Run Coder One on a mini-task
 
-A mini-task is a small local task with its own grader. Run an episode on
-one with the scripted executor to test how Coder One's components compose,
-in about a second and with no model or container. Run the same task with
-Claude Code or Codex to see whether a real executor uses what the
-components give it.
+A mini-task is a small local task with a grader that checks the workspace
+after the episode, independently of the agent's claims. The four tasks probe
+field meaning, interactive behavior, cancellation cleanup, and recovery. A
+scripted run takes about a second with no model or container. Real-executor
+runs take tens of seconds; the recorded Opus one-pass mean is $0.0537 per
+run over 22 seconds across these four tasks (see the handoff comparison
+below). Mini-tasks are a fast local screen of Coder One's components, not
+Terminal-Bench 4.0 results: a mini-task pass is not a TB4 benchmark score.
+Run one with the scripted executor to test how components compose, or with
+Claude Code or Codex to see whether a real executor uses what they provide.
 
 This is rung 2 and rung 3 of the ladder in
 [Coder as a tunable system](../../optimization/coder-components.md#test-each-component-in-isolation):
@@ -23,9 +28,8 @@ Each task covers one failure family from the v3 Luna trials, or a recovery:
 | `cancel-cleanup` | Cancellation lifecycle | After a real interrupt, both started tasks finish their cleanup. |
 | `git-recovery` | Recovery | A commit lost to a hard reset is back on `master`, and the tree is clean. |
 
-The grader runs after the episode ends, and the episode never sees it, as
-Harbor's verifier is to a Terminal-Bench task. The interactive and
-cancellation graders need `python3` on `PATH`; without it, their verdict is
+The grader runs after the episode ends, and the episode never sees it. The
+interactive and cancellation graders need `python3` on `PATH`; without it, their verdict is
 `unavailable`.
 
 ## Run an episode

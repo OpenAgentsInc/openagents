@@ -311,7 +311,7 @@ pub const HEADER: &str = "started           task                   executor     
 pub fn lines(runs: &[Run], errors: &[String], selected: Option<usize>) -> Vec<String> {
     let mut lines = vec![
         format!(
-            "Coder One mini-task runs · {} runs · local episodes with their own graders, not Terminal-Bench attempts",
+            "Coder One mini-task runs · {} runs · local episodes; fast screen, not TB4",
             runs.len()
         ),
         HEADER.to_owned(),
@@ -339,6 +339,10 @@ Lists Coder One's mini-task runs, newest first: task, executor, how the
 episode ended, and the grader's verdict. --run shows one run's detail:
 how the session was started and stopped, which requirements its checks
 covered, and every component call in order.
+Mini-tasks are local, independently graded screens of Coder One, not
+Terminal-Bench 4.0 benchmark results. Scripted runs take about a second with
+no model or container; the recorded Opus one-pass mean is $0.0537 and 22 s
+per run across four tasks.
 Runs are read from ~/.openagents/coder-one/minitasks unless --runs-dir
 names another directory. Record one with `coder-one minitask run ID`.";
 
@@ -488,7 +492,7 @@ pub(crate) mod tests {
         assert_eq!(run.verdict, "failed");
         assert!(run.timeline.as_ref().unwrap().complete);
         let text = lines(&runs, &errors, Some(0)).join("\n");
-        assert!(text.contains("not Terminal-Bench attempts"), "{text}");
+        assert!(text.contains("not TB4"), "{text}");
         assert!(text.contains("Grade: failed"), "{text}");
         assert!(text.contains("Session control: start done"), "{text}");
         assert!(text.contains("Episode timeline"), "{text}");
