@@ -283,6 +283,27 @@ the task list and the task anatomy. None is changed here.
 | `micro::EARLY_GUIDANCE`, "prefer the standard definition of any method the task names over what a comment in the code defends" | The same origin. |
 | `compose::persist::DIRECTIONS`, step 4, "render a model's projections and compare them with the drawing" | Matches the FreeCAD drawing task in the Terminal-Bench set. |
 
+### Policy notes
+
+An episode reads its manifest through `CODER_ONE_POLICY`, so a manifest's
+`note` can reach a model. On 2026-09-24, `coder-one contamination check`
+found six task ids in the notes of five older manifests. Each note now
+describes the same result without the task, and names the report that
+holds the task-level history. `note` isn't part of a manifest's digest, so
+no digest changed, and recorded runs still resolve to the same manifests.
+
+| Manifest | Task named before | History |
+| --- | --- | --- |
+| `tunable-luna-pack`, `tunable-luna-v2` | `log-summary-date-ranges`, the failure the coverage packer fixed | [Tunable results](../../terminal-bench/2026-09-23-tunable-results.md) |
+| `tunable-v8`, `tunable-v10` | `cargo-flight-dispatch`, which v5's persistence took from 8 failing tests to 2 | [What we have learned](../../terminal-bench/2026-09-23-what-we-have-learned.md) |
+| `tunable-v10` | `cargo-flight-dispatch`, where `verify.second` kept Astra's candidate | [Persistence v10](../../terminal-bench/2026-09-24-persist-v10.md) |
+| `tunable-v9-escalate` | `atrx-vep-crispr`, the first targeted trial, where the repair hid a failure | [Escalation on a failed check](../../terminal-bench/2026-09-24-escalation-on-failed-check.md) |
+| `tunable-v9-escalate` | `atrx-vep-crispr` and `mvcc-lsm-compaction`, which v4's Astra second executor recovered | [TB4 results](../../terminal-bench/tb4-results.md) |
+
+The notes of `tunable-v8` and `tunable-v10` also named an output file of one
+task in their v7 section. The check doesn't flag file names, but the
+sentence now describes the rule without it. `tunable-v7` keeps its note.
+
 ## Mini-task check
 
 On 2026-09-24, GPT-6 Luna through Microluna, Jev live, no Terminal-Bench
