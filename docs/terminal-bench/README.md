@@ -6,6 +6,20 @@ evidence; it does not report the execution host's live queue.
 
 ## Latest status
 
+**Microluna against Luna-in-Codex: one more mini-task pass at 73% of the
+cost, and the same 0 on hard TB4 tasks.** Coder One's in-process Luna
+executor ran the mini-handoff loop against Luna in the Codex CLI on four
+mini-tasks: 9 of 12 against 8 of 12, for 73% of Luna-in-Codex's list-price
+cost and 85% of its time. Both arms failed only `log-severity`, and all
+nine of those failures were CRLF line endings the grader rejects, not wrong
+counts — a check to add, not a Microluna bug. On three TB4 tasks
+(`coq-block-bound`, `shadow-relay`, `uefi-bootkit`) Microluna scored 0, the
+same as Luna-in-Codex and Luna direct, which is 0 of 20 on TB4 so far. The
+runs and #9586's fingerprints drove two fixes: a session must now edit and
+test before the loop calls it done, and a broken stream is resent. See the
+[results](2026-09-24-microluna.md) (issue
+[#9585](https://github.com/OpenAgentsInc/openagents/issues/9585)).
+
 **Strategy fingerprints: Fable's winners read longer before their first
 edit and edit in more rounds than Luna.** Every step of 505 trajectories
 on the 14-task Luna baseline subset is placed in a phase, by rules for 66%
@@ -185,6 +199,7 @@ still need the quota audit. See [harness validation](tb4-results.md#harness-vali
 
 | Document | Contents |
 | --- | --- |
+| [Microluna against Luna-in-Codex](2026-09-24-microluna.md) | Coder One's in-process Luna executor and its mini-handoff loop against Luna in the Codex CLI: four mini-tasks with passes, cost, time, and sessions per task; three TB4 tasks matched to #9583; the CRLF grader mismatch behind every `log-severity` failure; a worked handoff trace; and the two fixes the runs drove. |
 | [Strategy fingerprints, Fable against Luna and Coder One](2026-09-24-strategy-fingerprints.md) | Every step of 505 trajectories on the Luna baseline subset placed in a phase, per-trajectory fingerprints, a worked Fable-against-Luna example, the candidate moves ranked with task counts, effect sizes, and run and step citations, what didn't separate winners from losers, and the Jev cost. |
 | [Truthful checks, calibrated against graded runs](2026-09-24-truthful-checks.md) | The 317-trial label set split by task, every check signal's fail precision, failure recall, and pass rate with Wilson intervals, the combined verdict's held-out numbers against today's checks, the signals it drops, and what labeled data would close the issue. |
 | [Tunable v10 against v7 on four near-miss tasks](2026-09-24-persist-v10.md) | Persistence judged against what the checks flag, on GPT-6 Sol, against the matched v7 arm: first attempts on four tasks, cost and rounds per attempt, persistence attribution, and why the checks can't key progress. |
