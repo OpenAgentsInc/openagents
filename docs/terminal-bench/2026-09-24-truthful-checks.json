@@ -1,0 +1,5364 @@
+{
+  "schema": "openagents.coder-one.check-truth.v1",
+  "label_set": {
+    "trials": 317,
+    "passes": 195,
+    "failures": 122,
+    "tasks": 58,
+    "calibration": {
+      "trials": 132,
+      "passes": 70,
+      "failures": 62,
+      "tasks": 26,
+      "mixed_tasks": 9
+    },
+    "held_out": {
+      "trials": 185,
+      "passes": 125,
+      "failures": 60,
+      "tasks": 32,
+      "mixed_tasks": 12
+    },
+    "arms": {
+      "batched-eval-parity": 3,
+      "coder-one-matched-v8": 30,
+      "coder-one-tunable": 25,
+      "coder-one-tunable-luna": 24,
+      "coder-one-tunable-luna-pack": 24,
+      "coder-one-tunable-luna-snapshot": 3,
+      "coder-one-tunable-luna-v2": 24,
+      "coder-one-tunable-v10": 4,
+      "coder-one-tunable-v2": 63,
+      "coder-one-tunable-v3": 21,
+      "coder-one-tunable-v4": 5,
+      "coder-one-tunable-v5": 2,
+      "coder-one-tunable-v6": 4,
+      "coder-one-tunable-v7": 13,
+      "coder-one-tunable-v8": 9,
+      "coder-one-tunable-v9": 15,
+      "coder-one-tunable-v9-escalate": 32,
+      "luna-jev": 7,
+      "nextjs-performance": 3,
+      "prop-1790193215184-1": 3,
+      "prop-1790193215184-1-base": 3
+    },
+    "models": {
+      "claude-opus-5-5": 223,
+      "gpt-6-astra": 6,
+      "gpt-6-luna": 88
+    },
+    "per_task": [
+      {
+        "task": "terminal-bench/atrx-vep-crispr",
+        "passes": 5,
+        "failures": 3,
+        "split": "calibration"
+      },
+      {
+        "task": "terminal-bench/batched-eval-parity",
+        "passes": 5,
+        "failures": 0,
+        "split": "held-out"
+      },
+      {
+        "task": "terminal-bench/biped-contact-dynamics",
+        "passes": 1,
+        "failures": 0,
+        "split": "calibration"
+      },
+      {
+        "task": "terminal-bench/build-cython-ext",
+        "passes": 12,
+        "failures": 0,
+        "split": "held-out"
+      },
+      {
+        "task": "terminal-bench/bun-sourcemap-leak",
+        "passes": 1,
+        "failures": 5,
+        "split": "calibration"
+      },
+      {
+        "task": "terminal-bench/cad-model",
+        "passes": 12,
+        "failures": 4,
+        "split": "held-out"
+      },
+      {
+        "task": "terminal-bench/cancel-async-tasks",
+        "passes": 12,
+        "failures": 0,
+        "split": "held-out"
+      },
+      {
+        "task": "terminal-bench/cargo-flight-dispatch",
+        "passes": 0,
+        "failures": 15,
+        "split": "calibration"
+      },
+      {
+        "task": "terminal-bench/coq-block-bound",
+        "passes": 2,
+        "failures": 0,
+        "split": "calibration"
+      },
+      {
+        "task": "terminal-bench/cumulative-layout-shift",
+        "passes": 1,
+        "failures": 0,
+        "split": "held-out"
+      },
+      {
+        "task": "terminal-bench/data-anonymization",
+        "passes": 1,
+        "failures": 3,
+        "split": "held-out"
+      },
+      {
+        "task": "terminal-bench/embedding-drift-monitor",
+        "passes": 10,
+        "failures": 1,
+        "split": "held-out"
+      },
+      {
+        "task": "terminal-bench/fin-saccr-rwa",
+        "passes": 3,
+        "failures": 7,
+        "split": "held-out"
+      },
+      {
+        "task": "terminal-bench/fix-code-vulnerability",
+        "passes": 11,
+        "failures": 1,
+        "split": "calibration"
+      },
+      {
+        "task": "terminal-bench/fix-git",
+        "passes": 12,
+        "failures": 1,
+        "split": "calibration"
+      },
+      {
+        "task": "terminal-bench/foodstuff-beta-activity",
+        "passes": 0,
+        "failures": 1,
+        "split": "held-out"
+      },
+      {
+        "task": "terminal-bench/freight-dispatch-shift",
+        "passes": 0,
+        "failures": 1,
+        "split": "held-out"
+      },
+      {
+        "task": "terminal-bench/git-leak-recovery",
+        "passes": 12,
+        "failures": 0,
+        "split": "calibration"
+      },
+      {
+        "task": "terminal-bench/glycan-ms2-elucidation",
+        "passes": 0,
+        "failures": 1,
+        "split": "calibration"
+      },
+      {
+        "task": "terminal-bench/gsea-proteomics",
+        "passes": 4,
+        "failures": 7,
+        "split": "held-out"
+      },
+      {
+        "task": "terminal-bench/headless-terminal",
+        "passes": 12,
+        "failures": 0,
+        "split": "held-out"
+      },
+      {
+        "task": "terminal-bench/heat-pump-warranty",
+        "passes": 2,
+        "failures": 4,
+        "split": "calibration"
+      },
+      {
+        "task": "terminal-bench/hof-topology-interpenetration",
+        "passes": 1,
+        "failures": 0,
+        "split": "calibration"
+      },
+      {
+        "task": "terminal-bench/html-js-filter",
+        "passes": 3,
+        "failures": 5,
+        "split": "held-out"
+      },
+      {
+        "task": "terminal-bench/interleaved-vigenere",
+        "passes": 8,
+        "failures": 7,
+        "split": "calibration"
+      },
+      {
+        "task": "terminal-bench/intrastat-meldung",
+        "passes": 1,
+        "failures": 0,
+        "split": "held-out"
+      },
+      {
+        "task": "terminal-bench/ks-solver-cpp",
+        "passes": 1,
+        "failures": 9,
+        "split": "held-out"
+      },
+      {
+        "task": "terminal-bench/kv-live-surgery",
+        "passes": 1,
+        "failures": 0,
+        "split": "held-out"
+      },
+      {
+        "task": "terminal-bench/layout-config-recreation",
+        "passes": 1,
+        "failures": 0,
+        "split": "calibration"
+      },
+      {
+        "task": "terminal-bench/layout-config-recreation2",
+        "passes": 1,
+        "failures": 0,
+        "split": "held-out"
+      },
+      {
+        "task": "terminal-bench/legacy-utility-triage",
+        "passes": 1,
+        "failures": 3,
+        "split": "held-out"
+      },
+      {
+        "task": "terminal-bench/log-summary-date-ranges",
+        "passes": 10,
+        "failures": 2,
+        "split": "held-out"
+      },
+      {
+        "task": "terminal-bench/medical-claims-processing",
+        "passes": 0,
+        "failures": 1,
+        "split": "calibration"
+      },
+      {
+        "task": "terminal-bench/mp-checkpoint-consolidation",
+        "passes": 1,
+        "failures": 0,
+        "split": "held-out"
+      },
+      {
+        "task": "terminal-bench/music-harmony",
+        "passes": 0,
+        "failures": 4,
+        "split": "held-out"
+      },
+      {
+        "task": "terminal-bench/mvcc-lsm-compaction",
+        "passes": 6,
+        "failures": 2,
+        "split": "calibration"
+      },
+      {
+        "task": "terminal-bench/nextjs-performance",
+        "passes": 6,
+        "failures": 2,
+        "split": "held-out"
+      },
+      {
+        "task": "terminal-bench/ontology-kg-querying",
+        "passes": 0,
+        "failures": 1,
+        "split": "held-out"
+      },
+      {
+        "task": "terminal-bench/payments-pipeline-fix",
+        "passes": 1,
+        "failures": 0,
+        "split": "held-out"
+      },
+      {
+        "task": "terminal-bench/photonic-waveguide-routing",
+        "passes": 1,
+        "failures": 0,
+        "split": "held-out"
+      },
+      {
+        "task": "terminal-bench/production-planning",
+        "passes": 7,
+        "failures": 7,
+        "split": "held-out"
+      },
+      {
+        "task": "terminal-bench/protein-autointerp-disulfide",
+        "passes": 0,
+        "failures": 2,
+        "split": "held-out"
+      },
+      {
+        "task": "terminal-bench/react-lead-form",
+        "passes": 1,
+        "failures": 0,
+        "split": "calibration"
+      },
+      {
+        "task": "terminal-bench/retro-console-soc",
+        "passes": 1,
+        "failures": 0,
+        "split": "calibration"
+      },
+      {
+        "task": "terminal-bench/risk-scorer-replay",
+        "passes": 1,
+        "failures": 1,
+        "split": "calibration"
+      },
+      {
+        "task": "terminal-bench/roy-polymorph-cn",
+        "passes": 1,
+        "failures": 0,
+        "split": "calibration"
+      },
+      {
+        "task": "terminal-bench/rs-archive-clone",
+        "passes": 0,
+        "failures": 1,
+        "split": "calibration"
+      },
+      {
+        "task": "terminal-bench/satb-audio-transcription",
+        "passes": 1,
+        "failures": 0,
+        "split": "held-out"
+      },
+      {
+        "task": "terminal-bench/session-window-debug",
+        "passes": 1,
+        "failures": 0,
+        "split": "calibration"
+      },
+      {
+        "task": "terminal-bench/sglang-qwen-burst",
+        "passes": 0,
+        "failures": 2,
+        "split": "calibration"
+      },
+      {
+        "task": "terminal-bench/sound-change-cascade",
+        "passes": 4,
+        "failures": 0,
+        "split": "held-out"
+      },
+      {
+        "task": "terminal-bench/sqlite-db-truncate",
+        "passes": 12,
+        "failures": 0,
+        "split": "held-out"
+      },
+      {
+        "task": "terminal-bench/takens-embedding-lean",
+        "passes": 1,
+        "failures": 0,
+        "split": "calibration"
+      },
+      {
+        "task": "terminal-bench/telecom-entity-resolution",
+        "passes": 1,
+        "failures": 0,
+        "split": "held-out"
+      },
+      {
+        "task": "terminal-bench/vba-userform-port",
+        "passes": 2,
+        "failures": 8,
+        "split": "calibration"
+      },
+      {
+        "task": "terminal-bench/vf2-speedup-networkx",
+        "passes": 1,
+        "failures": 1,
+        "split": "held-out"
+      },
+      {
+        "task": "terminal-bench/vllm-deepseek-streaming",
+        "passes": 0,
+        "failures": 1,
+        "split": "calibration"
+      },
+      {
+        "task": "terminal-bench/wal-recovery-ordering",
+        "passes": 0,
+        "failures": 9,
+        "split": "calibration"
+      }
+    ]
+  },
+  "report_answers": 317,
+  "verdict": {
+    "features": [
+      "report.strict_grader_accepts",
+      "report.admits_unmet",
+      "self-report.detector"
+    ],
+    "questions": "7a58e10db6c69fbfd5b2e68bbabac9aeab8f2b48b221fe8f3334219a03358318",
+    "targets": {
+      "fail_precision": 0.8,
+      "pass_precision": 0.85,
+      "min_support": 5
+    },
+    "stated": {
+      "fail": [
+        22,
+        37
+      ],
+      "pass": [
+        11,
+        13
+      ]
+    },
+    "params": {
+      "weights": [
+        -1.0982821125400863,
+        2.252439808628326,
+        1.1983071765612536
+      ],
+      "bias": -0.6572181282046469,
+      "fail_at": 0.5529224242284512,
+      "pass_at": 0.2967508049683989,
+      "fail_precision": 0.8095238095238095,
+      "pass_precision": 0.8695652173913043,
+      "fail_support": 42,
+      "pass_support": 23
+    }
+  },
+  "refit": {
+    "weights": [
+      -1.0982821125400863,
+      2.252439808628326,
+      1.1983071765612536
+    ],
+    "bias": -0.6572181282046469,
+    "fail_at": 0.5529224242284512,
+    "pass_at": 0.2967508049683989,
+    "fail_precision": 0.8095238095238095,
+    "pass_precision": 0.8695652173913043,
+    "fail_support": 42,
+    "pass_support": 23
+  },
+  "refit_matches": true,
+  "held_out": {
+    "verdict": {
+      "signal": "verdict.combined",
+      "family": "verdict",
+      "meaning": "the calibrated combined verdict",
+      "trials": 185,
+      "failures": 60,
+      "fail_precision": {
+        "k": 22,
+        "n": 37,
+        "p": 0.5945945945945946,
+        "low": 0.4348568313132931,
+        "high": 0.7365370416005986
+      },
+      "failure_recall": {
+        "k": 22,
+        "n": 60,
+        "p": 0.36666666666666664,
+        "low": 0.2562073884620827,
+        "high": 0.4931723263320327
+      },
+      "pass_when_pass": {
+        "k": 11,
+        "n": 13,
+        "p": 0.8461538461538461,
+        "low": 0.5776482949136899,
+        "high": 0.9567427368172621
+      },
+      "pass_when_not_fail": {
+        "k": 110,
+        "n": 148,
+        "p": 0.7432432432432432,
+        "low": 0.6673328160460555,
+        "high": 0.8068455382389362
+      },
+      "within_fail_precision": {
+        "k": 19,
+        "n": 30,
+        "p": 0.6333333333333333,
+        "low": 0.45513246433604937,
+        "high": 0.7812629779598231
+      },
+      "within_failure_recall": {
+        "k": 19,
+        "n": 51,
+        "p": 0.37254901960784315,
+        "low": 0.2532032972099011,
+        "high": 0.5097503729966575
+      },
+      "separates": true
+    },
+    "todays_checks": {
+      "signal": "checks.final",
+      "family": "checks",
+      "meaning": "today's checks on the final candidate: a failed scenario says fail, all passed says pass",
+      "trials": 185,
+      "failures": 60,
+      "fail_precision": {
+        "k": 6,
+        "n": 11,
+        "p": 0.5454545454545454,
+        "low": 0.28008775568998817,
+        "high": 0.7872904245601196
+      },
+      "failure_recall": {
+        "k": 6,
+        "n": 60,
+        "p": 0.1,
+        "low": 0.04664219945723587,
+        "high": 0.20149694492511044
+      },
+      "pass_when_pass": {
+        "k": 69,
+        "n": 97,
+        "p": 0.711340206185567,
+        "low": 0.614479497470417,
+        "high": 0.792098740082339
+      },
+      "pass_when_not_fail": {
+        "k": 120,
+        "n": 174,
+        "p": 0.6896551724137931,
+        "low": 0.6174399733093999,
+        "high": 0.7536767957705005
+      },
+      "within_fail_precision": {
+        "k": 6,
+        "n": 9,
+        "p": 0.6666666666666666,
+        "low": 0.35419734749908977,
+        "high": 0.879418401317257
+      },
+      "within_failure_recall": {
+        "k": 6,
+        "n": 51,
+        "p": 0.11764705882352941,
+        "low": 0.05504998764172768,
+        "high": 0.23381102297794787
+      },
+      "separates": false
+    }
+  },
+  "signals": {
+    "all": [
+      {
+        "signal": "checks.final",
+        "family": "checks",
+        "meaning": "today's checks on the final candidate: a failed scenario says fail, all passed says pass",
+        "trials": 317,
+        "failures": 122,
+        "fail_precision": {
+          "k": 11,
+          "n": 21,
+          "p": 0.5238095238095238,
+          "low": 0.32369217900266756,
+          "high": 0.7165628770323705
+        },
+        "failure_recall": {
+          "k": 11,
+          "n": 122,
+          "p": 0.09016393442622951,
+          "low": 0.05109201662118755,
+          "high": 0.15425820143071262
+        },
+        "pass_when_pass": {
+          "k": 106,
+          "n": 156,
+          "p": 0.6794871794871795,
+          "low": 0.6026972694042939,
+          "high": 0.7476495739706474
+        },
+        "pass_when_not_fail": {
+          "k": 185,
+          "n": 296,
+          "p": 0.625,
+          "low": 0.5685769560280736,
+          "high": 0.678220019441641
+        },
+        "within_fail_precision": {
+          "k": 8,
+          "n": 14,
+          "p": 0.5714285714285714,
+          "low": 0.3259026690286936,
+          "high": 0.7861949006959948
+        },
+        "within_failure_recall": {
+          "k": 8,
+          "n": 83,
+          "p": 0.0963855421686747,
+          "low": 0.04965214649257531,
+          "high": 0.17882821315072928
+        },
+        "separates": false
+      },
+      {
+        "signal": "checks.first-flagged",
+        "family": "checks",
+        "meaning": "the first check failed a scenario",
+        "trials": 317,
+        "failures": 122,
+        "fail_precision": {
+          "k": 35,
+          "n": 65,
+          "p": 0.5384615384615384,
+          "low": 0.41853187398623515,
+          "high": 0.6540986285006332
+        },
+        "failure_recall": {
+          "k": 35,
+          "n": 122,
+          "p": 0.28688524590163933,
+          "low": 0.21409630394923995,
+          "high": 0.3726858094377481
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 165,
+          "n": 252,
+          "p": 0.6547619047619048,
+          "low": 0.5941316006696846,
+          "high": 0.7107445414432478
+        },
+        "within_fail_precision": {
+          "k": 19,
+          "n": 38,
+          "p": 0.5,
+          "low": 0.3484967553286069,
+          "high": 0.6515032446713931
+        },
+        "within_failure_recall": {
+          "k": 19,
+          "n": 83,
+          "p": 0.2289156626506024,
+          "low": 0.15173247416801833,
+          "high": 0.33008269275658925
+        },
+        "separates": true
+      },
+      {
+        "signal": "checks.scenario-failed",
+        "family": "checks",
+        "meaning": "a scenario other than the self-report failed on the final candidate",
+        "trials": 317,
+        "failures": 122,
+        "fail_precision": {
+          "k": 7,
+          "n": 15,
+          "p": 0.4666666666666667,
+          "low": 0.24809225259746442,
+          "high": 0.6988336984894921
+        },
+        "failure_recall": {
+          "k": 7,
+          "n": 122,
+          "p": 0.05737704918032787,
+          "low": 0.028068085045679897,
+          "high": 0.11371015045037228
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 187,
+          "n": 302,
+          "p": 0.6192052980132451,
+          "low": 0.5632658878743169,
+          "high": 0.6721500921624082
+        },
+        "within_fail_precision": {
+          "k": 5,
+          "n": 9,
+          "p": 0.5555555555555556,
+          "low": 0.2666473457440297,
+          "high": 0.811224570528086
+        },
+        "within_failure_recall": {
+          "k": 5,
+          "n": 83,
+          "p": 0.060240963855421686,
+          "low": 0.026003017602439858,
+          "high": 0.13338603096414572
+        },
+        "separates": false
+      },
+      {
+        "signal": "scenario.behavior.filter-preserves",
+        "family": "scenario",
+        "meaning": "`behavior.filter-preserves` failed says fail; every `behavior.filter-preserves` passed says pass",
+        "trials": 317,
+        "failures": 122,
+        "fail_precision": {
+          "k": 2,
+          "n": 4,
+          "p": 0.5,
+          "low": 0.15003570882017148,
+          "high": 0.8499642911798285
+        },
+        "failure_recall": {
+          "k": 2,
+          "n": 122,
+          "p": 0.01639344262295082,
+          "low": 0.0045071521687355225,
+          "high": 0.05780610513250667
+        },
+        "pass_when_pass": {
+          "k": 1,
+          "n": 2,
+          "p": 0.5,
+          "low": 0.09452865480086614,
+          "high": 0.9054713451991339
+        },
+        "pass_when_not_fail": {
+          "k": 193,
+          "n": 313,
+          "p": 0.6166134185303515,
+          "low": 0.5616431274081047,
+          "high": 0.66875591110199
+        },
+        "within_fail_precision": {
+          "k": 2,
+          "n": 4,
+          "p": 0.5,
+          "low": 0.15003570882017148,
+          "high": 0.8499642911798285
+        },
+        "within_failure_recall": {
+          "k": 2,
+          "n": 83,
+          "p": 0.024096385542168676,
+          "low": 0.006633027079790216,
+          "high": 0.08366471041007639
+        },
+        "separates": false
+      },
+      {
+        "signal": "scenario.behavior.filter-removes",
+        "family": "scenario",
+        "meaning": "`behavior.filter-removes` failed says fail; every `behavior.filter-removes` passed says pass",
+        "trials": 317,
+        "failures": 122,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 122,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.0305272660233182
+        },
+        "pass_when_pass": {
+          "k": 3,
+          "n": 6,
+          "p": 0.5,
+          "low": 0.18761280689940868,
+          "high": 0.8123871931005913
+        },
+        "pass_when_not_fail": {
+          "k": 195,
+          "n": 317,
+          "p": 0.6151419558359621,
+          "low": 0.5605041506012421,
+          "high": 0.6670224544275322
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 83,
+          "p": 0.0,
+          "low": 3.469446951953614e-18,
+          "high": 0.04423686343872062
+        },
+        "separates": false
+      },
+      {
+        "signal": "scenario.behavior.json-overlap",
+        "family": "scenario",
+        "meaning": "`behavior.json-overlap` failed says fail; every `behavior.json-overlap` passed says pass",
+        "trials": 317,
+        "failures": 122,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 122,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.0305272660233182
+        },
+        "pass_when_pass": {
+          "k": 3,
+          "n": 4,
+          "p": 0.75,
+          "low": 0.3006360524426366,
+          "high": 0.9544139373553637
+        },
+        "pass_when_not_fail": {
+          "k": 195,
+          "n": 317,
+          "p": 0.6151419558359621,
+          "low": 0.5605041506012421,
+          "high": 0.6670224544275322
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 83,
+          "p": 0.0,
+          "low": 3.469446951953614e-18,
+          "high": 0.04423686343872062
+        },
+        "separates": false
+      },
+      {
+        "signal": "scenario.behavior.named-command",
+        "family": "scenario",
+        "meaning": "`behavior.named-command` failed says fail; every `behavior.named-command` passed says pass",
+        "trials": 317,
+        "failures": 122,
+        "fail_precision": {
+          "k": 1,
+          "n": 1,
+          "p": 1.0,
+          "low": 0.20654329147389294,
+          "high": 1.0
+        },
+        "failure_recall": {
+          "k": 1,
+          "n": 122,
+          "p": 0.00819672131147541,
+          "low": 0.0014483536709422769,
+          "high": 0.04497190799133792
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 11,
+          "p": 0.0,
+          "low": 2.7755575615628914e-17,
+          "high": 0.2588400172488141
+        },
+        "pass_when_not_fail": {
+          "k": 195,
+          "n": 316,
+          "p": 0.6170886075949367,
+          "low": 0.5623901695241189,
+          "high": 0.668974355915974
+        },
+        "within_fail_precision": {
+          "k": 1,
+          "n": 1,
+          "p": 1.0,
+          "low": 0.20654329147389294,
+          "high": 1.0
+        },
+        "within_failure_recall": {
+          "k": 1,
+          "n": 83,
+          "p": 0.012048192771084338,
+          "low": 0.0021299225877048286,
+          "high": 0.0651373778765888
+        },
+        "separates": false
+      },
+      {
+        "signal": "scenario.cancellation",
+        "family": "scenario",
+        "meaning": "`cancellation` failed says fail; every `cancellation` passed says pass",
+        "trials": 317,
+        "failures": 122,
+        "fail_precision": {
+          "k": 0,
+          "n": 1,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.7934567085261071
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 122,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.0305272660233182
+        },
+        "pass_when_pass": {
+          "k": 11,
+          "n": 11,
+          "p": 1.0,
+          "low": 0.7411599827511859,
+          "high": 1.0
+        },
+        "pass_when_not_fail": {
+          "k": 194,
+          "n": 316,
+          "p": 0.6139240506329114,
+          "low": 0.5591822912825374,
+          "high": 0.6659291388753908
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 83,
+          "p": 0.0,
+          "low": 3.469446951953614e-18,
+          "high": 0.04423686343872062
+        },
+        "separates": true
+      },
+      {
+        "signal": "scenario.generic.claimed-command",
+        "family": "scenario",
+        "meaning": "`generic.claimed-command` failed says fail; every `generic.claimed-command` passed says pass",
+        "trials": 317,
+        "failures": 122,
+        "fail_precision": {
+          "k": 0,
+          "n": 1,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.7934567085261071
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 122,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.0305272660233182
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 194,
+          "n": 316,
+          "p": 0.6139240506329114,
+          "low": 0.5591822912825374,
+          "high": 0.6659291388753908
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 83,
+          "p": 0.0,
+          "low": 3.469446951953614e-18,
+          "high": 0.04423686343872062
+        },
+        "separates": false
+      },
+      {
+        "signal": "scenario.generic.output",
+        "family": "scenario",
+        "meaning": "`generic.output` failed says fail; every `generic.output` passed says pass",
+        "trials": 317,
+        "failures": 122,
+        "fail_precision": {
+          "k": 4,
+          "n": 8,
+          "p": 0.5,
+          "low": 0.21521252682444186,
+          "high": 0.7847874731755582
+        },
+        "failure_recall": {
+          "k": 4,
+          "n": 122,
+          "p": 0.03278688524590164,
+          "low": 0.012822391019358004,
+          "high": 0.08127685755980818
+        },
+        "pass_when_pass": {
+          "k": 127,
+          "n": 215,
+          "p": 0.5906976744186047,
+          "low": 0.5239388758470106,
+          "high": 0.6542722138178428
+        },
+        "pass_when_not_fail": {
+          "k": 191,
+          "n": 309,
+          "p": 0.6181229773462783,
+          "low": 0.562814416961958,
+          "high": 0.6705305090325389
+        },
+        "within_fail_precision": {
+          "k": 2,
+          "n": 4,
+          "p": 0.5,
+          "low": 0.15003570882017148,
+          "high": 0.8499642911798285
+        },
+        "within_failure_recall": {
+          "k": 2,
+          "n": 83,
+          "p": 0.024096385542168676,
+          "low": 0.006633027079790216,
+          "high": 0.08366471041007639
+        },
+        "separates": false
+      },
+      {
+        "signal": "scenario.generic.parse",
+        "family": "scenario",
+        "meaning": "`generic.parse` failed says fail; every `generic.parse` passed says pass",
+        "trials": 317,
+        "failures": 122,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 122,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.0305272660233182
+        },
+        "pass_when_pass": {
+          "k": 95,
+          "n": 150,
+          "p": 0.6333333333333333,
+          "low": 0.5537808929385404,
+          "high": 0.706226803289268
+        },
+        "pass_when_not_fail": {
+          "k": 195,
+          "n": 317,
+          "p": 0.6151419558359621,
+          "low": 0.5605041506012421,
+          "high": 0.6670224544275322
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 83,
+          "p": 0.0,
+          "low": 3.469446951953614e-18,
+          "high": 0.04423686343872062
+        },
+        "separates": false
+      },
+      {
+        "signal": "scenario.generic.public-command",
+        "family": "scenario",
+        "meaning": "`generic.public-command` failed says fail; every `generic.public-command` passed says pass",
+        "trials": 317,
+        "failures": 122,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 122,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.0305272660233182
+        },
+        "pass_when_pass": {
+          "k": 17,
+          "n": 19,
+          "p": 0.8947368421052632,
+          "low": 0.686054495051583,
+          "high": 0.9706420586049034
+        },
+        "pass_when_not_fail": {
+          "k": 195,
+          "n": 317,
+          "p": 0.6151419558359621,
+          "low": 0.5605041506012421,
+          "high": 0.6670224544275322
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 83,
+          "p": 0.0,
+          "low": 3.469446951953614e-18,
+          "high": 0.04423686343872062
+        },
+        "separates": true
+      },
+      {
+        "signal": "scenario.generic.self-report",
+        "family": "scenario",
+        "meaning": "`generic.self-report` failed says fail; every `generic.self-report` passed says pass",
+        "trials": 317,
+        "failures": 122,
+        "fail_precision": {
+          "k": 4,
+          "n": 6,
+          "p": 0.6666666666666666,
+          "low": 0.29998832134152864,
+          "high": 0.9032306674407831
+        },
+        "failure_recall": {
+          "k": 4,
+          "n": 122,
+          "p": 0.03278688524590164,
+          "low": 0.012822391019358004,
+          "high": 0.08127685755980818
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 193,
+          "n": 311,
+          "p": 0.6205787781350482,
+          "low": 0.5654867699452003,
+          "high": 0.6727282562775098
+        },
+        "within_fail_precision": {
+          "k": 3,
+          "n": 5,
+          "p": 0.6,
+          "low": 0.23071993220883708,
+          "high": 0.8823817688407467
+        },
+        "within_failure_recall": {
+          "k": 3,
+          "n": 83,
+          "p": 0.03614457831325301,
+          "low": 0.012367579124893058,
+          "high": 0.10096059539054655
+        },
+        "separates": false
+      },
+      {
+        "signal": "scenario.interactive.interrupt",
+        "family": "scenario",
+        "meaning": "`interactive.interrupt` failed says fail; every `interactive.interrupt` passed says pass",
+        "trials": 317,
+        "failures": 122,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 122,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.0305272660233182
+        },
+        "pass_when_pass": {
+          "k": 12,
+          "n": 12,
+          "p": 1.0,
+          "low": 0.7574992425007574,
+          "high": 1.0
+        },
+        "pass_when_not_fail": {
+          "k": 195,
+          "n": 317,
+          "p": 0.6151419558359621,
+          "low": 0.5605041506012421,
+          "high": 0.6670224544275322
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 83,
+          "p": 0.0,
+          "low": 3.469446951953614e-18,
+          "high": 0.04423686343872062
+        },
+        "separates": true
+      },
+      {
+        "signal": "scenario.interactive.program",
+        "family": "scenario",
+        "meaning": "`interactive.program` failed says fail; every `interactive.program` passed says pass",
+        "trials": 317,
+        "failures": 122,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 122,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.0305272660233182
+        },
+        "pass_when_pass": {
+          "k": 12,
+          "n": 12,
+          "p": 1.0,
+          "low": 0.7574992425007574,
+          "high": 1.0
+        },
+        "pass_when_not_fail": {
+          "k": 195,
+          "n": 317,
+          "p": 0.6151419558359621,
+          "low": 0.5605041506012421,
+          "high": 0.6670224544275322
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 83,
+          "p": 0.0,
+          "low": 3.469446951953614e-18,
+          "high": 0.04423686343872062
+        },
+        "separates": true
+      },
+      {
+        "signal": "requirements.contradicted",
+        "family": "requirements",
+        "meaning": "a scenario contradicted a requirement",
+        "trials": 317,
+        "failures": 122,
+        "fail_precision": {
+          "k": 11,
+          "n": 21,
+          "p": 0.5238095238095238,
+          "low": 0.32369217900266756,
+          "high": 0.7165628770323705
+        },
+        "failure_recall": {
+          "k": 11,
+          "n": 122,
+          "p": 0.09016393442622951,
+          "low": 0.05109201662118755,
+          "high": 0.15425820143071262
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 185,
+          "n": 296,
+          "p": 0.625,
+          "low": 0.5685769560280736,
+          "high": 0.678220019441641
+        },
+        "within_fail_precision": {
+          "k": 8,
+          "n": 14,
+          "p": 0.5714285714285714,
+          "low": 0.3259026690286936,
+          "high": 0.7861949006959948
+        },
+        "within_failure_recall": {
+          "k": 8,
+          "n": 83,
+          "p": 0.0963855421686747,
+          "low": 0.04965214649257531,
+          "high": 0.17882821315072928
+        },
+        "separates": false
+      },
+      {
+        "signal": "requirements.unverifiable",
+        "family": "requirements",
+        "meaning": "a requirement is unverifiable",
+        "trials": 317,
+        "failures": 122,
+        "fail_precision": {
+          "k": 35,
+          "n": 66,
+          "p": 0.5303030303030303,
+          "low": 0.41157476624932443,
+          "high": 0.645697690280881
+        },
+        "failure_recall": {
+          "k": 35,
+          "n": 122,
+          "p": 0.28688524590163933,
+          "low": 0.21409630394923995,
+          "high": 0.3726858094377481
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 164,
+          "n": 251,
+          "p": 0.6533864541832669,
+          "low": 0.5925994646285452,
+          "high": 0.7095490072065084
+        },
+        "within_fail_precision": {
+          "k": 25,
+          "n": 51,
+          "p": 0.49019607843137253,
+          "low": 0.35857262142306195,
+          "high": 0.623193045515904
+        },
+        "within_failure_recall": {
+          "k": 25,
+          "n": 83,
+          "p": 0.30120481927710846,
+          "low": 0.21310549002452867,
+          "high": 0.40689229905351704
+        },
+        "separates": true
+      },
+      {
+        "signal": "requirements.observed-none-contradicted",
+        "family": "requirements",
+        "meaning": "a requirement was observed and none contradicted says pass",
+        "trials": 317,
+        "failures": 122,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 122,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.0305272660233182
+        },
+        "pass_when_pass": {
+          "k": 128,
+          "n": 212,
+          "p": 0.6037735849056604,
+          "low": 0.5366479474786662,
+          "high": 0.6672052485688057
+        },
+        "pass_when_not_fail": {
+          "k": 195,
+          "n": 317,
+          "p": 0.6151419558359621,
+          "low": 0.5605041506012421,
+          "high": 0.6670224544275322
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 83,
+          "p": 0.0,
+          "low": 3.469446951953614e-18,
+          "high": 0.04423686343872062
+        },
+        "separates": false
+      },
+      {
+        "signal": "support.contradicted",
+        "family": "support",
+        "meaning": "Jev support read a requirement as contradicted",
+        "trials": 317,
+        "failures": 122,
+        "fail_precision": {
+          "k": 6,
+          "n": 10,
+          "p": 0.6,
+          "low": 0.3126695474501864,
+          "high": 0.8318224187964902
+        },
+        "failure_recall": {
+          "k": 6,
+          "n": 122,
+          "p": 0.04918032786885246,
+          "low": 0.022731860243578907,
+          "high": 0.10315337961351129
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 191,
+          "n": 307,
+          "p": 0.6221498371335505,
+          "low": 0.5667184615390373,
+          "high": 0.6745619848362228
+        },
+        "within_fail_precision": {
+          "k": 6,
+          "n": 10,
+          "p": 0.6,
+          "low": 0.3126695474501864,
+          "high": 0.8318224187964902
+        },
+        "within_failure_recall": {
+          "k": 6,
+          "n": 83,
+          "p": 0.07228915662650602,
+          "low": 0.033549838417288064,
+          "high": 0.14886964717487056
+        },
+        "separates": false
+      },
+      {
+        "signal": "support.supported",
+        "family": "support",
+        "meaning": "Jev support read a requirement as supported and none as contradicted",
+        "trials": 317,
+        "failures": 122,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 122,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.0305272660233182
+        },
+        "pass_when_pass": {
+          "k": 7,
+          "n": 29,
+          "p": 0.2413793103448276,
+          "low": 0.12218268185062131,
+          "high": 0.4210795221832869
+        },
+        "pass_when_not_fail": {
+          "k": 195,
+          "n": 317,
+          "p": 0.6151419558359621,
+          "low": 0.5605041506012421,
+          "high": 0.6670224544275322
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 83,
+          "p": 0.0,
+          "low": 3.469446951953614e-18,
+          "high": 0.04423686343872062
+        },
+        "separates": false
+      },
+      {
+        "signal": "support.unresolved",
+        "family": "support",
+        "meaning": "Jev support left every judged requirement unresolved",
+        "trials": 317,
+        "failures": 122,
+        "fail_precision": {
+          "k": 50,
+          "n": 107,
+          "p": 0.4672897196261682,
+          "low": 0.3755319718023794,
+          "high": 0.5613148438336273
+        },
+        "failure_recall": {
+          "k": 50,
+          "n": 122,
+          "p": 0.4098360655737705,
+          "low": 0.3266163188646698,
+          "high": 0.4985607291067483
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 138,
+          "n": 210,
+          "p": 0.6571428571428571,
+          "low": 0.5906368198664793,
+          "high": 0.7180028461292858
+        },
+        "within_fail_precision": {
+          "k": 36,
+          "n": 84,
+          "p": 0.42857142857142855,
+          "low": 0.32815806317877516,
+          "high": 0.5352324032972452
+        },
+        "within_failure_recall": {
+          "k": 36,
+          "n": 83,
+          "p": 0.43373493975903615,
+          "low": 0.33238992463542916,
+          "high": 0.5409426717239195
+        },
+        "separates": false
+      },
+      {
+        "signal": "self-report.recorded",
+        "family": "self-report",
+        "meaning": "the episode's self-report on the final candidate failed",
+        "trials": 317,
+        "failures": 122,
+        "fail_precision": {
+          "k": 4,
+          "n": 6,
+          "p": 0.6666666666666666,
+          "low": 0.29998832134152864,
+          "high": 0.9032306674407831
+        },
+        "failure_recall": {
+          "k": 4,
+          "n": 122,
+          "p": 0.03278688524590164,
+          "low": 0.012822391019358004,
+          "high": 0.08127685755980818
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 193,
+          "n": 311,
+          "p": 0.6205787781350482,
+          "low": 0.5654867699452003,
+          "high": 0.6727282562775098
+        },
+        "within_fail_precision": {
+          "k": 3,
+          "n": 5,
+          "p": 0.6,
+          "low": 0.23071993220883708,
+          "high": 0.8823817688407467
+        },
+        "within_failure_recall": {
+          "k": 3,
+          "n": 83,
+          "p": 0.03614457831325301,
+          "low": 0.012367579124893058,
+          "high": 0.10096059539054655
+        },
+        "separates": false
+      },
+      {
+        "signal": "self-report.first",
+        "family": "self-report",
+        "meaning": "the episode's self-report on the first candidate failed",
+        "trials": 317,
+        "failures": 122,
+        "fail_precision": {
+          "k": 18,
+          "n": 24,
+          "p": 0.75,
+          "low": 0.5510017468789357,
+          "high": 0.8800079652065766
+        },
+        "failure_recall": {
+          "k": 18,
+          "n": 122,
+          "p": 0.14754098360655737,
+          "low": 0.09540970329114055,
+          "high": 0.22119148423349355
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 189,
+          "n": 293,
+          "p": 0.6450511945392492,
+          "low": 0.5887072192061116,
+          "high": 0.6976407859252447
+        },
+        "within_fail_precision": {
+          "k": 6,
+          "n": 12,
+          "p": 0.5,
+          "low": 0.2537781703934222,
+          "high": 0.7462218296065778
+        },
+        "within_failure_recall": {
+          "k": 6,
+          "n": 83,
+          "p": 0.07228915662650602,
+          "low": 0.033549838417288064,
+          "high": 0.14886964717487056
+        },
+        "separates": true
+      },
+      {
+        "signal": "self-report.detector",
+        "family": "self-report",
+        "meaning": "the self-report detector, rerun on the final report of every trial, found an admission",
+        "trials": 317,
+        "failures": 122,
+        "fail_precision": {
+          "k": 24,
+          "n": 30,
+          "p": 0.8,
+          "low": 0.6269395261897256,
+          "high": 0.9049502189759876
+        },
+        "failure_recall": {
+          "k": 24,
+          "n": 122,
+          "p": 0.19672131147540983,
+          "low": 0.13591035553474007,
+          "high": 0.27604880582366603
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 189,
+          "n": 287,
+          "p": 0.6585365853658537,
+          "low": 0.6019031640203354,
+          "high": 0.7109819253203917
+        },
+        "within_fail_precision": {
+          "k": 15,
+          "n": 19,
+          "p": 0.7894736842105263,
+          "low": 0.5666528575973392,
+          "high": 0.9149246150840843
+        },
+        "within_failure_recall": {
+          "k": 15,
+          "n": 83,
+          "p": 0.18072289156626506,
+          "low": 0.11269266892236789,
+          "high": 0.27700074989994766
+        },
+        "separates": true
+      },
+      {
+        "signal": "control.repaired",
+        "family": "control",
+        "meaning": "the episode ran a repair",
+        "trials": 317,
+        "failures": 122,
+        "fail_precision": {
+          "k": 22,
+          "n": 42,
+          "p": 0.5238095238095238,
+          "low": 0.3772221394020704,
+          "high": 0.6664063552403504
+        },
+        "failure_recall": {
+          "k": 22,
+          "n": 122,
+          "p": 0.18032786885245902,
+          "low": 0.12220831571602409,
+          "high": 0.25796485436445804
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 175,
+          "n": 275,
+          "p": 0.6363636363636364,
+          "low": 0.5779907520144166,
+          "high": 0.6909791577838343
+        },
+        "within_fail_precision": {
+          "k": 12,
+          "n": 25,
+          "p": 0.48,
+          "low": 0.30031003928960015,
+          "high": 0.6650178204685269
+        },
+        "within_failure_recall": {
+          "k": 12,
+          "n": 83,
+          "p": 0.14457831325301204,
+          "low": 0.08468215781561281,
+          "high": 0.23591994992998375
+        },
+        "separates": false
+      },
+      {
+        "signal": "control.second-fired",
+        "family": "control",
+        "meaning": "a second-executor trigger fired",
+        "trials": 317,
+        "failures": 122,
+        "fail_precision": {
+          "k": 18,
+          "n": 23,
+          "p": 0.782608695652174,
+          "low": 0.5809611981726508,
+          "high": 0.9033616439828094
+        },
+        "failure_recall": {
+          "k": 18,
+          "n": 122,
+          "p": 0.14754098360655737,
+          "low": 0.09540970329114055,
+          "high": 0.22119148423349355
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 190,
+          "n": 294,
+          "p": 0.6462585034013606,
+          "low": 0.5900380702248023,
+          "high": 0.6987060138789631
+        },
+        "within_fail_precision": {
+          "k": 11,
+          "n": 16,
+          "p": 0.6875,
+          "low": 0.4440393186673406,
+          "high": 0.8583556494803894
+        },
+        "within_failure_recall": {
+          "k": 11,
+          "n": 83,
+          "p": 0.13253012048192772,
+          "low": 0.07564228787871974,
+          "high": 0.22192938284130387
+        },
+        "separates": true
+      },
+      {
+        "signal": "report.admits_unmet",
+        "family": "report",
+        "meaning": "Jev on the final report, at 0.5: the report says part of the task is not done, fails, or does not meet what the task asks",
+        "trials": 317,
+        "failures": 122,
+        "fail_precision": {
+          "k": 37,
+          "n": 55,
+          "p": 0.6727272727272727,
+          "low": 0.5410297617609947,
+          "high": 0.7818710431117484
+        },
+        "failure_recall": {
+          "k": 37,
+          "n": 122,
+          "p": 0.30327868852459017,
+          "low": 0.22874525512189398,
+          "high": 0.3898228495430181
+        },
+        "pass_when_pass": {
+          "k": 177,
+          "n": 262,
+          "p": 0.6755725190839694,
+          "low": 0.6167001130350394,
+          "high": 0.7293706298434266
+        },
+        "pass_when_not_fail": {
+          "k": 177,
+          "n": 262,
+          "p": 0.6755725190839694,
+          "low": 0.6167001130350394,
+          "high": 0.7293706298434266
+        },
+        "within_fail_precision": {
+          "k": 17,
+          "n": 29,
+          "p": 0.5862068965517241,
+          "low": 0.40737528478515245,
+          "high": 0.7448706472035449
+        },
+        "within_failure_recall": {
+          "k": 17,
+          "n": 83,
+          "p": 0.20481927710843373,
+          "low": 0.13199762324683004,
+          "high": 0.3037566696266315
+        },
+        "separates": true
+      },
+      {
+        "signal": "report.rests_on_reading",
+        "family": "report",
+        "meaning": "Jev on the final report, at 0.5: the report says the result rests on an assumption or a reading of the task a grader could read differently",
+        "trials": 317,
+        "failures": 122,
+        "fail_precision": {
+          "k": 73,
+          "n": 163,
+          "p": 0.44785276073619634,
+          "low": 0.37358701746130957,
+          "high": 0.5245199294871733
+        },
+        "failure_recall": {
+          "k": 73,
+          "n": 122,
+          "p": 0.5983606557377049,
+          "low": 0.5096521581419348,
+          "high": 0.6810637895256092
+        },
+        "pass_when_pass": {
+          "k": 105,
+          "n": 154,
+          "p": 0.6818181818181818,
+          "low": 0.604594747305898,
+          "high": 0.7501913166975077
+        },
+        "pass_when_not_fail": {
+          "k": 105,
+          "n": 154,
+          "p": 0.6818181818181818,
+          "low": 0.604594747305898,
+          "high": 0.7501913166975077
+        },
+        "within_fail_precision": {
+          "k": 54,
+          "n": 117,
+          "p": 0.46153846153846156,
+          "low": 0.37386762507982074,
+          "high": 0.551654711598939
+        },
+        "within_failure_recall": {
+          "k": 54,
+          "n": 83,
+          "p": 0.6506024096385542,
+          "low": 0.5434401797494255,
+          "high": 0.744440283070237
+        },
+        "separates": false
+      },
+      {
+        "signal": "report.left_untested",
+        "family": "report",
+        "meaning": "Jev on the final report, at 0.5: the report says the main behavior the task asks for was not run or not tested",
+        "trials": 317,
+        "failures": 122,
+        "fail_precision": {
+          "k": 22,
+          "n": 50,
+          "p": 0.44,
+          "low": 0.3116198721023534,
+          "high": 0.5769421319985648
+        },
+        "failure_recall": {
+          "k": 22,
+          "n": 122,
+          "p": 0.18032786885245902,
+          "low": 0.12220831571602409,
+          "high": 0.25796485436445804
+        },
+        "pass_when_pass": {
+          "k": 167,
+          "n": 267,
+          "p": 0.6254681647940075,
+          "low": 0.5660182284827123,
+          "high": 0.6813588361927289
+        },
+        "pass_when_not_fail": {
+          "k": 167,
+          "n": 267,
+          "p": 0.6254681647940075,
+          "low": 0.5660182284827123,
+          "high": 0.6813588361927289
+        },
+        "within_fail_precision": {
+          "k": 16,
+          "n": 35,
+          "p": 0.45714285714285713,
+          "low": 0.3046577363376085,
+          "high": 0.6181054865986247
+        },
+        "within_failure_recall": {
+          "k": 16,
+          "n": 83,
+          "p": 0.1927710843373494,
+          "low": 0.12228799170691444,
+          "high": 0.29043586414097416
+        },
+        "separates": false
+      },
+      {
+        "signal": "report.checked_against_task",
+        "family": "report",
+        "meaning": "Jev on the final report, at 0.5: the report shows the result run against the task's own example, tests, thresholds, or exact expected output, and passing",
+        "trials": 317,
+        "failures": 122,
+        "fail_precision": {
+          "k": 103,
+          "n": 239,
+          "p": 0.4309623430962343,
+          "low": 0.3697597250884517,
+          "high": 0.4943492249431739
+        },
+        "failure_recall": {
+          "k": 103,
+          "n": 122,
+          "p": 0.8442622950819673,
+          "low": 0.7695323654346174,
+          "high": 0.8979734514017864
+        },
+        "pass_when_pass": {
+          "k": 59,
+          "n": 78,
+          "p": 0.7564102564102564,
+          "low": 0.6506001354577253,
+          "high": 0.8381488626068285
+        },
+        "pass_when_not_fail": {
+          "k": 59,
+          "n": 78,
+          "p": 0.7564102564102564,
+          "low": 0.6506001354577253,
+          "high": 0.8381488626068285
+        },
+        "within_fail_precision": {
+          "k": 69,
+          "n": 146,
+          "p": 0.4726027397260274,
+          "low": 0.39336338688909767,
+          "high": 0.5532469002407783
+        },
+        "within_failure_recall": {
+          "k": 69,
+          "n": 83,
+          "p": 0.8313253012048193,
+          "low": 0.7365568909919545,
+          "high": 0.8967801272113028
+        },
+        "separates": true
+      },
+      {
+        "signal": "report.strict_grader_accepts",
+        "family": "report",
+        "meaning": "Jev on the final report, at 0.5: a strict grader of the task would accept the result the report describes",
+        "trials": 317,
+        "failures": 122,
+        "fail_precision": {
+          "k": 122,
+          "n": 316,
+          "p": 0.3860759493670886,
+          "low": 0.33407086112460926,
+          "high": 0.4408177087174626
+        },
+        "failure_recall": {
+          "k": 122,
+          "n": 122,
+          "p": 1.0,
+          "low": 0.9694727339766817,
+          "high": 0.9999999999999999
+        },
+        "pass_when_pass": {
+          "k": 1,
+          "n": 1,
+          "p": 1.0,
+          "low": 0.20654329147389294,
+          "high": 1.0
+        },
+        "pass_when_not_fail": {
+          "k": 1,
+          "n": 1,
+          "p": 1.0,
+          "low": 0.20654329147389294,
+          "high": 1.0
+        },
+        "within_fail_precision": {
+          "k": 83,
+          "n": 190,
+          "p": 0.4368421052631579,
+          "low": 0.3682577318132546,
+          "high": 0.507929835767698
+        },
+        "within_failure_recall": {
+          "k": 83,
+          "n": 83,
+          "p": 1.0,
+          "low": 0.9557631365612795,
+          "high": 1.0
+        },
+        "separates": false
+      },
+      {
+        "signal": "verdict.combined",
+        "family": "verdict",
+        "meaning": "the calibrated combined verdict",
+        "trials": 317,
+        "failures": 122,
+        "fail_precision": {
+          "k": 56,
+          "n": 79,
+          "p": 0.7088607594936709,
+          "low": 0.6008691203651904,
+          "high": 0.7974814667794325
+        },
+        "failure_recall": {
+          "k": 56,
+          "n": 122,
+          "p": 0.45901639344262296,
+          "low": 0.3731922187986254,
+          "high": 0.5473428030065647
+        },
+        "pass_when_pass": {
+          "k": 31,
+          "n": 36,
+          "p": 0.8611111111111112,
+          "low": 0.7134014871960681,
+          "high": 0.9391827463688489
+        },
+        "pass_when_not_fail": {
+          "k": 172,
+          "n": 238,
+          "p": 0.7226890756302521,
+          "low": 0.6626187588866822,
+          "high": 0.7756846595491865
+        },
+        "within_fail_precision": {
+          "k": 32,
+          "n": 47,
+          "p": 0.6808510638297872,
+          "low": 0.5383238911447854,
+          "high": 0.7960479618260101
+        },
+        "within_failure_recall": {
+          "k": 32,
+          "n": 83,
+          "p": 0.3855421686746988,
+          "low": 0.2881099453171214,
+          "high": 0.49310090293993525
+        },
+        "separates": true
+      }
+    ],
+    "calibration": [
+      {
+        "signal": "checks.final",
+        "family": "checks",
+        "meaning": "today's checks on the final candidate: a failed scenario says fail, all passed says pass",
+        "trials": 132,
+        "failures": 62,
+        "fail_precision": {
+          "k": 5,
+          "n": 10,
+          "p": 0.5,
+          "low": 0.23658959361548731,
+          "high": 0.7634104063845126
+        },
+        "failure_recall": {
+          "k": 5,
+          "n": 62,
+          "p": 0.08064516129032258,
+          "low": 0.034937831855833754,
+          "high": 0.17528792207481192
+        },
+        "pass_when_pass": {
+          "k": 37,
+          "n": 59,
+          "p": 0.6271186440677966,
+          "low": 0.49953356682142136,
+          "high": 0.7391618196741485
+        },
+        "pass_when_not_fail": {
+          "k": 65,
+          "n": 122,
+          "p": 0.5327868852459017,
+          "low": 0.4446080003691328,
+          "high": 0.6189639821867152
+        },
+        "within_fail_precision": {
+          "k": 2,
+          "n": 5,
+          "p": 0.4,
+          "low": 0.1176182311592533,
+          "high": 0.769280067791163
+        },
+        "within_failure_recall": {
+          "k": 2,
+          "n": 32,
+          "p": 0.0625,
+          "low": 0.017310203195157234,
+          "high": 0.2014746724800358
+        },
+        "separates": false
+      },
+      {
+        "signal": "checks.first-flagged",
+        "family": "checks",
+        "meaning": "the first check failed a scenario",
+        "trials": 132,
+        "failures": 62,
+        "fail_precision": {
+          "k": 23,
+          "n": 38,
+          "p": 0.6052631578947368,
+          "low": 0.4471758699869596,
+          "high": 0.7440214073638108
+        },
+        "failure_recall": {
+          "k": 23,
+          "n": 62,
+          "p": 0.3709677419354839,
+          "low": 0.26156988879274196,
+          "high": 0.49542265087822607
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 55,
+          "n": 94,
+          "p": 0.5851063829787234,
+          "low": 0.48407836075523214,
+          "high": 0.6794512626360452
+        },
+        "within_fail_precision": {
+          "k": 8,
+          "n": 21,
+          "p": 0.38095238095238093,
+          "low": 0.20750767797982506,
+          "high": 0.5912170418449848
+        },
+        "within_failure_recall": {
+          "k": 8,
+          "n": 32,
+          "p": 0.25,
+          "low": 0.1325224398262155,
+          "high": 0.42106891770246624
+        },
+        "separates": false
+      },
+      {
+        "signal": "checks.scenario-failed",
+        "family": "checks",
+        "meaning": "a scenario other than the self-report failed on the final candidate",
+        "trials": 132,
+        "failures": 62,
+        "fail_precision": {
+          "k": 4,
+          "n": 8,
+          "p": 0.5,
+          "low": 0.21521252682444186,
+          "high": 0.7847874731755582
+        },
+        "failure_recall": {
+          "k": 4,
+          "n": 62,
+          "p": 0.06451612903225806,
+          "low": 0.025372494807644003,
+          "high": 0.15447732658187266
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 66,
+          "n": 124,
+          "p": 0.532258064516129,
+          "low": 0.4447896327073294,
+          "high": 0.6177878068741526
+        },
+        "within_fail_precision": {
+          "k": 2,
+          "n": 4,
+          "p": 0.5,
+          "low": 0.15003570882017148,
+          "high": 0.8499642911798285
+        },
+        "within_failure_recall": {
+          "k": 2,
+          "n": 32,
+          "p": 0.0625,
+          "low": 0.017310203195157234,
+          "high": 0.2014746724800358
+        },
+        "separates": false
+      },
+      {
+        "signal": "scenario.behavior.filter-preserves",
+        "family": "scenario",
+        "meaning": "`behavior.filter-preserves` failed says fail; every `behavior.filter-preserves` passed says pass",
+        "trials": 132,
+        "failures": 62,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 62,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.05834609122500061
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 70,
+          "n": 132,
+          "p": 0.5303030303030303,
+          "low": 0.44551296355872966,
+          "high": 0.6133791578532679
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 32,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.1071827150573635
+        },
+        "separates": false
+      },
+      {
+        "signal": "scenario.behavior.filter-removes",
+        "family": "scenario",
+        "meaning": "`behavior.filter-removes` failed says fail; every `behavior.filter-removes` passed says pass",
+        "trials": 132,
+        "failures": 62,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 62,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.05834609122500061
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 70,
+          "n": 132,
+          "p": 0.5303030303030303,
+          "low": 0.44551296355872966,
+          "high": 0.6133791578532679
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 32,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.1071827150573635
+        },
+        "separates": false
+      },
+      {
+        "signal": "scenario.behavior.json-overlap",
+        "family": "scenario",
+        "meaning": "`behavior.json-overlap` failed says fail; every `behavior.json-overlap` passed says pass",
+        "trials": 132,
+        "failures": 62,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 62,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.05834609122500061
+        },
+        "pass_when_pass": {
+          "k": 3,
+          "n": 4,
+          "p": 0.75,
+          "low": 0.3006360524426366,
+          "high": 0.9544139373553637
+        },
+        "pass_when_not_fail": {
+          "k": 70,
+          "n": 132,
+          "p": 0.5303030303030303,
+          "low": 0.44551296355872966,
+          "high": 0.6133791578532679
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 32,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.1071827150573635
+        },
+        "separates": false
+      },
+      {
+        "signal": "scenario.behavior.named-command",
+        "family": "scenario",
+        "meaning": "`behavior.named-command` failed says fail; every `behavior.named-command` passed says pass",
+        "trials": 132,
+        "failures": 62,
+        "fail_precision": {
+          "k": 1,
+          "n": 1,
+          "p": 1.0,
+          "low": 0.20654329147389294,
+          "high": 1.0
+        },
+        "failure_recall": {
+          "k": 1,
+          "n": 62,
+          "p": 0.016129032258064516,
+          "low": 0.0028527936922403963,
+          "high": 0.08586923007388922
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 11,
+          "p": 0.0,
+          "low": 2.7755575615628914e-17,
+          "high": 0.2588400172488141
+        },
+        "pass_when_not_fail": {
+          "k": 70,
+          "n": 131,
+          "p": 0.5343511450381679,
+          "low": 0.4491717129756343,
+          "high": 0.6175732678018113
+        },
+        "within_fail_precision": {
+          "k": 1,
+          "n": 1,
+          "p": 1.0,
+          "low": 0.20654329147389294,
+          "high": 1.0
+        },
+        "within_failure_recall": {
+          "k": 1,
+          "n": 32,
+          "p": 0.03125,
+          "low": 0.005537717362550945,
+          "high": 0.15744607800372734
+        },
+        "separates": false
+      },
+      {
+        "signal": "scenario.cancellation",
+        "family": "scenario",
+        "meaning": "`cancellation` failed says fail; every `cancellation` passed says pass",
+        "trials": 132,
+        "failures": 62,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 62,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.05834609122500061
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 70,
+          "n": 132,
+          "p": 0.5303030303030303,
+          "low": 0.44551296355872966,
+          "high": 0.6133791578532679
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 32,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.1071827150573635
+        },
+        "separates": false
+      },
+      {
+        "signal": "scenario.generic.claimed-command",
+        "family": "scenario",
+        "meaning": "`generic.claimed-command` failed says fail; every `generic.claimed-command` passed says pass",
+        "trials": 132,
+        "failures": 62,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 62,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.05834609122500061
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 70,
+          "n": 132,
+          "p": 0.5303030303030303,
+          "low": 0.44551296355872966,
+          "high": 0.6133791578532679
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 32,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.1071827150573635
+        },
+        "separates": false
+      },
+      {
+        "signal": "scenario.generic.output",
+        "family": "scenario",
+        "meaning": "`generic.output` failed says fail; every `generic.output` passed says pass",
+        "trials": 132,
+        "failures": 62,
+        "fail_precision": {
+          "k": 3,
+          "n": 7,
+          "p": 0.42857142857142855,
+          "low": 0.15821692226262685,
+          "high": 0.7495457695909742
+        },
+        "failure_recall": {
+          "k": 3,
+          "n": 62,
+          "p": 0.04838709677419355,
+          "low": 0.016591385000846108,
+          "high": 0.13288250384754152
+        },
+        "pass_when_pass": {
+          "k": 46,
+          "n": 85,
+          "p": 0.5411764705882353,
+          "low": 0.4357614755911955,
+          "high": 0.6430304417088081
+        },
+        "pass_when_not_fail": {
+          "k": 66,
+          "n": 125,
+          "p": 0.528,
+          "low": 0.4409593674217741,
+          "high": 0.6133709109976185
+        },
+        "within_fail_precision": {
+          "k": 1,
+          "n": 3,
+          "p": 0.3333333333333333,
+          "low": 0.0614903152761605,
+          "high": 0.7923450448735121
+        },
+        "within_failure_recall": {
+          "k": 1,
+          "n": 32,
+          "p": 0.03125,
+          "low": 0.005537717362550945,
+          "high": 0.15744607800372734
+        },
+        "separates": false
+      },
+      {
+        "signal": "scenario.generic.parse",
+        "family": "scenario",
+        "meaning": "`generic.parse` failed says fail; every `generic.parse` passed says pass",
+        "trials": 132,
+        "failures": 62,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 62,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.05834609122500061
+        },
+        "pass_when_pass": {
+          "k": 33,
+          "n": 62,
+          "p": 0.532258064516129,
+          "low": 0.40983817375848014,
+          "high": 0.650913691323778
+        },
+        "pass_when_not_fail": {
+          "k": 70,
+          "n": 132,
+          "p": 0.5303030303030303,
+          "low": 0.44551296355872966,
+          "high": 0.6133791578532679
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 32,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.1071827150573635
+        },
+        "separates": false
+      },
+      {
+        "signal": "scenario.generic.public-command",
+        "family": "scenario",
+        "meaning": "`generic.public-command` failed says fail; every `generic.public-command` passed says pass",
+        "trials": 132,
+        "failures": 62,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 62,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.05834609122500061
+        },
+        "pass_when_pass": {
+          "k": 17,
+          "n": 19,
+          "p": 0.8947368421052632,
+          "low": 0.686054495051583,
+          "high": 0.9706420586049034
+        },
+        "pass_when_not_fail": {
+          "k": 70,
+          "n": 132,
+          "p": 0.5303030303030303,
+          "low": 0.44551296355872966,
+          "high": 0.6133791578532679
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 32,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.1071827150573635
+        },
+        "separates": true
+      },
+      {
+        "signal": "scenario.generic.self-report",
+        "family": "scenario",
+        "meaning": "`generic.self-report` failed says fail; every `generic.self-report` passed says pass",
+        "trials": 132,
+        "failures": 62,
+        "fail_precision": {
+          "k": 1,
+          "n": 2,
+          "p": 0.5,
+          "low": 0.09452865480086614,
+          "high": 0.9054713451991339
+        },
+        "failure_recall": {
+          "k": 1,
+          "n": 62,
+          "p": 0.016129032258064516,
+          "low": 0.0028527936922403963,
+          "high": 0.08586923007388922
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 69,
+          "n": 130,
+          "p": 0.5307692307692308,
+          "low": 0.4453328226886355,
+          "high": 0.614439325881017
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 1,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.7934567085261071
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 32,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.1071827150573635
+        },
+        "separates": false
+      },
+      {
+        "signal": "scenario.interactive.interrupt",
+        "family": "scenario",
+        "meaning": "`interactive.interrupt` failed says fail; every `interactive.interrupt` passed says pass",
+        "trials": 132,
+        "failures": 62,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 62,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.05834609122500061
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 70,
+          "n": 132,
+          "p": 0.5303030303030303,
+          "low": 0.44551296355872966,
+          "high": 0.6133791578532679
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 32,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.1071827150573635
+        },
+        "separates": false
+      },
+      {
+        "signal": "scenario.interactive.program",
+        "family": "scenario",
+        "meaning": "`interactive.program` failed says fail; every `interactive.program` passed says pass",
+        "trials": 132,
+        "failures": 62,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 62,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.05834609122500061
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 70,
+          "n": 132,
+          "p": 0.5303030303030303,
+          "low": 0.44551296355872966,
+          "high": 0.6133791578532679
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 32,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.1071827150573635
+        },
+        "separates": false
+      },
+      {
+        "signal": "requirements.contradicted",
+        "family": "requirements",
+        "meaning": "a scenario contradicted a requirement",
+        "trials": 132,
+        "failures": 62,
+        "fail_precision": {
+          "k": 5,
+          "n": 10,
+          "p": 0.5,
+          "low": 0.23658959361548731,
+          "high": 0.7634104063845126
+        },
+        "failure_recall": {
+          "k": 5,
+          "n": 62,
+          "p": 0.08064516129032258,
+          "low": 0.034937831855833754,
+          "high": 0.17528792207481192
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 65,
+          "n": 122,
+          "p": 0.5327868852459017,
+          "low": 0.4446080003691328,
+          "high": 0.6189639821867152
+        },
+        "within_fail_precision": {
+          "k": 2,
+          "n": 5,
+          "p": 0.4,
+          "low": 0.1176182311592533,
+          "high": 0.769280067791163
+        },
+        "within_failure_recall": {
+          "k": 2,
+          "n": 32,
+          "p": 0.0625,
+          "low": 0.017310203195157234,
+          "high": 0.2014746724800358
+        },
+        "separates": false
+      },
+      {
+        "signal": "requirements.unverifiable",
+        "family": "requirements",
+        "meaning": "a requirement is unverifiable",
+        "trials": 132,
+        "failures": 62,
+        "fail_precision": {
+          "k": 16,
+          "n": 24,
+          "p": 0.6666666666666666,
+          "low": 0.4670595949408046,
+          "high": 0.8202802131162036
+        },
+        "failure_recall": {
+          "k": 16,
+          "n": 62,
+          "p": 0.25806451612903225,
+          "low": 0.16554737249309678,
+          "high": 0.37881363938996804
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 62,
+          "n": 108,
+          "p": 0.5740740740740741,
+          "low": 0.4798501364705287,
+          "high": 0.6632093333510761
+        },
+        "within_fail_precision": {
+          "k": 7,
+          "n": 14,
+          "p": 0.5,
+          "low": 0.2679886791947528,
+          "high": 0.7320113208052472
+        },
+        "within_failure_recall": {
+          "k": 7,
+          "n": 32,
+          "p": 0.21875,
+          "low": 0.11023696931531854,
+          "high": 0.3875533079044484
+        },
+        "separates": false
+      },
+      {
+        "signal": "requirements.observed-none-contradicted",
+        "family": "requirements",
+        "meaning": "a requirement was observed and none contradicted says pass",
+        "trials": 132,
+        "failures": 62,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 62,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.05834609122500061
+        },
+        "pass_when_pass": {
+          "k": 50,
+          "n": 88,
+          "p": 0.5681818181818182,
+          "low": 0.46398482983322936,
+          "high": 0.6666749147705233
+        },
+        "pass_when_not_fail": {
+          "k": 70,
+          "n": 132,
+          "p": 0.5303030303030303,
+          "low": 0.44551296355872966,
+          "high": 0.6133791578532679
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 32,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.1071827150573635
+        },
+        "separates": false
+      },
+      {
+        "signal": "support.contradicted",
+        "family": "support",
+        "meaning": "Jev support read a requirement as contradicted",
+        "trials": 132,
+        "failures": 62,
+        "fail_precision": {
+          "k": 4,
+          "n": 6,
+          "p": 0.6666666666666666,
+          "low": 0.29998832134152864,
+          "high": 0.9032306674407831
+        },
+        "failure_recall": {
+          "k": 4,
+          "n": 62,
+          "p": 0.06451612903225806,
+          "low": 0.025372494807644003,
+          "high": 0.15447732658187266
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 68,
+          "n": 126,
+          "p": 0.5396825396825397,
+          "low": 0.4527676122693769,
+          "high": 0.6242493068074058
+        },
+        "within_fail_precision": {
+          "k": 4,
+          "n": 6,
+          "p": 0.6666666666666666,
+          "low": 0.29998832134152864,
+          "high": 0.9032306674407831
+        },
+        "within_failure_recall": {
+          "k": 4,
+          "n": 32,
+          "p": 0.125,
+          "low": 0.04970053844474301,
+          "high": 0.2806864978482796
+        },
+        "separates": false
+      },
+      {
+        "signal": "support.supported",
+        "family": "support",
+        "meaning": "Jev support read a requirement as supported and none as contradicted",
+        "trials": 132,
+        "failures": 62,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 62,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.05834609122500061
+        },
+        "pass_when_pass": {
+          "k": 2,
+          "n": 23,
+          "p": 0.08695652173913043,
+          "low": 0.02417949540723341,
+          "high": 0.2679640429809402
+        },
+        "pass_when_not_fail": {
+          "k": 70,
+          "n": 132,
+          "p": 0.5303030303030303,
+          "low": 0.44551296355872966,
+          "high": 0.6133791578532679
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 32,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.1071827150573635
+        },
+        "separates": false
+      },
+      {
+        "signal": "support.unresolved",
+        "family": "support",
+        "meaning": "Jev support left every judged requirement unresolved",
+        "trials": 132,
+        "failures": 62,
+        "fail_precision": {
+          "k": 14,
+          "n": 28,
+          "p": 0.5,
+          "low": 0.3263284683244634,
+          "high": 0.6736715316755366
+        },
+        "failure_recall": {
+          "k": 14,
+          "n": 62,
+          "p": 0.22580645161290322,
+          "low": 0.13955057139297955,
+          "high": 0.34405857540782725
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 56,
+          "n": 104,
+          "p": 0.5384615384615384,
+          "low": 0.4429913038287475,
+          "high": 0.6311915717962432
+        },
+        "within_fail_precision": {
+          "k": 5,
+          "n": 16,
+          "p": 0.3125,
+          "low": 0.14164435051961052,
+          "high": 0.5559606813326594
+        },
+        "within_failure_recall": {
+          "k": 5,
+          "n": 32,
+          "p": 0.15625,
+          "low": 0.06864319106627216,
+          "high": 0.31754492553566527
+        },
+        "separates": false
+      },
+      {
+        "signal": "self-report.recorded",
+        "family": "self-report",
+        "meaning": "the episode's self-report on the final candidate failed",
+        "trials": 132,
+        "failures": 62,
+        "fail_precision": {
+          "k": 1,
+          "n": 2,
+          "p": 0.5,
+          "low": 0.09452865480086614,
+          "high": 0.9054713451991339
+        },
+        "failure_recall": {
+          "k": 1,
+          "n": 62,
+          "p": 0.016129032258064516,
+          "low": 0.0028527936922403963,
+          "high": 0.08586923007388922
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 69,
+          "n": 130,
+          "p": 0.5307692307692308,
+          "low": 0.4453328226886355,
+          "high": 0.614439325881017
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 1,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.7934567085261071
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 32,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.1071827150573635
+        },
+        "separates": false
+      },
+      {
+        "signal": "self-report.first",
+        "family": "self-report",
+        "meaning": "the episode's self-report on the first candidate failed",
+        "trials": 132,
+        "failures": 62,
+        "fail_precision": {
+          "k": 12,
+          "n": 14,
+          "p": 0.8571428571428571,
+          "low": 0.600580922361363,
+          "high": 0.9599069262620787
+        },
+        "failure_recall": {
+          "k": 12,
+          "n": 62,
+          "p": 0.1935483870967742,
+          "low": 0.11433696420146605,
+          "high": 0.3085203175170827
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 68,
+          "n": 118,
+          "p": 0.576271186440678,
+          "low": 0.48608979324826823,
+          "high": 0.6616430008056511
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 2,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.6576280471103807
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 32,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.1071827150573635
+        },
+        "separates": true
+      },
+      {
+        "signal": "self-report.detector",
+        "family": "self-report",
+        "meaning": "the self-report detector, rerun on the final report of every trial, found an admission",
+        "trials": 132,
+        "failures": 62,
+        "fail_precision": {
+          "k": 12,
+          "n": 14,
+          "p": 0.8571428571428571,
+          "low": 0.600580922361363,
+          "high": 0.9599069262620787
+        },
+        "failure_recall": {
+          "k": 12,
+          "n": 62,
+          "p": 0.1935483870967742,
+          "low": 0.11433696420146605,
+          "high": 0.3085203175170827
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 68,
+          "n": 118,
+          "p": 0.576271186440678,
+          "low": 0.48608979324826823,
+          "high": 0.6616430008056511
+        },
+        "within_fail_precision": {
+          "k": 5,
+          "n": 6,
+          "p": 0.8333333333333334,
+          "low": 0.43649056343635395,
+          "high": 0.9699474141282697
+        },
+        "within_failure_recall": {
+          "k": 5,
+          "n": 32,
+          "p": 0.15625,
+          "low": 0.06864319106627216,
+          "high": 0.31754492553566527
+        },
+        "separates": true
+      },
+      {
+        "signal": "control.repaired",
+        "family": "control",
+        "meaning": "the episode ran a repair",
+        "trials": 132,
+        "failures": 62,
+        "fail_precision": {
+          "k": 17,
+          "n": 32,
+          "p": 0.53125,
+          "low": 0.3644923793257382,
+          "high": 0.6913087009831766
+        },
+        "failure_recall": {
+          "k": 17,
+          "n": 62,
+          "p": 0.27419354838709675,
+          "low": 0.17880918599092133,
+          "high": 0.39592775843327255
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 55,
+          "n": 100,
+          "p": 0.55,
+          "low": 0.45244427031643447,
+          "high": 0.6438562489359654
+        },
+        "within_fail_precision": {
+          "k": 8,
+          "n": 18,
+          "p": 0.4444444444444444,
+          "low": 0.24559231101389126,
+          "high": 0.6628393057174837
+        },
+        "within_failure_recall": {
+          "k": 8,
+          "n": 32,
+          "p": 0.25,
+          "low": 0.1325224398262155,
+          "high": 0.42106891770246624
+        },
+        "separates": false
+      },
+      {
+        "signal": "control.second-fired",
+        "family": "control",
+        "meaning": "a second-executor trigger fired",
+        "trials": 132,
+        "failures": 62,
+        "fail_precision": {
+          "k": 11,
+          "n": 13,
+          "p": 0.8461538461538461,
+          "low": 0.5776482949136899,
+          "high": 0.9567427368172621
+        },
+        "failure_recall": {
+          "k": 11,
+          "n": 62,
+          "p": 0.1774193548387097,
+          "low": 0.10206333434361749,
+          "high": 0.2904180148338023
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 68,
+          "n": 119,
+          "p": 0.5714285714285714,
+          "low": 0.48165262171710516,
+          "high": 0.6567369791998481
+        },
+        "within_fail_precision": {
+          "k": 4,
+          "n": 6,
+          "p": 0.6666666666666666,
+          "low": 0.29998832134152864,
+          "high": 0.9032306674407831
+        },
+        "within_failure_recall": {
+          "k": 4,
+          "n": 32,
+          "p": 0.125,
+          "low": 0.04970053844474301,
+          "high": 0.2806864978482796
+        },
+        "separates": true
+      },
+      {
+        "signal": "report.admits_unmet",
+        "family": "report",
+        "meaning": "Jev on the final report, at 0.5: the report says part of the task is not done, fails, or does not meet what the task asks",
+        "trials": 132,
+        "failures": 62,
+        "fail_precision": {
+          "k": 26,
+          "n": 32,
+          "p": 0.8125,
+          "low": 0.6469050424507756,
+          "high": 0.9111057606383721
+        },
+        "failure_recall": {
+          "k": 26,
+          "n": 62,
+          "p": 0.41935483870967744,
+          "low": 0.30477395467281665,
+          "high": 0.5433463826215384
+        },
+        "pass_when_pass": {
+          "k": 64,
+          "n": 100,
+          "p": 0.64,
+          "low": 0.542352199811621,
+          "high": 0.7272892540950986
+        },
+        "pass_when_not_fail": {
+          "k": 64,
+          "n": 100,
+          "p": 0.64,
+          "low": 0.542352199811621,
+          "high": 0.7272892540950986
+        },
+        "within_fail_precision": {
+          "k": 7,
+          "n": 10,
+          "p": 0.7,
+          "low": 0.39677321997956516,
+          "high": 0.892210712513788
+        },
+        "within_failure_recall": {
+          "k": 7,
+          "n": 32,
+          "p": 0.21875,
+          "low": 0.11023696931531854,
+          "high": 0.3875533079044484
+        },
+        "separates": true
+      },
+      {
+        "signal": "report.rests_on_reading",
+        "family": "report",
+        "meaning": "Jev on the final report, at 0.5: the report says the result rests on an assumption or a reading of the task a grader could read differently",
+        "trials": 132,
+        "failures": 62,
+        "fail_precision": {
+          "k": 28,
+          "n": 58,
+          "p": 0.4827586206896552,
+          "low": 0.35927974452990297,
+          "high": 0.6083795657078658
+        },
+        "failure_recall": {
+          "k": 28,
+          "n": 62,
+          "p": 0.45161290322580644,
+          "low": 0.3341951476826002,
+          "high": 0.5746770546940128
+        },
+        "pass_when_pass": {
+          "k": 40,
+          "n": 74,
+          "p": 0.5405405405405406,
+          "low": 0.42781145210146765,
+          "high": 0.6492681557174879
+        },
+        "pass_when_not_fail": {
+          "k": 40,
+          "n": 74,
+          "p": 0.5405405405405406,
+          "low": 0.42781145210146765,
+          "high": 0.6492681557174879
+        },
+        "within_fail_precision": {
+          "k": 17,
+          "n": 37,
+          "p": 0.4594594594594595,
+          "low": 0.31038327828457724,
+          "high": 0.6161622047523264
+        },
+        "within_failure_recall": {
+          "k": 17,
+          "n": 32,
+          "p": 0.53125,
+          "low": 0.3644923793257382,
+          "high": 0.6913087009831766
+        },
+        "separates": false
+      },
+      {
+        "signal": "report.left_untested",
+        "family": "report",
+        "meaning": "Jev on the final report, at 0.5: the report says the main behavior the task asks for was not run or not tested",
+        "trials": 132,
+        "failures": 62,
+        "fail_precision": {
+          "k": 7,
+          "n": 26,
+          "p": 0.2692307692307692,
+          "low": 0.13704275525067386,
+          "high": 0.46083403419761304
+        },
+        "failure_recall": {
+          "k": 7,
+          "n": 62,
+          "p": 0.11290322580645161,
+          "low": 0.05577792691334926,
+          "high": 0.21519969209955447
+        },
+        "pass_when_pass": {
+          "k": 51,
+          "n": 106,
+          "p": 0.4811320754716981,
+          "low": 0.3883495495648824,
+          "high": 0.5752343749227435
+        },
+        "pass_when_not_fail": {
+          "k": 51,
+          "n": 106,
+          "p": 0.4811320754716981,
+          "low": 0.3883495495648824,
+          "high": 0.5752343749227435
+        },
+        "within_fail_precision": {
+          "k": 4,
+          "n": 18,
+          "p": 0.2222222222222222,
+          "low": 0.09000781913382,
+          "high": 0.4521502645230549
+        },
+        "within_failure_recall": {
+          "k": 4,
+          "n": 32,
+          "p": 0.125,
+          "low": 0.04970053844474301,
+          "high": 0.2806864978482796
+        },
+        "separates": false
+      },
+      {
+        "signal": "report.checked_against_task",
+        "family": "report",
+        "meaning": "Jev on the final report, at 0.5: the report shows the result run against the task's own example, tests, thresholds, or exact expected output, and passing",
+        "trials": 132,
+        "failures": 62,
+        "fail_precision": {
+          "k": 46,
+          "n": 83,
+          "p": 0.5542168674698795,
+          "low": 0.4472482426556269,
+          "high": 0.6563887239594516
+        },
+        "failure_recall": {
+          "k": 46,
+          "n": 62,
+          "p": 0.7419354838709677,
+          "low": 0.621186360610032,
+          "high": 0.8344526275069032
+        },
+        "pass_when_pass": {
+          "k": 33,
+          "n": 49,
+          "p": 0.673469387755102,
+          "low": 0.5337894368740628,
+          "high": 0.7879267867073578
+        },
+        "pass_when_not_fail": {
+          "k": 33,
+          "n": 49,
+          "p": 0.673469387755102,
+          "low": 0.5337894368740628,
+          "high": 0.7879267867073578
+        },
+        "within_fail_precision": {
+          "k": 20,
+          "n": 41,
+          "p": 0.4878048780487805,
+          "low": 0.3425418723993569,
+          "high": 0.6351574068413481
+        },
+        "within_failure_recall": {
+          "k": 20,
+          "n": 32,
+          "p": 0.625,
+          "low": 0.45254100589525126,
+          "high": 0.7706633153404079
+        },
+        "separates": true
+      },
+      {
+        "signal": "report.strict_grader_accepts",
+        "family": "report",
+        "meaning": "Jev on the final report, at 0.5: a strict grader of the task would accept the result the report describes",
+        "trials": 132,
+        "failures": 62,
+        "fail_precision": {
+          "k": 62,
+          "n": 131,
+          "p": 0.4732824427480916,
+          "low": 0.38976625692005357,
+          "high": 0.5583209802530442
+        },
+        "failure_recall": {
+          "k": 62,
+          "n": 62,
+          "p": 1.0,
+          "low": 0.9416539087749995,
+          "high": 1.0
+        },
+        "pass_when_pass": {
+          "k": 1,
+          "n": 1,
+          "p": 1.0,
+          "low": 0.20654329147389294,
+          "high": 1.0
+        },
+        "pass_when_not_fail": {
+          "k": 1,
+          "n": 1,
+          "p": 1.0,
+          "low": 0.20654329147389294,
+          "high": 1.0
+        },
+        "within_fail_precision": {
+          "k": 32,
+          "n": 80,
+          "p": 0.4,
+          "low": 0.29961659273441493,
+          "high": 0.5095473545185001
+        },
+        "within_failure_recall": {
+          "k": 32,
+          "n": 32,
+          "p": 1.0,
+          "low": 0.8928172849426366,
+          "high": 1.0
+        },
+        "separates": false
+      },
+      {
+        "signal": "verdict.combined",
+        "family": "verdict",
+        "meaning": "the calibrated combined verdict",
+        "trials": 132,
+        "failures": 62,
+        "fail_precision": {
+          "k": 34,
+          "n": 42,
+          "p": 0.8095238095238095,
+          "low": 0.6669893264500356,
+          "high": 0.9001811039014357
+        },
+        "failure_recall": {
+          "k": 34,
+          "n": 62,
+          "p": 0.5483870967741935,
+          "low": 0.42532294530598713,
+          "high": 0.6658048523173997
+        },
+        "pass_when_pass": {
+          "k": 20,
+          "n": 23,
+          "p": 0.8695652173913043,
+          "low": 0.678721020269818,
+          "high": 0.954624234856553
+        },
+        "pass_when_not_fail": {
+          "k": 62,
+          "n": 90,
+          "p": 0.6888888888888889,
+          "low": 0.5871698145125097,
+          "high": 0.7751428485281886
+        },
+        "within_fail_precision": {
+          "k": 13,
+          "n": 17,
+          "p": 0.7647058823529411,
+          "low": 0.5273775411082839,
+          "high": 0.9044511092832406
+        },
+        "within_failure_recall": {
+          "k": 13,
+          "n": 32,
+          "p": 0.40625,
+          "low": 0.255194024803138,
+          "high": 0.5774027342701177
+        },
+        "separates": true
+      }
+    ],
+    "held_out": [
+      {
+        "signal": "checks.final",
+        "family": "checks",
+        "meaning": "today's checks on the final candidate: a failed scenario says fail, all passed says pass",
+        "trials": 185,
+        "failures": 60,
+        "fail_precision": {
+          "k": 6,
+          "n": 11,
+          "p": 0.5454545454545454,
+          "low": 0.28008775568998817,
+          "high": 0.7872904245601196
+        },
+        "failure_recall": {
+          "k": 6,
+          "n": 60,
+          "p": 0.1,
+          "low": 0.04664219945723587,
+          "high": 0.20149694492511044
+        },
+        "pass_when_pass": {
+          "k": 69,
+          "n": 97,
+          "p": 0.711340206185567,
+          "low": 0.614479497470417,
+          "high": 0.792098740082339
+        },
+        "pass_when_not_fail": {
+          "k": 120,
+          "n": 174,
+          "p": 0.6896551724137931,
+          "low": 0.6174399733093999,
+          "high": 0.7536767957705005
+        },
+        "within_fail_precision": {
+          "k": 6,
+          "n": 9,
+          "p": 0.6666666666666666,
+          "low": 0.35419734749908977,
+          "high": 0.879418401317257
+        },
+        "within_failure_recall": {
+          "k": 6,
+          "n": 51,
+          "p": 0.11764705882352941,
+          "low": 0.05504998764172768,
+          "high": 0.23381102297794787
+        },
+        "separates": false
+      },
+      {
+        "signal": "checks.first-flagged",
+        "family": "checks",
+        "meaning": "the first check failed a scenario",
+        "trials": 185,
+        "failures": 60,
+        "fail_precision": {
+          "k": 12,
+          "n": 27,
+          "p": 0.4444444444444444,
+          "low": 0.2758559767007283,
+          "high": 0.6268728052042312
+        },
+        "failure_recall": {
+          "k": 12,
+          "n": 60,
+          "p": 0.2,
+          "low": 0.11828389736858964,
+          "high": 0.3178204609181701
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 110,
+          "n": 158,
+          "p": 0.6962025316455697,
+          "low": 0.6205373627075549,
+          "high": 0.762553264177004
+        },
+        "within_fail_precision": {
+          "k": 11,
+          "n": 17,
+          "p": 0.6470588235294118,
+          "low": 0.4129996672121182,
+          "high": 0.826905138560951
+        },
+        "within_failure_recall": {
+          "k": 11,
+          "n": 51,
+          "p": 0.21568627450980393,
+          "low": 0.12493811244188556,
+          "high": 0.3462662287881296
+        },
+        "separates": false
+      },
+      {
+        "signal": "checks.scenario-failed",
+        "family": "checks",
+        "meaning": "a scenario other than the self-report failed on the final candidate",
+        "trials": 185,
+        "failures": 60,
+        "fail_precision": {
+          "k": 3,
+          "n": 7,
+          "p": 0.42857142857142855,
+          "low": 0.15821692226262685,
+          "high": 0.7495457695909742
+        },
+        "failure_recall": {
+          "k": 3,
+          "n": 60,
+          "p": 0.05,
+          "low": 0.01714919117914121,
+          "high": 0.13700734625099836
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 121,
+          "n": 178,
+          "p": 0.6797752808988764,
+          "low": 0.6080570338338699,
+          "high": 0.743897634404861
+        },
+        "within_fail_precision": {
+          "k": 3,
+          "n": 5,
+          "p": 0.6,
+          "low": 0.23071993220883708,
+          "high": 0.8823817688407467
+        },
+        "within_failure_recall": {
+          "k": 3,
+          "n": 51,
+          "p": 0.058823529411764705,
+          "low": 0.020206272864052077,
+          "high": 0.15924873938941972
+        },
+        "separates": false
+      },
+      {
+        "signal": "scenario.behavior.filter-preserves",
+        "family": "scenario",
+        "meaning": "`behavior.filter-preserves` failed says fail; every `behavior.filter-preserves` passed says pass",
+        "trials": 185,
+        "failures": 60,
+        "fail_precision": {
+          "k": 2,
+          "n": 4,
+          "p": 0.5,
+          "low": 0.15003570882017148,
+          "high": 0.8499642911798285
+        },
+        "failure_recall": {
+          "k": 2,
+          "n": 60,
+          "p": 0.03333333333333333,
+          "low": 0.009189126490150246,
+          "high": 0.11363987528925378
+        },
+        "pass_when_pass": {
+          "k": 1,
+          "n": 2,
+          "p": 0.5,
+          "low": 0.09452865480086614,
+          "high": 0.9054713451991339
+        },
+        "pass_when_not_fail": {
+          "k": 123,
+          "n": 181,
+          "p": 0.6795580110497238,
+          "low": 0.6084492699315125,
+          "high": 0.7432031719430439
+        },
+        "within_fail_precision": {
+          "k": 2,
+          "n": 4,
+          "p": 0.5,
+          "low": 0.15003570882017148,
+          "high": 0.8499642911798285
+        },
+        "within_failure_recall": {
+          "k": 2,
+          "n": 51,
+          "p": 0.0392156862745098,
+          "low": 0.010820856268751206,
+          "high": 0.13216548986265267
+        },
+        "separates": false
+      },
+      {
+        "signal": "scenario.behavior.filter-removes",
+        "family": "scenario",
+        "meaning": "`behavior.filter-removes` failed says fail; every `behavior.filter-removes` passed says pass",
+        "trials": 185,
+        "failures": 60,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 60,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.06017393047793289
+        },
+        "pass_when_pass": {
+          "k": 3,
+          "n": 6,
+          "p": 0.5,
+          "low": 0.18761280689940868,
+          "high": 0.8123871931005913
+        },
+        "pass_when_not_fail": {
+          "k": 125,
+          "n": 185,
+          "p": 0.6756756756756757,
+          "low": 0.6052386771157265,
+          "high": 0.7389651423816723
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 51,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.07004901388726806
+        },
+        "separates": false
+      },
+      {
+        "signal": "scenario.behavior.json-overlap",
+        "family": "scenario",
+        "meaning": "`behavior.json-overlap` failed says fail; every `behavior.json-overlap` passed says pass",
+        "trials": 185,
+        "failures": 60,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 60,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.06017393047793289
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 125,
+          "n": 185,
+          "p": 0.6756756756756757,
+          "low": 0.6052386771157265,
+          "high": 0.7389651423816723
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 51,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.07004901388726806
+        },
+        "separates": false
+      },
+      {
+        "signal": "scenario.behavior.named-command",
+        "family": "scenario",
+        "meaning": "`behavior.named-command` failed says fail; every `behavior.named-command` passed says pass",
+        "trials": 185,
+        "failures": 60,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 60,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.06017393047793289
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 125,
+          "n": 185,
+          "p": 0.6756756756756757,
+          "low": 0.6052386771157265,
+          "high": 0.7389651423816723
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 51,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.07004901388726806
+        },
+        "separates": false
+      },
+      {
+        "signal": "scenario.cancellation",
+        "family": "scenario",
+        "meaning": "`cancellation` failed says fail; every `cancellation` passed says pass",
+        "trials": 185,
+        "failures": 60,
+        "fail_precision": {
+          "k": 0,
+          "n": 1,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.7934567085261071
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 60,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.06017393047793289
+        },
+        "pass_when_pass": {
+          "k": 11,
+          "n": 11,
+          "p": 1.0,
+          "low": 0.7411599827511859,
+          "high": 1.0
+        },
+        "pass_when_not_fail": {
+          "k": 124,
+          "n": 184,
+          "p": 0.6739130434782609,
+          "low": 0.6032228150065151,
+          "high": 0.7374897853972293
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 51,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.07004901388726806
+        },
+        "separates": true
+      },
+      {
+        "signal": "scenario.generic.claimed-command",
+        "family": "scenario",
+        "meaning": "`generic.claimed-command` failed says fail; every `generic.claimed-command` passed says pass",
+        "trials": 185,
+        "failures": 60,
+        "fail_precision": {
+          "k": 0,
+          "n": 1,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.7934567085261071
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 60,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.06017393047793289
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 124,
+          "n": 184,
+          "p": 0.6739130434782609,
+          "low": 0.6032228150065151,
+          "high": 0.7374897853972293
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 51,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.07004901388726806
+        },
+        "separates": false
+      },
+      {
+        "signal": "scenario.generic.output",
+        "family": "scenario",
+        "meaning": "`generic.output` failed says fail; every `generic.output` passed says pass",
+        "trials": 185,
+        "failures": 60,
+        "fail_precision": {
+          "k": 1,
+          "n": 1,
+          "p": 1.0,
+          "low": 0.20654329147389294,
+          "high": 1.0
+        },
+        "failure_recall": {
+          "k": 1,
+          "n": 60,
+          "p": 0.016666666666666666,
+          "low": 0.002948083860873682,
+          "high": 0.08855338226779477
+        },
+        "pass_when_pass": {
+          "k": 81,
+          "n": 130,
+          "p": 0.6230769230769231,
+          "low": 0.5373655824315526,
+          "high": 0.7017230118470572
+        },
+        "pass_when_not_fail": {
+          "k": 125,
+          "n": 184,
+          "p": 0.6793478260869565,
+          "low": 0.608833517174563,
+          "high": 0.7425263519917985
+        },
+        "within_fail_precision": {
+          "k": 1,
+          "n": 1,
+          "p": 1.0,
+          "low": 0.20654329147389294,
+          "high": 1.0
+        },
+        "within_failure_recall": {
+          "k": 1,
+          "n": 51,
+          "p": 0.0196078431372549,
+          "low": 0.003469603253442241,
+          "high": 0.10304807675589372
+        },
+        "separates": false
+      },
+      {
+        "signal": "scenario.generic.parse",
+        "family": "scenario",
+        "meaning": "`generic.parse` failed says fail; every `generic.parse` passed says pass",
+        "trials": 185,
+        "failures": 60,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 60,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.06017393047793289
+        },
+        "pass_when_pass": {
+          "k": 62,
+          "n": 88,
+          "p": 0.7045454545454546,
+          "low": 0.6022864710044152,
+          "high": 0.7896927628068425
+        },
+        "pass_when_not_fail": {
+          "k": 125,
+          "n": 185,
+          "p": 0.6756756756756757,
+          "low": 0.6052386771157265,
+          "high": 0.7389651423816723
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 51,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.07004901388726806
+        },
+        "separates": false
+      },
+      {
+        "signal": "scenario.generic.public-command",
+        "family": "scenario",
+        "meaning": "`generic.public-command` failed says fail; every `generic.public-command` passed says pass",
+        "trials": 185,
+        "failures": 60,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 60,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.06017393047793289
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 125,
+          "n": 185,
+          "p": 0.6756756756756757,
+          "low": 0.6052386771157265,
+          "high": 0.7389651423816723
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 51,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.07004901388726806
+        },
+        "separates": false
+      },
+      {
+        "signal": "scenario.generic.self-report",
+        "family": "scenario",
+        "meaning": "`generic.self-report` failed says fail; every `generic.self-report` passed says pass",
+        "trials": 185,
+        "failures": 60,
+        "fail_precision": {
+          "k": 3,
+          "n": 4,
+          "p": 0.75,
+          "low": 0.3006360524426366,
+          "high": 0.9544139373553637
+        },
+        "failure_recall": {
+          "k": 3,
+          "n": 60,
+          "p": 0.05,
+          "low": 0.01714919117914121,
+          "high": 0.13700734625099836
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 124,
+          "n": 181,
+          "p": 0.6850828729281768,
+          "low": 0.6141642518729511,
+          "high": 0.748308265136207
+        },
+        "within_fail_precision": {
+          "k": 3,
+          "n": 4,
+          "p": 0.75,
+          "low": 0.3006360524426366,
+          "high": 0.9544139373553637
+        },
+        "within_failure_recall": {
+          "k": 3,
+          "n": 51,
+          "p": 0.058823529411764705,
+          "low": 0.020206272864052077,
+          "high": 0.15924873938941972
+        },
+        "separates": false
+      },
+      {
+        "signal": "scenario.interactive.interrupt",
+        "family": "scenario",
+        "meaning": "`interactive.interrupt` failed says fail; every `interactive.interrupt` passed says pass",
+        "trials": 185,
+        "failures": 60,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 60,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.06017393047793289
+        },
+        "pass_when_pass": {
+          "k": 12,
+          "n": 12,
+          "p": 1.0,
+          "low": 0.7574992425007574,
+          "high": 1.0
+        },
+        "pass_when_not_fail": {
+          "k": 125,
+          "n": 185,
+          "p": 0.6756756756756757,
+          "low": 0.6052386771157265,
+          "high": 0.7389651423816723
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 51,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.07004901388726806
+        },
+        "separates": true
+      },
+      {
+        "signal": "scenario.interactive.program",
+        "family": "scenario",
+        "meaning": "`interactive.program` failed says fail; every `interactive.program` passed says pass",
+        "trials": 185,
+        "failures": 60,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 60,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.06017393047793289
+        },
+        "pass_when_pass": {
+          "k": 12,
+          "n": 12,
+          "p": 1.0,
+          "low": 0.7574992425007574,
+          "high": 1.0
+        },
+        "pass_when_not_fail": {
+          "k": 125,
+          "n": 185,
+          "p": 0.6756756756756757,
+          "low": 0.6052386771157265,
+          "high": 0.7389651423816723
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 51,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.07004901388726806
+        },
+        "separates": true
+      },
+      {
+        "signal": "requirements.contradicted",
+        "family": "requirements",
+        "meaning": "a scenario contradicted a requirement",
+        "trials": 185,
+        "failures": 60,
+        "fail_precision": {
+          "k": 6,
+          "n": 11,
+          "p": 0.5454545454545454,
+          "low": 0.28008775568998817,
+          "high": 0.7872904245601196
+        },
+        "failure_recall": {
+          "k": 6,
+          "n": 60,
+          "p": 0.1,
+          "low": 0.04664219945723587,
+          "high": 0.20149694492511044
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 120,
+          "n": 174,
+          "p": 0.6896551724137931,
+          "low": 0.6174399733093999,
+          "high": 0.7536767957705005
+        },
+        "within_fail_precision": {
+          "k": 6,
+          "n": 9,
+          "p": 0.6666666666666666,
+          "low": 0.35419734749908977,
+          "high": 0.879418401317257
+        },
+        "within_failure_recall": {
+          "k": 6,
+          "n": 51,
+          "p": 0.11764705882352941,
+          "low": 0.05504998764172768,
+          "high": 0.23381102297794787
+        },
+        "separates": false
+      },
+      {
+        "signal": "requirements.unverifiable",
+        "family": "requirements",
+        "meaning": "a requirement is unverifiable",
+        "trials": 185,
+        "failures": 60,
+        "fail_precision": {
+          "k": 19,
+          "n": 42,
+          "p": 0.4523809523809524,
+          "low": 0.3122316381863852,
+          "high": 0.6005113725287732
+        },
+        "failure_recall": {
+          "k": 19,
+          "n": 60,
+          "p": 0.31666666666666665,
+          "low": 0.21305705841174333,
+          "high": 0.4423400494301654
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 102,
+          "n": 143,
+          "p": 0.7132867132867133,
+          "low": 0.6343488049956663,
+          "high": 0.7810648107644453
+        },
+        "within_fail_precision": {
+          "k": 18,
+          "n": 37,
+          "p": 0.4864864864864865,
+          "low": 0.33446153327211037,
+          "high": 0.6410536277401908
+        },
+        "within_failure_recall": {
+          "k": 18,
+          "n": 51,
+          "p": 0.35294117647058826,
+          "low": 0.23634305381259788,
+          "high": 0.49014195027189267
+        },
+        "separates": false
+      },
+      {
+        "signal": "requirements.observed-none-contradicted",
+        "family": "requirements",
+        "meaning": "a requirement was observed and none contradicted says pass",
+        "trials": 185,
+        "failures": 60,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 60,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.06017393047793289
+        },
+        "pass_when_pass": {
+          "k": 78,
+          "n": 124,
+          "p": 0.6290322580645161,
+          "low": 0.5413267888002214,
+          "high": 0.7089829695257069
+        },
+        "pass_when_not_fail": {
+          "k": 125,
+          "n": 185,
+          "p": 0.6756756756756757,
+          "low": 0.6052386771157265,
+          "high": 0.7389651423816723
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 51,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.07004901388726806
+        },
+        "separates": false
+      },
+      {
+        "signal": "support.contradicted",
+        "family": "support",
+        "meaning": "Jev support read a requirement as contradicted",
+        "trials": 185,
+        "failures": 60,
+        "fail_precision": {
+          "k": 2,
+          "n": 4,
+          "p": 0.5,
+          "low": 0.15003570882017148,
+          "high": 0.8499642911798285
+        },
+        "failure_recall": {
+          "k": 2,
+          "n": 60,
+          "p": 0.03333333333333333,
+          "low": 0.009189126490150246,
+          "high": 0.11363987528925378
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 123,
+          "n": 181,
+          "p": 0.6795580110497238,
+          "low": 0.6084492699315125,
+          "high": 0.7432031719430439
+        },
+        "within_fail_precision": {
+          "k": 2,
+          "n": 4,
+          "p": 0.5,
+          "low": 0.15003570882017148,
+          "high": 0.8499642911798285
+        },
+        "within_failure_recall": {
+          "k": 2,
+          "n": 51,
+          "p": 0.0392156862745098,
+          "low": 0.010820856268751206,
+          "high": 0.13216548986265267
+        },
+        "separates": false
+      },
+      {
+        "signal": "support.supported",
+        "family": "support",
+        "meaning": "Jev support read a requirement as supported and none as contradicted",
+        "trials": 185,
+        "failures": 60,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 60,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.06017393047793289
+        },
+        "pass_when_pass": {
+          "k": 5,
+          "n": 6,
+          "p": 0.8333333333333334,
+          "low": 0.43649056343635395,
+          "high": 0.9699474141282697
+        },
+        "pass_when_not_fail": {
+          "k": 125,
+          "n": 185,
+          "p": 0.6756756756756757,
+          "low": 0.6052386771157265,
+          "high": 0.7389651423816723
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 51,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.07004901388726806
+        },
+        "separates": false
+      },
+      {
+        "signal": "support.unresolved",
+        "family": "support",
+        "meaning": "Jev support left every judged requirement unresolved",
+        "trials": 185,
+        "failures": 60,
+        "fail_precision": {
+          "k": 36,
+          "n": 79,
+          "p": 0.45569620253164556,
+          "low": 0.35048276758066016,
+          "high": 0.5650186230250259
+        },
+        "failure_recall": {
+          "k": 36,
+          "n": 60,
+          "p": 0.6,
+          "low": 0.47365824394206846,
+          "high": 0.714306969962345
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 82,
+          "n": 106,
+          "p": 0.7735849056603774,
+          "low": 0.6851667228942294,
+          "high": 0.8428663720351962
+        },
+        "within_fail_precision": {
+          "k": 31,
+          "n": 68,
+          "p": 0.45588235294117646,
+          "low": 0.3430469069536447,
+          "high": 0.5734360221570655
+        },
+        "within_failure_recall": {
+          "k": 31,
+          "n": 51,
+          "p": 0.6078431372549019,
+          "low": 0.4708491122516505,
+          "high": 0.7297285514197229
+        },
+        "separates": true
+      },
+      {
+        "signal": "self-report.recorded",
+        "family": "self-report",
+        "meaning": "the episode's self-report on the final candidate failed",
+        "trials": 185,
+        "failures": 60,
+        "fail_precision": {
+          "k": 3,
+          "n": 4,
+          "p": 0.75,
+          "low": 0.3006360524426366,
+          "high": 0.9544139373553637
+        },
+        "failure_recall": {
+          "k": 3,
+          "n": 60,
+          "p": 0.05,
+          "low": 0.01714919117914121,
+          "high": 0.13700734625099836
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 124,
+          "n": 181,
+          "p": 0.6850828729281768,
+          "low": 0.6141642518729511,
+          "high": 0.748308265136207
+        },
+        "within_fail_precision": {
+          "k": 3,
+          "n": 4,
+          "p": 0.75,
+          "low": 0.3006360524426366,
+          "high": 0.9544139373553637
+        },
+        "within_failure_recall": {
+          "k": 3,
+          "n": 51,
+          "p": 0.058823529411764705,
+          "low": 0.020206272864052077,
+          "high": 0.15924873938941972
+        },
+        "separates": false
+      },
+      {
+        "signal": "self-report.first",
+        "family": "self-report",
+        "meaning": "the episode's self-report on the first candidate failed",
+        "trials": 185,
+        "failures": 60,
+        "fail_precision": {
+          "k": 6,
+          "n": 10,
+          "p": 0.6,
+          "low": 0.3126695474501864,
+          "high": 0.8318224187964902
+        },
+        "failure_recall": {
+          "k": 6,
+          "n": 60,
+          "p": 0.1,
+          "low": 0.04664219945723587,
+          "high": 0.20149694492511044
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 121,
+          "n": 175,
+          "p": 0.6914285714285714,
+          "low": 0.6194942246114528,
+          "high": 0.7551389703498985
+        },
+        "within_fail_precision": {
+          "k": 6,
+          "n": 10,
+          "p": 0.6,
+          "low": 0.3126695474501864,
+          "high": 0.8318224187964902
+        },
+        "within_failure_recall": {
+          "k": 6,
+          "n": 51,
+          "p": 0.11764705882352941,
+          "low": 0.05504998764172768,
+          "high": 0.23381102297794787
+        },
+        "separates": false
+      },
+      {
+        "signal": "self-report.detector",
+        "family": "self-report",
+        "meaning": "the self-report detector, rerun on the final report of every trial, found an admission",
+        "trials": 185,
+        "failures": 60,
+        "fail_precision": {
+          "k": 12,
+          "n": 16,
+          "p": 0.75,
+          "low": 0.5050123107060135,
+          "high": 0.8981809801576265
+        },
+        "failure_recall": {
+          "k": 12,
+          "n": 60,
+          "p": 0.2,
+          "low": 0.11828389736858964,
+          "high": 0.3178204609181701
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 121,
+          "n": 169,
+          "p": 0.7159763313609467,
+          "low": 0.6437755633946192,
+          "high": 0.7785764629694043
+        },
+        "within_fail_precision": {
+          "k": 10,
+          "n": 13,
+          "p": 0.7692307692307693,
+          "low": 0.49743126004873084,
+          "high": 0.918206209075343
+        },
+        "within_failure_recall": {
+          "k": 10,
+          "n": 51,
+          "p": 0.19607843137254902,
+          "low": 0.11015224836299273,
+          "high": 0.32458342674495444
+        },
+        "separates": true
+      },
+      {
+        "signal": "control.repaired",
+        "family": "control",
+        "meaning": "the episode ran a repair",
+        "trials": 185,
+        "failures": 60,
+        "fail_precision": {
+          "k": 5,
+          "n": 10,
+          "p": 0.5,
+          "low": 0.23658959361548731,
+          "high": 0.7634104063845126
+        },
+        "failure_recall": {
+          "k": 5,
+          "n": 60,
+          "p": 0.08333333333333333,
+          "low": 0.03611992405048589,
+          "high": 0.18069168468112481
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 120,
+          "n": 175,
+          "p": 0.6857142857142857,
+          "low": 0.6135695551998306,
+          "high": 0.7498805593149132
+        },
+        "within_fail_precision": {
+          "k": 4,
+          "n": 7,
+          "p": 0.5714285714285714,
+          "low": 0.2504542304090258,
+          "high": 0.8417830777373732
+        },
+        "within_failure_recall": {
+          "k": 4,
+          "n": 51,
+          "p": 0.0784313725490196,
+          "low": 0.030921696126931505,
+          "high": 0.1850019822486082
+        },
+        "separates": false
+      },
+      {
+        "signal": "control.second-fired",
+        "family": "control",
+        "meaning": "a second-executor trigger fired",
+        "trials": 185,
+        "failures": 60,
+        "fail_precision": {
+          "k": 7,
+          "n": 10,
+          "p": 0.7,
+          "low": 0.39677321997956516,
+          "high": 0.892210712513788
+        },
+        "failure_recall": {
+          "k": 7,
+          "n": 60,
+          "p": 0.11666666666666667,
+          "low": 0.05767647403450049,
+          "high": 0.2217902059985814
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 122,
+          "n": 175,
+          "p": 0.6971428571428572,
+          "low": 0.6254307089606717,
+          "high": 0.7603855664472872
+        },
+        "within_fail_precision": {
+          "k": 7,
+          "n": 10,
+          "p": 0.7,
+          "low": 0.39677321997956516,
+          "high": 0.892210712513788
+        },
+        "within_failure_recall": {
+          "k": 7,
+          "n": 51,
+          "p": 0.13725490196078433,
+          "low": 0.06811015331542726,
+          "high": 0.25721952342631627
+        },
+        "separates": true
+      },
+      {
+        "signal": "report.admits_unmet",
+        "family": "report",
+        "meaning": "Jev on the final report, at 0.5: the report says part of the task is not done, fails, or does not meet what the task asks",
+        "trials": 185,
+        "failures": 60,
+        "fail_precision": {
+          "k": 11,
+          "n": 23,
+          "p": 0.4782608695652174,
+          "low": 0.2923686953994572,
+          "high": 0.6703757013578151
+        },
+        "failure_recall": {
+          "k": 11,
+          "n": 60,
+          "p": 0.18333333333333332,
+          "low": 0.1055768903713613,
+          "high": 0.29919993226466285
+        },
+        "pass_when_pass": {
+          "k": 113,
+          "n": 162,
+          "p": 0.6975308641975309,
+          "low": 0.6228968659764209,
+          "high": 0.763013544921689
+        },
+        "pass_when_not_fail": {
+          "k": 113,
+          "n": 162,
+          "p": 0.6975308641975309,
+          "low": 0.6228968659764209,
+          "high": 0.763013544921689
+        },
+        "within_fail_precision": {
+          "k": 10,
+          "n": 19,
+          "p": 0.5263157894736842,
+          "low": 0.31707482511825114,
+          "high": 0.7267049451255145
+        },
+        "within_failure_recall": {
+          "k": 10,
+          "n": 51,
+          "p": 0.19607843137254902,
+          "low": 0.11015224836299273,
+          "high": 0.32458342674495444
+        },
+        "separates": false
+      },
+      {
+        "signal": "report.rests_on_reading",
+        "family": "report",
+        "meaning": "Jev on the final report, at 0.5: the report says the result rests on an assumption or a reading of the task a grader could read differently",
+        "trials": 185,
+        "failures": 60,
+        "fail_precision": {
+          "k": 45,
+          "n": 105,
+          "p": 0.42857142857142855,
+          "low": 0.33808655708889324,
+          "high": 0.5240984898049413
+        },
+        "failure_recall": {
+          "k": 45,
+          "n": 60,
+          "p": 0.75,
+          "low": 0.6276768905451521,
+          "high": 0.8422361442158816
+        },
+        "pass_when_pass": {
+          "k": 65,
+          "n": 80,
+          "p": 0.8125,
+          "low": 0.7134147429619243,
+          "high": 0.8829479218727162
+        },
+        "pass_when_not_fail": {
+          "k": 65,
+          "n": 80,
+          "p": 0.8125,
+          "low": 0.7134147429619243,
+          "high": 0.8829479218727162
+        },
+        "within_fail_precision": {
+          "k": 37,
+          "n": 80,
+          "p": 0.4625,
+          "low": 0.3574781238878701,
+          "high": 0.5709583563319731
+        },
+        "within_failure_recall": {
+          "k": 37,
+          "n": 51,
+          "p": 0.7254901960784313,
+          "low": 0.5905308805092127,
+          "high": 0.8288587798945684
+        },
+        "separates": true
+      },
+      {
+        "signal": "report.left_untested",
+        "family": "report",
+        "meaning": "Jev on the final report, at 0.5: the report says the main behavior the task asks for was not run or not tested",
+        "trials": 185,
+        "failures": 60,
+        "fail_precision": {
+          "k": 15,
+          "n": 24,
+          "p": 0.625,
+          "low": 0.42709619037907065,
+          "high": 0.7884086656636855
+        },
+        "failure_recall": {
+          "k": 15,
+          "n": 60,
+          "p": 0.25,
+          "low": 0.1577638557841185,
+          "high": 0.372323109454848
+        },
+        "pass_when_pass": {
+          "k": 116,
+          "n": 161,
+          "p": 0.7204968944099379,
+          "low": 0.646659265978471,
+          "high": 0.7840572521819934
+        },
+        "pass_when_not_fail": {
+          "k": 116,
+          "n": 161,
+          "p": 0.7204968944099379,
+          "low": 0.646659265978471,
+          "high": 0.7840572521819934
+        },
+        "within_fail_precision": {
+          "k": 12,
+          "n": 17,
+          "p": 0.7058823529411765,
+          "low": 0.468664666737861,
+          "high": 0.8672020613444361
+        },
+        "within_failure_recall": {
+          "k": 12,
+          "n": 51,
+          "p": 0.23529411764705882,
+          "low": 0.14004812598862518,
+          "high": 0.36762488136345783
+        },
+        "separates": true
+      },
+      {
+        "signal": "report.checked_against_task",
+        "family": "report",
+        "meaning": "Jev on the final report, at 0.5: the report shows the result run against the task's own example, tests, thresholds, or exact expected output, and passing",
+        "trials": 185,
+        "failures": 60,
+        "fail_precision": {
+          "k": 57,
+          "n": 156,
+          "p": 0.36538461538461536,
+          "low": 0.2938978350975439,
+          "high": 0.4433420323712501
+        },
+        "failure_recall": {
+          "k": 57,
+          "n": 60,
+          "p": 0.95,
+          "low": 0.8629926537490016,
+          "high": 0.9828508088208587
+        },
+        "pass_when_pass": {
+          "k": 26,
+          "n": 29,
+          "p": 0.896551724137931,
+          "low": 0.7361455275293085,
+          "high": 0.9641857596186989
+        },
+        "pass_when_not_fail": {
+          "k": 26,
+          "n": 29,
+          "p": 0.896551724137931,
+          "low": 0.7361455275293085,
+          "high": 0.9641857596186989
+        },
+        "within_fail_precision": {
+          "k": 49,
+          "n": 105,
+          "p": 0.4666666666666667,
+          "low": 0.37410951657470093,
+          "high": 0.5615768386424218
+        },
+        "within_failure_recall": {
+          "k": 49,
+          "n": 51,
+          "p": 0.9607843137254902,
+          "low": 0.8678345101373474,
+          "high": 0.9891791437312488
+        },
+        "separates": true
+      },
+      {
+        "signal": "report.strict_grader_accepts",
+        "family": "report",
+        "meaning": "Jev on the final report, at 0.5: a strict grader of the task would accept the result the report describes",
+        "trials": 185,
+        "failures": 60,
+        "fail_precision": {
+          "k": 60,
+          "n": 185,
+          "p": 0.32432432432432434,
+          "low": 0.2610348576183277,
+          "high": 0.39476132288427346
+        },
+        "failure_recall": {
+          "k": 60,
+          "n": 60,
+          "p": 1.0,
+          "low": 0.9398260695220669,
+          "high": 0.9999999999999999
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_fail_precision": {
+          "k": 51,
+          "n": 110,
+          "p": 0.4636363636363636,
+          "low": 0.37324922744634015,
+          "high": 0.5564776913601419
+        },
+        "within_failure_recall": {
+          "k": 51,
+          "n": 51,
+          "p": 1.0,
+          "low": 0.9299509861127319,
+          "high": 0.9999999999999999
+        },
+        "separates": false
+      },
+      {
+        "signal": "verdict.combined",
+        "family": "verdict",
+        "meaning": "the calibrated combined verdict",
+        "trials": 185,
+        "failures": 60,
+        "fail_precision": {
+          "k": 22,
+          "n": 37,
+          "p": 0.5945945945945946,
+          "low": 0.4348568313132931,
+          "high": 0.7365370416005986
+        },
+        "failure_recall": {
+          "k": 22,
+          "n": 60,
+          "p": 0.36666666666666664,
+          "low": 0.2562073884620827,
+          "high": 0.4931723263320327
+        },
+        "pass_when_pass": {
+          "k": 11,
+          "n": 13,
+          "p": 0.8461538461538461,
+          "low": 0.5776482949136899,
+          "high": 0.9567427368172621
+        },
+        "pass_when_not_fail": {
+          "k": 110,
+          "n": 148,
+          "p": 0.7432432432432432,
+          "low": 0.6673328160460555,
+          "high": 0.8068455382389362
+        },
+        "within_fail_precision": {
+          "k": 19,
+          "n": 30,
+          "p": 0.6333333333333333,
+          "low": 0.45513246433604937,
+          "high": 0.7812629779598231
+        },
+        "within_failure_recall": {
+          "k": 19,
+          "n": 51,
+          "p": 0.37254901960784315,
+          "low": 0.2532032972099011,
+          "high": 0.5097503729966575
+        },
+        "separates": true
+      }
+    ]
+  }
+}

@@ -6,6 +6,20 @@ evidence; it does not report the execution host's live queue.
 
 ## Latest status
 
+**Truthful checks: a verdict from the final report catches almost four
+times the failures today's checks catch.** Every graded Coder One trial
+with a composition record, 317 on 58 tasks, is labeled with its verifier
+reward and split by task. On the 32 held-out tasks, today's checks
+caught 6 of 60 failures (10%, 5–20%) at 55% precision. A verdict fitted
+on the other half catches 22 of 60 (37%, 26–49%) at 59% precision
+(43–74%), exact McNemar p = 0.0009. It uses three things: Jev's answers
+to two questions over the executor's final report, and the self-report
+detector. No scenario kind, requirement state, or support state separates
+passes from failures on both halves. The precision gain isn't
+significant, and Luna is barely measured. See the
+[results](2026-09-24-truthful-checks.md) (issue
+[#9584](https://github.com/OpenAgentsInc/openagents/issues/9584)).
+
 **Tunable v10 against v7 on four near-miss tasks: equal passes, 23% less
 cost, no pass from persistence.** v10 judges persistence rounds against
 what the checks flag and runs them on GPT-6 Sol. Each arm passed 2 of 4
@@ -154,6 +168,7 @@ still need the quota audit. See [harness validation](tb4-results.md#harness-vali
 
 | Document | Contents |
 | --- | --- |
+| [Truthful checks, calibrated against graded runs](2026-09-24-truthful-checks.md) | The 317-trial label set split by task, every check signal's fail precision, failure recall, and pass rate with Wilson intervals, the combined verdict's held-out numbers against today's checks, the signals it drops, and what labeled data would close the issue. |
 | [Tunable v10 against v7 on four near-miss tasks](2026-09-24-persist-v10.md) | Persistence judged against what the checks flag, on GPT-6 Sol, against the matched v7 arm: first attempts on four tasks, cost and rounds per attempt, persistence attribution, and why the checks can't key progress. |
 | [Per-task effort on six TB4 tasks](2026-09-24-effort-routing.md) | Tunable v9's effort routing against fixed medium (v2) and fixed xhigh (v3): the pool fit, Wilson intervals, the exact McNemar test, cost and time per arm and task, why `gsea-proteomics` was routed to medium, and every attempt. |
 | [Coder One's version arc](2026-09-24-version-arc.md) | Every version from the Gemini loop to tunable v10: what each changed, its hypothesis, tasks, passes, cost, and verdict; the strategies over time; what improves and what's stuck; measurement lessons; and the ranked next experiments. |

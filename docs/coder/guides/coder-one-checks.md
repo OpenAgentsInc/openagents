@@ -175,6 +175,45 @@ tbench replay --stage checks --artifact PATH/coder-one \
 The results on the retained Terminal-Bench 4.0 trials are in
 [Check recall on retained TB4 trials](../../terminal-bench/2026-09-23-check-recall.md).
 
+## Measure each signal against the verifier
+
+```sh
+coder-one checks truth                  # label, ask Jev what isn't recorded, measure
+coder-one checks truth --jev recorded   # replay the recorded answers only
+gym coder truth                         # the held-out table
+gym coder truth --set all --within      # within tasks that both passed and failed
+```
+
+`truth` reads what each graded trial's episode recorded about the
+candidate the verifier graded, without running any check again. That
+includes each scenario kind's verdicts, the requirement states, the
+support states, the self-report, and whether repair or a second executor
+fired. It also reruns the self-report detector on every final report and
+asks Jev five questions over the task and the final report. It splits the
+trials by task into a calibration half and a held-out half, then reports
+each signal's fail precision, failure recall, and pass rate when it says
+pass, with Wilson intervals. The rows go to
+`~/.openagents/coder-one/checks-truth/rows.jsonl`, the table to
+`summary.json` beside them, and Jev's answers to `jev-recorded.json`, so a
+rerun costs nothing.
+
+`checks::verdict` is the combined verdict fitted on the calibration half:
+pass, fail, or unknown, with the precision the held-out half measured
+for that call. Two policy options use the measurement without removing
+a check:
+
+- `verify.distrust`: a list of scenario kinds whose failures read as
+  inconclusive, with a note. The scenario still runs and keeps its
+  observations, but it contradicts no requirement, leaves no repair
+  packet, and doesn't fire the `check` trigger.
+- `verify.verdict`: asks the report questions about the first and the
+  final candidate and records both verdicts under `verdict` in the
+  composition record. `verify.second.on` may then name `verdict`, which
+  fires when the verdict calls the first candidate failed.
+
+The results are in
+[Truthful checks, calibrated against graded runs](../../terminal-bench/2026-09-24-truthful-checks.md).
+
 ## See coverage in the Gym
 
 ```sh
