@@ -1,0 +1,509 @@
+{
+  "local_catalog": 753,
+  "local_loaded": 675,
+  "public_catalog": 1650,
+  "public_loaded": 1649,
+  "unavailable_public": [
+    "407a3728-44a6-4318-9b12-2b4bf5e89dab"
+  ],
+  "events": 236955,
+  "estimated_events": 71948,
+  "load_failures": [
+    {
+      "id": "tb4--claude-code-opus-matched--embedding-drift-monitor--matched-v8-9567-r3/embedding-drift-monitor__W6M5QxH",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "tb4--nop--data-anonymization--escalate-9571b-r2/data-anonymization__B4j2qzj",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "tb4--nop--html-js-filter--escalate-9571b-r2/html-js-filter__DJBBtdh",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "tb4--nop--wal-recovery-ordering--escalate-9571b-r2/wal-recovery-ordering__UPnYqk8",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "tb4--nop--production-planning--escalate-9571b-r2/production-planning__xdTYAWD",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "tb4--nop--ks-solver-cpp--escalate-9571b-r2/ks-solver-cpp__mcme4dE",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "tb4--nop--cargo-flight-dispatch--escalate-9571b-r2/cargo-flight-dispatch__8AzdVWo",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "tb4--coder-one-matched-v8--legacy-utility-triage--matched-v8-9567-r3/legacy-utility-triage__yBEiyqr",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "tb4--nop--atrx-vep-crispr--escalate-9571b-r2/atrx-vep-crispr__3QEA79H",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "tb4--nop--data-anonymization--escalate-9571b-r1/data-anonymization__qkakWU6",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "tb4--nop--html-js-filter--escalate-9571b-r1/html-js-filter__Y9CxbVv",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "tb4--nop--wal-recovery-ordering--escalate-9571b-r1/wal-recovery-ordering__zUwkYBH",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "tb4--nop--ks-solver-cpp--escalate-9571b-r1/ks-solver-cpp__PBrkgfS",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "tb4--nop--production-planning--escalate-9571b-r1/production-planning__rWaf7bN",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "tb4--nop--atrx-vep-crispr--escalate-9571b-r1/atrx-vep-crispr__xaSjZdv",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "tb4--nop--cargo-flight-dispatch--escalate-9571b-r1/cargo-flight-dispatch__zm5eRXi",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "tb4--nop--production-planning--escalate-9571-r1/production-planning__zuLj9wD",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "tb4--nop--ks-solver-cpp--escalate-9571-r1/ks-solver-cpp__7HfDNeZ",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "tb4--nop--atrx-vep-crispr--escalate-9571-r1/atrx-vep-crispr__NCDHXWS",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "tb4--nop--cargo-flight-dispatch--escalate-9571-r1/cargo-flight-dispatch__tgFJPNQ",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "tb4--nop--bun-sourcemap-leak--v8-persist-9570-r2/bun-sourcemap-leak__od3NU4L",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "tb4--nop--production-planning--v8-persist-9570-r2/production-planning__K6yqtbB",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "tb4--nop--cargo-flight-dispatch--v8-persist-9570-r2/cargo-flight-dispatch__FqwtWFD",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "tb4--nop--bun-sourcemap-leak--v8-persist-9570-r1/bun-sourcemap-leak__LyZPMKt",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "smoke--nop--fix-git--smoke-9572-r3/fix-git__94i7jBc",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "smoke--oracle--fix-git--smoke-9572-r3/fix-git__BPxcTFF",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "tb4--nop--cargo-flight-dispatch--v8-persist-9570-r1/cargo-flight-dispatch__p5RmZfr",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "smoke--oracle--fix-git--smoke-9572-r2/fix-git__7V9KFCE",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "smoke--nop--fix-git--smoke-9572-r2/fix-git__qEad5r2",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "tb4--nop--production-planning--v8-persist-9570-r1/production-planning__8zVnAPK",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "smoke--nop--fix-git--smoke-9572-r1/fix-git__3zA8cSb",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "smoke--oracle--fix-git--smoke-9572-r1/fix-git__dRW5pcH",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "try--nop--20260923T160717Z/interleaved-vigenere__jEtJUyN",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "try--nop--20260923T160717Z/risk-scorer-replay__maUXjtH",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "try--nop--20260923T160717Z/cargo-flight-dispatch__hgnRLzm",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "try--nop--20260923T160552Z/interleaved-vigenere__JPU9y6F",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "try--nop--20260923T160552Z/risk-scorer-replay__bRqW8bk",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "try--nop--20260923T160552Z/cargo-flight-dispatch__bqDDM7a",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "try--nop--20260923T160512Z/interleaved-vigenere__tpZK8u8",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "try--nop--20260923T160512Z/risk-scorer-replay__edwC4tM",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "try--nop--20260923T160512Z/cargo-flight-dispatch__FK5VXvH",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "try--nop--20260923T160201Z/interleaved-vigenere__m9i3qi7",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "try--nop--20260923T160201Z/risk-scorer-replay__aTkjHpJ",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "try--nop--20260923T160201Z/cargo-flight-dispatch__ETfcidv",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "tb4--claude-code-opus--ctr-optimization/ctr-optimization__2aivZ9o",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "matched-20260923--batched-eval-parity--r1--plain-regrade/batched-eval-parity__Em7KkGh",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "tb4--claude-code-opus--vpp-loss-divergence/vpp-loss-divergence__o5sLyxG",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "tb4--claude-code-opus--vf2-speedup-networkx/vf2-speedup-networkx__xCGvezp",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "tb4--coder-one-tunable-v5--risk-scorer-replay/risk-scorer-replay__wtTVWth",
+      "public": false,
+      "error": "Transcript contains no events"
+    },
+    {
+      "id": "tb4--coder-one-tunable-v2--rs-archive-clone/rs-archive-clone__yjunKjH",
+      "public": false,
+      "error": "Transcript contains no events"
+    },
+    {
+      "id": "tb4--coder-one-tunable-v2--vpp-loss-divergence/vpp-loss-divergence__PdciRBD",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "tb4--coder-one-tunable-v4--risk-scorer-replay/risk-scorer-replay__zPm6vdi",
+      "public": false,
+      "error": "Transcript contains no events"
+    },
+    {
+      "id": "tb4--claude-code-opus--jax-speedrun-gpu/jax-speedrun-gpu__z6vbhWx",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "tb4--coder-one-tunable-v2--jax-speedrun-gpu/jax-speedrun-gpu__JGQ3Bqr",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "tb4--oracle--math-eval-grader/math-eval-grader__BA8S4Gv",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "tb4--oracle--music-harmony/music-harmony__mx5c3bN",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "tb4--oracle--session-window-debug/session-window-debug__NAyCZUt",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "tb4--oracle--sound-change-cascade/sound-change-cascade__i2muHjA",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "resilience--repeat-oracle--fix-git-2/fix-git__P7jBJKJ",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "resilience--repeat-oracle--fix-git/fix-git__PvZ2cDE",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "resilience--wrong-platform--fix-git/fix-git__6WG34nf",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "resilience--collect-fail--fix-git/fix-git__jzEMxkK",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "resilience--no-trace--fix-git/fix-git__wZTfDA2",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "install-check--coder-one-delegate-luna/fix-git__gsMTzp5",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "install-check--coder-one-delegate-auto/fix-git__JW9Lf5U",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "install-check--coder-one-delegate-opus/fix-git__nzVYCoS",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "panel--codex--cancel-async-tasks/cancel-async-tasks__h4TZGxF",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "smoke--codex--fix-git-3/fix-git__hJQSRRX",
+      "public": false,
+      "error": "Unreadable or malformed local trajectory; the UI reports the source path."
+    },
+    {
+      "id": "smoke--codex--fix-git-2/fix-git__B23ij8U",
+      "public": false,
+      "error": "Unreadable or malformed local trajectory; the UI reports the source path."
+    },
+    {
+      "id": "smoke--codex--fix-git/fix-git__yqWZBs6",
+      "public": false,
+      "error": "Unreadable or malformed local trajectory; the UI reports the source path."
+    },
+    {
+      "id": "timeout-probe/fix-git__PBikAjF",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "install-check--codex/fix-git__gUvDyk7",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "install-check--claude-code/fix-git__ZsZueQ7",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "install-check--coder-v05/fix-git__vdKRpw2",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "smoke--nop/build-cython-ext__kmZrgH5",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "smoke--nop/fix-git__BFN5LLQ",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "smoke--oracle/build-cython-ext__o2mbwJY",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    },
+    {
+      "id": "smoke--oracle/fix-git__7TEC9XV",
+      "public": false,
+      "error": "No retained transcript for this attempt"
+    }
+  ],
+  "rendered_task": "react-lead-form",
+  "speed": 10,
+  "base_commit": "40925eb882896cc5f8b8ca17897e5887fdc171d6",
+  "issue": 9580,
+  "public_manifest": "bench/terminal-bench/reference/fable-5.1-replays.json",
+  "pty": {
+    "exit": 0,
+    "task": "react-lead-form",
+    "speed": 10,
+    "five_simulated_seconds_wall_seconds": 0.72,
+    "checked": [
+      "task search",
+      "pair load",
+      "10x playback",
+      "pause",
+      "end",
+      "independent scrolling",
+      "full-record toggle",
+      "return to picker",
+      "clean exit"
+    ]
+  },
+  "note": "The corpus audit covers acquisition, loading, clock reconstruction, and a paired render. The subsequent PTY check also covers the readable conversation and full-record toggle implementation.",
+  "verification": {
+    "replay_unit_tests": {
+      "passed": 11,
+      "failed": 0
+    },
+    "acquisition_unit_tests": {
+      "passed": 3,
+      "failed": 0
+    },
+    "corpus_acceptance": "passed",
+    "interactive_pty": "passed",
+    "manual_gate": {
+      "run_id": "20260924T005504Z-65d135",
+      "command": "./scripts/verify-rust.sh --keep-going",
+      "result": "failed",
+      "phases": {
+        "preflight": "passed",
+        "gate-tooling": "passed",
+        "artifacts": "passed",
+        "delegation": "passed",
+        "backup": "passed",
+        "fmt": "passed",
+        "clippy": "passed",
+        "clippy-features": "passed",
+        "tests": "failed",
+        "tests-features": "failed",
+        "deps": "passed",
+        "postgres": "passed"
+      },
+      "skipped": [
+        {
+          "slug": "metal-clippy",
+          "reason": "Metal checks need --with-metal on a supported Apple host"
+        },
+        {
+          "slug": "metal-tests",
+          "reason": "Metal checks need --with-metal on a supported Apple host"
+        },
+        {
+          "slug": "soak",
+          "reason": "long-running relay soak; use --with-soak"
+        }
+      ],
+      "test_failure": "support::tests::evidence_puts_the_contradicted_requirement_first_and_scrubs_scratch_paths",
+      "unchanged_baseline_reproduced": true
+    },
+    "gym_feature_suite": {
+      "passed": 489,
+      "failed": 8,
+      "failures": [
+        "runs::tests::gym_runs_rank_fills_the_cache_once_and_the_learning_order_reads_it",
+        "runs::tests::reasons_filter_and_groups_read_the_recorded_answers",
+        "runs::tests::the_catalog_reads_every_kind_of_retained_run",
+        "runs_learning::tests::changed_evidence_is_asked_again_and_only_that_run",
+        "runs_learning::tests::recorded_answers_rank_the_fixture_runs_and_a_second_pass_asks_nothing",
+        "runs_marks::tests::the_command_line_marks_filters_shows_and_measures",
+        "runs_tui::tests::l_orders_the_list_by_what_is_worth_learning_from",
+        "runs_tui::tests::the_list_says_what_each_run_was_and_how_it_came_out"
+      ]
+    },
+    "baseline_gym_default_suite": {
+      "commit": "40925eb882896cc5f8b8ca17897e5887fdc171d6",
+      "passed": 418,
+      "failed": 6,
+      "failures": [
+        "runs::tests::gym_runs_rank_fills_the_cache_once_and_the_learning_order_reads_it",
+        "runs::tests::reasons_filter_and_groups_read_the_recorded_answers",
+        "runs::tests::the_catalog_reads_every_kind_of_retained_run",
+        "runs_learning::tests::changed_evidence_is_asked_again_and_only_that_run",
+        "runs_learning::tests::recorded_answers_rank_the_fixture_runs_and_a_second_pass_asks_nothing",
+        "runs_marks::tests::the_command_line_marks_filters_shows_and_measures"
+      ]
+    },
+    "baseline_gym_tui_suite": {
+      "commit": "40925eb882896cc5f8b8ca17897e5887fdc171d6",
+      "passed": 8,
+      "failed": 2,
+      "failures": [
+        "runs_tui::tests::l_orders_the_list_by_what_is_worth_learning_from",
+        "runs_tui::tests::the_list_says_what_each_run_was_and_how_it_came_out"
+      ]
+    }
+  }
+}

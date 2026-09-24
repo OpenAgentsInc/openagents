@@ -88,6 +88,7 @@ pub mod runs_group;
 pub mod runs_highlights;
 pub mod runs_learning;
 pub mod runs_marks;
+pub mod runs_replay;
 pub mod runs_story;
 pub mod runs_transcript;
 pub mod spread;
@@ -99,6 +100,8 @@ pub mod terminal_bench_reference;
 pub mod timeline;
 pub mod views;
 
+#[cfg(feature = "tui")]
+pub mod runs_replay_tui;
 #[cfg(feature = "tui")]
 pub mod runs_tui;
 #[cfg(feature = "tui")]

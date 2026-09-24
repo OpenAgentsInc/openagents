@@ -115,6 +115,7 @@ still need the quota audit. See [harness validation](tb4-results.md#harness-vali
 
 - Run: [targeted experiments](targeted-experiment-template.md), [operating notes](runbook.md), [harness guide](../coder/terminal-bench.md),
   [delegate runbook](coder-one-delegate-runbook.md), and [resilience](resilience.md).
+- Replay: [head-to-head traces](../gym/head-to-head.md), with all published Fable 5.1 TB4 attempts and local Coder One versions.
 - Inspect: [Gym TUI](../gym/terminal-bench-tui.md), [Gym CLI](../gym/terminal-bench-cli.md),
   [retained traces](../../bench/terminal-bench/traces/), and [evidence retention](runbook.md#retain-the-evidence).
 - Extend: [tunable components](../optimization/coder-components.md),

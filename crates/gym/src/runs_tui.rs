@@ -49,6 +49,8 @@ mod highlighting;
 pub enum Key {
     Up,
     Down,
+    Left,
+    Right,
     PageUp,
     PageDown,
     Home,
@@ -220,6 +222,7 @@ impl Learning {
 pub struct Pane {
     order: Order,
     learning: Learning,
+    replay: Option<crate::runs_replay_tui::Pane>,
     catalog: Catalog,
     filter: Filter,
     cursor: usize,
@@ -249,6 +252,7 @@ impl Pane {
         Pane {
             order: Order::Newest,
             learning: Learning::off(),
+            replay: None,
             catalog,
             filter: Filter::default(),
             cursor: 0,
@@ -563,8 +567,45 @@ impl Pane {
         }
     }
 
+    /// Opens synchronized replay, preselecting the run in view.
+    pub fn open_replay(&mut self) {
+        let selected = self
+            .open
+            .as_ref()
+            .map(|o| &o.detail.run)
+            .or_else(|| self.selected_run());
+        self.replay = Some(crate::runs_replay_tui::Pane::new(&self.catalog, selected));
+    }
+
+    pub fn replaying(&self) -> bool {
+        self.replay
+            .as_ref()
+            .is_some_and(crate::runs_replay_tui::Pane::active)
+    }
+
+    pub fn advance_replay(&mut self, elapsed: std::time::Duration) {
+        if let Some(replay) = &mut self.replay {
+            replay.advance(elapsed);
+        }
+    }
+
     /// Handles one key.
     pub fn key(&mut self, key: Key) -> Reply {
+        if let Some(replay) = &mut self.replay {
+            let reply = replay.key(key);
+            if reply.is_none() {
+                self.replay = None;
+            }
+            return reply.unwrap_or(Reply::Handled);
+        }
+        if key == Key::Char('p')
+            && self.typing.is_none()
+            && !self.composing()
+            && !self.composing_ask()
+        {
+            self.open_replay();
+            return Reply::Handled;
+        }
         if self.typing.is_none()
             && !self.composing()
             && !self.composing_ask()
@@ -747,6 +788,10 @@ impl Pane {
             );
             return;
         }
+        if let Some(replay) = &self.replay {
+            replay.render(area, buf, self.ladder);
+            return;
+        }
         match &self.open {
             None if self.highlighting.showing => self.render_highlights(area, buf),
             None if self.asker.showing && self.asker.asking.is_some() => {
@@ -871,7 +916,7 @@ impl Pane {
                 (search.as_str(), search.as_str())
             }
             None => (
-                "↑↓ move · enter open · t transcript · / search · a agent · o outcome · l order · c clear · x mark · u unmark · ? ask · h highlights · q quit",
+                "↑↓ move · enter open · t transcript · p head-to-head · / search · a agent · o outcome · l order · c clear · x mark · u unmark · ? ask · h highlights · q quit",
                 "↑↓ enter t / a o l c x v u ? h q",
             ),
         };
@@ -1081,7 +1126,7 @@ impl Pane {
             Tab::Summary => (
                 "Summary",
                 "t shows the transcript",
-                "↑↓ scroll · t transcript · d details · x mark bad · v mark fine · u unmark · esc back · q quit",
+                "↑↓ scroll · t transcript · p head-to-head · d details · x mark bad · v mark fine · u unmark · esc back · q quit",
                 "↑↓ t d x v u esc q",
             ),
             Tab::Transcript => (

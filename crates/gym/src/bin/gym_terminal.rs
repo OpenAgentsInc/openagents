@@ -65,7 +65,7 @@ Usage:
   gym-terminal --terminal-bench [--print] [--jobs-dir PATH] [--traces-dir PATH] [--samples-dir PATH]
                             [--runs-dir PATH] [--minitasks-dir PATH] [--no-jobs] [--no-traces]
                             [--checks-dir PATH] [--no-samples] [--no-runs] [--no-minitasks]
-                            [--no-checks] [--no-jev]
+                            [--no-checks] [--no-jev] [--head-to-head]
   gym-terminal --help     Print this message.
 
 The default decision-model views open a built-in fixture. Terminal-Bench
@@ -122,6 +122,7 @@ fn terminal_bench_mode(arguments: &[String]) -> io::Result<()> {
     let mut minitasks = gym::coder_minitasks::default_runs_dir();
     let mut checks = gym::coder_coverage::default_dir();
     let mut print_only = false;
+    let mut head_to_head = false;
     let mut jev = true;
     let mut index = 0;
     while index < arguments.len() {
@@ -135,6 +136,7 @@ fn terminal_bench_mode(arguments: &[String]) -> io::Result<()> {
             "--no-minitasks" => minitasks = None,
             "--no-checks" => checks = None,
             "--no-jev" => jev = false,
+            "--head-to-head" => head_to_head = true,
             "--jobs-dir" | "--traces-dir" | "--samples-dir" | "--runs-dir" | "--minitasks-dir"
             | "--checks-dir" => {
                 let Some(path) = arguments.get(index + 1) else {
@@ -192,6 +194,13 @@ fn terminal_bench_mode(arguments: &[String]) -> io::Result<()> {
         .with_live(live)
         .with_studies(studies, study_errors)
         .with_runs(terminal_bench_tui_runs(runs, jev && !print_only));
+    if head_to_head {
+        app.open_replay();
+    }
+    if print_only && head_to_head {
+        println!("{}", app.to_text(150, 40));
+        return Ok(());
+    }
     if print_only {
         let mut out = stdout().lock();
         for view in terminal_bench_tui::View::ALL {
@@ -231,6 +240,8 @@ fn terminal_bench_tui_runs(catalog: gym::runs::Catalog, jev: bool) -> gym::runs_
 fn runs_key(code: KeyCode) -> Option<gym::runs_tui::Key> {
     use gym::runs_tui::Key;
     Some(match code {
+        KeyCode::Left => Key::Left,
+        KeyCode::Right => Key::Right,
         KeyCode::Up => Key::Up,
         KeyCode::Down => Key::Down,
         KeyCode::PageUp => Key::PageUp,
@@ -267,11 +278,18 @@ fn draw_tbench(
     mut app: terminal_bench_tui::App,
 ) -> io::Result<()> {
     let mut read_at = std::time::Instant::now();
+    let mut replay_at = std::time::Instant::now();
     loop {
+        app.advance_replay(replay_at.elapsed());
+        replay_at = std::time::Instant::now();
         terminal.draw(|frame| app.render(frame.area(), frame.buffer_mut()))?;
+        if app.replaying() && !event::poll(std::time::Duration::from_millis(50))? {
+            continue;
+        }
         // While Coder One answers a question, its events are read every
         // quarter second; the runs themselves still every two.
-        if app.asking() && !event::poll(std::time::Duration::from_millis(250))? {
+        if !app.replaying() && app.asking() && !event::poll(std::time::Duration::from_millis(250))?
+        {
             app.poll_ask();
             if read_at.elapsed() >= std::time::Duration::from_secs(2) {
                 app.refresh_live();
@@ -281,7 +299,11 @@ fn draw_tbench(
         }
         // The live view reads its attempts again every two seconds; every
         // other view waits for a key.
-        if !app.asking() && app.follows() && !event::poll(std::time::Duration::from_secs(2))? {
+        if !app.replaying()
+            && !app.asking()
+            && app.follows()
+            && !event::poll(std::time::Duration::from_secs(2))?
+        {
             app.refresh_live();
             read_at = std::time::Instant::now();
             continue;
@@ -296,6 +318,7 @@ fn draw_tbench(
             }
             if app.view() == terminal_bench_tui::View::Runs {
                 if let Some(key) = runs_key(key.code) {
+                    app.advance_replay(replay_at.elapsed());
                     match app.runs_key(key) {
                         gym::runs_tui::Reply::Quit => return Ok(()),
                         gym::runs_tui::Reply::Open(digit) => {
@@ -305,6 +328,7 @@ fn draw_tbench(
                         }
                         gym::runs_tui::Reply::Handled => {}
                     }
+                    replay_at = std::time::Instant::now();
                 }
                 continue;
             }

@@ -33,6 +33,15 @@ another location. Use `--no-jobs`, `--no-traces`, or `--no-samples` to omit
 one. If a configured directory is unavailable, the overview reports that
 condition; it does not silently substitute a sample.
 
+## Replay head to head
+
+Press `p` from the Runs list or an open run to compare any Coder One
+attempt with a public Fable 5.1 attempt on the same task. The two full
+transcripts share an elapsed-time clock, with pause, seeking, independent
+scrolling, and `+`/`-` speed controls up to 10×. The picker includes all
+five Fable effort settings. See [head-to-head replay](head-to-head.md) for
+controls, the acquired corpus, timing limits, and host synchronization.
+
 ## Read recent runs
 
 The terminal opens on the **Runs** pane. It lists every Terminal-Bench trial
@@ -66,6 +75,7 @@ copy of the episode log or the native output.
 | --- | --- |
 | Arrow keys, `j`, `k` | Move. |
 | `Enter` | Open a run's summary. In a transcript, open or close the selected step. |
+| `p` | Choose a head-to-head replay. |
 | `t` | Open the run's transcript, or switch between summary and transcript. |
 | `e` | Open or close every step of a transcript. |
 | `d` | Show the details experts use in a summary. |

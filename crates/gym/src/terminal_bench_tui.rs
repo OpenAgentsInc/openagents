@@ -209,6 +209,27 @@ impl App {
         self
     }
 
+    pub fn open_replay(&mut self) {
+        self.view = View::Runs;
+        if let Some(pane) = &mut self.runs {
+            pane.open_replay();
+        }
+    }
+
+    pub fn replaying(&self) -> bool {
+        self.view == View::Runs
+            && self
+                .runs
+                .as_ref()
+                .is_some_and(crate::runs_tui::Pane::replaying)
+    }
+
+    pub fn advance_replay(&mut self, elapsed: std::time::Duration) {
+        if let Some(pane) = &mut self.runs {
+            pane.advance_replay(elapsed);
+        }
+    }
+
     /// Hands a key to the Runs pane. Without a pane, nothing happens.
     pub fn runs_key(&mut self, key: crate::runs_tui::Key) -> crate::runs_tui::Reply {
         match &mut self.runs {

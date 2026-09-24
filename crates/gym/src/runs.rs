@@ -1835,6 +1835,12 @@ pub(crate) fn fixture_sources() -> (tempfile::TempDir, Sources) {
                 copy(&path, &target);
             } else {
                 std::fs::copy(&path, &target).expect("a fixture file");
+                // macOS copy can preserve the old modification time. The
+                // running fixture must be fresh on every platform.
+                std::fs::File::open(&target)
+                    .expect("a copied fixture")
+                    .set_modified(SystemTime::now())
+                    .expect("a fresh fixture timestamp");
             }
         }
     }

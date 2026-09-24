@@ -170,6 +170,7 @@ impl Pane {
             Key::Down => composer.cursor = (composer.cursor + 1).min(JUDGMENTS.len() - 1),
             Key::PageUp => composer.cursor = composer.cursor.saturating_sub(6),
             Key::PageDown => composer.cursor = (composer.cursor + 6).min(JUDGMENTS.len() - 1),
+            Key::Left | Key::Right => {}
             Key::Home => composer.cursor = 0,
             Key::End => composer.cursor = JUDGMENTS.len() - 1,
             Key::Tab => {
