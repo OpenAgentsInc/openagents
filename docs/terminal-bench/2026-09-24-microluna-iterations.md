@@ -354,3 +354,76 @@ key's structure, and Fable's shortest pass found it in the unfiltered
 positions; Fable's `sound-change-cascade` pass reasoned with placeholder
 phones that appear in neither form. The practice names neither task, and
 it was written after reading both, so a pass on either is in-sample.
+
+**Dev results.** Artifact `coder-one 0.1.0 (4ff6a971bc33)`. The first
+launch of all three trials failed before the agent started: Harbor's
+egress-control kernel probe, a container run with a 30-second bound, didn't
+answer under load, so Docker refused the allowlist policy. The probe
+answered in half a second afterwards, and the relaunches ran.
+
+| Task | Verifier | Agent time | Cost | Sessions and scores |
+| --- | --- | ---: | ---: | --- |
+| `embedding-drift-monitor` | **Pass, 11 of 11** | 7 min 26 s | $0.0161 | Session 1 done (335 s); self-check done |
+| `sound-change-cascade` | Fail, 5 of 7 | 26 min 20 s | $0.0441 | Held-out 81 of 156; session 2 scored nothing; session 1's workspace restored |
+| `interleaved-vigenere` | Fail, 5 of 6 | 25 min 7 s | $0.0472 | Score 4 of 5; session 2 scored nothing; session 1's workspace restored |
+
+- The structure practice didn't move either search task, even in-sample.
+- Keep-best restored the better workspace on both search tasks, which is
+  the host rule doing its job on workspaces that were both failing.
+- Spend: $0.107.
+
+## Where this stands
+
+**The protocol's gate was never met, so the test set was not run.** No
+version passed 2 of the 3 dev tasks. Every version from v13 on passes
+`embedding-drift-monitor`, and none passed `sound-change-cascade` or
+`interleaved-vigenere` in 29 trials.
+
+### Dev results against Fable 5.1
+
+Fable's time is the trial's wall time; ours is Harbor's agent time. The
+cheapest passing Microluna version per task is shown.
+
+| Task | Best Microluna result | Agent time | Cost | Fable low: mean time, mean cost | Fable all efforts: mean time |
+| --- | --- | ---: | ---: | --- | ---: |
+| `embedding-drift-monitor` | v13, v15, v17: pass (5 of 5 attempts) | 5 min 54 s (v15) | $0.0152 (v15) | 3.1 min, $0.87 | 14.9 min |
+| `sound-change-cascade` | Fail; best 520 of 780 training pairs (v9) | 28 min 22 s | $0.1049 | 22.5 min, $5.20 | 28.8 min |
+| `interleaved-vigenere` | Fail; best 16.5% of the sample's letters (v14) | 20 min 8 s | $0.0815 | 24.7 min, $4.67 | 33.9 min |
+
+On `embedding-drift-monitor` the pass costs 1.7% of Fable low's mean and
+beats Fable's all-effort mean time, but not its low-effort mean.
+
+### What held up, and what didn't
+
+| Mechanism | Verdict | Evidence |
+| --- | --- | --- |
+| The lean loop: no acceptance suite, one strong first session, a fresh self-check | Keep | No run reversed a fix; the suite reversals of v6 to v8 are gone by construction |
+| Suspects ranked by Jev (`rationale`) | Keep, pending the test set | 5 of 5 `embedding-drift-monitor` passes with it, 0 of 7 lean runs without it; in-sample |
+| Host turn-back of a finish (`persist`) | Keep | Solo left 47 to 52 of 60 turns unused; with it, sessions work to their bounds |
+| Frozen score and keep-best | Keep | It restored the better workspace twice and never reverted a pass |
+| Record-based hard-coding scan | Keep | Field-based scan misfired on a word list (v9); no false flag since |
+| Wall, session spend, and command bounds | Keep | v9 ran 60 minutes and $0.105; v10 lost a session to one 600-second command |
+| Lanes: best of three first attempts | Off | Same machinery works; no search insight, and 3x the time on the task that passes |
+| High effort throughout, xhigh before the first edit | Off | Slower turns; xhigh ended `sound-change-cascade` with no rules file |
+| Search-program practice | Off | 5 of 156 held out where hand edits reached 109 |
+
+### Recommendation
+
+The two dev search tasks look like the thesis's "capability limits": 29
+trials, five loop designs, three efforts, and three kinds of in-sample
+practice didn't find the structure a Fable pass finds in 11 to 20
+commands. As long as they are two of the three dev tasks, the gate stays
+closed for any Luna-only loop. Two ways forward, each the operator's call:
+
+1. Run `microluna-v15` once on the test set as it stands. It is the
+   cheapest and fastest configuration that passes the dev task it can
+   pass, and nothing in it came from the test tasks.
+2. Replace one search task in the dev set with a Fable-passing task whose
+   difficulty is closer to the test set's (Fable low means of 3.4 to 13
+   minutes), and keep iterating against the same gate.
+
+### Spend
+
+29 trials, $1.074 of Luna at list price, with Jev's few hundredths of a
+cent on top: solo $0.038, v9 $0.219, v10 $0.019, v11 $0.054, v12 $0.102,
+v13 $0.114, v14 $0.171, v15 $0.100, v16 $0.150, and v17 $0.107.
