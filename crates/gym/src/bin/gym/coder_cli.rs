@@ -70,6 +70,11 @@ gym coder recall [--failures] [--json]
                            check recall on the labeled Terminal-Bench set:
                            verifier failures and passes the checks flagged;
                            see gym coder recall --help
+gym coder truth [--set held-out|calibration|all] [--within] [--json]
+                           truthful checks: each signal's fail precision,
+                           failure recall, and pass rate with intervals, and
+                           the calibrated verdict against today's checks on
+                           held-out tasks; see gym coder truth --help
 gym coder asks [ID|latest] [--json]
                            the questions `coder-one ask` answered: citations
                            checked, claims verified, cost, and time
@@ -174,6 +179,9 @@ fn execute(args: &[String], out: &mut impl Write) -> Result<i32, String> {
     }
     if args.first().map(String::as_str) == Some("recall") {
         return gym::coder_recall::command(&args[1..], out);
+    }
+    if args.first().map(String::as_str) == Some("truth") {
+        return gym::coder_truth::command(&args[1..], out);
     }
     if args.first().map(String::as_str) == Some("minitasks") {
         return gym::coder_minitasks::command(&args[1..], out);

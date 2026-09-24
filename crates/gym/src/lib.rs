@@ -75,6 +75,7 @@ pub mod coder_repair;
 pub mod coder_requirements;
 pub mod coder_router;
 pub mod coder_study;
+pub mod coder_truth;
 pub mod commitment;
 pub mod coverage;
 pub mod eval;
