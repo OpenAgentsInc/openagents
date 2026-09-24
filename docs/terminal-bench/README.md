@@ -6,6 +6,17 @@ evidence; it does not report the execution host's live queue.
 
 ## Latest status
 
+**Escalation to GPT-6 Astra on a failed check: 12 escalations, no
+rescue.** Tunable v9-escalate runs Codex on GPT-6 Astra only when a check
+fails or the executor reports a failure. Over 31 graded trials on eight
+tasks, it escalated 12 times and rescued none: 0 of 12 (95% Wilson
+0–24%), for $20.40 of Astra. The self-report trigger kept Astra's
+candidate 8 times because Astra didn't admit a failure, and all 8 failed.
+The check trigger fired on a false alarm in 2 of 4 trials. The gate never
+saw 8 of the 20 failed trials. See the
+[results and what the gate should key on instead](2026-09-24-escalation-on-failed-check.md)
+(issue [#9571](https://github.com/OpenAgentsInc/openagents/issues/9571)).
+
 **Per-task effort on six TB4 tasks: routing missed the cost bar and one
 task.** Tunable v9 picks medium or xhigh per task from Jev's features,
 fitted on the unused task pool. It passed 8 of 15 graded attempts (30–75%),
