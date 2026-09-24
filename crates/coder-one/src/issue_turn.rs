@@ -709,9 +709,6 @@ async fn stale_dependents(
     jev: Option<&jev::Client>,
     recorder: &Recorder,
 ) -> Vec<String> {
-    let Some(client) = jev else {
-        return Vec::new();
-    };
     let bare = command(workdir, "git", &["diff", "--cached", "-U0"]).unwrap_or_default();
     let edited = edited_lines(&bare);
     // Code the change already edited was updated to match; asking about it
@@ -756,8 +753,12 @@ async fn stale_dependents(
             jev::Noul::new(DEPENDS_QUESTION.replace("{id}", &id)),
         );
     }
+    let mode = match jev {
+        Some(client) => crate::component::jev::JevMode::Live(client.clone()),
+        None => crate::component::jev::JevMode::Off,
+    };
     let asked = crate::component::jev::ask(
-        &crate::component::jev::JevMode::Live(client.clone()),
+        &mode,
         recorder,
         crate::component::jev::Ask {
             component: "issue.gate",
@@ -770,21 +771,106 @@ async fn stale_dependents(
         },
     )
     .await;
+    let grown = grown_lists(workdir, &bare);
     found
         .iter()
         .enumerate()
         .filter_map(|(i, excerpt)| {
-            let p = asked.noul(&format!("depends_{}", i + 1))?;
-            (p >= DEPENDS_FLAG).then(|| {
+            let p = asked.noul(&format!("depends_{}", i + 1));
+            // Jev alone missed a stale `2 + cursor` twice, rating it under
+            // 0.5; a list that grew beside a fixed offset is flagged by code.
+            let offset = grown.contains(&excerpt.name) && fixed_offset(&excerpt.text);
+            let jev = p.is_some_and(|p| p >= DEPENDS_FLAG);
+            (offset || jev).then(|| {
+                let why = if offset {
+                    "the change adds items to what it returns, and this code uses a fixed \
+                     offset"
+                        .to_string()
+                } else {
+                    format!("Jev {:.2}", p.unwrap_or_default())
+                };
                 format!(
                     "{}:{} depends on the number or positions of what `{}` produces, and the \
-                     change alters them (Jev {p:.2}); update that code to match and add a test \
-                     that checks it, such as which row a view selects",
+                     change alters them ({why}); update that code to match and add an assertion \
+                     that calls it, such as which row a view selects",
                     excerpt.file, excerpt.line, excerpt.name
                 )
             })
         })
         .collect()
+}
+
+/// The Rust functions to which the zero-context diff `bare` adds list
+/// items: added lines ending in a comma that hold a string or build one.
+fn grown_lists(workdir: &Path, bare: &str) -> Vec<String> {
+    let mut grown: Vec<String> = Vec::new();
+    let mut path = String::new();
+    let mut current: Option<String> = None;
+    for line in bare.lines() {
+        if let Some(file) = line.strip_prefix("+++ b/") {
+            path = file.to_string();
+            current = None;
+            continue;
+        }
+        if let Some(hunk) = line.strip_prefix("@@ ") {
+            current = None;
+            if !path.ends_with(".rs") {
+                continue;
+            }
+            let start = hunk
+                .split_whitespace()
+                .find_map(|part| part.strip_prefix('+'))
+                .and_then(|part| part.split(',').next())
+                .and_then(|n| n.parse::<usize>().ok());
+            if let (Some(start), Ok(text)) = (start, std::fs::read_to_string(workdir.join(&path))) {
+                let lines: Vec<&str> = text.lines().collect();
+                current = (0..start.min(lines.len()))
+                    .rev()
+                    .find_map(|i| defined_name(lines[i]));
+            }
+            continue;
+        }
+        let Some(added) = line.strip_prefix('+') else {
+            continue;
+        };
+        let item = added.trim_end().ends_with(',')
+            && (added.trim_start().starts_with('"')
+                || added.contains(".to_owned()")
+                || added.contains(".to_string()")
+                || added.contains("format!("));
+        if item
+            && let Some(name) = &current
+            && !grown.contains(name)
+        {
+            grown.push(name.clone());
+        }
+    }
+    grown
+}
+
+/// Whether an excerpt holds a fixed numeric offset: `2 + …`, `.skip(2)`,
+/// or `.nth(2)`. Line-number prefixes are left out.
+fn fixed_offset(excerpt: &str) -> bool {
+    excerpt.lines().any(|line| {
+        let code = line.get(6..).unwrap_or(line);
+        let words: Vec<&str> = code.split_whitespace().collect();
+        let leading = words.windows(2).any(|pair| {
+            let number = pair[0].trim_start_matches(|c: char| !c.is_ascii_digit());
+            pair[1] == "+"
+                && !number.is_empty()
+                && number.chars().all(|c| c.is_ascii_digit())
+                && number != "0"
+                && pair[0].ends_with(|c: char| c.is_ascii_digit())
+                && !pair[0].starts_with(|c: char| c.is_alphabetic() || c == '_')
+        });
+        let call = [".skip(", ".nth("].iter().any(|call| {
+            code.split(call).skip(1).any(|rest| {
+                let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+                !digits.is_empty() && digits != "0" && rest[digits.len()..].starts_with(')')
+            })
+        });
+        leading || call
+    })
 }
 
 /// Relative Markdown links the change adds that point at no file, or at
@@ -1769,6 +1855,17 @@ mod tests {
                 ("src/b.rs".to_string(), 5)
             ]
         );
+    }
+
+    #[test]
+    fn fixed_offsets_are_found_and_plain_arithmetic_is_not() {
+        assert!(fixed_offset(
+            "  700             View::MiniTasks => (!x.is_empty()).then(|| 2 + self.cursor()),"
+        ));
+        assert!(fixed_offset("   12     rows.iter().skip(3)"));
+        assert!(!fixed_offset("   12     let n = i + 1;"));
+        assert!(!fixed_offset("   12     format!(\"{}\", count + 1)"));
+        assert!(!fixed_offset("   12     rows.iter().skip(0)"));
     }
 
     #[test]
