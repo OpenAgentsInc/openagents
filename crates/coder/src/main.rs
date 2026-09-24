@@ -418,18 +418,8 @@ async fn run(
             (None, Some(error)) => app.push_detail("  ", format!("no trace — {error}")),
             (None, None) => app.push_detail("  ", "no trace — CODER_TRACE is off"),
         }
-        // Which door answers and why, so a fallback never passes for the
-        // door the operator expected.
-        app.push(
-            Intensity::Half,
-            "  ",
-            format!(
-                "door → {} ({}) because {}",
-                agent.door(),
-                agent.model(),
-                agent.door_reason()
-            ),
-        );
+        // Which door answers and why stays out of the conversation: `coder
+        // doctor` and the trace say it.
     }
 
     let mut events = EventStream::new();
