@@ -589,6 +589,8 @@ fn land(
 struct Excerpt {
     file: String,
     line: usize,
+    /// The first and last line numbers shown, 1-based.
+    span: (usize, usize),
     name: String,
     text: String,
 }
@@ -610,6 +612,7 @@ fn excerpts(workdir: &Path) -> Vec<Excerpt> {
             let from = line.saturating_sub(CALLER_BEFORE + 1);
             let to = (line + CALLER_AFTER).min(lines.len());
             found.push(Excerpt {
+                span: (from + 1, to),
                 file,
                 line,
                 name: name.clone(),
@@ -630,6 +633,40 @@ which positions, the changed code in `diff` produces, such as an index offset, a
 or a row number, and does the change alter that number or those positions without this code \
 being updated to match?";
 
+/// How sure Jev must be that a place depends on a changed count to flag
+/// it: the stale `2 + cursor` offset read 0.68, and correct code beside a
+/// fix read 0.52 and 0.54.
+const DEPENDS_FLAG: f64 = 0.6;
+
+/// The new-side line numbers a zero-context diff adds or changes, by file.
+fn edited_lines(bare: &str) -> Vec<(String, usize)> {
+    let mut edited = Vec::new();
+    let mut file = String::new();
+    for line in bare.lines() {
+        if let Some(path) = line.strip_prefix("+++ b/") {
+            file = path.to_string();
+            continue;
+        }
+        let Some(hunk) = line.strip_prefix("@@ ") else {
+            continue;
+        };
+        let Some(new) = hunk
+            .split_whitespace()
+            .find_map(|part| part.strip_prefix('+'))
+        else {
+            continue;
+        };
+        let mut parts = new.split(',');
+        let start: usize = parts.next().and_then(|n| n.parse().ok()).unwrap_or(0);
+        let count: usize = parts.next().and_then(|n| n.parse().ok()).unwrap_or(1);
+        // A pure deletion still touches the line it sits beside.
+        for at in start..start + count.max(1) {
+            edited.push((file.clone(), at));
+        }
+    }
+    edited
+}
+
 /// Places that use what changed and, as Jev reads them, depend on a count
 /// or position the change alters without being updated: a view once
 /// selected row `2 + cursor` after two lines went in above the rows, and
@@ -642,7 +679,18 @@ async fn stale_dependents(
     let Some(client) = jev else {
         return Vec::new();
     };
-    let found = excerpts(workdir);
+    let bare = command(workdir, "git", &["diff", "--cached", "-U0"]).unwrap_or_default();
+    let edited = edited_lines(&bare);
+    // Code the change already edited was updated to match; asking about it
+    // once flagged a `4 + cursor` offset right after the fix.
+    let found: Vec<Excerpt> = excerpts(workdir)
+        .into_iter()
+        .filter(|excerpt| {
+            !edited.iter().any(|(file, line)| {
+                *file == excerpt.file && (excerpt.span.0..=excerpt.span.1).contains(line)
+            })
+        })
+        .collect();
     if found.is_empty() {
         return Vec::new();
     }
@@ -682,7 +730,7 @@ async fn stale_dependents(
         .enumerate()
         .filter_map(|(i, excerpt)| {
             let p = asked.noul(&format!("depends_{}", i + 1))?;
-            (p >= 0.5).then(|| {
+            (p >= DEPENDS_FLAG).then(|| {
                 format!(
                     "{}:{} depends on the number or positions of what `{}` produces, and the \
                      change alters them (Jev {p:.2}); update that code to match and add a test \
@@ -946,8 +994,10 @@ fn unsourced_figures(workdir: &Path, diff: &str) -> Vec<String> {
                     continue;
                 }
                 seen.push(figure.clone());
+                // A file may hold the number without its currency sign.
+                let number = figure.trim_start_matches('$');
                 let found = Command::new("git")
-                    .args(["grep", "-q", "-F", "-e", &figure, "HEAD", "--", "."])
+                    .args(["grep", "-q", "-F", "-e", number, "HEAD", "--", "."])
                     .current_dir(workdir)
                     .status()
                     .is_ok_and(|status| status.success());
@@ -1085,17 +1135,36 @@ fn style_problems(diff: &str) -> Vec<String> {
                 let word = word.trim_matches(|c: char| !c.is_alphanumeric() && c != '/');
                 let halves: Vec<&str> = word.split('/').collect();
                 let alphabetic = |h: &&str| h.len() >= 2 && h.chars().all(char::is_alphabetic);
-                if halves.len() >= 2 && halves.iter().all(alphabetic) {
-                    problems.push(format!(
-                        "{file}: \"{word}\" uses a slash for \"or\"; write the words out"
-                    ));
-                } else if halves.len() == 2
-                    && halves[0].ends_with(|c: char| c.is_ascii_digit())
-                    && alphabetic(&halves[1])
-                {
-                    problems.push(format!(
-                        "{file}: \"{word}\" uses a slash for \"per\"; write \"per\""
-                    ));
+                let numeric = |h: &&str| !h.is_empty() && h.chars().all(|c| c.is_ascii_digit());
+                // A path has a dot or several slashes; a fraction is digits.
+                let extension = word
+                    .char_indices()
+                    .any(|(i, c)| c == '.' && word[i + 1..].starts_with(char::is_alphabetic));
+                let path = extension || halves.len() > 2;
+                if halves.len() == 2 && !path && !halves.iter().all(numeric) {
+                    let per =
+                        halves[0].ends_with(|c: char| c.is_ascii_digit()) && alphabetic(&halves[1]);
+                    problems.push(if per {
+                        format!("{file}: \"{word}\" uses a slash for \"per\"; write \"per\"")
+                    } else {
+                        format!(
+                            "{file}: \"{word}\" uses a slash between words; write them out, \
+                             such as \"or\", \"and\", or \"per\""
+                        )
+                    });
+                }
+                for half in &halves {
+                    let digits = half.trim_start_matches('$');
+                    let lead: String = digits
+                        .chars()
+                        .take_while(|c| c.is_ascii_digit() || *c == '.')
+                        .collect();
+                    let unit = &digits[lead.len()..];
+                    if !lead.is_empty() && matches!(unit, "s" | "ms" | "min") {
+                        problems.push(format!(
+                            "{file}: \"{half}\" needs a space between the number and its unit"
+                        ));
+                    }
                 }
             }
             if let Some(at) = text.find(['~', '≈'])
@@ -1453,6 +1522,27 @@ mod tests {
         assert!(problems[0].contains("../../../bench/r.md"));
         assert!(problems[1].contains("../bench/x.md"));
         assert!(problems[2].contains("#nothing"));
+    }
+
+    #[test]
+    fn slashes_between_words_and_units_without_spaces_are_flagged() {
+        let diff = "+++ b/src/v.rs\n+    \"Scripted: about 1s/$0, 3/4 passed, see docs/a/b.md or a.json/b\"\n";
+        let problems = style_problems(diff);
+        assert_eq!(problems.len(), 2, "{problems:#?}");
+        assert!(problems[0].contains("slash between words"), "{problems:#?}");
+    }
+
+    #[test]
+    fn edited_lines_read_hunk_ranges() {
+        let bare = "+++ b/src/a.rs\n@@ -700 +700 @@ fn x\n+++ b/src/b.rs\n@@ -3,0 +4,2 @@\n";
+        assert_eq!(
+            edited_lines(bare),
+            [
+                ("src/a.rs".to_string(), 700),
+                ("src/b.rs".to_string(), 4),
+                ("src/b.rs".to_string(), 5)
+            ]
+        );
     }
 
     #[test]
