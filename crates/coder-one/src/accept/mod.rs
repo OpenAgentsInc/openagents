@@ -1,0 +1,1070 @@
+//! `accept.define`: an executable acceptance suite, written and proven
+//! before any fix, then frozen and run until green (issue #9588).
+//!
+//! The Luna pivot (`docs/coder/design/thesis.md`) replaces "the model says
+//! it's done" with an observed program state. This module builds that
+//! state in five steps:
+//!
+//! 1. **Write.** A Microluna session ([`writer::MicrolunaWriter`]) writes
+//!    one shell test per file under `tests/` in a suite directory outside
+//!    the solution workspace. Each test names the requirement IDs it
+//!    decides in a header. The session's only writable directory is the
+//!    suite directory, so it can't touch the solution.
+//! 2. **Verify.** Code runs every test on the untouched workspace, and a
+//!    test that passes there is rejected unless Jev reads its requirement
+//!    as one that keeps something already true. Jev asks, per test,
+//!    whether it asserts only what the task states, whether it hardcodes
+//!    an answer the task doesn't give, and whether it could pass without
+//!    its requirement met; and, per requirement, whether its tests decide
+//!    it ([`verify`]). Problems go back to a new writing session, within
+//!    [`Options::max_rounds`] and [`Options::spend_usd`]. What's still
+//!    wrong after the last round is rejected, and a requirement left
+//!    without a deciding test is a named gap that marks the suite partial.
+//! 3. **Freeze.** The suite's files are digested ([`AcceptanceSuite::digest`]),
+//!    and [`AcceptanceSuite::integrity`] reports any edit, addition, or
+//!    removal since.
+//! 4. **Run.** [`run`] refuses a tampered suite and otherwise returns red
+//!    and green per test and per requirement ([`RunResult`]), which is what
+//!    the loop's "done" and next-step decisions read.
+//! 5. **Record.** `accept.define` and each `accept.run` are component
+//!    invocations in the episode's recorder, and each leaves an ATIF step
+//!    carrying the suite ([`SUITE_EXTENSION`]) or the run
+//!    ([`RUN_EXTENSION`]), so the Gym sees the suite and its red and green
+//!    history.
+//!
+//! A test is a POSIX shell script. It runs with the workspace root as its
+//! working directory, `$ACCEPT_DIR` set to the suite directory,
+//! `$WORKSPACE` to the workspace root, and `$ACCEPT_TMP` to an empty
+//! scratch directory. Exit 0 is green; anything else is red. Where the
+//! tests run is a [`runner::Runner`]: this host inside a `coder-boundary`
+//! boundary, a task container directly, or a Docker image for the offline
+//! validity measurement.
+
+pub mod cli;
+pub mod minitask;
+pub mod offline;
+pub mod runner;
+pub mod verify;
+pub mod writer;
+
+#[cfg(test)]
+mod tests;
+
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
+use std::time::Instant;
+
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
+
+use crate::component::jev::JevMode;
+use crate::record::{Finish, Implementation, Outcome, Recorder, Start};
+use crate::requirements::{Kind, RequirementMap};
+
+pub use runner::{Confine, Docker, Local, Runner};
+pub use writer::{MicrolunaWriter, Writer, Written};
+
+/// The schema of a frozen suite's record.
+pub const SCHEMA: &str = "openagents.coder-one.acceptance-suite.v1";
+
+/// The schema of one run of a frozen suite.
+pub const RUN_SCHEMA: &str = "openagents.coder-one.acceptance-run.v1";
+
+/// The component that writes, verifies, and freezes a suite.
+pub const DEFINE_COMPONENT: &str = "accept.define";
+
+/// The component that runs a frozen suite.
+pub const RUN_COMPONENT: &str = "accept.run";
+
+/// The ATIF step extension that carries a frozen suite.
+pub const SUITE_EXTENSION: &str = "accept.suite.v1";
+
+/// The ATIF step extension that carries one run's red and green state.
+pub const RUN_EXTENSION: &str = "accept.run.v1";
+
+/// Where the tests live, relative to the suite directory.
+pub const TESTS_DIR: &str = "tests";
+
+/// Where rejected tests are moved, relative to the suite directory. They
+/// stay in the digest but never run.
+pub const REJECTED_DIR: &str = "rejected";
+
+/// The host's helper scripts for the writing session: `env.sh` runs a
+/// command in the workspace, and `run.sh` runs the suite as the host does.
+/// They're replaced at the freeze by a `run.sh` for the edit sessions.
+pub const HARNESS: [&str; 2] = ["run.sh", "env.sh"];
+
+/// The most output kept from one test's run.
+pub const OUTPUT_CHARS: usize = 1_500;
+
+/// The task, in its own words.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Task {
+    pub title: String,
+    pub instruction: String,
+}
+
+/// What `accept.define` is given.
+pub struct Inputs<'a> {
+    pub task: &'a Task,
+    pub requirements: &'a RequirementMap,
+    /// Evidence code already gathered, such as probe outputs.
+    pub evidence: &'a [microluna::Evidence],
+    /// The untouched solution workspace, as the host sees it.
+    pub workspace: &'a Path,
+    /// Where the suite is written: a directory outside the workspace. It
+    /// is created, and anything in it is replaced.
+    pub suite_dir: &'a Path,
+    /// How the writing session reaches the workspace, in a sentence, such
+    /// as "the directory /app, readable with `sh env.sh`". Empty for the
+    /// default wording.
+    pub workspace_note: String,
+}
+
+/// The bounds and thresholds of `accept.define`.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Options {
+    /// The most write-and-verify rounds.
+    pub max_rounds: u32,
+    /// The spend bound in dollars, Microluna's list price plus Jev's. A
+    /// round starts only while spend is under it.
+    pub spend_usd: f64,
+    /// The most tests one suite keeps; the rest are rejected.
+    pub max_tests: usize,
+    /// One test's wall-time bound, in seconds.
+    pub test_sec: u64,
+    /// A test is unfaithful below this probability that it asserts only
+    /// what the task states.
+    pub faithful_min: f64,
+    /// A test hardcodes an answer at or above this probability.
+    pub hardcoded_max: f64,
+    /// A test is trivial at or above this probability.
+    pub trivial_max: f64,
+    /// A green-at-start test is kept as a guard at or above this
+    /// probability that its requirement keeps something already true.
+    pub keeps_min: f64,
+    /// A requirement is decided at or above this probability that its
+    /// tests would fail without it.
+    pub decides_min: f64,
+    /// Jev requests sent at once.
+    pub jev_parallel: usize,
+}
+
+impl Default for Options {
+    fn default() -> Self {
+        Options {
+            max_rounds: 3,
+            spend_usd: 1.0,
+            max_tests: 40,
+            test_sec: 120,
+            faithful_min: 0.5,
+            hardcoded_max: 0.5,
+            trivial_max: 0.5,
+            keeps_min: 0.5,
+            decides_min: 0.5,
+            jev_parallel: 6,
+        }
+    }
+}
+
+/// One acceptance test.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Test {
+    /// The file's stem, such as `T3`.
+    pub id: String,
+    /// The requirement IDs it decides, from its `# requirement:` header.
+    pub requirements: Vec<String>,
+    /// `example`, `edge`, `format`, `location`, `error`, or what the
+    /// writer said.
+    pub kind: String,
+    /// What it asserts, from its `# what:` header.
+    pub what: String,
+    /// Its path, relative to the suite directory.
+    pub path: String,
+    /// Its source, for Jev; not recorded, since the digest covers it.
+    #[serde(skip)]
+    pub source: String,
+}
+
+/// One test's run.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct TestRun {
+    pub id: String,
+    pub requirements: Vec<String>,
+    /// Exit 0.
+    pub green: bool,
+    /// The exit code, or `None` when a signal or the deadline ended it.
+    pub exit: Option<i32>,
+    /// The runner killed it at its deadline.
+    pub killed: bool,
+    pub milliseconds: u64,
+    /// The tail of its standard output and error.
+    pub output: String,
+}
+
+/// A requirement's state in one run.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct RequirementRun {
+    pub id: String,
+    pub green: usize,
+    pub red: usize,
+    /// `green` when every test of it passed, `red` when any failed, and
+    /// `untested` when it has none.
+    pub state: String,
+}
+
+/// One run of a suite.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct RunResult {
+    pub schema: String,
+    /// What was run, such as `start` or `after session 3`.
+    pub label: String,
+    /// The suite digest the run used.
+    pub digest: String,
+    /// Every test passed, and there was at least one.
+    pub green: bool,
+    pub passed: usize,
+    pub total: usize,
+    pub tests: Vec<TestRun>,
+    pub requirements: Vec<RequirementRun>,
+    pub milliseconds: u64,
+}
+
+impl RunResult {
+    /// A run of `tests` over the requirement IDs in `ids`.
+    #[must_use]
+    pub fn of(label: &str, digest: &str, ids: &[String], tests: Vec<TestRun>, ms: u64) -> Self {
+        let passed = tests.iter().filter(|t| t.green).count();
+        let requirements = ids
+            .iter()
+            .map(|id| {
+                let mine: Vec<&TestRun> = tests
+                    .iter()
+                    .filter(|t| t.requirements.contains(id))
+                    .collect();
+                let green = mine.iter().filter(|t| t.green).count();
+                let red = mine.len() - green;
+                let state = if mine.is_empty() {
+                    "untested"
+                } else if red == 0 {
+                    "green"
+                } else {
+                    "red"
+                };
+                RequirementRun {
+                    id: id.clone(),
+                    green,
+                    red,
+                    state: state.to_string(),
+                }
+            })
+            .collect();
+        RunResult {
+            schema: RUN_SCHEMA.to_string(),
+            label: label.to_string(),
+            digest: digest.to_string(),
+            green: !tests.is_empty() && passed == tests.len(),
+            passed,
+            total: tests.len(),
+            tests,
+            requirements,
+            milliseconds: ms,
+        }
+    }
+
+    /// The requirement IDs with a red test, in order.
+    #[must_use]
+    pub fn red_requirements(&self) -> Vec<String> {
+        self.requirements
+            .iter()
+            .filter(|r| r.state == "red")
+            .map(|r| r.id.clone())
+            .collect()
+    }
+
+    /// The red tests as lines an edit session reads in its state: the
+    /// test, its requirements, and the tail of what it printed.
+    #[must_use]
+    pub fn red_lines(&self, suite: &AcceptanceSuite, max_output: usize) -> Vec<String> {
+        let mut lines = vec![format!(
+            "The frozen acceptance suite: {} of {} tests green.",
+            self.passed, self.total
+        )];
+        for run in self.tests.iter().filter(|t| !t.green) {
+            let what = suite
+                .tests
+                .iter()
+                .find(|t| t.id == run.id)
+                .map(|t| t.what.clone())
+                .unwrap_or_default();
+            let exit = if run.killed {
+                "timed out".to_string()
+            } else {
+                run.exit
+                    .map_or("ended by a signal".to_string(), |c| format!("exit {c}"))
+            };
+            lines.push(format!(
+                "{} ({}) is red, {exit}: {what}\n{}",
+                run.id,
+                run.requirements.join(", "),
+                crate::judge::clip_tail(run.output.trim(), max_output)
+            ));
+        }
+        lines
+    }
+}
+
+/// Why a test was rejected.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Rejected {
+    pub id: String,
+    pub requirements: Vec<String>,
+    pub reasons: Vec<String>,
+}
+
+/// A requirement's coverage in the frozen suite.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Coverage {
+    pub id: String,
+    pub kind: String,
+    /// The accepted tests that name it.
+    pub tests: Vec<String>,
+    /// Jev's probability that the tests would fail without it.
+    pub decides: Option<f64>,
+    pub covered: bool,
+}
+
+/// A requirement with no accepted test that decides it.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Gap {
+    pub requirement: String,
+    pub why: String,
+}
+
+/// One write-and-verify round.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Round {
+    pub number: u32,
+    pub writer: Written,
+    pub tests: usize,
+    /// Tests green on the untouched workspace.
+    pub green_at_start: usize,
+    /// The problems sent to the next round, or left at the end.
+    pub problems: Vec<String>,
+    pub gaps: Vec<Gap>,
+    pub jev_requests: usize,
+    pub jev_usd: f64,
+}
+
+/// A suite's state: `accepted` when every requirement is decided, and
+/// `partial` when some are named gaps.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Status {
+    Accepted,
+    Partial,
+}
+
+/// The frozen acceptance suite.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AcceptanceSuite {
+    pub schema: String,
+    /// The suite directory.
+    pub dir: PathBuf,
+    pub status: Status,
+    /// SHA-256 of the task's instruction.
+    pub instruction_sha256: String,
+    /// The accepted tests, in order.
+    pub tests: Vec<Test>,
+    pub rejected: Vec<Rejected>,
+    pub coverage: Vec<Coverage>,
+    pub gaps: Vec<Gap>,
+    /// The run on the untouched workspace, over the accepted tests.
+    pub start: Option<RunResult>,
+    /// Every file in the suite directory and its SHA-256, at the freeze.
+    pub files: BTreeMap<String, String>,
+    /// The digest of `files`.
+    pub digest: String,
+    pub rounds: Vec<Round>,
+    /// Microluna's list-price spend on writing.
+    pub writer_usd: f64,
+    /// Jev's spend on verifying.
+    pub jev_usd: f64,
+    pub milliseconds: u64,
+    /// Everything else a reader of the record may want: the runner, the
+    /// options, and the Jev answers per test.
+    pub detail: Value,
+}
+
+/// What changed in a suite directory since its freeze.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Integrity {
+    pub intact: bool,
+    pub digest: String,
+    pub changed: Vec<String>,
+    pub added: Vec<String>,
+    pub removed: Vec<String>,
+}
+
+/// A run refused because the suite was edited after its freeze.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Tampered(pub Integrity);
+
+impl std::fmt::Display for Tampered {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Integrity {
+            changed,
+            added,
+            removed,
+            ..
+        } = &self.0;
+        write!(
+            f,
+            "the acceptance suite was edited after its freeze (changed: {}; added: {}; removed: {}); \
+             a change needs a new accept.define",
+            list_or_none(changed),
+            list_or_none(added),
+            list_or_none(removed)
+        )
+    }
+}
+
+fn list_or_none(items: &[String]) -> String {
+    if items.is_empty() {
+        "none".to_string()
+    } else {
+        items.join(", ")
+    }
+}
+
+impl AcceptanceSuite {
+    /// Whether the suite directory still holds exactly the frozen files.
+    #[must_use]
+    pub fn integrity(&self) -> Integrity {
+        let now = digest_files(&self.dir);
+        let mut out = Integrity {
+            digest: digest_of(&now),
+            ..Integrity::default()
+        };
+        for (path, sha) in &self.files {
+            match now.get(path) {
+                None => out.removed.push(path.clone()),
+                Some(other) if other != sha => out.changed.push(path.clone()),
+                Some(_) => {}
+            }
+        }
+        for path in now.keys() {
+            if !self.files.contains_key(path) {
+                out.added.push(path.clone());
+            }
+        }
+        out.intact = out.changed.is_empty() && out.added.is_empty() && out.removed.is_empty();
+        out
+    }
+
+    /// The requirement IDs the suite reports on: every requirement in its
+    /// coverage, in map order.
+    #[must_use]
+    pub fn requirement_ids(&self) -> Vec<String> {
+        self.coverage.iter().map(|c| c.id.clone()).collect()
+    }
+
+    /// A short account for a brief or a log line.
+    #[must_use]
+    pub fn headline(&self) -> String {
+        format!(
+            "{} acceptance suite: {} tests over {} requirements, {} rejected, {} gaps{}, digest {}",
+            match self.status {
+                Status::Accepted => "an accepted",
+                Status::Partial => "a partial",
+            },
+            self.tests.len(),
+            self.coverage.len(),
+            self.rejected.len(),
+            self.gaps.len(),
+            if self.gaps.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    " ({})",
+                    self.gaps
+                        .iter()
+                        .map(|g| g.requirement.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            },
+            &self.digest[..self.digest.len().min(12)]
+        )
+    }
+
+    /// The suite as evidence for an edit session: each test's ID, the
+    /// requirements it decides, what it asserts, and how to run it.
+    #[must_use]
+    pub fn evidence(&self) -> microluna::Evidence {
+        let mut text = format!(
+            "These tests are frozen: you can't change them, and the task is done when every one \
+             passes. Run them all with `sh {dir}/run.sh`, or some with `sh {dir}/run.sh T1 T4`. \
+             Each runs from the workspace root with $ACCEPT_DIR set to {dir}.\n",
+            dir = self.dir.display()
+        );
+        for test in &self.tests {
+            text.push_str(&format!(
+                "\n- {} ({}; {}): {} [{}/{}]",
+                test.id,
+                test.requirements.join(", "),
+                test.kind,
+                test.what,
+                self.dir.display(),
+                test.path
+            ));
+        }
+        microluna::Evidence {
+            label: "The acceptance tests".to_string(),
+            text,
+        }
+    }
+
+    /// Reads a suite record written by [`AcceptanceSuite::save`].
+    ///
+    /// # Errors
+    ///
+    /// A message when the file doesn't read or isn't a suite record.
+    pub fn load(path: &Path) -> Result<Self, String> {
+        let text = std::fs::read_to_string(path)
+            .map_err(|error| format!("cannot read {}: {error}", path.display()))?;
+        let mut suite: AcceptanceSuite = serde_json::from_str(&text)
+            .map_err(|error| format!("{} is not a suite record: {error}", path.display()))?;
+        if suite.schema != SCHEMA {
+            return Err(format!(
+                "{} has schema {}, not {SCHEMA}",
+                path.display(),
+                suite.schema
+            ));
+        }
+        for test in &mut suite.tests {
+            test.source = std::fs::read_to_string(suite.dir.join(&test.path)).unwrap_or_default();
+        }
+        Ok(suite)
+    }
+
+    /// Writes the record to `path`.
+    ///
+    /// # Errors
+    ///
+    /// A message when the file can't be written.
+    pub fn save(&self, path: &Path) -> Result<(), String> {
+        let text = serde_json::to_string_pretty(self).map_err(|error| error.to_string())?;
+        crate::record::write_atomic(path, format!("{text}\n").as_bytes())
+    }
+
+    /// Where [`define`] writes the record by default: beside the suite
+    /// directory, as `<name>.accept.json`.
+    #[must_use]
+    pub fn record_path(dir: &Path) -> PathBuf {
+        let name = dir
+            .file_name()
+            .map_or("suite".to_string(), |n| n.to_string_lossy().into_owned());
+        dir.with_file_name(format!("{name}.accept.json"))
+    }
+}
+
+/// SHA-256 of `bytes`, hex.
+#[must_use]
+pub fn sha256(bytes: &[u8]) -> String {
+    Sha256::digest(bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
+/// Every regular file under `dir` and its SHA-256, by path relative to
+/// `dir`. A symbolic link is digested by its target's path, not followed.
+#[must_use]
+pub fn digest_files(dir: &Path) -> BTreeMap<String, String> {
+    let mut out = BTreeMap::new();
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(at) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&at) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Ok(kind) = entry.file_type() else {
+                continue;
+            };
+            let relative = path
+                .strip_prefix(dir)
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            if kind.is_dir() {
+                stack.push(path);
+            } else if kind.is_symlink() {
+                let target = std::fs::read_link(&path).unwrap_or_default();
+                out.insert(
+                    relative,
+                    sha256(format!("link:{}", target.display()).as_bytes()),
+                );
+            } else if let Ok(bytes) = std::fs::read(&path) {
+                out.insert(relative, sha256(&bytes));
+            }
+        }
+    }
+    out
+}
+
+/// The digest of a file map: SHA-256 over `path\tsha\n` lines in order.
+#[must_use]
+pub fn digest_of(files: &BTreeMap<String, String>) -> String {
+    let mut text = String::new();
+    for (path, sha) in files {
+        text.push_str(path);
+        text.push('\t');
+        text.push_str(sha);
+        text.push('\n');
+    }
+    sha256(text.as_bytes())
+}
+
+/// Reads the tests in `dir/tests`, in natural order of their IDs, and the
+/// problems with their headers: no requirement named, or one the map
+/// doesn't have.
+#[must_use]
+pub fn read_tests(dir: &Path, known: &[String]) -> (Vec<Test>, Vec<(String, String)>) {
+    let mut tests = Vec::new();
+    let mut problems = Vec::new();
+    let Ok(entries) = std::fs::read_dir(dir.join(TESTS_DIR)) else {
+        return (tests, problems);
+    };
+    let mut paths: Vec<PathBuf> = entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "sh") && p.is_file())
+        .collect();
+    paths.sort_by_key(|p| natural_key(&p.file_stem().unwrap_or_default().to_string_lossy()));
+    for path in paths {
+        let id = path
+            .file_stem()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned();
+        let source = std::fs::read_to_string(&path).unwrap_or_default();
+        let header = |name: &str| {
+            source.lines().take(30).find_map(|line| {
+                let rest = line.trim_start().strip_prefix('#')?.trim_start();
+                let (key, value) = rest.split_once(':')?;
+                let key = key.trim().to_ascii_lowercase();
+                (key == name || key == format!("{name}s")).then(|| value.trim().to_string())
+            })
+        };
+        let requirements: Vec<String> = header("requirement")
+            .unwrap_or_default()
+            .split([',', ' '])
+            .map(|s| s.trim().to_ascii_uppercase())
+            .filter(|s| !s.is_empty())
+            .collect();
+        if requirements.is_empty() {
+            problems.push((
+                id.clone(),
+                "it names no requirement in a `# requirement:` header".to_string(),
+            ));
+        }
+        let unknown: Vec<&String> = requirements.iter().filter(|r| !known.contains(r)).collect();
+        if !unknown.is_empty() {
+            problems.push((
+                id.clone(),
+                format!(
+                    "it names {} that the requirement list doesn't have",
+                    unknown
+                        .iter()
+                        .map(|s| s.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+            ));
+        }
+        tests.push(Test {
+            id,
+            requirements: requirements
+                .into_iter()
+                .filter(|r| known.contains(r))
+                .collect(),
+            kind: header("kind").unwrap_or_default(),
+            what: header("what").unwrap_or_default(),
+            path: format!(
+                "{TESTS_DIR}/{}",
+                path.file_name().unwrap_or_default().to_string_lossy()
+            ),
+            source,
+        });
+    }
+    (tests, problems)
+}
+
+/// `T10` after `T9`: the ID's letters, then its number.
+fn natural_key(id: &str) -> (String, u64, String) {
+    let letters: String = id.chars().take_while(|c| !c.is_ascii_digit()).collect();
+    let digits: String = id[letters.len()..]
+        .chars()
+        .take_while(char::is_ascii_digit)
+        .collect();
+    (
+        letters.clone(),
+        digits.parse().unwrap_or(u64::MAX),
+        id[letters.len() + digits.len()..].to_string(),
+    )
+}
+
+/// The requirements a suite must decide: every one but context, in map
+/// order.
+#[must_use]
+pub fn decidable(map: &RequirementMap) -> Vec<&crate::requirements::Requirement> {
+    map.requirements
+        .iter()
+        .filter(|r| r.kind != Kind::Context)
+        .collect()
+}
+
+/// The guidance every writing session reads: the format and the rules.
+pub const GUIDANCE: &str = "You write the acceptance tests for the task before anyone solves it. \
+Don't solve the task, and don't change the solution workspace: your tools can write only in this \
+suite directory.
+
+Write one test per file under tests/, named tests/T1.sh, tests/T2.sh, and so on. A test is a POSIX \
+shell script that exits 0 when its requirement is met and nonzero when it isn't. Start each test \
+with three header lines:
+# requirement: R3        (one or more requirement IDs from the list, comma-separated)
+# kind: example          (example, edge, format, location, or error)
+# what: one sentence that says what the test asserts
+A test runs with the workspace root as its working directory. $ACCEPT_DIR is this suite \
+directory, $WORKSPACE the workspace root, and $ACCEPT_TMP an empty scratch directory. Put helper \
+programs and fixture files under lib/ and call them as \"$ACCEPT_DIR/lib/...\". Write scratch \
+output only under $ACCEPT_TMP. Refer to the task's own paths as the task states them.
+
+Cover every requirement in the list: the task's stated examples with their exact expected values, \
+the edge cases the task implies, the output's format and location, and the error behavior the \
+task states. Assert only what the task states or what follows from it. Never hardcode an answer \
+the task doesn't give: compute it from the task's own rules, or check a property that any correct \
+answer has. Every test must be able to fail: no test that only checks that a file exists, and none \
+that passes whatever the program does.
+
+Run the suite with `sh run.sh`, or some tests with `sh run.sh T2 T5`. The work isn't done yet, so a \
+test must fail now, on the untouched workspace, and fail because the behavior is missing, not \
+because the test itself is broken. A test may pass now only when its requirement asks to keep \
+something that is already true. Use only programs the workspace already has; check with env.sh \
+first. The tests run without network access.
+
+When the suite is written and `sh run.sh` shows each test failing for the right reason, call \
+finish with a one-line summary.";
+
+/// The brief for one writing round.
+#[must_use]
+pub fn brief(inputs: &Inputs<'_>, problems: &[String]) -> microluna::Brief {
+    let note = if inputs.workspace_note.trim().is_empty() {
+        format!(
+            "The solution workspace is the directory {}. Read it with run_command, for example \
+             `sh env.sh 'ls -la'` or `cat {}/FILE`; it is read-only to you.",
+            inputs.workspace.display(),
+            inputs.workspace.display()
+        )
+    } else {
+        inputs.workspace_note.clone()
+    };
+    let mut evidence = vec![microluna::Evidence {
+        label: "The requirements the suite must decide".to_string(),
+        text: decidable(inputs.requirements)
+            .iter()
+            .map(|r| {
+                format!(
+                    "- {} ({}): {}",
+                    r.id,
+                    r.kind.word(),
+                    r.text.split_whitespace().collect::<Vec<_>>().join(" ")
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+    }];
+    evidence.extend(inputs.evidence.iter().cloned());
+    let mut state = Vec::new();
+    if !problems.is_empty() {
+        state.push(
+            "The host ran and reviewed the suite you wrote. Fix these problems by editing, \
+             rewriting, or deleting tests, then run `sh run.sh` again:"
+                .to_string(),
+        );
+        state.extend(problems.iter().cloned());
+    }
+    microluna::Brief {
+        task: format!(
+            "Write an executable acceptance suite for this task. Don't solve it.\n\n{note}\n\n\
+             ## The task: {}\n\n{}",
+            inputs.task.title.trim(),
+            inputs.task.instruction.trim()
+        ),
+        guidance: GUIDANCE.to_string(),
+        evidence,
+        state,
+    }
+}
+
+/// Writes, verifies, and freezes an acceptance suite.
+///
+/// The result is always a suite: when writing fails or finds nothing, it
+/// is a partial suite whose gaps name every requirement. The component
+/// invocation, the Jev decisions, and a step carrying the suite are
+/// recorded in `recorder`; the record is also written beside the suite
+/// directory ([`AcceptanceSuite::record_path`]).
+#[allow(clippy::too_many_lines)]
+pub async fn define<W: Writer, R: Runner>(
+    inputs: &Inputs<'_>,
+    writer: &W,
+    runner: &R,
+    jev: &JevMode,
+    recorder: &Recorder,
+    options: &Options,
+) -> AcceptanceSuite {
+    let started = Instant::now();
+    let dir = inputs.suite_dir.to_path_buf();
+    let known: Vec<String> = decidable(inputs.requirements)
+        .iter()
+        .map(|r| r.id.clone())
+        .collect();
+    let invocation = recorder.enter(
+        Start::new(
+            DEFINE_COMPONENT,
+            Implementation::new(
+                DEFINE_COMPONENT,
+                "microluna writer, code red-first, jev verify",
+                &json!({
+                    "options": options,
+                    "runner": runner.describe(),
+                    "writer": writer.describe(),
+                    "questions": verify::question_digest(),
+                }),
+            ),
+        )
+        .named("accept.define")
+        .reading(&json!({
+            "instruction_sha256": sha256(inputs.task.instruction.as_bytes()),
+            "requirements": known,
+        }))
+        .with_effects(),
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::create_dir_all(dir.join(TESTS_DIR));
+    for (name, text) in runner.harness(&dir, inputs.workspace) {
+        let _ = std::fs::write(dir.join(name), text);
+    }
+    let mut cache = verify::Cache::default();
+    let mut rounds: Vec<Round> = Vec::new();
+    let mut problems: Vec<String> = Vec::new();
+    let mut writer_usd = 0.0;
+    let mut jev_usd = 0.0;
+    let mut last: Option<verify::Verified> = None;
+    for number in 1..=options.max_rounds.max(1) {
+        if writer_usd + jev_usd >= options.spend_usd {
+            problems.push(format!(
+                "stopped before round {number}: the spend bound of ${:.2} was reached",
+                options.spend_usd
+            ));
+            break;
+        }
+        let written = writer.write(&brief(inputs, &problems), &dir, number).await;
+        writer_usd += written.usd;
+        let verified = verify::verify(
+            inputs, &dir, &known, runner, jev, recorder, options, &mut cache, number,
+        )
+        .await;
+        jev_usd += verified.jev_usd;
+        problems = verified.problems();
+        rounds.push(Round {
+            number,
+            writer: written,
+            tests: verified.tests.len(),
+            green_at_start: verified.start.iter().filter(|t| t.green).count(),
+            problems: problems.clone(),
+            gaps: verified.gaps.clone(),
+            jev_requests: verified.jev_requests,
+            jev_usd: verified.jev_usd,
+        });
+        let done = problems.is_empty();
+        last = Some(verified);
+        if done {
+            break;
+        }
+    }
+    let verified = last.unwrap_or_default();
+    // Freeze: rejected tests leave tests/, the harness is replaced by the
+    // edit sessions' run.sh, and the directory is digested.
+    let _ = std::fs::create_dir_all(dir.join(REJECTED_DIR));
+    for rejected in &verified.rejected {
+        let from = dir.join(TESTS_DIR).join(format!("{}.sh", rejected.id));
+        let _ = std::fs::rename(
+            &from,
+            dir.join(REJECTED_DIR).join(format!("{}.sh", rejected.id)),
+        );
+    }
+    for name in HARNESS {
+        let _ = std::fs::remove_file(dir.join(name));
+    }
+    let _ = std::fs::write(
+        dir.join("run.sh"),
+        runner::local_run_sh(inputs.workspace, options.test_sec),
+    );
+    let kept: Vec<Test> = verified
+        .tests
+        .iter()
+        .filter(|t| !verified.rejected.iter().any(|r| r.id == t.id))
+        .map(|t| Test {
+            path: format!("{TESTS_DIR}/{}.sh", t.id),
+            ..t.clone()
+        })
+        .collect();
+    let files = digest_files(&dir);
+    let digest = digest_of(&files);
+    let start_runs: Vec<TestRun> = verified
+        .start
+        .iter()
+        .filter(|r| kept.iter().any(|t| t.id == r.id))
+        .cloned()
+        .collect();
+    let start = RunResult::of("start", &digest, &known, start_runs, verified.start_ms);
+    let status = if verified.gaps.is_empty() && !kept.is_empty() {
+        Status::Accepted
+    } else {
+        Status::Partial
+    };
+    let suite = AcceptanceSuite {
+        schema: SCHEMA.to_string(),
+        dir: dir.clone(),
+        status,
+        instruction_sha256: sha256(inputs.task.instruction.as_bytes()),
+        tests: kept,
+        rejected: verified.rejected.clone(),
+        coverage: verified.coverage.clone(),
+        gaps: verified.gaps.clone(),
+        start: Some(start),
+        files,
+        digest,
+        rounds,
+        writer_usd,
+        jev_usd,
+        milliseconds: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+        detail: json!({
+            "runner": runner.describe(),
+            "writer": writer.describe(),
+            "options": options,
+            "judged": verified.judged,
+            "left": problems,
+        }),
+    };
+    let _ = suite.save(&AcceptanceSuite::record_path(&dir));
+    recorder.push(
+        atif::Step::said(
+            atif::Source::System,
+            &format!("accept.define froze {}.", suite.headline()),
+        )
+        .noting(
+            SUITE_EXTENSION,
+            serde_json::to_value(&suite).unwrap_or(Value::Null),
+        ),
+    );
+    recorder.end(
+        &invocation,
+        Finish::new(if suite.tests.is_empty() {
+            Outcome::Failed
+        } else {
+            Outcome::Completed
+        })
+        .summary(json!({
+            "status": suite.status,
+            "digest": suite.digest,
+            "tests": suite.tests.len(),
+            "rejected": suite.rejected.len(),
+            "gaps": suite.gaps,
+            "rounds": suite.rounds.len(),
+            "writer_usd": suite.writer_usd,
+            "jev_usd": suite.jev_usd,
+        })),
+    );
+    suite
+}
+
+/// Runs the frozen suite on `workspace` through `runner`.
+///
+/// # Errors
+///
+/// [`Tampered`] when the suite directory changed since the freeze; nothing
+/// runs.
+pub async fn run<R: Runner>(
+    suite: &AcceptanceSuite,
+    workspace: &Path,
+    runner: &R,
+    recorder: Option<&Recorder>,
+    label: &str,
+) -> Result<RunResult, Tampered> {
+    let integrity = suite.integrity();
+    if !integrity.intact {
+        if let Some(recorder) = recorder {
+            recorder.push(
+                atif::Step::said(
+                    atif::Source::System,
+                    &format!("accept.run refused: {}", Tampered(integrity.clone())),
+                )
+                .noting(
+                    RUN_EXTENSION,
+                    json!({ "label": label, "refused": integrity }),
+                ),
+            );
+        }
+        return Err(Tampered(integrity));
+    }
+    let invocation = recorder.map(|recorder| {
+        recorder.begin(
+            Start::new(
+                RUN_COMPONENT,
+                Implementation::new(RUN_COMPONENT, "runner", &runner.describe()),
+            )
+            .named(label)
+            .reading_digest(suite.digest.clone()),
+        )
+    });
+    let started = Instant::now();
+    let runs = runner.run_all(&suite.tests, &suite.dir, workspace).await;
+    let result = RunResult::of(
+        label,
+        &suite.digest,
+        &suite.requirement_ids(),
+        runs,
+        u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+    );
+    if let (Some(recorder), Some(invocation)) = (recorder, invocation) {
+        recorder.push(
+            atif::Step::said(
+                atif::Source::System,
+                &format!(
+                    "accept.run {label}: {} of {} tests green{}.",
+                    result.passed,
+                    result.total,
+                    if result.green { ", all green" } else { "" }
+                ),
+            )
+            .noting(
+                RUN_EXTENSION,
+                serde_json::to_value(&result).unwrap_or(Value::Null),
+            ),
+        );
+        recorder.end(
+            &invocation,
+            Finish::new(Outcome::Completed).summary(json!({
+                "green": result.green,
+                "passed": result.passed,
+                "total": result.total,
+                "red_requirements": result.red_requirements(),
+            })),
+        );
+    }
+    Ok(result)
+}

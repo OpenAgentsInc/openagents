@@ -18,6 +18,7 @@
 //! (issue #9532, [`delegate`]) lets the loop explore first and then hands
 //! the task to Claude Code with a briefing code builds from the evidence.
 
+pub mod accept;
 pub mod action;
 pub mod adapter;
 pub mod agent;
