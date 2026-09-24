@@ -6,6 +6,15 @@ in about a second and with no model or container. Run the same task with
 Claude Code or Codex to see whether a real executor uses what the
 components give it.
 
+Mini-tasks are a fast local screen for component and integration behavior:
+the grader checks a concrete outcome after the episode ends, independently
+of the agent's claims. Scripted runs take about a second and cost nothing;
+using Claude Code or Codex takes longer and incurs that executor's normal
+model cost. They exercise small, targeted failure families, not the breadth
+or controlled conditions of Terminal-Bench 4.0 (TB4). A mini-task pass is
+not a TB4 result and should not be reported as benchmark performance; use a
+TB4 trial for that.
+
 This is rung 2 and rung 3 of the ladder in
 [Coder as a tunable system](../../optimization/coder-components.md#test-each-component-in-isolation):
 components alone come first, in the

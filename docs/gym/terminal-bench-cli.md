@@ -382,6 +382,11 @@ runner, fixtures, and Jev modes.
 episode ended, and the grader's verdict. It labels them as mini-tasks, not
 Terminal-Bench attempts.
 
+These are small local checks graded independently after the episode. Scripted
+runs take about a second and cost nothing; real-executor runs take longer
+and incur normal model costs. They are a fast screen for targeted behavior,
+not TB4 benchmark trials: a mini-task grade is not a Terminal-Bench result.
+
 ```sh
 gym coder minitasks
 gym coder minitasks --run latest
@@ -393,7 +398,7 @@ actions, its executor events by kind, and its invocation timeline.
 `--runs-dir PATH` reads runs from elsewhere. With `--json`, the schema is
 `openagents.gym.coder-minitasks.v1`. The
 [mini-task guide](../coder/guides/coder-one-minitasks.md) covers recording
-runs.
+runs and the distinction from TB4.
 
 ## Read requirement coverage
 
