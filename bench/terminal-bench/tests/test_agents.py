@@ -57,6 +57,7 @@ def test_known_arms(agents):
         "coder-one-tunable-v8",
         "coder-one-tunable-v9",
         "coder-one-tunable-v9-escalate",
+        "coder-one-tunable-v10",
         "coder-one-matched-v8",
         "claude-code-opus-matched",
         "oracle",

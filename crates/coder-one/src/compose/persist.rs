@@ -28,6 +28,16 @@
 //! task's budget has left when they start. Every round records its delta:
 //! own tests fixed and broken, check failures before and after, cost, and
 //! executor. [`progress`] holds the rules.
+//!
+//! On Terminal-Bench 4.0, v8's own tests passed in every round while the
+//! verifier failed, so its progress rule never saw a failure. Under
+//! `judge: "checks"`, a round is judged against what the checks flag. The
+//! brief lists every failed scenario, contradicted requirement, and
+//! failing own test, and asks for one own test per flagged check. A round
+//! makes progress only when, scenario by scenario, it resolves something
+//! flagged and regresses nothing ([`super::scorecard`]); it is put back
+//! when it regresses more than it resolves; and once nothing is flagged,
+//! no further round starts, because none could show progress.
 
 pub mod progress;
 
@@ -38,6 +48,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+use super::scorecard::{Comparison, Scorecard};
 use super::{
     Exec, Factory, Horizon, Setup, Snapshot, Standing, VerifyPolicy, claimed, judge_support,
     monitor_for, row, self_reported,
@@ -124,6 +135,29 @@ pub struct PersistPolicy {
     /// v8: what the rounds may spend together.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub spend: Option<SpendCap>,
+    /// What a round is judged against: `outcome` (v5 to v9) or `checks`.
+    #[serde(default, skip_serializing_if = "Judge::is_default")]
+    pub judge: Judge,
+}
+
+/// What a persistence round is judged against.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Judge {
+    /// Counts: fewer check failures or more confirmed requirements, or
+    /// more own tests fixed than broken, is progress.
+    #[default]
+    Outcome,
+    /// What the checks and own tests flag, scenario by scenario: the
+    /// brief lists it, progress resolves some of it without a regression,
+    /// and the rounds stop once nothing is flagged.
+    Checks,
+}
+
+impl Judge {
+    fn is_default(&self) -> bool {
+        *self == Judge::Outcome
+    }
 }
 
 impl Default for PersistPolicy {
@@ -142,6 +176,7 @@ impl Default for PersistPolicy {
             stop_when_no_progress: false,
             cheap: None,
             spend: None,
+            judge: Judge::Outcome,
         }
     }
 }
@@ -365,6 +400,9 @@ pub struct BriefInputs<'a> {
     pub own_tests: Option<&'a OwnTests>,
     /// v8: the host's last run of that runner.
     pub tests: Option<&'a TestRun>,
+    /// Under `judge: "checks"`: what the checks and own tests flag, and
+    /// the rule the brief states.
+    pub flagged: Option<&'a [String]>,
 }
 
 /// The runner's contract, under `own_tests`.
@@ -396,6 +434,27 @@ task asks: render a model's projections and compare them with the drawing, recom
 number another way, or run the program on inputs other than the example.
 5. Stop only when your own tests pass, or when you are sure the result is right. End with \
 what you tested, what failed, and what you changed.";
+
+/// The rule a round is judged by, under `judge: "checks"`.
+pub const JUDGED_BY_CHECKS: &str = "The host judges this round against what its checks \
+and your tests flag. It counts the round as progress only when a flagged check now passes, \
+a contradicted requirement is no longer contradicted, or a failing test of yours now \
+passes, and nothing that passed before fails. It puts the workspace back when the round \
+breaks more than it fixes. Your tests passing while a check still fails is not progress.";
+
+/// What the brief asks for about each flagged failure, under
+/// `judge: "checks"`.
+pub const TEST_EACH_FLAG: &str = "For each flagged failure above, first add a test to \
+your runner, named `check <scenario>`, that fails while the failure stands. Find the \
+cause in the deliverables, fix it, and run every test again. When a flag is wrong about \
+the task, say which and why in your final report instead of working around it.";
+
+/// What the brief says when nothing is flagged, under `judge: "checks"`.
+pub const NOTHING_FLAGGED: &str = "The host's checks flag no failure, and none of the \
+earlier sessions' tests fail. The task's own verifier may still fail, so look for what \
+the checks miss: test the exact output formats, paths, and names, edge cases, and \
+inputs other than the example. When your tests find no failure either, stop: the host \
+starts no further round when nothing is flagged.";
 
 /// Where round `n`'s brief is kept, under the episode's directory.
 #[must_use]
@@ -494,7 +553,8 @@ pub fn brief(inputs: &BriefInputs<'_>) -> Briefing {
         if !report.packets.is_empty() {
             included.push("diagnostic packets".to_string());
         }
-        for packet in report.packets.iter().take(3) {
+        let shown = if inputs.flagged.is_some() { 8 } else { 3 };
+        for packet in report.packets.iter().take(shown) {
             text.push_str(&format!(
                 "\nThe check `{}` expected: {}\nIt observed:\n```json\n{}\n```\n",
                 packet.scenario,
@@ -526,6 +586,23 @@ pub fn brief(inputs: &BriefInputs<'_>) -> Briefing {
         for name in tests.failing().iter().take(20) {
             text.push_str(&format!("- failing: {}\n", crate::judge::clip(name, 200)));
         }
+    }
+    if let Some(flagged) = inputs.flagged {
+        included.push("flagged failures".to_string());
+        text.push_str("\n## What the host's checks and your tests flag\n\n");
+        if flagged.is_empty() {
+            text.push_str(NOTHING_FLAGGED);
+            text.push('\n');
+        } else {
+            for flag in flagged.iter().take(30) {
+                text.push_str(&format!("- {}\n", crate::judge::clip(flag, 200)));
+            }
+            if flagged.len() > 30 {
+                text.push_str(&format!("- and {} more\n", flagged.len() - 30));
+            }
+            text.push_str(&format!("\n{TEST_EACH_FLAG}\n"));
+        }
+        text.push_str(&format!("\n{JUDGED_BY_CHECKS}\n"));
     }
     text.push_str(&format!("\n## What to do\n\n{DIRECTIONS}\n"));
     if let Some(own) = inputs.own_tests {
@@ -620,6 +697,17 @@ fn cost_key(class: Class) -> &'static str {
     }
 }
 
+/// The current candidate's scorecard, with the last run of the own tests.
+fn score(current: &Current, tests: Option<&TestRun>) -> Scorecard {
+    current.checked.as_ref().map_or_else(
+        || Scorecard::default().with_tests(tests),
+        |(_, report)| Scorecard::of(report, current.support.as_ref(), tests),
+    )
+}
+
+/// Why the rounds stop under `judge: "checks"` once nothing is flagged.
+pub const NOTHING_LEFT: &str = "nothing the checks or the own tests flag is left to fix";
+
 /// Runs the rounds.
 ///
 /// # Errors
@@ -684,6 +772,7 @@ pub(super) async fn run<F: Factory>(
         None => None,
     };
     let baseline = tests.as_ref().map(TestRun::record);
+    let by_checks = policy.judge == Judge::Checks;
     let mut n = 1;
     let stopped = loop {
         if super::limited(recorder).is_some() {
@@ -717,6 +806,8 @@ pub(super) async fn run<F: Factory>(
             .iter()
             .map(|(path, change)| summarize(setup.workdir, path, change))
             .collect();
+        let before_card = score(&current, tests.as_ref());
+        let flagged_before = before_card.flagged();
         let briefing = brief(&BriefInputs {
             instruction: setup.instruction,
             map: context.subject.requirements.as_ref(),
@@ -729,6 +820,7 @@ pub(super) async fn run<F: Factory>(
             max_rounds: policy.max_rounds,
             own_tests: policy.own_tests.as_ref(),
             tests: tests.as_ref(),
+            flagged: by_checks.then_some(flagged_before.as_slice()),
         });
         let path = setup.dir.join(brief_path(n));
         crate::record::write_atomic(&path, briefing.text.as_bytes())?;
@@ -884,7 +976,7 @@ pub(super) async fn run<F: Factory>(
             if now.is_some() {
                 tests = now;
             }
-            let next = cheap.is_some().then(|| {
+            let mut next = cheap.is_some().then(|| {
                 progress::after_round(
                     n,
                     class,
@@ -894,6 +986,14 @@ pub(super) async fn run<F: Factory>(
                     &mut ladder,
                 )
             });
+            if by_checks {
+                let flagged = score(&current, tests.as_ref()).flagged();
+                entry["flagged_after"] = json!(flagged);
+                if flagged.is_empty() {
+                    ladder.cancel(next.as_ref());
+                    next = Some(Next::Stop(NOTHING_LEFT.to_string()));
+                }
+            }
             if next == Some(Next::Escalate) {
                 entry["next"] = json!("escalate");
             }
@@ -944,9 +1044,48 @@ pub(super) async fn run<F: Factory>(
             Some(&after),
             true,
         );
+        let after_card = Scorecard::of(&rechecked.1, resupport.as_ref(), now.as_ref());
+        // Own tests compare only when both sides ran them: a round that
+        // wrote the first tests sets their baseline.
+        let compared = Comparison::between(
+            &if tests.is_some() {
+                before_card.clone()
+            } else {
+                Scorecard {
+                    tests: None,
+                    ..before_card.clone()
+                }
+            },
+            &if tests.is_some() {
+                after_card.clone()
+            } else {
+                Scorecard {
+                    tests: None,
+                    ..after_card.clone()
+                }
+            },
+        );
         let checks_worse = before.is_some_and(|b| bad(&after) > bad(&b));
         let tests_worse = policy.own_tests.is_some() && delta.tests_worse();
-        let worse = checks_worse || tests_worse;
+        let worse = if by_checks {
+            compared.worse()
+        } else {
+            checks_worse || tests_worse
+        };
+        if by_checks {
+            delta.progress = if compared.better() {
+                Some(true)
+            } else if tests.is_none()
+                && flagged_before.is_empty()
+                && now.as_ref().is_some_and(|t| !t.results.is_empty())
+            {
+                None
+            } else {
+                Some(false)
+            };
+            delta.resolved.clone_from(&compared.resolved);
+            delta.regressed.clone_from(&compared.regressed);
+        }
         entry["checks_file"] = json!(file);
         entry["before"] = json!(before);
         entry["after"] = json!(after);
@@ -955,7 +1094,14 @@ pub(super) async fn run<F: Factory>(
             (Some(g), true) if g.refused.is_none() => Some(g.restore(setup.workdir)),
             _ => None,
         };
-        let worse_why = if checks_worse {
+        let worse_why = if by_checks {
+            format!(
+                "the round regressed {} ({}) and resolved {}",
+                compared.regressed.len(),
+                compared.regressed.join("; "),
+                compared.resolved.len()
+            )
+        } else if checks_worse {
             format!(
                 "the round's checks came out worse ({} failures against {})",
                 bad(&after),
@@ -998,7 +1144,7 @@ pub(super) async fn run<F: Factory>(
             broken += delta.tests_broken;
         }
         entry["delta"] = json!(delta);
-        let next = (cheap.is_some() || policy.stop_when_no_progress).then(|| {
+        let mut next = (cheap.is_some() || policy.stop_when_no_progress).then(|| {
             progress::after_round(
                 n,
                 class,
@@ -1008,6 +1154,19 @@ pub(super) async fn run<F: Factory>(
                 &mut ladder,
             )
         });
+        if by_checks {
+            // What the candidate the rounds now stand on still flags.
+            let flagged = if kept {
+                after_card.flagged()
+            } else {
+                score(&current, tests.as_ref()).flagged()
+            };
+            entry["flagged_after"] = json!(flagged);
+            if flagged.is_empty() {
+                ladder.cancel(next.as_ref());
+                next = Some(Next::Stop(NOTHING_LEFT.to_string()));
+            }
+        }
         if next == Some(Next::Escalate) {
             entry["next"] = json!("escalate");
         }

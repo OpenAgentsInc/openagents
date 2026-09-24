@@ -128,8 +128,13 @@ agent and model differ from the one that produced the candidate. It reads
 the first briefing and asks for `share` of the time left. The checks and
 support run again on what it leaves, and the candidate with fewer failed
 scenarios and contradicted requirements stays; on a tie, the one with
-more confirmed requirements, then the first. When the first stays, the
-host puts it back. A workspace over `max_copy_mb` or 20,000 files isn't
+more confirmed requirements, then the first. With `keep: "resolved"`
+(v10), the second candidate stays only when, scenario by scenario, it
+resolves a failure of the first's (a failed scenario that now passes, or
+a contradiction that is gone) and regresses nothing. A failure the second
+candidate leaves inconclusive isn't resolved. The record then names the
+rule (`keep`) and lists what was `resolved` and `regressed`. When the
+first stays, the host puts it back. A workspace over `max_copy_mb` or 20,000 files isn't
 copied, and the second executor is skipped with that reason.
 
 ### Persist on a long task
@@ -210,6 +215,33 @@ and `progress`. The rounds record `totals` (tests fixed and broken, cost,
 and escalations) and `spend` (what the episode spent before them and the
 cap). `crates/coder-one/src/compose/persist/progress.rs` holds the rules.
 
+#### Judge rounds against what the checks flag (v10)
+
+On Terminal-Bench 4.0, v8's own tests passed in every round while the
+verifier failed, so its progress rule never saw a failure, and its first
+round on Opus at xhigh effort cost $2 to $4.23. With `judge: "checks"`
+(default `outcome`), a round is judged against what the checks and the own
+tests flag: each failed scenario, each requirement `verify.support` reads
+as contradicted, and each failing own test.
+
+- The brief lists every flagged failure, with up to eight diagnostic
+  packets, and asks for one own test per flagged check, named
+  `check <scenario>`. When nothing is flagged, it says so and asks the
+  executor to look for what the checks miss.
+- A round makes progress only when it resolves something flagged and
+  regresses nothing (`crates/coder-one/src/compose/scorecard.rs`). A
+  failure that turns inconclusive isn't resolved, and a passing scenario
+  that turns inconclusive is a regression.
+- The guard puts back a round that regresses more than it resolves.
+- Once nothing is flagged, no further round starts: no round could show
+  progress. The first round always runs.
+
+With `cheap.from_round: 1`, every round runs a cheap tier, and a cheap
+round without progress hands the next round back to the strong executor
+once, only while something is still flagged. Each round's `delta` lists
+what it `resolved` and `regressed`, and `flagged_after` lists what the
+candidate still flags.
+
 ### Escalate or split
 
 With `control.handoff` set to `escalate`, the first executor runs under
@@ -275,6 +307,7 @@ in `evaluation/usage.json`.
 | `crates/coder-one/policies/tunable-v4.json` | `coder-one-tunable-v4` | v3 (the coverage packer, the checked repair, and xhigh effort on long tasks), plus `self_report`, `optional_outputs`, an eight-requirement behavior-first support budget on long tasks, the `profile-v2` route with a family table that can start GPT-6 Astra through Codex, and `verify.second` with Astra or lean Opus. |
 | `crates/coder-one/policies/tunable-v5.json` | `coder-one-tunable-v5` | v4, plus `control.persist`: up to three fresh rounds on a long task while at least 30 minutes are left, each asking for half of the time left, guarded, without alternates. |
 | `crates/coder-one/policies/tunable-v8.json` | `coder-one-tunable-v8` | v7, with up to four persist rounds: the host runs the executor's own tests after each, stops on a round without progress, runs rounds from the second on Codex GPT-6 Sol at high effort with one escalation back to Opus, and caps the rounds at half of what a $10 task budget has left. |
+| `crates/coder-one/policies/tunable-v10.json` | `coder-one-tunable-v10` | v8, with persistence judged against what the checks flag (`judge: "checks"`), every round on Codex GPT-6 Sol with one hand-back to Opus while something is flagged (`cheap.from_round: 1`), and a second candidate that replaces the first only when it resolves one of the first's failures and regresses none (`verify.second.keep: "resolved"`). |
 | `crates/coder-one/policies/tunable-v9-escalate.json` | `coder-one-tunable-v9-escalate` | v9 (per-task effort on long tasks), plus v7's checks (`self_report`, `optional_outputs`, `behavior`, and the support budget) and `verify.second` with Codex on GPT-6 Astra, only on a failed check or a self-reported failure. `verify.repair` is off, so escalation answers a failed check instead of a repair. |
 
 The v4 family table is fitted in sample: its rows are the leaderboard's

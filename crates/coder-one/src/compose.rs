@@ -78,6 +78,7 @@ pub const SECOND_SUPPORT: &str = "verification/support-second.json";
 pub const SECOND: &str = "verify.second";
 
 pub mod persist;
+pub mod scorecard;
 pub use persist::PersistPolicy;
 
 fn half() -> f64 {
@@ -703,6 +704,39 @@ pub struct SecondPolicy {
     /// The largest workspace the host copies aside, in MiB.
     #[serde(default = "second_max_copy_mb")]
     pub max_copy_mb: u64,
+    /// Which candidate stays: `fewer_failures` (v4 to v9) or `resolved`.
+    #[serde(default, skip_serializing_if = "Keep::is_default")]
+    pub keep: Keep,
+}
+
+/// How `verify.second` chooses between the two candidates.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Keep {
+    /// The candidate whose checks fail less, then confirm more; a tie
+    /// keeps the first. A failure the second candidate leaves
+    /// inconclusive counts as gone.
+    #[default]
+    FewerFailures,
+    /// The second candidate stays only when, scenario by scenario, it
+    /// resolves a failure of the first's and regresses nothing
+    /// ([`scorecard::Comparison::better`]). Otherwise the first stays.
+    Resolved,
+}
+
+impl Keep {
+    fn is_default(&self) -> bool {
+        *self == Keep::FewerFailures
+    }
+
+    /// The rule's word in the record.
+    #[must_use]
+    pub fn word(self) -> &'static str {
+        match self {
+            Keep::FewerFailures => "fewer_failures",
+            Keep::Resolved => "resolved",
+        }
+    }
 }
 
 /// One repair's brief and trigger.
@@ -2444,7 +2478,14 @@ async fn verify_by_second<F: Factory>(
     )
     .await?;
     let after = Standing::of(&second_checked.1, second_support.as_ref());
-    let keep_second = before.beaten_by(&after);
+    let compared = scorecard::Comparison::between(
+        &scorecard::Scorecard::of(first_report, support, None),
+        &scorecard::Scorecard::of(&second_checked.1, second_support.as_ref(), None),
+    );
+    let keep_second = match policy.keep {
+        Keep::FewerFailures => before.beaten_by(&after),
+        Keep::Resolved => compared.better(),
+    };
     let restored = if keep_second {
         None
     } else {
@@ -2458,6 +2499,12 @@ async fn verify_by_second<F: Factory>(
             after.confirmed,
             before.failed + before.contradicted,
             before.confirmed
+        )
+    } else if policy.keep == Keep::Resolved {
+        format!(
+            "the second candidate resolved {} of the first's failures and regressed {}, so the first stays",
+            compared.resolved.len(),
+            compared.regressed.len()
         )
     } else {
         "the second candidate's checks don't beat the first's, so the first stays".to_string()
@@ -2480,6 +2527,11 @@ async fn verify_by_second<F: Factory>(
         "checks_file": SECOND_CHECKS,
         "support_file": second_support.as_ref().map(|_| SECOND_SUPPORT),
     });
+    if policy.keep != Keep::FewerFailures {
+        record["keep"] = json!(policy.keep.word());
+        record["resolved"] = json!(compared.resolved);
+        record["regressed"] = json!(compared.regressed);
+    }
     if let Some(Err(error)) = &restored {
         record["restore_error"] = json!(error);
     }

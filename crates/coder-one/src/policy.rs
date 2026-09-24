@@ -1400,6 +1400,10 @@ pub const REFERENCE: &[(&str, &str)] = &[
         "tunable-v9-escalate.json",
         include_str!("../policies/tunable-v9-escalate.json"),
     ),
+    (
+        "tunable-v10.json",
+        include_str!("../policies/tunable-v10.json"),
+    ),
 ];
 
 /// Where the reference manifests live in the checkout.

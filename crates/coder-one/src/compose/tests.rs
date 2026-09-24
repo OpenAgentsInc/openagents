@@ -1863,3 +1863,311 @@ async fn a_passing_result_never_escalates() {
     );
     assert!(second.get("fired").is_none());
 }
+
+// ---------------------------------------------------------------------------
+// v10: persistence judged against what the checks flag, cheap from round
+// 1, and a second candidate that must resolve a failure.
+// ---------------------------------------------------------------------------
+
+/// v10 without its route, with its runner at `runner`, the confirmation
+/// gate off, and verify.second's time floor lowered. `second` keeps or
+/// drops the second executor.
+fn v10_unrouted(runner: &Path, second: bool) -> Manifest {
+    let mut manifest = manifest("tunable-v10.json");
+    manifest.policy.control.route = None;
+    let verify = manifest.policy.verify.as_mut().unwrap();
+    if second {
+        verify.second.as_mut().unwrap().min_remaining_sec = 60;
+    } else {
+        verify.second = None;
+    }
+    let persist = manifest.policy.control.persist.as_mut().unwrap();
+    persist.own_tests.as_mut().unwrap().runner = runner.display().to_string();
+    persist.stop_when_confirmed = false;
+    manifest
+}
+
+/// A runner with one test: `sum` passes when answer.json holds 6.
+const SUM_RUNNER: &str =
+    "if grep -q '\"sum\": 6' answer.json; then echo 'PASS sum'; else echo 'FAIL sum'; fi\n";
+
+/// `script` that also writes [`SUM_RUNNER`] first.
+fn with_sum_runner(mut script: Script, runner: &Path) -> Script {
+    let dir = runner.parent().unwrap().display().to_string();
+    script.events.insert(
+        0,
+        at(
+            100,
+            Act::Run {
+                command: format!(
+                    "mkdir -p '{dir}' && cat > '{}' <<'RUNNER'\n{SUM_RUNNER}RUNNER",
+                    runner.display()
+                ),
+            },
+        ),
+    );
+    script
+}
+
+#[test]
+fn the_v10_manifest_is_v8_judged_by_the_checks_and_cheap_from_round_one() {
+    let v10 = manifest("tunable-v10.json");
+    v10.validate().unwrap();
+    let persist = v10.policy.control.persist.as_ref().unwrap();
+    assert_eq!(persist.judge, persist::Judge::Checks);
+    assert_eq!(persist.cheap.as_ref().unwrap().from_round, 1);
+    assert_eq!(persist.cheap.as_ref().unwrap().max_escalations, 1);
+    let second = v10.policy.verify.as_ref().unwrap().second.as_ref().unwrap();
+    assert_eq!(second.keep, Keep::Resolved);
+    // Everything else is v8's.
+    let v8 = manifest("tunable-v8.json");
+    let mut stripped = v10.policy.clone();
+    let p = stripped.control.persist.as_mut().unwrap();
+    p.judge = persist::Judge::Outcome;
+    p.cheap.as_mut().unwrap().from_round = 2;
+    stripped
+        .verify
+        .as_mut()
+        .unwrap()
+        .second
+        .as_mut()
+        .unwrap()
+        .keep = Keep::FewerFailures;
+    assert_eq!(stripped, v8.policy);
+    // v8 serializes without the new fields, so its digest is what it was.
+    let raw: Value = serde_json::from_str(include_str!("../../policies/tunable-v8.json")).unwrap();
+    assert_eq!(serde_json::to_value(&v8.policy).unwrap(), raw["policy"]);
+    // A word outside the vocabulary is refused.
+    let text = include_str!("../../policies/tunable-v10.json")
+        .replace("\"judge\": \"checks\"", "\"judge\": \"verifier\"");
+    assert!(Manifest::parse(&text).is_err());
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_second_candidate_that_resolves_the_failure_replaces_the_first() {
+    if !python() {
+        return;
+    }
+    let runner = runner_path("v10-second-wins");
+    let ran = compose(
+        "v10-second-wins",
+        &v10_unrouted(&runner, true),
+        vec![
+            script_saying("opus", 7, &["first.txt"], "Done."),
+            script_saying("opus-repair", 7, &["first.txt"], "Done."),
+            script_saying("astra", 6, &["second.txt"], "Done."),
+        ],
+        None,
+        Duration::from_secs(900),
+    )
+    .await;
+    let second = &ran.record["second"];
+    assert_eq!(second["keep"], "resolved", "{:#}", ran.record);
+    assert_eq!(second["outcome"], "kept_second");
+    assert_eq!(second["regressed"], json!([]));
+    let resolved = second["resolved"].as_array().unwrap();
+    assert!(
+        resolved
+            .iter()
+            .any(|r| r.as_str().unwrap().ends_with("failed → passed")),
+        "{second:#}"
+    );
+    assert_eq!(sum_in(&ran.work), 6);
+    let _ = std::fs::remove_dir_all(runner.parent().unwrap());
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_second_candidate_that_resolves_nothing_leaves_the_first() {
+    if !python() {
+        return;
+    }
+    let runner = runner_path("v10-second-loses");
+    let ran = compose(
+        "v10-second-loses",
+        &v10_unrouted(&runner, true),
+        vec![
+            script_saying("opus", 7, &["first.txt"], "Done."),
+            script_saying("opus-repair", 7, &["first.txt"], "Done."),
+            script_saying("astra", 5, &["second.txt"], "Done."),
+        ],
+        None,
+        Duration::from_secs(900),
+    )
+    .await;
+    let second = &ran.record["second"];
+    assert_eq!(second["outcome"], "kept_first", "{:#}", ran.record);
+    assert!(
+        second["why"]
+            .as_str()
+            .unwrap()
+            .starts_with("the second candidate resolved 0 of the first's failures"),
+        "{second:#}"
+    );
+    assert_eq!(sum_in(&ran.work), 7);
+    assert!(ran.work.join("first.txt").is_file());
+    let _ = std::fs::remove_dir_all(runner.parent().unwrap());
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_flagged_failure_runs_sol_first_then_opus_once_until_nothing_is_flagged() {
+    if !python() {
+        return;
+    }
+    let runner = runner_path("v10-ladder");
+    let ran = compose(
+        "v10-ladder",
+        &v10_unrouted(&runner, false),
+        vec![
+            script_saying("opus", 7, &[], "Done."),
+            script_saying("opus-repair", 7, &[], "Done."),
+            // Round 1, Sol: writes its test and another wrong answer.
+            with_sum_runner(script_saying("sol-persist", 8, &[], "Done."), &runner),
+            // Round 2, Opus: fixes it.
+            script_saying("opus-escalated", 6, &[], "Done."),
+            script_saying("never", 6, &[], "Done."),
+        ],
+        None,
+        EIGHT_HOURS,
+    )
+    .await;
+    let record = &ran.record;
+    let labels: Vec<String> = ran.made.iter().map(|(tier, _)| tier.label()).collect();
+    assert_eq!(
+        labels,
+        [
+            "claude-code/claude-opus-5-5",
+            "claude-code/claude-opus-5-5",
+            "codex/gpt-6-sol",
+            "claude-code/claude-opus-5-5",
+        ],
+        "{record:#}"
+    );
+    assert_eq!(sum_in(&ran.work), 6);
+    let persist = &record["persist"];
+    assert_eq!(persist["stopped"], persist::NOTHING_LEFT, "{record:#}");
+    let rounds = persist["rounds"].as_array().unwrap();
+    let classes: Vec<&str> = rounds
+        .iter()
+        .map(|r| r["class"].as_str().unwrap())
+        .collect();
+    assert_eq!(classes, ["cheap", "escalated"]);
+    // Round 1 resolved nothing the checks flagged: no progress, so Opus
+    // runs next.
+    assert_eq!(rounds[0]["delta"]["progress"], false);
+    assert_eq!(rounds[0]["next"], "escalate");
+    assert_eq!(rounds[0]["kept"], true);
+    assert!(
+        rounds[0]["flagged_after"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|f| f == "own test sum"),
+        "{:#}",
+        rounds[0]
+    );
+    // Round 2 resolved the failed check and the own test.
+    assert_eq!(rounds[1]["delta"]["progress"], true);
+    let resolved: Vec<&str> = rounds[1]["delta"]["resolved"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r.as_str().unwrap())
+        .collect();
+    assert!(
+        resolved.contains(&"own test sum: fail → pass"),
+        "{resolved:?}"
+    );
+    assert!(resolved.iter().any(|r| r.starts_with("scenario ")));
+    assert_eq!(rounds[1]["flagged_after"], json!([]));
+    assert_eq!(persist["totals"]["escalations"], 1);
+    // Round 1's brief lists what the checks flag and the rule.
+    let brief = std::fs::read_to_string(ran.out.join(persist::brief_path(1))).unwrap();
+    for part in [
+        "## What the host's checks and your tests flag",
+        "- scenario ",
+        "named `check <scenario>`",
+        "Your tests passing while a check still fails is not progress.",
+    ] {
+        assert!(brief.contains(part), "{part} missing from\n{brief}");
+    }
+    let brief = std::fs::read_to_string(ran.out.join(persist::brief_path(2))).unwrap();
+    assert!(brief.contains("- own test sum"), "{brief}");
+    let _ = std::fs::remove_dir_all(runner.parent().unwrap());
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn with_nothing_flagged_one_sol_round_runs_and_opus_never_does() {
+    if !python() {
+        return;
+    }
+    let runner = runner_path("v10-nothing");
+    let ran = compose(
+        "v10-nothing",
+        &v10_unrouted(&runner, false),
+        vec![
+            script_saying("opus", 6, &[], "Done."),
+            // Round 1, Sol: its tests pass and it changes nothing.
+            with_sum_runner(idle("sol-idle"), &runner),
+            script_saying("never", 6, &[], "Done."),
+        ],
+        None,
+        EIGHT_HOURS,
+    )
+    .await;
+    let record = &ran.record;
+    assert_eq!(ran.made.len(), 2, "{record:#}");
+    assert_eq!(ran.made[1].0.label(), "codex/gpt-6-sol");
+    let persist = &record["persist"];
+    assert_eq!(
+        persist["stopped"],
+        format!("round 1 changed nothing; {}", persist::NOTHING_LEFT),
+        "{record:#}"
+    );
+    assert_eq!(persist["totals"]["escalations"], 0);
+    let round = &persist["rounds"][0];
+    assert_eq!(round["changed"], false);
+    assert!(round.get("next").is_none(), "{round:#}");
+    let brief = std::fs::read_to_string(ran.out.join(persist::brief_path(1))).unwrap();
+    assert!(brief.contains(persist::NOTHING_FLAGGED), "{brief}");
+    let _ = std::fs::remove_dir_all(runner.parent().unwrap());
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_round_that_makes_a_passing_check_fail_is_put_back() {
+    if !python() {
+        return;
+    }
+    let runner = runner_path("v10-regress");
+    let ran = compose(
+        "v10-regress",
+        &v10_unrouted(&runner, false),
+        vec![
+            script_saying("opus", 6, &[], "Done."),
+            // Round 1, Sol: breaks the answer.
+            with_sum_runner(
+                script_saying("sol-persist", 5, &["scratch.txt"], "Done."),
+                &runner,
+            ),
+            script_saying("never", 6, &[], "Done."),
+        ],
+        None,
+        EIGHT_HOURS,
+    )
+    .await;
+    let record = &ran.record;
+    let round = &record["persist"]["rounds"][0];
+    assert_eq!(round["kept"], false, "{record:#}");
+    assert!(
+        round["why"]
+            .as_str()
+            .unwrap()
+            .starts_with("the round regressed 1 (scenario "),
+        "{round:#}"
+    );
+    assert_eq!(round["delta"]["progress"], false);
+    assert_eq!(sum_in(&ran.work), 6);
+    assert!(!ran.work.join("scratch.txt").exists());
+    assert_eq!(record["persist"]["stopped"], persist::NOTHING_LEFT);
+    assert_eq!(ran.made.len(), 2);
+    let _ = std::fs::remove_dir_all(runner.parent().unwrap());
+}

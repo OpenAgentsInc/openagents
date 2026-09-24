@@ -297,6 +297,12 @@ pub struct Delta {
     /// something to compare and nothing got better, or the round changed
     /// no file; `None` when the round only set the tests' baseline.
     pub progress: Option<bool>,
+    /// Under `judge: "checks"`: what the round resolved and regressed,
+    /// scenario by scenario.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub resolved: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub regressed: Vec<String>,
 }
 
 impl Delta {
@@ -412,6 +418,15 @@ impl Ladder {
     #[must_use]
     pub fn cheap_tier(&self, cheap: &CheapRounds) -> Tier {
         cheap.tiers[self.cheap_runs % cheap.tiers.len()].clone()
+    }
+
+    /// Takes back the escalation `next` granted, when the rounds stop
+    /// instead.
+    pub fn cancel(&mut self, next: Option<&Next>) {
+        if next == Some(&Next::Escalate) {
+            self.escalations = self.escalations.saturating_sub(1);
+            self.escalate_next = false;
+        }
     }
 
     /// Records that a round of `class` ran.
