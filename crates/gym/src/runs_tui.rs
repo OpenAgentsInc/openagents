@@ -1789,6 +1789,16 @@ fn block_rows(entry: &Entry, width: usize) -> Vec<Row> {
                     }),
                 ),
             ]);
+            // Opened, the whole command shows, wrapped, above its output.
+            if entry.expanded
+                && let Kind::Command { command, .. } = &block.kind
+                && (command.contains('\n') || command.chars().count() > room)
+            {
+                out.body(
+                    command.lines().map(|line| format!("$ {line}")).collect(),
+                    Intensity::ThreeQuarters,
+                );
+            }
             out.body(block.body(entry.expanded), Intensity::Half);
         }
         Kind::Edit { .. } => {
@@ -1802,13 +1812,18 @@ fn block_rows(entry: &Entry, width: usize) -> Vec<Row> {
             out.body(block.body(entry.expanded), Intensity::Half);
         }
         Kind::Look { .. } | Kind::Tool { .. } => {
-            out.push(vec![
-                ("· ".to_owned(), out.tone(Intensity::Quarter)),
-                (
-                    clip(&block.headline(), inner.saturating_sub(2)),
-                    out.tone(Intensity::Half),
-                ),
-            ]);
+            if entry.expanded {
+                // Opened, the whole headline shows, wrapped.
+                out.wrapped("· ", &block.headline(), Intensity::Half);
+            } else {
+                out.push(vec![
+                    ("· ".to_owned(), out.tone(Intensity::Quarter)),
+                    (
+                        clip(&block.headline(), inner.saturating_sub(2)),
+                        out.tone(Intensity::Half),
+                    ),
+                ]);
+            }
             out.body(block.body(entry.expanded), Intensity::Quarter);
         }
         Kind::Decision {
@@ -2011,11 +2026,11 @@ impl<'a> Builder<'a> {
         }
     }
 
-    /// Output or detail lines under a quiet rule, each cut to the row.
+    /// Output or detail lines under a quiet rule, each wrapped to the row so
+    /// nothing is cut off; a wrapped line's continuation keeps its tone.
     fn body(&mut self, lines: Vec<String>, intensity: Intensity) {
         let room = self.inner.saturating_sub(2).max(8);
         for line in lines {
-            let line = clip(&line, room);
             let style = if line.starts_with("… ") || line.starts_with("- ") {
                 self.tone(Intensity::Quarter)
             } else if line.starts_with("+ ") {
@@ -2023,11 +2038,17 @@ impl<'a> Builder<'a> {
             } else {
                 self.tone(intensity)
             };
-            let spans = vec![
-                ("│ ".to_owned(), self.tone(Intensity::Quarter)),
-                (line, style),
-            ];
-            self.push(spans);
+            let line = line.replace('\t', "    ");
+            let ranges = wrap_rows(&line, room);
+            if ranges.is_empty() {
+                self.push(vec![("│ ".to_owned(), self.tone(Intensity::Quarter))]);
+            }
+            for range in ranges {
+                self.push(vec![
+                    ("│ ".to_owned(), self.tone(Intensity::Quarter)),
+                    (line[range].to_owned(), style),
+                ]);
+            }
         }
     }
 
@@ -2080,6 +2101,39 @@ impl<'a> Builder<'a> {
 
 #[cfg(test)]
 pub(crate) mod tests {
+
+    #[test]
+    fn an_opened_step_wraps_long_lines_instead_of_cutting_them() {
+        let long = format!("{} END-OF-LINE", "word ".repeat(80));
+        let entry = Entry {
+            block: Block {
+                at: Some(0),
+                kind: Kind::Tool {
+                    name: "Briefing for microluna-1-1".to_owned(),
+                    input: String::new(),
+                    output: long.clone(),
+                },
+            },
+            index: 0,
+            expanded: true,
+            time: String::new(),
+            ladder: Ladder::default(),
+            mark: None,
+        };
+        let rows = block_rows(&entry, 60);
+        let text: String = rows
+            .iter()
+            .flat_map(|row| row.spans.iter().map(|(t, _)| t.clone()))
+            .collect();
+        assert!(text.contains("END-OF-LINE"));
+        assert!(rows.len() > 5);
+        for row in &rows[1..] {
+            let width: usize = row.spans.iter().map(|(t, _)| t.chars().count()).sum();
+            assert!(width <= 60, "a row is {width} wide");
+            assert!(!row.spans.iter().any(|(t, _)| t.ends_with('…')));
+        }
+    }
+
     use super::*;
     use coder_terminal::Colors;
 
