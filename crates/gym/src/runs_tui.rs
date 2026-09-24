@@ -1492,13 +1492,18 @@ impl Pane {
 }
 
 /// Draws `blocks` the way the Runs pane draws a transcript, up to the
-/// blocks `elapsed_ms` into the run, for head-to-head replay. With `follow`
-/// the newest rows stay in view; otherwise `scroll` holds the first row.
-/// Returns how many blocks are shown.
+/// blocks `elapsed_ms` into the run, for head-to-head replay.
+///
+/// `selected` is the step with the selection bar; `None` means the latest
+/// shown step, with the view kept at the bottom. `expanded` says which
+/// steps are open. `scroll` holds the first row across frames. Returns how
+/// many steps are shown.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn draw_transcript(
     blocks: &[Block],
     elapsed_ms: u64,
-    follow: bool,
+    selected: Option<usize>,
+    expanded: &dyn Fn(usize) -> bool,
     scroll: &Cell<usize>,
     area: Rect,
     buf: &mut Buffer,
@@ -1519,7 +1524,7 @@ pub(crate) fn draw_transcript(
     // Before the clock reaches a side's first step, the side still shows
     // that step rather than an empty pane.
     .max(usize::from(!blocks.is_empty()));
-    let width = usize::from(area.width) + 1;
+    let width = usize::from(area.width);
     let mut rows: Vec<Row> = Vec::new();
     let mut last_time = String::new();
     for (index, block) in blocks.iter().take(shown_blocks).enumerate() {
@@ -1535,33 +1540,64 @@ pub(crate) fn draw_transcript(
         let entry = Entry {
             block: block.clone(),
             index,
-            expanded: false,
+            expanded: expanded(index),
             time: shown,
             ladder,
             mark: None,
         };
         rows.extend(block_rows(&entry, width));
     }
+    let chosen = selected
+        .unwrap_or(usize::MAX)
+        .min(shown_blocks.saturating_sub(1));
     let room = usize::from(area.height);
     let max = rows.len().saturating_sub(room);
-    let first = if follow { max } else { scroll.get().min(max) };
+    let first = if selected.is_none() {
+        max
+    } else {
+        // Keep the selected step in view, as the Runs pane does.
+        let top = rows.iter().position(|row| row.block == chosen).unwrap_or(0);
+        let bottom = rows
+            .iter()
+            .rposition(|row| row.block == chosen)
+            .unwrap_or(top);
+        let mut at = scroll.get().min(max);
+        if top < at {
+            at = top;
+        } else if bottom >= at + room {
+            at = if bottom - top < room {
+                bottom + 1 - room
+            } else {
+                top
+            };
+        }
+        at.min(max)
+    };
     scroll.set(first);
     let style = |intensity| ladder.style(intensity).bg(ladder.background());
-    // Rows start with the selection bar's cell, which replay leaves out.
     let left = area.left().saturating_sub(1);
     let visible: Vec<&Row> = rows.iter().skip(first).take(room).collect();
     for (offset, row) in visible.iter().enumerate() {
         let y = area.top() + offset as u16;
+        let mine = row.block == chosen;
         let mut x = area.left();
-        for (index, (text, span)) in row.spans.iter().enumerate() {
-            let text = if index == 0 {
-                text.strip_prefix(' ').unwrap_or(text)
+        for (text, span) in &row.spans {
+            let span = if mine {
+                span.bg(ladder.selection())
             } else {
-                text.as_str()
+                *span
             };
             let room = area.right().saturating_sub(x);
-            let (next, _) = buf.set_stringn(x, y, text, usize::from(room), *span);
+            let (next, _) = buf.set_stringn(x, y, text, usize::from(room), span);
             x = next;
+        }
+        if mine {
+            for cx in area.left() + 1..area.right() {
+                buf[(cx, y)].set_bg(ladder.selection());
+            }
+            buf[(area.left(), y)]
+                .set_char('▌')
+                .set_style(ladder.style(Intensity::Full).bg(ladder.background()));
         }
     }
     let mut offset = 0;
@@ -1578,14 +1614,22 @@ pub(crate) fn draw_transcript(
         {
             offset += 1;
         }
-        let x = left + MARGIN as u16 - 1;
+        let x = left + MARGIN as u16;
         let boxed = Rect::new(
             x,
             area.top() + begin as u16,
             area.right().saturating_sub(x),
             (offset - begin) as u16,
         );
-        frame(boxed, buf, style(Intensity::Half));
+        frame(
+            boxed,
+            buf,
+            style(if block == chosen {
+                Intensity::ThreeQuarters
+            } else {
+                Intensity::Half
+            }),
+        );
         if let Some(Boxed::Top {
             title,
             verdict,

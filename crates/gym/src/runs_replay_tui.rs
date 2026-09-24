@@ -34,6 +34,13 @@ struct Screen {
     /// The side as the Runs pane's transcript reads it, drawn up to the
     /// playback clock; `d` switches to the raw event record.
     blocks: Vec<crate::runs_transcript::Block>,
+    /// The step with the selection bar; `None` follows the latest step.
+    selected: Cell<Option<usize>>,
+    /// Steps opened with Enter; `all` flips every step at once.
+    expanded: std::cell::RefCell<std::collections::BTreeSet<usize>>,
+    all: Cell<bool>,
+    /// How many steps the last frame showed.
+    shown: Cell<usize>,
 }
 impl Screen {
     fn new(source: Source) -> Result<Self, String> {
@@ -61,6 +68,10 @@ impl Screen {
             replay,
             phases,
             blocks,
+            selected: Cell::new(None),
+            expanded: std::cell::RefCell::new(std::collections::BTreeSet::new()),
+            all: Cell::new(false),
+            shown: Cell::new(0),
             rows: RefCell::new(Wrapped {
                 width: 0,
                 ladder: Ladder::default(),
@@ -140,15 +151,24 @@ impl Screen {
             inner.height.saturating_sub(5),
         );
         if !self.details && !self.blocks.is_empty() {
-            crate::runs_tui::draw_transcript(
+            let expanded = self.expanded.borrow();
+            let all = self.all.get();
+            let open = |index: usize| all != expanded.contains(&index);
+            let selected = if self.follow.get() {
+                None
+            } else {
+                self.selected.get()
+            };
+            self.shown.set(crate::runs_tui::draw_transcript(
                 &self.blocks,
                 elapsed,
-                self.follow.get(),
+                selected,
+                &open,
                 &self.scroll,
                 text,
                 buf,
                 ladder,
-            );
+            ));
             return;
         }
         let mut wrapped = self.rows.borrow_mut();
@@ -651,7 +671,45 @@ impl Pane {
                     }
                 }
                 _ => {
-                    if let Some(screen) = &screens[self.focus] {
+                    if let Some(screen) = &screens[self.focus]
+                        && !screen.details
+                        && !screen.blocks.is_empty()
+                    {
+                        // The transcript view: move the selection, open steps.
+                        let last = screen.shown.get().saturating_sub(1);
+                        let here = if screen.follow.get() {
+                            last
+                        } else {
+                            screen.selected.get().unwrap_or(last).min(last)
+                        };
+                        let pick = |to: usize| {
+                            screen.follow.set(false);
+                            screen.selected.set(Some(to.min(last)));
+                        };
+                        match key {
+                            Key::Up | Key::Char('k') => pick(here.saturating_sub(1)),
+                            Key::Down | Key::Char('j') => pick(here + 1),
+                            Key::PageUp => pick(here.saturating_sub(10)),
+                            Key::PageDown => pick(here + 10),
+                            Key::Char('g') => pick(0),
+                            Key::Char('G' | 'f') => {
+                                screen.follow.set(true);
+                                screen.selected.set(None);
+                            }
+                            Key::Enter => {
+                                let mut open = screen.expanded.borrow_mut();
+                                if !open.insert(here) {
+                                    open.remove(&here);
+                                }
+                                pick(here);
+                            }
+                            Key::Char('e') => {
+                                screen.all.set(!screen.all.get());
+                                screen.expanded.borrow_mut().clear();
+                            }
+                            _ => {}
+                        }
+                    } else if let Some(screen) = &screens[self.focus] {
                         let at = screen.scroll.get();
                         match key {
                             Key::Up | Key::Char('k') => {
@@ -816,7 +874,7 @@ impl Pane {
                 if self.analysis {
                     "Whole-run judgments include future replay events · l transcripts · Esc choose pair · q quit"
                 } else {
-                    "↑/↓ PgUp/PgDn scroll · g top · f follow · d full record/text · Esc choose pair · q quit"
+                    "↑/↓ select · enter open/close · e open all · g top · G latest and follow · Tab other side · d raw record · Esc choose pair · q quit"
                 },
                 ladder,
                 Intensity::Half,
@@ -1492,6 +1550,42 @@ mod tests {
         p.key(Key::Char('g'));
         p.render(area, &mut buf, crate::tui::ladder_from_environment());
         assert!(contents(&buf).contains("step timestamp"));
+    }
+
+    #[test]
+    fn enter_opens_the_selected_step_in_a_replay_pane() {
+        use crate::runs_transcript::{Block, Kind};
+        let (_dir, mut p) = pane();
+        p.query = "coq".to_owned();
+        p.key(Key::Enter);
+        let screen = p.screens.as_mut().unwrap()[0].as_mut().unwrap();
+        screen.blocks = vec![
+            Block {
+                at: Some(0),
+                kind: Kind::Tool {
+                    name: "first tool".to_owned(),
+                    input: String::new(),
+                    output: "HIDDEN DETAIL".to_owned(),
+                },
+            },
+            Block {
+                at: Some(0),
+                kind: Kind::Note("latest".to_owned()),
+            },
+        ];
+        let area = Rect::new(0, 0, 150, 38);
+        let mut buf = Buffer::empty(area);
+        p.render(area, &mut buf, crate::tui::ladder_from_environment());
+        assert!(!contents(&buf).contains("HIDDEN DETAIL"));
+        p.key(Key::Up);
+        p.key(Key::Enter);
+        let mut buf = Buffer::empty(area);
+        p.render(area, &mut buf, crate::tui::ladder_from_environment());
+        assert!(contents(&buf).contains("HIDDEN DETAIL"));
+        p.key(Key::Enter);
+        let mut buf = Buffer::empty(area);
+        p.render(area, &mut buf, crate::tui::ladder_from_environment());
+        assert!(!contents(&buf).contains("HIDDEN DETAIL"));
     }
 
     #[test]
