@@ -121,6 +121,14 @@ other continues.
 | Escape | Return to the task and attempt picker. |
 | `q` | Quit. |
 
+Each event's header shows its phase after the timing label, such as
+`· test` or `· read, edit`: orient, read, plan, edit, build, test, verify,
+or finish. Rules over tool names and command text place most steps, and
+`(Jev)` marks a phase Jev placed from a stored answer. Replay never asks Jev
+for a phase; `gym runs fingerprint RUN` or `gym runs moves` does. A step
+with neither shows `unplaced`. See
+[strategy fingerprints](../terminal-bench/2026-09-24-strategy-fingerprints.md).
+
 Message text, reasoning present in the source, system messages, tool
 arguments, and tool results are kept without the ordinary transcript
 view's line limits. Long output remains scrollable. Image payloads are

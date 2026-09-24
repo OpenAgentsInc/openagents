@@ -6,6 +6,19 @@ evidence; it does not report the execution host's live queue.
 
 ## Latest status
 
+**Strategy fingerprints: Fable's winners read longer before their first
+edit and edit in more rounds than Luna.** Every step of 505 trajectories
+on the 14-task Luna baseline subset is placed in a phase, by rules for 66%
+of steps and by Jev for the rest, for $0.81 of Jev in total. Fable's
+winners make their first edit later than Coder One's executor in 10 of 11
+tasks (5.7 minutes against 2.1) and later than Luna in 7 of 10 (5.1
+against 2.3). They edit in more rounds than Luna in 8 of 11 tasks, and test
+more per edit than Fable's losers in 8 of 11. Retries, written plans, and a
+final check don't separate winners from losers. These are candidate moves
+for Luna, not measured gains, and Luna has 20 graded attempts so far. See
+the [ranked moves](2026-09-24-strategy-fingerprints.md) (issue
+[#9586](https://github.com/OpenAgentsInc/openagents/issues/9586)).
+
 **Truthful checks: a verdict from the final report catches almost four
 times the failures today's checks catch.** Every graded Coder One trial
 with a composition record, 317 on 58 tasks, is labeled with its verifier
@@ -168,6 +181,7 @@ still need the quota audit. See [harness validation](tb4-results.md#harness-vali
 
 | Document | Contents |
 | --- | --- |
+| [Strategy fingerprints, Fable against Luna and Coder One](2026-09-24-strategy-fingerprints.md) | Every step of 505 trajectories on the Luna baseline subset placed in a phase, per-trajectory fingerprints, a worked Fable-against-Luna example, the candidate moves ranked with task counts, effect sizes, and run and step citations, what didn't separate winners from losers, and the Jev cost. |
 | [Truthful checks, calibrated against graded runs](2026-09-24-truthful-checks.md) | The 317-trial label set split by task, every check signal's fail precision, failure recall, and pass rate with Wilson intervals, the combined verdict's held-out numbers against today's checks, the signals it drops, and what labeled data would close the issue. |
 | [Tunable v10 against v7 on four near-miss tasks](2026-09-24-persist-v10.md) | Persistence judged against what the checks flag, on GPT-6 Sol, against the matched v7 arm: first attempts on four tasks, cost and rounds per attempt, persistence attribution, and why the checks can't key progress. |
 | [Per-task effort on six TB4 tasks](2026-09-24-effort-routing.md) | Tunable v9's effort routing against fixed medium (v2) and fixed xhigh (v3): the pool fit, Wilson intervals, the exact McNemar test, cost and time per arm and task, why `gsea-proteomics` was routed to medium, and every attempt. |

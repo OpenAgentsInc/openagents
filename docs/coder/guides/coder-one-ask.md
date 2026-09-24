@@ -113,6 +113,24 @@ can cite a mark in its `marks` field, and code checks that the mark exists.
 The executor can't mark a run: the allowlist refuses `gym runs mark` and
 `gym runs unmark`, and the boundary keeps the marks store read-only.
 
+## Read strategy fingerprints
+
+For each task the question names, the ask reads `gym runs fingerprints
+--task T --json --no-jev`, and when the question asks about Fable,
+strategies, moves, phases, or fingerprints, it also reads the cached report
+of `gym runs moves --cached --json`. The briefing lists one line per
+trajectory (outcome, steps, first edit, tests, checks after the last edit,
+retries, and the phase sequence) and the strongest candidate moves with
+their citations; see
+[strategy fingerprints](../../terminal-bench/2026-09-24-strategy-fingerprints.md).
+
+Fingerprint step numbers aren't transcript steps, so a claim doesn't cite
+them in its `steps`. Public Fable attempts are trial IDs rather than
+`job/trial`, so a claim names them in its text. The executor's `read` tool
+runs `gym runs fingerprint`, `fingerprints`, and `moves` only with
+`--no-jev`, or `moves --cached`, so an ask never spends Jev requests on
+unplaced steps.
+
 ## Draft highlights
 
 `gym runs highlights` computes candidate claims worth sharing by fixed
