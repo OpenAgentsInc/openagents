@@ -1586,7 +1586,10 @@ async fn a_wrong_selection_has_no_authority_from_bullet_prose() {
     )
     .await
     .unwrap();
-    assert!(finished.program.is_none(), "an ungranted program never runs");
+    assert!(
+        finished.program.is_none(),
+        "an ungranted program never runs"
+    );
     assert!(programs.is_empty(), "no program execution was announced");
     assert!(finished.reply.contains("stub door"), "{}", finished.reply);
 }
