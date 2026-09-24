@@ -6,9 +6,11 @@ evidence; it does not report the execution host's live queue.
 
 ## Latest status
 
-**Microluna: v12 is implemented; repeatable TB4 wins remain unproven.**
+**Microluna: v13 is implemented; repeatable TB4 wins remain unproven.**
 Solo and v9 passed 0/3 development tasks; v10 and v11 exposed further
-generation and evaluation failures. See the
+generation and evaluation failures. v13 adds Jev-ranked source comments
+as suspects; the candidate-preservation experiment keeps its previously
+pinned v12 baseline. See the
 [iteration record](2026-09-24-microluna-iterations.md). The
 [two-target assessment](2026-09-24-microluna-two-targets.md) explains the
 withdrawn episode 288 announcement and the next experiment: preserve
@@ -93,8 +95,10 @@ mini-tasks: 9 of 12 against 8 of 12, for 73% of Luna-in-Codex's list-price
 cost and 85% of its time. Both arms failed only `log-severity`, and all
 nine of those failures were CRLF line endings the grader rejects, not wrong
 counts — a check to add, not a Microluna bug. On three TB4 tasks
-(`coq-block-bound`, `shadow-relay`, `uefi-bootkit`) Microluna scored 0, the
-same as Luna-in-Codex and Luna direct, which is 0 of 20 on TB4 so far. The
+(`coq-block-bound`, `shadow-relay`, `uefi-bootkit`) Microluna scored 0.
+Only `coq-block-bound` had a graded matched Luna-in-Codex result; the other
+two baseline rows were not run or did not finish. The separate
+Luna-in-Codex experiment ended at 0 of 23. The
 runs and #9586's fingerprints drove two fixes: a session must now edit and
 test before the loop calls it done, and a broken stream is resent. See the
 [results](2026-09-24-microluna.md) (issue

@@ -1,0 +1,20 @@
+{
+  "source": "a45cb547a2bb43886b63052dc9917ffe17b2e442",
+  "version": "coder-one 0.1.0 (a45cb547a2bb)",
+  "artifact_sha256": "96852d05f26fcaaeb14b224de98651fbcb62a89dfd58b29ce2142cf01eb46ac3",
+  "artifact_path": "/home/christopherdavid/.cache/openagents/artifacts/coder-one-evidence-a45cb547a2",
+  "task_commit": "452bf305c6daa62fc59061d22133a7cbc7c1572e",
+  "policies": {
+    "coder-one-microluna-v12": "14d6724e5cea39ab52e0179d5e7c305ec4028ce5825f56b381fdd1ce71746988",
+    "coder-one-microluna-evidence-v1": "4ee2fc9cf49725dcb923c911abc34d553ae5940a47f3147b4baa1a5dd12f742c"
+  },
+  "tasks": [
+    "session-window-debug",
+    "embedding-drift-monitor"
+  ],
+  "attempts_per_arm_per_task": 3,
+  "planned_spend_ceiling_usd": 3,
+  "max_concurrent": 2,
+  "classification": "selected development comparison",
+  "pricing": "pinned binary estimates; include Jev; not a subscription invoice"
+}

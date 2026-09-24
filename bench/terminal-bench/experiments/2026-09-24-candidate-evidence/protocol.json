@@ -1,0 +1,33 @@
+{
+  "schema": "openagents.tbench.experiment.v1",
+  "id": "candidate-evidence-9607",
+  "profile": "tb4",
+  "arms": [
+    "coder-one-microluna-v12",
+    "coder-one-microluna-evidence-v1"
+  ],
+  "tasks": [
+    "session-window-debug",
+    "embedding-drift-monitor"
+  ],
+  "attempts": 3,
+  "arm_args": {
+    "coder-one-microluna-v12": [
+      "--agent-kwarg",
+      "artifact_path=/home/christopherdavid/.cache/openagents/artifacts/coder-one-evidence-a45cb547a2",
+      "--agent-kwarg",
+      "artifact_sha256=96852d05f26fcaaeb14b224de98651fbcb62a89dfd58b29ce2142cf01eb46ac3"
+    ],
+    "coder-one-microluna-evidence-v1": [
+      "--agent-kwarg",
+      "artifact_path=/home/christopherdavid/.cache/openagents/artifacts/coder-one-evidence-a45cb547a2",
+      "--agent-kwarg",
+      "artifact_sha256=96852d05f26fcaaeb14b224de98651fbcb62a89dfd58b29ce2142cf01eb46ac3"
+    ]
+  },
+  "stopping": {
+    "enabled": false,
+    "alpha": 0.05,
+    "accept_pass_rate": null
+  }
+}

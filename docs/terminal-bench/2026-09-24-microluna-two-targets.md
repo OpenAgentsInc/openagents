@@ -84,6 +84,11 @@ their checkout. The comparison baseline advances from the initially proposed
 v11 to v12 **before any trial in this experiment**, so the two arms share the
 same current guidance. Historical v11 results retain their identities.
 
+The other agent subsequently added v13's Jev-ranked source-comment
+suspects. That change is merged alongside this implementation, but it does
+not change either experimental arm or the pinned binary. Comparing that
+generation change with candidate preservation needs its own experiment.
+
 Three problems should remain separate:
 
 - **Generation:** a candidate never implements a required rule. More
