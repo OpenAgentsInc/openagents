@@ -115,7 +115,9 @@ recorded runs, and say where they come from, instead of saying it varies; \
 quote the figure that answers the question as asked, such as the cost of \
 one run. When the issue names several places for the same content, each \
 place carries all of it; when it doesn't fit in plain words, add lines \
-rather than abbreviate, because plain words beat a cramped line. A view \
+rather than abbreviate, because plain words beat a cramped line. In a \
+view, keep the explanation to about three short lines and put the detail, \
+such as figures from a report, in the docs, with a pointer to them. A view \
 is what the screen draws, and a command's help text is a separate place. Keep what a rewrite \
 would drop, such as a fact, an example, or a comparison, unless the issue \
 asks to remove it. End with a short summary of what you changed and how you checked it.";
