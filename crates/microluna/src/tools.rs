@@ -207,6 +207,11 @@ pub enum Isolation {
     /// task container that is the boundary, as a Terminal-Bench trial
     /// does. The caller asserts this; Microluna never assumes it.
     TaskContainer,
+    /// Inside a `coder-boundary` read-only boundary that lets a command
+    /// write only its own scratch directory, with `apply_patch` and
+    /// `write_file` refused: for a host that permits a session only to
+    /// read, such as a Coder Terminal turn that changes nothing.
+    ReadOnly,
 }
 
 impl Isolation {
@@ -216,6 +221,7 @@ impl Isolation {
         match self {
             Isolation::Boundary => "writing",
             Isolation::TaskContainer => "task-container",
+            Isolation::ReadOnly => "read-only",
         }
     }
 }
@@ -275,6 +281,12 @@ impl Workspace {
     pub async fn call(&self, name: &str, arguments: &str) -> Outcome {
         let started = Instant::now();
         let mut outcome = match name {
+            "apply_patch" | "write_file" if self.isolation == Isolation::ReadOnly => {
+                Outcome::refused(format!(
+                    "{name} did not run: this session is read-only, and the host permits no \
+                     file changes. Answer from what you can read."
+                ))
+            }
             "run_command" => match parse::<RunCommand>(arguments) {
                 Ok(args) => self.run_command(args).await,
                 Err(refusal) => *refusal,
@@ -367,11 +379,13 @@ impl Workspace {
             .map_or(COMMAND_WALL, |seconds| Duration::from_secs(seconds.max(1)))
             .min(COMMAND_WALL_MAX);
         let ended = match self.isolation {
-            Isolation::Boundary => {
-                let boundary = match coder_boundary::Boundary::writing(&self.root)
-                    .owned_scratch_under(std::env::temp_dir())
-                    .build()
-                {
+            Isolation::Boundary | Isolation::ReadOnly => {
+                let spec = if self.isolation == Isolation::ReadOnly {
+                    coder_boundary::Boundary::readonly()
+                } else {
+                    coder_boundary::Boundary::writing(&self.root)
+                };
+                let boundary = match spec.owned_scratch_under(std::env::temp_dir()).build() {
                     Ok(boundary) => boundary,
                     Err(error) => {
                         return Outcome::refused(format!(
@@ -746,5 +760,44 @@ mod tests {
             .await;
         assert_eq!(denied.status, atif::Outcome::Failed, "{}", denied.output);
         assert!(!target.exists());
+    }
+
+    #[tokio::test]
+    async fn a_read_only_session_reads_and_changes_nothing() {
+        let (_dir, workspace) = workspace();
+        let workspace = workspace.isolated_by(Isolation::ReadOnly);
+        std::fs::write(workspace.root().join("a.txt"), "keep\n").unwrap();
+        let read = workspace.call("read_file", r#"{"path":"a.txt"}"#).await;
+        assert_eq!(read.status, atif::Outcome::Completed, "{}", read.output);
+        let patch = "*** Begin Patch\n*** Add File: b.txt\n+x\n*** End Patch";
+        for (name, arguments) in [
+            (
+                "write_file",
+                r#"{"path":"a.txt","contents":"gone"}"#.to_string(),
+            ),
+            ("apply_patch", json!({ "patch": patch }).to_string()),
+        ] {
+            let refused = workspace.call(name, &arguments).await;
+            assert_eq!(refused.status, atif::Outcome::Cancelled, "{name}");
+            assert!(refused.output.contains("read-only"), "{}", refused.output);
+        }
+        assert_eq!(
+            std::fs::read_to_string(workspace.root().join("a.txt")).unwrap(),
+            "keep\n"
+        );
+        assert!(!workspace.root().join("b.txt").exists());
+        if let Err(error) = coder_boundary::Boundary::readonly().build() {
+            eprintln!("skipped the command half: no enforced boundary on this host ({error})");
+            return;
+        }
+        let ran = workspace
+            .call(
+                "run_command",
+                r#"{"command":"cat a.txt; echo x > made.txt","timeout_seconds":10}"#,
+            )
+            .await;
+        assert!(ran.output.contains("keep"), "{}", ran.output);
+        assert_eq!(ran.status, atif::Outcome::Failed, "{}", ran.output);
+        assert!(!workspace.root().join("made.txt").exists());
     }
 }

@@ -534,6 +534,7 @@ dependencies = [
  "futures-util",
  "indexmap",
  "jev",
+ "microluna",
  "nostr",
  "plugin",
  "ratatui",

@@ -1,5 +1,5 @@
-//! The delegate door: a turn answered by Claude Code or Codex from a Jev
-//! briefing, with the Open Responses door as the fallback.
+//! The delegate door: a turn answered by Claude Code, Codex, or Microluna
+//! from a Jev briefing, with the Open Responses door as the fallback.
 //!
 //! Terminal-Bench measured a Jev probe battery and a strong executor
 //! beating a model exploring on its own, so Coder Terminal answers the
@@ -18,9 +18,12 @@
 //! [`choose`] decides, from [`MODE_VAR`], [`AGENT_VAR`], the doors the
 //! environment names explicitly, and the targets this machine has:
 //!
-//! - `CODER_DELEGATE=auto`, the default, delegates when an installed and
-//!   authenticated `claude` or `codex` is present, and falls back to the
-//!   door [`Door::from_env`] builds when neither is, saying so.
+//! - `CODER_DELEGATE=auto`, the default, delegates to Microluna when the
+//!   Codex login (`~/.codex/auth.json`) has more than ten minutes left on
+//!   its access token; Microluna runs in this process, so nothing needs
+//!   installing. Without a usable login it delegates to an installed and
+//!   authenticated `claude`, then `codex`, and falls back to the door
+//!   [`Door::from_env`] builds when none is available, saying why.
 //! - `CODER_DELEGATE=always` delegates or refuses to start.
 //! - `CODER_DELEGATE=off` never delegates.
 //!
@@ -62,7 +65,8 @@ use crate::shell::{Outcome, Proposal, Status};
 /// value is none of those three words. See [`crate::agent::DELEGATE_VAR`].
 pub const MODE_VAR: &str = "CODER_DELEGATE";
 
-/// The variable that names the target: `claude-code` or `codex`.
+/// The variable that names the target: `claude-code`, `codex`, or
+/// `microluna`.
 pub const AGENT_VAR: &str = "CODER_DELEGATE_AGENT";
 
 /// The variable that names the target's model.
@@ -112,37 +116,64 @@ impl Mode {
     }
 }
 
-/// One CLI this machine might delegate to, and what it has.
+/// One executor this machine might delegate to, and what it has.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Target {
-    /// Which CLI.
+    /// Which executor.
     pub agent: Cli,
-    /// Where its binary is, when it is installed.
+    /// Where its binary is, when it is installed. Microluna runs in this
+    /// process and has none.
     pub binary: Option<PathBuf>,
     /// Where its credential comes from, by name.
     pub credential: Credential,
+    /// Why a credential that was found can't carry a turn, such as a Codex
+    /// access token about to expire.
+    pub problem: Option<String>,
 }
 
 impl Target {
     /// What `env` says about `agent`: its binary and its credential.
     pub fn find(agent: Cli, env: impl Fn(&str) -> Option<String>) -> Self {
-        let (binary, credential) = coder_one::delegate::resolve(agent, env);
+        let (binary, credential) = coder_one::delegate::resolve(agent, &env);
+        let problem = match (agent, credential) {
+            (Cli::Microluna, Credential::CodexAuthFile) => codex_login(&env).err(),
+            _ => None,
+        };
         Target {
             agent,
             binary,
             credential,
+            problem,
         }
     }
 
-    /// Whether a turn could run on it: installed and authenticated.
+    /// Whether a turn could run on it: installed, or in this process, and
+    /// authenticated with a credential that can be used.
     #[must_use]
     pub fn available(&self) -> bool {
-        self.binary.is_some() && self.credential != Credential::Missing
+        (self.binary.is_some() || !self.agent.is_cli())
+            && self.credential != Credential::Missing
+            && self.problem.is_none()
     }
 
     /// One sentence on where it stands.
     #[must_use]
     pub fn describe(&self) -> String {
+        if !self.agent.is_cli() {
+            return match (self.credential, &self.problem) {
+                (Credential::Missing, _) => {
+                    format!("{} has no Codex login", self.agent.word())
+                }
+                (_, Some(problem)) => {
+                    format!("{} can't use the Codex login: {problem}", self.agent.word())
+                }
+                (credential, None) => format!(
+                    "{} runs in this process on the Codex login ({})",
+                    self.agent.word(),
+                    credential.word()
+                ),
+            };
+        }
         match (&self.binary, self.credential) {
             (None, _) => format!("{} is not installed", self.agent.word()),
             (Some(path), Credential::Missing) => format!(
@@ -160,12 +191,50 @@ impl Target {
     }
 }
 
-/// The targets this machine has, in the order a turn prefers them.
+/// The targets this machine has, in the order `auto` prefers them:
+/// Microluna on the Codex login, then Claude Code, then Codex CLI.
 pub fn targets(env: impl Fn(&str) -> Option<String>) -> Vec<Target> {
-    [Cli::ClaudeCode, Cli::Codex]
+    [Cli::Microluna, Cli::ClaudeCode, Cli::Codex]
         .into_iter()
         .map(|agent| Target::find(agent, &env))
         .collect()
+}
+
+/// What the Codex login says about itself, without its secrets.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CodexLogin {
+    /// Where the login file is.
+    pub path: PathBuf,
+    /// When the access token expires, in seconds since the epoch, when the
+    /// token says.
+    pub expires_at: Option<u64>,
+}
+
+impl CodexLogin {
+    /// Hours of validity left at `now`, in seconds since the epoch.
+    #[must_use]
+    pub fn hours_left(&self, now: u64) -> Option<f64> {
+        self.expires_at
+            .map(|at| at.saturating_sub(now) as f64 / 3_600.0)
+    }
+}
+
+/// Reads the Codex login Microluna runs on, only to report on it: where
+/// it is and when its access token expires. It never refreshes the login
+/// and never returns a token.
+///
+/// # Errors
+///
+/// A sentence when the login is missing, unreadable, not a ChatGPT
+/// sign-in, or within ten minutes of expiring.
+pub fn codex_login(env: &impl Fn(&str) -> Option<String>) -> Result<CodexLogin, String> {
+    let path = coder_one::delegate::codex_auth_file(env)
+        .ok_or("no CODEX_HOME or HOME to find the Codex login in")?;
+    let login = microluna::codex::Login::load(&path).map_err(|error| error.to_string())?;
+    Ok(CodexLogin {
+        path,
+        expires_at: login.expires_at(),
+    })
 }
 
 /// What answers a session's turns.
@@ -382,8 +451,11 @@ pub struct DelegateDoor {
     workdir: PathBuf,
     jev: Option<jev::Client>,
     jev_source: String,
-    /// The executor's session, which the next turn resumes.
+    /// The executor's session, which the next turn resumes. Microluna
+    /// never has one: each turn rebuilds its context.
     session: Mutex<Option<String>>,
+    /// Scripted Microluna replies, for a test.
+    script: Option<Vec<microluna::Reply>>,
     /// Turns this door has answered, which numbers their artifacts.
     turns: AtomicUsize,
     /// When the door opened, which names the artifacts directory.
@@ -462,6 +534,7 @@ impl DelegateDoor {
             jev,
             jev_source,
             session: Mutex::new(None),
+            script: None,
             turns: AtomicUsize::new(0),
             opened: atif::now_ms(),
             artifacts: None,
@@ -472,6 +545,14 @@ impl DelegateDoor {
     #[must_use]
     pub fn writing_under(mut self, dir: PathBuf) -> Self {
         self.artifacts = Some(dir);
+        self
+    }
+
+    /// The same door, with Microluna answering from `replies` in place of
+    /// the Codex login. For tests.
+    #[must_use]
+    pub fn scripting(mut self, replies: Vec<microluna::Reply>) -> Self {
+        self.script = Some(replies);
         self
     }
 
@@ -528,7 +609,9 @@ impl DelegateDoor {
         on: &mut (dyn FnMut(Update) + Send),
     ) -> Result<Delegated, GenerateError> {
         let turn = self.turns.fetch_add(1, Ordering::SeqCst) + 1;
-        let resume = self.session();
+        // A CLI resumes its session. Microluna rebuilds the context from
+        // the conversation instead, so it always reads `earlier`.
+        let resume = self.session().filter(|_| self.target.agent.is_cli());
         let request = terminal::Request {
             workdir: self.workdir.clone(),
             request: request.to_string(),
@@ -546,6 +629,7 @@ impl DelegateDoor {
             credential: self.target.credential,
             jev: self.jev.clone(),
             artifacts: self.artifacts(turn),
+            script: self.script.clone(),
         };
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<FromThread>();
         // Coder One's judge and recorder are not `Send`, so the turn runs
@@ -599,6 +683,7 @@ impl DelegateDoor {
                 FromThread::Done(answer) => {
                     if let Ok(mut session) = self.session.lock()
                         && answer.session_id.is_some()
+                        && answer.agent.is_cli()
                     {
                         session.clone_from(&answer.session_id);
                     }
@@ -825,7 +910,109 @@ mod tests {
             agent,
             binary: installed.then(|| PathBuf::from(format!("/bin/{}", agent.program()))),
             credential,
+            problem: None,
         }
+    }
+
+    /// Microluna on a Codex login, with `problem` when it can't be used,
+    /// ahead of both CLIs as [`targets`] orders them.
+    fn all(login: Option<Option<&str>>, claude: bool, codex: bool) -> Vec<Target> {
+        let mut targets = vec![Target {
+            agent: Cli::Microluna,
+            binary: None,
+            credential: if login.is_some() {
+                Credential::CodexAuthFile
+            } else {
+                Credential::Missing
+            },
+            problem: login.flatten().map(str::to_string),
+        }];
+        targets.extend(both(claude, codex));
+        targets
+    }
+
+    #[test]
+    fn auto_prefers_microluna_on_a_usable_codex_login() {
+        let chosen = |targets: &[Target]| choose(Mode::Auto, None, None, targets).unwrap();
+        let usable = all(Some(None), true, true);
+        let choice = chosen(&usable);
+        assert_eq!(choice.chosen, Chosen::Delegate(usable[0].clone()));
+        assert!(
+            choice
+                .reason
+                .contains("runs in this process on the Codex login"),
+            "{}",
+            choice.reason
+        );
+        // A token about to expire, or no login at all, falls through to
+        // Claude Code, then Codex, then the Open Responses door.
+        let expiring = all(
+            Some(Some("the Codex access token expires in 60 s")),
+            true,
+            true,
+        );
+        assert_eq!(
+            chosen(&expiring).chosen,
+            Chosen::Delegate(expiring[1].clone())
+        );
+        let none = all(None, false, true);
+        assert_eq!(chosen(&none).chosen, Chosen::Delegate(none[2].clone()));
+        let fallback = chosen(&all(Some(Some("expired")), false, false));
+        assert_eq!(fallback.chosen, Chosen::Fallback);
+        assert!(
+            fallback
+                .reason
+                .contains("microluna can't use the Codex login: expired"),
+            "{}",
+            fallback.reason
+        );
+        // The operator's named agent still outranks the default.
+        let named = choose(Mode::Auto, Some(Cli::ClaudeCode), None, &usable).unwrap();
+        assert_eq!(named.chosen, Chosen::Delegate(usable[1].clone()));
+    }
+
+    #[test]
+    fn a_microluna_target_needs_no_binary_but_a_usable_login() {
+        let [microluna, ..] = &all(Some(None), false, false)[..] else {
+            unreachable!()
+        };
+        assert!(microluna.available());
+        let [expiring, ..] = &all(Some(Some("expiring")), false, false)[..] else {
+            unreachable!()
+        };
+        assert!(!expiring.available());
+        let [missing, ..] = &all(None, false, false)[..] else {
+            unreachable!()
+        };
+        assert!(!missing.available());
+        assert_eq!(missing.describe(), "microluna has no Codex login");
+    }
+
+    #[test]
+    fn the_codex_login_reports_its_expiry_and_never_its_token() {
+        let dir = tempfile::tempdir().unwrap();
+        let env = |home: &Path| {
+            let home = home.to_string_lossy().into_owned();
+            move |name: &str| (name == "CODEX_HOME").then(|| home.clone())
+        };
+        let missing = codex_login(&env(dir.path())).unwrap_err();
+        assert!(missing.contains("no Codex login"), "{missing}");
+        // A JWT whose payload is {"exp": 4102444800}, 2100-01-01.
+        let payload = "eyJleHAiOjQxMDI0NDQ4MDB9";
+        let token = format!("h.{payload}.s");
+        std::fs::write(
+            dir.path().join("auth.json"),
+            serde_json::json!({
+                "auth_mode": "chatgpt",
+                "tokens": { "access_token": token, "account_id": "acct", "refresh_token": "r" }
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let login = codex_login(&env(dir.path())).unwrap();
+        assert_eq!(login.expires_at, Some(4_102_444_800));
+        assert_eq!(login.hours_left(4_102_444_800 - 7_200), Some(2.0));
+        assert!(!format!("{login:?}").contains(&token));
     }
 
     fn both(claude: bool, codex: bool) -> Vec<Target> {
@@ -1007,6 +1194,7 @@ echo "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"num_turn
             agent: Cli::ClaudeCode,
             binary: Some(binary),
             credential: Credential::CliLogin,
+            problem: None,
         };
         let door = DelegateDoor::new(target, None, workdir.clone(), None, String::new())
             .writing_under(dir.join("artifacts"));
@@ -1076,6 +1264,91 @@ echo "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"num_turn
             "a permitted turn could not write"
         );
         assert_eq!(agent.transcript().len(), 4);
+    }
+
+    #[tokio::test]
+    async fn a_microluna_turn_streams_as_shell_events_and_a_follow_up_rebuilds_its_context() {
+        use microluna::fake::call;
+        let dir = tempfile::tempdir().unwrap();
+        let workdir = dir.path().join("work");
+        std::fs::create_dir_all(&workdir).unwrap();
+        if let Err(why) = boundary_available(&workdir) {
+            eprintln!("skipped: {why}");
+            return;
+        }
+        let usage = microluna::TokenUsage {
+            input: 1_000,
+            cached: 0,
+            output: 20,
+            reasoning: 0,
+        };
+        let target = Target {
+            agent: Cli::Microluna,
+            binary: None,
+            credential: Credential::CodexAuthFile,
+            problem: None,
+        };
+        let door = DelegateDoor::new(target, None, workdir.clone(), None, String::new())
+            .writing_under(dir.path().join("artifacts"))
+            .scripting(vec![
+                call(
+                    "c1",
+                    "run_command",
+                    &serde_json::json!({ "command": "printf x > marker", "timeout_seconds": 10 }),
+                    usage,
+                ),
+                call(
+                    "c2",
+                    "finish",
+                    &serde_json::json!({ "status": "done", "summary": "Tried the marker.", "answer": "Here is the answer." }),
+                    usage,
+                ),
+            ]);
+        assert_eq!(door.label(), "microluna/gpt-6-luna");
+        let door = std::sync::Arc::new(door);
+        let mut agent =
+            crate::agent::Agent::new(None, Door::Delegate(std::sync::Arc::clone(&door)));
+
+        let (read, shell, streamed) = turn(
+            &mut agent,
+            crate::permit::Permit::answering(),
+            "what is here?",
+        )
+        .await;
+        assert_eq!(read.text, "Here is the answer.");
+        assert_eq!(streamed, read.text);
+        assert!(!workdir.join("marker").exists(), "a read-only turn wrote");
+        assert_eq!(read.commands, 1);
+        assert!(read.cost_usd.is_some_and(|usd| usd > 0.0));
+        assert!(
+            matches!(
+                &shell[..],
+                [crate::shell::ShellEvent::Proposed(proposal), crate::shell::ShellEvent::Ran(outcome)]
+                    if proposal.command == "printf x > marker" && !matches!(outcome.status, Status::Exit(0))
+            ),
+            "{shell:?}"
+        );
+        assert_eq!(door.session(), None, "Microluna keeps no session to resume");
+
+        let (wrote, shell, _) = turn(
+            &mut agent,
+            crate::permit::Permit::executing(),
+            "now write the marker",
+        )
+        .await;
+        assert_eq!(wrote.text, "Here is the answer.");
+        assert!(
+            workdir.join("marker").exists(),
+            "a permitted turn could not write"
+        );
+        assert!(
+            matches!(
+                &shell[..],
+                [crate::shell::ShellEvent::Proposed(_), crate::shell::ShellEvent::Ran(outcome)]
+                    if matches!(outcome.status, Status::Exit(0))
+            ),
+            "{shell:?}"
+        );
     }
 
     #[test]

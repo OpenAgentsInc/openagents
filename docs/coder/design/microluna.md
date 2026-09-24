@@ -283,7 +283,24 @@ cost views price it like any other dispatch.
 
 ## How to watch Microluna
 
-Build the two binaries once, with a Cargo target directory of your own:
+**In Coder Terminal**, with no setup: when `~/.codex/auth.json` has more
+than ten minutes left on its access token, `coder` answers every turn
+through Microluna. Each session's start and requirement, its commands,
+its finish, its cost, and each hand-off show as the turn runs:
+
+```sh
+coder doctor                      # door, the Codex login's hours left
+coder                             # the terminal
+coder -p "what does crates/gym do?"
+coder -p --json "what does crates/gym do?"   # the same events as JSON lines
+```
+
+`CODER_DELEGATE_AGENT=claude-code` or `codex` picks a CLI instead. A
+read-only turn runs Microluna read-only, and a follow-up turn rebuilds
+each session's context rather than resuming one. The
+[delegate door](../runtime/delegate-door.md) covers the rest.
+
+**In Coder One.** Build the two binaries once, with a Cargo target directory of your own:
 
 ```sh
 export CARGO_TARGET_DIR=~/.cache/openagents/target-microluna

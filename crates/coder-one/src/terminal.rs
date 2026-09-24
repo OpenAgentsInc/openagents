@@ -15,6 +15,13 @@
 //! low-effort Opus arm Terminal-Bench measured best, until a router
 //! chooses per turn.
 //!
+//! With [`Agent::Microluna`] the delegate step runs in this process
+//! instead: [`crate::micro::Micro`]'s mini-handoff loop, bounded by
+//! [`microluna_policy`], with each session's start, commands, finish, and
+//! cost, and each move between sessions, reported to `on` as the loop
+//! records them. A Microluna turn never resumes a session; a follow-up
+//! starts from a context rebuilt from the conversation and fresh probes.
+//!
 //! What the executor may do is the caller's: [`Request::read_only`] puts
 //! the executor in a read-only [`coder_boundary::Boundary`], and
 //! otherwise it may write inside the working directory and nowhere else
@@ -26,6 +33,7 @@
 //! thread of its own with a current-thread runtime, and hears progress
 //! through the `on` callback.
 
+use std::cell::Cell;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
@@ -34,7 +42,7 @@ use serde_json::{Value, json};
 
 use crate::agent::Ended;
 use crate::delegate::{
-    Agent, Briefing, BriefingInputs, Credential, Delegation, Mode, Reason, Report, Status,
+    Agent, Briefing, BriefingInputs, Credential, Delegation, Mode, Prepared, Reason, Report, Status,
 };
 use crate::policy::{ExecutorHost, Manifest, REFERENCE};
 use crate::record::Recorder;
@@ -134,6 +142,9 @@ pub struct Request {
     pub jev: Option<jev::Client>,
     /// Where the briefing and the executor's stream are written.
     pub artifacts: PathBuf,
+    /// Scripted replies Microluna answers from in place of the Codex
+    /// login, for a test. `None` on every real turn.
+    pub script: Option<Vec<microluna::Reply>>,
 }
 
 /// What the turn reports while it runs.
@@ -309,8 +320,17 @@ pub fn bounded(
 /// no longer holds should cost the turn a briefing, not its answer.
 pub async fn answer(request: &Request, on: Rc<dyn Fn(Progress)>) -> Answer {
     let heard = on.clone();
+    // While a Microluna session runs, its own lines repeat the events the
+    // watcher in `microluna_turn` streams, so they are left out, as are its
+    // `microluna ▸` summaries, which the watcher writes from the record.
+    let hushed = Rc::new(Cell::new(false));
+    let hush = hushed.clone();
     let _captured = crate::say::capture(Box::new(move |line| {
-        heard(Progress::Line(line.trim().to_string()));
+        let line = line.trim();
+        if hush.get() || line.starts_with("microluna ▸") {
+            return;
+        }
+        heard(Progress::Line(line.to_string()));
     }));
     let recorder = Recorder::default();
     let policy = policy();
@@ -361,6 +381,21 @@ pub async fn answer(request: &Request, on: Rc<dyn Fn(Progress)>) -> Answer {
     inputs.conclusion = CONCLUSION.to_string();
 
     let _ = std::fs::create_dir_all(&request.artifacts);
+    if request.agent == Agent::Microluna {
+        return microluna_turn(Turn {
+            request,
+            on,
+            hushed,
+            recorder,
+            policy: &policy,
+            judge: &judge,
+            state: &state,
+            inputs: &inputs,
+            words: &words,
+            directions: &directions,
+        })
+        .await;
+    }
     let mut cli = policy.executor(ExecutorHost {
         binary: request.binary.clone(),
         credential: request.credential,
@@ -484,6 +519,342 @@ fn session_of(record: &Value) -> Option<String> {
         .map(str::to_string)
 }
 
+/// Microluna's bounds for one terminal turn: the mini-handoff loop over
+/// at most three requirement groups, six sessions, and a quarter of a
+/// dollar. A read-only turn runs no checks between sessions, because the
+/// generic checks may rerun a test command, and a test command writes.
+/// No turn requires an edit it then tested before a group ends: many
+/// terminal requests are questions, whose answer is a reading. Every other
+/// setting is the loop's default.
+#[must_use]
+pub fn microluna_policy(read_only: bool) -> crate::micro::Policy {
+    crate::micro::Policy {
+        mode: crate::micro::Mode::Requirements,
+        max_sessions: 6,
+        max_attempts: 2,
+        max_groups: 3,
+        session_turns: 24,
+        session_sec: 240,
+        spend_usd: 0.25,
+        evidence_chars: 14_000,
+        checks: !read_only,
+        require_evidence: false,
+        ..crate::micro::Policy::default()
+    }
+}
+
+/// What a Microluna turn reads from [`answer`] once the survey is done.
+struct Turn<'a> {
+    request: &'a Request,
+    on: Rc<dyn Fn(Progress)>,
+    hushed: Rc<Cell<bool>>,
+    recorder: Recorder,
+    policy: &'a Manifest,
+    judge: &'a crate::judge::JevJudge,
+    state: &'a State,
+    inputs: &'a BriefingInputs,
+    words: &'a str,
+    directions: &'a str,
+}
+
+/// A turn Microluna answers in this process: short Luna sessions on the
+/// Codex login, one requirement group at a time, with Jev choosing each
+/// move between them. Nothing resumes: a follow-up turn's sessions start
+/// from a context rebuilt from the conversation and fresh probes.
+async fn microluna_turn(turn: Turn<'_>) -> Answer {
+    use crate::delegate::Executor as _;
+    let Turn {
+        request,
+        on,
+        hushed,
+        recorder,
+        policy,
+        judge,
+        state,
+        inputs,
+        words,
+        directions,
+    } = turn;
+    let read_only = request.read_only;
+    let boundary_words = if read_only {
+        "read-only"
+    } else {
+        "workspace-writable"
+    };
+    let model = request
+        .model
+        .clone()
+        .unwrap_or_else(|| Agent::Microluna.default_model().to_string());
+    let briefing = Briefing::build_under(HEAD, inputs, policy.policy.brief.cap);
+    let requirements = judge.requirements.clone();
+    let items = crate::pack::items(inputs);
+    let informs =
+        crate::pack::informed(&items, &requirements, None, crate::pack::Params::default());
+    let texts: std::collections::BTreeMap<String, String> = requirements
+        .requirements
+        .iter()
+        .map(|requirement| (requirement.id.clone(), requirement.text.clone()))
+        .collect();
+    // The loop's sessions read the task, not the briefing, so the
+    // directions ride with the task's words.
+    let prepared = Prepared {
+        instruction: format!("{words}\n\n{directions}"),
+        title: state.issue.title.clone(),
+        directions: directions.to_string(),
+        requirements,
+        items,
+        informs,
+        jev: judge.jev_mode(),
+        deadline: Some(judge.episode_deadline()),
+    };
+    let isolation = if read_only {
+        microluna::Isolation::ReadOnly
+    } else {
+        microluna::Isolation::Boundary
+    };
+    // The loop writes its checks beside its artifacts, so both stay
+    // inside this turn's directory.
+    let artifacts = request.artifacts.join("artifacts");
+    let _ = std::fs::create_dir_all(&artifacts);
+    let mut micro = crate::micro::Micro::new(
+        &model,
+        None,
+        std::time::Duration::from_secs(policy.policy.executor.deadline_sec),
+        &request.workdir,
+        &artifacts,
+        recorder.clone(),
+        0,
+        microluna_policy(read_only),
+        isolation,
+    );
+    if let Some(script) = &request.script {
+        micro.wire = Ok(crate::micro::Wire::Fake(
+            microluna::fake::FakeTransport::new(script.clone()),
+        ));
+    }
+    micro.take_evidence(&prepared);
+    recorder.watch(watcher(on.clone(), hushed, texts));
+    on(Progress::Line(format!(
+        "delegate ▸ microluna ({model}) in a {boundary_words} boundary · {} evidence items · up to {} sessions, ${:.2}",
+        prepared.items.len(),
+        micro.policy.max_sessions,
+        micro.policy.spend_usd
+    )));
+    let mut report = crate::delegate::delegate(
+        &mut micro,
+        &briefing,
+        &Delegation {
+            mode: Mode::Always,
+            reason: &Reason::Always,
+            isolation: boundary_words,
+        },
+        &recorder,
+        0,
+    )
+    .await;
+    let record = micro.last.clone().unwrap_or(Value::Null);
+    let reply = microluna_reply(&record);
+    if let Some(reply) = &reply {
+        on(Progress::Event(crate::stream::Event {
+            seq: 0,
+            line: 0,
+            offset: None,
+            kind: crate::stream::Kind::AssistantClaim {
+                text: reply.clone(),
+            },
+        }));
+        report.summary.result = Some(reply.clone());
+    }
+    let sessions = record["sessions"].as_array().map_or(0, Vec::len);
+    on(Progress::Line(format!(
+        "microluna ▸ {sessions} session{} · Luna ${:.5} · stopped at {}",
+        if sessions == 1 { "" } else { "s" },
+        report.summary.total_cost_usd.unwrap_or_default(),
+        record["stopped"].as_str().unwrap_or("an unknown point")
+    )));
+
+    let steps = recorder.steps();
+    let usage = crate::episode::usage(&steps, true);
+    Answer {
+        session_id: None,
+        resumed: false,
+        report,
+        briefing,
+        steps,
+        usage,
+        agent: Agent::Microluna,
+        model,
+        boundary: boundary_words.to_string(),
+    }
+}
+
+/// The reply a Microluna turn gives: each requirement group's last
+/// answer, in the order the groups ran, or the last session's summary
+/// when no session answered.
+#[must_use]
+pub fn microluna_reply(record: &Value) -> Option<String> {
+    let sessions = record["sessions"].as_array()?;
+    let mut answers: Vec<(String, String)> = Vec::new();
+    for session in sessions {
+        let focus = session["focus"].to_string();
+        let answer = session["finish"]["answer"]
+            .as_str()
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+        if answer.is_empty() {
+            continue;
+        }
+        match answers.iter_mut().find(|(seen, _)| *seen == focus) {
+            Some(slot) => slot.1 = answer,
+            None => answers.push((focus, answer)),
+        }
+    }
+    if answers.is_empty() {
+        return sessions
+            .last()
+            .and_then(|session| session["finish"]["summary"].as_str())
+            .map(str::trim)
+            .filter(|summary| !summary.is_empty())
+            .map(str::to_string);
+    }
+    let mut kept: Vec<String> = Vec::new();
+    for (_, answer) in answers {
+        if !kept.contains(&answer) {
+            kept.push(answer);
+        }
+    }
+    Some(kept.join("\n\n"))
+}
+
+/// Turns the steps the Microluna loop records into the turn's progress,
+/// as they are recorded: each session's start and what it works on, its
+/// commands, reads, edits, and words as executor events, its finish, its
+/// cost, and each move Jev and code choose between sessions.
+fn watcher(
+    on: Rc<dyn Fn(Progress)>,
+    hushed: Rc<Cell<bool>>,
+    texts: std::collections::BTreeMap<String, String>,
+) -> impl Fn(&Step) + 'static {
+    let why = std::cell::RefCell::new(None::<String>);
+    let current = std::cell::RefCell::new(String::from("session"));
+    move |step: &Step| {
+        if let Some(event) = step.extensions.get(crate::record::EVENT_KEY) {
+            if event["component"] != crate::micro::SESSION_COMPONENT {
+                return;
+            }
+            match event["event"].as_str() {
+                Some("start") => {
+                    hushed.set(true);
+                    let name = event["name"].as_str().unwrap_or("session");
+                    let (number, focus) = name.split_once(": ").unwrap_or((name, ""));
+                    *current.borrow_mut() = number.to_string();
+                    let head = why
+                        .borrow_mut()
+                        .take()
+                        .unwrap_or_else(|| format!("{number} works on {focus}"));
+                    let wanted: Vec<String> = focus
+                        .split(", ")
+                        .filter_map(|id| texts.get(id))
+                        .map(|text| crate::judge::clip(&text.replace('\n', " "), 160))
+                        .collect();
+                    on(Progress::Line(if wanted.is_empty() {
+                        format!("microluna ▸ {head}")
+                    } else {
+                        format!("microluna ▸ {head}: {}", wanted.join(" · "))
+                    }));
+                }
+                Some("end") => {
+                    hushed.set(false);
+                    on(Progress::Line(session_line(&current.borrow(), event)));
+                }
+                _ => {}
+            }
+            return;
+        }
+        if let Some(observed) = step.extensions.get(crate::session::EVENT_KEY) {
+            let Ok(event) =
+                serde_json::from_value::<crate::stream::Event>(observed["event"].clone())
+            else {
+                return;
+            };
+            match &event.kind {
+                crate::stream::Kind::SessionEnded { error, result } => {
+                    on(Progress::Line(format!(
+                        "finish ▸ {}: {}",
+                        if *error { "not done" } else { "done" },
+                        crate::judge::clip(
+                            &result.clone().unwrap_or_default().replace('\n', " "),
+                            240
+                        )
+                    )));
+                }
+                _ => on(Progress::Event(event)),
+            }
+            return;
+        }
+        if let Some(handoff) = step.extensions.get(crate::handoff::KEY) {
+            on(Progress::Line(handoff_line(handoff)));
+            return;
+        }
+        // The loop names each session's focus in its own words just before
+        // the session starts.
+        if let Some(rest) = step
+            .message
+            .strip_prefix("Delegating to microluna (")
+            .and_then(|rest| rest.split_once(" because session "))
+            .and_then(|(_, rest)| rest.split_once(". Briefing:"))
+        {
+            *why.borrow_mut() = Some(format!("session {}", rest.0));
+        }
+    }
+}
+
+/// One line for a finished session: its status, time, turns, tokens, and
+/// cost.
+fn session_line(number: &str, event: &Value) -> String {
+    let summary = &event["output"]["summary"];
+    let usage = &summary["usage"];
+    format!(
+        "microluna ▸ {number} {} in {:.1}s · {} turns · {} calls · in {} (cached {}) out {} · ${:.5}",
+        summary["status"].as_str().unwrap_or("ended"),
+        event["milliseconds"].as_f64().unwrap_or_default() / 1000.0,
+        summary["turns"],
+        summary["calls"],
+        usage["input"],
+        usage["cached"],
+        usage["output"],
+        summary["cost_usd"].as_f64().unwrap_or_default()
+    )
+}
+
+/// One line for a move between sessions: what Jev picked, how sure it
+/// was, what the combined verdict said, and what code settled on.
+fn handoff_line(handoff: &Value) -> String {
+    let picked = handoff["jev"]["picked"].as_str();
+    let p = picked
+        .and_then(|picked| handoff["jev"]["probabilities"][picked].as_f64())
+        .map(|p| format!(" ({p:.2})"))
+        .unwrap_or_default();
+    let jev = match picked {
+        Some(picked) => format!("Jev picked {picked}{p}"),
+        None => "Jev gave no answer".to_string(),
+    };
+    let verdict = handoff["verdict"]["call"]
+        .as_str()
+        .map(|call| format!(" · verdict {call}"))
+        .unwrap_or_default();
+    let code = handoff["overridden"]
+        .as_str()
+        .map(|why| format!(" · code: {why}"))
+        .unwrap_or_default();
+    format!(
+        "handoff ▸ after session {}: {} · {jev}{verdict}{code}",
+        handoff["after_session"],
+        handoff["move"].as_str().unwrap_or("?"),
+    )
+}
+
 /// The progress lines' record of a turn, for a caller's trace note.
 #[must_use]
 pub fn summary(answer: &Answer) -> Value {
@@ -561,6 +932,7 @@ mod tests {
             credential: Credential::CliLogin,
             jev: None,
             artifacts,
+            script: None,
         })
     }
 
@@ -612,6 +984,139 @@ mod tests {
                 .is_some_and(|call| call.name == "delegate")
         }));
         assert_eq!(answer.cost_usd(), Some(0.01));
+    }
+
+    #[test]
+    fn a_microluna_turn_streams_its_sessions_and_changes_nothing_when_read_only() {
+        use microluna::fake::call;
+        let dir = tempfile::tempdir().unwrap();
+        let Some(mut request) = stand_in(
+            dir.path(),
+            Agent::ClaudeCode,
+            crate::adapter::standin::CLAUDE,
+            None,
+        ) else {
+            return;
+        };
+        std::fs::write(request.workdir.join("notes.txt"), "the answer is 42\n").unwrap();
+        let usage = microluna::TokenUsage {
+            input: 1_000,
+            cached: 0,
+            output: 20,
+            reasoning: 0,
+        };
+        request.agent = Agent::Microluna;
+        request.binary = None;
+        request.credential = Credential::CodexAuthFile;
+        request.script = Some(vec![
+            call(
+                "c1",
+                "read_file",
+                &json!({ "path": "notes.txt", "start_line": null, "max_lines": null }),
+                usage,
+            ),
+            call(
+                "c2",
+                "run_command",
+                &json!({ "command": "cat notes.txt; echo x > made.txt", "timeout_seconds": 10 }),
+                usage,
+            ),
+            call(
+                "c3",
+                "write_file",
+                &json!({ "path": "made2.txt", "contents": "x" }),
+                usage,
+            ),
+            call(
+                "c4",
+                "finish",
+                &json!({ "status": "done", "summary": "Read notes.txt.", "answer": "The answer is 42." }),
+                usage,
+            ),
+        ]);
+        let (answer, heard) = run(&request);
+        assert_eq!(answer.agent, Agent::Microluna);
+        assert_eq!(answer.boundary, "read-only");
+        assert!(!answer.resumed);
+        assert_eq!(answer.session_id, None, "a Microluna turn never resumes");
+        assert_eq!(
+            answer.report.summary.result.as_deref(),
+            Some("The answer is 42.")
+        );
+        assert!(!request.workdir.join("made.txt").exists());
+        assert!(!request.workdir.join("made2.txt").exists());
+        let lines: Vec<&str> = heard
+            .iter()
+            .filter_map(|progress| match progress {
+                Progress::Line(line) => Some(line.as_str()),
+                Progress::Event(_) => None,
+            })
+            .collect();
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.starts_with("microluna ▸ session 1 works on")),
+            "{lines:?}"
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.starts_with("finish ▸ done: Read notes.txt.")),
+            "{lines:?}"
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.starts_with("microluna ▸ session 1 done in") && line.contains('$')),
+            "{lines:?}"
+        );
+        // The session's own tool lines are left out: the events carry them.
+        assert!(
+            !lines.iter().any(|line| line.contains("read_file {")),
+            "{lines:?}"
+        );
+        let started: Vec<&str> = heard
+            .iter()
+            .filter_map(|progress| match progress {
+                Progress::Event(event) => match &event.kind {
+                    crate::stream::Kind::CommandStarted { command } => Some(command.as_str()),
+                    _ => None,
+                },
+                Progress::Line(_) => None,
+            })
+            .collect();
+        assert!(
+            started
+                .iter()
+                .any(|command| command.starts_with("cat notes.txt")),
+            "{started:?}"
+        );
+        assert!(heard.iter().any(|progress| matches!(
+            progress,
+            Progress::Event(event) if matches!(&event.kind, crate::stream::Kind::AssistantClaim { text } if text == "The answer is 42.")
+        )));
+        assert!(
+            answer.cost_usd().is_some_and(|usd| usd > 0.0),
+            "{:?}",
+            answer.usage
+        );
+    }
+
+    #[test]
+    fn a_microluna_reply_keeps_each_groups_last_answer() {
+        let record = json!({ "sessions": [
+            { "focus": ["R1"], "finish": { "answer": "first try", "summary": "s" } },
+            { "focus": ["R1"], "finish": { "answer": "crate nostr-relay", "summary": "s" } },
+            { "focus": ["R2"], "finish": { "answer": "", "summary": "s" } },
+            { "focus": ["R3"], "finish": { "answer": "Postgres", "summary": "s" } },
+        ]});
+        assert_eq!(
+            microluna_reply(&record).as_deref(),
+            Some("crate nostr-relay\n\nPostgres")
+        );
+        let unanswered = json!({ "sessions": [{ "focus": ["R1"], "finish": { "answer": "", "summary": "Blocked." } }] });
+        assert_eq!(microluna_reply(&unanswered).as_deref(), Some("Blocked."));
+        assert_eq!(microluna_reply(&json!({ "sessions": [] })), None);
     }
 
     #[test]

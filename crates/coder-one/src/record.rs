@@ -269,6 +269,31 @@ struct Inner {
     /// Every open invocation: when it started and its component.
     open: BTreeMap<String, (u64, String)>,
     revision: u64,
+    /// Who hears each step as it is recorded; see [`Recorder::watch`].
+    watchers: Vec<Watcher>,
+}
+
+/// Hears one step as it is recorded.
+type Watcher = Rc<dyn Fn(&Step)>;
+
+impl Inner {
+    /// Records `step` and hands back who should hear it, so they hear it
+    /// after the recorder's borrow ends.
+    fn keep(&mut self, step: Step) -> Option<(Vec<Watcher>, Step)> {
+        self.append(&step);
+        let heard = (!self.watchers.is_empty()).then(|| (self.watchers.clone(), step.clone()));
+        self.steps.push(step);
+        heard
+    }
+}
+
+/// Tells each watcher about the step [`Inner::keep`] kept.
+fn tell(heard: Option<(Vec<Watcher>, Step)>) {
+    if let Some((watchers, step)) = heard {
+        for watcher in &watchers {
+            watcher(&step);
+        }
+    }
 }
 
 /// A shared, append-only list of trajectory steps, optionally durable.
@@ -294,6 +319,14 @@ impl Recorder {
             .map(|log| log.path().to_path_buf())
     }
 
+    /// Calls `watcher` with every step recorded from now on, as it is
+    /// recorded: ordinary steps and invocation events alike. A host that
+    /// shows a run live, such as Coder Terminal, watches instead of
+    /// polling. The watcher must not record into this recorder.
+    pub fn watch(&self, watcher: impl Fn(&Step) + 'static) {
+        self.0.borrow_mut().watchers.push(Rc::new(watcher));
+    }
+
     /// Appends one step, credited to the innermost open invocation.
     pub fn push(&self, mut step: Step) {
         let mut inner = self.0.borrow_mut();
@@ -304,8 +337,9 @@ impl Recorder {
             step.extensions
                 .insert(ATTRIBUTION_KEY.to_string(), json!(id));
         }
-        inner.append(&step);
-        inner.steps.push(step);
+        let heard = inner.keep(step);
+        drop(inner);
+        tell(heard);
     }
 
     /// Every step so far, in order.
@@ -362,8 +396,9 @@ impl Recorder {
         .noting(EVENT_KEY, record);
         step.at = at;
         inner.open.insert(id.clone(), (at, start.component));
-        inner.append(&step);
-        inner.steps.push(step);
+        let heard = inner.keep(step);
+        drop(inner);
+        tell(heard);
         id
     }
 
@@ -404,8 +439,9 @@ impl Recorder {
         .noting(EVENT_KEY, record)
         .taking(milliseconds);
         step.at = at;
-        inner.append(&step);
-        inner.steps.push(step);
+        let heard = inner.keep(step);
+        drop(inner);
+        tell(heard);
     }
 
     /// Writes the log's closing record. Steps after this stay in memory
@@ -553,6 +589,28 @@ mod tests {
 
     fn implementation() -> Implementation {
         Implementation::new("evidence.probes", "battery", &json!({ "threshold": 0.5 }))
+    }
+
+    #[test]
+    fn a_watcher_hears_every_step_as_it_is_recorded() {
+        let recorder = Recorder::default();
+        recorder.push(Step::said(Source::System, "before"));
+        let heard = Rc::new(RefCell::new(Vec::new()));
+        let into = heard.clone();
+        let reader = recorder.clone();
+        recorder.watch(move |step| {
+            // The recorder is readable while a watcher runs.
+            let _ = reader.steps().len();
+            into.borrow_mut().push(step.message.clone());
+        });
+        let id = recorder.enter(Start::new("evidence.probes", implementation()));
+        recorder.push(Step::said(Source::System, "during"));
+        recorder.end(&id, Finish::new(Outcome::Completed));
+        let heard = heard.borrow();
+        assert_eq!(heard.len(), 3, "{heard:?}");
+        assert!(heard[0].starts_with("invocation inv-1 started"));
+        assert_eq!(heard[1], "during");
+        assert!(heard[2].starts_with("invocation inv-1 ended"));
     }
 
     #[test]

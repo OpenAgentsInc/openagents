@@ -185,8 +185,9 @@ uses, and marks which are implemented and which are only specified.
   executable plan only under a permit that runs one, so keep execution
   policy there rather than in what the model is told. `delegate_door`
   answers a turn through Coder One's probes, Jev's judgments, a
-  briefing, and Claude Code or Codex when one is installed and signed in,
-  with the Open Responses door as the fallback; the permit maps to its
+  briefing, and an executor: Microluna in process when the Codex login
+  is usable, else Claude Code or Codex when one is installed and signed
+  in, with the Open Responses door as the fallback; the permit maps to its
   `coder-boundary` boundary, and `coder-worker` never reaches it. Read
   `docs/coder/runtime/delegate-door.md` before changing it.
   `scripts/install-coder.sh` installs the binary as `coder`, and

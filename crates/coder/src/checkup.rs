@@ -73,6 +73,7 @@ fn report() -> (Vec<String>, bool) {
             _ => "",
         };
         let state = match (&target.binary, target.credential) {
+            _ if !target.agent.is_cli() => microluna_state(),
             (None, _) => "not installed".to_string(),
             (Some(path), coder_one::delegate::Credential::Missing) => {
                 format!("{}, no credential", path.display())
@@ -90,11 +91,30 @@ fn report() -> (Vec<String>, bool) {
 
     let policy = coder_one::terminal::policy();
     let executor = &policy.policy.executor;
-    let model = settings
-        .model
-        .clone()
-        .unwrap_or_else(|| executor.model.clone());
-    lines.push(format!(
+    let microluna = matches!(chosen, Some(Chosen::Delegate(target)) if !target.agent.is_cli());
+    let model = settings.model.clone().unwrap_or_else(|| {
+        if microluna {
+            coder_one::delegate::Agent::Microluna
+                .default_model()
+                .to_string()
+        } else {
+            executor.model.clone()
+        }
+    });
+    if microluna {
+        let bounds = coder_one::terminal::microluna_policy(false);
+        lines.push(format!(
+            "{:<10} microluna on {model} in this process · {} mode · up to {} sessions, {} per requirement group · ${:.2} a turn · checks between sessions on writing turns · deadline {}s · probes and survey from policy {}",
+            "executor",
+            bounds.mode.word(),
+            bounds.max_sessions,
+            bounds.max_attempts,
+            bounds.spend_usd,
+            delegate_door::deadline().as_secs(),
+            policy.name.as_deref().unwrap_or("unnamed"),
+        ));
+    } else {
+        lines.push(format!(
         "{:<10} {} on {model} · effort {} · tools {} · prompt cache {} · deadline {}s · policy {}",
         "executor",
         executor.agent.agent().word(),
@@ -104,6 +124,7 @@ fn report() -> (Vec<String>, bool) {
         delegate_door::deadline().as_secs(),
         policy.name.as_deref().unwrap_or("unnamed"),
     ));
+    }
 
     let (jev, source) = delegate_door::jev_from(&delegate_door::env_value);
     lines.push(match jev {
@@ -139,6 +160,28 @@ fn report() -> (Vec<String>, bool) {
         lines.push("note       delegation is off, so every turn uses the fallback".to_string());
     }
     (lines, starts)
+}
+
+/// Where Microluna's Codex login stands: its path and the hours its
+/// access token has left, or why it can't be used. It reads the login and
+/// never prints a token.
+fn microluna_state() -> String {
+    match delegate_door::codex_login(&delegate_door::env_value) {
+        Ok(login) => {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |elapsed| elapsed.as_secs());
+            let left = login.hours_left(now).map_or_else(
+                || "token expiry unknown".to_string(),
+                |hours| format!("access token {hours:.1} hours left"),
+            );
+            format!(
+                "in process, Codex login at {} · {left}",
+                login.path.display()
+            )
+        }
+        Err(why) => format!("unavailable: {why}"),
+    }
 }
 
 /// What answers when no target is available: the door the environment
