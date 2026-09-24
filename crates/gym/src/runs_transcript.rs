@@ -1051,6 +1051,151 @@ fn verdict_counts(verdicts: &Value) -> (String, Option<bool>) {
 /// Builds a Coder One transcript from its episode log, splicing each
 /// session's native stream in where the stream is on disk.
 #[must_use]
+/// A Microluna session log's `microluna-<dispatch>-<number>` identity.
+fn microluna_session_id(path: &Path) -> Option<(u64, String)> {
+    let id = path.file_name()?.to_str()?.strip_suffix(".atif.jsonl")?;
+    // The acceptance-suite writer's sessions (`accept-writer-<n>`) run
+    // before any edit session, so they belong to no dispatch.
+    if id.starts_with("accept-") {
+        return Some((0, id.to_owned()));
+    }
+    let dispatch = id
+        .strip_prefix("microluna-")?
+        .split('-')
+        .next()?
+        .parse()
+        .ok()?;
+    Some((dispatch, id.to_owned()))
+}
+
+/// One Microluna session, from its own ATIF log: a header naming what the
+/// session worked on, then every reasoning note and tool call in order,
+/// then its finish. Returns the blocks, the session's cost, and its report.
+fn microluna_stream(path: &Path) -> (Vec<Block>, Option<f64>, Option<String>) {
+    let mut blocks = Vec::new();
+    let mut cost = None::<f64>;
+    let mut report = None;
+    for record in read_lines(path) {
+        if record.get("record").and_then(Value::as_str) == Some("session") {
+            let id = record
+                .pointer("/session/id")
+                .and_then(Value::as_str)
+                .unwrap_or("session");
+            let directive = record
+                .pointer("/session/directive")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let at = record.get("at").and_then(Value::as_i64);
+            blocks.push(Block::new(at, Kind::Note(format!("{id}: {directive}"))));
+            continue;
+        }
+        let Some(step) = record.get("step") else {
+            continue;
+        };
+        let at = step.get("at").and_then(Value::as_i64);
+        if step.get("source").and_then(Value::as_str) != Some("Agent") {
+            continue;
+        }
+        if let Some(usd) = step
+            .pointer("/extensions/microluna.usage.v1/cost_usd")
+            .and_then(Value::as_f64)
+        {
+            *cost.get_or_insert(0.0) += usd;
+        }
+        if let Some(thought) = text(step, "reasoning").filter(|t| !t.trim().is_empty()) {
+            blocks.push(Block::new(at, Kind::Think(thought)));
+        }
+        if let Some(said) = text(step, "message").filter(|t| !t.trim().is_empty()) {
+            blocks.push(Block::new(at, Kind::Say(said)));
+        }
+        let Some(call) = step.get("call") else {
+            continue;
+        };
+        let name = call.get("name").and_then(Value::as_str).unwrap_or_default();
+        let input = call.get("arguments").cloned().unwrap_or(Value::Null);
+        let output = text(call, "output").unwrap_or_default();
+        let failed = call.get("outcome").and_then(Value::as_str) == Some("Failed");
+        let get = |key: &str| {
+            input
+                .get(key)
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_owned()
+        };
+        let kind = match name {
+            "read_file" => Kind::Look {
+                what: format!("Read {}", short_path(&get("path"))),
+                output,
+            },
+            "write_file" => {
+                let content = get("content");
+                Kind::Edit {
+                    path: short_path(&get("path")),
+                    action: "Wrote",
+                    added: content.lines().count(),
+                    removed: 0,
+                    body: content,
+                }
+            }
+            "apply_patch" => {
+                let patch = get("patch");
+                let files: Vec<String> = patch
+                    .lines()
+                    .filter_map(|line| {
+                        line.strip_prefix("*** Update File: ")
+                            .or_else(|| line.strip_prefix("*** Add File: "))
+                            .or_else(|| line.strip_prefix("*** Delete File: "))
+                            .map(str::to_owned)
+                    })
+                    .collect();
+                let added = patch.lines().filter(|l| l.starts_with('+')).count();
+                let removed = patch.lines().filter(|l| l.starts_with('-')).count();
+                let body = if failed {
+                    format!("{patch}\n\n{output}")
+                } else {
+                    patch
+                };
+                Kind::Edit {
+                    path: files.join(", "),
+                    action: if failed { "Failed to edit" } else { "Edited" },
+                    added,
+                    removed,
+                    body,
+                }
+            }
+            "finish" => {
+                let summary = [get("status"), get("summary"), get("answer")]
+                    .into_iter()
+                    .filter(|part| !part.is_empty())
+                    .collect::<Vec<_>>()
+                    .join("\n\n");
+                report = Some(summary.clone());
+                Kind::Report(summary)
+            }
+            other => tool_block(other, &input, output, failed),
+        };
+        blocks.push(Block::new(at, kind));
+    }
+    (blocks, cost, report)
+}
+
+/// Appends one Microluna session's blocks and counts them into the current
+/// executor session.
+fn splice_microluna(transcript: &mut Transcript, path: &Path) {
+    let (blocks, cost, report) = microluna_stream(path);
+    count_into(transcript.sessions.last_mut(), &blocks);
+    if let Some(current) = transcript.sessions.last_mut() {
+        if report.is_some() {
+            current.report = report;
+        }
+        if let Some(cost) = cost {
+            current.cost_usd = Some(current.cost_usd.unwrap_or(0.0) + cost);
+        }
+    }
+    transcript.blocks.extend(blocks);
+    transcript.sources.push(path.to_path_buf());
+}
+
 pub fn coder_one(episode: Option<&Path>, log: &Path) -> Transcript {
     let steps: Vec<Value> = read_lines(log)
         .into_iter()
@@ -1087,6 +1232,25 @@ pub fn coder_one(episode: Option<&Path>, log: &Path) -> Transcript {
         clock.marks.dedup_by_key(|(line, _)| *line);
     }
 
+    // Microluna keeps each session in its own log beside the episode log
+    // (`artifacts/` under the live copy while it runs, or under the episode
+    // once it ends). The final copy wins when both exist.
+    let mut micro: Vec<(u64, String, PathBuf)> = Vec::new();
+    for dir in log.parent().into_iter().chain(episode) {
+        for path in crate::runs_replay::microluna_logs(dir) {
+            if let Some((dispatch, id)) = microluna_session_id(&path) {
+                micro.retain(|(_, held, _)| held != &id);
+                micro.push((dispatch, id, path));
+            }
+        }
+    }
+    micro.sort_by_key(|(dispatch, id, _)| {
+        (
+            *dispatch,
+            id.rsplit('-').next().and_then(|n| n.parse::<u64>().ok()),
+        )
+    });
+    let mut dispatch = 0u64;
     let mut section: Option<usize> = None;
     let mut spliced: Vec<String> = Vec::new();
     let mut commands: HashMap<String, usize> = HashMap::new();
@@ -1110,6 +1274,9 @@ pub fn coder_one(episode: Option<&Path>, log: &Path) -> Transcript {
                 (None, Some(briefing)) => Some(format!("It read a {briefing}.")),
                 (None, None) => None,
             };
+            if who.to_lowercase().contains("microluna") {
+                dispatch += 1;
+            }
             transcript.sessions.push(Session {
                 who: who.clone(),
                 why: note.clone(),
@@ -1129,6 +1296,14 @@ pub fn coder_one(episode: Option<&Path>, log: &Path) -> Transcript {
         }
         if let Some(event) = step.pointer("/extensions/executor_event") {
             let session = text(event, "session_id").unwrap_or_default();
+            if let Some((_, _, path)) = micro.iter().find(|(_, id, _)| *id == session) {
+                if !spliced.contains(&session) {
+                    spliced.push(session.clone());
+                    let path = path.clone();
+                    splice_microluna(&mut transcript, &path);
+                }
+                continue;
+            }
             if let Some(path) = streams.get(&session) {
                 if !spliced.contains(&session) {
                     spliced.push(session.clone());
@@ -1270,6 +1445,22 @@ pub fn coder_one(episode: Option<&Path>, log: &Path) -> Transcript {
         {
             transcript.blocks.push(Block::new(at, block));
         }
+        if component.starts_with("accept") {
+            for (_, id, path) in micro.iter().filter(|(d, _, _)| *d == 0) {
+                if !spliced.contains(id) {
+                    spliced.push(id.clone());
+                    splice_microluna(&mut transcript, path);
+                }
+            }
+        }
+        if component == "exec.session" {
+            for (_, id, path) in micro.iter().filter(|(d, _, _)| *d == dispatch) {
+                if !spliced.contains(id) {
+                    spliced.push(id.clone());
+                    splice_microluna(&mut transcript, path);
+                }
+            }
+        }
         if component == "exec.session"
             && let Some(index) = section
         {
@@ -1290,6 +1481,13 @@ pub fn coder_one(episode: Option<&Path>, log: &Path) -> Transcript {
                     .or_else(|| summary.get("turns").and_then(Value::as_u64));
             }
             section = None;
+        }
+    }
+    // Sessions the host log hasn't reached yet, such as a live run's
+    // current session, follow at the end.
+    for (_, id, path) in &micro {
+        if !spliced.contains(id) {
+            splice_microluna(&mut transcript, path);
         }
     }
     transcript.blocks = coalesce(std::mem::take(&mut transcript.blocks));

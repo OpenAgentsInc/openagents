@@ -316,6 +316,10 @@ class CoderV05(BaseInstalledAgent):
                 str(EPISODE_DIR / LOG_NAME),
                 self.logs_dir / "live",
                 self._live_interval_sec,
+                session_glob=" ".join(
+                    str(EPISODE_DIR / "artifacts" / pattern)
+                    for pattern in ("accept-*.atif.jsonl", "microluna-*.atif.jsonl")
+                ),
             )
             follower = asyncio.create_task(tail.follow())
         try:

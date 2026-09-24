@@ -18,6 +18,13 @@ never reads more than ``chunk`` bytes, and the copy stops growing at
 append-only and fsynced line by line, so the copy is a prefix of the same
 file the bundle carries at the end.
 
+A Coder One episode that runs Microluna writes each session to its own
+log, ``artifacts/microluna-<dispatch>-<n>.atif.jsonl``, and the
+acceptance-suite writer writes ``artifacts/accept-writer-<n>.atif.jsonl``.
+When ``session_glob`` names them (space-separated globs), every poll also lists the matching files and
+copies each one the same way into ``artifacts/`` beside the episode copy,
+so a reader can show the sessions while they run.
+
 ``status.json`` beside the copy tells a reader where the tail stands:
 ``following`` while the episode runs, then ``ended``, ``capped``, or
 ``failed``, with the offset, the poll count, when it last polled, and
@@ -59,11 +66,18 @@ class LiveTail:
         interval_sec: float = DEFAULT_INTERVAL_SEC,
         chunk: int = DEFAULT_CHUNK,
         cap: int = DEFAULT_CAP,
+        name: str = LOG_NAME,
+        session_glob: str | None = None,
+        status: bool = True,
     ) -> None:
         self.environment = environment
         self.source = source
         self.target_dir = Path(target_dir)
-        self.target = self.target_dir / LOG_NAME
+        self.name = name
+        self.target = self.target_dir / name
+        self.session_glob = session_glob
+        self.sessions: dict[str, LiveTail] = {}
+        self.status = status
         self.interval_sec = interval_sec
         self.chunk = chunk
         self.cap = cap
@@ -86,7 +100,42 @@ class LiveTail:
         )
 
     async def poll(self) -> int:
-        """Reads what the log gained since the last poll; returns the bytes kept."""
+        """Reads what the logs gained since the last poll; returns the bytes kept."""
+        kept = await self._poll_own()
+        return kept + await self._poll_sessions()
+
+    async def _poll_sessions(self) -> int:
+        """Finds new session logs, then polls every one; returns the bytes kept."""
+        if not self.session_glob:
+            return 0
+        try:
+            result = await self.environment.exec(
+                command=f"ls -1 {self.session_glob} 2>/dev/null"
+            )
+            names = [line.strip() for line in (result.stdout or "").splitlines()]
+        except Exception as exc:  # a failed listing is recorded, not fatal
+            self.errors += 1
+            self.last_error = str(exc)[:500]
+            names = []
+        for path in names:
+            if path and path not in self.sessions:
+                self.sessions[path] = LiveTail(
+                    self.environment,
+                    path,
+                    self.target_dir / "artifacts",
+                    self.interval_sec,
+                    self.chunk,
+                    self.cap,
+                    name=os.path.basename(path),
+                    status=False,
+                )
+        kept = 0
+        for session in self.sessions.values():
+            kept += await session._poll_own()
+        return kept
+
+    async def _poll_own(self) -> int:
+        """Reads what this log gained since the last poll; returns the bytes kept."""
         if self.state != "following":
             return 0
         self.polls += 1
@@ -132,13 +181,16 @@ class LiveTail:
                 pass
         if self.state == "following":
             self.state = state
+        for session in self.sessions.values():
+            await session.finish(state)
         self.write_status()
 
     def record(self) -> dict[str, Any]:
         return {
             "schema": SCHEMA,
             "source": self.source,
-            "copy": LOG_NAME,
+            "copy": self.name,
+            "sessions": sorted(os.path.basename(p) for p in self.sessions),
             "state": self.state,
             "offset": self.offset,
             "polls": self.polls,
@@ -153,6 +205,8 @@ class LiveTail:
         }
 
     def write_status(self) -> None:
+        if not self.status:
+            return
         path = self.target_dir / "status.json"
         temporary = path.with_suffix(".json.tmp")
         temporary.write_text(json.dumps(self.record(), indent=2) + "\n")

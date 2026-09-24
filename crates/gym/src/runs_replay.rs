@@ -570,8 +570,9 @@ fn native(path: &Path, marks: &[(u64, i64)], warnings: &mut Vec<String>) -> Vec<
         .collect()
 }
 
-/// A Coder One episode's Microluna session logs, in session order.
-fn microluna_logs(episode: &Path) -> Vec<PathBuf> {
+/// A Coder One episode's Microluna session logs, the acceptance-suite
+/// writer's included, in session order.
+pub(crate) fn microluna_logs(episode: &Path) -> Vec<PathBuf> {
     let mut logs: Vec<PathBuf> = std::fs::read_dir(episode.join("artifacts"))
         .into_iter()
         .flatten()
@@ -580,7 +581,10 @@ fn microluna_logs(episode: &Path) -> Vec<PathBuf> {
         .filter(|path| {
             path.file_name()
                 .and_then(|name| name.to_str())
-                .is_some_and(|name| name.starts_with("microluna-") && name.ends_with(".atif.jsonl"))
+                .is_some_and(|name| {
+                    (name.starts_with("microluna-") || name.starts_with("accept-"))
+                        && name.ends_with(".atif.jsonl")
+                })
         })
         .collect();
     // `microluna-1-10` sorts after `microluna-1-9`.
