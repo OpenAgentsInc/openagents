@@ -1,0 +1,106 @@
+{
+  "schema": "openagents.coder-one.policy.v1",
+  "name": "coder-one-microluna-v7",
+  "note": "microluna-v6's acceptance-suite loop, parallel and held to its evidence. The first edit session works while the suite is written and proven red on a snapshot of the untouched workspace; three writers split the requirements in one low-effort, one-pass round that rewrites only for hard, code-checked failures, find deciding facts by reading the code's documentation and probing its properties, count the standard definition of a method the task names as stated, keep green-at-start tests as guards, and expand a sweep over modules into a defect inventory. Red tests Jev reads as touching different files run as up to three sessions at once in workspace copies, merged back three ways, with a conflict requeued. Jev picks the move after each round, and the same failure twice stops the loop. A partial green gets a gap round, a green suite a joined closing judgment and, when it doubts, an audit session, then the task's own tests as a final guard. Sessions carry the current source in their cached prefix, read in parallel, and orient at low effort. Written for issues #9585 and #9588.",
+  "policy": {
+    "jev": {
+      "mode": "deep",
+      "model": "jev-1.13.0",
+      "question_sets": "builtin-v1"
+    },
+    "evidence": {
+      "probes": "v2",
+      "survey_files": 40
+    },
+    "control": {
+      "delegate": "always",
+      "explore_steps": 0,
+      "max_steps": 50,
+      "command_timeout_sec": 300,
+      "lane": "free",
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "horizon": {
+        "first_share": 0.55,
+        "later_share": 0.75,
+        "min_dispatch_sec": 300,
+        "check_share": 0.05,
+        "long_after_sec": 3600,
+        "long_effort": "high",
+        "long_command_sec": 3600
+      }
+    },
+    "brief": {
+      "cap": 12000,
+      "directions": "batch-checked",
+      "packer": "coverage-jev"
+    },
+    "executor": {
+      "agent": "microluna",
+      "version": null,
+      "model": "gpt-6-luna",
+      "effort": null,
+      "tools": null,
+      "prompt_cache_ttl": null,
+      "deadline_sec": 2400,
+      "microluna": {
+        "mode": "requirements",
+        "max_sessions": 30,
+        "max_attempts": 4,
+        "max_groups": 4,
+        "session_turns": 40,
+        "session_sec": 900,
+        "spend_usd": 1.5,
+        "evidence_chars": 20000,
+        "checks": true,
+        "require_evidence": true,
+        "read_first": false,
+        "accept": true,
+        "focus_actionable": true,
+        "suite": true,
+        "suite_writer": {
+          "writers": 3,
+          "rewrite": "hard",
+          "rounds": 2,
+          "turns": 24,
+          "repair_turns": 10,
+          "effort": "low",
+          "one_pass": true,
+          "discover": true,
+          "inventory": true,
+          "standard_methods": true,
+          "guards": true
+        },
+        "overlap_suite": true,
+        "parallel_edits": 3,
+        "handoff_jev": true,
+        "final_guard": true,
+        "gap_rounds": 1,
+        "fast_runs": true,
+        "close_audit": true,
+        "prefix_sources": 24000,
+        "parallel_tools": true,
+        "orient_effort": "low"
+      }
+    },
+    "verify": {
+      "checks": true,
+      "support": false,
+      "repair": {
+        "brief": "packet",
+        "trigger": "unobserved"
+      }
+    }
+  },
+  "protected": {
+    "isolation": "task-container",
+    "effect_policy": "executor-bypasses-its-own-sandbox",
+    "acceptance": "task-verifier",
+    "ceilings": {
+      "episode_deadline_sec": null,
+      "reserve_sec": 30,
+      "spend_soft_usd": null,
+      "spend_hard_usd": null
+    }
+  }
+}

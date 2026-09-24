@@ -17,6 +17,7 @@ pub const USAGE: &str = "usage: coder-one minitask list [--json]
        coder-one minitask grade ID DIR [--json]
        coder-one minitask run ID [--executor scripted|claude-code|codex|microluna]
                                  [--microluna single|requirements]
+                                 [--policy MANIFEST]
                                  [--script good|bad|FILE] [--model MODEL]
                                  [--jev off|live] [--speed X] [--deadline SECONDS]
                                  [--controls FILE] [--no-checks] [--monitor]
@@ -35,7 +36,10 @@ requirements (the default) runs short sessions one requirement group at a
 time, with the checks and a Jev move between them, and --microluna single
 runs one session on the briefing. --read-first (with --microluna
 requirements) runs a read-only reconnaissance session on each group before
-its edit sessions. --accept gates a loop-ending move on the checks. --controls names a JSON file of session
+its edit sessions. --accept gates a loop-ending move on the checks. --policy takes
+executor.microluna and the model from a policy manifest, such as
+crates/coder-one/policies/microluna-v7.json, and implies --executor
+microluna; its session_sec is held to --deadline. --controls names a JSON file of session
 controls (deadline_ms, tick_ms, steer, stop_when, resume) for the scripted
 executor. verify.checks observes the workspace before the grader runs
 unless --no-checks is given. --monitor watches the session with
@@ -80,6 +84,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
     let mut microluna_mode = "requirements".to_string();
     let mut read_first = false;
     let mut accept = false;
+    let mut manifest: Option<crate::policy::Manifest> = None;
     let mut iter = rest.iter();
     while let Some(arg) = iter.next() {
         let mut value = |name: &str| {
@@ -113,6 +118,17 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
             "--microluna" => microluna_mode = value("--microluna")?,
             "--read-first" => read_first = true,
             "--accept" => accept = true,
+            "--policy" => {
+                let path = value("--policy")?;
+                let text = std::fs::read_to_string(&path)
+                    .map_err(|error| format!("cannot read {path}: {error}"))?;
+                let parsed = crate::policy::Manifest::parse(&text)?;
+                if parsed.policy.executor.microluna.is_none() {
+                    return Err(format!("{path} has no executor.microluna"));
+                }
+                executor = "microluna".to_string();
+                manifest = Some(parsed);
+            }
             other if other.starts_with("--") => return Err(format!("unknown option {other}")),
             other => positional.push(other.to_string()),
         }
@@ -183,6 +199,15 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
                             script.clone()
                         },
                         script: custom,
+                    }
+                }
+                "microluna" if manifest.is_some() => {
+                    let executor = &manifest.as_ref().expect("checked").policy.executor;
+                    let mut policy = executor.microluna.clone().expect("checked");
+                    policy.session_sec = policy.session_sec.min(deadline);
+                    ExecutorChoice::Microluna {
+                        model: model.clone().unwrap_or_else(|| executor.model.clone()),
+                        policy,
                     }
                 }
                 "microluna" => ExecutorChoice::Microluna {
