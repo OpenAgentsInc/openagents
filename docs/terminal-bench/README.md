@@ -6,6 +6,17 @@ evidence; it does not report the execution host's live queue.
 
 ## Latest status
 
+**Matched controller test on 10 TB4 tasks: no measurable pass-rate gain, 68%
+more cost.** With Claude Code on Opus 5.5 at medium effort in both arms,
+Coder One's v8 controller passed 18 of 30 attempts (42–75%) and the plain
+executor 15 of 30 (33–67%); the paired difference isn't distinguishable
+from chance (exact McNemar p = 0.51). Coder One cost $45.42 against $27.04
+and took 2.2 times the agent time. Persistence rounds produced the one
+large win, `mvcc-lsm-compaction` at 3 of 3 against 0 of 3, and most of the
+extra cost; checks, repair, and escalation were nearly idle. See the
+[results, attribution, and traces](2026-09-23-matched-controller-targeted.md)
+(issue [#9567](https://github.com/OpenAgentsInc/openagents/issues/9567)).
+
 **Matched executor controls: 12 attempts completed.** With the same Opus 5.5,
 medium effort, six tools, system prompt, cache policy, and outer budgets,
 plain Claude passed 6/6 for $6.64 and 37.0 agent-minutes; Coder passed 5/6

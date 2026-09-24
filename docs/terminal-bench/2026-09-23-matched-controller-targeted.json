@@ -1,0 +1,248 @@
+{
+  "schema": "openagents.gym.terminal-bench-experiment.v1",
+  "experiment": "matched-v8-9567",
+  "profile": "tb4",
+  "source": "/home/christopherdavid/.openagents/terminal-bench/experiments/matched-v8-9567/status.json",
+  "state": "done",
+  "updated_at": "2026-09-24T01:35:08+00:00",
+  "arms": [
+    "claude-code-opus-matched",
+    "coder-one-matched-v8"
+  ],
+  "tasks": [
+    "legacy-utility-triage",
+    "mvcc-lsm-compaction",
+    "heat-pump-warranty",
+    "ks-solver-cpp",
+    "wal-recovery-ordering",
+    "cad-model",
+    "nextjs-performance",
+    "embedding-drift-monitor",
+    "fin-saccr-rwa",
+    "sound-change-cascade"
+  ],
+  "attempts_per_task_per_arm": 3,
+  "credential_source": "setup-token",
+  "complete": true,
+  "min_graded_attempts_per_task_per_arm": 3,
+  "lost_and_rerun": {
+    "credentials": 0,
+    "infrastructure": 1,
+    "quota": 0
+  },
+  "quota": {
+    "budget_usd": 200.0,
+    "used_usd": 72.001,
+    "unpriced_sessions": 0,
+    "measure": "Claude Code total_cost_usd over graded and lost trials: a list-price value, not a cash charge"
+  },
+  "arm_results": [
+    {
+      "arm": "claude-code-opus-matched",
+      "scheduled": 30,
+      "graded": 30,
+      "passes": 15,
+      "pass_rate": 0.5,
+      "wilson_95": [
+        0.33154125640533766,
+        0.6684587435946623
+      ],
+      "ungraded": 0,
+      "not_run": 0,
+      "lost_and_rerun": {
+        "credentials": 0,
+        "infrastructure": 0,
+        "quota": 0
+      },
+      "claude_quota_usd": 27.043858999999998
+    },
+    {
+      "arm": "coder-one-matched-v8",
+      "scheduled": 30,
+      "graded": 30,
+      "passes": 18,
+      "pass_rate": 0.6,
+      "wilson_95": [
+        0.42320360253322475,
+        0.7540937188319815
+      ],
+      "ungraded": 0,
+      "not_run": 0,
+      "lost_and_rerun": {
+        "credentials": 0,
+        "infrastructure": 1,
+        "quota": 0
+      },
+      "claude_quota_usd": 44.957141
+    }
+  ],
+  "tasks_by_arm": [
+    {
+      "task": "legacy-utility-triage",
+      "cells": [
+        {
+          "arm": "claude-code-opus-matched",
+          "passes": 3,
+          "graded": 3
+        },
+        {
+          "arm": "coder-one-matched-v8",
+          "passes": 1,
+          "graded": 3
+        }
+      ]
+    },
+    {
+      "task": "mvcc-lsm-compaction",
+      "cells": [
+        {
+          "arm": "claude-code-opus-matched",
+          "passes": 0,
+          "graded": 3
+        },
+        {
+          "arm": "coder-one-matched-v8",
+          "passes": 3,
+          "graded": 3
+        }
+      ]
+    },
+    {
+      "task": "heat-pump-warranty",
+      "cells": [
+        {
+          "arm": "claude-code-opus-matched",
+          "passes": 1,
+          "graded": 3
+        },
+        {
+          "arm": "coder-one-matched-v8",
+          "passes": 2,
+          "graded": 3
+        }
+      ]
+    },
+    {
+      "task": "ks-solver-cpp",
+      "cells": [
+        {
+          "arm": "claude-code-opus-matched",
+          "passes": 0,
+          "graded": 3
+        },
+        {
+          "arm": "coder-one-matched-v8",
+          "passes": 0,
+          "graded": 3
+        }
+      ]
+    },
+    {
+      "task": "wal-recovery-ordering",
+      "cells": [
+        {
+          "arm": "claude-code-opus-matched",
+          "passes": 0,
+          "graded": 3
+        },
+        {
+          "arm": "coder-one-matched-v8",
+          "passes": 0,
+          "graded": 3
+        }
+      ]
+    },
+    {
+      "task": "cad-model",
+      "cells": [
+        {
+          "arm": "claude-code-opus-matched",
+          "passes": 3,
+          "graded": 3
+        },
+        {
+          "arm": "coder-one-matched-v8",
+          "passes": 3,
+          "graded": 3
+        }
+      ]
+    },
+    {
+      "task": "nextjs-performance",
+      "cells": [
+        {
+          "arm": "claude-code-opus-matched",
+          "passes": 3,
+          "graded": 3
+        },
+        {
+          "arm": "coder-one-matched-v8",
+          "passes": 3,
+          "graded": 3
+        }
+      ]
+    },
+    {
+      "task": "embedding-drift-monitor",
+      "cells": [
+        {
+          "arm": "claude-code-opus-matched",
+          "passes": 3,
+          "graded": 3
+        },
+        {
+          "arm": "coder-one-matched-v8",
+          "passes": 3,
+          "graded": 3
+        }
+      ]
+    },
+    {
+      "task": "fin-saccr-rwa",
+      "cells": [
+        {
+          "arm": "claude-code-opus-matched",
+          "passes": 0,
+          "graded": 3
+        },
+        {
+          "arm": "coder-one-matched-v8",
+          "passes": 0,
+          "graded": 3
+        }
+      ]
+    },
+    {
+      "task": "sound-change-cascade",
+      "cells": [
+        {
+          "arm": "claude-code-opus-matched",
+          "passes": 2,
+          "graded": 3
+        },
+        {
+          "arm": "coder-one-matched-v8",
+          "passes": 3,
+          "graded": 3
+        }
+      ]
+    }
+  ],
+  "paired": [
+    {
+      "baseline": "claude-code-opus-matched",
+      "arm": "coder-one-matched-v8",
+      "pairs": 30,
+      "both_pass": 12,
+      "baseline_only": 3,
+      "arm_only": 6,
+      "both_fail": 9,
+      "mcnemar_exact_p": 0.5078125,
+      "tasks": 10,
+      "tasks_arm_better": 3,
+      "tasks_baseline_better": 1,
+      "tasks_tied": 6,
+      "sign_test_exact_p": 0.625
+    }
+  ]
+}

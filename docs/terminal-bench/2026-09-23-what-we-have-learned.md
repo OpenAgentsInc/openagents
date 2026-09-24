@@ -41,6 +41,13 @@ and the controller added nothing measurable on those two tasks.
 the headline so far. The controller has to earn its place by passing
 tasks the configuration alone fails.
 
+**Follow-up:** the [matched targeted test](2026-09-23-matched-controller-targeted.md)
+ran the v8 controller against the same executor on 10 tasks, three
+attempts each. It passed 18 of 30 against 15 of 30 (exact McNemar
+p = 0.51) for 68% more cost. Persistence rounds account for five of the six
+Coder-only passes, three of them on `mvcc-lsm-compaction`; checks, repair,
+and escalation changed no outcome.
+
 ### 2. Checks rarely catch the failures that matter
 
 Across v2's 49 graded trials, checks ran on 34 but reported a failure on
@@ -83,6 +90,12 @@ v5 took `cargo-flight-dispatch`, which no row has ever solved, from 8
 failing tests of 27 to 2, over seven sessions and about $12.75. It hasn't
 turned a failure into a pass yet. Most persistence rounds change little;
 the stop rules let rounds run that don't move any test.
+
+**Follow-up:** in the [matched targeted test](2026-09-23-matched-controller-targeted.md),
+v8's persistence turned `mvcc-lsm-compaction` from 0 of 3 into 3 of 3,
+where the executor alone stopped after a minute. It also ran on every
+attempt, cost 52% of the arm's Claude usage, and missed the same hidden
+failures as the baseline on `wal-recovery-ordering` and `fin-saccr-rwa`.
 
 ### 6. Jev is almost free; the executor is the whole bill
 
