@@ -1,0 +1,593 @@
+{
+  "schema": "openagents.terminal-bench.escalation-9571.v1",
+  "issue": 9571,
+  "experiments": {
+    "escalate-9571b": {
+      "report": {
+        "schema": "openagents.gym.terminal-bench-experiment.v1",
+        "experiment": "escalate-9571b",
+        "profile": "tb4",
+        "source": "/home/christopherdavid/.openagents/terminal-bench/experiments/escalate-9571b/status.json",
+        "state": "done",
+        "updated_at": "2026-09-24T02:54:15+00:00",
+        "arms": [
+          "coder-one-tunable-v9-escalate",
+          "nop"
+        ],
+        "tasks": [
+          "atrx-vep-crispr",
+          "cargo-flight-dispatch",
+          "ks-solver-cpp",
+          "production-planning",
+          "wal-recovery-ordering",
+          "html-js-filter",
+          "data-anonymization"
+        ],
+        "attempts_per_task_per_arm": 3,
+        "credential_source": "setup-token",
+        "complete": true,
+        "min_graded_attempts_per_task_per_arm": 3,
+        "lost_and_rerun": {
+          "credentials": 0,
+          "infrastructure": 0,
+          "quota": 0
+        },
+        "quota": {
+          "budget_usd": 150.0,
+          "used_usd": 62.382806,
+          "unpriced_sessions": 0,
+          "measure": "Claude Code total_cost_usd over graded and lost trials: a list-price value, not a cash charge"
+        },
+        "arm_results": [
+          {
+            "arm": "coder-one-tunable-v9-escalate",
+            "scheduled": 21,
+            "graded": 21,
+            "passes": 8,
+            "pass_rate": 0.38095238095238093,
+            "wilson_95": [
+              0.20751011368564493,
+              0.5912134622488425
+            ],
+            "ungraded": 0,
+            "not_run": 0,
+            "lost_and_rerun": {
+              "credentials": 0,
+              "infrastructure": 0,
+              "quota": 0
+            },
+            "claude_quota_usd": 62.38280599999999
+          },
+          {
+            "arm": "nop",
+            "scheduled": 21,
+            "graded": 21,
+            "passes": 0,
+            "pass_rate": 0.0,
+            "wilson_95": [
+              0.0,
+              0.154639018924847
+            ],
+            "ungraded": 0,
+            "not_run": 0,
+            "lost_and_rerun": {
+              "credentials": 0,
+              "infrastructure": 0,
+              "quota": 0
+            },
+            "claude_quota_usd": 0.0
+          }
+        ],
+        "tasks_by_arm": [
+          {
+            "task": "atrx-vep-crispr",
+            "cells": [
+              {
+                "arm": "coder-one-tunable-v9-escalate",
+                "passes": 3,
+                "graded": 3
+              },
+              {
+                "arm": "nop",
+                "passes": 0,
+                "graded": 3
+              }
+            ]
+          },
+          {
+            "task": "cargo-flight-dispatch",
+            "cells": [
+              {
+                "arm": "coder-one-tunable-v9-escalate",
+                "passes": 0,
+                "graded": 3
+              },
+              {
+                "arm": "nop",
+                "passes": 0,
+                "graded": 3
+              }
+            ]
+          },
+          {
+            "task": "ks-solver-cpp",
+            "cells": [
+              {
+                "arm": "coder-one-tunable-v9-escalate",
+                "passes": 1,
+                "graded": 3
+              },
+              {
+                "arm": "nop",
+                "passes": 0,
+                "graded": 3
+              }
+            ]
+          },
+          {
+            "task": "production-planning",
+            "cells": [
+              {
+                "arm": "coder-one-tunable-v9-escalate",
+                "passes": 1,
+                "graded": 3
+              },
+              {
+                "arm": "nop",
+                "passes": 0,
+                "graded": 3
+              }
+            ]
+          },
+          {
+            "task": "wal-recovery-ordering",
+            "cells": [
+              {
+                "arm": "coder-one-tunable-v9-escalate",
+                "passes": 0,
+                "graded": 3
+              },
+              {
+                "arm": "nop",
+                "passes": 0,
+                "graded": 3
+              }
+            ]
+          },
+          {
+            "task": "html-js-filter",
+            "cells": [
+              {
+                "arm": "coder-one-tunable-v9-escalate",
+                "passes": 2,
+                "graded": 3
+              },
+              {
+                "arm": "nop",
+                "passes": 0,
+                "graded": 3
+              }
+            ]
+          },
+          {
+            "task": "data-anonymization",
+            "cells": [
+              {
+                "arm": "coder-one-tunable-v9-escalate",
+                "passes": 1,
+                "graded": 3
+              },
+              {
+                "arm": "nop",
+                "passes": 0,
+                "graded": 3
+              }
+            ]
+          }
+        ],
+        "paired": [
+          {
+            "baseline": "coder-one-tunable-v9-escalate",
+            "arm": "nop",
+            "pairs": 21,
+            "both_pass": 0,
+            "baseline_only": 8,
+            "arm_only": 0,
+            "both_fail": 13,
+            "mcnemar_exact_p": 0.0078125,
+            "tasks": 7,
+            "tasks_arm_better": 0,
+            "tasks_baseline_better": 5,
+            "tasks_tied": 2,
+            "sign_test_exact_p": 0.0625
+          }
+        ]
+      },
+      "escalations": {
+        "schema": "openagents.gym.coder-escalations.v1",
+        "attempts": 21,
+        "escalated": 7,
+        "graded": 7,
+        "rescued": 0,
+        "conditional_success": 0.0,
+        "kept_second": {
+          "passed": 0,
+          "failed": 4
+        },
+        "kept_first": {
+          "passed": 2,
+          "failed": 1
+        },
+        "by_trigger": {
+          "check": 3,
+          "self_report": 4
+        },
+        "cost_usd": 11.550195999999998,
+        "cost_unreported": 0,
+        "skipped_after_trigger": [
+          {
+            "task": "terminal-bench/data-anonymization",
+            "why": "the workspace is over 256 MiB or 20,000 files, too large to copy aside"
+          },
+          {
+            "task": "terminal-bench/data-anonymization",
+            "why": "the workspace is over 256 MiB or 20,000 files, too large to copy aside"
+          },
+          {
+            "task": "terminal-bench/data-anonymization",
+            "why": "the workspace is over 256 MiB or 20,000 files, too large to copy aside"
+          }
+        ],
+        "escalations": [
+          {
+            "job": "tb4--coder-one-tunable-v9-escalate--html-js-filter--escalate-9571b-r3",
+            "trial": "html-js-filter__dTauU9w",
+            "task": "terminal-bench/html-js-filter",
+            "arm": "coder-one-tunable-v9-escalate",
+            "reward": 1.0,
+            "fired": [
+              "check"
+            ],
+            "executor": "codex/gpt-6-astra (medium)",
+            "outcome": "kept_first",
+            "cost_usd": 0.689316,
+            "milliseconds": 271598
+          },
+          {
+            "job": "tb4--coder-one-tunable-v9-escalate--production-planning--escalate-9571b-r3",
+            "trial": "production-planning__LQFfEx5",
+            "task": "terminal-bench/production-planning",
+            "arm": "coder-one-tunable-v9-escalate",
+            "reward": 0.0,
+            "fired": [
+              "self_report"
+            ],
+            "executor": "codex/gpt-6-astra (xhigh)",
+            "outcome": "kept_second",
+            "cost_usd": 2.351012,
+            "milliseconds": 677198
+          },
+          {
+            "job": "tb4--coder-one-tunable-v9-escalate--cargo-flight-dispatch--escalate-9571b-r3",
+            "trial": "cargo-flight-dispatch__osWtVpd",
+            "task": "terminal-bench/cargo-flight-dispatch",
+            "arm": "coder-one-tunable-v9-escalate",
+            "reward": 0.0,
+            "fired": [
+              "self_report"
+            ],
+            "executor": "codex/gpt-6-astra (xhigh)",
+            "outcome": "kept_second",
+            "cost_usd": 1.736826,
+            "milliseconds": 698699
+          },
+          {
+            "job": "tb4--coder-one-tunable-v9-escalate--html-js-filter--escalate-9571b-r2",
+            "trial": "html-js-filter__yzcGZLh",
+            "task": "terminal-bench/html-js-filter",
+            "arm": "coder-one-tunable-v9-escalate",
+            "reward": 0.0,
+            "fired": [
+              "check"
+            ],
+            "executor": "codex/gpt-6-astra (medium)",
+            "outcome": "kept_first",
+            "cost_usd": 0.737272,
+            "milliseconds": 289876
+          },
+          {
+            "job": "tb4--coder-one-tunable-v9-escalate--cargo-flight-dispatch--escalate-9571b-r2",
+            "trial": "cargo-flight-dispatch__7xHzsYu",
+            "task": "terminal-bench/cargo-flight-dispatch",
+            "arm": "coder-one-tunable-v9-escalate",
+            "reward": 0.0,
+            "fired": [
+              "self_report"
+            ],
+            "executor": "codex/gpt-6-astra (xhigh)",
+            "outcome": "kept_second",
+            "cost_usd": 1.75013,
+            "milliseconds": 690677
+          },
+          {
+            "job": "tb4--coder-one-tunable-v9-escalate--html-js-filter--escalate-9571b-r1",
+            "trial": "html-js-filter__oCNdp3f",
+            "task": "terminal-bench/html-js-filter",
+            "arm": "coder-one-tunable-v9-escalate",
+            "reward": 1.0,
+            "fired": [
+              "check"
+            ],
+            "executor": "codex/gpt-6-astra (medium)",
+            "outcome": "kept_first",
+            "cost_usd": 1.433732,
+            "milliseconds": 552722
+          },
+          {
+            "job": "tb4--coder-one-tunable-v9-escalate--production-planning--escalate-9571b-r1",
+            "trial": "production-planning__XpeUFiB",
+            "task": "terminal-bench/production-planning",
+            "arm": "coder-one-tunable-v9-escalate",
+            "reward": 0.0,
+            "fired": [
+              "self_report"
+            ],
+            "executor": "codex/gpt-6-astra (xhigh)",
+            "outcome": "kept_second",
+            "cost_usd": 2.851908,
+            "milliseconds": 731950
+          }
+        ]
+      }
+    },
+    "escalate-9571c": {
+      "report": {
+        "schema": "openagents.gym.terminal-bench-experiment.v1",
+        "experiment": "escalate-9571c",
+        "profile": "tb4",
+        "source": "/home/christopherdavid/.openagents/terminal-bench/experiments/escalate-9571c/status.json",
+        "state": "stopping",
+        "updated_at": "2026-09-24T06:27:04+00:00",
+        "arms": [
+          "coder-one-tunable-v9-escalate",
+          "nop"
+        ],
+        "tasks": [
+          "production-planning",
+          "cargo-flight-dispatch",
+          "html-js-filter",
+          "music-harmony"
+        ],
+        "attempts_per_task_per_arm": 3,
+        "credential_source": "setup-token",
+        "complete": false,
+        "min_graded_attempts_per_task_per_arm": 2,
+        "lost_and_rerun": {
+          "credentials": 0,
+          "infrastructure": 0,
+          "quota": 0
+        },
+        "quota": {
+          "budget_usd": 150.0,
+          "used_usd": 31.098012,
+          "unpriced_sessions": 0,
+          "measure": "Claude Code total_cost_usd over graded and lost trials: a list-price value, not a cash charge"
+        },
+        "arm_results": [
+          {
+            "arm": "coder-one-tunable-v9-escalate",
+            "scheduled": 12,
+            "graded": 10,
+            "passes": 3,
+            "pass_rate": 0.3,
+            "wilson_95": [
+              0.10779126740630099,
+              0.6032218525388546
+            ],
+            "ungraded": 0,
+            "not_run": 2,
+            "lost_and_rerun": {
+              "credentials": 0,
+              "infrastructure": 0,
+              "quota": 0
+            },
+            "claude_quota_usd": 31.098012
+          },
+          {
+            "arm": "nop",
+            "scheduled": 12,
+            "graded": 10,
+            "passes": 0,
+            "pass_rate": 0.0,
+            "wilson_95": [
+              0.0,
+              0.2775327998628892
+            ],
+            "ungraded": 0,
+            "not_run": 2,
+            "lost_and_rerun": {
+              "credentials": 0,
+              "infrastructure": 0,
+              "quota": 0
+            },
+            "claude_quota_usd": 0.0
+          }
+        ],
+        "tasks_by_arm": [
+          {
+            "task": "production-planning",
+            "cells": [
+              {
+                "arm": "coder-one-tunable-v9-escalate",
+                "passes": 2,
+                "graded": 3
+              },
+              {
+                "arm": "nop",
+                "passes": 0,
+                "graded": 3
+              }
+            ]
+          },
+          {
+            "task": "cargo-flight-dispatch",
+            "cells": [
+              {
+                "arm": "coder-one-tunable-v9-escalate",
+                "passes": 0,
+                "graded": 3
+              },
+              {
+                "arm": "nop",
+                "passes": 0,
+                "graded": 3
+              }
+            ]
+          },
+          {
+            "task": "html-js-filter",
+            "cells": [
+              {
+                "arm": "coder-one-tunable-v9-escalate",
+                "passes": 1,
+                "graded": 2
+              },
+              {
+                "arm": "nop",
+                "passes": 0,
+                "graded": 2
+              }
+            ]
+          },
+          {
+            "task": "music-harmony",
+            "cells": [
+              {
+                "arm": "coder-one-tunable-v9-escalate",
+                "passes": 0,
+                "graded": 2
+              },
+              {
+                "arm": "nop",
+                "passes": 0,
+                "graded": 2
+              }
+            ]
+          }
+        ],
+        "paired": [
+          {
+            "baseline": "coder-one-tunable-v9-escalate",
+            "arm": "nop",
+            "pairs": 10,
+            "both_pass": 0,
+            "baseline_only": 3,
+            "arm_only": 0,
+            "both_fail": 7,
+            "mcnemar_exact_p": 0.25,
+            "tasks": 4,
+            "tasks_arm_better": 0,
+            "tasks_baseline_better": 2,
+            "tasks_tied": 2,
+            "sign_test_exact_p": 0.5
+          }
+        ]
+      },
+      "escalations": {
+        "schema": "openagents.gym.coder-escalations.v1",
+        "attempts": 10,
+        "escalated": 5,
+        "graded": 5,
+        "rescued": 0,
+        "conditional_success": 0.0,
+        "kept_second": {
+          "passed": 0,
+          "failed": 4
+        },
+        "kept_first": {
+          "passed": 0,
+          "failed": 1
+        },
+        "by_trigger": {
+          "check": 1,
+          "self_report": 4
+        },
+        "cost_usd": 8.852748,
+        "cost_unreported": 0,
+        "skipped_after_trigger": [],
+        "escalations": [
+          {
+            "job": "tb4--coder-one-tunable-v9-escalate--cargo-flight-dispatch--escalate-9571c-r3",
+            "trial": "cargo-flight-dispatch__6pGdAdj",
+            "task": "terminal-bench/cargo-flight-dispatch",
+            "arm": "coder-one-tunable-v9-escalate",
+            "reward": 0.0,
+            "fired": [
+              "self_report"
+            ],
+            "executor": "codex/gpt-6-astra (xhigh)",
+            "outcome": "kept_second",
+            "cost_usd": 1.711484,
+            "milliseconds": 718177
+          },
+          {
+            "job": "tb4--coder-one-tunable-v9-escalate--production-planning--escalate-9571c-r3",
+            "trial": "production-planning__9JYC3c8",
+            "task": "terminal-bench/production-planning",
+            "arm": "coder-one-tunable-v9-escalate",
+            "reward": 0.0,
+            "fired": [
+              "self_report"
+            ],
+            "executor": "codex/gpt-6-astra (xhigh)",
+            "outcome": "kept_second",
+            "cost_usd": 3.087324,
+            "milliseconds": 817607
+          },
+          {
+            "job": "tb4--coder-one-tunable-v9-escalate--cargo-flight-dispatch--escalate-9571c-r2",
+            "trial": "cargo-flight-dispatch__QtTUDpN",
+            "task": "terminal-bench/cargo-flight-dispatch",
+            "arm": "coder-one-tunable-v9-escalate",
+            "reward": 0.0,
+            "fired": [
+              "self_report"
+            ],
+            "executor": "codex/gpt-6-astra (xhigh)",
+            "outcome": "kept_second",
+            "cost_usd": 1.767404,
+            "milliseconds": 635855
+          },
+          {
+            "job": "tb4--coder-one-tunable-v9-escalate--html-js-filter--escalate-9571c-r1",
+            "trial": "html-js-filter__dmYo4Ea",
+            "task": "terminal-bench/html-js-filter",
+            "arm": "coder-one-tunable-v9-escalate",
+            "reward": 0.0,
+            "fired": [
+              "check"
+            ],
+            "executor": "codex/gpt-6-astra (medium)",
+            "outcome": "kept_first",
+            "cost_usd": 0.727402,
+            "milliseconds": 216528
+          },
+          {
+            "job": "tb4--coder-one-tunable-v9-escalate--cargo-flight-dispatch--escalate-9571c-r1",
+            "trial": "cargo-flight-dispatch__R9rUoUQ",
+            "task": "terminal-bench/cargo-flight-dispatch",
+            "arm": "coder-one-tunable-v9-escalate",
+            "reward": 0.0,
+            "fired": [
+              "self_report"
+            ],
+            "executor": "codex/gpt-6-astra (xhigh)",
+            "outcome": "kept_second",
+            "cost_usd": 1.559134,
+            "milliseconds": 655699
+          }
+        ]
+      }
+    }
+  }
+}
