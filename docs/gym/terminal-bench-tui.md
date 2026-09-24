@@ -356,7 +356,12 @@ from elsewhere and `--no-runs` omits them. The
 Terminal-Bench attempts, with each run's task, executor, outcome, and grade.
 Below the list, the selected run shows its session-control actions, its
 executor events by kind, its requirement coverage when checks ran, and its
-invocation timeline.
+invocation timeline. Mini-tasks are short, local checks of specific Coder One
+behaviors, graded against each task's own end-state check after the episode.
+The scripted executor takes about a second and uses no model; real executors
+take longer and can incur their normal model cost. Treat these as a fast
+screen before a full Terminal-Bench 4.0 (TB4) task, not as TB4 tasks or
+benchmark results.
 `--minitasks-dir PATH` reads runs from elsewhere and `--no-minitasks` omits
 them. The [mini-task guide](../coder/guides/coder-one-minitasks.md) records
 runs.

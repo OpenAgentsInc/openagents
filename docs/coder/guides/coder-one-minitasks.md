@@ -6,6 +6,15 @@ in about a second and with no model or container. Run the same task with
 Claude Code or Codex to see whether a real executor uses what the
 components give it.
 
+The grader checks the task's concrete end state after the episode, without
+showing its tests to the executor. A pass means that check succeeded; a
+failure or `unavailable` is not a benchmark score. Scripted runs cost no
+model inference and take about a second. Real-executor runs take longer and
+may incur the executor/model's normal cost. Mini-tasks are a fast, local
+screen for specific behaviors before spending time on a full
+Terminal-Bench 4.0 (TB4) task. They are not TB4 tasks, and their grades do
+not predict or count toward TB4 benchmark results.
+
 This is rung 2 and rung 3 of the ladder in
 [Coder as a tunable system](../../optimization/coder-components.md#test-each-component-in-isolation):
 components alone come first, in the
