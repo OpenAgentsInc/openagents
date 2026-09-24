@@ -314,6 +314,11 @@ pub fn lines(runs: &[Run], errors: &[String], selected: Option<usize>) -> Vec<St
             "Coder One mini-task runs · {} runs · local episodes with their own graders, not Terminal-Bench attempts",
             runs.len()
         ),
+        "Fast local screen: graders check invariants after each episode.".to_owned(),
+        "Checks: severity-field counts, typed terminal input, completed cleanup,".to_owned(),
+        "and a recovered clean commit. Scripted run: about 1 second, $0 model cost.".to_owned(),
+        "Not a Terminal-Bench 4.0 result. Real-executor figures and details:".to_owned(),
+        "docs/coder/guides/coder-one-minitasks.md.".to_owned(),
         HEADER.to_owned(),
     ];
     if runs.is_empty() {
@@ -489,6 +494,10 @@ pub(crate) mod tests {
         assert!(run.timeline.as_ref().unwrap().complete);
         let text = lines(&runs, &errors, Some(0)).join("\n");
         assert!(text.contains("not Terminal-Bench attempts"), "{text}");
+        assert!(text.contains("graders check invariants after each episode"), "{text}");
+        assert!(text.contains("severity-field counts, typed terminal input, completed cleanup,"), "{text}");
+        assert!(text.contains("and a recovered clean commit. Scripted run: about 1 second, $0 model cost"), "{text}");
+        assert!(text.contains("Not a Terminal-Bench 4.0 result"), "{text}");
         assert!(text.contains("Grade: failed"), "{text}");
         assert!(text.contains("Session control: start done"), "{text}");
         assert!(text.contains("Episode timeline"), "{text}");

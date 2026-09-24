@@ -12,6 +12,18 @@ components alone come first, in the
 [component guide](coder-one-components.md), and a Terminal-Bench trial comes
 after.
 
+Mini-tasks are small, local screens of Coder One behavior, not benchmark
+results. Their own graders run after the episode and judge the task's concrete
+invariants. A pass does not, by itself, say anything about Terminal-Bench 4.0.
+They are useful for fast iteration before spending time on a full
+Terminal-Bench 4.0 run. With the scripted executor, a run takes about a second
+and costs $0 in model usage; this is the local scripted path, not a
+real-executor estimate. The measured real-executor results from September 24,
+2026, report nine of twelve mini-tasks passed in the Microluna run. The report
+also gives per-run time and cost
+([report](../../terminal-bench/2026-09-24-microluna.md)). Only Terminal-Bench
+4.0 tasks and their benchmark graders produce Terminal-Bench 4.0 results.
+
 ## The mini-tasks
 
 Each task covers one failure family from the v3 Luna trials, or a recovery:

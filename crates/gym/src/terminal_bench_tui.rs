@@ -697,7 +697,7 @@ impl App {
             | View::Router
             | View::Live
             | View::Study => Some(self.cursor()),
-            View::MiniTasks => (!self.minitasks.0.is_empty()).then(|| 2 + self.cursor()),
+            View::MiniTasks => (!self.minitasks.0.is_empty()).then(|| 6 + self.cursor()),
             View::Pulse => Some(self.cursor()),
         }
     }
@@ -1376,6 +1376,8 @@ mod tests {
         app.open(View::MiniTasks);
         let text = app.to_text(150, 40);
         assert!(text.contains("mini-task runs"), "{text}");
+        assert_eq!(app.selected_line(), Some(6));
+        assert_eq!(app.lines()[app.selected_line().unwrap()], crate::coder_minitasks::HEADER);
         assert!(text.contains("log-severity"), "{text}");
         assert!(text.contains("Grade: failed"), "{text}");
         assert!(text.contains("Episode timeline"), "{text}");
