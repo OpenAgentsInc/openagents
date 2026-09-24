@@ -232,12 +232,129 @@ Two sessions on 2026-09-24, `gpt-6-luna`:
   write a build directory outside the workspace; the model searched the
   source instead and said so in its answer.
 
+## Microluna in Coder One
+
+Coder One runs Microluna in its own process, as an executor beside
+Claude Code and Codex (`crates/coder-one/src/micro.rs`). `coder-one`
+depends on `microluna`, never the reverse. A policy selects it with
+`executor.agent: "microluna"`. The reference manifest is
+[`microluna-v1.json`](../../../crates/coder-one/policies/microluna-v1.json):
+`tunable-luna-pack-solo` with Microluna as the executor and no handoff,
+so nothing escalates to Opus.
+
+`executor.microluna` sets the mode and the bounds:
+
+- **`single`** runs one session on the briefing, as a CLI would.
+- **`requirements`** runs the mini-handoff loop, and is the default:
+  1. The requirement map Jev extracted is split into at most
+     `max_groups` groups of consecutive requirements.
+  2. Each group gets short sessions. Before each one, the host rebuilds
+     the input from scratch: the task first, so every session of the task
+     shares the cached prefix, then the group's requirements and only the
+     evidence the coverage packer says informs them, then the current
+     state. The state lists earlier sessions' reports, the workspace's
+     changes, and what the checks said last.
+  3. After each session, code runs `verify.checks` on the workspace and
+     asks for the combined verdict (`checks::verdict`, issue #9584) over
+     the session's report. A Jev Choice then picks the next move: `next`,
+     `retry`, `stuck`, or `done`.
+  4. Code keeps the last word. A check that contradicts the group turns a
+     move past it into a retry. A verdict of `fail` keeps the loop from
+     ending, by `done` or by moving past the last group. A group gets at
+     most `max_attempts` sessions, and the loop stops at `max_sessions`,
+     at `spend_usd`, or when the dispatch's time runs out.
+
+In a Terminal-Bench trial the task container is the boundary, so
+commands run directly (`Isolation::TaskContainer`). On this machine, as
+in a mini-task, each command runs inside a `coder-boundary` boundary that
+lets it write only the task's directory.
+
+Each session is a `microluna.session` invocation in the episode log. Its
+tool calls and replies are recorded as normalized executor events, the
+shape the CLI adapters record, so the Gym reads a Microluna session the
+way it reads a Codex one. Each move between sessions is a
+`microluna.handoff` Jev decision and a `handoff` step. Microluna's own
+steps, with exact usage and cost per request, go to
+`artifacts/microluna-<dispatch>-<session>.atif.jsonl`, and the loop's
+record, with every session and every move, goes to
+`artifacts/microluna-<dispatch>.json`. The delegate call reports the
+dispatch's list-price cost, so composition, `usage.json`, and the Gym's
+cost views price it like any other dispatch.
+
+## How to watch Microluna
+
+Build the two binaries once, with a Cargo target directory of your own:
+
+```sh
+export CARGO_TARGET_DIR=~/.cache/openagents/target-microluna
+cargo build -p coder-one -p gym --bin coder-one --bin gym
+cargo build -p gym --features tui --bin gym-terminal
+bin=$CARGO_TARGET_DIR/debug
+```
+
+**Run a mini-task and watch it live.** Each tool call prints as it
+happens, then a line per session, per check, and per move:
+
+```sh
+$bin/coder-one minitask run log-severity --executor microluna --jev live
+```
+
+`--microluna single` runs one session instead of the loop. The run is
+recorded under `~/.openagents/coder-one/minitasks/`, and the last line
+names its directory.
+
+**See a finished mini-task in the Gym**, with every session's commands and
+edits, each check, and each hand-off in order:
+
+```sh
+$bin/gym coder minitasks                  # every run, newest first
+$bin/gym coder minitasks --run latest     # or --run <run directory name>
+```
+
+**Run a Terminal-Bench trial on the Codex-only arm.** From
+`bench/terminal-bench`, with the door and Jev keys exported as the
+[delegate runbook](../../terminal-bench/coder-one-delegate-runbook.md)
+shows, `CODEX_FORCE_AUTH_JSON=1`, and a Coder One artifact built by
+`./scripts/build-coder-one-linux.sh`:
+
+```sh
+uv run tbench run --profile tb4 --agent coder-one-microluna-v1 \
+  --auth-mode auth-json --task uefi-bootkit \
+  --job-name tb4--microluna-v1--uefi-bootkit--r1 \
+  --agent-kwarg artifact_path="$artifact_path" \
+  --agent-kwarg artifact_sha256="$artifact_sha256"
+```
+
+**Follow the trial while it runs**, or read it after. The transcript shows
+each session as a takeover, its commands, and each hand-off:
+
+```sh
+$bin/gym runs show tb4--microluna-v1--uefi-bootkit--r1 --transcript
+```
+
+**Replay it head to head** against Fable 5.1's public attempts or, with
+`o`, against a local Luna-in-Codex attempt on the same task
+([head to head](../../gym/head-to-head.md)):
+
+```sh
+$bin/gym-terminal --terminal-bench --head-to-head
+```
+
+**Read the raw record** of a run directory `$run` (a mini-task run, or a
+trial's `agent/episode`):
+
+```sh
+jq -c '(.sessions[] | {number, focus, status, turns, cost_usd}), (.moves[] | {after_session, move, overridden})' \
+  "$run"/artifacts/microluna-1.json
+jq -c '.step | select(.call) | .call.name' "$run"/artifacts/microluna-1-1.atif.jsonl
+```
+
 ## Next steps
 
 1. Refresh the login the way Codex does, with a file lock and a re-read
    before writing, only once the refusal above shows up in practice.
-2. A `microluna` executor profile in `crates/coder-one` beside
-   `claude-code` and `codex`, behind a policy option.
-3. Several sessions per task: the brief's state rebuilt from Jev's
-   judgments and the checks between sessions.
-4. The matched comparison against Luna-in-Codex on the pivot's TB4 subset.
+2. Make the checks catch what the graders catch. The first mini-task
+   comparison lost `log-severity` in both arms to CRLF line endings that
+   no check looks for.
+3. Measure the loop on more of the pivot's TB4 subset, one change at a
+   time, against the #9583 baseline.
