@@ -1,0 +1,166 @@
+{
+  "repeat": 2,
+  "setting": "auto",
+  "request": {
+    "model": "gpt-6-luna",
+    "instructions": "You review code carefully and answer concisely.",
+    "input": [
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "input_text",
+            "text": "Review this cache implementation against the contract below. Identify the\ncorrectness defects and propose a minimal correction plus three useful tests.\nReturn a concise review, not a rewritten program.\nContract: get returns a fresh item or None; reading does not extend its lifetime.\nput replaces the value and expiration. The cache has capacity 2 and evicts the\nleast recently used live entry only when a new key exceeds capacity. The clock\nis monotonic and an entry expires exactly at expires_at.\nCode:\nclass Cache:\n    def __init__(self): self.items = {}\n    def put(self, key, value, now, ttl):\n        if len(self.items) >= 2:\n            del self.items[next(iter(self.items))]\n        self.items[key] = [value, now + ttl]\n    def get(self, key, now):\n        if key not in self.items: return None\n        value, expires_at = self.items[key]\n        if now > expires_at: return None\n        self.items[key][1] = now + 10\n        return value\n"
+          }
+        ]
+      }
+    ],
+    "tools": [],
+    "tool_choice": "auto",
+    "parallel_tool_calls": false,
+    "store": false,
+    "stream": true,
+    "include": [
+      "reasoning.encrypted_content"
+    ],
+    "prompt_cache_key": "4830fff9-ad5b-45e7-b7a1-da684ba82a71",
+    "reasoning": {
+      "effort": "high",
+      "summary": "auto"
+    }
+  },
+  "started_at": "2026-09-24T22:21:35.574359+00:00",
+  "response": {
+    "id": "resp_00b584c1c56d5b1b016ab5a270067487d190b2d7e0c0fc9249",
+    "object": "response",
+    "created_at": 1790288496,
+    "status": "completed",
+    "access_programs": null,
+    "background": false,
+    "completed_at": 1790288516,
+    "error": null,
+    "frequency_penalty": 0.0,
+    "incomplete_details": null,
+    "instructions": "You review code carefully and answer concisely.",
+    "max_output_tokens": null,
+    "max_tool_calls": null,
+    "model": "gpt-6-luna",
+    "moderation": null,
+    "output": [],
+    "parallel_tool_calls": false,
+    "presence_penalty": 0.0,
+    "previous_response_id": null,
+    "prompt_cache_key": "4830fff9-ad5b-45e7-b7a1-da684ba82a71",
+    "prompt_cache_retention": "24h",
+    "reasoning": {
+      "context": "all_turns",
+      "effort": "high",
+      "mode": "standard",
+      "summary": "detailed"
+    },
+    "safety_identifier": "user-t8MawlRJ1slGAd5qS8aK5YOI",
+    "service_tier": "default",
+    "store": false,
+    "temperature": 1.0,
+    "text": {
+      "format": {
+        "type": "text"
+      },
+      "verbosity": "medium"
+    },
+    "tool_choice": "auto",
+    "tool_usage": {
+      "image_gen": {
+        "input_tokens": 0,
+        "input_tokens_details": {
+          "image_tokens": 0,
+          "text_tokens": 0
+        },
+        "output_tokens": 0,
+        "output_tokens_details": {
+          "image_tokens": 0,
+          "text_tokens": 0
+        },
+        "total_tokens": 0
+      },
+      "web_search": {
+        "num_requests": 0
+      }
+    },
+    "tools": [],
+    "top_logprobs": 0,
+    "top_p": 0.98,
+    "truncation": "disabled",
+    "usage": {
+      "attribution": {
+        "items": {
+          "msg_00b584c1c56d5b1b016ab5a2700f3487d1893633fbe6d7f7e8": {
+            "cache_write_tokens": 0,
+            "cached_tokens": 0,
+            "content": [
+              {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0,
+                "input_tokens": 220,
+                "output_tokens": 0
+              }
+            ],
+            "input_tokens": 220,
+            "output_tokens": 0
+          },
+          "rs_00b584c1c56d5b1b016ab5a270a7bc87d18d4e61459a9659a5": {
+            "cache_write_tokens": 0,
+            "cached_tokens": 0,
+            "input_tokens": 2,
+            "output_tokens": 516
+          },
+          "rs_00b584c1c56d5b1b016ab5a27b5dac87d1b928f9d4d27c317b": {
+            "cache_write_tokens": 0,
+            "cached_tokens": 0,
+            "input_tokens": 0,
+            "output_tokens": 225
+          },
+          "msg_00b584c1c56d5b1b016ab5a27f517487d1ab185533b83c45cf": {
+            "cache_write_tokens": 0,
+            "cached_tokens": 0,
+            "content": [
+              {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0,
+                "input_tokens": 0,
+                "output_tokens": 353
+              }
+            ],
+            "input_tokens": 0,
+            "output_tokens": 353
+          }
+        },
+        "request_fields": {
+          "instructions": {
+            "cache_write_tokens": 0,
+            "cached_tokens": 0,
+            "input_tokens": 14,
+            "output_tokens": 0
+          }
+        }
+      },
+      "input_tokens": 236,
+      "input_tokens_details": {
+        "cache_write_tokens": 0,
+        "cached_tokens": 0
+      },
+      "output_tokens": 1094,
+      "output_tokens_details": {
+        "reasoning_tokens": 741
+      },
+      "total_tokens": 1330
+    },
+    "user": null,
+    "metadata": {}
+  },
+  "http_status": 200,
+  "seconds": 21.96786679601064,
+  "summary_chars": 0,
+  "readable_summary": "",
+  "cost_usd": 0.00046120000000000004
+}

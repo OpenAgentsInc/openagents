@@ -1,0 +1,190 @@
+{
+  "repeat": 1,
+  "setting": "auto",
+  "request": {
+    "model": "gpt-6-luna",
+    "instructions": "You review code carefully and answer concisely.",
+    "input": [
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "input_text",
+            "text": "Review this cache implementation against the contract below. Identify the\ncorrectness defects and propose a minimal correction plus three useful tests.\nReturn a concise review, not a rewritten program.\nContract: get returns a fresh item or None; reading does not extend its lifetime.\nput replaces the value and expiration. The cache has capacity 2 and evicts the\nleast recently used live entry only when a new key exceeds capacity. The clock\nis monotonic and an entry expires exactly at expires_at.\nCode:\nclass Cache:\n    def __init__(self): self.items = {}\n    def put(self, key, value, now, ttl):\n        if len(self.items) >= 2:\n            del self.items[next(iter(self.items))]\n        self.items[key] = [value, now + ttl]\n    def get(self, key, now):\n        if key not in self.items: return None\n        value, expires_at = self.items[key]\n        if now > expires_at: return None\n        self.items[key][1] = now + 10\n        return value\n"
+          }
+        ]
+      }
+    ],
+    "tools": [],
+    "tool_choice": "auto",
+    "parallel_tool_calls": false,
+    "store": false,
+    "stream": true,
+    "include": [
+      "reasoning.encrypted_content"
+    ],
+    "prompt_cache_key": "c8bc95e6-588b-44f3-bfbc-804121ec345d",
+    "reasoning": {
+      "summary": "auto"
+    }
+  },
+  "started_at": "2026-09-24T22:34:45.933472+00:00",
+  "response": {
+    "id": "resp_0532bc7e2b5c0047016ab5a587696c87d19c082874059a5a90",
+    "object": "response",
+    "created_at": 1790289287,
+    "status": "completed",
+    "access_programs": null,
+    "background": false,
+    "completed_at": 1790289305,
+    "error": null,
+    "frequency_penalty": 0.0,
+    "incomplete_details": null,
+    "instructions": "You review code carefully and answer concisely.",
+    "max_output_tokens": null,
+    "max_tool_calls": null,
+    "model": "gpt-6-luna",
+    "moderation": null,
+    "output": [
+      {
+        "id": "rs_0532bc7e2b5c0047016ab5a588181c87d199d0877cb9b18e82",
+        "type": "reasoning",
+        "content": [],
+        "summary": [
+          {
+            "type": "summary_text",
+            "text": "**Checking cache eviction rules**"
+          },
+          {
+            "type": "summary_text",
+            "text": "**Clarifying freshness rules**"
+          }
+        ]
+      },
+      {
+        "id": "msg_0532bc7e2b5c0047016ab5a591603c87d1aa3175b0cc06793a",
+        "type": "message",
+        "status": "completed",
+        "content": [
+          {
+            "type": "output_text",
+            "annotations": [],
+            "logprobs": [],
+            "text": "**Defects**\n- `get` extends expiration by setting it to `now + 10`; reads must not change lifetime.\n- Expiration is checked with `now > expires_at`, so an entry remains valid at its exact expiration time. Use `now >= expires_at`.\n- `put` evicts whenever the cache is full, even when replacing an existing key. Replacement must update the value and expiration without eviction.\n- Eviction uses insertion order, not least-recently-used order. Successful reads should update recency, but not expiration.\n- Expired entries are not removed or excluded from eviction decisions. Only live entries should count toward capacity or be eviction candidates.\n\n**Minimal correction**\nTrack recency separately (or reorder entries on successful `get`), remove expired entries when encountered and before capacity checks, and evict only when inserting a new key would exceed the two-live-entry capacity. On replacement, update the value and `expires_at` without evicting another key.\n\n**Useful tests**\n1. An entry is valid just before `expires_at`, but `get` returns `None` at `expires_at`.\n2. A read leaves the original expiration unchanged, even when made shortly before expiry.\n3. Fill the cache, read the older entry to make it most recently used, then insert a new key; the other live entry is evicted. Also verify replacing an existing key does not evict either entry."
+          }
+        ],
+        "phase": "final_answer",
+        "role": "assistant"
+      }
+    ],
+    "parallel_tool_calls": false,
+    "presence_penalty": 0.0,
+    "previous_response_id": null,
+    "prompt_cache_key": "c8bc95e6-588b-44f3-bfbc-804121ec345d",
+    "prompt_cache_retention": "24h",
+    "reasoning": {
+      "context": "all_turns",
+      "effort": "medium",
+      "mode": "standard",
+      "summary": "detailed"
+    },
+    "safety_identifier": "user-t8MawlRJ1slGAd5qS8aK5YOI",
+    "service_tier": "default",
+    "store": false,
+    "temperature": 1.0,
+    "text": {
+      "format": {
+        "type": "text"
+      },
+      "verbosity": "medium"
+    },
+    "tool_choice": "auto",
+    "tool_usage": {
+      "image_gen": {
+        "input_tokens": 0,
+        "input_tokens_details": {
+          "image_tokens": 0,
+          "text_tokens": 0
+        },
+        "output_tokens": 0,
+        "output_tokens_details": {
+          "image_tokens": 0,
+          "text_tokens": 0
+        },
+        "total_tokens": 0
+      },
+      "web_search": {
+        "num_requests": 0
+      }
+    },
+    "tools": [],
+    "top_logprobs": 0,
+    "top_p": 0.98,
+    "truncation": "disabled",
+    "usage": {
+      "attribution": {
+        "items": {
+          "msg_0532bc7e2b5c0047016ab5a587742887d195145f8fbad41b00": {
+            "cache_write_tokens": 0,
+            "cached_tokens": 0,
+            "content": [
+              {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0,
+                "input_tokens": 220,
+                "output_tokens": 0
+              }
+            ],
+            "input_tokens": 220,
+            "output_tokens": 0
+          },
+          "rs_0532bc7e2b5c0047016ab5a588181c87d199d0877cb9b18e82": {
+            "cache_write_tokens": 0,
+            "cached_tokens": 0,
+            "input_tokens": 2,
+            "output_tokens": 209
+          },
+          "msg_0532bc7e2b5c0047016ab5a591603c87d1aa3175b0cc06793a": {
+            "cache_write_tokens": 0,
+            "cached_tokens": 0,
+            "content": [
+              {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0,
+                "input_tokens": 0,
+                "output_tokens": 295
+              }
+            ],
+            "input_tokens": 0,
+            "output_tokens": 295
+          }
+        },
+        "request_fields": {
+          "instructions": {
+            "cache_write_tokens": 0,
+            "cached_tokens": 0,
+            "input_tokens": 14,
+            "output_tokens": 0
+          }
+        }
+      },
+      "input_tokens": 236,
+      "input_tokens_details": {
+        "cache_write_tokens": 0,
+        "cached_tokens": 0
+      },
+      "output_tokens": 504,
+      "output_tokens_details": {
+        "reasoning_tokens": 209
+      },
+      "total_tokens": 740
+    },
+    "user": null,
+    "metadata": {}
+  },
+  "http_status": 200,
+  "seconds": 19.775954735989217,
+  "summary_chars": 63,
+  "readable_summary": "**Checking cache eviction rules**\n**Clarifying freshness rules**",
+  "cost_usd": 0.00027560000000000003
+}

@@ -1,0 +1,31 @@
+{
+  "schema": "openagents.microluna.summary-probe.v1",
+  "source_sha256": "f9782c7bf54911555144bd820d0fb7a1ac52bc8aa616b30ec4c927da2d2cbd56",
+  "pricing": "USD per million: input 0.10, cached 0.01, output 0.50; repository Luna usage valuation, not an invoice",
+  "records": [
+    {
+      "repeat": 1,
+      "setting": "auto",
+      "http_status": 200,
+      "seconds": 19.775954735989217,
+      "summary_chars": 63,
+      "cost_usd": 0.00027560000000000003
+    },
+    {
+      "repeat": 1,
+      "setting": "concise",
+      "http_status": 200,
+      "seconds": 21.235104619991034,
+      "summary_chars": 102,
+      "cost_usd": 0.00033160000000000004
+    },
+    {
+      "repeat": 1,
+      "setting": "detailed",
+      "http_status": 200,
+      "seconds": 14.210549009032547,
+      "summary_chars": 62,
+      "cost_usd": 0.0002811
+    }
+  ]
+}

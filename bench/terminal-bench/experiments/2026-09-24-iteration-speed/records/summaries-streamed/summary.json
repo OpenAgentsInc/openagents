@@ -1,0 +1,79 @@
+{
+  "schema": "openagents.microluna.summary-probe.v1",
+  "source_sha256": "643d68bd3d40a6e7f7bb857cbde1e7b437a267dcf170100ddd7f66d4e817cf77",
+  "pricing": "USD per million: input 0.10, cached 0.01, output 0.50; repository Luna usage valuation, not an invoice",
+  "records": [
+    {
+      "repeat": 1,
+      "setting": "auto",
+      "http_status": 200,
+      "seconds": 22.325981658999808,
+      "summary_chars": 142,
+      "cost_usd": 0.0005481
+    },
+    {
+      "repeat": 1,
+      "setting": "concise",
+      "http_status": 200,
+      "seconds": 42.42811892501777,
+      "summary_chars": 492,
+      "cost_usd": 0.0007371
+    },
+    {
+      "repeat": 1,
+      "setting": "detailed",
+      "http_status": 200,
+      "seconds": 30.98850128299091,
+      "summary_chars": 255,
+      "cost_usd": 0.0008041
+    },
+    {
+      "repeat": 2,
+      "setting": "detailed",
+      "http_status": 200,
+      "seconds": 63.422929183987435,
+      "summary_chars": 110,
+      "cost_usd": 0.0004816
+    },
+    {
+      "repeat": 2,
+      "setting": "auto",
+      "http_status": 200,
+      "seconds": 28.143833775015082,
+      "summary_chars": 183,
+      "cost_usd": 0.0006551
+    },
+    {
+      "repeat": 2,
+      "setting": "concise",
+      "http_status": 200,
+      "seconds": 19.421047448995523,
+      "summary_chars": 72,
+      "cost_usd": 0.00045010000000000004
+    },
+    {
+      "repeat": 3,
+      "setting": "concise",
+      "http_status": 200,
+      "seconds": 31.93652678199578,
+      "summary_chars": 172,
+      "cost_usd": 0.0006941
+    },
+    {
+      "repeat": 3,
+      "setting": "detailed",
+      "http_status": 200,
+      "seconds": 69.08183472102974,
+      "summary_chars": 157,
+      "cost_usd": 0.0006351
+    },
+    {
+      "repeat": 3,
+      "setting": "auto",
+      "http_status": 200,
+      "seconds": 40.562041173980106,
+      "summary_chars": 177,
+      "cost_usd": 0.0006751
+    }
+  ]
+}

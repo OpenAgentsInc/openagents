@@ -1,0 +1,31 @@
+{
+  "experiment": "iteration-speed-9618",
+  "pins": {
+    "source": "5e9aa12daf74c6dcc5e6e6e11d00bf29dbe65f58",
+    "version": "coder-one 0.1.0 (5e9aa12daf74)",
+    "artifact_sha256": "7df7cde47d0f16c8f9200cbd21899254588c0b587f3bbe6f2272fd2eedfb0f5d",
+    "artifact_path": "/home/christopherdavid/.cache/openagents/artifacts/coder-one-retained-5e9aa12daf",
+    "task_commit": "452bf305c6daa62fc59061d22133a7cbc7c1572e",
+    "policies": {
+      "coder-one-microluna-v13-retained": "9ee4b963f293e400ff62c1cb752360ff7b8f159f4ca0fce1ce88c5f650ba4eb5"
+    },
+    "tasks": [
+      "session-window-debug",
+      "embedding-drift-monitor"
+    ],
+    "attempts_per_arm_per_task": 3,
+    "planned_spend_ceiling_usd": 1,
+    "max_concurrent": 2,
+    "classification": "selected development comparison",
+    "pricing": "pinned binary estimates; include Jev; not a subscription invoice"
+  }
+}
+experiment: an experiment compares at least two arms (--arm twice)
+Traceback (most recent call last):
+  File "/tmp/run-iteration-speed-9618.py", line 58, in <module>
+    subprocess.run(command, cwd=repo / 'bench/terminal-bench', env=env, check=True)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/h3l4z7p6wny3phbckwwhy1i2g52pdnj4-python3-3.13.15/lib/python3.13/subprocess.py", line 577, in run
+    raise CalledProcessError(retcode, process.args,
+                             output=stdout, stderr=stderr)
+subprocess.CalledProcessError: Command '['/nix/store/ipjv9qq222qldhqmvg4g1bdz3frppg65-uv-0.11.21/bin/uv', 'run', '-q', 'tbench', 'experiment', 'run', '--id', 'iteration-speed-9618', '--profile', 'tb4', '--tasks', 'session-window-debug,embedding-drift-monitor', '--attempts', '3', '--no-stop-early', '--max-concurrent', '2', '--max-cpus', '8', '--max-mem-gb', '32', '--min-free-disk-gb', '60', '--arm', 'coder-one-microluna-v13-retained', '--arm-kwarg', 'coder-one-microluna-v13-retained:artifact_path=/home/christopherdavid/.cache/openagents/artifacts/coder-one-retained-5e9aa12daf', '--arm-kwarg', 'coder-one-microluna-v13-retained:artifact_sha256=7df7cde47d0f16c8f9200cbd21899254588c0b587f3bbe6f2272fd2eedfb0f5d', '--detach']' returned non-zero exit status 1.

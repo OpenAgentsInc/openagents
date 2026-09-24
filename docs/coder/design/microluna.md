@@ -301,6 +301,14 @@ record, with every session and every move, goes to
 dispatch's list-price cost, so composition, `usage.json`, and the Gym's
 cost views price it like any other dispatch.
 
+Readable provider reasoning summaries are recorded in those native ATIF steps.
+Microluna requests `summary: auto` even when the policy leaves effort at the
+provider default; `auto` requests the most detailed supported summary. Gym
+renders the complete text the provider returns, which can still be short.
+The [summary measurements](../../terminal-bench/2026-09-24-microluna-iteration-speed.md#readable-reasoning-summaries)
+record accepted settings, latency, cost, and the distinction from encrypted
+internal reasoning.
+
 ## How to watch Microluna
 
 **In Coder Terminal**, with no setup: when `~/.codex/auth.json` has more

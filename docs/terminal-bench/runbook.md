@@ -443,6 +443,19 @@ the subject and the record and leaves the archive in the job directory.
 
 ### Run a verifier on any directory
 
+For completed sequential Microluna runs with `lean.retain_candidates`, grade
+all saved candidates without another model call:
+
+```sh
+uv run tbench candidates /path/to/trial-a /path/to/trial-b \
+  --output /path/to/new-grade-directory --jobs 2
+```
+
+Add `--deduplicate` only when the verifier is deterministic. Reused grades name
+their source and are not independent repeats. Incomplete inputs and verifier
+errors remain unknown. The [candidate grading guide](2026-09-24-microluna-iteration-speed.md#grade-candidates-after-the-run)
+describes identity checks, resource bounds, and retained oracle evidence.
+
 `tbench verify` runs a task's verifier on a directory that holds what the
 task's working directory should hold:
 

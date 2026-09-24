@@ -1,0 +1,241 @@
+{
+  "repeat": 1,
+  "setting": "detailed",
+  "request": {
+    "model": "gpt-6-luna",
+    "instructions": "You review code carefully and answer concisely.",
+    "input": [
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "input_text",
+            "text": "Review this cache implementation against the contract below. Identify the\ncorrectness defects and propose a minimal correction plus three useful tests.\nReturn a concise review, not a rewritten program.\nContract: get returns a fresh item or None; reading does not extend its lifetime.\nput replaces the value and expiration. The cache has capacity 2 and evicts the\nleast recently used live entry only when a new key exceeds capacity. The clock\nis monotonic and an entry expires exactly at expires_at.\nCode:\nclass Cache:\n    def __init__(self): self.items = {}\n    def put(self, key, value, now, ttl):\n        if len(self.items) >= 2:\n            del self.items[next(iter(self.items))]\n        self.items[key] = [value, now + ttl]\n    def get(self, key, now):\n        if key not in self.items: return None\n        value, expires_at = self.items[key]\n        if now > expires_at: return None\n        self.items[key][1] = now + 10\n        return value\n"
+          }
+        ]
+      }
+    ],
+    "tools": [],
+    "tool_choice": "auto",
+    "parallel_tool_calls": false,
+    "store": false,
+    "stream": true,
+    "include": [
+      "reasoning.encrypted_content"
+    ],
+    "prompt_cache_key": "6fd1f6aa-5e4d-494d-a442-3bc9d42c4cc9",
+    "reasoning": {
+      "effort": "high",
+      "summary": "detailed"
+    }
+  },
+  "started_at": "2026-09-24T22:25:41.176156+00:00",
+  "response": {
+    "id": "resp_0da3c6ac89036857016ab5a366be2887d19c1c20e08bf00c4c",
+    "object": "response",
+    "created_at": 1790288742,
+    "status": "completed",
+    "access_programs": null,
+    "background": false,
+    "completed_at": 1790288771,
+    "error": null,
+    "frequency_penalty": 0.0,
+    "incomplete_details": null,
+    "instructions": "You review code carefully and answer concisely.",
+    "max_output_tokens": null,
+    "max_tool_calls": null,
+    "model": "gpt-6-luna",
+    "moderation": null,
+    "output": [
+      {
+        "id": "rs_0da3c6ac89036857016ab5a367c65487d1a3a20bc7fa334247",
+        "type": "reasoning",
+        "content": [],
+        "summary": [
+          {
+            "type": "summary_text",
+            "text": "**Parsing cache contract ambiguities**"
+          },
+          {
+            "type": "summary_text",
+            "text": "**Checking cache expiration behavior**"
+          },
+          {
+            "type": "summary_text",
+            "text": "**Defining cache eviction rules**"
+          }
+        ]
+      },
+      {
+        "id": "rs_0da3c6ac89036857016ab5a3723d8887d1a2cd2b185a0bb5b3",
+        "type": "reasoning",
+        "content": [],
+        "summary": [
+          {
+            "type": "summary_text",
+            "text": "**Planning LRU tests**"
+          },
+          {
+            "type": "summary_text",
+            "text": "**Choosing cache test cases**"
+          },
+          {
+            "type": "summary_text",
+            "text": "**Planning cache tests**"
+          }
+        ]
+      },
+      {
+        "id": "rs_0da3c6ac89036857016ab5a37b524887d18568d2cd7392dab5",
+        "type": "reasoning",
+        "content": [],
+        "summary": [
+          {
+            "type": "summary_text",
+            "text": "**Checking cache eviction semantics**"
+          },
+          {
+            "type": "summary_text",
+            "text": "**Clarifying expiration handling**"
+          }
+        ]
+      },
+      {
+        "id": "msg_0da3c6ac89036857016ab5a37ef91087d1963dbcc6f0a3cb46",
+        "type": "message",
+        "status": "completed",
+        "content": [
+          {
+            "type": "output_text",
+            "annotations": [],
+            "logprobs": [],
+            "text": "### Defects\n\n- `get` treats an entry as valid at `now == expires_at`; it should be expired then.\n- `get` resets expiration, violating the rule that reads do not extend lifetime.\n- Reads do not update recency, so eviction is not LRU.\n- `put` evicts before checking whether the key already exists, so replacing a value can wrongly evict another entry.\n- `put` can evict an expired entry\u2014or evict a live one while expired entries occupy slots\u2014instead of considering only live entries.\n\n### Minimal correction\n\nTrack entries in LRU order (least recent first). On `get`, remove and return `None` when `now >= expires_at`; otherwise move the entry to most-recent and return its value without changing expiration. On `put`, first discard expired entries; replace an existing key without eviction, or, for a new key, evict the least-recent live entry only if at capacity. Store the new expiration as `now + ttl`.\n\n### Useful tests\n\n1. **Expiry and reads:** Put with TTL 5; a read before expiry returns the value, but a read at `expires_at` returns `None`. Verify the earlier read did not extend expiration.\n2. **LRU eviction:** Put `a`, then `b`; read `a`; put `c`. Verify `b` is evicted and `a` remains.\n3. **Replacement and expired-slot handling:** Verify replacing `a` updates its value and expiration without evicting `b`. Also verify that putting `c` when `a` has expired and `b` is live preserves `b` rather than evicting it."
+          }
+        ],
+        "phase": "final_answer",
+        "role": "assistant"
+      }
+    ],
+    "parallel_tool_calls": false,
+    "presence_penalty": 0.0,
+    "previous_response_id": null,
+    "prompt_cache_key": "6fd1f6aa-5e4d-494d-a442-3bc9d42c4cc9",
+    "prompt_cache_retention": "24h",
+    "reasoning": {
+      "context": "all_turns",
+      "effort": "high",
+      "mode": "standard",
+      "summary": "detailed"
+    },
+    "safety_identifier": "user-t8MawlRJ1slGAd5qS8aK5YOI",
+    "service_tier": "default",
+    "store": false,
+    "temperature": 1.0,
+    "text": {
+      "format": {
+        "type": "text"
+      },
+      "verbosity": "medium"
+    },
+    "tool_choice": "auto",
+    "tool_usage": {
+      "image_gen": {
+        "input_tokens": 0,
+        "input_tokens_details": {
+          "image_tokens": 0,
+          "text_tokens": 0
+        },
+        "output_tokens": 0,
+        "output_tokens_details": {
+          "image_tokens": 0,
+          "text_tokens": 0
+        },
+        "total_tokens": 0
+      },
+      "web_search": {
+        "num_requests": 0
+      }
+    },
+    "tools": [],
+    "top_logprobs": 0,
+    "top_p": 0.98,
+    "truncation": "disabled",
+    "usage": {
+      "attribution": {
+        "items": {
+          "msg_0da3c6ac89036857016ab5a366dc8c87d19ef077dc08aa8199": {
+            "cache_write_tokens": 0,
+            "cached_tokens": 0,
+            "content": [
+              {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0,
+                "input_tokens": 220,
+                "output_tokens": 0
+              }
+            ],
+            "input_tokens": 220,
+            "output_tokens": 0
+          },
+          "rs_0da3c6ac89036857016ab5a367c65487d1a3a20bc7fa334247": {
+            "cache_write_tokens": 0,
+            "cached_tokens": 0,
+            "input_tokens": 2,
+            "output_tokens": 516
+          },
+          "rs_0da3c6ac89036857016ab5a3723d8887d1a2cd2b185a0bb5b3": {
+            "cache_write_tokens": 0,
+            "cached_tokens": 0,
+            "input_tokens": 0,
+            "output_tokens": 518
+          },
+          "rs_0da3c6ac89036857016ab5a37b524887d18568d2cd7392dab5": {
+            "cache_write_tokens": 0,
+            "cached_tokens": 0,
+            "input_tokens": 0,
+            "output_tokens": 177
+          },
+          "msg_0da3c6ac89036857016ab5a37ef91087d1963dbcc6f0a3cb46": {
+            "cache_write_tokens": 0,
+            "cached_tokens": 0,
+            "content": [
+              {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0,
+                "input_tokens": 0,
+                "output_tokens": 350
+              }
+            ],
+            "input_tokens": 0,
+            "output_tokens": 350
+          }
+        },
+        "request_fields": {
+          "instructions": {
+            "cache_write_tokens": 0,
+            "cached_tokens": 0,
+            "input_tokens": 14,
+            "output_tokens": 0
+          }
+        }
+      },
+      "input_tokens": 236,
+      "input_tokens_details": {
+        "cache_write_tokens": 0,
+        "cached_tokens": 0
+      },
+      "output_tokens": 1561,
+      "output_tokens_details": {
+        "reasoning_tokens": 1211
+      },
+      "total_tokens": 1797
+    },
+    "user": null,
+    "metadata": {}
+  },
+  "http_status": 200,
+  "seconds": 30.98850128299091,
+  "summary_chars": 255,
+  "readable_summary": "**Parsing cache contract ambiguities**\n**Checking cache expiration behavior**\n**Defining cache eviction rules**\n**Planning LRU tests**\n**Choosing cache test cases**\n**Planning cache tests**\n**Checking cache eviction semantics**\n**Clarifying expiration handling**",
+  "cost_usd": 0.0008041
+}

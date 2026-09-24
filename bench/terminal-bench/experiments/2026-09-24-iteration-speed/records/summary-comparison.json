@@ -1,0 +1,293 @@
+[
+  {
+    "cohort": "summaries-invalid-parser",
+    "rows": [
+      {
+        "file": "summaries-invalid-parser/summaries/1-auto.json",
+        "setting": "auto",
+        "seconds": 24.76001972804079,
+        "summary_chars": null,
+        "cost_usd_corrected": 0.0006606,
+        "provider_reasoning": {
+          "context": "all_turns",
+          "effort": "high",
+          "mode": "standard",
+          "summary": "detailed"
+        }
+      },
+      {
+        "file": "summaries-invalid-parser/summaries/1-concise.json",
+        "setting": "concise",
+        "seconds": 30.87601954402635,
+        "summary_chars": null,
+        "cost_usd_corrected": 0.0007311,
+        "provider_reasoning": {
+          "context": "all_turns",
+          "effort": "high",
+          "mode": "standard",
+          "summary": "concise"
+        }
+      },
+      {
+        "file": "summaries-invalid-parser/summaries/1-detailed.json",
+        "setting": "detailed",
+        "seconds": 73.970335993974,
+        "summary_chars": null,
+        "cost_usd_corrected": 0.0005046,
+        "provider_reasoning": {
+          "context": "all_turns",
+          "effort": "high",
+          "mode": "standard",
+          "summary": "detailed"
+        }
+      },
+      {
+        "file": "summaries-invalid-parser/summaries/2-auto.json",
+        "setting": "auto",
+        "seconds": 21.96786679601064,
+        "summary_chars": null,
+        "cost_usd_corrected": 0.0005706,
+        "provider_reasoning": {
+          "context": "all_turns",
+          "effort": "high",
+          "mode": "standard",
+          "summary": "detailed"
+        }
+      },
+      {
+        "file": "summaries-invalid-parser/summaries/2-concise.json",
+        "setting": "concise",
+        "seconds": 26.477834441990126,
+        "summary_chars": null,
+        "cost_usd_corrected": 0.0007101000000000001,
+        "provider_reasoning": {
+          "context": "all_turns",
+          "effort": "high",
+          "mode": "standard",
+          "summary": "concise"
+        }
+      },
+      {
+        "file": "summaries-invalid-parser/summaries/2-detailed.json",
+        "setting": "detailed",
+        "seconds": 30.900512031046674,
+        "summary_chars": null,
+        "cost_usd_corrected": 0.0004846,
+        "provider_reasoning": {
+          "context": "all_turns",
+          "effort": "high",
+          "mode": "standard",
+          "summary": "detailed"
+        }
+      },
+      {
+        "file": "summaries-invalid-parser/summaries/3-auto.json",
+        "setting": "auto",
+        "seconds": 40.062411368999165,
+        "summary_chars": null,
+        "cost_usd_corrected": 0.0004871,
+        "provider_reasoning": {
+          "context": "all_turns",
+          "effort": "high",
+          "mode": "standard",
+          "summary": "detailed"
+        }
+      },
+      {
+        "file": "summaries-invalid-parser/summaries/3-concise.json",
+        "setting": "concise",
+        "seconds": 33.16029857896501,
+        "summary_chars": null,
+        "cost_usd_corrected": 0.0007501000000000001,
+        "provider_reasoning": {
+          "context": "all_turns",
+          "effort": "high",
+          "mode": "standard",
+          "summary": "concise"
+        }
+      },
+      {
+        "file": "summaries-invalid-parser/summaries/3-detailed.json",
+        "setting": "detailed",
+        "seconds": 24.11358211102197,
+        "summary_chars": null,
+        "cost_usd_corrected": 0.0005056,
+        "provider_reasoning": {
+          "context": "all_turns",
+          "effort": "high",
+          "mode": "standard",
+          "summary": "detailed"
+        }
+      }
+    ],
+    "total_usd": 0.0054044
+  },
+  {
+    "cohort": "summaries-streamed",
+    "rows": [
+      {
+        "file": "summaries-streamed/1-auto.json",
+        "setting": "auto",
+        "seconds": 22.325981658999808,
+        "summary_chars": 142,
+        "cost_usd_corrected": 0.0005481,
+        "provider_reasoning": {
+          "context": "all_turns",
+          "effort": "high",
+          "mode": "standard",
+          "summary": "detailed"
+        }
+      },
+      {
+        "file": "summaries-streamed/1-concise.json",
+        "setting": "concise",
+        "seconds": 42.42811892501777,
+        "summary_chars": 492,
+        "cost_usd_corrected": 0.0007371,
+        "provider_reasoning": {
+          "context": "all_turns",
+          "effort": "high",
+          "mode": "standard",
+          "summary": "concise"
+        }
+      },
+      {
+        "file": "summaries-streamed/1-detailed.json",
+        "setting": "detailed",
+        "seconds": 30.98850128299091,
+        "summary_chars": 255,
+        "cost_usd_corrected": 0.0008041,
+        "provider_reasoning": {
+          "context": "all_turns",
+          "effort": "high",
+          "mode": "standard",
+          "summary": "detailed"
+        }
+      },
+      {
+        "file": "summaries-streamed/2-auto.json",
+        "setting": "auto",
+        "seconds": 28.143833775015082,
+        "summary_chars": 183,
+        "cost_usd_corrected": 0.0006551,
+        "provider_reasoning": {
+          "context": "all_turns",
+          "effort": "high",
+          "mode": "standard",
+          "summary": "detailed"
+        }
+      },
+      {
+        "file": "summaries-streamed/2-concise.json",
+        "setting": "concise",
+        "seconds": 19.421047448995523,
+        "summary_chars": 72,
+        "cost_usd_corrected": 0.00045010000000000004,
+        "provider_reasoning": {
+          "context": "all_turns",
+          "effort": "high",
+          "mode": "standard",
+          "summary": "concise"
+        }
+      },
+      {
+        "file": "summaries-streamed/2-detailed.json",
+        "setting": "detailed",
+        "seconds": 63.422929183987435,
+        "summary_chars": 110,
+        "cost_usd_corrected": 0.0004816,
+        "provider_reasoning": {
+          "context": "all_turns",
+          "effort": "high",
+          "mode": "standard",
+          "summary": "detailed"
+        }
+      },
+      {
+        "file": "summaries-streamed/3-auto.json",
+        "setting": "auto",
+        "seconds": 40.562041173980106,
+        "summary_chars": 177,
+        "cost_usd_corrected": 0.0006751,
+        "provider_reasoning": {
+          "context": "all_turns",
+          "effort": "high",
+          "mode": "standard",
+          "summary": "detailed"
+        }
+      },
+      {
+        "file": "summaries-streamed/3-concise.json",
+        "setting": "concise",
+        "seconds": 31.93652678199578,
+        "summary_chars": 172,
+        "cost_usd_corrected": 0.0006941,
+        "provider_reasoning": {
+          "context": "all_turns",
+          "effort": "high",
+          "mode": "standard",
+          "summary": "concise"
+        }
+      },
+      {
+        "file": "summaries-streamed/3-detailed.json",
+        "setting": "detailed",
+        "seconds": 69.08183472102974,
+        "summary_chars": 157,
+        "cost_usd_corrected": 0.0006351,
+        "provider_reasoning": {
+          "context": "all_turns",
+          "effort": "high",
+          "mode": "standard",
+          "summary": "detailed"
+        }
+      }
+    ],
+    "total_usd": 0.0056804
+  },
+  {
+    "cohort": "summaries-default",
+    "rows": [
+      {
+        "file": "summaries-default/1-auto.json",
+        "setting": "auto",
+        "seconds": 19.775954735989217,
+        "summary_chars": 63,
+        "cost_usd_corrected": 0.00027560000000000003,
+        "provider_reasoning": {
+          "context": "all_turns",
+          "effort": "medium",
+          "mode": "standard",
+          "summary": "detailed"
+        }
+      },
+      {
+        "file": "summaries-default/1-concise.json",
+        "setting": "concise",
+        "seconds": 21.235104619991034,
+        "summary_chars": 102,
+        "cost_usd_corrected": 0.00033160000000000004,
+        "provider_reasoning": {
+          "context": "all_turns",
+          "effort": "medium",
+          "mode": "standard",
+          "summary": "concise"
+        }
+      },
+      {
+        "file": "summaries-default/1-detailed.json",
+        "setting": "detailed",
+        "seconds": 14.210549009032547,
+        "summary_chars": 62,
+        "cost_usd_corrected": 0.0002811,
+        "provider_reasoning": {
+          "context": "all_turns",
+          "effort": "medium",
+          "mode": "standard",
+          "summary": "detailed"
+        }
+      }
+    ],
+    "total_usd": 0.0008883000000000001
+  }
+]

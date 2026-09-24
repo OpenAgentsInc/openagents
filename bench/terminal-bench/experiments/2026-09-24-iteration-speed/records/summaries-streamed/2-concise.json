@@ -1,0 +1,191 @@
+{
+  "repeat": 2,
+  "setting": "concise",
+  "request": {
+    "model": "gpt-6-luna",
+    "instructions": "You review code carefully and answer concisely.",
+    "input": [
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "input_text",
+            "text": "Review this cache implementation against the contract below. Identify the\ncorrectness defects and propose a minimal correction plus three useful tests.\nReturn a concise review, not a rewritten program.\nContract: get returns a fresh item or None; reading does not extend its lifetime.\nput replaces the value and expiration. The cache has capacity 2 and evicts the\nleast recently used live entry only when a new key exceeds capacity. The clock\nis monotonic and an entry expires exactly at expires_at.\nCode:\nclass Cache:\n    def __init__(self): self.items = {}\n    def put(self, key, value, now, ttl):\n        if len(self.items) >= 2:\n            del self.items[next(iter(self.items))]\n        self.items[key] = [value, now + ttl]\n    def get(self, key, now):\n        if key not in self.items: return None\n        value, expires_at = self.items[key]\n        if now > expires_at: return None\n        self.items[key][1] = now + 10\n        return value\n"
+          }
+        ]
+      }
+    ],
+    "tools": [],
+    "tool_choice": "auto",
+    "parallel_tool_calls": false,
+    "store": false,
+    "stream": true,
+    "include": [
+      "reasoning.encrypted_content"
+    ],
+    "prompt_cache_key": "383cdb5e-ff8f-4909-9628-8f0dbcdbb26c",
+    "reasoning": {
+      "effort": "high",
+      "summary": "concise"
+    }
+  },
+  "started_at": "2026-09-24T22:27:43.733205+00:00",
+  "response": {
+    "id": "resp_0810a2d3abf6bffc016ab5a3e0abd887d18085f410471ed969",
+    "object": "response",
+    "created_at": 1790288864,
+    "status": "completed",
+    "access_programs": null,
+    "background": false,
+    "completed_at": 1790288883,
+    "error": null,
+    "frequency_penalty": 0.0,
+    "incomplete_details": null,
+    "instructions": "You review code carefully and answer concisely.",
+    "max_output_tokens": null,
+    "max_tool_calls": null,
+    "model": "gpt-6-luna",
+    "moderation": null,
+    "output": [
+      {
+        "id": "rs_0810a2d3abf6bffc016ab5a3e142a887d1b188f162fb45a704",
+        "type": "reasoning",
+        "content": [],
+        "summary": [
+          {
+            "type": "summary_text",
+            "text": "**Analyzing LRU cache issues**"
+          },
+          {
+            "type": "summary_text",
+            "text": "**Clarifying eviction and capacity logic**"
+          }
+        ]
+      },
+      {
+        "id": "msg_0810a2d3abf6bffc016ab5a3edad7c87d1a4da764f738bb4b7",
+        "type": "message",
+        "status": "completed",
+        "content": [
+          {
+            "type": "output_text",
+            "annotations": [],
+            "logprobs": [],
+            "text": "**Defects**\n- `get` treats an entry as fresh at `now == expires_at`; it should be expired at that instant (`now >= expires_at`).\n- `get` changes the expiration to `now + 10`, so reading extends the item\u2019s lifetime.\n- `put` evicts before checking whether the key already exists. Replacing a value and expiration must not evict another entry.\n- Insertion order is not LRU order: `get` does not update recency, so eviction can remove a recently read entry instead of the least recently used live one.\n- Expired entries remain in `items` and count toward capacity. A new key can therefore evict a live entry unnecessarily.\n\n**Minimal correction**\nUse an LRU-ordered mapping. On `get`, return `None` and remove the entry if `now >= expires_at`; otherwise mark it most-recently used without changing its expiration. On `put`, remove expired entries, replace an existing key without eviction, and only when adding a new key at capacity evict the least-recently-used live entry. Then store the new value with expiration `now + ttl` as most-recently used.\n\n**Useful tests**\n1. At exactly `expires_at`, `get` returns `None`; before that instant, repeated reads do not change when it expires.\n2. Fill the cache, read the older entry, then add a new key; the other entry\u2014not the read entry\u2014is evicted.\n3. With a full cache, replace an existing key; the other entry remains, and the replaced key has the new value and expiration."
+          }
+        ],
+        "phase": "final_answer",
+        "role": "assistant"
+      }
+    ],
+    "parallel_tool_calls": false,
+    "presence_penalty": 0.0,
+    "previous_response_id": null,
+    "prompt_cache_key": "383cdb5e-ff8f-4909-9628-8f0dbcdbb26c",
+    "prompt_cache_retention": "24h",
+    "reasoning": {
+      "context": "all_turns",
+      "effort": "high",
+      "mode": "standard",
+      "summary": "concise"
+    },
+    "safety_identifier": "user-t8MawlRJ1slGAd5qS8aK5YOI",
+    "service_tier": "default",
+    "store": false,
+    "temperature": 1.0,
+    "text": {
+      "format": {
+        "type": "text"
+      },
+      "verbosity": "medium"
+    },
+    "tool_choice": "auto",
+    "tool_usage": {
+      "image_gen": {
+        "input_tokens": 0,
+        "input_tokens_details": {
+          "image_tokens": 0,
+          "text_tokens": 0
+        },
+        "output_tokens": 0,
+        "output_tokens_details": {
+          "image_tokens": 0,
+          "text_tokens": 0
+        },
+        "total_tokens": 0
+      },
+      "web_search": {
+        "num_requests": 0
+      }
+    },
+    "tools": [],
+    "top_logprobs": 0,
+    "top_p": 0.98,
+    "truncation": "disabled",
+    "usage": {
+      "attribution": {
+        "items": {
+          "msg_0810a2d3abf6bffc016ab5a3e0b6b087d1bb3320aee5e5ac78": {
+            "cache_write_tokens": 0,
+            "cached_tokens": 0,
+            "content": [
+              {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0,
+                "input_tokens": 220,
+                "output_tokens": 0
+              }
+            ],
+            "input_tokens": 220,
+            "output_tokens": 0
+          },
+          "rs_0810a2d3abf6bffc016ab5a3e142a887d1b188f162fb45a704": {
+            "cache_write_tokens": 0,
+            "cached_tokens": 0,
+            "input_tokens": 2,
+            "output_tokens": 516
+          },
+          "msg_0810a2d3abf6bffc016ab5a3edad7c87d1a4da764f738bb4b7": {
+            "cache_write_tokens": 0,
+            "cached_tokens": 0,
+            "content": [
+              {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0,
+                "input_tokens": 0,
+                "output_tokens": 337
+              }
+            ],
+            "input_tokens": 0,
+            "output_tokens": 337
+          }
+        },
+        "request_fields": {
+          "instructions": {
+            "cache_write_tokens": 0,
+            "cached_tokens": 0,
+            "input_tokens": 14,
+            "output_tokens": 0
+          }
+        }
+      },
+      "input_tokens": 236,
+      "input_tokens_details": {
+        "cache_write_tokens": 0,
+        "cached_tokens": 0
+      },
+      "output_tokens": 853,
+      "output_tokens_details": {
+        "reasoning_tokens": 516
+      },
+      "total_tokens": 1089
+    },
+    "user": null,
+    "metadata": {}
+  },
+  "http_status": 200,
+  "seconds": 19.421047448995523,
+  "summary_chars": 72,
+  "readable_summary": "**Analyzing LRU cache issues**\n**Clarifying eviction and capacity logic**",
+  "cost_usd": 0.00045010000000000004
+}

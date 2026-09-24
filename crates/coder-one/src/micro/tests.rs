@@ -1894,18 +1894,21 @@ fn candidate_identity_refuses_an_incomplete_inventory() {
 
 #[test]
 fn protected_candidates_refuse_parallel_lanes_without_retained_lane_evidence() {
-    let shape = lean::Lean {
-        keep_best: true,
-        protect_candidates: true,
-        lanes: 3,
-        ..lean_shape()
-    };
-    assert!(
-        shape
-            .validate()
-            .iter()
-            .any(|problem| problem.contains("one first-attempt lane"))
-    );
+    for protect_candidates in [false, true] {
+        let shape = lean::Lean {
+            keep_best: true,
+            protect_candidates,
+            retain_candidates: !protect_candidates,
+            lanes: 3,
+            ..lean_shape()
+        };
+        assert!(
+            shape
+                .validate()
+                .iter()
+                .any(|problem| problem.contains("one first-attempt lane"))
+        );
+    }
 }
 
 #[test]

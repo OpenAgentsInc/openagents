@@ -868,8 +868,14 @@ mod tests {
             host.iter().map(|v| format!("{v}\n")).collect::<String>(),
         )
         .unwrap();
+        let reasoning = format!(
+            "# Review\n\n{}\nLast summary paragraph.",
+            "Check the boundary. ".repeat(2000)
+        );
         let session = [
             json!({"record": "session", "session": {"id": "microluna-1-1"}}),
+            json!({"record": "step", "step": {"at": 1150, "source": "Agent", "message": "",
+                "reasoning": reasoning}}),
             json!({"record": "step", "step": {"at": 1200, "source": "Agent", "message": "",
                 "call": {"id": "c1", "name": "run_command", "arguments": {"command": "ls /app"},
                     "output": "[exit 0]\nsrc", "outcome": "completed", "milliseconds": 5}}}),
@@ -882,8 +888,13 @@ mod tests {
         let mut warnings = Vec::new();
         let events = episode(dir.path(), &log, &mut warnings);
         assert!(warnings.is_empty(), "{warnings:?}");
-        // The task and the session's call; the host's shorter event is gone.
-        assert_eq!(events.len(), 2);
+        // The task, full reasoning summary, and call replace the host event.
+        assert_eq!(events.len(), 3);
+        assert!(events.iter().any(|event| event.parts.iter().any(|part| {
+            part.markdown
+                && part.text.starts_with("# Review")
+                && part.text.ends_with("Last summary paragraph.")
+        })));
         let calls: Vec<&str> = events
             .iter()
             .flat_map(|e| e.extracted.actions.iter().map(|a| a.input.as_str()))
