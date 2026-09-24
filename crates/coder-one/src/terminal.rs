@@ -133,8 +133,8 @@ test that fails without the fix. Fix text as it renders, not \
 its source form: splitting a string into pieces doesn't shorten the line \
 a person sees. Check every number and factual claim the change adds against \
 the file it comes from, and fix any the source contradicts, including a \
-range that leaves out a recorded case, and a label such as "modeled" or \
-"measured" the source doesn't use. Put back any fact, example, or \
+range that leaves out a recorded case, and a label such as \"modeled\" or \
+\"measured\" the source doesn't use. Put back any fact, example, or \
 comparison the diff removes that the issue didn't ask to remove. Keep \
 reflowed prose lines as short as their neighbors. If nothing is wrong, \
 change nothing and say so.";
