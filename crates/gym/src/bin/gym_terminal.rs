@@ -185,6 +185,9 @@ fn terminal_bench_mode(arguments: &[String]) -> io::Result<()> {
         }
         index += 1;
     }
+    if !print_only {
+        eprintln!("gym-terminal: loading Terminal-Bench records, runs, and replays...");
+    }
     let records =
         terminal_bench::Records::load(jobs.as_deref(), traces.as_deref(), samples.as_deref());
     let components = gym::coder_components::report(runs.as_deref(), &records)
