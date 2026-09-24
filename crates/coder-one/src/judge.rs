@@ -40,6 +40,9 @@ use crate::record::{Cost, Finish, Outcome, Recorder, Start};
 use crate::state::{Issue, State, Surveyed, Turn};
 
 /// The most candidate files one request judges.
+/// The largest file the keyword survey reads, in bytes.
+const SEARCH_FILE_CAP: u64 = 512 * 1024;
+
 const MAX_CANDIDATES: usize = 20;
 /// The most requirements the step and closing checks ask about.
 const MAX_CRITERIA: usize = 12;
@@ -800,13 +803,35 @@ impl JevJudge {
             .map(str::to_string)
             .collect();
         if !self.keywords.is_empty() {
-            let mut args = vec!["grep", "-I", "-i", "-c", "-F"];
-            for keyword in &self.keywords {
-                args.extend(["-e", keyword.as_str()]);
-            }
-            for line in git(&self.workdir, &args).lines() {
-                if let Some((path, count)) = line.rsplit_once(':') {
-                    hits.insert(path.to_string(), count.parse().unwrap_or(0));
+            // Search source-sized files only. A repository can track hundreds
+            // of megabytes of data (retained traces, fixtures), and a
+            // keyword count over it took 91 s against 3 s without it, with
+            // nothing on screen. A file past the cap is still a candidate
+            // by name; its lines just aren't counted.
+            crate::say::line(&format!(
+                "  survey ▸ counting keywords in up to {} tracked files (each under {} KB)",
+                tracked.len(),
+                SEARCH_FILE_CAP / 1024
+            ));
+            for path in &tracked {
+                let full = self.workdir.join(path);
+                let small = std::fs::metadata(&full)
+                    .is_ok_and(|meta| meta.is_file() && meta.len() <= SEARCH_FILE_CAP);
+                if !small {
+                    continue;
+                }
+                let Ok(text) = std::fs::read_to_string(&full) else {
+                    continue;
+                };
+                let count = text
+                    .lines()
+                    .filter(|line| {
+                        let lower = line.to_lowercase();
+                        self.keywords.iter().any(|k| lower.contains(k.as_str()))
+                    })
+                    .count();
+                if count > 0 {
+                    hits.insert(path.clone(), count);
                 }
             }
         }

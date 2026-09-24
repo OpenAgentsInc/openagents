@@ -37,7 +37,7 @@ use crate::transport::{Request, TokenUsage, Transport};
 /// host's call, made from its own checks where it has them, so nothing
 /// here asks the model to certify completion. Issue #9591 and
 /// `docs/coder/design/prompt-audit.md` record each line's purpose.
-pub const INSTRUCTIONS: &str = "You are Microluna, a coding agent working in one \
+pub const INSTRUCTIONS: &str = "You are a coding agent working in one \
 workspace directory. Act only through the tools: read_file reads a region of a file, \
 run_command runs searches, builds, and tests, apply_patch edits existing files, and \
 write_file creates new ones. A patch's context lines must match the file as it is now, so \
