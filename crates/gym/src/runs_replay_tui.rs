@@ -4,8 +4,12 @@ use std::cell::{Cell, RefCell};
 use std::collections::BTreeSet;
 use std::time::Duration;
 
-use coder_terminal::{Intensity, Ladder, frame, wrap_rows};
-use ratatui::{buffer::Buffer, layout::Rect};
+use coder_terminal::{Intensity, Ladder, frame, markdown, wrap_rows};
+use ratatui::{
+    buffer::Buffer,
+    layout::Rect,
+    text::{Line, Span},
+};
 
 use crate::runs::{Agent, Catalog};
 use crate::runs_replay::{Playback, Replay, Source};
@@ -14,7 +18,8 @@ use crate::runs_tui::{Key, Reply};
 
 struct Wrapped {
     width: usize,
-    rows: Vec<(u64, String, bool)>,
+    ladder: Ladder,
+    rows: Vec<(u64, Line<'static>)>,
 }
 struct Screen {
     source: Source,
@@ -32,6 +37,7 @@ impl Screen {
             replay,
             rows: RefCell::new(Wrapped {
                 width: 0,
+                ladder: Ladder::default(),
                 rows: Vec::new(),
             }),
             scroll: Cell::new(0),
@@ -126,36 +132,30 @@ impl Screen {
             return;
         }
         let mut wrapped = self.rows.borrow_mut();
-        if wrapped.width != usize::from(text.width) {
+        if wrapped.width != usize::from(text.width) || wrapped.ladder != ladder {
             wrapped.width = usize::from(text.width);
+            wrapped.ladder = ladder;
             wrapped.rows.clear();
             for event in &self.replay.events {
                 wrapped.rows.push((
                     event.elapsed_ms,
-                    format!(
-                        "{}  {}  [{}]",
-                        clock(event.elapsed_ms),
-                        event.title,
-                        event.timing
+                    Line::styled(
+                        format!(
+                            "{}  {}  [{}]",
+                            clock(event.elapsed_ms),
+                            event.title,
+                            event.timing
+                        ),
+                        ladder.style(Intensity::Full).bg(ladder.background()),
                     ),
-                    true,
                 ));
-                let body = if self.details {
-                    &event.record
-                } else {
-                    &event.text
-                };
-                for span in wrap_rows(body, usize::from(text.width)) {
-                    wrapped
-                        .rows
-                        .push((event.elapsed_ms, body[span].to_owned(), false));
+                for row in event_rows(event, self.details, usize::from(text.width), ladder) {
+                    wrapped.rows.push((event.elapsed_ms, row));
                 }
-                wrapped.rows.push((event.elapsed_ms, String::new(), false));
+                wrapped.rows.push((event.elapsed_ms, Line::default()));
             }
         }
-        let available = wrapped
-            .rows
-            .partition_point(|(time, _, _)| *time <= elapsed);
+        let available = wrapped.rows.partition_point(|(time, _)| *time <= elapsed);
         let max = available.saturating_sub(usize::from(text.height));
         let scroll = if self.follow.get() {
             max
@@ -163,7 +163,7 @@ impl Screen {
             self.scroll.get().min(max)
         };
         self.scroll.set(scroll);
-        for (i, (_, value, header)) in wrapped
+        for (i, (_, value)) in wrapped
             .rows
             .iter()
             .take(available)
@@ -171,20 +171,55 @@ impl Screen {
             .take(usize::from(text.height))
             .enumerate()
         {
-            line(
-                buf,
-                text,
-                i as u16,
-                value,
-                ladder,
-                if *header {
-                    Intensity::Full
-                } else {
-                    Intensity::Half
-                },
-            );
+            buf.set_line(text.x, text.y + i as u16, value, text.width);
         }
     }
+}
+
+fn event_rows(
+    event: &crate::runs_replay::Event,
+    details: bool,
+    width: usize,
+    ladder: Ladder,
+) -> Vec<Line<'static>> {
+    let literal = |text: &str| {
+        wrap_rows(text, width)
+            .into_iter()
+            .map(|range| {
+                Line::styled(
+                    text[range].to_owned(),
+                    ladder.style(Intensity::Half).bg(ladder.background()),
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    if details {
+        return literal(&event.record);
+    }
+    if event.parts.is_empty() {
+        return literal(&event.text);
+    }
+    let mut rows = Vec::new();
+    for (index, part) in event.parts.iter().enumerate() {
+        if index > 0 {
+            rows.push(Line::default());
+        }
+        if part.markdown {
+            for rendered in markdown::wrapped(&part.text, width) {
+                let base = ladder.style(rendered.intensity).bg(ladder.background());
+                let spans = rendered
+                    .marked
+                    .runs_in(0..rendered.marked.text.len())
+                    .into_iter()
+                    .map(|(text, marks)| Span::styled(text, marks.style(base, ladder)))
+                    .collect::<Vec<_>>();
+                rows.push(Line::from(spans));
+            }
+        } else {
+            rows.extend(literal(&part.text));
+        }
+    }
+    rows
 }
 
 pub struct Pane {
@@ -1015,6 +1050,137 @@ mod tests {
     use crate::runs::Sources;
 
     #[test]
+    fn replay_markdown_styles_prose_and_keeps_tool_evidence_literal() {
+        use crate::runs_replay::{Event, Part};
+        use ratatui::style::Modifier;
+        let prose = "# Heading\n\n**Bold** *italic* `inline` ~~gone~~ [link](https://example.com)\n\n- one\n- two\n\n> quote\n\n```rust\n    let value = 2 * 3;\n```\n\n| Name | State |\n| --- | --- |\n| Parser | Ready |";
+        let literal = "# literal output\n**still literal**\n- [ ] shell output";
+        let event = Event {
+            elapsed_ms: 1000,
+            timing: "step timestamp",
+            title: "agent".to_owned(),
+            text: format!("{prose}\n\n{literal}"),
+            record: prose.to_owned(),
+            parts: vec![
+                Part {
+                    text: prose.to_owned(),
+                    markdown: true,
+                },
+                Part {
+                    text: literal.to_owned(),
+                    markdown: false,
+                },
+            ],
+        };
+        let rows = event_rows(&event, false, 80, Ladder::default());
+        let text = rows
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(text.starts_with("Heading\n"), "{text}");
+        assert!(text.contains("• one") && text.contains("│ quote"), "{text}");
+        assert!(
+            text.contains("    let value = 2 * 3;") && !text.contains("```rust"),
+            "{text}"
+        );
+        assert!(
+            text.contains("Name │ State") && text.contains(literal),
+            "{text}"
+        );
+        for (word, modifier) in [
+            ("Heading", Modifier::BOLD),
+            ("Bold", Modifier::BOLD),
+            ("italic", Modifier::ITALIC),
+            ("gone", Modifier::CROSSED_OUT),
+            ("link", Modifier::UNDERLINED),
+        ] {
+            assert!(
+                rows.iter()
+                    .flat_map(|row| &row.spans)
+                    .any(|span| span.content == word && span.style.add_modifier.contains(modifier)),
+                "{word}: {rows:?}"
+            );
+        }
+        let raw = event_rows(&event, true, 80, Ladder::default());
+        assert!(
+            raw.iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join("\n")
+                .contains("**Bold** *italic* `inline`")
+        );
+        assert!(
+            raw.iter()
+                .flat_map(|row| &row.spans)
+                .all(|span| !span.style.add_modifier.contains(Modifier::BOLD))
+        );
+    }
+
+    #[test]
+    fn markdown_keeps_full_long_code_and_reflows_when_the_pane_resizes() {
+        use crate::runs_replay::{Event, Part};
+        let source = format!(
+            "```\n{}\nLAST CODE LINE\n```",
+            "    untouched **code**\n".repeat(2000)
+        );
+        let event = Event {
+            elapsed_ms: 0,
+            timing: "step timestamp",
+            title: "agent".to_owned(),
+            text: source.clone(),
+            record: source.clone(),
+            parts: vec![Part {
+                text: source,
+                markdown: true,
+            }],
+        };
+        let rows = event_rows(&event, false, 40, Ladder::default());
+        assert!(rows.len() > 2000);
+        assert!(rows.iter().any(|row| row.to_string() == "LAST CODE LINE"));
+        assert_eq!(rows[0].to_string(), "    untouched **code**");
+        let (_dir, mut pane) = pane();
+        pane.query = "coq".to_owned();
+        pane.key(Key::Enter);
+        let screen = pane.screens.as_mut().unwrap()[0].as_mut().unwrap();
+        screen.replay.events = vec![
+            event,
+            Event {
+                elapsed_ms: 5000,
+                timing: "step timestamp",
+                title: "agent".to_owned(),
+                text: "FUTURE".to_owned(),
+                record: "**FUTURE**".to_owned(),
+                parts: vec![Part {
+                    text: "**FUTURE**".to_owned(),
+                    markdown: true,
+                }],
+            },
+        ];
+        screen.replay.duration_ms = 5000;
+        pane.clock = Playback::new(5000);
+        for width in [150, 80, 180] {
+            let area = Rect::new(0, 0, width, 38);
+            let mut buf = Buffer::empty(area);
+            pane.render(area, &mut buf, Ladder::default());
+            assert!(contents(&buf).contains("LAST CODE LINE"));
+            assert!(!contents(&buf).contains("FUTURE"));
+        }
+        pane.key(Key::Char('d'));
+        let area = Rect::new(0, 0, 150, 38);
+        let mut buf = Buffer::empty(area);
+        pane.render(area, &mut buf, Ladder::default());
+        assert!(contents(&buf).contains("```"));
+        pane.key(Key::Char('d'));
+        pane.key(Key::End);
+        pane.key(Key::Char('f'));
+        let mut buf = Buffer::empty(area);
+        pane.render(area, &mut buf, Ladder::default());
+        assert!(contents(&buf).contains("FUTURE"));
+        assert!(!contents(&buf).contains("**FUTURE**"));
+    }
+
+    #[test]
     fn learning_order_preserves_pair_and_analysis_preserves_replay_position() {
         use crate::runs_learning::{Context, Judge, Store};
         use crate::runs_replay_learning::tests::{public, seed};
@@ -1225,6 +1391,7 @@ mod tests {
             timing: "step timestamp",
             title: "tool".to_owned(),
             text: format!("{}\nFINAL SENTINEL", "full output\n".repeat(2000)),
+            parts: vec![],
             record: "complete record".to_owned(),
         }];
         screen.replay.duration_ms = 0;
@@ -1248,6 +1415,7 @@ mod tests {
             timing: "host timestamp",
             title: "agent".to_owned(),
             text: "FIRST MESSAGE".to_owned(),
+            parts: vec![],
             record: "FIRST RECORD".to_owned(),
         }];
         screen.replay.duration_ms = 5000;

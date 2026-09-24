@@ -141,6 +141,11 @@ Recorded and estimated timestamps are labeled; source step timestamps do
 not imply token-by-token streaming. Replay reads saved evidence and does
 not rerun the agents.
 
+Gym uses the shared Coder Markdown renderer for messages and reasoning in
+both transcript views, including headings, emphasis, lists, quotes, links,
+tables, and fenced code. Commands, tool output, and `d` full records remain
+literal. Long code and output stay scrollable without dropping lines.
+
 ### Load the public transcripts on each computer
 
 The pinned Fable 5.1 collection contains **1,650 listed attempts across 66
@@ -297,8 +302,9 @@ require link, path, and artifact checks rather than the Rust gate. Required
 checks run on contributor machines or non-GitHub infrastructure; this
 repository does not use GitHub-billed automation.
 
-The September 24 Jev replay update passed all 19 replay tests, strict Gym
-Clippy, and a real Coder/Fable assessment and cache check. Its full workspace gate
+The September 24 Markdown update passed all 23 replay tests, 13 shared
+Markdown tests, and a corpus check covering 694 local and all 1,649 public
+transcripts. Strict Gym and terminal-renderer Clippy also passed. Its full workspace gate
 remained failed at an existing Coder One scratch-path test; the
 [verification record](docs/gym/head-to-head.md#verification) documents the
 scope. Feature-specific success does not mean the full repository gate is

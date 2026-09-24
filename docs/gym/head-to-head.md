@@ -127,6 +127,20 @@ view's line limits. Long output remains scrollable. Image payloads are
 represented by their encoded size and digest; the complete image bytes
 remain in the source JSON. Terminal control characters are escaped.
 
+The readable view uses `coder-terminal`'s shared Markdown renderer for
+messages and reasoning from public ATIF, Claude Code, and Codex traces.
+Headings, bold and italic text, strikethrough, underlined links, lists,
+quotes, tables, and fenced code keep their formatting. Wrapped list items
+hang under their markers; long code and table rows wrap without dropping
+their remaining text. Resizing a pane rebuilds its styled rows without
+changing the replay clock.
+
+A step can contain both prose and tool records. Only its prose is parsed
+as Markdown. Commands, arguments, logs, tool results, unknown records, and
+the `d` full-record view remain literal, so output such as `# comment` or
+`**pattern**` does not turn into a heading or emphasis. Formatting does not
+change when an event appears, its source file, or its retained text.
+
 Timing labels distinguish evidence:
 
 - **Step timestamp:** Harbor timestamps a whole ATIF step. Its tool
@@ -337,3 +351,20 @@ This check writes `jev-replay-audit.json`, `jev-replay-screen.txt`, and
 `jev-replay-cached-screen.txt` to the chosen output directory. It selects
 a completed Coder attempt explicitly: the chronological picker can also
 contain unfinished attempts, which correctly remain unranked.
+
+The Markdown follow-up passed 23 replay tests, 13 shared-renderer tests,
+and a focused test covering Markdown in ordinary task, message, report,
+and reasoning blocks. Tests cover mixed prose and literal tool results,
+inline styles, lists, tables, code indentation, Unicode wrapping, more
+than 2,000 code lines, pane resizing, raw-record toggling, and withholding
+future events. The optimized corpus acceptance read **694 local and all
+1,649 published public transcripts**, containing 254,514 events, and
+rendered a real pair at 10×. A real PTY session also passed the replay and
+Jev-toggle checks with the new renderer.
+
+The [Markdown verification record](measurements/2026-09-24-markdown-replay.json)
+records the scope. Manual gate `20260924T065220Z-da957d` passed every
+non-test phase; both workspace test phases stopped at the existing Coder
+One scratch-path failure. The normal Runs TUI suite still has the two
+previously documented catalog/recorded-judgment fixture failures on this
+Mac. The full gate remains failed.

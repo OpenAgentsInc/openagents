@@ -1,0 +1,67 @@
+{
+  "schema": "openagents.gym.markdown-replay-acceptance.v1",
+  "date": "2026-09-24",
+  "base_commit": "fa515ce12fbac9a6faf930bed626c0c902e333dc",
+  "renderer": "coder-terminal::markdown",
+  "private_reference_code_copied": false,
+  "focused_checks": {
+    "replay_tests_passed": 23,
+    "shared_markdown_tests_passed": 13,
+    "normal_prose_block_test_passed": 1,
+    "strict_gym_and_coder_terminal_clippy": "passed"
+  },
+  "corpus": {
+    "local_catalog": 772,
+    "local_loaded": 694,
+    "public_catalog": 1650,
+    "public_loaded": 1649,
+    "unavailable_public": [
+      "407a3728-44a6-4318-9b12-2b4bf5e89dab"
+    ],
+    "events": 254514,
+    "estimated_events": 80617,
+    "rendered_task": "react-lead-form",
+    "speed": 10
+  },
+  "corpus_local_load_failures": 78,
+  "corpus_notes": [
+    "The catalog retains 78 local entries without readable transcripts, including controls, setup failures, and malformed historical records.",
+    "The corpus check passed with --release; the slower debug scan was interrupted and superseded by the same complete check in the optimized profile."
+  ],
+  "pty": {
+    "pty": true,
+    "l_picker": true,
+    "l_assessment": true,
+    "return_to_replay": true,
+    "playback_10x": true,
+    "no_jev": true,
+    "exit": 0
+  },
+  "manual_gate": {
+    "run": "20260924T065220Z-da957d",
+    "result": "failed",
+    "phases": {
+      "preflight": "passed",
+      "gate-tooling": "passed",
+      "artifacts": "passed",
+      "delegation": "passed",
+      "backup": "passed",
+      "fmt": "passed",
+      "clippy": "passed",
+      "clippy-features": "passed",
+      "tests": "failed",
+      "tests-features": "failed",
+      "deps": "passed",
+      "postgres": "passed"
+    },
+    "known_failure": "coder-one support::tests::evidence_puts_the_contradicted_requirement_first_and_scrubs_scratch_paths",
+    "optional_not_run": [
+      "Metal",
+      "long relay soak"
+    ]
+  },
+  "normal_tui_known_fixture_failures": [
+    "runs_tui::tests::l_orders_the_list_by_what_is_worth_learning_from",
+    "runs_tui::tests::the_list_says_what_each_run_was_and_how_it_came_out"
+  ]
+}

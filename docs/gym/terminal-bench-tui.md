@@ -48,6 +48,11 @@ run in the background, with cached answers, progress, and estimated cost.
 See [head-to-head replay](head-to-head.md) for
 controls, the acquired corpus, timing limits, and host synchronization.
 
+Both the ordinary transcript and head-to-head replay use the shared Coder
+Markdown renderer for messages and reasoning. They preserve inline styles,
+headings, lists, quotes, tables, and fenced code. Tool commands and output
+remain literal; `d` in replay shows the complete literal record.
+
 ## Read recent runs
 
 The terminal opens on the **Runs** pane. It lists every Terminal-Bench trial

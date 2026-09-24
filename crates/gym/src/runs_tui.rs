@@ -11,7 +11,7 @@
 //! The drawing is `coder-terminal`'s: the amber [`Ladder`], the hairline
 //! [`frame`] with its [`rail`]s, the [`Scrollback`] that wraps each
 //! transcript block once per width, the reply's Markdown through
-//! [`markdown::render`], and a Jev judgment's full record through
+//! [`markdown::wrapped`], and a Jev judgment's full record through
 //! [`DecisionView`]. Tone carries every distinction; hue never varies.
 //!
 //! The pane holds no terminal. It takes [`Key`]s and draws into a ratatui
@@ -21,9 +21,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::BTreeSet;
 
 use coder_terminal::decision::{DecisionView, Origin, Outcome as Answer};
-use coder_terminal::{
-    Intensity, Ladder, Marks, Scrollback, frame, frame_for, markdown, rail, wrap_rows,
-};
+use coder_terminal::{Intensity, Ladder, Scrollback, frame, frame_for, markdown, rail, wrap_rows};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
@@ -1521,13 +1519,14 @@ fn block_rows(entry: &Entry, width: usize) -> Vec<Row> {
             } else {
                 clip(&first_line(text), room)
             };
-            let style = out.tone(Intensity::Quarter).add_modifier(Modifier::ITALIC);
-            for (n, range) in wrap_rows(&shown, room).into_iter().enumerate() {
-                let lead = if n == 0 { "thinking  " } else { "          " };
-                out.push(vec![
-                    (lead.to_owned(), out.tone(Intensity::Quarter)),
-                    (shown[range].to_owned(), style),
-                ]);
+            if entry.expanded {
+                out.push(vec![(
+                    "thinking".to_owned(),
+                    out.tone(Intensity::Quarter).add_modifier(Modifier::ITALIC),
+                )]);
+                out.markdown(&shown, "  ");
+            } else {
+                out.markdown(&shown, "thinking  ");
             }
         }
         Kind::Section { title, note, .. } => {
@@ -1777,25 +1776,18 @@ impl<'a> Builder<'a> {
     /// draws one.
     fn markdown(&mut self, text: &str, lead: &str) {
         let ladder = self.entry.ladder;
-        for rendered in markdown::render(text) {
-            let hang = " ".repeat(lead.chars().count() + rendered.hang);
-            let room = self.inner.saturating_sub(hang.len()).max(8);
-            let base = self.tone(rendered.intensity);
-            for (n, range) in wrap_rows(&rendered.marked.text, room)
-                .into_iter()
-                .enumerate()
-            {
-                let first = if n == 0 {
-                    lead.to_owned()
-                } else {
-                    hang.clone()
-                };
-                let mut spans = vec![(first, self.tone(Intensity::Half))];
-                for (text, marks) in rendered.marked.runs_in(range) {
-                    spans.push((text, marked(base, ladder, &marks)));
-                }
-                self.push(spans);
+        let room = self.inner.saturating_sub(lead.chars().count()).max(1);
+        for rendered in markdown::wrapped(text, room) {
+            let base = if matches!(self.entry.block.kind, Kind::Think(_)) {
+                self.tone(Intensity::Quarter).add_modifier(Modifier::ITALIC)
+            } else {
+                self.tone(rendered.intensity)
+            };
+            let mut spans = vec![(lead.to_owned(), self.tone(Intensity::Half))];
+            for (text, marks) in rendered.marked.runs_in(0..rendered.marked.text.len()) {
+                spans.push((text, marks.style(base, ladder)));
             }
+            self.push(spans);
         }
     }
 
@@ -1866,33 +1858,61 @@ impl<'a> Builder<'a> {
     }
 }
 
-/// The style one marked run draws at, the way the Coder terminal draws a
-/// reply: code at full amber, and bold, italic, and links as modifiers.
-fn marked(base: Style, ladder: Ladder, marks: &Marks) -> Style {
-    let mut style = if marks.code {
-        ladder.style(Intensity::Full).bg(ladder.background())
-    } else {
-        base
-    };
-    if marks.bold {
-        style = style.add_modifier(Modifier::BOLD);
-    }
-    if marks.italic {
-        style = style.add_modifier(Modifier::ITALIC);
-    }
-    if marks.strike {
-        style = style.add_modifier(Modifier::CROSSED_OUT);
-    }
-    if marks.link.is_some() {
-        style = style.add_modifier(Modifier::UNDERLINED);
-    }
-    style
-}
-
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
     use coder_terminal::Colors;
+
+    #[test]
+    fn every_prose_block_uses_shared_markdown_including_reasoning() {
+        let source = "# Title\n\n**Bold** and [link](https://example.com)\n\n- a long item that wraps beneath its marker";
+        for kind in [
+            Kind::Task(source.to_owned()),
+            Kind::Say(source.to_owned()),
+            Kind::Report(source.to_owned()),
+            Kind::Think(source.to_owned()),
+        ] {
+            let entry = Entry {
+                block: Block { at: None, kind },
+                index: 0,
+                expanded: true,
+                time: String::new(),
+                ladder: Ladder::default(),
+                mark: None,
+            };
+            let rows = block_rows(&entry, 45);
+            let text = rows
+                .iter()
+                .map(|row| {
+                    row.spans
+                        .iter()
+                        .map(|(text, _)| text.as_str())
+                        .collect::<String>()
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            assert!(
+                !text.contains("# Title") && !text.contains("**Bold**"),
+                "{text}"
+            );
+            assert!(
+                text.contains("Title") && text.contains("• a long item"),
+                "{text}"
+            );
+            assert!(
+                rows.iter()
+                    .flat_map(|row| &row.spans)
+                    .any(|(text, style)| text == "Bold"
+                        && style.add_modifier.contains(Modifier::BOLD))
+            );
+            assert!(
+                rows.iter()
+                    .flat_map(|row| &row.spans)
+                    .any(|(text, style)| text == "link"
+                        && style.add_modifier.contains(Modifier::UNDERLINED))
+            );
+        }
+    }
 
     pub(super) fn pane() -> (tempfile::TempDir, Pane) {
         let (dir, sources) = crate::runs::fixture_sources();

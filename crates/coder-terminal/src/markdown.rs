@@ -9,8 +9,9 @@
 use std::ops::Range;
 
 use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
+use ratatui::style::{Modifier, Style};
 
-use crate::Intensity;
+use crate::{Intensity, Ladder, wrap_rows};
 
 /// The marks on one run of text. Marks nest, so a run inside `**_a_**`
 /// carries both `bold` and `italic`.
@@ -24,6 +25,30 @@ pub struct Marks {
     pub link: Option<String>,
     /// The source of an image. The run's text is the image's alt text.
     pub image: Option<String>,
+}
+
+impl Marks {
+    /// Applies the terminal's Markdown marks without emitting terminal escapes.
+    pub fn style(&self, base: Style, ladder: Ladder) -> Style {
+        let mut style = if self.code {
+            ladder.style(Intensity::Full).bg(ladder.background())
+        } else {
+            base
+        };
+        if self.bold {
+            style = style.add_modifier(Modifier::BOLD);
+        }
+        if self.italic {
+            style = style.add_modifier(Modifier::ITALIC);
+        }
+        if self.strike {
+            style = style.add_modifier(Modifier::CROSSED_OUT);
+        }
+        if self.link.is_some() || self.image.is_some() {
+            style = style.add_modifier(Modifier::UNDERLINED);
+        }
+        style
+    }
 }
 
 /// Text plus the marks it carries: non-overlapping runs, sorted, covering
@@ -96,6 +121,34 @@ pub fn render(source: &str) -> Vec<Rendered> {
     lines
 }
 
+/// Renders physical rows, preserving inline marks and hanging list indentation.
+/// Code and wide table rows wrap so a scrollable transcript keeps all their text.
+pub fn wrapped(source: &str, width: usize) -> Vec<Rendered> {
+    let width = width.max(1);
+    let mut rows = Vec::new();
+    for rendered in render(source) {
+        let hang = rendered.hang.min(width.saturating_sub(1));
+        for (index, range) in wrap_rows(&rendered.marked.text, width.saturating_sub(hang))
+            .into_iter()
+            .enumerate()
+        {
+            let mut marked = Marked::default();
+            if index > 0 {
+                marked.push(&" ".repeat(hang), &Marks::default());
+            }
+            for (text, marks) in rendered.marked.runs_in(range) {
+                marked.push(&text, &marks);
+            }
+            rows.push(Rendered {
+                marked,
+                intensity: rendered.intensity,
+                hang: 0,
+            });
+        }
+    }
+    rows
+}
+
 fn blocks_lines(blocks: &[Block], prefix: &str, hang: usize, out: &mut Vec<Rendered>) {
     for (index, block) in blocks.iter().enumerate() {
         if index > 0 {
@@ -164,33 +217,13 @@ fn block_lines(block: &Block, prefix: &str, hang: usize, out: &mut Vec<Rendered>
         }
         Block::Table { header, rows, .. } => {
             out.push(marked_line(
-                &header
-                    .iter()
-                    .flat_map(|cell| cell.iter())
-                    .cloned()
-                    .collect::<Vec<_>>(),
+                &table_cells(header),
                 prefix,
                 hang,
                 Intensity::Full,
             ));
             for row in rows {
-                let cells: Vec<Inline> = row
-                    .iter()
-                    .enumerate()
-                    .flat_map(|(index, cell)| {
-                        let mut cell = cell.clone();
-                        if index > 0 {
-                            cell.insert(
-                                0,
-                                Inline {
-                                    text: " │ ".to_string(),
-                                    marks: Marks::default(),
-                                },
-                            );
-                        }
-                        cell
-                    })
-                    .collect();
+                let cells = table_cells(row);
                 out.push(marked_line(&cells, prefix, hang, Intensity::ThreeQuarters));
             }
         }
@@ -200,6 +233,26 @@ fn block_lines(block: &Block, prefix: &str, hang: usize, out: &mut Vec<Rendered>
             hang,
         }),
     }
+}
+
+fn table_cells(cells: &[Vec<Inline>]) -> Vec<Inline> {
+    cells
+        .iter()
+        .enumerate()
+        .flat_map(|(index, cell)| {
+            let mut cell = cell.clone();
+            if index > 0 {
+                cell.insert(
+                    0,
+                    Inline {
+                        text: " │ ".to_owned(),
+                        marks: Marks::default(),
+                    },
+                );
+            }
+            cell
+        })
+        .collect()
 }
 
 /// A list item's blocks: the marker leads the first line, padding the
@@ -793,5 +846,66 @@ mod tests {
     fn raw_html_is_text() {
         let lines = render("hello <b>there</b>");
         assert_eq!(lines[0].marked.text, "hello <b>there</b>");
+    }
+
+    #[test]
+    fn wrapped_lists_keep_marks_unicode_and_hanging_indentation() {
+        use unicode_width::UnicodeWidthStr;
+        let lines = wrapped("- **alpha βeta gamma delta** and `code`", 14);
+        assert!(lines.len() > 2);
+        assert!(lines[0].marked.text.starts_with("• "));
+        assert!(
+            lines
+                .iter()
+                .skip(1)
+                .all(|line| line.marked.text.starts_with("  "))
+        );
+        assert!(lines.iter().all(|line| line.marked.text.width() <= 14));
+        let runs: Vec<_> = lines
+            .iter()
+            .flat_map(|line| line.marked.runs_in(0..line.marked.text.len()))
+            .collect();
+        assert!(
+            runs.iter()
+                .any(|(text, marks)| text.contains("βeta") && marks.bold)
+        );
+        assert!(
+            runs.iter()
+                .any(|(text, marks)| text == "code" && marks.code)
+        );
+        for width in 0..4 {
+            assert!(!wrapped("- 中 **é**", width).is_empty());
+        }
+    }
+
+    #[test]
+    fn code_and_table_headers_keep_their_structure() {
+        let code = wrapped("```rust\n    let x = a * b;\n    // **literal**\n```", 80);
+        assert_eq!(texts(&code), ["    let x = a * b;", "    // **literal**"]);
+        assert!(
+            code.iter()
+                .all(|line| line.marked.runs.iter().all(|(_, marks)| marks.code))
+        );
+        let table = render("| Name | State |\n| --- | --- |\n| Parser | **Ready** |");
+        assert_eq!(texts(&table), ["Name │ State", "Parser │ Ready"]);
+        assert!(table[1].marked.runs.last().unwrap().1.bold);
+    }
+
+    #[test]
+    fn inline_marks_use_the_shared_terminal_style() {
+        let ladder = Ladder::default();
+        let marks = Marks {
+            bold: true,
+            italic: true,
+            strike: true,
+            code: true,
+            link: Some("https://example.com".to_owned()),
+            ..Marks::default()
+        };
+        let style = marks.style(ladder.style(Intensity::Half), ladder);
+        assert_eq!(style.fg, ladder.style(Intensity::Full).fg);
+        assert!(style.add_modifier.contains(
+            Modifier::BOLD | Modifier::ITALIC | Modifier::CROSSED_OUT | Modifier::UNDERLINED
+        ));
     }
 }

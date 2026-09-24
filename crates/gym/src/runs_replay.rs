@@ -245,8 +245,25 @@ pub struct Event {
     pub timing: &'static str,
     pub title: String,
     pub text: String,
+    /// Prose and literal evidence remain distinct even within one timed step.
+    pub parts: Vec<Part>,
     /// Complete readable record, including metadata, available with `d`.
     pub record: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct Part {
+    pub text: String,
+    pub markdown: bool,
+}
+
+impl Part {
+    fn new(text: String, markdown: bool) -> Self {
+        Self {
+            text: safe_text(&text),
+            markdown,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -264,6 +281,7 @@ struct Pending {
     timing: &'static str,
     title: String,
     text: String,
+    parts: Vec<Part>,
     record: String,
 }
 
@@ -343,7 +361,7 @@ fn title(value: &Value) -> String {
 }
 
 /// Conversation contents first; the complete record remains one key away.
-fn transcript_text(value: &Value) -> String {
+fn transcript_parts(value: &Value) -> Vec<Part> {
     fn content(value: &Value) -> String {
         match value {
             Value::Array(items) => items.iter().map(content).collect::<Vec<_>>().join("\n\n"),
@@ -366,12 +384,58 @@ fn transcript_text(value: &Value) -> String {
             _ => display_value(value),
         }
     }
+    fn prose(value: &Value, markdown: bool, parts: &mut Vec<Part>) {
+        match value {
+            Value::Array(items) => {
+                for item in items {
+                    prose(item, markdown, parts);
+                }
+            }
+            Value::Object(_) => match value["type"].as_str() {
+                Some("text" | "input_text" | "output_text") => {
+                    parts.push(Part::new(display_value(&value["text"]), markdown));
+                }
+                Some("thinking") => {
+                    parts.push(Part::new("Thinking".to_owned(), false));
+                    parts.push(Part::new(display_value(&value["thinking"]), markdown));
+                }
+                // Tool payloads can contain Markdown-looking shell syntax,
+                // source code, diffs, or logs. Keep those bytes as evidence.
+                _ => parts.push(Part::new(content(value), false)),
+            },
+            Value::String(_) => parts.push(Part::new(display_value(value), markdown)),
+            _ => parts.push(Part::new(display_value(value), false)),
+        }
+    }
     let mut parts = Vec::new();
     if let Some(reasoning) = value.get("reasoning_content") {
-        parts.push(format!("Thinking\n{}", content(reasoning)));
+        parts.push(Part::new("Thinking".to_owned(), false));
+        prose(reasoning, true, &mut parts);
     }
     if let Some(message) = value.get("message") {
-        parts.push(content(message.get("content").unwrap_or(message)));
+        let role = message
+            .get("role")
+            .or_else(|| value.get("source"))
+            .or_else(|| value.get("type"))
+            .and_then(Value::as_str);
+        prose(
+            message.get("content").unwrap_or(message),
+            !role.is_some_and(|role| {
+                ["tool", "function", "tool_result"]
+                    .iter()
+                    .any(|literal| role.eq_ignore_ascii_case(literal))
+            }),
+            &mut parts,
+        );
+    }
+    if let Some(item) = value.get("item")
+        && matches!(item["type"].as_str(), Some("agent_message" | "reasoning"))
+        && let Some(text) = item.get("text")
+    {
+        if item["type"] == "reasoning" {
+            parts.push(Part::new("Thinking".to_owned(), false));
+        }
+        prose(text, true, &mut parts);
     }
     for key in ["tool_calls", "calls"] {
         for call in value[key].as_array().into_iter().flatten() {
@@ -380,12 +444,12 @@ fn transcript_text(value: &Value) -> String {
                 .or_else(|| call.get("name"))
                 .and_then(Value::as_str)
                 .unwrap_or("tool");
-            parts.push(format!(
-                "Tool: {name}\n{}",
-                display_value(&call["arguments"])
+            parts.push(Part::new(
+                format!("Tool: {name}\n{}", display_value(&call["arguments"])),
+                false,
             ));
             if let Some(output) = call.get("output") {
-                parts.push(format!("Result\n{}", content(output)));
+                parts.push(Part::new(format!("Result\n{}", content(output)), false));
             }
         }
     }
@@ -395,29 +459,38 @@ fn transcript_text(value: &Value) -> String {
         .into_iter()
         .flatten()
     {
-        parts.push(format!(
-            "Result for {}\n{}",
-            result["source_call_id"].as_str().unwrap_or("tool"),
-            content(&result["content"])
+        parts.push(Part::new(
+            format!(
+                "Result for {}\n{}",
+                result["source_call_id"].as_str().unwrap_or("tool"),
+                content(&result["content"])
+            ),
+            false,
         ));
     }
     if let Some(result) = value.get("result") {
-        parts.push(format!("Result\n{}", content(result)));
+        parts.push(Part::new("Result".to_owned(), false));
+        prose(result, value["type"] == "result", &mut parts);
     }
-    parts.retain(|part| !part.is_empty());
+    parts.retain(|part| !part.text.is_empty());
     if parts.is_empty() {
-        display_value(value)
-    } else {
-        parts.join("\n\n")
+        parts.push(Part::new(display_value(value), false));
     }
+    parts
 }
 
 fn pending(value: &Value, at: Option<i64>, timing: &'static str) -> Pending {
+    let parts = transcript_parts(value);
     Pending {
         at,
         timing,
         title: title(value),
-        text: safe_text(&transcript_text(value)),
+        text: parts
+            .iter()
+            .map(|part| part.text.as_str())
+            .collect::<Vec<_>>()
+            .join("\n\n"),
+        parts,
         record: safe_text(&display_value(value)),
     }
 }
@@ -659,6 +732,7 @@ impl Replay {
                 timing,
                 title: event.title,
                 text: event.text,
+                parts: event.parts,
                 record: event.record,
             });
         }
@@ -785,6 +859,86 @@ mod tests {
         assert_eq!(r.estimated, 1);
         assert_eq!(r.events[0].timing, "estimated / untimed");
         assert_eq!(safe_text("\x1b[2J\ttext"), "\\u{1b}[2J    text");
+    }
+
+    #[test]
+    fn markdown_prose_and_literal_tools_share_a_timestamp_without_sharing_a_parser() {
+        let event = pending(
+            &json!({
+                "source":"agent", "message":"# Plan\n\nUse **care** and `cargo test`.",
+                "reasoning_content":"A **reason** to check.",
+                "tool_calls":[{"function_name":"bash", "arguments":{"command":"printf '**literal**\\n# heading'"}}],
+                "observation":{"results":[{"source_call_id":"one","content":"# not a heading\n**not emphasis**\n- [ ] not a task"}]}
+            }),
+            Some(1000),
+            "step timestamp",
+        );
+        assert!(
+            event
+                .parts
+                .iter()
+                .any(|part| part.markdown && part.text.starts_with("# Plan"))
+        );
+        assert!(
+            event
+                .parts
+                .iter()
+                .any(|part| part.markdown && part.text.contains("**reason**"))
+        );
+        assert!(
+            event
+                .parts
+                .iter()
+                .any(|part| !part.markdown && part.text.contains("**literal**"))
+        );
+        assert!(
+            event
+                .parts
+                .iter()
+                .any(|part| !part.markdown
+                    && part.text.contains("# not a heading\n**not emphasis**"))
+        );
+        let replay = Replay::build(vec![event], Some(500), None, vec![], String::new());
+        assert_eq!(replay.events[0].elapsed_ms, 500);
+        assert!(replay.events[0].record.contains("# Plan"));
+    }
+
+    #[test]
+    fn claude_and_codex_messages_render_markdown_but_results_remain_literal() {
+        let claude = transcript_parts(&json!({"type":"assistant","message":{"content":[
+            {"type":"text","text":"# Report"},
+            {"type":"thinking","thinking":"A **thought**"},
+            {"type":"tool_use","name":"Read","input":{"file_path":"**literal**"}},
+            {"type":"tool_result","tool_use_id":"one","content":[{"type":"text","text":"# output\n**literal**"}]}
+        ]}}));
+        assert_eq!(claude.iter().filter(|part| part.markdown).count(), 2);
+        assert!(
+            claude
+                .iter()
+                .any(|part| !part.markdown && part.text.contains("# output\n**literal**"))
+        );
+        for kind in ["agent_message", "reasoning"] {
+            let codex = transcript_parts(
+                &json!({"type":"item.completed","item":{"type":kind,"text":"## Answer\n\n**ready**"}}),
+            );
+            assert!(
+                codex
+                    .iter()
+                    .any(|part| part.markdown && part.text.starts_with("## Answer"))
+            );
+        }
+        let command = transcript_parts(
+            &json!({"type":"item.completed","item":{"type":"command_execution","command":"echo '**literal**'","aggregated_output":"# output"}}),
+        );
+        assert!(command.iter().all(|part| !part.markdown));
+        let tool = transcript_parts(&json!({"source":"tool","message":"**literal**"}));
+        assert!(tool.iter().all(|part| !part.markdown));
+        let result = transcript_parts(&json!({"type":"result","result":"## Final report"}));
+        assert!(
+            result
+                .iter()
+                .any(|part| part.markdown && part.text.starts_with("## Final"))
+        );
     }
 
     #[test]
