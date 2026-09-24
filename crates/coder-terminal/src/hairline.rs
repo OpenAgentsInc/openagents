@@ -46,7 +46,8 @@ pub fn frame(area: Rect, buf: &mut Buffer, style: Style) {
 ///
 /// A rail wider than the room left is dropped rather than cut: the left
 /// rail is written first and takes what it needs, and the right rail draws
-/// only if what remains holds it whole. Each side carries its own style,
+/// only if what remains holds it whole. An empty rail draws nothing, not
+/// a two-space gap in the rule. Each side carries its own style,
 /// because the two rails often say things of different weight — a view's
 /// name against a chain that failed to verify.
 pub fn rail(
@@ -63,6 +64,8 @@ pub fn rail(
     // The room the two rails share: the width less the corners and the rule
     // cell inside each.
     let mut room = usize::from(area.width) - 4;
+    let left = left.filter(|(text, _)| !text.is_empty());
+    let right = right.filter(|(text, _)| !text.is_empty());
     if let Some((text, style)) = left {
         let named = format!(" {text} ");
         let taken = named.width();
@@ -112,6 +115,21 @@ mod tests {
             frame(area, &mut buf, Style::new());
             assert!(text(&buf).iter().all(|line| line.trim().is_empty()));
         }
+    }
+
+    #[test]
+    fn an_empty_rail_leaves_the_rule_whole() {
+        let area = Rect::new(0, 0, 8, 2);
+        let mut buf = Buffer::empty(area);
+        frame(area, &mut buf, Style::new());
+        rail(
+            area,
+            &mut buf,
+            1,
+            Some(("", Style::new())),
+            Some(("", Style::new())),
+        );
+        assert_eq!(text(&buf), ["┌──────┐", "└──────┘"]);
     }
 
     #[test]
