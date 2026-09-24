@@ -300,6 +300,8 @@ job name `microluna-run` prints.
 
 ## Related
 
+- [Microluna v8](microluna-v8.md): the options this trial's analysis led
+  to, and their trials.
 - [Microluna](microluna.md): the harness and its transport.
 - [The determinism thesis](thesis.md): the loop this makes parallel.
 - [The Luna pivot](luna-pivot.md): the strategy.

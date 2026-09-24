@@ -6,6 +6,18 @@ evidence; it does not report the execution host's live queue.
 
 ## Latest status
 
+**Microluna v8: in-sample 0 of 1, held-out 0 of 2, every trial under
+$0.05.** v8 makes a guard an edit turns red advisory, runs tests four at a
+time, overlaps the gap round with session 1, fixes the checks' budget, and
+replaces the guidance tuned on `embedding-drift-monitor` with task-neutral
+text. On that task, a same-build v7 rerun reproduced the guard reversal
+and failed; v8's loop held the fix until the audit after a red stop
+restored the defect, and the workspace before that audit passes the
+verifier. Held-out, v8 failed `sound-change-cascade` (a lookup table of
+the training pairs) and `interleaved-vigenere` in about 5 minutes each,
+against Fable low's 22 to 25 minutes and five passes in five. See
+[Microluna v8](../coder/design/microluna-v8.md).
+
 **Microluna v7 on `embedding-drift-monitor`: a pass the harness didn't
 earn.** The first v7 trial passed 11 of 11, reward 1, in 8 minutes 4
 seconds for $0.0358 ($0.0321 in Harbor, which leaves out the gap writer).
