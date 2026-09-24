@@ -158,6 +158,7 @@ impl Screen {
             inner.height.saturating_sub(5),
         );
         if !self.details && !self.blocks.is_empty() {
+            let was_free = self.free.get();
             let expanded = self.expanded.borrow();
             let all = self.all.get();
             let open = |index: usize| all != expanded.contains(&index);
@@ -172,12 +173,17 @@ impl Screen {
                 selected,
                 &open,
                 &self.scroll,
-                self.free.get(),
+                &self.free,
                 &self.drawn,
                 text,
                 buf,
                 ladder,
             ));
+            // The wheel reached the bottom: follow the latest step again.
+            if was_free && !self.free.get() {
+                self.follow.set(true);
+                self.selected.set(None);
+            }
             return;
         }
         let mut wrapped = self.rows.borrow_mut();

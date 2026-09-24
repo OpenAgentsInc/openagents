@@ -149,6 +149,8 @@ struct Open {
     /// The screen row and step of every transcript row drawn last frame,
     /// for mouse clicks.
     drawn: RefCell<Vec<(u16, usize)>>,
+    /// The scroll position of the transcript's bottom, last frame.
+    bottom: Cell<usize>,
 }
 
 impl Open {
@@ -165,6 +167,7 @@ impl Open {
             rows: RefCell::new(None),
             free: Cell::new(false),
             drawn: RefCell::new(Vec::new()),
+            bottom: Cell::new(0),
         }
     }
 
@@ -831,8 +834,16 @@ impl Pane {
                         return Reply::Handled;
                     }
                     Key::WheelDown { .. } => {
-                        open.free.set(true);
-                        open.scroll.set(open.scroll.get() + 3);
+                        let next = open.scroll.get() + 3;
+                        if next >= open.bottom.get() {
+                            // The wheel reached the bottom: select the latest
+                            // step and follow it again as a live run grows.
+                            open.free.set(false);
+                            open.selected = last;
+                        } else {
+                            open.free.set(true);
+                            open.scroll.set(next);
+                        }
                         return Reply::Handled;
                     }
                     Key::Click { row, .. } => {
@@ -1388,6 +1399,9 @@ impl Pane {
         let rows = cache.get_or_insert_with(|| self.scrollback(open));
         let rows: Vec<&Row> = rows.rows(width, |_| true);
         let room = usize::from(inner.height);
+        let mut scroll = open.scroll.get();
+        let bottom = rows.len().saturating_sub(room.min(rows.len()));
+        open.bottom.set(bottom);
         let selected = open.selected.min(open.blocks().len() - 1);
         let first = rows
             .iter()
@@ -1397,7 +1411,6 @@ impl Pane {
             .iter()
             .rposition(|row| row.block == selected)
             .unwrap_or(first);
-        let mut scroll = open.scroll.get();
         if open.free.get() {
             // The wheel put the view here; leave it.
         } else if first < scroll {
@@ -1418,6 +1431,14 @@ impl Pane {
             .enumerate()
             .map(|(offset, row)| (inner.top() + offset as u16, row.block))
             .collect();
+        let following = selected + 1 >= open.blocks().len() && !open.free.get();
+        let note_area = Rect::new(
+            inner.left(),
+            inner.top(),
+            inner.width,
+            room.min(usize::from(inner.height)) as u16,
+        );
+        let total = rows.len();
         for (offset, row) in shown.iter().enumerate() {
             let y = inner.top() + offset as u16;
             let mine = row.block == selected;
@@ -1495,6 +1516,7 @@ impl Pane {
                 );
             }
         }
+        scroll_note(scroll, room, total, following, note_area, buf, self.ladder);
     }
 
     /// The transcript's blocks in a fresh scrollback.
@@ -1556,6 +1578,49 @@ impl Pane {
     }
 }
 
+/// Writes where the view is, " 42% ", " top ", or " end · following ", at the
+/// right of the area's last row.
+fn scroll_note(
+    first: usize,
+    room: usize,
+    total: usize,
+    following: bool,
+    area: Rect,
+    buf: &mut Buffer,
+    ladder: Ladder,
+) {
+    if area.height == 0 || area.width < 20 {
+        return;
+    }
+    let max = total.saturating_sub(room);
+    let note = if total <= room {
+        if following {
+            " all · following ".to_owned()
+        } else {
+            " all ".to_owned()
+        }
+    } else if first >= max {
+        if following {
+            " end · following ".to_owned()
+        } else {
+            " end ".to_owned()
+        }
+    } else if first == 0 {
+        " top ".to_owned()
+    } else {
+        format!(" {}% ", (first + room) * 100 / total.max(1))
+    };
+    let width = note.chars().count() as u16;
+    let x = area.right().saturating_sub(width);
+    buf.set_stringn(
+        x,
+        area.bottom() - 1,
+        &note,
+        usize::from(width),
+        ladder.style(Intensity::Half).bg(ladder.selection()),
+    );
+}
+
 /// Draws `blocks` the way the Runs pane draws a transcript, up to the
 /// blocks `elapsed_ms` into the run, for head-to-head replay.
 ///
@@ -1570,7 +1635,7 @@ pub(crate) fn draw_transcript(
     selected: Option<usize>,
     expanded: &dyn Fn(usize) -> bool,
     scroll: &Cell<usize>,
-    free: bool,
+    free: &Cell<bool>,
     drawn: &RefCell<Vec<(u16, usize)>>,
     area: Rect,
     buf: &mut Buffer,
@@ -1619,7 +1684,11 @@ pub(crate) fn draw_transcript(
         .min(shown_blocks.saturating_sub(1));
     let room = usize::from(area.height);
     let max = rows.len().saturating_sub(room);
-    let first = if free {
+    // Scrolled back to the bottom by the wheel: follow again.
+    if free.get() && scroll.get() >= max {
+        free.set(false);
+    }
+    let first = if free.get() {
         // The wheel put the view here; leave it.
         scroll.get().min(max)
     } else if selected.is_none() {
@@ -1727,6 +1796,15 @@ pub(crate) fn draw_transcript(
             );
         }
     }
+    scroll_note(
+        first,
+        room,
+        rows.len(),
+        selected.is_none() && !free.get(),
+        area,
+        buf,
+        ladder,
+    );
     shown_blocks
 }
 
