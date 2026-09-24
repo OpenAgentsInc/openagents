@@ -616,6 +616,23 @@ impl Pane {
             }
             return reply.unwrap_or(Reply::Handled);
         }
+        if key == Key::Char('w')
+            && self.open.is_some()
+            && self.typing.is_none()
+            && !self.composing()
+            && !self.composing_ask()
+            && let Some(run) = self.open.as_ref().map(|o| o.detail.run.clone())
+        {
+            // The open run against the cheapest passing public attempt on
+            // its task, already playing.
+            if self
+                .open_replay_on(&run.task, Some(&run.id()), Some("best"))
+                .is_err()
+            {
+                self.open_replay();
+            }
+            return Reply::Handled;
+        }
         if key == Key::Char('p')
             && self.typing.is_none()
             && !self.composing()
@@ -1144,7 +1161,7 @@ impl Pane {
             Tab::Summary => (
                 "Summary",
                 "t shows the transcript",
-                "↑↓ scroll · t transcript · p head-to-head · d details · x mark bad · v mark fine · u unmark · esc back · q quit",
+                "↑↓ scroll · t transcript · w vs best winner · p head-to-head · d details · x mark bad · v mark fine · u unmark · esc back · q quit",
                 "↑↓ t d x v u esc q",
             ),
             Tab::Transcript => (

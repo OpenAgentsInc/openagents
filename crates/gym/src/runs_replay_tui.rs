@@ -321,7 +321,8 @@ impl Pane {
     /// Selects `task`, then the attempt on each side whose identity or
     /// description contains the given text, and starts the pair. On the
     /// right, `pass` picks the newest public attempt that passed and is on
-    /// this computer. Returns what couldn't be found.
+    /// this computer; `best` picks the cheapest passing public attempt, the
+    /// winner to beat. Returns what couldn't be found.
     pub fn preselect(
         &mut self,
         task: &str,
@@ -338,12 +339,30 @@ impl Pane {
         for (side, wanted) in [left, right].into_iter().enumerate() {
             let Some(wanted) = wanted else { continue };
             let choices = self.choices(side);
-            let found = choices.iter().position(|s| match (wanted, s) {
-                ("pass", Source::Public { trial, cache }) => {
-                    trial.reward == Some(1.0) && cache.join(&trial.file).is_file()
-                }
-                _ => s.id().contains(wanted) || s.description().contains(wanted),
-            });
+            let found = if wanted == "best" {
+                // The winner to beat: the cheapest passing public attempt on
+                // this computer.
+                choices
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, s)| match s {
+                        Source::Public { trial, cache }
+                            if trial.reward == Some(1.0) && cache.join(&trial.file).is_file() =>
+                        {
+                            Some((index, trial.cost_usd.unwrap_or(f64::MAX), trial.id.clone()))
+                        }
+                        _ => None,
+                    })
+                    .min_by(|a, b| a.1.total_cmp(&b.1).then(a.2.cmp(&b.2)))
+                    .map(|(index, _, _)| index)
+            } else {
+                choices.iter().position(|s| match (wanted, s) {
+                    ("pass", Source::Public { trial, cache }) => {
+                        trial.reward == Some(1.0) && cache.join(&trial.file).is_file()
+                    }
+                    _ => s.id().contains(wanted) || s.description().contains(wanted),
+                })
+            };
             self.cursors[side] = found.ok_or_else(|| {
                 format!(
                     "no {} attempt on {task} matches {wanted}",

@@ -66,13 +66,14 @@ Usage:
                             [--runs-dir PATH] [--minitasks-dir PATH] [--no-jobs] [--no-traces]
                             [--checks-dir PATH] [--no-samples] [--no-runs] [--no-minitasks]
                             [--no-checks] [--no-jev] [--head-to-head]
-                            [--task TASK [--left TEXT] [--right TEXT|pass]]
+                            [--task TASK [--left TEXT] [--right TEXT|pass|best]]
   gym-terminal --help     Print this message.
 
 --task opens head-to-head replay already playing one pair on TASK. --left
 and --right pick the attempt on each side whose identity or description
 contains TEXT; --right pass picks the newest public attempt that passed and
-is on this computer.
+is on this computer, and --right best the cheapest passing one. In an open
+run, w does the same: that run against the best winner on its task.
 
 The default decision-model views open a built-in fixture. Terminal-Bench
 views read local Harbor jobs and retained evidence. Neither mode runs a
