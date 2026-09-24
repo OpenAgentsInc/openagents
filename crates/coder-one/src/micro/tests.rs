@@ -1394,3 +1394,153 @@ fn outputs_the_task_names_but_nobody_wrote_are_missing() {
     std::fs::write(work.join("summary.csv"), "a").unwrap();
     assert_eq!(missing_outputs(task, &work, Some(&base)), ["report.md"]);
 }
+
+fn lean_policy(lean: lean::Lean) -> Policy {
+    Policy {
+        lean: Some(lean),
+        spend_usd: 1.0,
+        ..Policy::default()
+    }
+}
+
+fn lean_shape() -> lean::Lean {
+    lean::Lean {
+        sessions: 1,
+        source_chars: 10_000,
+        sample_chars: 2_000,
+        self_check: true,
+        holdout: false,
+        hardcode_check: false,
+        keep_best: false,
+        score_sec: 20,
+    }
+}
+
+#[tokio::test]
+async fn the_lean_loop_runs_one_session_then_the_self_check() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut executor = micro(
+        dir.path(),
+        vec![
+            call(
+                "c1",
+                "write_file",
+                &json!({ "path": "hello.txt", "contents": "hello\n" }),
+                usage(1_200, 0, 60),
+            ),
+            call(
+                "c2",
+                "run_command",
+                &json!({ "command": "cat hello.txt", "timeout_seconds": null }),
+                usage(1_300, 1_024, 30),
+            ),
+            finish("c3", "done", "Wrote hello.txt; cat shows hello."),
+            finish("c4", "done", "Checked hello.txt against the task."),
+        ],
+        lean_policy(lean_shape()),
+    );
+    executor.prepared = Some(prepared());
+    executor.execute(&briefing(TASK)).await;
+    let record = executor.last.clone().unwrap();
+    assert_eq!(record["mode"], "lean");
+    assert_eq!(record["sessions"].as_array().unwrap().len(), 2);
+    let stopped = record["stopped"].as_str().unwrap();
+    assert!(stopped.contains("session 1 ended done"), "{stopped}");
+    assert!(stopped.contains("the self-check ended done"), "{stopped}");
+    assert_eq!(record["moves"][1]["self_check"], true);
+}
+
+#[tokio::test]
+async fn the_lean_loop_finishes_on_the_best_scoring_workspace() {
+    let dir = tempfile::tempdir().unwrap();
+    let work = dir.path().join("work");
+    let eval = lean::eval_dir(&work, Isolation::TaskContainer);
+    let _ = std::fs::remove_dir_all(&eval);
+    let script = format!(
+        "mkdir -p {e} && printf '%s\\n' 'if grep -q hello hello.txt; then echo SCORE 1 1; else echo SCORE 0 1; fi' > {e}/score.sh",
+        e = eval.display()
+    );
+    let mut executor = micro(
+        dir.path(),
+        vec![
+            call(
+                "a1",
+                "run_command",
+                &json!({ "command": script, "timeout_seconds": null }),
+                usage(1_000, 0, 30),
+            ),
+            call(
+                "a2",
+                "write_file",
+                &json!({ "path": "hello.txt", "contents": "hello\n" }),
+                usage(1_000, 0, 30),
+            ),
+            finish("a3", "blocked", "Wrote hello.txt but not world.txt."),
+            call(
+                "b1",
+                "write_file",
+                &json!({ "path": "hello.txt", "contents": "bye\n" }),
+                usage(1_000, 0, 30),
+            ),
+            finish("b2", "blocked", "Changed hello.txt."),
+            finish("c1", "blocked", "Changed nothing."),
+        ],
+        lean_policy(lean::Lean {
+            sessions: 3,
+            self_check: false,
+            keep_best: true,
+            ..lean_shape()
+        }),
+    );
+    executor.prepared = Some(prepared());
+    executor.execute(&briefing(TASK)).await;
+    let record = executor.last.clone().unwrap();
+    let moves = record["moves"].as_array().unwrap();
+    assert_eq!(moves[0]["score"]["passed"], 1);
+    assert_eq!(moves[1]["score"]["passed"], 0);
+    assert_eq!(moves[0]["kept"], true);
+    assert_eq!(moves[1]["kept"], false);
+    assert_eq!(moves.last().unwrap()["kind"], "lean.restore");
+    assert_eq!(
+        std::fs::read_to_string(work.join("hello.txt")).unwrap(),
+        "hello\n"
+    );
+    assert!(!eval.exists(), "the eval directory is removed");
+}
+
+#[test]
+fn a_lookup_table_of_the_examples_is_flagged_and_a_rule_is_not() {
+    let dir = tempfile::tempdir().unwrap();
+    let work = dir.path();
+    std::fs::create_dir_all(work.join("data")).unwrap();
+    let pairs: Vec<(String, String)> = (0..40)
+        .map(|i| (format!("proto{i}word"), format!("modern{i}form")))
+        .collect();
+    let table: String = pairs.iter().map(|(a, b)| format!("{a}\t{b}\n")).collect();
+    std::fs::write(work.join("data/train.tsv"), &table).unwrap();
+    std::fs::write(work.join("solve.py"), "print('todo')\n").unwrap();
+    let fields = lean::data_fields(work);
+    let start = parallel::tree(work);
+    std::fs::write(
+        work.join("rules.json"),
+        r#"[{"name": "o-to-e", "src": "o", "tgt": "e", "left": "", "right": ""}]"#,
+    )
+    .unwrap();
+    assert!(lean::literal_examples(work, &start, &fields).is_empty());
+    let lookup: String = pairs
+        .iter()
+        .map(|(a, b)| format!("{{\"src\": \"{a}\", \"tgt\": \"{b}\"}},\n"))
+        .collect();
+    std::fs::write(work.join("rules.json"), lookup).unwrap();
+    let flagged = lean::literal_examples(work, &start, &fields);
+    assert_eq!(flagged.len(), 1, "{flagged:?}");
+    assert_eq!(flagged[0].0, "rules.json");
+    assert_eq!(flagged[0].2, 80);
+}
+
+#[test]
+fn a_score_is_the_last_score_line() {
+    assert_eq!(lean::parse_score("x\nSCORE 3 9\nSCORE 5 9\n"), Some((5, 9)));
+    assert_eq!(lean::parse_score("SCORE 12 9"), Some((9, 9)));
+    assert_eq!(lean::parse_score("SCORE 1 0\nnothing"), None);
+}

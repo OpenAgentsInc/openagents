@@ -54,6 +54,8 @@ def test_known_arms(agents):
         "coder-one-microluna-v6",
         "coder-one-microluna-v7",
         "coder-one-microluna-v8",
+        "coder-one-microluna-v9",
+        "coder-one-microluna-solo",
         "netprobe",
         "coder-one-tunable-v2",
         "coder-one-tunable-luna-v2",

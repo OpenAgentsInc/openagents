@@ -31,6 +31,7 @@
 //! beside them. Each move between sessions is a Jev decision and a
 //! `handoff` step, which the Gym shows as a hand-off.
 
+pub mod lean;
 pub mod parallel;
 
 use std::cell::Cell;
@@ -247,6 +248,11 @@ pub struct Policy {
     /// beside session 1, instead of after the suite goes green.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub gap_overlap: bool,
+    /// Run the lean loop instead of the requirements or suite loop: a
+    /// strong first session, bounded continuations, and a fresh
+    /// self-check, with no acceptance suite ([`lean::Lean`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lean: Option<lean::Lean>,
 }
 
 #[allow(clippy::trivially_copy_pass_by_ref)]
@@ -410,6 +416,7 @@ impl Default for Policy {
             test_jobs: 1,
             advisory_guards: false,
             gap_overlap: false,
+            lean: None,
         }
     }
 }
@@ -767,6 +774,14 @@ impl Policy {
             problems.push(
                 "executor.microluna's advisory_guards and gap_overlap need suite".to_string(),
             );
+        }
+        if let Some(lean) = &self.lean {
+            problems.extend(lean.validate());
+            if self.suite || self.mode != Mode::Requirements {
+                problems.push(
+                    "executor.microluna.lean needs mode requirements and no suite".to_string(),
+                );
+            }
         }
         if self.gap_overlap && (self.gap_rounds == 0 || !self.overlap_suite) {
             problems.push(
@@ -4445,8 +4460,13 @@ impl Executor for Micro {
             .is_empty()
         });
         let mut parallel_summary = Value::Null;
-        let (sessions, moves, stopped, mode) = match (&self.policy.mode, prepared) {
-            (Mode::Requirements, Some(prepared)) => {
+        let lean = self.policy.lean.clone();
+        let (sessions, moves, stopped, mode) = match (&self.policy.mode, prepared, lean) {
+            (Mode::Requirements, Some(prepared), Some(lean)) => {
+                let (sessions, moves, stopped) = self.lean_loop(&prepared, &lean).await;
+                (sessions, moves, stopped, "lean")
+            }
+            (Mode::Requirements, Some(prepared), None) => {
                 let suited = if self.policy.suite {
                     Some(self.suite_loop(&prepared).await)
                 } else {

@@ -2328,7 +2328,7 @@ fn safe_to_replace(dir: &Path) -> bool {
 }
 
 /// Empties `dir` and copies `from`'s contents into it.
-fn replace_contents(dir: &Path, from: &Path) -> Result<(), String> {
+pub(crate) fn replace_contents(dir: &Path, from: &Path) -> Result<(), String> {
     if !safe_to_replace(dir) {
         return Err(format!(
             "{} is not a workspace the host may replace",
