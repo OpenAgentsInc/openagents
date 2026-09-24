@@ -1,0 +1,813 @@
+{
+  "schema": "openagents.docs.experiment-safeguards.v1",
+  "date": "2026-09-24",
+  "inputs": "Retained coderos status and experiment snapshots; whole-trial records copied with tbench.sync_replays into ~/.openagents/terminal-bench/replay-jobs.",
+  "experiments": [
+    {
+      "experiment": "effort-9569",
+      "updated_at": "2026-09-24T06:27:13+00:00",
+      "input_digests": {
+        "status.json": "85e31902dbe5489213dd095a07b322d1ca37c342fd2b73d465c0c3a787141119",
+        "experiment.json": "ae91d5e161230c8892fae9b57dbcb03883ac87c11762ee1417308d229489ff71"
+      },
+      "arms": [
+        {
+          "arm": "coder-one-tunable-v3",
+          "scheduled": 18,
+          "graded": 14,
+          "passes": 10,
+          "running": 0,
+          "pending": 4,
+          "stopped": 0,
+          "pass_rate": 0.7142857142857143,
+          "wilson_95": [
+            0.4535091567010681,
+            0.8827862135542308
+          ],
+          "mean_cost_usd": null,
+          "total_cost_usd": null,
+          "priced_total_cost_usd": 38.820618904,
+          "unpriced": 1,
+          "mean_ms": 1164214,
+          "claude_quota_usd": 40.11984
+        },
+        {
+          "arm": "coder-one-tunable-v2",
+          "scheduled": 18,
+          "graded": 15,
+          "passes": 7,
+          "running": 0,
+          "pending": 3,
+          "stopped": 0,
+          "pass_rate": 0.4666666666666667,
+          "wilson_95": [
+            0.24809535365737387,
+            0.698830199745016
+          ],
+          "mean_cost_usd": 1.009894556,
+          "total_cost_usd": 15.148418340000003,
+          "priced_total_cost_usd": 15.148418340000003,
+          "unpriced": 0,
+          "mean_ms": 466866,
+          "claude_quota_usd": 15.100905000000001
+        },
+        {
+          "arm": "coder-one-tunable-v9",
+          "scheduled": 18,
+          "graded": 15,
+          "passes": 8,
+          "running": 0,
+          "pending": 3,
+          "stopped": 0,
+          "pass_rate": 0.5333333333333333,
+          "wilson_95": [
+            0.30116980025498397,
+            0.7519046463426261
+          ],
+          "mean_cost_usd": 2.5365882461333333,
+          "total_cost_usd": 38.048823692,
+          "priced_total_cost_usd": 38.048823692,
+          "unpriced": 0,
+          "mean_ms": 888333,
+          "claude_quota_usd": 37.988362
+        }
+      ],
+      "stopping": {
+        "schema": "openagents.gym.experiment-stop.v1",
+        "alpha": 0.05,
+        "accept_pass_rate": null,
+        "baseline": "coder-one-tunable-v3",
+        "ended": false,
+        "verdict": null,
+        "reason": "coder-one-tunable-v2 still open",
+        "arms": [
+          {
+            "arm": "coder-one-tunable-v3",
+            "state": "baseline",
+            "reason": "10 of 14 graded, 4 open",
+            "passes": 10,
+            "graded": 14,
+            "open": 4,
+            "mean_cost_usd": null
+          },
+          {
+            "arm": "coder-one-tunable-v2",
+            "state": "active",
+            "reason": "7 of 15 graded, 3 open",
+            "passes": 7,
+            "graded": 15,
+            "open": 3,
+            "mean_cost_usd": 1.009894556
+          },
+          {
+            "arm": "coder-one-tunable-v9",
+            "state": "undecidable",
+            "reason": "even if every open pair went one way, exact McNemar against coder-one-tunable-v3 gets no lower than 0.109, not below 0.05",
+            "passes": 8,
+            "graded": 15,
+            "open": 3,
+            "mean_cost_usd": 2.5365882461333333
+          }
+        ],
+        "comparisons": [
+          {
+            "arm": "coder-one-tunable-v2",
+            "baseline": "coder-one-tunable-v3",
+            "pairs": 14,
+            "arm_only": 0,
+            "baseline_only": 3,
+            "mcnemar_exact_p": 0.25,
+            "p_if_open_pairs_go_to_arm": 1.0,
+            "p_if_open_pairs_go_to_baseline": 0.015625,
+            "state": "open",
+            "winner": null
+          },
+          {
+            "arm": "coder-one-tunable-v9",
+            "baseline": "coder-one-tunable-v3",
+            "pairs": 14,
+            "arm_only": 2,
+            "baseline_only": 4,
+            "mcnemar_exact_p": 0.6875,
+            "p_if_open_pairs_go_to_arm": 1.0,
+            "p_if_open_pairs_go_to_baseline": 0.109375,
+            "state": "cannot separate",
+            "winner": null
+          }
+        ]
+      }
+    },
+    {
+      "experiment": "escalate-9571b",
+      "updated_at": "2026-09-24T02:54:15+00:00",
+      "input_digests": {
+        "status.json": "9b97ec2cb5f7a12d788ee57879cebc01f5aae908b39ea2852f5c7ceea0715082",
+        "experiment.json": "d0ce30e94980d7f444fd3a348128cb119c9c07098eb4fc5e40e30e2bc49f9c63"
+      },
+      "arms": [
+        {
+          "arm": "coder-one-tunable-v9-escalate",
+          "scheduled": 21,
+          "graded": 21,
+          "passes": 8,
+          "running": 0,
+          "pending": 0,
+          "stopped": 0,
+          "pass_rate": 0.38095238095238093,
+          "wilson_95": [
+            0.20751011368564493,
+            0.5912134622488425
+          ],
+          "mean_cost_usd": 3.526870921714285,
+          "total_cost_usd": 74.06428935599999,
+          "priced_total_cost_usd": 74.06428935599999,
+          "unpriced": 0,
+          "mean_ms": 1501714,
+          "claude_quota_usd": 62.38280599999999
+        },
+        {
+          "arm": "nop",
+          "scheduled": 21,
+          "graded": 21,
+          "passes": 0,
+          "running": 0,
+          "pending": 0,
+          "stopped": 0,
+          "pass_rate": 0.0,
+          "wilson_95": [
+            0.0,
+            0.154639018924847
+          ],
+          "mean_cost_usd": null,
+          "total_cost_usd": null,
+          "priced_total_cost_usd": 0.0,
+          "unpriced": 21,
+          "mean_ms": 53619,
+          "claude_quota_usd": 0.0
+        }
+      ],
+      "stopping": {
+        "schema": "openagents.gym.experiment-stop.v1",
+        "alpha": 0.05,
+        "accept_pass_rate": null,
+        "baseline": null,
+        "ended": false,
+        "verdict": null,
+        "reason": "coder-one-tunable-v9-escalate still open",
+        "arms": [
+          {
+            "arm": "coder-one-tunable-v9-escalate",
+            "state": "active",
+            "reason": "8 of 21 graded, 0 open",
+            "passes": 8,
+            "graded": 21,
+            "open": 0,
+            "mean_cost_usd": 3.526870921714285
+          },
+          {
+            "arm": "nop",
+            "state": "control",
+            "reason": "a control arm: outside the rule",
+            "passes": 0,
+            "graded": 21,
+            "open": 0,
+            "mean_cost_usd": null
+          }
+        ],
+        "comparisons": []
+      }
+    },
+    {
+      "experiment": "escalate-9571c",
+      "updated_at": "2026-09-24T06:27:04+00:00",
+      "input_digests": {
+        "status.json": "d7450ee4ffec3985d9480e7be550aa8b9dc2135e089b37e8f8a7602830f5cb05",
+        "experiment.json": "53b13d08e84b4ce064ebfa54bffa557dbd1a79328a47de3dfef1d257d68e1535"
+      },
+      "arms": [
+        {
+          "arm": "coder-one-tunable-v9-escalate",
+          "scheduled": 12,
+          "graded": 10,
+          "passes": 3,
+          "running": 0,
+          "pending": 2,
+          "stopped": 0,
+          "pass_rate": 0.3,
+          "wilson_95": [
+            0.10779126740630099,
+            0.6032218525388546
+          ],
+          "mean_cost_usd": 4.000012384000001,
+          "total_cost_usd": 40.00012384000001,
+          "priced_total_cost_usd": 40.00012384000001,
+          "unpriced": 0,
+          "mean_ms": 1821300,
+          "claude_quota_usd": 31.098012
+        },
+        {
+          "arm": "nop",
+          "scheduled": 12,
+          "graded": 10,
+          "passes": 0,
+          "running": 0,
+          "pending": 2,
+          "stopped": 0,
+          "pass_rate": 0.0,
+          "wilson_95": [
+            0.0,
+            0.2775327998628892
+          ],
+          "mean_cost_usd": null,
+          "total_cost_usd": null,
+          "priced_total_cost_usd": 0.0,
+          "unpriced": 10,
+          "mean_ms": 48000,
+          "claude_quota_usd": 0.0
+        }
+      ],
+      "stopping": {
+        "schema": "openagents.gym.experiment-stop.v1",
+        "alpha": 0.05,
+        "accept_pass_rate": null,
+        "baseline": null,
+        "ended": false,
+        "verdict": null,
+        "reason": "coder-one-tunable-v9-escalate still open",
+        "arms": [
+          {
+            "arm": "coder-one-tunable-v9-escalate",
+            "state": "active",
+            "reason": "3 of 10 graded, 2 open",
+            "passes": 3,
+            "graded": 10,
+            "open": 2,
+            "mean_cost_usd": 4.000012384000001
+          },
+          {
+            "arm": "nop",
+            "state": "control",
+            "reason": "a control arm: outside the rule",
+            "passes": 0,
+            "graded": 10,
+            "open": 2,
+            "mean_cost_usd": null
+          }
+        ],
+        "comparisons": []
+      }
+    },
+    {
+      "experiment": "v10-persist-9570",
+      "updated_at": "2026-09-24T07:00:41+00:00",
+      "input_digests": {
+        "status.json": "a626e88e6ea177ec896656ef098c809ec4e53ea7ae4b2e4798fae847c230c202",
+        "experiment.json": "cb55d5ca854bd1ddf289c6e62f5b594627a624013a263d35f1e6c345e7bc25f2"
+      },
+      "arms": [
+        {
+          "arm": "coder-one-tunable-v7",
+          "scheduled": 12,
+          "graded": 4,
+          "passes": 2,
+          "running": 0,
+          "pending": 8,
+          "stopped": 0,
+          "pass_rate": 0.5,
+          "wilson_95": [
+            0.15003898915214947,
+            0.8499610108478506
+          ],
+          "mean_cost_usd": 5.7427139745,
+          "total_cost_usd": 22.970855898,
+          "priced_total_cost_usd": 22.970855898,
+          "unpriced": 0,
+          "mean_ms": null,
+          "claude_quota_usd": 15.487503
+        },
+        {
+          "arm": "coder-one-tunable-v10",
+          "scheduled": 12,
+          "graded": 4,
+          "passes": 2,
+          "running": 0,
+          "pending": 8,
+          "stopped": 0,
+          "pass_rate": 0.5,
+          "wilson_95": [
+            0.15003898915214947,
+            0.8499610108478506
+          ],
+          "mean_cost_usd": null,
+          "total_cost_usd": null,
+          "priced_total_cost_usd": 15.041039525999999,
+          "unpriced": 1,
+          "mean_ms": null,
+          "claude_quota_usd": 8.134778
+        }
+      ],
+      "stopping": {
+        "schema": "openagents.gym.experiment-stop.v1",
+        "alpha": 0.05,
+        "accept_pass_rate": null,
+        "baseline": "coder-one-tunable-v7",
+        "ended": false,
+        "verdict": null,
+        "reason": "coder-one-tunable-v10 still open",
+        "arms": [
+          {
+            "arm": "coder-one-tunable-v7",
+            "state": "baseline",
+            "reason": "2 of 4 graded, 8 open",
+            "passes": 2,
+            "graded": 4,
+            "open": 8,
+            "mean_cost_usd": 5.7427139745
+          },
+          {
+            "arm": "coder-one-tunable-v10",
+            "state": "active",
+            "reason": "2 of 4 graded, 8 open",
+            "passes": 2,
+            "graded": 4,
+            "open": 8,
+            "mean_cost_usd": null
+          }
+        ],
+        "comparisons": [
+          {
+            "arm": "coder-one-tunable-v10",
+            "baseline": "coder-one-tunable-v7",
+            "pairs": 4,
+            "arm_only": 0,
+            "baseline_only": 0,
+            "mcnemar_exact_p": 1.0,
+            "p_if_open_pairs_go_to_arm": 0.0078125,
+            "p_if_open_pairs_go_to_baseline": 0.0078125,
+            "state": "open",
+            "winner": null
+          }
+        ]
+      }
+    }
+  ],
+  "combined": {
+    "experiments": [
+      "effort-9569",
+      "escalate-9571b",
+      "escalate-9571c",
+      "v10-persist-9570"
+    ],
+    "composed_graded": 83,
+    "signals": [
+      {
+        "signal": "Final checks",
+        "rows": [
+          {
+            "label": "all passed",
+            "passes": 19,
+            "fails": 19,
+            "pass_rate": 0.5,
+            "wilson_95": [
+              0.34849928364395105,
+              0.6515007163560489
+            ],
+            "note": null
+          },
+          {
+            "label": "inconclusive",
+            "passes": 17,
+            "fails": 19,
+            "pass_rate": 0.4722222222222222,
+            "wilson_95": [
+              0.31986041515179053,
+              0.629940619770124
+            ],
+            "note": "6 ran no scenario: 6 pass, 0 fail"
+          },
+          {
+            "label": "a check failed",
+            "passes": 4,
+            "fails": 5,
+            "pass_rate": 0.4444444444444444,
+            "wilson_95": [
+              0.18877852109766452,
+              0.733348706504507
+            ],
+            "note": null
+          }
+        ],
+        "fisher_exact": {
+          "row": "all passed",
+          "against": "every other row",
+          "p": 0.8272998456314288
+        },
+        "auc": null
+      },
+      {
+        "signal": "Jev support",
+        "rows": [
+          {
+            "label": "unresolved requirements, none contradicted",
+            "passes": 38,
+            "fails": 39,
+            "pass_rate": 0.4935064935064935,
+            "wilson_95": [
+              0.38483020307212373,
+              0.6027999063471285
+            ],
+            "note": null
+          },
+          {
+            "label": "a requirement contradicted",
+            "passes": 2,
+            "fails": 4,
+            "pass_rate": 0.3333333333333333,
+            "wilson_95": [
+              0.09677141110578041,
+              0.700006684861608
+            ],
+            "note": null
+          }
+        ],
+        "fisher_exact": {
+          "row": "unresolved requirements, none contradicted",
+          "against": "every other row",
+          "p": 0.676963832827774
+        },
+        "auc": null
+      },
+      {
+        "signal": "Effort score",
+        "rows": [
+          {
+            "label": "ran medium, score below 0.4",
+            "passes": 4,
+            "fails": 6,
+            "pass_rate": 0.4,
+            "wilson_95": [
+              0.16818032970623614,
+              0.6873262302663417
+            ],
+            "note": null
+          },
+          {
+            "label": "ran xhigh, score at or above 0.4",
+            "passes": 15,
+            "fails": 21,
+            "pass_rate": 0.4166666666666667,
+            "wilson_95": [
+              0.2714056205144606,
+              0.5779974842512834
+            ],
+            "note": null
+          }
+        ],
+        "fisher_exact": null,
+        "auc": {
+          "auc": 0.48635477582846004,
+          "passes": 19,
+          "fails": 27
+        }
+      }
+    ],
+    "components": [
+      {
+        "component": "Escalation (verify.second)",
+        "configured": 39,
+        "fired": 17,
+        "fire_rate": 0.4358974358974359,
+        "rows": [
+          {
+            "label": "ran, kept the second candidate",
+            "passes": 0,
+            "fails": 8,
+            "pass_rate": 0.0,
+            "wilson_95": [
+              0.0,
+              0.32440756488388023
+            ],
+            "note": null
+          },
+          {
+            "label": "ran, kept the first",
+            "passes": 3,
+            "fails": 6,
+            "pass_rate": 0.3333333333333333,
+            "wilson_95": [
+              0.1205838183869109,
+              0.6457978644196036
+            ],
+            "note": null
+          },
+          {
+            "label": "skipped: no check failed and the executor reported no failure",
+            "passes": 11,
+            "fails": 8,
+            "pass_rate": 0.5789473684210527,
+            "wilson_95": [
+              0.3627590353425504,
+              0.7685810871754576
+            ],
+            "note": null
+          },
+          {
+            "label": "skipped: the workspace is over N MiB or N files, too large to copy aside",
+            "passes": 1,
+            "fails": 2,
+            "pass_rate": 0.3333333333333333,
+            "wilson_95": [
+              0.06149194472039621,
+              0.7923403991979522
+            ],
+            "note": null
+          }
+        ],
+        "notes": [
+          "ran 17 times with 3 passes; second executors cost $28.40",
+          "skipped on 19 trials (no check failed and the executor reported no failure), and 8 of those failed anyway",
+          "skipped on 3 trials (the workspace is over N MiB or N files, too large to copy aside), and 2 of those failed anyway"
+        ]
+      },
+      {
+        "component": "Repair",
+        "configured": 52,
+        "fired": 10,
+        "fire_rate": 0.19230769230769232,
+        "rows": [
+          {
+            "label": "ran, changed the candidate",
+            "passes": 7,
+            "fails": 0,
+            "pass_rate": 1.0,
+            "wilson_95": [
+              0.6456695649333126,
+              1.0
+            ],
+            "note": null
+          },
+          {
+            "label": "ran, changed nothing",
+            "passes": 1,
+            "fails": 2,
+            "pass_rate": 0.3333333333333333,
+            "wilson_95": [
+              0.06149194472039621,
+              0.7923403991979522
+            ],
+            "note": null
+          },
+          {
+            "label": "skipped: no check contradicted a requirement",
+            "passes": 21,
+            "fails": 21,
+            "pass_rate": 0.5,
+            "wilson_95": [
+              0.3552598959637448,
+              0.6447401040362553
+            ],
+            "note": null
+          }
+        ],
+        "notes": []
+      },
+      {
+        "component": "Persistence (control.persist)",
+        "configured": 8,
+        "fired": 8,
+        "fire_rate": 1.0,
+        "rows": [
+          {
+            "label": "stopped: round N changed nothing",
+            "passes": 1,
+            "fails": 1,
+            "pass_rate": 0.5,
+            "wilson_95": [
+              0.09453120573423074,
+              0.9054687942657693
+            ],
+            "note": null
+          },
+          {
+            "label": "stopped: nothing the checks or the own tests flag is left to fix",
+            "passes": 1,
+            "fails": 1,
+            "pass_rate": 0.5,
+            "wilson_95": [
+              0.09453120573423074,
+              0.9054687942657693
+            ],
+            "note": null
+          },
+          {
+            "label": "stopped: reached the cap of N rounds",
+            "passes": 1,
+            "fails": 1,
+            "pass_rate": 0.5,
+            "wilson_95": [
+              0.09453120573423074,
+              0.9054687942657693
+            ],
+            "note": null
+          },
+          {
+            "label": "stopped: round N on the strong executor made no progress",
+            "passes": 0,
+            "fails": 1,
+            "pass_rate": 0.0,
+            "wilson_95": [
+              0.0,
+              0.7934506856227626
+            ],
+            "note": null
+          },
+          {
+            "label": "stopped: round N changed nothing; round N on the strong executor made no progress",
+            "passes": 1,
+            "fails": 0,
+            "pass_rate": 1.0,
+            "wilson_95": [
+              0.20654931437723745,
+              1.0
+            ],
+            "note": null
+          }
+        ],
+        "notes": [
+          "rounds per trial: 1 round \u00d7 4, 2 rounds \u00d7 4; rounds cost $14.38"
+        ]
+      },
+      {
+        "component": "Handoff escalation (route escalated)",
+        "configured": 83,
+        "fired": 1,
+        "fire_rate": 0.012048192771084338,
+        "rows": [
+          {
+            "label": "escalated",
+            "passes": 1,
+            "fails": 0,
+            "pass_rate": 1.0,
+            "wilson_95": [
+              0.20654931437723745,
+              1.0
+            ],
+            "note": null
+          }
+        ],
+        "notes": []
+      }
+    ]
+  },
+  "v10_replay": {
+    "schema": "openagents.gym.experiment-stop-replay.v1",
+    "alpha": 0.05,
+    "accept_pass_rate": null,
+    "graded": 8,
+    "read": 8,
+    "stops": [],
+    "saved_trials": 0,
+    "saved_usd": 0.0,
+    "saved_unpriced": 0,
+    "saved_jobs": [],
+    "skipped_anyway": 0,
+    "last": {
+      "schema": "openagents.gym.experiment-stop.v1",
+      "alpha": 0.05,
+      "accept_pass_rate": null,
+      "baseline": "coder-one-tunable-v7",
+      "ended": false,
+      "verdict": null,
+      "reason": "coder-one-tunable-v10 still open",
+      "arms": [
+        {
+          "arm": "coder-one-tunable-v7",
+          "state": "baseline",
+          "reason": "2 of 4 graded, 8 open",
+          "passes": 2,
+          "graded": 4,
+          "open": 8,
+          "mean_cost_usd": 5.7427139745
+        },
+        {
+          "arm": "coder-one-tunable-v10",
+          "state": "active",
+          "reason": "2 of 4 graded, 8 open",
+          "passes": 2,
+          "graded": 4,
+          "open": 8,
+          "mean_cost_usd": null
+        }
+      ],
+      "comparisons": [
+        {
+          "arm": "coder-one-tunable-v10",
+          "baseline": "coder-one-tunable-v7",
+          "pairs": 4,
+          "arm_only": 0,
+          "baseline_only": 0,
+          "mcnemar_exact_p": 1.0,
+          "p_if_open_pairs_go_to_arm": 0.0078125,
+          "p_if_open_pairs_go_to_baseline": 0.0078125,
+          "state": "open",
+          "winner": null
+        }
+      ]
+    },
+    "experiment": "v10-persist-9570"
+  },
+  "jev_first": {
+    "questions": [
+      "runs-learning-v1",
+      "experiment-pulse-v1"
+    ],
+    "runs": 8,
+    "rank": {
+      "considered": 8,
+      "cached": 8,
+      "asked": 0,
+      "answered": 0,
+      "failed": 0,
+      "running": 0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "cost_usd": 0.0,
+      "errors": []
+    },
+    "experiment_questions": {
+      "asked": 5,
+      "answered": 5,
+      "cached": 0,
+      "input_tokens": 6687
+    },
+    "cost_usd": 0.00028085400000000003,
+    "errors": []
+  },
+  "jev_repeat": {
+    "questions": [
+      "runs-learning-v1",
+      "experiment-pulse-v1"
+    ],
+    "runs": 8,
+    "rank": {
+      "considered": 8,
+      "cached": 8,
+      "asked": 0,
+      "answered": 0,
+      "failed": 0,
+      "running": 0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "cost_usd": 0.0,
+      "errors": []
+    },
+    "experiment_questions": {
+      "asked": 0,
+      "answered": 0,
+      "cached": 5,
+      "input_tokens": 0
+    },
+    "cost_usd": 0.0,
+    "errors": []
+  }
+}

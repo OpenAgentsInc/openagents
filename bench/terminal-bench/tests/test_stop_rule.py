@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from tbench import stop_rule
-from tbench.cli import build_parser
+from tbench.cli import build_parser, _experiment_spec
 from tbench.suite import FINISHED, SKIPPED
 
 from test_experiment import _experiment, _finish, _session
@@ -37,12 +37,15 @@ def test_the_exact_binomial_test_matches_known_values():
 
 def _run(scheduler, launcher, outcome, cost=None):
     """Run the schedule two trials at a time; ``outcome`` gives each arm's
-    reward and ``cost`` each arm's Claude cost, $1 by default."""
+    reward and ``cost`` each arm's whole trial cost, $1 by default."""
     scheduler.reconcile()
     while not scheduler.done():
         for trial in scheduler.launch_ready():
             usd = (cost or {}).get(trial.arm, 1.0)
             _finish(launcher, trial.job, reward=outcome[trial.arm], stream=_session(usd))
+            record = launcher.jobs / trial.job / "tbench/attempts/trial__abc.json"
+            record.parent.mkdir(parents=True, exist_ok=True)
+            record.write_text(json.dumps({"cost": {"amount_usd": usd}}))
         scheduler.poll()
 
 
@@ -107,10 +110,38 @@ def test_an_arm_that_cant_catch_up_and_costs_no_less_is_dominated(tmp_path):
     ]
 
 
-def test_the_flags_default_to_stopping_early():
+def test_new_experiments_default_to_stopping_early(monkeypatch):
+    from tbench import experiment
+
+    monkeypatch.setattr(experiment, "load_spec", lambda _: None)
     parser = build_parser()
-    args = parser.parse_args(["experiment", "run", "--id", "x"])
-    assert args.stop_early is True and args.stop_alpha == 0.05 and args.accept_pass_rate is None
+    args = parser.parse_args(["experiment", "run", "--id", "x", "--profile", "tb4",
+                              "--arm", "plain", "--arm", "coder", "--tasks", "alpha"])
+    assert args.stop_early is None and args.stop_alpha is None
+    spec = _experiment_spec(args)
+    assert spec.stop_early is True and spec.stop_alpha == 0.05 and spec.accept_pass_rate is None
     args = parser.parse_args(["experiment", "plan", "--id", "x", "--no-stop-early",
                               "--accept-pass-rate", "0.6"])
     assert args.stop_early is False and args.accept_pass_rate == 0.6
+
+
+def test_unknown_trial_cost_cannot_be_replaced_by_claude_quota(tmp_path):
+    scheduler, launcher = _experiment(tmp_path, tasks=("alpha",), attempts=2, stop_early=False)
+    for trial in scheduler.launch_ready():
+        _finish(launcher, trial.job, reward=1.0, stream=_session(3.0))
+        record = launcher.jobs / trial.job / "tbench/attempts/trial__abc.json"
+        record.parent.mkdir(parents=True, exist_ok=True)
+        record.write_text(json.dumps({"cost": {"amount_usd": None, "lower_bound_usd": 3.0}}))
+    scheduler.poll()
+    assert scheduler.quota_used()["usd"] > 0
+    assert scheduler.stop_input().mean_cost == {}
+    # One priced trial cannot stand in for an arm's missing costs.
+    finished = [t for t in scheduler.trials if t.state == FINISHED]
+    for trial in scheduler.trials:
+        trial.state, trial.reward = FINISHED, 1.0
+    scheduler.costs[finished[0].job] = 0.0
+    assert scheduler.stop_input().mean_cost == {}
+    # A genuinely free arm is valid once every trial is priced.
+    for trial in scheduler.trials:
+        scheduler.costs[trial.job] = 0.0
+    assert scheduler.stop_input().mean_cost == {"plain": 0.0, "coder": 0.0}

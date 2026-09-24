@@ -116,6 +116,47 @@ def test_a_spec_needs_two_arms_and_is_pinned_on_the_first_start(tmp_path):
         pin(Spec(id="x", profile="tb4", arms=["a", "b"], tasks=["t"], attempts=1), tmp_path)
 
 
+@pytest.mark.parametrize("recorded", [None, {"enabled": True, "alpha": 0.01, "accept_pass_rate": 0.6}])
+def test_legacy_restart_preserves_and_pins_its_recorded_policy(tmp_path, monkeypatch, recorded):
+    from tbench import experiment
+    from tbench.cli import _experiment_spec, build_parser
+
+    original = Spec(id="old", profile="tb4", arms=["a", "b"], tasks=["t"]).pinned()
+    original.pop("stopping")
+    (tmp_path / "experiment.json").write_text(json.dumps(original))
+    status = {"stop_early": recorded} if recorded else {}
+    (tmp_path / "status.json").write_text(json.dumps(status))
+    monkeypatch.setattr(experiment, "experiment_dir", lambda _: tmp_path)
+    parser = build_parser()
+    args = parser.parse_args(["experiment", "run", "--id", "old"])
+    spec = _experiment_spec(args)
+    assert spec.stop_early is bool(recorded)
+    assert spec.stop_alpha == (0.01 if recorded else 0.05)
+    assert spec.accept_pass_rate == (0.6 if recorded else None)
+    pin(spec, tmp_path)
+    sealed = json.loads((tmp_path / "experiment.json").read_text())
+    assert sealed == spec.pinned()
+    assert sealed["stopping"]["enabled"] is bool(recorded)
+    # The newly pinned policy, including a disabled legacy policy, wins
+    # over a later status snapshot and over a CLI default.
+    (tmp_path / "status.json").write_text("{}")
+    assert _experiment_spec(args).pinned() == sealed
+    for flags in (["--stop-alpha", "0.2"], ["--accept-pass-rate", "0.9"],
+                  ["--no-stop-early" if recorded else "--stop-early"]):
+        changed = parser.parse_args(["experiment", "run", "--id", "old", *flags])
+        with pytest.raises(ExperimentError, match="stopping policy is pinned"):
+            _experiment_spec(changed)
+
+
+def test_new_stopping_policy_cannot_change_on_restart(tmp_path):
+    spec = Spec(id="new", profile="tb4", arms=["a", "b"], tasks=["t"])
+    pin(spec, tmp_path)
+    for changes in ({"stop_early": False}, {"stop_alpha": 0.1}, {"accept_pass_rate": 0.7}):
+        changed = Spec(id="new", profile="tb4", arms=["a", "b"], tasks=["t"], **changes)
+        with pytest.raises(ExperimentError, match="different stopping"):
+            pin(changed, tmp_path)
+
+
 def test_an_arm_can_run_a_profile_under_its_own_name(tmp_path):
     from tbench.suite import Launcher
 

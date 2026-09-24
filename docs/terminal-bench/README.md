@@ -33,12 +33,13 @@ significant, and Luna is barely measured. See the
 [results](2026-09-24-truthful-checks.md) (issue
 [#9584](https://github.com/OpenAgentsInc/openagents/issues/9584)).
 
-**Tunable v10 against v7 on four near-miss tasks: equal passes, 23% less
-cost, no pass from persistence.** v10 judges persistence rounds against
+**Tunable v10 against v7 on four near-miss tasks: equal passes, at most 23%
+less cost, no pass from persistence.** One call is unpriced. v10 judges persistence rounds against
 what the checks flag and runs them on GPT-6 Sol. Each arm passed 2 of 4
 first attempts (15–85%), with every task tied (exact McNemar p = 1), so the
-operator's rule stopped the experiment after attempt 1. v10 cost $4.43 an
-attempt against $5.74 and spent 75% less on persistence, but no round
+operator stopped the experiment after attempt 1. Further attempts could
+still have separated the arms statistically. v10 cost at least $4.43 an
+attempt against $5.74 and spent 75% less on recorded persistence, but no round
 resolved a flagged failure, and the checks it keys on don't separate passes
 from failures. See the [results](2026-09-24-persist-v10.md) (issue
 [#9570](https://github.com/OpenAgentsInc/openagents/issues/9570)).
@@ -54,14 +55,17 @@ saw 8 of the 20 failed trials. See the
 [results and what the gate should key on instead](2026-09-24-escalation-on-failed-check.md)
 (issue [#9571](https://github.com/OpenAgentsInc/openagents/issues/9571)).
 
-**Per-task effort on six TB4 tasks: routing missed the cost bar and one
-task.** Tunable v9 picks medium or xhigh per task from Jev's features,
+**Per-task effort on six TB4 tasks: routing's cost target is unproven and
+it missed one task.** Tunable v9 picks medium or xhigh per task from Jev's features,
 fitted on the unused task pool. It passed 8 of 15 graded attempts (30–75%),
 against fixed xhigh's 10 of 14 (45–88%) and fixed medium's 7 of 15
-(25–70%), for 76% of fixed xhigh's cost, above the 60% ceiling. It ran
+(25–70%). Recorded costs put it at 76% of fixed xhigh's lower bound;
+one xhigh call is unpriced, so the exact ratio is unknown. It ran
 `gsea-proteomics` at medium and failed it 3 of 3, where xhigh passed 2 of 3,
 and it raised two tasks that medium already passes. Stopped at 44 of 54
-attempts once no winner was possible. See the
+attempts by the operator. The stopping replay rules out a significant
+routed-versus-xhigh difference on the remaining pairs, but leaves the
+medium-versus-xhigh comparison open. See the
 [results](2026-09-24-effort-routing.md) (issue
 [#9569](https://github.com/OpenAgentsInc/openagents/issues/9569)).
 

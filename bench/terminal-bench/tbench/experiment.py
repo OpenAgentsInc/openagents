@@ -43,8 +43,8 @@ undecidable, or can't reach the acceptance bar, and ends the experiment
 when every candidate has stopped. A stopped arm's pending trials are
 skipped; running trials finish. Each stop is recorded in the ledger with
 why, the graded trials it read, and the trials it skipped. The rule is on
-by default; ``--no-stop-early`` runs every planned attempt, and a restart
-with it resumes the skipped trials.
+by default for new experiments; ``--no-stop-early`` starts a design that
+runs every planned attempt. The stopping policy is pinned on restart.
 
 ``gym terminal-bench experiment report`` reads the status file this
 writes and reports each arm's passes with Wilson intervals, the paired
@@ -55,6 +55,7 @@ reads it while the experiment runs.
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -132,8 +133,8 @@ class Spec:
     # An arm named apart from the agent profile it runs, such as a
     # proposal's policy on its base profile: ``{arm: profile}``.
     arm_profiles: dict[str, str] = field(default_factory=dict)
-    # The early-stopping rule (``stop_rule``). Not pinned: an operator may
-    # turn it off, or change the level or the bar, on a restart.
+    # The stopping design is pinned with the arms. A legacy experiment
+    # without a stopping policy keeps its original protocol on restart.
     stop_early: bool = True
     stop_alpha: float = stop_rule.DEFAULT_ALPHA
     accept_pass_rate: float | None = None
@@ -184,10 +185,29 @@ class Spec:
         # Only when used, so experiments pinned before it still match.
         if self.arm_profiles:
             pinned["arm_profiles"] = self.arm_profiles
+        pinned["stopping"] = {
+            "enabled": self.stop_early,
+            "alpha": self.stop_alpha,
+            "accept_pass_rate": self.accept_pass_rate,
+        }
         return pinned
 
     @classmethod
-    def from_pinned(cls, data: dict[str, Any], quota_usd: float | None, **stop: Any) -> Spec:
+    def from_pinned(cls, data: dict[str, Any], quota_usd: float | None,
+                    *, recorded_status: dict[str, Any] | None = None, **stop: Any) -> Spec:
+        # Before policies were pinned, status.json was their only record.
+        # Experiments predating early stopping have no such record.
+        policy = data.get("stopping") or (recorded_status or {}).get("stop_early") or {}
+        expected = {
+            "stop_early": policy.get("enabled", False),
+            "stop_alpha": policy.get("alpha", stop_rule.DEFAULT_ALPHA),
+            "accept_pass_rate": policy.get("accept_pass_rate"),
+        }
+        for name, value in stop.items():
+            if value is not None and value != expected[name]:
+                raise ExperimentError(
+                    "the stopping policy is pinned; use a new experiment id to change it"
+                )
         return cls(
             id=data["id"],
             profile=data["profile"],
@@ -197,7 +217,7 @@ class Spec:
             arm_args={k: list(v) for k, v in (data.get("arm_args") or {}).items()},
             quota_usd=quota_usd,
             arm_profiles=dict(data.get("arm_profiles") or {}),
-            **stop,
+            **expected,
         )
 
 
@@ -207,12 +227,21 @@ def pin(spec: Spec, directory: Path) -> Spec:
     wanted = spec.pinned()
     if path.exists():
         existing = json.loads(path.read_text())
+        migrating = "stopping" not in existing
+        if migrating:
+            status_path = directory / "status.json"
+            status = json.loads(status_path.read_text()) if status_path.exists() else None
+            prior = Spec.from_pinned(existing, None, recorded_status=status)
+            existing["stopping"] = prior.pinned()["stopping"]
         if existing != wanted:
             changed = sorted(k for k in wanted if existing.get(k) != wanted[k])
             raise ExperimentError(
                 f"experiment {spec.id} was pinned with different "
                 f"{', '.join(changed)}; use a new experiment id"
             )
+        # Seal the recorded policy when migrating an older experiment.
+        if migrating:
+            path.write_text(json.dumps(wanted, indent=2) + "\n")
         return spec
     directory.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(wanted, indent=2) + "\n")
@@ -246,7 +275,7 @@ def trial_cost(job_dir: Path) -> float | None:
             cost = (json.loads(path.read_text()).get("cost") or {}).get("amount_usd")
         except (OSError, ValueError):
             continue
-        if isinstance(cost, (int, float)):
+        if type(cost) in (int, float) and math.isfinite(cost) and cost >= 0:
             return float(cost)
     return None
 
@@ -402,10 +431,10 @@ class ExperimentScheduler(Scheduler):
         if trial.state == FINISHED:
             self.usage[trial.job] = self.usage_of(self.jobs_dir / trial.job)
             cost = trial_cost(self.jobs_dir / trial.job)
-            if cost is None:
-                cost = (self.usage[trial.job] or {}).get("usd") or None
             if cost is not None:
                 self.costs[trial.job] = cost
+            else:
+                self.costs.pop(trial.job, None)
 
     # -- the early-stopping rule --------------------------------------------
 
@@ -448,7 +477,15 @@ class ExperimentScheduler(Scheduler):
             )
             if trial.state == FINISHED and trial.reward is not None and trial.job in self.costs:
                 sums.setdefault(trial.arm or "", []).append(self.costs[trial.job])
-        data.mean_cost = {arm: sum(costs) / len(costs) for arm, costs in sums.items()}
+        graded = {
+            arm: sum(t.arm == arm and t.state == FINISHED and t.reward is not None
+                     for t in self.trials)
+            for arm in self.spec.arms
+        }
+        data.mean_cost = {
+            arm: sum(costs) / len(costs)
+            for arm, costs in sums.items() if len(costs) == graded[arm]
+        }
         return data
 
     def apply_stop_rule(self) -> dict[str, Any]:

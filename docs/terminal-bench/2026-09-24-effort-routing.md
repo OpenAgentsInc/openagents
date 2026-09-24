@@ -9,12 +9,14 @@ fixed xhigh's passes for no more than 60% of its cost (issue
 
 ## Summary
 
-The routed arm doesn't meet the acceptance bar, so issue #9569 stays open.
+The routed arm has not demonstrated the acceptance target, so issue #9569 stays open.
 Tunable v9 (routed) passed 8 of 15 graded attempts (30–75%), fixed xhigh
 (v3) 10 of 14 (45–88%), and fixed medium (v2) 7 of 15 (25–70%). None of the
 differences is distinguishable from chance: routed against xhigh, exact
 McNemar p = 0.69. On the per-task means, routed cost \$14.54 against
-xhigh's \$19.09, 76% of it, above the 60% ceiling. Its passes, summed as
+xhigh's lower bound of \$19.09, at most 76% of it. One xhigh Jev call
+is unpriced, so the exact ratio and the 60% cost claim remain unverified.
+Its passes, summed as
 per-task pass rates, were 3.5 tasks against xhigh's 4.2, which is within
 one task. The clearest miss is `gsea-proteomics`. The routing scored it
 0.17, below the 0.40 threshold, and ran it at medium, where it failed 3 of
@@ -23,10 +25,11 @@ already passes, `embedding-drift-monitor` and `interleaved-vigenere`, so it
 paid xhigh's price where medium sufficed.
 
 The experiment was stopped with 44 of 54 attempts graded, on the operator's
-rule to stop a run once it can't produce a clear winner. The remaining
-attempts couldn't bring routed within the cost ceiling: it had already
-chosen xhigh on the two control tasks, and xhigh costs about 3 times medium
-there. The Claude quota used was \$93.21 of a \$200 budget. No attempt was
+rule to stop a run once it can't produce a clear winner. The stopping
+replay confirms that the remaining paired outcomes cannot separate routed
+from xhigh at alpha 0.05, but medium against xhigh remains open. This does
+not bound what unfinished attempts would cost. The Claude quota used was
+\$93.21 of a \$200 budget. No attempt was
 lost to credentials, quota, or infrastructure. The stop interrupted two
 attempts, which aren't graded, and eight never started.
 
@@ -156,13 +159,17 @@ bound, \$1.37, is used, and it includes the executor's reported \$1.36.
 
 | Arm | Graded | Passed | Cost of graded attempts | Mean per attempt | Sum of per-task means | Mean agent time | Jev |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| v3, fixed xhigh | 14 | 10 | \$40.19 | \$2.87 | \$19.09 | 18.0 min | at least \$0.067199 |
+| v3, fixed xhigh | 14 | 10 | ≥\$40.19 | ≥\$2.87 | ≥\$19.09 | 18.0 min | at least \$0.067199 |
 | v2, fixed medium | 15 | 7 | \$15.15 | \$1.01 | \$5.96 | 5.8 min | \$0.047513 |
 | v9, routed | 15 | 8 | \$38.05 | \$2.54 | \$14.54 | 13.1 min | \$0.060460 |
 
 The arms have different numbers of graded attempts on some tasks, so
-compare them by the sum of per-task means. Routed cost 76% of fixed xhigh
-and 2.4 times fixed medium. The effort question itself was one Jev request
+compare them by the sum of per-task means. Routed cost at most 76% of
+fixed xhigh and 2.4 times fixed medium. Reaching 60% on these recorded
+attempts would require roughly \$15.4 of extra charge in the one unpriced
+call, because its task mean divides that charge by three. That is much
+larger than the priced Jev calls, but the record does not prove a ceiling.
+The effort question itself was one Jev request
 of 618 to 2,257 input tokens per attempt, \$0.000026 to \$0.000095.
 
 Mean cost, passes, and agent time per task:
@@ -170,7 +177,7 @@ Mean cost, passes, and agent time per task:
 | Task | v3 xhigh | v2 medium | v9 routed (effort) |
 | --- | --- | --- | --- |
 | `cad-model` | \$0.93 · 3/3 · 6.5 min | \$0.27 · 2/3 · 2.8 min | \$0.81 · 2/3 · 6.6 min (xhigh) |
-| `gsea-proteomics` | \$1.07 · 2/3 · 9.1 min | \$0.27 · 1/3 · 2.5 min | \$0.29 · 0/3 · 3.8 min (medium) |
+| `gsea-proteomics` | ≥\$1.07 · 2/3 · 9.1 min | \$0.27 · 1/3 · 2.5 min | \$0.29 · 0/3 · 3.8 min (medium) |
 | `vba-userform-port` | \$9.27 · 0/2 · 34.3 min | \$2.70 · 0/3 · 11.5 min | \$7.87 · 1/3 · 28.6 min (xhigh) |
 | `interleaved-vigenere` | \$4.40 · 2/2 · 47.6 min | \$1.59 · 2/2 · 10.1 min | \$3.37 · 2/2 · 24.6 min (xhigh) |
 | `embedding-drift-monitor` | \$1.49 · 2/2 · 11.2 min | \$0.42 · 2/2 · 4.7 min | \$1.52 · 2/2 · 11.3 min (xhigh) |
@@ -245,7 +252,8 @@ this score keeps them at medium and raises `gsea-proteomics`.
 attempts across the three arms, 4 of them at medium. v9 raised both
 because of their `long_reasoning` answers, and paid \$1.52 against \$0.42
 and \$3.37 against \$1.59. Those two tasks account for most of the gap
-between routed's 76% and the 60% ceiling.
+between the recorded 76% ratio and the 60% ceiling, before the unknown
+xhigh charge.
 
 ### Each run
 

@@ -44,7 +44,7 @@ uv run tbench experiment run --id v7-vs-cc-0924 --profile tb4 \
 - **Pinning.** The first start writes `experiment.json` under
   `~/.openagents/terminal-bench/experiments/<id>/`. A restart with the
   same ID resumes; a different profile, arm list, task list, attempt count,
-  or arm kwarg is refused and needs a new ID. Only `--quota-usd` may
+  arm kwarg, or stopping policy is refused and needs a new ID. `--quota-usd` may
   change, so you can raise the budget to finish.
 - **Credentials.** Claude trials use the long-lived token in
   `~/.openagents/claude-setup-token`. Without it, the experiment refuses
@@ -67,8 +67,10 @@ uv run tbench experiment run --id v7-vs-cc-0924 --profile tb4 \
   of the open pairs could separate it), or below the acceptance bar
   (`--accept-pass-rate`, when you set one). The experiment ends when every
   candidate has stopped; running trials finish. Each stop and why is in
-  `ledger.jsonl`. It's on by default; `--no-stop-early` runs every planned
-  attempt, and `--stop-alpha` sets the level. The
+  `ledger.jsonl`. It's on by default for new experiments;
+  `--no-stop-early` runs every planned attempt, and `--stop-alpha` sets the
+  level. Restarts preserve these settings; experiments that predate the
+  rule keep it disabled. The
   [Gym CLI](../gym/terminal-bench-cli.md#stop-losers-early) states the rule.
 
 Read the experiment while it runs, with no model call:

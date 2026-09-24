@@ -109,6 +109,14 @@ head-to-head replay**. Choose a task and one attempt on each side. Coder
 One versions and repeated attempts remain separate choices. You can also
 compare two local attempts or view a public attempt on its own.
 
+Press **`w` for an experiment pulse**: per-arm results, uncertainty,
+component outcomes, check calibration, and the stopping verdict. The same
+view is available as `gym experiment pulse ID`; add `--jev` for cached
+judgments or `--live` for advisory assessments of running trials. Unknown
+trial costs stay explicit, and restarting an experiment preserves its
+stopping policy. See the [experiment guide](docs/gym/terminal-bench-cli.md#read-an-experiment-in-flight)
+and [September 24 issue review](docs/terminal-bench/2026-09-24-issue-review.md).
+
 Press **`l` in the head-to-head picker** to switch between newest first
 and Jev's learning order. Both Coder and Fable attempts receive the same
 learning judgments used in Runs. The picker shows scores and reasons;
@@ -194,7 +202,8 @@ The September 24 follow-ups found two limits in the current controller:
   rescued **0 of 12 escalated trials**, at $20.40 of GPT-6 Astra usage.
 - [Per-task effort routing](docs/terminal-bench/2026-09-24-effort-routing.md)
   passed **8/15**, against fixed xhigh's **10/14**, while costing 76% of
-  fixed xhigh—above the experiment's 60% cost ceiling.
+  fixed xhigh using its recorded cost lower bound. One xhigh call is
+  unpriced, so the exact ratio is unknown; the 60% cost target is unproven.
 
 The [Luna pivot proposal](docs/coder/design/luna-pivot.md) sets the next
 design focus. These experiments do not establish a controller efficiency
@@ -309,6 +318,10 @@ remained failed at an existing Coder One scratch-path test; the
 [verification record](docs/gym/head-to-head.md#verification) documents the
 scope. Feature-specific success does not mean the full repository gate is
 green.
+
+The [experiment safeguards review](docs/terminal-bench/2026-09-24-issue-review.md#validation)
+records the later Python, Rust, live Jev, and retained-data checks, including
+the remaining workspace and fixture failures.
 
 [AGENTS.md](AGENTS.md) is the contributor contract. See [LICENSE](LICENSE)
 and the [dependency and provenance policy](docs/dependencies.md) for the

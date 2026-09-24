@@ -457,7 +457,8 @@ interleaved attempts per task per arm by default, on the long-lived Claude
 token, with an optional Claude quota budget. After every graded trial, the
 scheduler applies the early-stopping rule described in
 [Stop losers early](#stop-losers-early); `--no-stop-early` runs every
-planned attempt.
+planned attempt when selected for a new experiment. Restarts preserve the
+experiment's stopping policy.
 
 ```sh
 gym terminal-bench experiment plan --id v7-vs-cc-0924 --profile tb4 \
@@ -587,7 +588,9 @@ attempt number. A candidate stops when one of these holds, in this order:
 
 1. **Dominated.** Even if every open attempt of the arm passes, it ends
    with fewer passes than another arm has now, and its mean cost per
-   graded attempt isn't lower.
+   graded attempt isn't lower. Both arms must have a whole-trial price
+   for every graded attempt. A Claude quota subtotal or an average of only
+   the priced trials cannot establish cost dominance.
 2. **Decided.** The exact McNemar test is below the significance level
    (`--stop-alpha`, 0.05 by default) and stays below it with the same
    winner even if every open pair goes the other way.
@@ -604,9 +607,24 @@ experiment ends when every candidate has stopped. Each stop is appended to
 the experiment's `ledger.jsonl` as an `event: stop` record with its scope,
 its state, why, the graded trials it read, and the jobs it skipped, and
 `status.json` carries the settings and the latest verdict under
-`stop_early`. A restart keeps the stops. `--no-stop-early` turns the rule
-off, and a restart with it runs the skipped trials. The rule makes no
-correction for comparing several arms.
+`stop_early`. A restart keeps the stops. New experiments pin the enabled
+flag, alpha, and acceptance bar in `experiment.json`; changing one requires
+a new experiment ID. Choose `--no-stop-early` at creation to run every
+planned attempt. Older experiments preserve the settings in their last
+status file and seal them on restart. Experiments from before early
+stopping, with neither record, keep it disabled. The Claude quota budget
+can still change independently.
+
+The pulse leaves mean and total cost unknown when any graded trial lacks
+a complete price. It shows the priced subtotal and the number of unknown
+trials. JSON keeps that subtotal under `priced_total_cost_usd` and returns
+`null` for `mean_cost_usd` and `total_cost_usd`. The subtotal excludes even
+the known charges of partially priced trials. Claude quota remains a
+separate measure.
+
+The significance rule requires the final paired test to hold even under
+the worst remaining outcomes; it does not stop on a significant prefix
+alone. The rule makes no correction for comparing several arms.
 
 The rule is code: `crates/gym/src/terminal_bench_stop.rs` for the Gym and
 `bench/terminal-bench/tbench/stop_rule.py` for the scheduler, both tested

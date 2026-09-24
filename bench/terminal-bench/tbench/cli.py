@@ -583,8 +583,22 @@ def _experiment_spec(args: argparse.Namespace):
         "stop_alpha": args.stop_alpha,
         "accept_pass_rate": args.accept_pass_rate,
     }
+    prior = (
+        experiment.Spec.from_pinned(
+            pinned, args.quota_usd, recorded_status=experiment.read_status(args.id), **stop
+        ) if pinned is not None else None
+    )
+    if prior is not None:
+        stop = {
+            "stop_early": prior.stop_early,
+            "stop_alpha": prior.stop_alpha,
+            "accept_pass_rate": prior.accept_pass_rate,
+        }
+    else:
+        stop["stop_early"] = True if args.stop_early is None else args.stop_early
+        stop["stop_alpha"] = 0.05 if args.stop_alpha is None else args.stop_alpha
     if pinned is not None and not (args.profile or args.arm or tasks):
-        spec = experiment.Spec.from_pinned(pinned, args.quota_usd, **stop)
+        spec = prior
     else:
         if not (args.profile and args.arm and tasks):
             raise RunError(
@@ -917,16 +931,16 @@ def add_experiment_parser(sub) -> None:
         p.add_argument(
             "--stop-early",
             action=argparse.BooleanOptionalAction,
-            default=True,
+            default=None,
             help="after every graded trial, stop an arm that is dominated, decided, "
             "undecidable, or can't reach --accept-pass-rate, and end the experiment "
-            "when every candidate arm has stopped (default on; --no-stop-early runs "
+            "when every candidate arm has stopped (default on for new experiments; --no-stop-early runs "
             "every planned attempt)",
         )
         p.add_argument(
             "--stop-alpha",
             type=float,
-            default=0.05,
+            default=None,
             help="the stopping rule's two-sided exact McNemar level (default 0.05)",
         )
         p.add_argument(

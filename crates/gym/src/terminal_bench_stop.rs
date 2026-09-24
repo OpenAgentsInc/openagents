@@ -893,6 +893,7 @@ pub fn replay(
     let mut stops = Vec::new();
     let mut read = 0;
     let mut costs: BTreeMap<String, (f64, usize)> = BTreeMap::new();
+    let mut observed: BTreeMap<String, usize> = BTreeMap::new();
     let mut last = evaluate(&input, rule);
     let would_run =
         |trial: &Recorded, stopped_at: &BTreeMap<String, i64>, ended_at: Option<i64>| {
@@ -914,6 +915,7 @@ pub fn replay(
             continue;
         }
         read += 1;
+        *observed.entry(trial.arm.clone()).or_default() += 1;
         let at = trial.finished_at.clone().unwrap_or_default();
         let at_ms = ms(&trial.finished_at).unwrap_or(i64::MAX);
         input.cells.insert(
@@ -927,6 +929,7 @@ pub fn replay(
         }
         input.mean_cost = costs
             .iter()
+            .filter(|(arm, (_, n))| observed.get(*arm) == Some(n))
             .map(|(arm, (sum, n))| (arm.clone(), sum / *n as f64))
             .collect();
         // A trial that ended without a grade before now never counts.
@@ -1084,6 +1087,23 @@ mod tests {
                 .iter()
                 .any(|l| l.contains("would not have started: 3 trials"))
         );
+    }
+
+    #[test]
+    fn replay_does_not_treat_a_priced_subset_as_the_arm_cost() {
+        let arms = vec!["base".to_owned(), "cand".to_owned()];
+        let tasks = vec!["t".to_owned()];
+        let mut trials = vec![
+            recorded("base", "t", 1, Some(1.0), 0),
+            recorded("cand", "t", 1, Some(1.0), 1),
+            recorded("base", "t", 2, Some(0.0), 2),
+            recorded("cand", "t", 2, Some(0.0), 3),
+        ];
+        trials[3].cost_usd = None;
+        let result = replay(&arms, &tasks, 12, &trials, Rule::default());
+        assert!(result.stops.is_empty());
+        assert_eq!(result.last.arms[0].mean_cost, Some(1.0));
+        assert_eq!(result.last.arms[1].mean_cost, None);
     }
 
     #[test]

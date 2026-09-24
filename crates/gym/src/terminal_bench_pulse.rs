@@ -56,8 +56,8 @@ pub struct TrialFacts {
     pub reward: Option<f64>,
     pub started_at: Option<String>,
     pub finished_at: Option<String>,
-    /// The trial's whole cost from the harness's attempt record, or the
-    /// Claude quota it drew when no record priced it.
+    /// The trial's whole cost. Partial Claude quota is not a substitute
+    /// for an unpriced mixed-executor trial.
     pub cost_usd: Option<f64>,
     pub quota_usd: f64,
     pub duration_ms: Option<u64>,
@@ -415,10 +415,13 @@ impl TrialFacts {
             facts.trial_dir = trial_dir(&job_dir);
             if let Some(dir) = &facts.trial_dir {
                 let name = dir.file_name().unwrap_or_default().to_string_lossy();
-                if let Some(record) =
-                    read_json(&job_dir.join("tbench/attempts").join(format!("{name}.json")))
-                {
-                    facts.cost_usd = record.pointer("/cost/amount_usd").and_then(Value::as_f64);
+                let record_path = job_dir.join("tbench/attempts").join(format!("{name}.json"));
+                let record = read_json(&record_path);
+                if let Some(record) = &record {
+                    facts.cost_usd = record
+                        .pointer("/cost/amount_usd")
+                        .and_then(Value::as_f64)
+                        .filter(|usd| usd.is_finite() && *usd >= 0.0);
                     if let Some(ms) = record.pointer("/timing/total_ms").and_then(Value::as_u64) {
                         facts.duration_ms = Some(ms);
                     }
@@ -437,16 +440,14 @@ impl TrialFacts {
                         facts.finished_at = timing("finished_at");
                     }
                 }
-                if facts.cost_usd.is_none() {
+                if !record_path.exists() {
                     facts.cost_usd = read_json(&dir.join("result.json"))
-                        .and_then(|result| result.pointer("/agent_result/cost_usd")?.as_f64());
+                        .and_then(|result| result.pointer("/agent_result/cost_usd")?.as_f64())
+                        .filter(|usd| usd.is_finite() && *usd >= 0.0);
                 }
                 facts.composition = composition(dir);
                 (facts.tests, facts.failing_tests) = verifier(dir);
             }
-        }
-        if facts.cost_usd.is_none() && trial.quota_usd > 0.0 {
-            facts.cost_usd = Some(trial.quota_usd);
         }
         facts
     }
@@ -974,6 +975,12 @@ pub fn rule_input(report: &Report, trials: &[TrialFacts], stops: &[LedgerStop]) 
     }
     input.mean_cost = costs
         .into_iter()
+        .filter(|(arm, (_, n))| {
+            *n == trials
+                .iter()
+                .filter(|t| t.arm == **arm && t.graded())
+                .count()
+        })
         .map(|(arm, (sum, n))| (arm.to_owned(), sum / n as f64))
         .collect();
     for stop in stops {
@@ -1039,7 +1046,8 @@ impl Pulse {
                     pending: mine.iter().filter(|t| t.state == "pending").count(),
                     stopped: mine.iter().filter(|t| t.state == "skipped").count(),
                     interval: summary.interval,
-                    mean_cost: (!priced.is_empty()).then(|| total / priced.len() as f64),
+                    mean_cost: (!priced.is_empty() && priced.len() == graded.len())
+                        .then(|| total / priced.len() as f64),
                     total_cost: total,
                     unpriced: graded.len() - priced.len(),
                     mean_ms: (!times.is_empty())
@@ -1132,7 +1140,8 @@ impl Pulse {
                 "pass_rate": (a.graded > 0).then(|| a.passes as f64 / a.graded as f64),
                 "wilson_95": [a.interval.0, a.interval.1],
                 "mean_cost_usd": a.mean_cost,
-                "total_cost_usd": a.total_cost,
+                "total_cost_usd": (a.unpriced == 0).then_some(a.total_cost),
+                "priced_total_cost_usd": a.total_cost,
                 "unpriced": a.unpriced,
                 "mean_ms": a.mean_ms,
                 "claude_quota_usd": a.quota_usd,
@@ -1202,7 +1211,11 @@ impl Pulse {
                 },
                 a.mean_cost
                     .map_or_else(|| "—".to_owned(), |usd| format!("${usd:.2}")),
-                format!("${:.2}", a.total_cost),
+                if a.unpriced == 0 {
+                    format!("${:.2}", a.total_cost)
+                } else {
+                    format!(">=${:.2}", a.total_cost)
+                },
                 duration_text(a.mean_ms),
                 format!("${:.2}", a.quota_usd),
                 if a.running + a.pending + a.stopped > 0 {
@@ -1214,6 +1227,12 @@ impl Pulse {
                     String::new()
                 }
             ));
+            if a.unpriced > 0 {
+                lines.push(format!(
+                    "    {} of {} graded trials have unknown total cost; the subtotal includes only fully priced trials",
+                    a.unpriced, a.graded
+                ));
+            }
         }
         let short = self.short_arms();
         lines.push(String::new());
@@ -1910,6 +1929,56 @@ pub(crate) mod fixture {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_unknown_total_never_becomes_a_partial_quota_or_arm_mean() {
+        let temp = tempfile::tempdir().unwrap();
+        let (experiments, jobs) = fixture::write_experiment(temp.path());
+        let job = jobs.join("tb4--cand--t1--x-r1");
+        std::fs::write(
+            job.join("tbench/attempts/t1__cand1.json"),
+            r#"{"cost":{"amount_usd":null,"lower_bound_usd":2.0,"unknown_calls":1}}"#,
+        )
+        .unwrap();
+        // Harbor and Claude report executor-only costs. Neither completes
+        // an explicitly unknown whole-trial record.
+        std::fs::write(
+            job.join("t1__cand1/result.json"),
+            r#"{"agent_result":{"cost_usd":2.0}}"#,
+        )
+        .unwrap();
+        let pulse = Pulse::load(&experiments.join("x/status.json"), Some(&jobs), None).unwrap();
+        let trial = pulse
+            .trials
+            .iter()
+            .find(|t| t.job == "tb4--cand--t1--x-r1")
+            .unwrap();
+        assert!(trial.quota_usd > 0.0);
+        assert_eq!(trial.cost_usd, None);
+        let arm = &pulse.arms[1];
+        assert_eq!(arm.unpriced, 1);
+        assert_eq!(arm.mean_cost, None);
+        assert_eq!(arm.total_cost, 2.0);
+        let input = rule_input(&pulse.report, &pulse.trials, &[]);
+        assert!(!input.mean_cost.contains_key("cand"));
+        assert_eq!(input.mean_cost["base"], 1.0);
+        assert!(pulse.to_json()["arms"][1]["total_cost_usd"].is_null());
+        assert_eq!(pulse.to_json()["arms"][1]["priced_total_cost_usd"], 2.0);
+        assert!(
+            pulse
+                .lines()
+                .join("\n")
+                .contains("1 of 2 graded trials have unknown total cost")
+        );
+        std::fs::write(job.join("tbench/attempts/t1__cand1.json"), "{incomplete").unwrap();
+        let incomplete =
+            Pulse::load(&experiments.join("x/status.json"), Some(&jobs), None).unwrap();
+        assert_eq!(incomplete.arms[1].mean_cost, None);
+        // With no attempt record, a native Harbor total remains readable.
+        std::fs::remove_file(job.join("tbench/attempts/t1__cand1.json")).unwrap();
+        let native = Pulse::load(&experiments.join("x/status.json"), Some(&jobs), None).unwrap();
+        assert_eq!(native.arms[1].mean_cost, Some(2.0));
+    }
 
     #[test]
     fn a_pulse_reads_arms_signals_components_and_notables() {
