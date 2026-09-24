@@ -161,6 +161,16 @@ pub struct Policy {
     /// group, as v1 through v4 do.
     #[serde(default)]
     pub focus_actionable: bool,
+    /// Drive the loop by an acceptance suite (`accept.define`, issue
+    /// #9588): before any fix, a Microluna session writes executable tests
+    /// from the task, code proves them red on the untouched workspace and
+    /// Jev checks them, and the suite is frozen. Then edit sessions run,
+    /// each briefed with the frozen tests and the red tests' output, until
+    /// the suite is green or a bound is hit. Done is the suite green, not a
+    /// session's report. When the suite comes out with no tests, the
+    /// dispatch falls back to the requirements loop.
+    #[serde(default)]
+    pub suite: bool,
 }
 
 fn yes() -> bool {
@@ -183,9 +193,19 @@ impl Default for Policy {
             read_first: false,
             accept: false,
             focus_actionable: false,
+            suite: false,
         }
     }
 }
+
+/// What an edit session in the suite loop is told.
+pub const SUITE_GUIDANCE: &str = "A frozen acceptance suite defines done for this task: it was \
+written from the task before any fix and fails on the untouched workspace. Change the workspace \
+until every test in it passes. You can't change the tests or anything in their directory. Run the \
+red tests with the command the evidence gives before your first edit and after every edit, and \
+read their output: each red test names the fact it checks. Use the exact rule, value, and format \
+the task states, not a simpler one. When every test passes, call finish with status done. If a \
+test seems to contradict the task, follow the task and say so in your summary.";
 
 impl Policy {
     /// The problems with the bounds, for [`crate::policy::Manifest::validate`].
@@ -1525,6 +1545,241 @@ impl Micro {
         (sessions, moves, stopped)
     }
 
+    /// The suite loop: `accept.define` writes and freezes an acceptance
+    /// suite, then edit sessions run until it's green or a bound is hit.
+    /// `None` when there's no transport or the suite has no tests, so the
+    /// caller falls back to the requirements loop.
+    #[allow(clippy::too_many_lines)]
+    async fn suite_loop(&self, prepared: &Prepared) -> Option<(Vec<Ran>, Vec<Value>, String)> {
+        let Ok(wire) = &self.wire else {
+            return None;
+        };
+        let started = Instant::now();
+        let time_left = || {
+            self.episode
+                .allowance()
+                .map_or(self.deadline, |left| left.min(self.deadline))
+                .saturating_sub(started.elapsed())
+        };
+        let base = self
+            .artifacts
+            .parent()
+            .map_or_else(|| self.artifacts.clone(), Path::to_path_buf);
+        let suite_dir = base.join(format!("accept-suite-{}", self.dispatch()));
+        let task = crate::accept::Task {
+            title: prepared.title.clone(),
+            instruction: prepared.instruction.clone(),
+        };
+        let everything = Group {
+            ids: prepared
+                .requirements
+                .requirements
+                .iter()
+                .map(|r| r.id.clone())
+                .collect(),
+            lines: Vec::new(),
+        };
+        let evidence = evidence_for(prepared, &everything, self.policy.evidence_chars);
+        let key = format!("microluna-{}", &sha256(&prepared.instruction)[..16]);
+        let writer = crate::accept::MicrolunaWriter {
+            transport: wire,
+            config: Config {
+                model: self.model.clone(),
+                effort: self.effort.clone(),
+                max_turns: self.policy.session_turns.max(40),
+                cache_key: format!("{key}-writer"),
+                deadline: Some(Duration::from_secs(self.policy.session_sec).min(time_left())),
+            },
+            isolation: self.isolation,
+            traces: Some(self.artifacts.clone()),
+            echo: false,
+        };
+        let confine = match self.isolation {
+            Isolation::TaskContainer => crate::accept::Confine::TaskContainer,
+            Isolation::ReadOnly => crate::accept::Confine::ReadOnly,
+            Isolation::Boundary => crate::accept::Confine::Writing,
+        };
+        let runner = crate::accept::Local {
+            confine,
+            test_sec: 120,
+        };
+        let inputs = crate::accept::Inputs {
+            task: &task,
+            requirements: &prepared.requirements,
+            evidence: &evidence,
+            workspace: &self.workdir,
+            suite_dir: &suite_dir,
+            workspace_note: format!(
+                "the task's workspace, {}, which your commands can read but you must not change",
+                self.workdir.display()
+            ),
+        };
+        crate::say::line("  microluna ▸ writing the acceptance suite before any fix");
+        let suite = crate::accept::define(
+            &inputs,
+            &writer,
+            &runner,
+            &prepared.jev,
+            &self.recorder,
+            &crate::accept::Options::default(),
+        )
+        .await;
+        crate::say::line(&format!("  microluna ▸ {}", suite.headline()));
+        let mut moves = vec![json!({
+            "kind": "suite",
+            "headline": suite.headline(),
+            "status": suite.status,
+            "digest": suite.digest,
+            "tests": suite.tests.len(),
+            "rejected": suite.rejected.len(),
+            "rounds": suite.rounds.len(),
+            "gaps": suite.gaps,
+            "writer_usd": suite.writer_usd,
+            "jev_usd": suite.jev_usd,
+            "milliseconds": suite.milliseconds,
+            "record": crate::accept::AcceptanceSuite::record_path(&suite_dir),
+        })];
+        if suite.tests.is_empty() {
+            crate::say::line(
+                "  microluna ▸ the suite has no tests, so the requirements loop runs instead",
+            );
+            return None;
+        }
+        let mut spent = suite.writer_usd + suite.jev_usd;
+        let mut sessions: Vec<Ran> = Vec::new();
+        let mut best = 0usize;
+        let mut since_progress = 0u32;
+        let stopped;
+        let mut number = 0u32;
+        loop {
+            let label = if number == 0 {
+                "start".to_string()
+            } else {
+                format!("after session {number}")
+            };
+            let result = match crate::accept::run(
+                &suite,
+                &self.workdir,
+                &runner,
+                Some(&self.recorder),
+                &label,
+            )
+            .await
+            {
+                Ok(result) => result,
+                Err(tampered) => {
+                    stopped = format!("the suite can't be trusted: {tampered}");
+                    break;
+                }
+            };
+            crate::say::line(&format!(
+                "  microluna ▸ suite {label}: {} of {} green",
+                result.passed, result.total
+            ));
+            moves.push(json!({
+                "kind": "run",
+                "after_session": number,
+                "passed": result.passed,
+                "total": result.total,
+                "green": result.green,
+                "complete": result.complete,
+                "red": result.red_requirements(),
+            }));
+            if result.green {
+                stopped = format!(
+                    "the acceptance suite is green after session {number} ({} of {})",
+                    result.passed, result.total
+                );
+                break;
+            }
+            if result.passed > best {
+                best = result.passed;
+                since_progress = 0;
+            } else if number > 0 {
+                since_progress += 1;
+            }
+            if number >= self.policy.max_sessions {
+                stopped = format!("the bound of {} sessions", self.policy.max_sessions);
+                break;
+            }
+            if spent >= self.policy.spend_usd {
+                stopped = format!(
+                    "the spend bound of ${:.2}: ${spent:.4} spent",
+                    self.policy.spend_usd
+                );
+                break;
+            }
+            if time_left() < Duration::from_secs(60) {
+                stopped = "the time bound".to_string();
+                break;
+            }
+            number += 1;
+            let red_ids = result.red_requirements();
+            let mut guidance = SUITE_GUIDANCE.to_string();
+            let facts = constraints(&prepared.requirements);
+            if !facts.is_empty() {
+                guidance.push_str(&format!(
+                    "\n\nThe task's constraints hold throughout; honor each one exactly:\n\n{}",
+                    facts.join("\n")
+                ));
+            }
+            let mut state = vec![format!(
+                "Session {number} of at most {}. The suite is {} of {} green; the best so far \
+                 is {best}.",
+                self.policy.max_sessions, result.passed, result.total
+            )];
+            if since_progress >= 3 {
+                state.push(format!(
+                    "The last {since_progress} sessions turned no new test green. Don't repeat \
+                     their approach: reread the task and each red test's output for the exact \
+                     rule it checks, and change what the earlier sessions left alone."
+                ));
+            }
+            state.push(format!(
+                "The red tests and their output:\n{}",
+                result.red_lines(&suite, 800).join("\n")
+            ));
+            for ran in sessions.iter().rev().take(4).rev() {
+                state.push(format!(
+                    "Session {} ended {}: {}",
+                    ran.number,
+                    ran.status(),
+                    crate::judge::clip(&ran.summary(), 400)
+                ));
+            }
+            if !sessions.is_empty() {
+                let changes = crate::delegate::changes(&self.workdir, None);
+                state.push(format!(
+                    "What the workspace shows as changed now:\n{}",
+                    crate::judge::clip(&changes, 1_500)
+                ));
+            }
+            let mut session_evidence = vec![suite.evidence()];
+            session_evidence.extend(evidence.iter().cloned());
+            let brief = Brief {
+                task: prepared.instruction.clone(),
+                guidance,
+                evidence: session_evidence,
+                state,
+            };
+            let why = format!(
+                "session {number} works toward a green suite ({} of {} green; red: {})",
+                result.passed,
+                result.total,
+                red_ids.join(", ")
+            );
+            let ran = self.session(number, &red_ids, &why, &brief, false).await;
+            spent += ran.cost_usd.unwrap_or(0.0);
+            let lost = matches!(ran.ending, Ending::Transport(_));
+            sessions.push(ran);
+            if lost {
+                stopped = format!("session {number} lost its provider");
+                break;
+            }
+        }
+        Some((sessions, moves, stopped))
+    }
+
     /// One session's brief: the task first, then the group and its
     /// evidence, then the state.
     #[allow(clippy::too_many_arguments)]
@@ -1693,7 +1948,15 @@ impl Executor for Micro {
         });
         let (sessions, moves, stopped, mode) = match (&self.policy.mode, prepared) {
             (Mode::Requirements, Some(prepared)) => {
-                let (sessions, moves, stopped) = self.requirements(&prepared).await;
+                let suited = if self.policy.suite {
+                    self.suite_loop(&prepared).await
+                } else {
+                    None
+                };
+                let (sessions, moves, stopped) = match suited {
+                    Some(done) => done,
+                    None => self.requirements(&prepared).await,
+                };
                 (sessions, moves, stopped, Mode::Requirements)
             }
             _ => (

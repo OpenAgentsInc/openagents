@@ -1,0 +1,83 @@
+{
+  "schema": "openagents.coder-one.policy.v1",
+  "name": "coder-one-microluna-v6",
+  "note": "microluna-v4's raised budget with the acceptance-suite loop of issue #9588 as the core: before any fix, a Microluna session writes an executable test suite from the task (accept.define), code proves every test red on the untouched workspace and Jev checks each test asserts only what the task states and encodes the decisive facts, and the suite is frozen. Then edit sessions run, each briefed with the frozen tests and the red tests' output, until the suite is green or a bound is hit. Done is the suite green, the thesis's program state, not a session's report. It falls back to the requirements loop when the suite comes out with no tests. Written for issue #9585.",
+  "policy": {
+    "jev": {
+      "mode": "deep",
+      "model": "jev-1.13.0",
+      "question_sets": "builtin-v1"
+    },
+    "evidence": {
+      "probes": "v2",
+      "survey_files": 40
+    },
+    "control": {
+      "delegate": "always",
+      "explore_steps": 0,
+      "max_steps": 50,
+      "command_timeout_sec": 300,
+      "lane": "free",
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "horizon": {
+        "first_share": 0.55,
+        "later_share": 0.75,
+        "min_dispatch_sec": 300,
+        "check_share": 0.05,
+        "long_after_sec": 3600,
+        "long_effort": "high",
+        "long_command_sec": 3600
+      }
+    },
+    "brief": {
+      "cap": 12000,
+      "directions": "batch-checked",
+      "packer": "coverage-jev"
+    },
+    "executor": {
+      "agent": "microluna",
+      "version": null,
+      "model": "gpt-6-luna",
+      "effort": null,
+      "tools": null,
+      "prompt_cache_ttl": null,
+      "deadline_sec": 2400,
+      "microluna": {
+        "mode": "requirements",
+        "max_sessions": 30,
+        "max_attempts": 4,
+        "max_groups": 4,
+        "session_turns": 40,
+        "session_sec": 900,
+        "spend_usd": 1.5,
+        "evidence_chars": 20000,
+        "checks": true,
+        "read_first": true,
+        "require_evidence": true,
+        "accept": true,
+        "focus_actionable": true,
+        "suite": true
+      }
+    },
+    "verify": {
+      "checks": true,
+      "support": false,
+      "repair": {
+        "brief": "packet",
+        "trigger": "detected"
+      }
+    }
+  },
+  "protected": {
+    "isolation": "task-container",
+    "effect_policy": "executor-bypasses-its-own-sandbox",
+    "acceptance": "task-verifier",
+    "ceilings": {
+      "episode_deadline_sec": null,
+      "reserve_sec": 30,
+      "spend_soft_usd": null,
+      "spend_hard_usd": null
+    }
+  }
+}

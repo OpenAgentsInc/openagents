@@ -510,3 +510,65 @@ async fn a_missing_login_is_a_transport_refusal_with_no_charge() {
     assert_eq!(crate::delegate::charge(&report).0, "zero");
     let _ = say("unused", TokenUsage::default());
 }
+
+#[tokio::test]
+async fn the_suite_loop_writes_a_suite_then_edits_until_it_is_green() {
+    let dir = tempfile::tempdir().unwrap();
+    let test = "#!/bin/sh\n# requirement: R1\n# kind: example\n# what: hello.txt holds hello\ngrep -qx hello hello.txt\n";
+    let test2 = "#!/bin/sh\n# requirement: R2\n# kind: example\n# what: world.txt holds world\ngrep -qx world world.txt\n";
+    let mut executor = micro(
+        dir.path(),
+        vec![
+            // The writing session, whose workspace is the suite directory.
+            call(
+                "w1",
+                "write_file",
+                &json!({ "path": "tests/T1.sh", "contents": test }),
+                usage(900, 0, 40),
+            ),
+            call(
+                "w2",
+                "write_file",
+                &json!({ "path": "tests/T2.sh", "contents": test2 }),
+                usage(900, 800, 40),
+            ),
+            finish("w3", "done", "Wrote T1 for R1 and T2 for R2."),
+            // Two more writing rounds run with Jev off; the tests are
+            // already on disk, so each round just finishes.
+            finish("w4", "done", "The tests already cover R1 and R2."),
+            finish("w5", "done", "The tests already cover R1 and R2."),
+            // The edit session.
+            call(
+                "e1",
+                "write_file",
+                &json!({ "path": "hello.txt", "contents": "hello\n" }),
+                usage(900, 0, 40),
+            ),
+            call(
+                "e2",
+                "write_file",
+                &json!({ "path": "world.txt", "contents": "world\n" }),
+                usage(900, 800, 40),
+            ),
+            finish("e3", "done", "Wrote hello.txt and world.txt."),
+        ],
+        Policy {
+            suite: true,
+            checks: false,
+            ..Policy::default()
+        },
+    );
+    executor.take_evidence(&prepared());
+    let report = executor.execute(&briefing(TASK)).await;
+    let record = executor.last.clone().unwrap();
+    assert_eq!(report.status, Status::Answered, "{record:#}");
+    let stopped = record["stopped"].as_str().unwrap();
+    assert!(stopped.contains("green after session 1"), "{record:#}");
+    assert_eq!(record["sessions"].as_array().unwrap().len(), 1);
+    assert_eq!(record["moves"][0]["kind"], json!("suite"));
+    assert_eq!(record["moves"][0]["tests"], json!(2));
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("work/hello.txt")).unwrap(),
+        "hello\n"
+    );
+}
