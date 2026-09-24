@@ -4,6 +4,10 @@ This experiment tests the assessment in
 [Microluna's two targets](../../../../docs/terminal-bench/2026-09-24-microluna-two-targets.md).
 The target tasks are selected development tasks, not held-out evaluations.
 The experiment ID on coderos is `candidate-evidence-9607`.
+All 12 attempts are complete. See the [result analysis](../../../../docs/terminal-bench/2026-09-24-microluna-candidate-evidence.md),
+[machine-readable results](records/results.json), [scheduler status](records/status.json),
+[interrupted-attempt inventory](records/interruptions.json), and
+[implementation verification](records/verification/README.md).
 
 ## Fixed comparison
 

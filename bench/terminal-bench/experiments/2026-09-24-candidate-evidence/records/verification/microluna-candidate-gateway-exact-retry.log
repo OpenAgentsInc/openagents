@@ -1,0 +1,15 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.46s
+     Running tests/serve.rs (/home/christopherdavid/.cache/openagents/target-candidate-evidence/debug/deps/serve-f4c485e442192cbf)
+
+running 1 test
+test classify_serial_and_concurrent_batches_are_measured ... classify-schedule-measurement {"serial":{"completed_items":8,"batch_ms":517,"per_item_ms":[62,62,62,61,60,62,62,61],"per_item_queue_ms":[0,63,126,189,250,311,373,436],"queue_ms":{"max":436,"total":1748},"incomplete":0,"peak_in_flight":1},"concurrent":{"completed_items":8,"batch_ms":281,"per_item_ms":[62,64,61,61,61,61,61,61],"per_item_queue_ms":[0,0,63,64,125,126,187,188],"queue_ms":{"max"ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 103 filtered out; finished in 0.92s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+:188,"total":753},"incomplete":0,"peak_in_flight":2}}
+     Running tests/serve.rs (/home/christopherdavid/.cache/openagents/target-candidate-evidence/debug/deps/serve-7933e03987c03448)

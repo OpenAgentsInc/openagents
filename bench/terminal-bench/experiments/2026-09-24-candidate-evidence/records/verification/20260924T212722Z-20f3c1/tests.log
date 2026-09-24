@@ -1,0 +1,704 @@
+   Compiling coder-one v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/microluna-candidate-evidence/crates/coder-one)
+   Compiling coder v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/microluna-candidate-evidence/crates/coder)
+   Compiling coder-project v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/microluna-candidate-evidence/crates/coder-project)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 47.65s
+     Running unittests src/lib.rs (/home/christopherdavid/.cache/openagents/target-candidate-evidence/debug/deps/atif-0f90616583a21db6)
+
+running 25 tests
+test document::tests::a_digest_answers_what_was_asked_not_how_it_was_spelled ... ok
+test document::tests::a_document_reports_the_session_it_came_from ... ok
+test document::tests::a_decision_call_records_the_door_and_the_state_it_read ... ok
+test document::tests::a_call_and_its_result_are_one_step ... ok
+test document::tests::a_pipeline_is_what_its_first_program_does ... ok
+test document::tests::a_failed_decision_call_keeps_its_reason ... ok
+test document::tests::a_step_round_trips_through_json ... ok
+test document::tests::timestamps_format_in_utc ... ok
+test document::tests::a_reviewed_decision_records_its_attempts ... ok
+test document::tests::usage_totals_across_the_session ... ok
+test document::tests::decisions_and_tool_calls_count_separately ... ok
+test document::tests::repeated_shell_commands_report_as_waste ... ok
+test log::tests::a_file_with_no_session_record_is_refused ... ok
+test log::tests::a_half_written_line_does_not_cost_the_lines_before_it ... ok
+test log::tests::a_finished_log_refuses_another_step ... ok
+test log::tests::a_named_log_lands_where_it_was_told_to ... ok
+test log::tests::a_session_id_leads_with_its_start_time ... ok
+test log::tests::a_log_without_an_ending_reads_as_interrupted ... ok
+test log::tests::a_log_round_trips_through_a_document ... ok
+test log::tests::the_lifecycle_is_one_header_then_steps_then_one_end ... ok
+test log::tests::the_whole_reader_refuses_an_interrupted_session ... ok
+test log::tests::two_sessions_cannot_share_a_file ... ok
+test log::tests::logs_list_oldest_first ... ok
+test log::tests::an_interior_line_that_is_not_utf8_is_a_fault_on_its_own ... ok
+test log::tests::a_final_record_torn_at_any_byte_keeps_the_prefix ... ok
+
+test result: ok. 25 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 16.68s
+
+     Running unittests src/lib.rs (/home/christopherdavid/.cache/openagents/target-candidate-evidence/debug/deps/capability-ea7564899f7f20a2)
+
+running 7 tests
+test bounded::tests::a_command_that_fails_to_spawn_fails_the_run ... ok
+test bounded::tests::a_bounded_run_reads_what_the_command_said ... ok
+test bounded::tests::a_nonzero_exit_is_an_answer_not_a_stop ... ok
+test bounded::tests::a_probe_runs_from_inside_an_async_host ... ok
+test bounded::tests::voluminous_output_is_kept_to_the_cap_and_marked ... ok
+test bounded::tests::a_hung_command_is_stopped_at_the_wall ... ok
+test bounded::tests::a_hung_commands_children_do_not_outlive_it ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.36s
+
+     Running unittests src/bin/capability-trust.rs (/home/christopherdavid/.cache/openagents/target-candidate-evidence/debug/deps/capability_trust-396968c0d6ede75b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/contract.rs (/home/christopherdavid/.cache/openagents/target-candidate-evidence/debug/deps/contract-b2a7ba8d633633fb)
+
+running 29 tests
+test a_declared_refusal_is_unavailable ... ok
+test a_failed_probe_is_unknown ... ok
+test a_changed_adapter_loses_its_approval ... ok
+test a_changed_manifest_loses_its_approval ... ok
+test a_mismatched_argv_is_refused_at_load ... ok
+test a_changed_argv_script_loses_its_approval ... ok
+test a_noisy_probe_is_unknown ... ok
+test a_nonzero_probe_naming_its_acceptance_is_present ... ok
+test a_nonzero_probe_naming_nothing_is_unknown ... ok
+test a_relative_script_is_refused_at_approval ... ok
+test a_probe_runs_inside_an_async_host ... ok
+test a_store_inside_the_manifests_repository_approves_nothing ... ok
+test a_symlinked_manifest_cannot_move_its_repository_trust_boundary ... ok
+test a_store_inside_the_workspace_approves_nothing ... ok
+test a_relative_script_appearing_in_the_workspace_approves_nothing ... ok
+test a_transport_this_host_does_not_run_stays_unprobed ... ok
+test a_hung_probe_is_unknown ... ok
+test an_unapproved_decision_verifies_nothing ... ok
+test an_unapproved_manifest_stays_inert ... ok
+test an_unresolvable_argv_word_is_refused_at_approval ... ok
+test an_approval_names_real_paths ... ok
+
+running 1 test
+test a_verified_decision_carries_the_record_it_checked ... ok
+test deleting_the_approval_store_revokes_cached_approval ... ok
+test reading_a_registry_runs_nothing ... ok
+test each_argv_alias_is_verified_even_when_targets_were_identical ... ok
+test devin_state_must_be_inside_the_approval ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 28 filtered out; finished in 0.04s
+
+test the_checked_in_manifest_parses ... ok
+
+running 1 test
+test an_approved_manifest_runs_its_probe ... ok
+test retargeting_an_argv_symlink_invalidates_approval ... ok
+test devin_state_must_be_inside_the_approval ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 28 filtered out; finished in 0.03s
+
+
+running 1 test
+test devin_state_must_be_inside_the_approval ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 28 filtered out; finished in 0.05s
+
+
+running 1 test
+test devin_state_must_be_inside_the_approval ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 28 filtered out; finished in 0.04s
+
+
+running 1 test
+test devin_state_must_be_inside_the_approval ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 28 filtered out; finished in 0.04s
+
+test devin_state_must_be_inside_the_approval ... ok
+
+test result: ok. 29 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.80s
+
+     Running unittests src/lib.rs (/home/christopherdavid/.cache/openagents/target-candidate-evidence/debug/deps/coder-33bebb646b9ba8e8)
+
+running 470 tests
+test about::tests::the_openagents_checkout_is_own_source ... ok
+test about::tests::the_block_does_not_claim_classifier_usage ... ok
+test about::tests::outside_git_the_block_says_so_and_keeps_the_directory ... ok
+test about::tests::a_decoy_terminal_directory_is_not_own_source ... ok
+test agent::tests::a_quoted_example_runs_nothing ... ok
+test agent::tests::a_clarifying_turn_runs_nothing ... ok
+test agent::tests::a_retry_changes_the_next_instructions ... ok
+test agent::tests::a_reply_streams_and_joins_the_transcript ... ok
+test agent::tests::an_answering_permit_runs_nothing ... ok
+test agent::tests::an_unsupported_plan_is_refused_without_a_repair ... ok
+test agent::tests::classify_without_a_key_skips_with_a_note ... ok
+test agent::tests::a_permitted_plan_runs ... ok
+test agent::tests::prose_after_exhaustion_is_the_answer ... ok
+test child::tests::a_bare_name_resolves_and_reports_unpinned ... ok
+test child::tests::a_child_declaring_more_than_its_parent_has_left_is_a_widening_not_a_clamp ... ok
+test child::tests::a_composition_nested_past_the_depth_bound_is_refused ... ok
+test child::tests::a_composition_with_more_calls_than_the_bound_is_refused ... ok
+test child::tests::a_composition_with_more_steps_than_the_bound_is_refused ... ok
+test child::tests::a_program_that_reaches_itself_through_a_chain_is_refused_with_the_path ... ok
+test child::tests::a_reference_nothing_answers_is_unresolved ... ok
+test child::tests::a_step_consuming_an_output_no_earlier_step_produces_is_reported ... ok
+test child::tests::a_valid_nested_composition_checks_clean ... ok
+test child::tests::executable_content_in_a_step_refuses_with_the_field_named ... ok
+test child::tests::problems_are_reported_in_a_deterministic_order ... ok
+test child::tests::the_propagation_table_is_honored_exactly_as_stated ... ok
+test classify::tests::a_confident_respond_routes_to_respond ... ok
+test classify::tests::a_damage_answer_is_not_read ... ok
+test classify::tests::an_unreadable_answer_halts_and_none_answers ... ok
+test classify::tests::every_action_names_and_parses ... ok
+test classify::tests::the_choice_is_the_shell_route ... ok
+test classify::tests::the_choice_rules_at_any_confidence ... ok
+test classify::tests::the_code_built_functions_carry_the_sets_provenance_shape ... ok
+test classify::tests::the_sets_ask_one_question_each ... ok
+test classify::tests::the_state_is_a_structured_object ... ok
+test decision::tests::a_keyless_remote_door_refuses_rather_than_borrowing_a_credential ... ok
+test decision::tests::a_local_profile_builds_without_any_key_env ... ok
+test agent::tests::a_repaired_exhaustion_answers_in_prose ... ok
+test decision::tests::absent_configuration_is_distinct_from_invalid_configuration ... ok
+test decision::tests::malformed_configuration_errors_loudly ... ok
+test delegate::tests::a_bound_reads_back_the_way_it_was_stated ... ok
+test decision::tests::each_profile_kind_builds_its_door ... ok
+test agent::tests::the_instructions_tell_the_application_from_the_workspace ... ok
+test agent::tests::an_exhausted_loop_ends_as_a_refusal_with_what_it_saw ... ok
+test delegate::tests::a_delegate_answers_and_is_graded ... ok
+test delegate::tests::a_cancelled_read_only_delegation_releases_its_checkout ... ok
+test delegate::tests::a_free_slot_refills_before_the_first_task_finishes ... ok
+test delegate::tests::a_devin_worktree_delegation_is_trusted_for_its_run ... ok
+test delegate::tests::a_manifest_changed_since_approval_runs_nothing ... ok
+test delegate::tests::a_grant_covering_the_store_refuses_rather_than_narrowing ... ok
+test delegate::tests::a_failed_writing_delegate_keeps_its_checkout ... ok
+test delegate::tests::a_narrating_delegate_is_graded_on_what_follows_the_mark ... ok
+test delegate::tests::a_noisy_delegate_is_bounded_while_it_prints ... ok
+test delegate::tests::a_pinned_alias_behind_a_writable_symlink_ancestor_refuses ... ok
+test delegate::tests::a_pinned_alias_inside_a_grant_refuses_the_delegation ... ok
+test delegate::tests::a_read_only_delegate_writes_nowhere_but_scratch_and_grants ... ok
+test delegate::tests::a_reapproved_manifest_still_refuses_the_surveyed_executor ... ok
+test delegate::tests::a_pinned_script_is_sealed_for_the_delegate ... ok
+test delegate::tests::a_revoked_approval_runs_nothing ... ok
+test delegate::tests::a_refused_delegate_did_not_answer_correctly ... ok
+test delegate::tests::a_missing_trust_store_is_created ... ok
+test delegate::tests::a_trust_store_alias_under_a_writable_grant_refuses ... ok
+test delegate::tests::a_worktree_delegation_runs_in_its_own_checkout ... ok
+test delegate::tests::a_worktree_is_trusted_exactly_and_then_withdrawn ... ok
+test delegate::tests::an_adapter_changed_since_approval_runs_nothing ... ok
+test delegate::tests::an_approved_delegate_writes_its_state_but_never_its_approval ... ok
+test delegate::tests::an_overbroad_grant_refuses_the_delegation_rather_than_narrowing_it ... ok
+test delegate::tests::an_unisolated_write_is_refused_before_it_spawns ... ok
+test delegate::tests::an_untenable_bound_or_width_refuses_before_anything_spawns ... ok
+test delegate::tests::answers_compare_without_their_whitespace ... ok
+test delegate::tests::a_writing_delegate_writes_only_its_checkout_and_keeps_it ... ok
+test delegate::tests::only_a_devin_worktree_delegation_is_trusted ... ok
+test delegate::tests::refusal_timeout_and_failure_stay_apart ... ok
+test delegate::tests::results_keep_the_order_the_tasks_were_given ... ok
+test delegate::tests::the_answer_is_what_follows_the_last_mark ... ok
+test delegate::tests::the_caller_environment_passes_through_but_tmpdir_is_private ... ok
+test delegate::tests::six_worktrees_do_not_collide ... ok
+test delegate::tests::the_trust_store_follows_the_executor_data_home ... ok
+test delegate::tests::the_wrapped_command_repoints_only_tmpdir ... ok
+test delegate_door::tests::a_microluna_target_needs_no_binary_but_a_usable_login ... ok
+test delegate_door::tests::a_microluna_turn_streams_as_shell_events_and_a_follow_up_rebuilds_its_context ... ok
+test delegate_door::tests::an_explicit_door_outranks_auto_and_contradicts_always ... ok
+test delegate_door::tests::an_installed_target_without_a_credential_is_not_available ... ok
+test delegate_door::tests::auto_prefers_claude_then_codex_then_the_fallback ... ok
+test delegate_door::tests::auto_prefers_microluna_on_a_usable_codex_login ... ok
+test delegate_door::tests::executor_events_become_the_turns_own ... ok
+test delegate_door::tests::off_never_delegates_and_always_never_falls_back ... ok
+test delegate_door::tests::the_codex_login_reports_its_expiry_and_never_its_token ... ok
+test delegate_door::tests::the_conversation_before_the_request_is_rendered_without_it ... ok
+test delegate_door::tests::the_mode_reads_its_three_words_and_treats_anything_else_as_auto ... ok
+test delegate_door::tests::the_named_agent_is_the_only_one_considered ... ok
+test delegate_door::tests::the_permit_decides_whether_the_executor_may_write_and_a_follow_up_resumes ... ok
+test doctor::tests::a_healthy_door_reports_all_three_routes ... ok
+test doctor::tests::a_refusal_reports_its_code_distinctly_from_unreachable ... ok
+test doctor::tests::a_simulated_report_is_labeled ... ok
+test doctor::tests::an_unmetered_door_reports_an_unknown_position ... ok
+test doctor::tests::narrow_widths_elide_with_a_marker ... ok
+test doctor::tests::no_line_carries_credential_material ... ok
+test evidence::tests::a_bounded_search_names_hits_without_opening_them ... ok
+test evidence::tests::a_denied_path_yields_a_refused_entry_not_content ... ok
+test evidence::tests::a_file_under_bounds_yields_a_full_candidate_with_its_digest ... ok
+test evidence::tests::an_empty_request_yields_empty_candidates ... ok
+test evidence::tests::an_oversize_atomic_input_is_rejected_into_omitted ... ok
+test evidence::tests::bounds_account_across_files ... ok
+test evidence::tests::candidates_order_by_path ... ok
+test evidence::tests::declared_truncation_retains_the_declared_span ... ok
+test evidence::tests::existence_and_references_name_without_reading ... ok
+test execution::tests::a_missing_pin_refuses_before_a_claim_exists ... ok
+test execution::tests::acceptance_is_persisted_before_it_is_published_and_survives_restart ... ok
+test execution::tests::dispatch_uses_the_program_runtime_and_seals_a_receipt ... ok
+test executor_door::tests::a_lone_turn_is_the_prompt ... ok
+test executor_door::tests::an_unknown_slug_refuses_to_open ... ok
+test executor_door::tests::the_prompt_carries_instructions_history_and_the_last_turn ... ok
+test generate::tests::a_chunk_boundary_anywhere_leaves_the_answer_whole ... ok
+test generate::tests::a_door_that_cannot_name_its_model_says_unknown ... ok
+test generate::tests::a_keepalive_is_not_an_event ... ok
+test generate::tests::a_lane_is_a_model_under_a_short_name ... ok
+test generate::tests::a_last_event_without_a_blank_line_still_counts ... ok
+test generate::tests::a_line_that_never_ends_is_bounded ... ok
+test generate::tests::a_quiet_door_files_under_two_causes ... ok
+test generate::tests::a_record_that_is_not_json_or_not_utf8_is_a_failure_not_a_skip ... ok
+test generate::tests::a_stream_arriving_one_byte_at_a_time_reads_the_same ... ok
+test generate::tests::a_stream_that_ends_before_completing_is_a_failure_that_keeps_the_text ... ok
+test generate::tests::an_incomplete_response_is_a_failure_with_its_reason ... ok
+test generate::tests::data_lines_of_one_event_join_with_a_newline ... ok
+test generate::tests::events_after_completed_are_a_failure ... ok
+test generate::tests::no_key_means_no_door ... ok
+test generate::tests::only_a_door_that_picks_its_model_takes_a_lane ... ok
+test generate::tests::the_body_speaks_responses_wire_format ... ok
+test generate::tests::the_relay_failures_file_under_four_causes ... ok
+test generate::tests::the_stub_answers_and_reports_no_usage ... ok
+test generate::tests::two_configured_doors_are_a_refusal_rather_than_a_choice ... ok
+test identity::tests::the_version_names_the_repository_the_commit_and_the_tree ... ok
+test package::tests::a_dependency_chain_that_returns_to_itself_is_cyclic ... ok
+test package::tests::a_dependency_nothing_answers_is_unresolved ... ok
+test package::tests::a_dependency_under_an_unknown_publisher_is_marked_not_assumed ... ok
+test package::tests::a_dependency_whose_version_does_not_satisfy_is_incompatible ... ok
+test package::tests::a_lock_diff_names_every_pin_that_moved ... ok
+test package::tests::a_package_cannot_carry_a_secret_or_an_approval ... ok
+test package::tests::a_package_naming_real_files_resolves_to_a_lock_with_verified_digests ... ok
+test package::tests::a_replaced_file_is_refused_as_a_stale_advertisement ... ok
+test package::tests::a_revoked_publisher_is_refused_even_when_the_package_trusted_it ... ok
+test package::tests::a_run_holds_its_lock_until_it_finishes_and_then_can_roll_back ... ok
+test package::tests::a_stated_digest_the_bytes_do_not_produce_is_refused_not_repaired ... ok
+test package::tests::an_absent_remote_name_stays_unresolved_without_a_fetch ... ok
+test package::tests::an_extension_cleanup_failure_stays_a_tombstone_and_the_active_pin_stays ... ok
+test package::tests::resolution_is_deterministic ... ok
+test permit::tests::a_withdrawn_permit_stays_withdrawn ... ok
+test permit::tests::only_an_answering_route_carries_execution ... ok
+test permit::tests::the_operator_can_turn_the_shell_off ... ok
+test profiles::tests::a_local_endpoint_needs_no_credential_and_reports_local ... ok
+test profiles::tests::a_missing_required_setting_refuses_with_the_variable_named ... ok
+test profiles::tests::a_setting_the_profile_does_not_take_refuses ... ok
+test profiles::tests::an_unknown_profile_name_refuses ... ok
+test profiles::tests::diagnostics_describe_and_redact ... ok
+test profiles::tests::each_variant_resolves_from_a_supplied_env_map ... ok
+test profiles::tests::local_is_checked_not_claimed ... ok
+test profiles::tests::malformed_values_name_their_variable ... ok
+test profiles::tests::precedence_is_flag_then_env_then_default ... ok
+test profiles::tests::shared_variables_feed_the_profile_that_reads_them ... ok
+test program::tests::a_decide_step_that_inlines_its_wording_is_refused ... ok
+test program::tests::a_repeated_step_name_is_refused ... ok
+test program::tests::a_source_that_is_not_a_slug_or_not_on_a_query_step_is_refused ... ok
+test program::tests::a_version_this_host_does_not_know_is_refused ... ok
+test program::tests::an_unrecognized_step_kind_refuses_the_whole_program ... ok
+test program::tests::only_a_delegate_step_names_an_executor ... ok
+test program::tests::the_fan_out_program_keeps_its_bounds ... ok
+test program::tests::the_query_is_the_filter_a_relay_would_answer ... ok
+test program::tests::the_read_records_the_query_beside_the_answer ... ok
+test program::tests::the_registry_lists_the_six_programs_the_repository_carries ... ok
+test program_authority::tests::a_child_scope_narrows_and_never_widens ... ok
+test program_authority::tests::a_grant_names_what_it_names ... ok
+test program_authority::tests::a_missing_effect_is_named ... ok
+test program_authority::tests::a_spec_word_that_is_no_slug_grants_nothing ... ok
+test program_authority::tests::the_default_grant_authorizes_nothing ... ok
+test program_authority::tests::the_effects_ceiling_allows_what_it_names ... ok
+test questions::tests::a_bound_set_names_its_policy_revision_in_what_a_trace_records ... ok
+test questions::tests::a_finding_template_asks_once_per_finding_and_names_each_one ... ok
+test questions::tests::a_fixed_set_asks_what_the_file_says ... ok
+test questions::tests::a_secondary_policy_is_validated_with_the_set ... ok
+test questions::tests::a_set_this_host_does_not_read_is_refused ... ok
+test questions::tests::a_supplied_choice_takes_its_options_from_the_run ... ok
+test questions::tests::a_template_asks_once_per_requirement_and_names_each_one ... ok
+test questions::tests::a_template_that_names_no_requirement_is_refused ... ok
+test questions::tests::the_registry_holds_the_sets_the_first_program_names ... ok
+test reattach::tests::a_live_job_under_matching_pins_is_observed_not_redone ... ok
+test reattach::tests::a_live_job_under_other_pins_is_refused_not_adopted ... ok
+test reattach::tests::a_settled_run_reattaches_nothing ... ok
+test reattach::tests::an_atif_reference_observes_what_the_trace_recorded ... ok
+test reattach::tests::an_ended_job_is_evidence_to_settle_not_work_to_redo ... ok
+test reattach::tests::nothing_live_and_no_resume_both_mean_a_deliberate_new_attempt ... ok
+test reattach::tests::only_unfinished_records_with_references_reattach ... ok
+test reconcile::tests::a_reads_only_record_is_replayable_under_its_grant ... ok
+test reconcile::tests::a_recovered_run_with_no_unfinished_records_rules_nothing ... ok
+test reconcile::tests::a_retained_worktree_and_result_ride_the_ruling_as_evidence ... ok
+test reconcile::tests::a_spend_is_a_payment_and_payments_are_ambiguous ... ok
+test reconcile::tests::a_writing_record_needs_a_decision_never_a_replay ... ok
+test reconcile::tests::an_undeclared_record_is_never_replayable ... ok
+test reconcile::tests::replay_past_the_grant_is_refused_not_decided ... ok
+test reconcile::tests::written_ends_take_no_ruling ... ok
+test relay::tests::a_directory_in_the_identitys_place_is_an_error_not_a_first_run ... ok
+test relay::tests::a_directory_that_cannot_take_the_file_fails_the_install_and_leaves_nothing ... ok
+test relay::tests::a_first_run_installs_a_private_identity_and_a_second_run_reads_it ... ok
+test relay::tests::a_worker_answers_at_the_version_the_request_named ... ok
+test relay::tests::an_unreadable_identity_is_an_error_not_a_first_run ... ok
+test relay::tests::concurrent_first_runs_agree_on_one_identity ... ok
+test relay::tests::identity_round_trips_a_hex_secret ... ok
+test relay::tests::npub_and_hex_pubkeys_parse ... ok
+test relay::tests::payload_versions_are_explicit ... ok
+test relay::tests::signed_auth_and_request_events_verify ... ok
+test delegate::tests::a_cancelled_writing_delegation_keeps_its_checkout_and_its_edits ... ok
+test repo::tests::atomic_sources_refuse_oversize_and_external_symlinks ... ok
+test repo::tests::document_prefix_handles_a_split_character_and_large_files ... ok
+test repo::tests::grep_excerpt_does_not_split_utf8 ... ok
+test repo::tests::a_repo_discovers_this_workspace ... ok
+test repo::tests::oversized_git_output_is_not_treated_as_complete ... ok
+test repo::tests::source_identity_changes_with_uncommitted_contents ... ok
+test repo::tests::terms_pick_identifiers_and_skip_stop_words ... ok
+test repo::tests::source_references_do_not_consume_the_excerpt_budget ... ok
+test resolve::tests::a_dependency_cycle_is_refused_with_its_path ... ok
+test resolve::tests::a_diamond_that_resolves_both_sides_to_the_same_digest_is_fine ... ok
+test resolve::tests::a_pinned_digest_resolves_exactly_even_beside_a_newer_version ... ok
+test resolve::tests::a_plan_does_not_depend_on_the_order_the_lock_states ... ok
+test resolve::tests::a_records_own_declared_dependencies_are_walked_too ... ok
+test resolve::tests::a_reference_nothing_local_answers_is_refused_by_name ... ok
+test resolve::tests::a_tampered_local_file_is_refused_not_used ... ok
+test resolve::tests::an_incompatible_transitive_dependency_names_the_parent_that_required_it ... ok
+test resolve::tests::an_unpinned_reference_resolves_to_the_highest_compatible_local_version ... ok
+test resolve::tests::an_unresolved_transitive_dependency_names_the_parent_that_required_it ... ok
+test resolve::tests::diff_names_what_an_update_would_change ... ok
+test review::tests::anchors_added_lines_without_treating_content_as_headers ... ok
+test review::tests::incomplete_or_overflowing_hunks_cannot_anchor_lines ... ok
+test review::tests::invalid_probabilities_do_not_become_verdicts ... ok
+test review::tests::missing_findings_is_not_an_empty_review ... ok
+test review::tests::truncates_multibyte_evidence_and_headers_without_panicking ... ok
+test repo::tests::trace_evidence_is_the_captured_prompt_snapshot ... ok
+test runstate::tests::a_claim_that_crashed_mid_write_still_surfaces ... ok
+test runstate::tests::a_crash_mark_stays_unknown_when_it_is_linked_to_the_journal ... ok
+test delegate::tests::a_timed_out_delegation_ends_its_descendants ... ok
+test runstate::tests::a_cancelled_mark_is_not_what_a_crash_left ... ok
+test runstate::tests::a_second_claim_for_the_same_run_refuses ... ok
+test runstate::tests::an_abandoned_dispatch_surfaces_as_unknown_under_recover ... ok
+test runstate::tests::the_directory_answers_the_two_environment_names ... ok
+test runstate::tests::claim_then_settle_round_trips ... ok
+test runstate::tests::recovery_leaves_a_live_owners_run_alone ... ok
+test runstate::tests::the_pinned_digests_round_trip ... ok
+test runtime::tests::a_cancelled_parent_marks_its_pending_children_cancelled ... ok
+bwrap: execvp /usr/bin/true: No such file or directory
+test runtime::tests::a_cancelled_run_keeps_the_worktree_it_claimed ... ok
+test runtime::tests::a_budget_spent_inside_a_child_cancels_the_run ... ok
+test runtime::tests::a_child_address_the_registry_cannot_pin_is_refused ... ok
+test runtime::tests::a_child_bound_wider_than_the_composition_has_left_is_refused ... ok
+bwrap: execvp /usr/bin/true: No such file or directory
+test runtime::tests::a_child_delegates_writing_work_inside_the_parents_run ... ok
+test runtime::tests::a_child_spend_ceiling_over_unpriced_lanes_is_refused ... ok
+test runtime::tests::a_child_spend_ceiling_wider_than_the_room_is_the_childs_refusal ... ok
+test runtime::tests::a_childs_declared_effects_are_held_to_the_grant ... ok
+test runtime::tests::a_childs_refusal_lands_where_the_table_maps_it ... ok
+test runtime::tests::a_cancelled_run_records_deliberate_settlement ... ok
+test runtime::tests::a_composition_cycle_is_refused_before_anything_ran ... ok
+test runtime::tests::a_cancelled_run_is_not_a_crashed_one ... ok
+bwrap: execvp /usr/bin/true: No such file or directory
+test runtime::tests::a_deadline_expiring_mid_step_stops_the_steps_subprocess ... ok
+test runtime::tests::a_decide_step_asks_whichever_profile_built_the_door ... ok
+test runtime::tests::a_cleanup_failure_is_its_own_mark ... ok
+test delegate::tests::the_fan_out_is_concurrent_under_its_bound ... ok
+test runtime::tests::a_declared_review_rejudges_an_uncertain_gate ... ok
+test runtime::tests::a_failed_door_resolution_refuses_selection_with_its_reason ... ok
+test runtime::tests::a_failed_door_resolution_refuses_the_step_that_needed_it ... ok
+test runtime::tests::a_door_refusing_authorization_names_itself ... ok
+test runtime::tests::a_fallback_retries_the_causes_it_covers ... ok
+test runtime::tests::a_dispatched_mark_names_the_trace_its_evidence_lands_in ... ok
+test runtime::tests::a_hard_spend_ceiling_over_unpriced_lanes_refuses_at_admission ... ok
+test runtime::tests::a_module_step_inside_a_child_refuses_the_composition ... ok
+test runtime::tests::a_deadline_expiring_mid_step_cancels_the_step ... ok
+test runtime::tests::a_failed_review_keeps_or_refuses_as_declared ... ok
+test runtime::tests::a_produces_field_nothing_produced_is_refused ... ok
+test runtime::tests::a_produced_field_flows_into_the_next_childs_inputs ... ok
+test runtime::tests::a_program_is_held_to_the_operators_grant ... ok
+test runtime::tests::a_program_step_admits_spend_and_minutes_bounds ... ok
+test runtime::tests::a_program_step_without_propagation_is_refused ... ok
+test runtime::tests::a_program_steps_declared_inputs_project_the_childs_request ... ok
+test runtime::tests::a_program_steps_token_bound_ends_the_child ... ok
+test runtime::tests::a_refused_child_mapped_to_success_lets_the_parent_go_on ... ok
+test runtime::tests::a_refused_run_leaves_no_runstate_record ... ok
+test runtime::tests::a_request_supplies_its_task_list ... ok
+test runtime::tests::a_request_with_no_list_supplies_no_work ... ok
+test runtime::tests::a_requested_exit_status_refuses_suite_evidence ... ok
+test runtime::tests::a_requested_suite_refuses_plans_that_cannot_answer_with_it ... ok
+test runtime::tests::a_module_step_runs_the_packet_guest ... ok
+test runtime::tests::a_program_step_runs_its_child_under_prefixed_marks ... ok
+test runtime::tests::a_run_past_its_budget_settles_cancelled ... ok
+test runtime::tests::a_run_leaves_a_settled_runstate_record ... ok
+test runtime::tests::a_run_stopping_midway_settles_refused ... ok
+test runtime::tests::a_fan_outs_task_records_show_what_it_handed_over ... ok
+test runtime::tests::a_run_without_runstate_creates_nothing ... ok
+test runtime::tests::a_runs_token_budget_cancels_the_step_past_it ... ok
+test runtime::tests::a_selection_is_held_to_the_offered_programs ... ok
+test runtime::tests::a_selection_names_a_program_or_none ... ok
+test runtime::tests::a_sets_policy_binds_before_the_door_is_asked ... ok
+test runtime::tests::a_sets_policy_binds_the_answer ... ok
+test runtime::tests::a_run_recovers_what_a_previous_coordinator_left ... ok
+test runtime::tests::a_spend_ceiling_over_steps_that_price_nothing_holds ... ok
+test runtime::tests::a_step_past_the_deadline_never_dispatches ... ok
+bwrap: execvp /usr/bin/true: No such file or directory
+skipping: verification needs an enforcing filesystem boundary
+test runtime::tests::a_typed_suite_passes_fails_and_stays_unverifiable_on_its_evidence ... ok
+test runtime::tests::acceptance_grades_each_item_against_what_it_expects ... ok
+test runtime::tests::a_run_without_a_budget_is_unchanged ... ok
+test runtime::tests::an_ungranted_program_stops_before_it_reads_anything ... ok
+bwrap: execvp /usr/bin/true: No such file or directory
+skipping: verification needs an enforcing filesystem boundary
+test runtime::tests::an_unapproved_suite_adapter_never_runs ... ok
+test runtime::tests::an_unrepresentable_deadline_refuses_before_any_step_runs ... ok
+test runtime::tests::calibration_is_not_silently_reinterpreted_as_scoreability ... ok
+test runtime::tests::executor_claims_cannot_admit_an_unsupported_bound ... ok
+test runtime::tests::an_unmetered_response_counts_apart_from_the_bound ... ok
+bwrap: execvp /usr/bin/true: No such file or directory
+skipping: verification needs an enforcing filesystem boundary
+test runtime::tests::missing_or_mismatched_suite_identity_never_passes ... ok
+test runtime::tests::rulings_read_the_pinned_programs_declared_effects ... ok
+test runtime::tests::suite_bounds_refuse_what_the_host_cannot_hold ... ok
+bwrap: execvp /usr/bin/true: No such file or directory
+skipping: verification needs an enforcing filesystem boundary
+test runtime::tests::the_shipped_run_suite_runs_a_pinned_suite ... ok
+test select::tests::a_candidate_outside_the_grants_is_path_only ... ok
+test select::tests::a_changed_artifact_stays_distinguishable_by_its_digest ... ok
+test select::tests::a_hosted_profile_discloses_only_what_readness_admitted ... ok
+test select::tests::a_local_profile_discloses_admitted_content ... ok
+test select::tests::a_named_candidate_ranks_by_index ... ok
+test select::tests::a_ranking_naming_a_refused_candidate_changes_nothing ... ok
+test select::tests::a_ranking_reuses_only_while_every_identity_matches ... ok
+test select::tests::a_refused_candidate_stays_path_only_under_any_profile_and_ranking ... ok
+test select::tests::a_repeated_path_names_each_candidate_by_its_span ... ok
+test select::tests::a_truncated_candidate_sends_only_its_admitted_span ... ok
+test select::tests::an_abstention_bounds_the_set_and_selects_nothing ... ok
+test select::tests::an_empty_candidate_set_still_asks_honestly ... ok
+test select::tests::an_unanswered_gate_cannot_rank ... ok
+test select::tests::an_unlisted_answer_is_an_unknown_option_never_clamped ... ok
+test select::tests::candidates_the_distribution_skips_are_unranked ... ok
+test select::tests::instructions_inside_repository_content_carry_no_disclosure_authority ... ok
+test select::tests::none_is_an_abstention_not_a_failure_to_rank ... ok
+test select::tests::omissions_are_listed_and_the_ranking_remembers_them ... ok
+test select::tests::the_disclosure_is_deterministic ... ok
+test select::tests::the_options_are_exactly_the_candidate_paths_and_none ... ok
+test select::tests::the_probabilities_are_carried_as_supplied ... ok
+test select::tests::the_request_carries_every_candidates_record ... ok
+test select::tests::the_request_renders_deterministically ... ok
+test shell::tests::a_command_runs_and_captures ... ok
+test shell::tests::a_command_without_a_permit_never_spawns ... ok
+test shell::tests::a_denied_command_never_spawns ... ok
+test shell::tests::a_fence_surrounded_by_prose_is_not_a_plan ... ok
+test shell::tests::a_fenced_plan_parses ... ok
+test shell::tests::a_json_plan_parses ... ok
+test shell::tests::a_malformed_command_refuses_the_plan ... ok
+test shell::tests::a_plan_is_refused_without_a_permit_to_run_it ... ok
+test runtime::tests::rulings_refuse_what_the_pin_or_grant_cannot_cover ... ok
+test shell::tests::an_example_in_prose_is_not_a_plan ... ok
+test shell::tests::an_unreadable_plan_becomes_the_answer ... ok
+test shell::tests::an_unsupported_version_is_refused ... ok
+test shell::tests::output_is_bounded_and_the_rest_is_counted ... ok
+test shell::tests::prose_is_not_a_plan ... ok
+test shell::tests::the_deny_list_catches_endings ... ok
+test shell::tests::too_many_commands_refuse_the_plan ... ok
+test sites::tests::a_digest_change_reports_drift ... ok
+test sites::tests::a_set_no_site_binds_reports_unbound ... ok
+test sites::tests::a_site_naming_a_missing_set_reports ... ok
+test sites::tests::each_site_states_its_contract ... ok
+test sites::tests::the_inventory_is_deterministic ... ok
+test sites::tests::the_repository_inventories_without_drift_on_the_shipped_sets ... ok
+test source::tests::a_blocked_item_is_unscheduled_and_never_returns ... ok
+test source::tests::a_command_source_reads_gym_runs_as_one_question ... ok
+test runtime::tests::a_review_confirms_or_reports_its_budget ... ok
+test source::tests::a_lookup_that_overflows_can_refuse_instead ... ok
+test source::tests::a_mixed_list_partitions_deterministically ... ok
+test source::tests::a_path_two_items_touch_is_recorded ... ok
+test source::tests::a_reader_and_a_writer_on_one_path_land_in_different_waves ... ok
+test source::tests::a_reader_sharing_a_writers_path_runs ... ok
+test source::tests::a_source_ordering_by_identifier_sorts_before_it_bounds ... ok
+test source::tests::a_source_that_leaves_the_workspace_is_refused ... ok
+test source::tests::a_wave_that_overflows_can_refuse_the_whole_call ... ok
+test source::tests::a_work_item_states_what_it_expects ... ok
+test source::tests::a_work_list_reads_back_the_paths_it_names ... ok
+test source::tests::a_work_list_this_host_does_not_read_is_refused ... ok
+test source::tests::a_writer_runs_beside_work_it_does_not_touch ... ok
+test source::tests::a_writer_sharing_a_readers_path_is_dropped ... ok
+test source::tests::an_after_chain_partitions_into_one_item_waves ... ok
+test source::tests::an_empty_list_partitions_into_no_waves ... ok
+test source::tests::max_waves_bounds_the_partition_and_reports_the_remainder ... ok
+test source::tests::overflow_truncation_re_candidates_into_the_next_wave ... ok
+test source::tests::six_tasks_over_six_files_collide_over_nothing ... ok
+test source::tests::the_order_is_recorded_and_the_bound_is_applied ... ok
+test source::tests::the_repository_source_names_the_gym_capability ... ok
+test source::tests::the_repositorys_sources_read ... ok
+test source::tests::the_request_is_a_source_like_any_other ... ok
+test source::tests::three_writers_on_one_path_drop_in_order ... ok
+test source::tests::two_readers_sharing_a_path_do_not_conflict ... ok
+test source::tests::two_readers_sharing_a_path_share_a_wave ... ok
+test source::tests::two_writers_sharing_a_path_conflict ... ok
+test source::tests::two_writers_sharing_a_path_land_in_different_waves ... ok
+test source::tests::work_that_comes_after_nothing_in_the_list_runs ... ok
+test source::tests::work_that_comes_after_work_in_the_same_list_is_dropped ... ok
+test spend::tests::a_hard_book_cannot_charge_an_unknown_price ... ok
+test spend::tests::a_hard_bound_on_an_unmetered_lane_refuses_at_the_door ... ok
+test spend::tests::a_metered_charge_sums_and_the_one_past_the_ceiling_is_refused ... ok
+test spend::tests::a_soft_bound_flags_over_and_keeps_working ... ok
+test spend::tests::a_spent_parent_leaves_less_room ... ok
+test spend::tests::children_narrow_never_widen ... ok
+test spend::tests::unknown_cost_is_recorded_never_fabricated ... ok
+test store::tests::a_missing_digest_is_none_not_an_error ... ok
+test store::tests::put_gets_the_same_bytes_by_digest ... ok
+test store::tests::rebuild_with_an_incomplete_cache_refuses_and_writes_nothing ... ok
+test source::tests::a_command_source_refuses_what_it_cannot_read ... ok
+test store::tests::retain_refuses_a_pin_whose_recorded_path_is_gone ... ok
+test store::tests::retain_refuses_bytes_that_disagree_with_the_lock ... ok
+test store::tests::retain_then_rebuild_restores_the_tree_offline ... ok
+test store::tests::tampered_store_bytes_are_refused_not_returned ... ok
+test survey::tests::a_machine_with_no_manifests_surveys_to_nothing ... ok
+test survey::tests::a_repositorys_own_trust_file_approves_nothing ... ok
+test survey::tests::a_survey_reads_the_repositorys_capabilities_and_programs ... ok
+test survey::tests::an_executor_is_built_from_what_the_probe_resolved ... ok
+test survey::tests::a_capability_that_is_not_a_route_drives_nothing ... ok
+test runtime::tests::a_soft_spend_bound_records_what_nobody_could_price ... ok
+test trace::tests::a_failed_write_stops_the_recording_rather_than_the_turn ... ok
+test survey::tests::both_reads_reach_the_trace_as_checks ... ok
+test survey::tests::coderbench_reads_both_reads_as_the_checks_the_task_names ... ok
+test trace::tests::the_switch_turns_recording_off_and_the_directory_moves_it ... ok
+test tracker::tests::a_closed_dependency_is_satisfied ... ok
+test tracker::tests::a_cycle_blocks_every_member ... ok
+test tracker::tests::a_gone_issue_and_a_recreated_issue_are_drift ... ok
+test tracker::tests::a_missing_task_is_a_blocker_and_so_is_an_empty_prompt ... ok
+test tracker::tests::a_snapshot_round_trips_and_digests_deterministically ... ok
+test tracker::tests::a_snapshot_that_cannot_be_trusted_is_refused ... ok
+test tracker::tests::a_source_scoped_elsewhere_is_refused ... ok
+test tracker::tests::a_task_map_reads_and_refuses ... ok
+test tracker::tests::every_blocker_kind_is_named ... ok
+test tracker::tests::github::a_dependency_parses_with_its_repository_and_state ... ok
+test tracker::tests::github::a_missing_field_and_a_cut_dependency_list_are_caught ... ok
+test tracker::tests::github::a_page_parses_and_carries_its_cursor ... ok
+test tracker::tests::github::assembly_refuses_duplicates_and_honors_the_item_bound ... ok
+test tracker::tests::github::errors_and_missing_data_refuse_the_page ... ok
+test tracker::tests::github::inaccessible_items_and_missing_dependency_completeness_refuse ... ok
+test tracker::tests::github::nonissue_items_are_skipped_and_named ... ok
+test tracker::tests::github::oversized_files_are_rejected_during_capture ... ok
+test tracker::tests::github::pagination_refuses_loops_duplicates_and_skipped_item_overflow ... ok
+test tracker::tests::github::secrets_are_scrubbed_from_errors ... ok
+test tracker::tests::revalidation_names_every_drift ... ok
+test tracker::tests::the_ready_and_the_blocked_are_both_recorded ... ok
+test tracker::tests::the_rendered_list_is_the_contract_itself ... ok
+test turn::tests::a_refused_plan_finishes_refused ... ok
+test turn::tests::a_turn_without_a_classifier_answers ... ok
+test turn::tests::a_turn_without_a_door_never_reaches_selection ... ok
+test verification::tests::changed_or_unapproved_adapters_do_not_run ... ok
+test trace::tests::a_recorder_writes_steps_as_they_happen ... ok
+test trace::tests::a_shell_call_keeps_its_output_and_names_what_was_shown ... ok
+test verification::tests::runtime_checks_require_authority_and_record_a_separate_verdict ... ok
+test verification::tests::success_failure_and_immutable_candidate_are_independent_evidence ... ok
+test verification::tests::unsupported_restrictions_and_missing_requirements_refuse ... ok
+test waves::tests::a_dependency_cycle_is_unscheduled_with_the_cycle_named ... ok
+test waves::tests::a_missing_dependency_schedules_in_the_first_wave ... ok
+test waves::tests::a_refusal_names_the_refusing_wave_and_its_code ... ok
+test waves::tests::a_resolved_drop_shows_as_scheduled_not_lost ... ok
+test waves::tests::a_stalled_partition_keeps_both_reasons ... ok
+test waves::tests::a_write_conflict_resolves_in_the_next_wave ... ok
+test waves::tests::items_behind_stale_revisions_report_their_reasons ... ok
+test waves::tests::one_task_reports_one_wave ... ok
+test waves::tests::six_tasks_report_one_wave_of_six ... ok
+test waves::tests::the_atif_records_carry_the_reasoning ... ok
+test waves::tests::the_report_is_deterministic ... ok
+test waves::tests::the_wave_bound_reports_who_it_left_waiting ... ok
+test waves::tests::twelve_tasks_report_two_waves ... ok
+test waves::tests::zero_tasks_report_no_waves ... ok
+test verification::tests::missing_stale_and_unverifiable_suite_evidence_never_pass ... ok
+test worktree::tests::a_contended_metadata_lock_times_out_and_then_recovers ... ok
+
+running 1 test
+test worktree::tests::child_attempts_the_metadata_lock ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 469 filtered out; finished in 0.00s
+
+test worktree::tests::a_different_process_cannot_take_the_metadata_lock ... ok
+test worktree::tests::a_parent_symlink_cannot_create_a_checkout_outside_the_repository ... ok
+test worktree::tests::child_attempts_the_metadata_lock ... ok
+test worktree::tests::a_checkout_is_seeded_with_a_scratch_git_directory_at_its_base ... ok
+test worktree::tests::linked_checkouts_share_the_same_metadata_lock ... ok
+test verification::tests::timeout_and_output_overflow_stop_later_checks ... ok
+test shell::tests::a_timed_out_command_leaves_nothing_behind ... ok
+test worktree::tests::simultaneous_additions_and_removals_keep_all_answers ... ok
+
+test result: ok. 470 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 38.16s
+
+     Running unittests src/main.rs (/home/christopherdavid/.cache/openagents/target-candidate-evidence/debug/deps/coder-eca9c38b91813457)
+
+running 14 tests
+test cli::tests::doctor_and_version_are_their_own_invocations ... ok
+test cli::tests::a_wrong_command_line_says_so ... ok
+test cli::tests::json_deltas_ask_for_the_stream ... ok
+test cli::tests::nothing_is_the_terminal ... ok
+test cli::tests::a_program_grant_reads_the_same_in_both_modes ... ok
+test cli::tests::the_prompt_reads_from_either_side_of_the_flags ... ok
+test cli::tests::the_terminal_takes_a_named_trace ... ok
+test cli::tests::a_prompt_file_implies_print ... ok
+test headless::tests::a_failure_before_the_turn_is_a_bare_result ... ok
+test headless::tests::event_objects_carry_the_event ... ok
+test headless::tests::a_declined_turn_still_reports_its_classify ... ok
+test headless::tests::json_streams_each_event_then_the_summary ... ok
+test headless::tests::deltas_stream_only_when_asked ... ok
+test headless::tests::without_json_the_reply_is_the_whole_output ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/coder-worker.rs (/home/christopherdavid/.cache/openagents/target-candidate-evidence/debug/deps/coder_worker-1ef7f074facfb964)
+
+running 11 tests
+job c40d0e940eb58a02 answered in 0 ms, 73 chars
+job c40d0e940eb58a02 declined: busy
+job 2e784d34d193e8a2 answered in 0 ms, 73 chars
+job c40d0e940eb58a02 declined: not_admitted
+job 6490eba67c3d3727 declined: internal
+test tests::a_model_door_refuses_a_writing_delegation ... ok
+test tests::a_customer_off_the_allowlist_is_refused_with_a_typed_code ... ok
+job 6179a23e3cfb2ba7 probed
+test tests::a_full_worker_refuses_busy_and_still_answers_probes ... ok
+test tests::only_an_open_worker_off_loopback_is_refused_deployment ... ok
+test tests::the_allowlist_reads_npub_and_hex_and_refuses_typos ... ok
+test tests::events_that_are_not_requests_to_this_worker_are_set_aside ... ok
+job c6b455bdf7c582d1 declined: stale
+job 78d9785bbe80acdd answered in 0 ms, 73 chars
+job 920769c6d21d05c6 declined: malformed
+job a802d19019fa6135 answered in 0 ms, 73 chars
+test tests::a_replayed_old_request_is_refused_stale ... ok
+job 78d9785bbe80acdd declined: quota_exhausted
+job 975e44d9e7fc0938 declined: malformed
+job 2db5acaf69fa5495 declined: malformed
+job c40d0e940eb58a02 answered in 0 ms, 73 chars
+job 14c1d1d211479f1b declined: unsupported_version
+test tests::unreadable_content_is_refused_malformed ... ok
+job c40d0e940eb58a02 declined: quota_exhausted
+job 14c1d1d211479f1b declined: unsupported_version
+test tests::the_worker_preserves_supported_request_versions ... ok
+job 2e5c09ffd4ab68d7 declined: unsupported_version
+job 2e5c09ffd4ab68d7 declined: unsupported_version
+test tests::unsupported_requests_refuse_before_generation_or_configured_decline ... ok
+job aaeb3c87b2135612 timed out after 201 ms
+job aaeb3c87b2135612 declined: timed_out
+job c40d0e940eb58a02 timed out after 200 ms
+job c40d0e940eb58a02 declined: timed_out
+test tests::a_job_that_outruns_its_bound_is_refused_timed_out ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.41s
+
+     Running tests/conformance.rs (/home/christopherdavid/.cache/openagents/target-candidate-evidence/debug/deps/conformance-86a636f216e2dcb0)
+
+running 13 tests
+test a_reworded_question_set_is_drift_the_inventory_reports ... ok
+test a_selected_program_runs_only_under_the_operators_grant ... ok
+test a_selection_is_only_ever_a_program_the_host_offered ... ok
+test a_typed_refusal_is_the_steps_typed_outcome ... ok
+
+thread 'a_cancelled_run_marks_the_callers_end_not_the_works' (2719074) panicked at crates/coder/tests/conformance.rs:760:5:
+assertion `left == right` failed
+  left: []
+ right: ["select"]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test a_cancelled_run_marks_the_callers_end_not_the_works ... FAILED
+test a_crash_leaves_unknown_and_the_restart_is_a_decision ... ok
+test quota_exhaustion_is_bounded_then_terminal ... ok
+test an_answer_from_an_unadmitted_artifact_is_the_refusal ... ok
+test partial_work_reports_its_coverage_against_the_program ... ok
+test work_that_cannot_be_verified_never_passes ... ok
+test the_local_profile_sends_no_credential_anywhere ... ok
+test the_workflow_reports_against_its_deterministic_baseline ... ok
+test every_attempt_reconciles_with_identities_outcomes_and_costs ... ok
+
+failures:
+
+failures:
+    a_cancelled_run_marks_the_callers_end_not_the_works
+
+test result: FAILED. 12 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.99s
+
+error: test failed, to rerun pass `-p coder --test conformance`
+PHASE END: Default workspace tests; elapsed 108.0s; exit 101

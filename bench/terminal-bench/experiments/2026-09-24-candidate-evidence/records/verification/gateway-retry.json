@@ -1,0 +1,24 @@
+{
+  "head": "809fbe2a7b266ec2911d5a33504269b836b7737e",
+  "command": [
+    "cargo",
+    "test",
+    "--locked",
+    "--features",
+    "kev/serve,lev/serve,gym/tui,jev/blocking,oak/mcp-http",
+    "--test",
+    "serve",
+    "classify_serial_and_concurrent_batches_are_measured",
+    "--",
+    "--exact",
+    "--nocapture"
+  ],
+  "environment": {
+    "RUST_TEST_THREADS": "1",
+    "CARGO_BUILD_JOBS": "4",
+    "toolchain": "1.97.1"
+  },
+  "exit": 0,
+  "log": "microluna-candidate-gateway-exact-retry.log",
+  "limitation": "An isolated retry, not a rerun of the whole feature suite. Gateway source was unchanged from ac1ae94024."
+}

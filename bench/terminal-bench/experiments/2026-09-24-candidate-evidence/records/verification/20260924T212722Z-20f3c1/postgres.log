@@ -1,0 +1,84 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.09s
+     Running tests/store_postgres.rs (/home/christopherdavid/.cache/openagents/target-candidate-evidence/debug/deps/store_postgres-76836ce923a19007)
+
+running 1 test
+test m2_store_contract_against_postgres ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.52s
+
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.09s
+     Running tests/gateway_postgres.rs (/home/christopherdavid/.cache/openagents/target-candidate-evidence/debug/deps/gateway_postgres-f384e1c0303a315a)
+
+running 3 tests
+test http_response_complete_accepts_full_responses ... ok
+test http_response_complete_rejects_truncated_and_malformed ... ok
+test m3_gateway_contract_against_postgres ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.27s
+
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.09s
+     Running tests/multiprocess_postgres.rs (/home/christopherdavid/.cache/openagents/target-candidate-evidence/debug/deps/multiprocess_postgres-b3c064d13e6a2a7d)
+
+running 1 test
+{"level":"error","message":"internal relay error: the relay lost its Postgres notification listener or a database worker failed"}
+test m4_two_process_gap_and_chaos_contract ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.23s
+
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.10s
+   Compiling coder-one v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/microluna-candidate-evidence/crates/coder-one)
+   Compiling coder v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/microluna-candidate-evidence/crates/coder)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 12.48s
+     Running tests/interop_processes.rs (/home/christopherdavid/.cache/openagents/target-candidate-evidence/debug/deps/interop_processes-07149bdc878a2617)
+
+running 4 tests
+test a_lost_job_recovers_by_journal_and_never_replays_unknown ... ok
+test a_package_publishes_discovers_installs_and_runs_over_the_wire ... ok
+test advertised_roles_match_configuration_and_turns_record ... ok
+test filters_privacy_retention_and_forks_hold_on_the_wire ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.70s
+
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.09s
+     Running tests/block_lane_postgres.rs (/home/christopherdavid/.cache/openagents/target-candidate-evidence/debug/deps/block_lane_postgres-dd78e818b00d14f1)
+
+running 1 test
+test block_lane_contract_against_postgres ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.20s
+
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.09s
+     Running tests/bulk_import_postgres.rs (/home/christopherdavid/.cache/openagents/target-candidate-evidence/debug/deps/bulk_import_postgres-b4510a869407ba44)
+
+running 1 test
+test signed_event_jsonl_import_is_ordered_and_idempotent ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.10s
+     Running tests/backup_postgres.rs (/home/christopherdavid/.cache/openagents/target-candidate-evidence/debug/deps/backup_postgres-1df32c8a31005052)
+
+running 1 test
+churn rounds: 6
+unit	nostr-relay-2026-09-24T213639Z
+created_at	2026-09-24T213639Z
+database	nostr-relay-2026-09-24T213639Z.dump	ced289751ead3f3a2289b81b35dd791b4073f59c803f26824c05d3b26dcbeb4b	44769
+media	nostr-relay-2026-09-24T213639Z-media.tar	7bee2eb8be748b9ae77aff68c5bd6d97636dbeea1dbf7a0762ded8726c3213b0	20480
+referenced_blobs	5
+
+test backup_unit_restores_whole_under_concurrent_mutation ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.71s
+
+    Finished `release` profile [optimized] target(s) in 0.11s
+     Running tests/load_postgres.rs (/home/christopherdavid/.cache/openagents/target-candidate-evidence/release/deps/load_postgres-98ca5c6bf748c2ce)
+
+running 1 test
+test m4_release_load_proof has been running for over 60 seconds
+M4_BENCHMARK_JSON={"connect_p99_ms_median":0.16,"connect_p99_ms_range":[0.14,0.16],"connect_samples_per_run":250,"events_per_run":2000,"events_per_second_median":262.01,"events_per_second_range":[149.78,361.15],"publishers":4,"req_history_events":10,"req_samples_per_run":100,"req_to_eose_p99_ms_median":44.01,"req_to_eose_p99_ms_range":[43.98,51.01],"runs":5,"total_events":10000}
+test m4_release_load_proof ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 70.10s
+
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.11s
+PHASE END: PostgreSQL acceptance; elapsed 99.6s; exit 0

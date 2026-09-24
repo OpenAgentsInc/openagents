@@ -1,0 +1,3 @@
+    Checking coder-one v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/microluna-candidate-evidence/crates/coder-one)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 22.02s
+PHASE END: Default workspace Clippy; elapsed 22.1s; exit 0

@@ -1,0 +1,13 @@
+Diff in /home/christopherdavid/.cache/openagents/worktrees/microluna-candidate-evidence/crates/coder/tests/program_run.rs:1586:
+     )
+     .await
+     .unwrap();
+-    assert!(finished.program.is_none(), "an ungranted program never runs");
++    assert!(
++        finished.program.is_none(),
++        "an ungranted program never runs"
++    );
+     assert!(programs.is_empty(), "no program execution was announced");
+     assert!(finished.reply.contains("stub door"), "{}", finished.reply);
+ }
+PHASE END: Workspace formatting; elapsed 2.9s; exit 1

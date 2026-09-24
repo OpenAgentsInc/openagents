@@ -257,3 +257,12 @@ configuration makes it faster or cheaper. The successful comparison is
 Microluna's measured complete attempt versus a public Fable reference with
 another model, harness, and host. Report the repeated outcomes and cost per
 accepted output before extending even that narrower claim.
+
+## Implementation verification
+
+The [verification records](../../bench/terminal-bench/experiments/2026-09-24-candidate-evidence/records/verification/README.md)
+retain the pinned Rust gate results, affected-package integration checks,
+and 39 Python benchmark tests. The full gate's default suite passed;
+one feature-suite gateway wall-time assertion failed under load and passed
+on its isolated retry. Its failed run is retained as failed. This is
+separate from the benchmark outcomes above.
