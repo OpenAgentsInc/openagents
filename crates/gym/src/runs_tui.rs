@@ -1938,7 +1938,10 @@ pub(crate) mod tests {
     #[test]
     fn the_list_says_what_each_run_was_and_how_it_came_out() {
         let (_dir, pane) = pane();
-        let text = pane.to_text(150, 30);
+        // Wide enough for the full footer, which is about 160 columns; a
+        // narrower window falls back to the key letters, which
+        // `a_narrow_window_still_reads` covers.
+        let text = pane.to_text(180, 30);
         assert!(text.contains("Terminal-Bench runs"), "{text}");
         assert!(text.contains("5 runs · 1 running"), "{text}");
         assert!(text.contains("✓ passed"), "{text}");
