@@ -1,10 +1,14 @@
 # Run Coder One on a mini-task
 
-A mini-task is a small local task with its own grader. Run an episode on
-one with the scripted executor to test how Coder One's components compose,
-in about a second and with no model or container. Run the same task with
-Claude Code or Codex to see whether a real executor uses what the
-components give it.
+A Coder One mini-task is a small local coding task with its own scenario
+grader. The grader checks the workspace after the episode and the episode
+cannot see it. The scripted executor tests how Coder One's components compose
+in about a second, with no model or container; Claude Code or Codex exercises
+the same task with a real executor. This is a fast local screen, not a
+Terminal-Bench 4.0 benchmark result. In the recorded four-task Luna-in-Codex
+pilot, one run took 15–184 seconds and cost $0.0006–$0.0092 in Luna usage,
+plus $0.0001–$0.0005 for Jev (means by task and arm; see the
+[pilot results](../../../terminal-bench/2026-09-24-microluna.md#mini-task-results)).
 
 This is rung 2 and rung 3 of the ladder in
 [Coder as a tunable system](../../optimization/coder-components.md#test-each-component-in-isolation):
