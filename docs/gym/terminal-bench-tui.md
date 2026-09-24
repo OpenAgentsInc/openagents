@@ -146,6 +146,7 @@ copy of the episode log or the native output.
 | `Enter` | Open a run's summary. In a transcript, open or close the selected step. |
 | `p` | Choose a head-to-head replay. |
 | `t` | Open the run's transcript, or switch between summary and transcript. |
+| `A` | Show the open run's analysis, or go back to its summary. |
 | `e` | Open or close every step of a transcript. |
 | `d` | Show the details experts use in a summary. |
 | `/` | Search by task, what it asks, agent, or batch. |
@@ -255,6 +256,16 @@ that run. `c` clears the filter. `h` or `Esc` leaves the view. See
 for the rules, and
 [Draft highlights](../coder/guides/coder-one-ask.md#draft-highlights) for
 turning chosen claims into short drafts.
+
+### Read a run's analysis
+
+Open a run and press `A` for its analysis: the outcome with each failing
+assertion, the true cost against Harbor's, the timeline and critical path,
+the suite against the verifier, reversals, anomalies, and Fable 5.1's
+cheapest pass. The pane shows the `analysis.md` the harness wrote when the
+trial ended. When none was kept, it computes one from the records with
+Jev's cached answers only, and asks Jev nothing. `A` again returns to the
+summary. See [Analyze a run when it ends](run-analysis.md).
 
 The expert views below stay behind their keys; `Esc` in any of them returns
 to the Runs pane. `gym runs` prints the same list and summaries as text; see

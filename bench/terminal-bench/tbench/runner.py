@@ -42,7 +42,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from . import netpolicy, paths
+from . import analysis, netpolicy, paths
 from .agents import AgentProfile, configured_auth_modes
 from .counts import counts_for_trial
 from .jobconfig import JobProfile, build_job_config, task_entry, write_job_config
@@ -311,6 +311,9 @@ def _finish(
     job_dir: Path, request: RunRequest, verb: str, returncode: int, got: str | None
 ) -> Path:
     collect(job_dir, request)
+    # Each finished trial's analysis, from the Gym (issue #9593). It warns
+    # and moves on when it can't run.
+    analysis.analyze_job(job_dir)
     if got is not None:
         raise RunError(
             f"interrupted by {got}; Harbor cancelled the job and exited "

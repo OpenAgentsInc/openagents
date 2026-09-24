@@ -81,6 +81,25 @@ print the same words, and a missing record prints as missing rather than as
 zero. `--jobs-dir PATH` and `--traces-dir PATH` read other directories, and
 `--no-jobs` and `--no-traces` skip one.
 
+## Analyze one run
+
+`gym runs analyze` computes a finished run's analysis: the verifier's
+result with each failing assertion, the true cost against Harbor's, the
+timeline with the critical path and the cost by phase, the acceptance
+suite against the verifier's tests, sessions that undid an earlier
+session's change, anomalies, and Fable 5.1's cheapest pass on the task.
+The harness writes it beside each trial when the trial ends.
+
+```sh
+gym runs analyze tb4--coder-one-microluna-v7--embedding-drift-monitor--manual-20260924T113920
+gym runs analyze RUN --json
+gym runs analyze RUN --write     # analysis.md and analysis.json in the trial directory
+```
+
+Code computes every number, and Jev judges only the acceptance-test and
+verifier-test pairs the rules leave open. See
+[Analyze a run when it ends](run-analysis.md).
+
 ## Rank runs by what's worth learning from
 
 `gym runs rank` asks Jev, once per finished run, whether the run's records

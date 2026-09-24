@@ -1440,6 +1440,7 @@ Usage:
   gym runs marks [--json]
   gym runs agreement [--json]
   gym runs highlights [--rule RULE]... [--limit N] [--json]
+  gym runs analyze RUN [--json] [--write] [--no-jev]
 
 RUN is a job name, job/trial, a trial name, or a piece of a job name that
 only one job has. --agent takes coder-one, claude-code, codex, or reference;
@@ -1476,7 +1477,12 @@ somewhere other than ~/.openagents/gym/marks.
 
 `highlights` computes candidate claims worth sharing with fixed rules, each
 with its runs, numbers, sample size, and caveats; `gym runs highlights
---help` says more. Nothing posts anywhere.";
+--help` says more. Nothing posts anywhere.
+
+`analyze` computes one finished run's analysis: the verifier's result, the
+true cost against Harbor's, the timeline and critical path, the suite
+against the verifier, reversals, anomalies, and Fable 5.1's cheapest pass.
+`gym runs analyze --help` says more.";
 
 /// `gym runs`: the list, or one run's summary and transcript.
 ///
@@ -1490,6 +1496,9 @@ pub fn command(args: &[String], out: &mut impl Write) -> Result<i32, String> {
         .is_some_and(|word| crate::runs_marks::handles(word))
     {
         return crate::runs_marks::command(args, out);
+    }
+    if args.first().map(String::as_str) == Some("analyze") {
+        return crate::runs_analysis::command(&args[1..], out);
     }
     if args.first().map(String::as_str) == Some("highlights") {
         return crate::runs_highlights::command(args, out);

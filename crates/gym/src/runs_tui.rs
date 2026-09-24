@@ -6,7 +6,9 @@
 //! reads newest first, one run a line: when it started, how it came out,
 //! the task and what it asks, the agent, the tests the verifier passed,
 //! what it cost, and how long it took. Enter opens a run's story; `t`
-//! switches to its transcript.
+//! switches to its transcript, and `A` to its analysis: the one
+//! `gym runs analyze --write` keeps beside the run, or, when none was
+//! kept, one computed from the records with Jev's cached answers only.
 //!
 //! The drawing is `coder-terminal`'s: the amber [`Ladder`], the hairline
 //! [`frame`] with its [`rail`]s, the [`Scrollback`] that wraps each
@@ -93,6 +95,8 @@ pub enum Reply {
 pub enum Tab {
     Summary,
     Transcript,
+    /// The run's analysis, from [`crate::runs_analysis`].
+    Analysis,
 }
 
 /// One transcript block, ready to wrap.
@@ -151,6 +155,9 @@ struct Open {
     drawn: RefCell<Vec<(u16, usize)>>,
     /// The scroll position of the transcript's bottom, last frame.
     bottom: Cell<usize>,
+    /// The analysis's Markdown, read or computed the first time `A` shows
+    /// it.
+    analysis: RefCell<Option<String>>,
 }
 
 impl Open {
@@ -168,6 +175,7 @@ impl Open {
             free: Cell::new(false),
             drawn: RefCell::new(Vec::new()),
             bottom: Cell::new(0),
+            analysis: RefCell::new(None),
         }
     }
 
@@ -800,8 +808,16 @@ impl Pane {
             Key::Char('q') => return Reply::Quit,
             Key::Char('t') => {
                 open.tab = match open.tab {
-                    Tab::Summary => Tab::Transcript,
+                    Tab::Summary | Tab::Analysis => Tab::Transcript,
                     Tab::Transcript => Tab::Summary,
+                };
+                open.scroll.set(0);
+                return Reply::Handled;
+            }
+            Key::Char('A') => {
+                open.tab = match open.tab {
+                    Tab::Analysis => Tab::Summary,
+                    Tab::Summary | Tab::Transcript => Tab::Analysis,
                 };
                 open.scroll.set(0);
                 return Reply::Handled;
@@ -810,7 +826,7 @@ impl Pane {
             _ => {}
         }
         match open.tab {
-            Tab::Summary => {
+            Tab::Summary | Tab::Analysis => {
                 let scroll = open.scroll.get();
                 match key {
                     Key::Up | Key::Char('k') => open.scroll.set(scroll.saturating_sub(1)),
@@ -1254,9 +1270,15 @@ impl Pane {
         let (title, hint, keys, short) = match open.tab {
             Tab::Summary => (
                 "Summary",
-                "t shows the transcript",
+                "t shows the transcript, A the analysis",
                 "↑↓ scroll · t transcript · w vs best winner · p head-to-head · d details · x mark bad · v mark fine · u unmark · esc back · q quit",
-                "↑↓ t d x v u esc q",
+                "↑↓ t A d x v u esc q",
+            ),
+            Tab::Analysis => (
+                "Analysis",
+                "A shows the summary",
+                "↑↓ scroll · A summary · t transcript · x mark bad · v mark fine · u unmark · esc back · q quit",
+                "↑↓ A t x v u esc q",
             ),
             Tab::Transcript => (
                 "Transcript",
@@ -1270,6 +1292,7 @@ impl Pane {
         match open.tab {
             Tab::Summary => self.render_summary(open, inner, buf),
             Tab::Transcript => self.render_transcript(open, inner, buf),
+            Tab::Analysis => self.render_analysis(open, inner, buf),
         }
     }
 
@@ -1373,6 +1396,45 @@ impl Pane {
             if *intensity == Intensity::Full {
                 style = style.add_modifier(Modifier::BOLD);
             }
+            buf.set_stringn(
+                inner.left(),
+                inner.top() + offset as u16,
+                line,
+                width,
+                style,
+            );
+        }
+    }
+
+    /// The run's analysis: the stored `analysis.md`, or one computed now
+    /// from the records and Jev's cached answers.
+    fn render_analysis(&self, open: &Open, inner: Rect, buf: &mut Buffer) {
+        let width = usize::from(inner.width);
+        let run = &open.detail.run;
+        let markdown = open
+            .analysis
+            .borrow_mut()
+            .get_or_insert_with(|| {
+                if run.outcome == Outcome::Running {
+                    return "The analysis is written when the run ends.".to_owned();
+                }
+                crate::runs_analysis::stored_markdown(run).unwrap_or_else(|| {
+                    crate::runs_analysis_markdown::render(&crate::runs_analysis::analyze_offline(
+                        run,
+                    ))
+                })
+            })
+            .clone();
+        let lines = crate::runs_analysis_markdown::pane_lines(&markdown, width);
+        let room = usize::from(inner.height);
+        let scroll = open.scroll.get().min(lines.len().saturating_sub(room));
+        open.scroll.set(scroll);
+        for (offset, (line, heading)) in lines.iter().skip(scroll).take(room).enumerate() {
+            let style = if *heading {
+                self.style(Intensity::Full).add_modifier(Modifier::BOLD)
+            } else {
+                self.style(Intensity::ThreeQuarters)
+            };
             buf.set_stringn(
                 inner.left(),
                 inner.top() + offset as u16,
@@ -2557,6 +2619,22 @@ pub(crate) mod tests {
         assert_eq!(pane.key(Key::Back), Reply::Handled);
         assert!(!pane.is_open());
         assert_eq!(pane.key(Key::Char('q')), Reply::Quit);
+    }
+
+    #[test]
+    fn capital_a_shows_the_run_analysis() {
+        let (_dir, mut pane) = pane();
+        select(&mut pane, "coq-block-bound");
+        pane.key(Key::Enter);
+        assert!(pane.to_text(140, 45).contains("A the analysis"));
+        pane.key(Key::Char('A'));
+        assert_eq!(pane.tab(), Some(Tab::Analysis));
+        let text = pane.to_text(140, 45);
+        for phrase in ["Analysis", "Run analysis: coq-block-bound", "Summary"] {
+            assert!(text.contains(phrase), "{phrase}: {text}");
+        }
+        pane.key(Key::Char('A'));
+        assert_eq!(pane.tab(), Some(Tab::Summary));
     }
 
     #[test]
