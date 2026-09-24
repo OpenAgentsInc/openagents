@@ -124,12 +124,17 @@ pub const REVIEW_DIRECTIONS: &str = "This session reviews the change before \
 it becomes a pull request. For each caller in the request, check that what \
 it assumes about a changed function or constant still holds: positions, \
 indexes, counts, order, widths, and formats. Read more of a caller's file \
-when its assumption isn't visible in the excerpt. Fix every bug you find \
-and add a test that fails without the fix. Fix text as it renders, not \
+when its assumption isn't visible in the excerpt. Don't conclude an \
+assumption holds by reasoning: for each caller that depends on positions, \
+indexes, counts, or order of what changed, add a test that exercises that \
+dependency with the changed code, such as asserting which row a view \
+selects, run it, and report its result. Fix every bug you find and add a \
+test that fails without the fix. Fix text as it renders, not \
 its source form: splitting a string into pieces doesn't shorten the line \
 a person sees. Check every number and factual claim the change adds against \
 the file it comes from, and fix any the source contradicts, including a \
-range that leaves out a recorded case. Put back any fact, example, or \
+range that leaves out a recorded case, and a label such as "modeled" or \
+"measured" the source doesn't use. Put back any fact, example, or \
 comparison the diff removes that the issue didn't ask to remove. Keep \
 reflowed prose lines as short as their neighbors. If nothing is wrong, \
 change nothing and say so.";
