@@ -1128,12 +1128,11 @@ impl Micro {
                 "workspace_files": parallel::tree(&self.workdir),
                 "benchmark_outcome": Value::Null,
             }));
-            if let Ok(bytes) = serde_json::to_vec_pretty(&moves) {
-                if let Err(error) =
+            if let Ok(bytes) = serde_json::to_vec_pretty(&moves)
+                && let Err(error) =
                     crate::record::write_atomic(&retained.join("selection.json"), &bytes)
-                {
-                    stopped.push_str(&format!("; could not retain submitted evidence: {error}"));
-                }
+            {
+                stopped.push_str(&format!("; could not retain submitted evidence: {error}"));
             }
         }
         (sessions, moves, stopped)
