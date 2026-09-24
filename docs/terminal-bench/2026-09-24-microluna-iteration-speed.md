@@ -163,11 +163,11 @@ a different effort for them.
 
 The native transport already preserves `response.output_item.done` events when
 the final `response.completed.output` array is empty. Microluna writes their
-readable summaries into ATIF. The new Gym regression exposed a separate reader
+readable summaries into ATIF. The new Gym regression exposed a separate head-to-head reader
 bug: exported ATIF uses `reasoning_content`, while the native log uses
 `reasoning`. Gym previously recognized only the exported field. In a native
 step with an ordinary message, it could omit the summary; otherwise it could
-fall back to raw JSON. The reader now handles both fields and renders the full
+fall back to raw JSON. The head-to-head reader now handles both fields and renders the full
 readable summary as Markdown. Regression tests cover empty final output,
 multiple summary paragraphs, default-effort requests, and a long summary's last
 paragraph in Gym.
@@ -199,3 +199,21 @@ the new grader's behavior. The first full Rust gate caught the native reasoning-
 that new regression. The reader was fixed before publication; both the failed
 run and the subsequent verification are retained. Final verification records
 accompany publication.
+
+## Remaining issue boundaries
+
+| Issue | What this iteration contributes | What still prevents closure |
+| --- | --- | --- |
+| [#9607](https://github.com/OpenAgentsInc/openagents/issues/9607) | Fresh repeated runs on both selected targets, with every sequential candidate retained | A repeatable Microluna win where Fable fails, plus broader confirmation of cheap successes |
+| [#9584](https://github.com/OpenAgentsInc/openagents/issues/9584) | Official candidate labels paired with the exact self-score and selected submission | A combined verdict with better measured failure precision and recall on held-out task groups |
+| [#9587](https://github.com/OpenAgentsInc/openagents/issues/9587) | A reusable post-run oracle grader for sequential candidates | Parallel-lane retention and the matched single/best-of-3/best-of-5 experiment |
+| [#9585](https://github.com/OpenAgentsInc/openagents/issues/9585) | Readable summary requests at every effort, with live measurements | The stated matched Luna-in-Codex comparison on three to five TB4 tasks |
+| [#9588](https://github.com/OpenAgentsInc/openagents/issues/9588) | More evidence that a frozen green score can disagree with official acceptance | Validated offline discrimination and the matched live acceptance-suite comparison; keep adoption experimental |
+| [#9608](https://github.com/OpenAgentsInc/openagents/issues/9608) | Read-only coordination with the agent exercising #9597 | A completed normal issue-to-PR acceptance record; active or closed draft retries do not prove the whole path |
+
+For the next efficiency experiment, measure review benefit using these retained
+candidates before trying to skip reviews. The first two fresh embedding reviews
+made no source changes, but the previous v12 pass needed a review repair. A
+blanket skip rule would trade away demonstrated quality. Coordinate a matched
+review policy with the ongoing default-effort v15/v16 work instead of launching
+a competing version or claiming a causal speedup from unrelated historical runs.
