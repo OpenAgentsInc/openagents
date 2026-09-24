@@ -284,7 +284,9 @@ pub async fn run(
             ));
             absorb(&mut answer, reviewed);
             say!("issue ▸ running the tests and checks on the change");
-            remaining = gate(&workdir);
+            let checked = Recorder::default();
+            remaining = gate(&workdir, inner.jev.as_ref(), &checked).await;
+            answer.steps.extend(checked.steps());
             if remaining.is_empty() {
                 say!("issue ▸ the tests pass and the checks found nothing");
                 break;
@@ -614,6 +616,239 @@ fn reviewed_outcome(
     (status, stuck || review_stuck)
 }
 
+/// One place that uses a name the change touched, with the lines around
+/// it as they stand in the working tree.
+struct Excerpt {
+    file: String,
+    line: usize,
+    /// The first and last line numbers shown, 1-based.
+    span: (usize, usize),
+    name: String,
+    text: String,
+}
+
+/// The places that use the Rust functions and constants the staged
+/// change touches, at most [`REVIEW_CALLERS`] of them.
+fn excerpts(workdir: &Path) -> Vec<Excerpt> {
+    let bare = command(workdir, "git", &["diff", "--cached", "-U0"]).unwrap_or_default();
+    let mut found = Vec::new();
+    for (path, name) in changed_names(workdir, &bare) {
+        for (file, line) in uses(workdir, &path, &name) {
+            if found.len() >= REVIEW_CALLERS {
+                return found;
+            }
+            let Ok(text) = std::fs::read_to_string(workdir.join(&file)) else {
+                continue;
+            };
+            let lines: Vec<&str> = text.lines().collect();
+            let from = line.saturating_sub(CALLER_BEFORE + 1);
+            let to = (line + CALLER_AFTER).min(lines.len());
+            found.push(Excerpt {
+                span: (from + 1, to),
+                file,
+                line,
+                name: name.clone(),
+                text: (from..to)
+                    .map(|i| format!("{:>5} {}", i + 1, lines[i]))
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            });
+        }
+    }
+    found
+}
+
+/// The Noul the gate asks about each place that uses what changed; `{id}`
+/// names it.
+pub const DEPENDS_QUESTION: &str = "Does the code in `uses.{id}` depend on how many items, or \
+which positions, the changed code in `diff` produces, such as an index offset, a fixed count, \
+or a row number, and does the change alter that number or those positions without this code \
+being updated to match?";
+
+/// How sure Jev must be that a place depends on a changed count to flag
+/// it: the stale `2 + cursor` offset read 0.68, and correct code beside a
+/// fix read 0.52 and 0.54.
+const DEPENDS_FLAG: f64 = 0.6;
+
+/// The new-side line numbers a zero-context diff adds or changes, by file.
+fn edited_lines(bare: &str) -> Vec<(String, usize)> {
+    let mut edited = Vec::new();
+    let mut file = String::new();
+    for line in bare.lines() {
+        if let Some(path) = line.strip_prefix("+++ b/") {
+            file = path.to_string();
+            continue;
+        }
+        let Some(hunk) = line.strip_prefix("@@ ") else {
+            continue;
+        };
+        let Some(new) = hunk
+            .split_whitespace()
+            .find_map(|part| part.strip_prefix('+'))
+        else {
+            continue;
+        };
+        let mut parts = new.split(',');
+        let start: usize = parts.next().and_then(|n| n.parse().ok()).unwrap_or(0);
+        let count: usize = parts.next().and_then(|n| n.parse().ok()).unwrap_or(1);
+        // A pure deletion still touches the line it sits beside.
+        for at in start..start + count.max(1) {
+            edited.push((file.clone(), at));
+        }
+    }
+    edited
+}
+
+/// Places that use what changed and, as Jev reads them, depend on a count
+/// or position the change alters without being updated: a view once
+/// selected row `2 + cursor` after two lines went in above the rows, and
+/// every test still passed.
+async fn stale_dependents(
+    workdir: &Path,
+    jev: Option<&jev::Client>,
+    recorder: &Recorder,
+) -> Vec<String> {
+    let Some(client) = jev else {
+        return Vec::new();
+    };
+    let bare = command(workdir, "git", &["diff", "--cached", "-U0"]).unwrap_or_default();
+    let edited = edited_lines(&bare);
+    // Code the change already edited was updated to match; asking about it
+    // once flagged a `4 + cursor` offset right after the fix.
+    let found: Vec<Excerpt> = excerpts(workdir)
+        .into_iter()
+        .filter(|excerpt| {
+            !edited.iter().any(|(file, line)| {
+                *file == excerpt.file && (excerpt.span.0..=excerpt.span.1).contains(line)
+            })
+        })
+        .collect();
+    if found.is_empty() {
+        return Vec::new();
+    }
+    let diff = command(workdir, "git", &["diff", "--cached", "-U3"]).unwrap_or_default();
+    let mut questions = jev::Questions::new();
+    let mut uses = serde_json::Map::new();
+    for (i, excerpt) in found.iter().enumerate() {
+        let id = format!("u{}", i + 1);
+        uses.insert(
+            id.clone(),
+            json!(format!(
+                "{}:{} uses `{}`\n{}",
+                excerpt.file, excerpt.line, excerpt.name, excerpt.text
+            )),
+        );
+        questions = questions.with(
+            format!("depends_{}", i + 1),
+            jev::Noul::new(DEPENDS_QUESTION.replace("{id}", &id)),
+        );
+    }
+    let asked = crate::component::jev::ask(
+        &crate::component::jev::JevMode::Live(client.clone()),
+        recorder,
+        crate::component::jev::Ask {
+            component: "issue.gate",
+            name: "jev_stale_dependents",
+            id: "jev_stale_dependents-1".to_string(),
+            state: json!({ "diff": crate::judge::clip(&diff, 10_000), "uses": uses }),
+            questions,
+            parent: None,
+            deadline: None,
+        },
+    )
+    .await;
+    found
+        .iter()
+        .enumerate()
+        .filter_map(|(i, excerpt)| {
+            let p = asked.noul(&format!("depends_{}", i + 1))?;
+            (p >= DEPENDS_FLAG).then(|| {
+                format!(
+                    "{}:{} depends on the number or positions of what `{}` produces, and the \
+                     change alters them (Jev {p:.2}); update that code to match and add a test \
+                     that checks it, such as which row a view selects",
+                    excerpt.file, excerpt.line, excerpt.name
+                )
+            })
+        })
+        .collect()
+}
+
+/// Relative Markdown links the change adds that point at no file, or at
+/// a heading the file doesn't have.
+fn broken_links(workdir: &Path, diff: &str) -> Vec<String> {
+    let mut problems = Vec::new();
+    let mut file = String::new();
+    for line in diff.lines() {
+        if let Some(path) = line.strip_prefix("+++ b/") {
+            file = path.to_string();
+            continue;
+        }
+        let Some(added) = line.strip_prefix('+') else {
+            continue;
+        };
+        if !file.ends_with(".md") {
+            continue;
+        }
+        let mut rest = added;
+        while let Some(at) = rest.find("](") {
+            let after = &rest[at + 2..];
+            let Some(end) = after.find(')') else {
+                break;
+            };
+            let target = &after[..end];
+            rest = &after[end..];
+            if target.contains("://") || target.starts_with("mailto:") || target.is_empty() {
+                continue;
+            }
+            let (path, anchor) = target.split_once('#').unwrap_or((target, ""));
+            let resolved = if path.is_empty() {
+                workdir.join(&file)
+            } else {
+                workdir
+                    .join(&file)
+                    .parent()
+                    .map_or_else(|| workdir.join(path), |dir| dir.join(path))
+            };
+            let Ok(resolved) = resolved.canonicalize() else {
+                problems.push(format!(
+                    "{file}: the link `{target}` points at a file that doesn't exist"
+                ));
+                continue;
+            };
+            if !resolved.starts_with(workdir.canonicalize().unwrap_or_default()) {
+                problems.push(format!(
+                    "{file}: the link `{target}` points outside the repository"
+                ));
+                continue;
+            }
+            if !anchor.is_empty()
+                && let Ok(text) = std::fs::read_to_string(&resolved)
+                && !text
+                    .lines()
+                    .filter(|l| l.starts_with('#'))
+                    .any(|l| slug(l.trim_start_matches('#')) == anchor)
+            {
+                problems.push(format!(
+                    "{file}: the link `{target}` names a heading the file doesn't have"
+                ));
+            }
+        }
+    }
+    problems
+}
+
+/// A heading's anchor as GitHub writes it.
+fn slug(heading: &str) -> String {
+    heading
+        .trim()
+        .to_lowercase()
+        .chars()
+        .filter(|c| c.is_alphanumeric() || matches!(c, ' ' | '-' | '_'))
+        .map(|c| if c == ' ' { '-' } else { c })
+        .collect()
+}
+
 /// Fix rounds after the review when the host's gate still finds problems.
 const FIX_ROUNDS: usize = 2;
 
@@ -644,12 +879,14 @@ fn absorb(answer: &mut Answer, mut reviewed: Answer) {
 /// What the host finds wrong with the staged change, without a model:
 /// failing tests in the Rust packages it touches, style problems, and
 /// added figures that appear nowhere else in the repository.
-fn gate(workdir: &Path) -> Vec<String> {
+async fn gate(workdir: &Path, jev: Option<&jev::Client>, recorder: &Recorder) -> Vec<String> {
     let _ = command(workdir, "git", &["add", "-A"]);
     let diff = command(workdir, "git", &["diff", "--cached", "-U0"]).unwrap_or_default();
     let mut problems = test_failures(workdir, &diff);
     problems.extend(style_problems(&diff));
     problems.extend(unsourced_figures(workdir, &diff));
+    problems.extend(broken_links(workdir, &diff));
+    problems.extend(stale_dependents(workdir, jev, recorder).await);
     problems
 }
 
@@ -789,8 +1026,10 @@ fn unsourced_figures(workdir: &Path, diff: &str) -> Vec<String> {
                     continue;
                 }
                 seen.push(figure.clone());
+                // A file may hold the number without its currency sign.
+                let number = figure.trim_start_matches('$');
                 let found = Command::new("git")
-                    .args(["grep", "-q", "-F", "-e", &figure, "HEAD", "--", "."])
+                    .args(["grep", "-q", "-F", "-e", number, "HEAD", "--", "."])
                     .current_dir(workdir)
                     .status()
                     .is_ok_and(|status| status.success());
@@ -856,30 +1095,12 @@ fn review_request(workdir: &Path, number: u64) -> Option<String> {
     if diff.trim().is_empty() {
         return None;
     }
-    let bare = command(workdir, "git", &["diff", "--cached", "-U0"]).ok()?;
-    let names = changed_names(workdir, &bare);
     let mut callers = String::new();
-    let mut shown = 0;
-    for (path, name) in &names {
-        for (file, line) in uses(workdir, path, name) {
-            if shown >= REVIEW_CALLERS {
-                break;
-            }
-            let Ok(text) = std::fs::read_to_string(workdir.join(&file)) else {
-                continue;
-            };
-            let lines: Vec<&str> = text.lines().collect();
-            let from = line.saturating_sub(CALLER_BEFORE + 1);
-            let to = (line + CALLER_AFTER).min(lines.len());
-            let excerpt: Vec<String> = (from..to)
-                .map(|i| format!("{:>5} {}", i + 1, lines[i]))
-                .collect();
-            callers.push_str(&format!(
-                "### {file}:{line} uses `{name}`\n\n```\n{}\n```\n\n",
-                excerpt.join("\n")
-            ));
-            shown += 1;
-        }
+    for excerpt in excerpts(workdir) {
+        callers.push_str(&format!(
+            "### {}:{} uses `{}`\n\n```\n{}\n```\n\n",
+            excerpt.file, excerpt.line, excerpt.name, excerpt.text
+        ));
     }
     if callers.is_empty() {
         callers = "No caller outside the change was found.\n".to_string();
@@ -946,17 +1167,36 @@ fn style_problems(diff: &str) -> Vec<String> {
                 let word = word.trim_matches(|c: char| !c.is_alphanumeric() && c != '/');
                 let halves: Vec<&str> = word.split('/').collect();
                 let alphabetic = |h: &&str| h.len() >= 2 && h.chars().all(char::is_alphabetic);
-                if halves.len() >= 2 && halves.iter().all(alphabetic) {
-                    problems.push(format!(
-                        "{file}: \"{word}\" uses a slash for \"or\"; write the words out"
-                    ));
-                } else if halves.len() == 2
-                    && halves[0].ends_with(|c: char| c.is_ascii_digit())
-                    && alphabetic(&halves[1])
-                {
-                    problems.push(format!(
-                        "{file}: \"{word}\" uses a slash for \"per\"; write \"per\""
-                    ));
+                let numeric = |h: &&str| !h.is_empty() && h.chars().all(|c| c.is_ascii_digit());
+                // A path has a dot or several slashes; a fraction is digits.
+                let extension = word
+                    .char_indices()
+                    .any(|(i, c)| c == '.' && word[i + 1..].starts_with(char::is_alphabetic));
+                let path = extension || halves.len() > 2;
+                if halves.len() == 2 && !path && !halves.iter().all(numeric) {
+                    let per =
+                        halves[0].ends_with(|c: char| c.is_ascii_digit()) && alphabetic(&halves[1]);
+                    problems.push(if per {
+                        format!("{file}: \"{word}\" uses a slash for \"per\"; write \"per\"")
+                    } else {
+                        format!(
+                            "{file}: \"{word}\" uses a slash between words; write them out, \
+                             such as \"or\", \"and\", or \"per\""
+                        )
+                    });
+                }
+                for half in &halves {
+                    let digits = half.trim_start_matches('$');
+                    let lead: String = digits
+                        .chars()
+                        .take_while(|c| c.is_ascii_digit() || *c == '.')
+                        .collect();
+                    let unit = &digits[lead.len()..];
+                    if !lead.is_empty() && matches!(unit, "s" | "ms" | "min") {
+                        problems.push(format!(
+                            "{file}: \"{half}\" needs a space between the number and its unit"
+                        ));
+                    }
                 }
             }
             if let Some(at) = text.find(['~', '≈'])
@@ -1366,6 +1606,49 @@ mod tests {
         assert_eq!(problems.len(), 2, "{problems:#?}");
         assert!(problems[0].contains("\"per\""));
         assert!(problems[1].contains("\"about\""));
+    }
+
+    #[test]
+    fn broken_links_find_missing_files_and_headings() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::create_dir_all(root.join("docs/guides")).unwrap();
+        std::fs::create_dir_all(root.join("docs/bench")).unwrap();
+        std::fs::write(
+            root.join("docs/bench/r.md"),
+            "# R\n\n## Mini-task results\n",
+        )
+        .unwrap();
+        std::fs::write(root.join("docs/guides/g.md"), "text\n").unwrap();
+        let diff = "+++ b/docs/guides/g.md\n\
+            +See [ok](../bench/r.md#mini-task-results), [far](../../../bench/r.md),\n\
+            +[gone](../bench/x.md), and [heading](../bench/r.md#nothing).\n";
+        let problems = broken_links(root, diff);
+        assert_eq!(problems.len(), 3, "{problems:#?}");
+        assert!(problems[0].contains("../../../bench/r.md"));
+        assert!(problems[1].contains("../bench/x.md"));
+        assert!(problems[2].contains("#nothing"));
+    }
+
+    #[test]
+    fn slashes_between_words_and_units_without_spaces_are_flagged() {
+        let diff = "+++ b/src/v.rs\n+    \"Scripted: about 1s/$0, 3/4 passed, see docs/a/b.md or a.json/b\"\n";
+        let problems = style_problems(diff);
+        assert_eq!(problems.len(), 2, "{problems:#?}");
+        assert!(problems[0].contains("slash between words"), "{problems:#?}");
+    }
+
+    #[test]
+    fn edited_lines_read_hunk_ranges() {
+        let bare = "+++ b/src/a.rs\n@@ -700 +700 @@ fn x\n+++ b/src/b.rs\n@@ -3,0 +4,2 @@\n";
+        assert_eq!(
+            edited_lines(bare),
+            [
+                ("src/a.rs".to_string(), 700),
+                ("src/b.rs".to_string(), 4),
+                ("src/b.rs".to_string(), 5)
+            ]
+        );
     }
 
     #[test]
