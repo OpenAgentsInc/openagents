@@ -67,13 +67,22 @@ pub const HANDOFF_COMPONENT: &str = "microluna.handoff";
 /// The component name of the per-part check.
 pub const PARTS_COMPONENT: &str = "microluna.parts";
 
+/// How sure Jev must be that a part is met for it to count. At 0.5,
+/// cost and time parts rated 0.64 passed on figures for the cheapest case
+/// alone, and the retry that would have fixed them never ran.
+const PART_MET: f64 = 0.75;
+
 /// The most parts of a focus the per-part check asks about.
 const PARTS_MAX: usize = 10;
 
 /// The Noul the per-part check asks for each part; `{id}` names it.
-pub const PART_QUESTION: &str = "Does the change in `diff` meet the part of the requirement in \
-`parts.{id}`, read with the whole `requirement` for context, with specifics: concrete facts, \
-numbers, names, or code where the part calls for them, not a vague mention? Answer from the \
+pub const PART_QUESTION: &str = "Does the change in `diff_by_file` meet the part of the \
+requirement in `parts.{id}`, read with the whole `requirement` for context, with specifics: \
+concrete facts, numbers, names, or code where the part calls for them, not a vague mention? \
+When the requirement names several places for its content, such as a document and a view, \
+the part is met only if every one of those places carries it; a test file is not such a \
+place. A part that asks how long something takes or what it costs is met only by \
+figures for every case the repository records, not the cheapest one alone. Answer from the \
 diff alone.";
 
 /// The parts of one requirement line such as `- R1 (deliverable): text`:
@@ -95,6 +104,37 @@ pub fn parts(line: &str) -> Vec<String> {
         }
     }
     found
+}
+
+/// A diff cut into one entry per file, each clipped, so a judge can see
+/// which file carries what.
+fn by_file(diff: &str) -> Map<String, Value> {
+    let mut files = Map::new();
+    let mut name = String::new();
+    let mut body = String::new();
+    let flush = |name: &str, body: &mut String, files: &mut Map<String, Value>| {
+        if !name.is_empty() {
+            files.insert(name.to_string(), json!(clip_lines(body, 5_000)));
+        }
+        body.clear();
+    };
+    for line in diff.lines() {
+        let next = line
+            .strip_prefix("diff --git a/")
+            .and_then(|rest| rest.split(" b/").next())
+            .or_else(|| {
+                line.strip_prefix("new file ")
+                    .map(|rest| rest.trim_end_matches(':'))
+            });
+        if let Some(next) = next {
+            flush(&name, &mut body, &mut files);
+            name = next.to_string();
+        }
+        body.push_str(line);
+        body.push('\n');
+    }
+    flush(&name, &mut body, &mut files);
+    files
 }
 
 /// What the workspace at `dir` changed against its Git `HEAD`, with the
@@ -4489,7 +4529,7 @@ impl Micro {
                 state: json!({
                     "requirement": group.lines.join("\n"),
                     "parts": named,
-                    "diff": clip_lines(&diff, 12_000),
+                    "diff_by_file": by_file(&diff),
                 }),
                 questions,
                 parent: None,
@@ -4509,7 +4549,7 @@ impl Micro {
             .filter(|(i, _)| {
                 asked
                     .noul(&format!("part_{}", i + 1))
-                    .is_some_and(|p| p < 0.5)
+                    .is_some_and(|p| p < PART_MET)
             })
             .map(|(_, part)| part)
             .collect();

@@ -692,15 +692,31 @@ fn style_problems(diff: &str) -> Vec<String> {
             for word in text.split_whitespace() {
                 let word = word.trim_matches(|c: char| !c.is_alphanumeric() && c != '/');
                 let halves: Vec<&str> = word.split('/').collect();
-                if halves.len() >= 2
-                    && halves
-                        .iter()
-                        .all(|h| h.len() >= 2 && h.chars().all(char::is_alphabetic))
-                {
+                let alphabetic = |h: &&str| h.len() >= 2 && h.chars().all(char::is_alphabetic);
+                if halves.len() >= 2 && halves.iter().all(alphabetic) {
                     problems.push(format!(
                         "{file}: \"{word}\" uses a slash for \"or\"; write the words out"
                     ));
+                } else if halves.len() == 2
+                    && halves[0].ends_with(|c: char| c.is_ascii_digit())
+                    && alphabetic(&halves[1])
+                {
+                    problems.push(format!(
+                        "{file}: \"{word}\" uses a slash for \"per\"; write \"per\""
+                    ));
                 }
+            }
+            if let Some(at) = text.find(['~', '≈'])
+                && text[at..]
+                    .chars()
+                    .skip(1)
+                    .collect::<String>()
+                    .trim_start()
+                    .starts_with(|c: char| c.is_ascii_digit())
+            {
+                problems.push(format!(
+                    "{file}: \"~\" or \"≈\" before a number; write \"about\""
+                ));
             }
         }
         if markdown && !fenced {
@@ -1087,6 +1103,15 @@ mod tests {
         let problems = style_problems(&split);
         assert_eq!(problems.len(), 1, "{problems:#?}");
         assert!(problems[0].contains("120-character string"));
+    }
+
+    #[test]
+    fn style_problems_find_per_slashes_and_tildes() {
+        let diff = "+++ b/src/v.rs\n+    \"scripted ≈1 s; Opus $0.0537/run, 3/4 passed\"\n";
+        let problems = style_problems(diff);
+        assert_eq!(problems.len(), 2, "{problems:#?}");
+        assert!(problems[0].contains("\"per\""));
+        assert!(problems[1].contains("\"about\""));
     }
 
     #[test]

@@ -371,6 +371,33 @@ pub fn defended_choices_general(workspace: &Path) -> Vec<String> {
     defended_with(workspace, &GENERAL_MARKS)
 }
 
+/// Comments that give a reason for a choice: [`GENERAL_MARKS`] and
+/// [`RATIONALE_MARKS`]. A planted or historical defect often ships with
+/// the comment that explains why the code does it, so each is a suspect
+/// for a judgment to rank, not a finding.
+#[must_use]
+pub fn rationale_choices(workspace: &Path) -> Vec<String> {
+    let marks: Vec<&str> = GENERAL_MARKS
+        .iter()
+        .chain(RATIONALE_MARKS.iter())
+        .copied()
+        .collect();
+    defended_with(workspace, &marks)
+}
+
+/// Words that mark a stated reason, beside [`GENERAL_MARKS`].
+pub const RATIONALE_MARKS: [&str; 9] = [
+    "because",
+    "accounts for",
+    "to reflect",
+    "rather than",
+    "instead of",
+    "in order to",
+    "trade-off",
+    "tradeoff",
+    "follows the",
+];
+
 /// [`defended_choices_general`]'s words.
 pub const GENERAL_MARKS: [&str; 15] = [
     "approximat",

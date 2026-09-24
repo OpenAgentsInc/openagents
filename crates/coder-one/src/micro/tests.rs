@@ -1439,6 +1439,7 @@ fn lean_shape() -> lean::Lean {
         symptoms: false,
         example_first: false,
         standard_forms: false,
+        rationale: false,
     }
 }
 
@@ -1748,4 +1749,18 @@ async fn failed_or_timed_out_evaluation_cannot_supply_a_green_score() {
         assert!(score.is_none(), "{script}: {output}");
         assert!(output.contains("SCORE 1 1"));
     }
+}
+
+#[test]
+fn a_comment_that_gives_a_reason_is_a_suspect() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("window.py"),
+        "\"\"\"Keeps a window.\n\nThe window slides because recent data matters more.\n\"\"\"\n\
+         def keep(x):\n    # plain comment\n    return x\n",
+    )
+    .unwrap();
+    let found = crate::accept::rationale_choices(dir.path());
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert!(found[0].starts_with("window.py:3:"), "{found:?}");
 }
