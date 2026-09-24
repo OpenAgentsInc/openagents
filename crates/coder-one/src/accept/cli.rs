@@ -208,7 +208,12 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
                     ("all_snapshots", "every trial with a snapshot"),
                 ] {
                     println!("{label}:");
-                    for signal in ["suite_green", "todays_checks", "combined_verdict"] {
+                    for signal in [
+                        "suite_green",
+                        "suite_complete",
+                        "todays_checks",
+                        "combined_verdict",
+                    ] {
                         let a = &value[set][signal];
                         println!(
                             "  {signal:<17} spoke {}/{}, agreed {}, fail right {}/{}, pass right {}/{}, failures caught {}/{}",
@@ -245,7 +250,13 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
                 return Err(USAGE.to_string());
             };
             let suite = AcceptanceSuite::load(Path::new(record))?;
-            let workspace = PathBuf::from(workspace);
+            let workspace = if docker_image.is_some() {
+                PathBuf::from(workspace)
+            } else {
+                PathBuf::from(workspace)
+                    .canonicalize()
+                    .map_err(|e| format!("cannot use the workspace {workspace}: {e}"))?
+            };
             let result = match docker_image {
                 Some(image) => {
                     let runner = Docker {
@@ -254,6 +265,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
                         candidate,
                         test_sec: 120,
                         dev: None,
+                        setup: None,
                     };
                     run(&suite, &workspace, &runner, None, "cli").await
                 }

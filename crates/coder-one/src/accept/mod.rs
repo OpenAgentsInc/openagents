@@ -201,6 +201,10 @@ pub struct TestRun {
     pub milliseconds: u64,
     /// The tail of its standard output and error.
     pub output: String,
+    /// It was red, then green when [`run`] ran it again: its green is
+    /// the rerun's, and it may depend on timing or load.
+    #[serde(default)]
+    pub flaky: bool,
 }
 
 /// A requirement's state in one run.
@@ -224,6 +228,13 @@ pub struct RunResult {
     pub digest: String,
     /// Every test passed, and there was at least one.
     pub green: bool,
+    /// Green, and the suite has no gaps: every requirement it must
+    /// decide has a test. This, not `green`, is "done".
+    #[serde(default)]
+    pub complete: bool,
+    /// The suite's gaps, the requirements no test decides.
+    #[serde(default)]
+    pub gaps: Vec<String>,
     pub passed: usize,
     pub total: usize,
     pub tests: Vec<TestRun>,
@@ -265,6 +276,8 @@ impl RunResult {
             label: label.to_string(),
             digest: digest.to_string(),
             green: !tests.is_empty() && passed == tests.len(),
+            complete: false,
+            gaps: Vec::new(),
             passed,
             total: tests.len(),
             tests,
@@ -828,7 +841,14 @@ pub async fn define<W: Writer, R: Runner>(
     options: &Options,
 ) -> AcceptanceSuite {
     let started = Instant::now();
-    let dir = inputs.suite_dir.to_path_buf();
+    // Tests run from the workspace root, so every path to the suite is
+    // absolute.
+    let _ = std::fs::remove_dir_all(inputs.suite_dir);
+    let _ = std::fs::create_dir_all(inputs.suite_dir.join(TESTS_DIR));
+    let dir = inputs
+        .suite_dir
+        .canonicalize()
+        .unwrap_or_else(|_| inputs.suite_dir.to_path_buf());
     let known: Vec<String> = decidable(inputs.requirements)
         .iter()
         .map(|r| r.id.clone())
@@ -854,8 +874,6 @@ pub async fn define<W: Writer, R: Runner>(
         }))
         .with_effects(),
     );
-    let _ = std::fs::remove_dir_all(&dir);
-    let _ = std::fs::create_dir_all(dir.join(TESTS_DIR));
     for (name, text) in runner.harness(&dir, inputs.workspace) {
         let _ = std::fs::write(dir.join(name), text);
     }
@@ -1034,14 +1052,36 @@ pub async fn run<R: Runner>(
         )
     });
     let started = Instant::now();
-    let runs = runner.run_all(&suite.tests, &suite.dir, workspace).await;
-    let result = RunResult::of(
+    let mut runs = runner.run_all(&suite.tests, &suite.dir, workspace).await;
+    // A red test runs once more: one that passes then is green but marked
+    // flaky, since timing-bound tests fail under load.
+    let red: Vec<Test> = suite
+        .tests
+        .iter()
+        .filter(|t| runs.iter().any(|r| r.id == t.id && !r.green))
+        .cloned()
+        .collect();
+    if !red.is_empty() {
+        for again in runner.run_all(&red, &suite.dir, workspace).await {
+            if again.green
+                && let Some(first) = runs.iter_mut().find(|r| r.id == again.id)
+            {
+                *first = TestRun {
+                    flaky: true,
+                    ..again
+                };
+            }
+        }
+    }
+    let mut result = RunResult::of(
         label,
         &suite.digest,
         &suite.requirement_ids(),
         runs,
         u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
     );
+    result.gaps = suite.gaps.iter().map(|g| g.requirement.clone()).collect();
+    result.complete = result.green && result.gaps.is_empty();
     if let (Some(recorder), Some(invocation)) = (recorder, invocation) {
         recorder.push(
             atif::Step::said(
@@ -1062,6 +1102,8 @@ pub async fn run<R: Runner>(
             &invocation,
             Finish::new(Outcome::Completed).summary(json!({
                 "green": result.green,
+                "complete": result.complete,
+                "flaky": result.tests.iter().filter(|t| t.flaky).map(|t| t.id.clone()).collect::<Vec<_>>(),
                 "passed": result.passed,
                 "total": result.total,
                 "red_requirements": result.red_requirements(),

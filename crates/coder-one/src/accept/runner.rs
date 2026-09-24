@@ -171,6 +171,7 @@ impl Local {
         let wall = Duration::from_secs(self.test_sec.max(1));
         let refused = |why: String| TestRun {
             id: test.id.clone(),
+            flaky: false,
             requirements: test.requirements.clone(),
             green: false,
             exit: None,
@@ -242,6 +243,7 @@ impl Local {
         }
         TestRun {
             id: test.id.clone(),
+            flaky: false,
             requirements: test.requirements.clone(),
             green: exit == Some(0),
             exit,
@@ -268,6 +270,12 @@ pub struct Docker {
     /// A running container the writing session's harness runs in, when
     /// there is one.
     pub dev: Option<String>,
+    /// A command run in the workspace after the candidate is copied in and
+    /// before any test, with network access, such as installing the
+    /// packages a candidate's `requirements.txt` names, as a verifier that
+    /// grades in a separate container does. The container then keeps its
+    /// network for the tests.
+    pub setup: Option<String>,
 }
 
 /// Runs `docker` with `args` and returns its standard output.
@@ -299,7 +307,12 @@ impl Docker {
     ///
     /// Docker's message when it can't.
     pub fn start(&self, name: Option<&str>) -> Result<String, String> {
-        let mut args = vec!["create", "--network", "none", "-w", &self.workdir];
+        let network = if self.setup.is_some() {
+            "bridge"
+        } else {
+            "none"
+        };
+        let mut args = vec!["create", "--network", network, "-w", &self.workdir];
         if let Some(name) = name {
             args.extend(["--name", name]);
         }
@@ -314,6 +327,11 @@ impl Docker {
             docker(&["exec", &id, "sh", "-c", &clear])?;
             let from = format!("{}/.", candidate.display());
             docker(&["cp", &from, &format!("{id}:/")])?;
+        }
+        if let Some(setup) = &self.setup {
+            // A failed setup is the candidate's problem, as it would be
+            // the verifier's: the tests run and say so.
+            let _ = docker(&["exec", "-w", &self.workdir, &id, "sh", "-c", setup]);
         }
         Ok(id)
     }
@@ -368,7 +386,8 @@ impl Runner for Docker {
             "workdir": self.workdir,
             "candidate": self.candidate,
             "test_sec": self.test_sec,
-            "network": "none",
+            "network": if self.setup.is_some() { "bridge" } else { "none" },
+            "setup": self.setup,
         })
     }
 
@@ -424,6 +443,7 @@ echo "$green green, $red red"
                 .iter()
                 .map(|test| TestRun {
                     id: test.id.clone(),
+                    flaky: false,
                     requirements: test.requirements.clone(),
                     green: false,
                     exit: None,
@@ -452,6 +472,7 @@ echo "$green green, $red red"
             .await;
             out.push(TestRun {
                 id: test.id.clone(),
+                flaky: false,
                 requirements: test.requirements.clone(),
                 green: ran.code == Some(0),
                 exit: ran.code,

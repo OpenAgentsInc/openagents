@@ -144,6 +144,8 @@ pub async fn run_minitask(
     options: &LoopOptions,
 ) -> Result<Value, String> {
     let mini = crate::minitask::find(id)?;
+    std::fs::create_dir_all(out).map_err(|e| e.to_string())?;
+    let out = &out.canonicalize().map_err(|e| e.to_string())?;
     let workdir = out.join("work");
     let suite_dir = out.join("suite");
     let artifacts = out.join("artifacts");
@@ -254,6 +256,7 @@ pub async fn run_minitask(
     }
     let grade = crate::minitask::grade(&mini, &workdir, &out.join("grader")).await;
     let green = runs.last().is_some_and(|r| r.green);
+    let complete = runs.last().is_some_and(|r| r.complete);
     let result = json!({
         "schema": SCHEMA,
         "task": id,
@@ -276,6 +279,8 @@ pub async fn run_minitask(
         "sessions": sessions,
         "stopped": stopped,
         "green": green,
+        "complete": complete,
+        "complete_agrees_with_grader": grade.reward().map(|r| (r >= 1.0) == complete),
         "grade": grade,
         "green_agrees_with_grader": grade.reward().map(|r| (r >= 1.0) == green),
         "spend_usd": {

@@ -124,13 +124,18 @@ pub fn trials(jobs: &Path, task: &str) -> Vec<Trial> {
     out
 }
 
-/// The task's warm environment image, `tbench-warm/<task>:environment-*`.
+/// The task's environment image: the warm one,
+/// `tbench-warm/<task>:environment-*`, or one built from the task's
+/// `environment/` as `accept-env/<task>`.
 #[must_use]
 pub fn image(task: &str) -> Option<String> {
     let listed = docker(&["images", "--format", "{{.Repository}}:{{.Tag}}"]).ok()?;
+    let warm = format!("tbench-warm/{task}:environment-");
+    let built = format!("accept-env/{task}:");
     listed
         .lines()
-        .find(|line| line.starts_with(&format!("tbench-warm/{task}:environment-")))
+        .find(|line| line.starts_with(&warm))
+        .or_else(|| listed.lines().find(|line| line.starts_with(&built)))
         .map(str::to_string)
 }
 
@@ -158,6 +163,10 @@ pub const CONTAINER_NOTE: &str = "The solution workspace is WORKDIR inside the t
 container, which has no network. Your file tools can't reach it: run commands in it with \
 `sh env.sh 'COMMAND'`, for example `sh env.sh 'ls -la'` or `sh env.sh 'sed -n 1,80p FILE'`. \
 The tests run there too, from WORKDIR, with this suite directory copied to /accept.";
+
+/// What a candidate with a `requirements.txt` runs before its tests.
+pub const SETUP: &str = "python3 -m pip install -q -r requirements.txt \
+    || pip install -q -r requirements.txt";
 
 fn untar(archive: &Path, into: &Path) -> Result<(), String> {
     std::fs::create_dir_all(into).map_err(|e| e.to_string())?;
@@ -222,6 +231,7 @@ pub async fn task(name: &str, jev: &JevMode, options: &TaskOptions) -> Result<Va
             candidate: None,
             test_sec: options.define.test_sec,
             dev: None,
+            setup: None,
         };
         let dev_name = format!("accept-dev-{name}-{}", atif::now_ms());
         let dev = dev_runner.start(Some(&dev_name))?;
@@ -272,12 +282,18 @@ pub async fn task(name: &str, jev: &JevMode, options: &TaskOptions) -> Result<Va
             results.push(json!({ "trial": trial, "error": error }));
             continue;
         }
+        // A candidate that names its packages gets them, as a verifier
+        // that grades in a separate container installs them.
+        let requirements = candidate
+            .join(trial.workdir.trim_start_matches('/'))
+            .join("requirements.txt");
         let runner = Docker {
             image: image.clone(),
             workdir: trial.workdir.clone(),
             candidate: Some(candidate.clone()),
             test_sec: options.define.test_sec,
             dev: None,
+            setup: requirements.is_file().then(|| SETUP.to_string()),
         };
         let ran = run(
             &suite,
@@ -341,6 +357,9 @@ pub struct Joined {
     pub snapshot_graded: bool,
     /// The suite's call: pass when green.
     pub suite: Option<Says>,
+    /// The suite's call when a gap counts as red: pass only when green
+    /// and every requirement has a test.
+    pub complete: Option<Says>,
     pub passed: usize,
     pub total: usize,
     /// Today's checks, from the label row.
@@ -437,6 +456,13 @@ pub fn join(dir: &Path, rows: &Path) -> Result<Vec<Joined>, String> {
                     .as_ref()
                     .filter(|r| r.total > 0)
                     .map(|r| if r.green { Says::Pass } else { Says::Fail }),
+                complete: run.as_ref().filter(|r| r.total > 0).map(|r| {
+                    if r.green && r.gaps.is_empty() {
+                        Says::Pass
+                    } else {
+                        Says::Fail
+                    }
+                }),
                 passed: run.as_ref().map_or(0, |r| r.passed),
                 total: run.as_ref().map_or(0, |r| r.total),
                 checks: row.and_then(truth::todays_checks),
@@ -458,6 +484,7 @@ pub fn validity(joined: &[Joined]) -> Value {
     let table = |rows: &[&Joined]| {
         json!({
             "suite_green": Agreement::of(rows, |j| j.suite),
+            "suite_complete": Agreement::of(rows, |j| j.complete),
             "todays_checks": Agreement::of(rows, |j| j.checks),
             "combined_verdict": Agreement::of(rows, |j| j.verdict),
         })

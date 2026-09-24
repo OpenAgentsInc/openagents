@@ -407,6 +407,7 @@ fn static_rules_catch_trivial_and_broken_tests() {
     assert!(verify::statically_trivial("# only a comment\n"));
     assert!(!verify::statically_trivial(T1));
     let run = |output: &str| TestRun {
+        flaky: false,
         id: "T1".to_string(),
         requirements: vec![],
         green: false,
