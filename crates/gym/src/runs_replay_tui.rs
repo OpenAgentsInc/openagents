@@ -41,6 +41,11 @@ struct Screen {
     all: Cell<bool>,
     /// How many steps the last frame showed.
     shown: Cell<usize>,
+    /// The wheel moved the view, so it stays put until a key moves the
+    /// selection.
+    free: Cell<bool>,
+    /// The screen row and step of every row drawn last frame, for clicks.
+    drawn: std::cell::RefCell<Vec<(u16, usize)>>,
 }
 impl Screen {
     fn new(source: Source) -> Result<Self, String> {
@@ -72,6 +77,8 @@ impl Screen {
             expanded: std::cell::RefCell::new(std::collections::BTreeSet::new()),
             all: Cell::new(false),
             shown: Cell::new(0),
+            free: Cell::new(false),
+            drawn: std::cell::RefCell::new(Vec::new()),
             rows: RefCell::new(Wrapped {
                 width: 0,
                 ladder: Ladder::default(),
@@ -165,6 +172,8 @@ impl Screen {
                 selected,
                 &open,
                 &self.scroll,
+                self.free.get(),
+                &self.drawn,
                 text,
                 buf,
                 ladder,
@@ -289,6 +298,8 @@ pub struct Pane {
     analysis_scroll: [Cell<usize>; 2],
     pub clock: Playback,
     pub errors: Vec<String>,
+    /// Where each side was drawn last frame, for the mouse.
+    sides: Cell<[Rect; 2]>,
 }
 
 impl Pane {
@@ -327,6 +338,7 @@ impl Pane {
             screens: None,
             side_errors: [None, None],
             learning: Learning::default(),
+            sides: Cell::new([Rect::default(); 2]),
             analysis: false,
             analysis_scroll: [Cell::new(0), Cell::new(0)],
             clock: Playback::new(0),
@@ -623,6 +635,51 @@ impl Pane {
             }
             return Some(Reply::Handled);
         }
+        if let Some(screens) = &mut self.screens
+            && let Key::WheelUp { column, row }
+            | Key::WheelDown { column, row }
+            | Key::Click { column, row } = key
+        {
+            // The mouse acts on the side under the pointer.
+            let side = self
+                .sides
+                .get()
+                .iter()
+                .position(|rect| column >= rect.left() && column < rect.right());
+            if let Some(side) = side
+                && let Some(screen) = &screens[side]
+                && !screen.details
+                && !screen.blocks.is_empty()
+            {
+                self.focus = side;
+                let last = screen.shown.get().saturating_sub(1);
+                if screen.follow.get() || screen.selected.get().is_none() {
+                    screen.selected.set(Some(last));
+                }
+                screen.follow.set(false);
+                screen.free.set(true);
+                match key {
+                    Key::WheelUp { .. } => screen.scroll.set(screen.scroll.get().saturating_sub(3)),
+                    Key::WheelDown { .. } => screen.scroll.set(screen.scroll.get() + 3),
+                    _ => {
+                        let hit = screen
+                            .drawn
+                            .borrow()
+                            .iter()
+                            .find(|(y, _)| *y == row)
+                            .map(|(_, block)| *block);
+                        if let Some(index) = hit {
+                            screen.selected.set(Some(index));
+                            let mut open = screen.expanded.borrow_mut();
+                            if !open.insert(index) {
+                                open.remove(&index);
+                            }
+                        }
+                    }
+                }
+            }
+            return Some(Reply::Handled);
+        }
         if let Some(screens) = &mut self.screens {
             match key {
                 Key::Back => {
@@ -682,6 +739,7 @@ impl Pane {
                         } else {
                             screen.selected.get().unwrap_or(last).min(last)
                         };
+                        screen.free.set(false);
                         let pick = |to: usize| {
                             screen.follow.set(false);
                             screen.selected.set(Some(to.min(last)));
@@ -842,6 +900,7 @@ impl Pane {
             );
             let left = Rect::new(area.x, area.y + 2, area.width / 2, area.height - 5);
             let right = Rect::new(left.right(), left.y, area.width - left.width, left.height);
+            self.sides.set([left, right]);
             for (index, side) in [left, right].into_iter().enumerate() {
                 if let Some(screen) = &screens[index] {
                     if self.analysis {
@@ -1586,6 +1645,59 @@ mod tests {
         let mut buf = Buffer::empty(area);
         p.render(area, &mut buf, crate::tui::ladder_from_environment());
         assert!(!contents(&buf).contains("HIDDEN DETAIL"));
+    }
+
+    #[test]
+    fn a_click_opens_a_step_and_the_wheel_scrolls_rows() {
+        use crate::runs_transcript::{Block, Kind};
+        let (_dir, mut p) = pane();
+        p.query = "coq".to_owned();
+        p.key(Key::Enter);
+        let screen = p.screens.as_mut().unwrap()[0].as_mut().unwrap();
+        let long = (0..200)
+            .map(|n| format!("line {n}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        screen.blocks = vec![
+            Block {
+                at: Some(0),
+                kind: Kind::Tool {
+                    name: "first tool".to_owned(),
+                    input: String::new(),
+                    output: long,
+                },
+            },
+            Block {
+                at: Some(0),
+                kind: Kind::Note("latest".to_owned()),
+            },
+        ];
+        let area = Rect::new(0, 0, 150, 38);
+        let mut buf = Buffer::empty(area);
+        p.render(area, &mut buf, crate::tui::ladder_from_environment());
+        let screen = p.screens.as_ref().unwrap()[0].as_ref().unwrap();
+        let (row, _) = *screen
+            .drawn
+            .borrow()
+            .iter()
+            .find(|(_, block)| *block == 0)
+            .unwrap();
+        p.key(Key::Click { column: 10, row });
+        let mut buf = Buffer::empty(area);
+        p.render(area, &mut buf, crate::tui::ladder_from_environment());
+        assert!(contents(&buf).contains("line 3"));
+        let before = p.screens.as_ref().unwrap()[0]
+            .as_ref()
+            .unwrap()
+            .scroll
+            .get();
+        p.key(Key::WheelDown { column: 10, row });
+        p.key(Key::WheelDown { column: 10, row });
+        let mut buf = Buffer::empty(area);
+        p.render(area, &mut buf, crate::tui::ladder_from_environment());
+        let screen = p.screens.as_ref().unwrap()[0].as_ref().unwrap();
+        assert_eq!(screen.scroll.get(), before + 6);
+        assert_eq!(screen.selected.get(), Some(0));
     }
 
     #[test]

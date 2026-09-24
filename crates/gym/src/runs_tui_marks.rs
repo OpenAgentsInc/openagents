@@ -191,6 +191,8 @@ impl Pane {
                     self.save_mark(composer.run, composer.step, Verdict::Bad, tags, note);
                 }
             }
+            // The mouse does nothing while a mark is being composed.
+            Key::WheelUp { .. } | Key::WheelDown { .. } | Key::Click { .. } => {}
         }
     }
 

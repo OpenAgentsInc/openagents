@@ -19,7 +19,10 @@
 
 use std::io::{self, Stdout, Write, stdout};
 
-use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
+use crossterm::event::{
+    self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, KeyModifiers,
+    MouseButton, MouseEventKind,
+};
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
@@ -313,7 +316,7 @@ fn run_tbench(app: terminal_bench_tui::App) -> io::Result<()> {
     }));
     enable_raw_mode()?;
     let mut out = stdout();
-    execute!(out, EnterAlternateScreen, cursor::Hide)?;
+    execute!(out, EnterAlternateScreen, cursor::Hide, EnableMouseCapture)?;
     let mut terminal = Terminal::new(CrosstermBackend::new(out))?;
     let result = draw_tbench(&mut terminal, app);
     restore();
@@ -356,7 +359,39 @@ fn draw_tbench(
             read_at = std::time::Instant::now();
             continue;
         }
-        if let Event::Key(key) = event::read()? {
+        let read = event::read()?;
+        // The wheel scrolls text and a click opens a step, in the Runs pane
+        // and in head-to-head replay.
+        if let Event::Mouse(mouse) = &read {
+            if app.view() == terminal_bench_tui::View::Runs {
+                let (column, row) = (mouse.column, mouse.row);
+                let key = match mouse.kind {
+                    MouseEventKind::ScrollUp => Some(gym::runs_tui::Key::WheelUp { column, row }),
+                    MouseEventKind::ScrollDown => {
+                        Some(gym::runs_tui::Key::WheelDown { column, row })
+                    }
+                    MouseEventKind::Down(MouseButton::Left) => {
+                        Some(gym::runs_tui::Key::Click { column, row })
+                    }
+                    _ => None,
+                };
+                if let Some(key) = key {
+                    app.advance_replay(replay_at.elapsed());
+                    if app.runs_key(key) == gym::runs_tui::Reply::Quit {
+                        return Ok(());
+                    }
+                    replay_at = std::time::Instant::now();
+                }
+            } else {
+                match mouse.kind {
+                    MouseEventKind::ScrollUp => app.up(),
+                    MouseEventKind::ScrollDown => app.down(),
+                    _ => {}
+                }
+            }
+            continue;
+        }
+        if let Event::Key(key) = read {
             if key.kind != KeyEventKind::Press {
                 continue;
             }
@@ -447,7 +482,12 @@ fn run() -> io::Result<()> {
 /// must not hide the error or the panic that brought us.
 fn restore() {
     let _ = disable_raw_mode();
-    let _ = execute!(stdout(), LeaveAlternateScreen, cursor::Show);
+    let _ = execute!(
+        stdout(),
+        DisableMouseCapture,
+        LeaveAlternateScreen,
+        cursor::Show
+    );
 }
 
 /// The read loop: draw, wait for a key, repeat.

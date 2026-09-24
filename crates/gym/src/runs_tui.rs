@@ -60,6 +60,21 @@ pub enum Key {
     /// Tab: in the mark composer, tags the judgment under the cursor.
     Tab,
     Char(char),
+    /// The mouse wheel, at a screen cell: scrolls rows, not steps.
+    WheelUp {
+        column: u16,
+        row: u16,
+    },
+    WheelDown {
+        column: u16,
+        row: u16,
+    },
+    /// A left click at a screen cell: selects the step there and opens or
+    /// closes it.
+    Click {
+        column: u16,
+        row: u16,
+    },
 }
 
 /// What the pane asks of the terminal around it.
@@ -128,6 +143,12 @@ struct Open {
     expanded: BTreeSet<usize>,
     all: bool,
     rows: RefCell<Option<Rows>>,
+    /// The wheel moved the view, so it stays where it was put instead of
+    /// following the selection, until a key moves the selection.
+    free: Cell<bool>,
+    /// The screen row and step of every transcript row drawn last frame,
+    /// for mouse clicks.
+    drawn: RefCell<Vec<(u16, usize)>>,
 }
 
 impl Open {
@@ -142,6 +163,8 @@ impl Open {
             expanded: BTreeSet::new(),
             all: false,
             rows: RefCell::new(None),
+            free: Cell::new(false),
+            drawn: RefCell::new(Vec::new()),
         }
     }
 
@@ -789,6 +812,8 @@ impl Pane {
                 match key {
                     Key::Up | Key::Char('k') => open.scroll.set(scroll.saturating_sub(1)),
                     Key::Down | Key::Char('j') => open.scroll.set(scroll + 1),
+                    Key::WheelUp { .. } => open.scroll.set(scroll.saturating_sub(3)),
+                    Key::WheelDown { .. } => open.scroll.set(scroll + 3),
                     Key::PageUp => open.scroll.set(scroll.saturating_sub(10)),
                     Key::PageDown => open.scroll.set(scroll + 10),
                     Key::Home | Key::Char('g') => open.scroll.set(0),
@@ -799,6 +824,39 @@ impl Pane {
             }
             Tab::Transcript => {
                 let last = open.blocks().len().saturating_sub(1);
+                match key {
+                    Key::WheelUp { .. } => {
+                        open.free.set(true);
+                        open.scroll.set(open.scroll.get().saturating_sub(3));
+                        return Reply::Handled;
+                    }
+                    Key::WheelDown { .. } => {
+                        open.free.set(true);
+                        open.scroll.set(open.scroll.get() + 3);
+                        return Reply::Handled;
+                    }
+                    Key::Click { row, .. } => {
+                        let hit = open
+                            .drawn
+                            .borrow()
+                            .iter()
+                            .find(|(y, _)| *y == row)
+                            .map(|(_, block)| *block);
+                        if let Some(index) = hit {
+                            open.selected = index;
+                            if open.blocks().get(index).is_some_and(Block::expandable) {
+                                if !open.expanded.insert(index) {
+                                    open.expanded.remove(&index);
+                                }
+                                open.invalidate();
+                            }
+                            // The clicked step stays where it was on screen.
+                            open.free.set(true);
+                        }
+                        return Reply::Handled;
+                    }
+                    _ => open.free.set(false),
+                }
                 match key {
                     Key::Up | Key::Char('k') => open.selected = open.selected.saturating_sub(1),
                     Key::Down | Key::Char('j') => open.selected = (open.selected + 1).min(last),
@@ -1340,7 +1398,9 @@ impl Pane {
             .rposition(|row| row.block == selected)
             .unwrap_or(first);
         let mut scroll = open.scroll.get();
-        if first < scroll {
+        if open.free.get() {
+            // The wheel put the view here; leave it.
+        } else if first < scroll {
             scroll = first;
         } else if last >= scroll + room {
             scroll = if last - first < room {
@@ -1349,10 +1409,15 @@ impl Pane {
                 first
             };
         }
-        scroll = scroll.min(rows.len().saturating_sub(1));
+        scroll = scroll.min(rows.len().saturating_sub(room.min(rows.len())));
         open.scroll.set(scroll);
         let left = inner.left() - 2;
         let shown: Vec<&Row> = rows.iter().skip(scroll).take(room).copied().collect();
+        *open.drawn.borrow_mut() = shown
+            .iter()
+            .enumerate()
+            .map(|(offset, row)| (inner.top() + offset as u16, row.block))
+            .collect();
         for (offset, row) in shown.iter().enumerate() {
             let y = inner.top() + offset as u16;
             let mine = row.block == selected;
@@ -1505,6 +1570,8 @@ pub(crate) fn draw_transcript(
     selected: Option<usize>,
     expanded: &dyn Fn(usize) -> bool,
     scroll: &Cell<usize>,
+    free: bool,
+    drawn: &RefCell<Vec<(u16, usize)>>,
     area: Rect,
     buf: &mut Buffer,
     ladder: Ladder,
@@ -1552,7 +1619,10 @@ pub(crate) fn draw_transcript(
         .min(shown_blocks.saturating_sub(1));
     let room = usize::from(area.height);
     let max = rows.len().saturating_sub(room);
-    let first = if selected.is_none() {
+    let first = if free {
+        // The wheel put the view here; leave it.
+        scroll.get().min(max)
+    } else if selected.is_none() {
         max
     } else {
         // Keep the selected step in view, as the Runs pane does.
@@ -1577,6 +1647,11 @@ pub(crate) fn draw_transcript(
     let style = |intensity| ladder.style(intensity).bg(ladder.background());
     let left = area.left().saturating_sub(1);
     let visible: Vec<&Row> = rows.iter().skip(first).take(room).collect();
+    *drawn.borrow_mut() = visible
+        .iter()
+        .enumerate()
+        .map(|(offset, row)| (area.top() + offset as u16, row.block))
+        .collect();
     for (offset, row) in visible.iter().enumerate() {
         let y = area.top() + offset as u16;
         let mine = row.block == chosen;
