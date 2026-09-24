@@ -216,6 +216,26 @@ pub struct Policy {
     /// [`CLOSE_MIN`] gets one audit session first.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub close_audit: bool,
+    /// Characters of the workspace's current source files each suite-loop
+    /// session's brief carries, the files its red tests name first, at the
+    /// end of the stable prefix, so a session doesn't spend turns reading
+    /// them. 0 carries none.
+    #[serde(default, skip_serializing_if = "is_zero_usize")]
+    pub prefix_sources: usize,
+    /// Let a session call several tools in one turn, and run the reads
+    /// among them at the same time.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub parallel_tools: bool,
+    /// The reasoning effort for a session's turns before its first edit,
+    /// such as `low`; the executor's effort holds after it. `null` keeps
+    /// one effort throughout.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub orient_effort: Option<String>,
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_zero_usize(n: &usize) -> bool {
+    *n == 0
 }
 
 /// Below this probability that the joined evidence shows the task done, a
@@ -352,6 +372,9 @@ impl Default for Policy {
             gap_rounds: 0,
             fast_runs: false,
             close_audit: false,
+            prefix_sources: 0,
+            parallel_tools: false,
+            orient_effort: None,
         }
     }
 }
@@ -1589,6 +1612,8 @@ impl Micro {
                 )[..16]
             ),
             deadline: Some(Duration::from_secs(self.policy.session_sec).min(left)),
+            orient_effort: self.policy.orient_effort.clone(),
+            parallel_tools: self.policy.parallel_tools,
         };
         let workspace = microluna::Workspace::new(&workdir).map(|workspace| {
             let workspace = workspace.isolated_by(self.isolation);
@@ -2119,6 +2144,8 @@ impl Micro {
                 max_turns: written_by.map_or(self.policy.session_turns.max(40), |w| w.turns),
                 cache_key: format!("{key}-writer"),
                 deadline: Some(Duration::from_secs(self.policy.session_sec).min(time_left())),
+                orient_effort: None,
+                parallel_tools: self.policy.parallel_tools,
             },
             isolation: self.isolation,
             traces: Some(self.artifacts.clone()),
@@ -2961,10 +2988,14 @@ impl Micro {
                 facts.join("\n")
             ));
         }
+        let files = parallel::workspace_files(&self.workdir);
+        let named = parallel::files_named(&prepared.instruction, &files);
+        let mut evidence = evidence.to_vec();
+        evidence.extend(self.source_evidence(&self.workdir, &named));
         let brief = Brief {
             task: prepared.instruction.clone(),
             guidance,
-            evidence: evidence.to_vec(),
+            evidence,
             state: vec![format!(
                 "Session 1 of at most {}. It runs while the acceptance suite is written.",
                 self.policy.max_sessions
@@ -3037,6 +3068,10 @@ impl Micro {
         }
         let mut session_evidence = vec![suite.evidence()];
         session_evidence.extend(evidence.iter().cloned());
+        session_evidence.extend(self.source_evidence(
+            &self.workdir,
+            &Self::red_files(suite, result, &self.workdir),
+        ));
         Brief {
             task: prepared.instruction.clone(),
             guidance: self.suite_guidance(prepared),
@@ -3100,6 +3135,59 @@ impl Micro {
             }
         }
         crate::accept::run(suite, &self.workdir, runner, Some(&self.recorder), label).await
+    }
+
+    /// The workspace's current source files as evidence, within
+    /// `prefix_sources` characters: the files in `first` before the rest,
+    /// each whole or not at all. It goes last in the stable prefix, since
+    /// an edit changes it.
+    fn source_evidence(&self, workdir: &Path, first: &[String]) -> Vec<Evidence> {
+        if self.policy.prefix_sources == 0 {
+            return Vec::new();
+        }
+        let sources = crate::accept::source_files(workdir, 200);
+        let mut ordered: Vec<&String> = first.iter().filter(|f| sources.contains(f)).collect();
+        ordered.extend(sources.iter().filter(|f| !first.contains(f)));
+        let mut left = self.policy.prefix_sources;
+        let mut out = Vec::new();
+        for path in ordered {
+            let Ok(text) = std::fs::read_to_string(workdir.join(path)) else {
+                continue;
+            };
+            let size = text.chars().count();
+            if size > left {
+                continue;
+            }
+            left -= size;
+            out.push(Evidence {
+                label: format!("The current {path}"),
+                text,
+            });
+            if left < 200 {
+                break;
+            }
+        }
+        out
+    }
+
+    /// The workspace files the red tests of `result` name, in their
+    /// sources or their output.
+    fn red_files(
+        suite: &crate::accept::AcceptanceSuite,
+        result: &crate::accept::RunResult,
+        workdir: &Path,
+    ) -> Vec<String> {
+        let files = parallel::workspace_files(workdir);
+        let mut text = String::new();
+        for run in result.tests.iter().filter(|t| !t.green) {
+            if let Some(test) = suite.tests.iter().find(|t| t.id == run.id) {
+                text.push_str(&test.source);
+                text.push('\n');
+            }
+            text.push_str(&run.output);
+            text.push('\n');
+        }
+        parallel::files_named(&text, &files)
     }
 
     fn suite_guidance(&self, prepared: &Prepared) -> String {
@@ -3591,6 +3679,7 @@ impl Micro {
                 label: rebase(&e.label),
                 text: rebase(&e.text),
             }));
+            session_evidence.extend(self.source_evidence(copy, &lane.files));
             let brief = Brief {
                 task: rebase(&prepared.instruction),
                 guidance,

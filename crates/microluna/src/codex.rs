@@ -226,7 +226,7 @@ pub fn body(request: &Request) -> Value {
         "input": request.input,
         "tools": request.tools,
         "tool_choice": "auto",
-        "parallel_tool_calls": false,
+        "parallel_tool_calls": request.parallel_tools,
         "store": false,
         "stream": true,
         "include": ["reasoning.encrypted_content"],
@@ -485,6 +485,7 @@ mod tests {
     #[test]
     fn the_body_is_stateless_and_carries_the_cache_key() {
         let request = Request {
+            parallel_tools: false,
             model: "gpt-6-luna".to_string(),
             instructions: "be brief".to_string(),
             input: vec![json!({"type": "message"})],

@@ -2692,6 +2692,7 @@ dependencies = [
  "atif",
  "base64 0.22.1",
  "coder-boundary",
+ "futures-util",
  "reqwest",
  "serde",
  "serde_json",

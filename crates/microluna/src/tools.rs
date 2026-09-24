@@ -124,7 +124,11 @@ pub fn reads_only(name: &str, arguments: &str) -> bool {
                 .ok()
                 .and_then(|v| v["command"].as_str().map(str::to_string))
                 .unwrap_or_default();
-            if command.trim().is_empty() || command.contains('>') || command.contains("tee ") {
+            if command.trim().is_empty()
+                || command.contains('>')
+                || command.contains("tee ")
+                || command.contains("system(")
+            {
                 return false;
             }
             command

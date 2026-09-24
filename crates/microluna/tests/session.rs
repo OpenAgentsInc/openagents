@@ -333,3 +333,104 @@ async fn a_read_only_workspace_refuses_edits_but_runs_commands() {
     assert_eq!(patched.status, atif::Outcome::Cancelled);
     assert!(!dir.path().join("b.txt").exists());
 }
+
+/// Reads the model asks for in one turn run together and come back in
+/// the order it asked; the effort is low until the first edit.
+#[tokio::test]
+async fn reads_in_one_turn_run_together_and_the_effort_rises_after_the_first_edit() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("a.txt"), "alpha\n").unwrap();
+    std::fs::write(dir.path().join("b.txt"), "beta\n").unwrap();
+    let workspace = Workspace::new(dir.path()).unwrap();
+    let read = |id: &str, path: &str| {
+        json!({
+            "type": "function_call", "id": format!("fc-{id}"), "call_id": id,
+            "name": "read_file",
+            "arguments": json!({"path": path, "start_line": null, "max_lines": null}).to_string(),
+        })
+    };
+    let both = microluna::Reply {
+        id: Some("r1".to_string()),
+        model: "gpt-6-luna".to_string(),
+        items: vec![read("c1", "a.txt"), read("c2", "b.txt")],
+        usage: usage(1_000, 0, 40),
+    };
+    let transport = FakeTransport::new(vec![
+        both,
+        call(
+            "c3",
+            "write_file",
+            &json!({"path": "c.txt", "contents": "gamma\n"}),
+            usage(1_100, 900, 40),
+        ),
+        call(
+            "c4",
+            "finish",
+            &json!({"status": "done", "summary": "Wrote c.", "answer": "", "cause": "none"}),
+            usage(1_200, 1_000, 20),
+        ),
+    ]);
+    let config = Config {
+        effort: Some("medium".to_string()),
+        orient_effort: Some("low".to_string()),
+        parallel_tools: true,
+        ..Config::luna("t")
+    };
+    let mut recorder = Recorder::new();
+    let report = run(
+        &transport,
+        &workspace,
+        &Brief::task("Read a and b, then write c."),
+        &config,
+        &mut recorder,
+    )
+    .await;
+    assert_eq!(report.ending, Ending::Finished);
+    assert_eq!(report.calls, 4);
+    let calls: Vec<String> = recorder
+        .steps()
+        .iter()
+        .filter_map(|s| s.call.as_ref())
+        .map(|c| format!("{} {}", c.name, c.output.lines().next().unwrap_or_default()))
+        .collect();
+    assert!(
+        calls[0].starts_with("read_file") && calls[0].contains("alpha"),
+        "{calls:?}"
+    );
+    assert!(
+        calls[1].starts_with("read_file") && calls[1].contains("beta"),
+        "{calls:?}"
+    );
+    let requests = transport.requests();
+    assert!(requests.iter().all(|r| r.parallel_tools));
+    let efforts: Vec<Option<&str>> = requests.iter().map(|r| r.effort.as_deref()).collect();
+    assert_eq!(efforts, [Some("low"), Some("low"), Some("medium")]);
+    // The two outputs follow the two calls, in order.
+    let second = &requests[1].input;
+    let outputs: Vec<&str> = second
+        .iter()
+        .filter(|i| i["type"] == "function_call_output")
+        .filter_map(|i| i["call_id"].as_str())
+        .collect();
+    assert_eq!(outputs, ["c1", "c2"]);
+}
+
+#[test]
+fn only_reading_calls_count_as_reads() {
+    use microluna::tools::reads_only;
+    let command = |c: &str| json!({ "command": c }).to_string();
+    assert!(reads_only("read_file", "{}"));
+    assert!(reads_only(
+        "run_command",
+        &command("cat a.py | grep def && ls -la")
+    ));
+    assert!(reads_only("run_command", &command("sed -n 1,40p x.py")));
+    assert!(!reads_only("run_command", &command("sed -i s/a/b/ x.py")));
+    assert!(!reads_only("run_command", &command("cat a > b")));
+    assert!(!reads_only("run_command", &command("python3 -m pytest")));
+    assert!(!reads_only(
+        "run_command",
+        &command("awk 'BEGIN { system(\"rm x\") }'")
+    ));
+    assert!(!reads_only("apply_patch", "{}"));
+}

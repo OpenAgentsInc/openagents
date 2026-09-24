@@ -26,6 +26,8 @@ pub struct Request {
     /// The provider's prompt-cache key. Sessions of one task share it, so
     /// their common prefix is cached across sessions.
     pub cache_key: String,
+    /// Whether the model may call several tools in one turn.
+    pub parallel_tools: bool,
 }
 
 /// Tokens one reply consumed and produced.

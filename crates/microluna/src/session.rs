@@ -138,6 +138,15 @@ pub struct Config {
     /// checked before each request, and a request waits no longer than
     /// what is left of it.
     pub deadline: Option<Duration>,
+    /// The reasoning effort before the session's first edit, when set:
+    /// orienting and reading turns spend less, and `effort` holds from the
+    /// first `apply_patch` or `write_file` on. The effort is set per
+    /// request, so no request is sent twice.
+    pub orient_effort: Option<String>,
+    /// Let the model call several tools in one turn. When every call in a
+    /// turn only reads ([`crate::tools::reads_only`]), they run at the same
+    /// time; otherwise in order.
+    pub parallel_tools: bool,
 }
 
 impl Config {
@@ -151,6 +160,8 @@ impl Config {
             max_turns: 24,
             cache_key: cache_key.to_string(),
             deadline: None,
+            orient_effort: None,
+            parallel_tools: false,
         }
     }
 }
@@ -360,6 +371,7 @@ pub async fn run<T: Transport>(
         milliseconds: 0,
     };
     let mut nudged = false;
+    let mut edited = false;
     'turns: while report.turns < config.max_turns {
         let left = config
             .deadline
@@ -377,8 +389,16 @@ pub async fn run<T: Transport>(
             instructions: INSTRUCTIONS.to_string(),
             input: input.clone(),
             tools: tools.clone(),
-            effort: config.effort.clone(),
+            effort: if edited {
+                config.effort.clone()
+            } else {
+                config
+                    .orient_effort
+                    .clone()
+                    .or_else(|| config.effort.clone())
+            },
             cache_key: config.cache_key.clone(),
+            parallel_tools: config.parallel_tools,
         };
         let asked = Instant::now();
         let mut tries = 0;
@@ -478,8 +498,34 @@ pub async fn run<T: Transport>(
             recorder.record(atif::Step::said(atif::Source::System, NUDGE));
             continue;
         }
-        for call in calls {
-            let outcome = workspace.call(&call.name, &call.arguments).await;
+        // Reads the model asked for together run together; anything that
+        // writes runs in order.
+        let together = config.parallel_tools
+            && calls.len() > 1
+            && calls
+                .iter()
+                .all(|c| crate::tools::reads_only(&c.name, &c.arguments));
+        let mut outcomes = if together {
+            futures_util::future::join_all(
+                calls.iter().map(|c| workspace.call(&c.name, &c.arguments)),
+            )
+            .await
+            .into_iter()
+            .map(Some)
+            .collect::<Vec<_>>()
+        } else {
+            vec![None; calls.len()]
+        };
+        for (index, call) in calls.into_iter().enumerate() {
+            let outcome = match outcomes[index].take() {
+                Some(outcome) => outcome,
+                None => workspace.call(&call.name, &call.arguments).await,
+            };
+            if matches!(call.name.as_str(), "apply_patch" | "write_file")
+                && outcome.status == atif::Outcome::Completed
+            {
+                edited = true;
+            }
             report.calls += 1;
             let arguments = serde_json::from_str(&call.arguments)
                 .unwrap_or_else(|_| Value::String(call.arguments.clone()));
