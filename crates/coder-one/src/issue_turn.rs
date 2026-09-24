@@ -716,12 +716,24 @@ async fn stale_dependents(
     let edited = edited_lines(&bare);
     // Code the change already edited was updated to match; asking about it
     // once flagged a `4 + cursor` offset right after the fix.
+    // An assertion the change adds that names what a place uses is the
+    // test the check asks for: a view's drawing code was once flagged three
+    // rounds running after the change asserted `app.selected_line()`.
+    let asserted: Vec<&str> = bare
+        .lines()
+        .filter_map(|line| line.strip_prefix('+'))
+        .filter(|line| line.contains("assert"))
+        .collect();
     let found: Vec<Excerpt> = excerpts(workdir)
         .into_iter()
         .filter(|excerpt| {
             !edited.iter().any(|(file, line)| {
                 *file == excerpt.file && (excerpt.span.0..=excerpt.span.1).contains(line)
             })
+        })
+        .filter(|excerpt| {
+            let call = format!("{}(", excerpt.name);
+            !asserted.iter().any(|line| line.contains(&call))
         })
         .collect();
     if found.is_empty() {
