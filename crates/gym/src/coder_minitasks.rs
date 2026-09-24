@@ -325,6 +325,12 @@ pub fn lines(runs: &[Run], errors: &[String], selected: Option<usize>) -> Vec<St
             .iter()
             .map(|error| format!("Could not read: {error}")),
     );
+    lines.push("Mini-tasks reproduce failure families locally. After each episode, the grader checks".to_owned());
+    lines.push("the resulting state or behavior. This is a fast local screen, not Terminal-Bench".to_owned());
+    lines.push("4.0 tasks or benchmark results. Scripted runs take about 1 second and cost $0 in".to_owned());
+    lines.push("model usage. The modeled Opus run takes about 22 seconds and costs about $0.054.".to_owned());
+    lines.push("Measured live comparisons and cost assumptions are documented in".to_owned());
+    lines.push("docs/coder/guides/coder-one-minitasks.md.".to_owned());
     if let Some(run) = selected.and_then(|index| runs.get(index)) {
         lines.push(String::new());
         lines.extend(run.detail_lines());
@@ -489,6 +495,9 @@ pub(crate) mod tests {
         assert!(run.timeline.as_ref().unwrap().complete);
         let text = lines(&runs, &errors, Some(0)).join("\n");
         assert!(text.contains("not Terminal-Bench attempts"), "{text}");
+        assert!(text.contains("modeled Opus run takes about 22 seconds and costs about $0.054"), "{text}");
+        assert!(text.contains("the resulting state or behavior. This is a fast local screen"), "{text}");
+        assert!(text.contains("Measured live comparisons and cost assumptions are documented in"), "{text}");
         assert!(text.contains("Grade: failed"), "{text}");
         assert!(text.contains("Session control: start done"), "{text}");
         assert!(text.contains("Episode timeline"), "{text}");
