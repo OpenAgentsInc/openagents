@@ -62,16 +62,16 @@ impl Source {
                 run.trial
             ),
             Self::Public { trial, cache } => format!(
-                "{} {} · {} · {}{}",
+                "{}{} {} · {} · {}",
+                if cache.join(&trial.file).is_file() {
+                    ""
+                } else {
+                    "[not on this computer] "
+                },
                 trial.model,
                 trial.effort,
                 reward(trial.reward),
                 trial.id,
-                if cache.join(&trial.file).is_file() {
-                    ""
-                } else {
-                    " · unavailable"
-                }
             ),
         }
     }
@@ -526,7 +526,16 @@ impl Replay {
         let (events, start, end, origin) = match source {
             Source::Public { trial, cache } => {
                 let path = cache.join(&trial.file);
-                let bytes = std::fs::read(&path).map_err(|e| format!("{}: {e}. Run uv run python -m tbench.public_replays in bench/terminal-bench", path.display()))?;
+                let bytes = std::fs::read(&path).map_err(|e| {
+                    if e.kind() == std::io::ErrorKind::NotFound {
+                        format!(
+                            "Fable transcript is not on this computer.\n\nGit includes the attempt list, but transcript files must be downloaded on each computer.\n\nFrom the openagents repository, run:\ncd bench/terminal-bench\nuv run python -m tbench.public_replays\n\nThen press Esc and Enter to reload the pair.\n\nFile: {}",
+                            path.display()
+                        )
+                    } else {
+                        format!("Cannot read Fable transcript: {e}\nFile: {}", path.display())
+                    }
+                })?;
                 let actual = format!("{:x}", Sha256::digest(&bytes));
                 if trial.sha256.as_deref() != Some(&actual) {
                     return Err(format!("Integrity check failed: {}", path.display()));

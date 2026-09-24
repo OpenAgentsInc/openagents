@@ -38,7 +38,14 @@ impl Screen {
             details: false,
         })
     }
-    fn render(&self, area: Rect, buf: &mut Buffer, ladder: Ladder, elapsed: u64, focused: bool) {
+    fn render(
+        &self,
+        area: Rect,
+        buf: &mut Buffer,
+        ladder: Ladder,
+        playback: &Playback,
+        focused: bool,
+    ) {
         if area.width < 4 || area.height < 8 {
             return;
         }
@@ -52,6 +59,7 @@ impl Screen {
             }),
         );
         let inner = Rect::new(area.x + 1, area.y + 1, area.width - 2, area.height - 2);
+        let elapsed = playback.elapsed_ms as u64;
         line(buf, inner, 0, &self.source.label(), ladder, Intensity::Full);
         line(
             buf,
@@ -98,6 +106,24 @@ impl Screen {
             inner.width,
             inner.height.saturating_sub(5),
         );
+        if shown == 0 {
+            paragraph(
+                buf,
+                text,
+                &format!(
+                    "Transcript loaded.\n\n{} First event at {}.\n\nSpace {} playback.\nn jumps to the first event.\nEnd shows the full transcript.",
+                    if playback.playing {
+                        "Waiting."
+                    } else {
+                        "Paused."
+                    },
+                    clock(self.replay.events[0].elapsed_ms),
+                    if playback.playing { "pauses" } else { "starts" },
+                ),
+                ladder,
+            );
+            return;
+        }
         let mut wrapped = self.rows.borrow_mut();
         if wrapped.width != usize::from(text.width) {
             wrapped.width = usize::from(text.width);
@@ -172,6 +198,7 @@ pub struct Pane {
     all_agents: bool,
     right_local: bool,
     screens: Option<[Option<Screen>; 2]>,
+    side_errors: [Option<String>; 2],
     pub clock: Playback,
     pub errors: Vec<String>,
 }
@@ -210,6 +237,7 @@ impl Pane {
             all_agents,
             right_local: false,
             screens: None,
+            side_errors: [None, None],
             clock: Playback::new(0),
             errors,
         };
@@ -264,7 +292,11 @@ impl Pane {
                     .map(|s| (*s).clone())
             })
             .collect();
+        if selected.iter().all(Option::is_none) {
+            return;
+        }
         let mut screens = [None, None];
+        self.side_errors = [None, None];
         self.errors.clear();
         for (side, source) in selected.into_iter().enumerate() {
             if let Some(source) = source {
@@ -273,12 +305,12 @@ impl Pane {
                         self.errors.extend(screen.replay.warnings.clone());
                         screens[side] = Some(screen);
                     }
-                    Err(error) => self.errors.push(error),
+                    Err(error) => {
+                        self.errors.push(error.clone());
+                        self.side_errors[side] = Some(error);
+                    }
                 }
             }
-        }
-        if screens.iter().all(Option::is_none) {
-            return;
         }
         self.clock = Playback::new(
             screens
@@ -485,22 +517,22 @@ impl Pane {
             let right = Rect::new(left.right(), left.y, area.width - left.width, left.height);
             for (index, side) in [left, right].into_iter().enumerate() {
                 if let Some(screen) = &screens[index] {
-                    screen.render(
-                        side,
-                        buf,
-                        ladder,
-                        self.clock.elapsed_ms as u64,
-                        self.focus == index,
-                    );
+                    screen.render(side, buf, ladder, &self.clock, self.focus == index);
                 } else {
                     frame(side, buf, ladder.style(Intensity::Quarter));
-                    line(
+                    let inner = Rect::new(
+                        side.x + 1,
+                        side.y + 1,
+                        side.width.saturating_sub(2),
+                        side.height.saturating_sub(2),
+                    );
+                    paragraph(
                         buf,
-                        side,
-                        1,
-                        "No transcript selected / available",
+                        inner,
+                        self.side_errors[index].as_deref().unwrap_or(
+                            "No attempt selected for this side.\n\nPress Esc to choose a task and an attempt for each side.",
+                        ),
                         ladder,
-                        Intensity::Half,
                     );
                 }
             }
@@ -610,11 +642,25 @@ impl Pane {
                 buf,
                 area,
                 bottom - 1,
-                &format!("{} notice(s): {error}", self.errors.len()),
+                &format!(
+                    "{} notice(s): {}",
+                    self.errors.len(),
+                    error.lines().next().unwrap_or(error)
+                ),
                 ladder,
                 Intensity::Full,
             );
         }
+    }
+}
+
+fn paragraph(buf: &mut Buffer, area: Rect, text: &str, ladder: Ladder) {
+    for (row, span) in wrap_rows(text, usize::from(area.width))
+        .into_iter()
+        .take(usize::from(area.height))
+        .enumerate()
+    {
+        line(buf, area, row as u16, &text[span], ladder, Intensity::Full);
     }
 }
 
@@ -812,5 +858,79 @@ mod tests {
         p.key(Key::Char('g'));
         p.render(area, &mut buf, crate::tui::ladder_from_environment());
         assert!(contents(&buf).contains("step timestamp"));
+    }
+
+    #[test]
+    fn a_loaded_trace_explains_the_wait_before_its_first_event() {
+        let (_dir, mut p) = pane();
+        p.query = "coq".to_owned();
+        p.key(Key::Enter);
+        let screen = p.screens.as_mut().unwrap()[0].as_mut().unwrap();
+        screen.replay.events = vec![crate::runs_replay::Event {
+            elapsed_ms: 5000,
+            timing: "host timestamp",
+            title: "agent".to_owned(),
+            text: "FIRST MESSAGE".to_owned(),
+            record: "FIRST RECORD".to_owned(),
+        }];
+        screen.replay.duration_ms = 5000;
+        let area = Rect::new(0, 0, 150, 38);
+        let mut buf = Buffer::empty(area);
+        p.render(area, &mut buf, crate::tui::ladder_from_environment());
+        let text = contents(&buf);
+        assert!(text.contains("Transcript loaded."));
+        assert!(text.contains("First event at 00:00:05."));
+        assert!(text.contains("Space starts playback."));
+        assert!(!text.contains("FIRST MESSAGE"));
+        p.key(Key::Char('n'));
+        p.render(area, &mut buf, crate::tui::ladder_from_environment());
+        assert!(contents(&buf).contains("FIRST MESSAGE"));
+    }
+
+    #[test]
+    fn a_new_computer_shows_the_missing_download_and_reloads_after_acquisition() {
+        use crate::runs_replay::{PublicTrial, SCHEMA, public_sources};
+        use sha2::{Digest, Sha256};
+
+        let cache = tempfile::tempdir().unwrap();
+        let bytes = br#"{"steps":[{"source":"agent","message":"PUBLIC TRANSCRIPT"}]}"#;
+        let trial: PublicTrial = serde_json::from_value(serde_json::json!({
+            "id":"aa", "file":"aa.json", "task":"coq-block-bound",
+            "model":"Fable 5.1", "agent":"Claude Code", "effort":"max",
+            "source_url":"https://example.com", "available":true,
+            "sha256":format!("{:x}",Sha256::digest(bytes))
+        }))
+        .unwrap();
+        let manifest = cache.path().join("manifest.json");
+        std::fs::write(
+            &manifest,
+            serde_json::json!({"schema":SCHEMA,"trials":[trial]}).to_string(),
+        )
+        .unwrap();
+        let sources = public_sources(cache.path(), &manifest).unwrap();
+        assert!(sources[0].label().starts_with("[not on this computer]"));
+        // Even with neither side loaded, show the cause inside the failed side.
+        let mut p = Pane::from_sources(vec![], sources, vec![], None);
+        p.key(Key::Enter);
+        assert!(p.active());
+        let area = Rect::new(0, 0, 150, 38);
+        let mut buf = Buffer::empty(area);
+        p.render(area, &mut buf, crate::tui::ladder_from_environment());
+        let right = buf
+            .content
+            .chunks(150)
+            .flat_map(|row| &row[75..])
+            .map(|c| c.symbol())
+            .collect::<String>();
+        assert!(right.contains("Fable transcript is not on this computer."));
+        assert!(right.contains("uv run python -m tbench.public_replays"));
+        assert!(right.contains("Then press Esc and Enter"));
+
+        std::fs::write(cache.path().join("aa.json"), bytes).unwrap();
+        p.key(Key::Back);
+        p.key(Key::Enter);
+        assert!(p.errors.is_empty());
+        p.render(area, &mut buf, crate::tui::ladder_from_environment());
+        assert!(contents(&buf).contains("PUBLIC TRANSCRIPT"));
     }
 }

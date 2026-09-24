@@ -85,6 +85,17 @@ Replay cannot reconstruct text the source never recorded. A missing or
 corrupt source produces a visible notice, not an empty successful run.
 Public files must match the manifest's SHA-256 before loading.
 
+If the screen is blank at `00:00:00`, check the event count. A loaded trace
+can have `0 / N events` because replay starts paused before its first
+recorded event. Press Space to play, `n` to jump to the first event, or End
+to reveal the full transcript. The pane now explains this waiting state.
+
+The public attempt list is committed to Git; the transcript bodies are
+downloaded separately on each computer. `[not on this computer]` in the
+picker means the attempt is listed but its transcript file is missing
+locally. A failed side displays its cause and acquisition command inside
+the pane. After downloading, press Escape and Enter to reload the pair.
+
 ## Public Fable collection
 
 The September 23 acquisition contains all five Fable 5.1 rows on the
@@ -123,6 +134,16 @@ on another machine:
 cd bench/terminal-bench
 uv run python -m tbench.public_replays
 ```
+
+On September 24, the same complete published collection was also copied
+to `coderos` at the default cache path. Pulling the repository alone had
+left that computer with the attempt list and no public transcript files.
+All 1,649 published files passed SHA-256 verification there. A separate
+terminal session on that computer loaded both sides of
+`data-anonymization` and revealed the selected local attempt's 1,700 events
+and Fable attempt's 38 events. Existing Gym sessions can load the files
+with Escape and Enter; the clearer waiting and failure messages require
+the updated binary.
 
 The downloader resumes verified files, retries transient download
 failures, and reports missing evidence. It uses Harbor's public read and
@@ -187,7 +208,7 @@ three malformed old Codex trajectories. A real terminal session replayed
 `react-lead-form` at 10×, paused, scrolled both sides, returned to the
 picker, and exited successfully.
 
-The final replay suite passed all 11 tests, and the acquisition suite
+The initial replay suite passed all 11 tests, and the acquisition suite
 passed all three tests. The full manual gate
 (`./scripts/verify-rust.sh --keep-going`, run
 `20260924T005504Z-65d135`) passed formatting, default and feature Clippy,
@@ -204,3 +225,14 @@ at the recorded paths on this Mac. The acceptance record lists these
 failures and the baseline checks. These failures mean the full repository
 gate is **not green**, despite the replay-specific checks passing. Metal
 checks and the optional long relay soak were not run.
+
+The September 24 follow-up passed all 13 replay tests. The additional
+regressions reproduce a new computer with no public files, verify that the
+failed pane shows the download and reload instructions, load the same pair
+after acquiring the missing file, and explain the pause before the first
+recorded event. Strict all-target Gym Clippy and workspace formatting also
+passed after the UI changes.
+The full follow-up gate, `20260924T055413Z-982924`, again passed the
+non-test phases, including PostgreSQL acceptance. Both workspace test
+phases stopped at the same pre-existing Coder One scratch-path assertion
+described above; the full gate remains failed.
