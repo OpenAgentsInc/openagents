@@ -31,6 +31,48 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::*;
 
+/// File-content identity for candidate evidence. Match the merge inventory's
+/// exclusions, but refuse incomplete reads instead of comparing partial trees.
+/// Git metadata, Python bytecode, and the named cache directories are excluded.
+pub(super) fn evidence_tree(dir: &Path) -> Result<BTreeMap<String, String>, String> {
+    let mut tree = BTreeMap::new();
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(at) = stack.pop() {
+        for entry in std::fs::read_dir(at).map_err(|e| e.to_string())? {
+            let entry = entry.map_err(|e| e.to_string())?;
+            let path = entry.path();
+            let kind = entry.file_type().map_err(|e| e.to_string())?;
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if kind.is_dir() {
+                if !parallel::UNMERGED.contains(&name.as_ref()) {
+                    stack.push(path);
+                }
+                continue;
+            }
+            if name.ends_with(".pyc") {
+                continue;
+            }
+            let relative = path.strip_prefix(dir).map_err(|e| e.to_string())?;
+            let relative = relative.to_str().ok_or("file path is not UTF-8")?;
+            let bytes = if kind.is_symlink() {
+                let target = std::fs::read_link(&path).map_err(|e| e.to_string())?;
+                format!(
+                    "link:{}",
+                    target.to_str().ok_or("link target is not UTF-8")?
+                )
+                .into_bytes()
+            } else if kind.is_file() {
+                std::fs::read(&path).map_err(|e| e.to_string())?
+            } else {
+                return Err(format!("unsupported candidate entry: {}", path.display()));
+            };
+            tree.insert(relative.to_string(), crate::accept::sha256(&bytes));
+        }
+    }
+    Ok(tree)
+}
+
 /// `executor.microluna.lean`: the lean loop's shape.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -966,12 +1008,12 @@ impl Micro {
             if lean.keep_best && !have_score && eval.join("score.sh").is_file() {
                 have_score = crate::handoff::copy_tree(&eval, &frozen).is_ok();
                 if have_score {
-                    evaluator_digest = Some(parallel::tree(&frozen));
+                    evaluator_digest = evidence_tree(&frozen).ok();
                 }
             }
             let intact = evaluator_digest
                 .as_ref()
-                .is_none_or(|d| *d == parallel::tree(&frozen));
+                .is_some_and(|d| evidence_tree(&frozen).as_ref() == Ok(d));
             let (mut score, mut score_tail) = if have_score && intact {
                 self.lean_score(
                     &frozen,
@@ -987,7 +1029,7 @@ impl Micro {
             };
             if evaluator_digest
                 .as_ref()
-                .is_some_and(|d| *d != parallel::tree(&frozen))
+                .is_some_and(|d| evidence_tree(&frozen).as_ref() != Ok(d))
             {
                 score = None;
                 score_tail =
@@ -1054,7 +1096,13 @@ impl Micro {
                 if !parallel::copyable(&self.workdir) {
                     Err("workspace exceeds the snapshot bound".to_string())
                 } else {
-                    crate::handoff::copy_tree(&self.workdir, &candidate).map_err(|e| e.to_string())
+                    evidence_tree(&self.workdir).and_then(|before| {
+                        crate::handoff::copy_tree(&self.workdir, &candidate)?;
+                        if evidence_tree(&candidate)? != before {
+                            return Err("candidate copy differs from the workspace".to_string());
+                        }
+                        Ok(())
+                    })
                 }
             } else {
                 Ok(())
@@ -1119,7 +1167,7 @@ impl Micro {
                 "spent_usd": spent,
                 "candidate": lean.protect_candidates.then(|| candidate.display().to_string()),
                 "snapshot_error": snapshot.err(),
-                "workspace_files": lean.protect_candidates.then(|| parallel::tree(&self.workdir)),
+                "workspace_files": lean.protect_candidates.then(|| evidence_tree(&self.workdir).ok()),
                 "evaluator_files": evaluator_digest,
             }));
             if lean.protect_candidates {
@@ -1185,7 +1233,7 @@ impl Micro {
         if lean.protect_candidates {
             let intact = evaluator_digest
                 .as_ref()
-                .is_some_and(|d| *d == parallel::tree(&frozen));
+                .is_some_and(|d| evidence_tree(&frozen).as_ref() == Ok(d));
             let (mut score, output) = if have_score && intact {
                 self.lean_score(
                     &frozen,
@@ -1201,17 +1249,17 @@ impl Micro {
             };
             if evaluator_digest
                 .as_ref()
-                .is_some_and(|d| *d != parallel::tree(&frozen))
+                .is_some_and(|d| evidence_tree(&frozen).as_ref() != Ok(d))
             {
                 score = None;
             }
             if score.is_some_and(|(_, total)| score_total != Some(total)) {
                 score = None;
             }
-            let submitted_files = parallel::tree(&self.workdir);
-            let selection_available = best
-                .as_ref()
-                .is_some_and(|b| submitted_files == parallel::tree(&b.dir));
+            let submitted_files = evidence_tree(&self.workdir);
+            let selection_available = best.as_ref().is_some_and(|b| {
+                submitted_files.is_ok() && submitted_files == evidence_tree(&b.dir)
+            });
             let result = if !selection_available || score.is_none() {
                 "unknown"
             } else if score.is_some_and(|(p, t)| p == t) {
@@ -1230,7 +1278,9 @@ impl Micro {
                 "score": score.map(|(p, t)| json!({"passed": p, "total": t})),
                 "output": output,
                 "review_status": sessions.last().filter(|r| r.read_only).map(Ran::status),
-                "workspace_files": submitted_files,
+                "workspace_files": submitted_files.as_ref().ok(),
+                "workspace_error": submitted_files.as_ref().err(),
+                "identity_scope": "file contents and link targets, excluding Git metadata, Python bytecode, and named caches",
                 "benchmark_outcome": Value::Null,
             }));
             if let Ok(bytes) = serde_json::to_vec_pretty(&moves)

@@ -1792,6 +1792,19 @@ async fn a_final_evaluator_edit_cannot_claim_the_retained_candidates_identity() 
 }
 
 #[test]
+fn candidate_identity_refuses_an_incomplete_inventory() {
+    use std::os::unix::ffi::OsStringExt;
+
+    let dir = tempfile::tempdir().unwrap();
+    assert!(lean::evidence_tree(&dir.path().join("missing")).is_err());
+    std::fs::write(dir.path().join("source.txt"), "retained").unwrap();
+    assert_eq!(lean::evidence_tree(dir.path()).unwrap().len(), 1);
+    let name = std::ffi::OsString::from_vec(vec![0xff]);
+    std::fs::write(dir.path().join(name), "cannot identify this path in JSON").unwrap();
+    assert!(lean::evidence_tree(dir.path()).is_err());
+}
+
+#[test]
 fn a_comment_that_gives_a_reason_is_a_suspect() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(
