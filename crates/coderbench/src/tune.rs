@@ -512,7 +512,10 @@ pub fn traces_in(path: &Path) -> Result<Vec<PathBuf>, String> {
         return Ok(vec![path.to_path_buf()]);
     }
     if !path.is_dir() {
-        return Err(format!("{} is not a trace or directory", path.display()));
+        return Err(format!(
+            "{} is not a trace file or a directory",
+            path.display()
+        ));
     }
     let mut traces = std::fs::read_dir(path)
         .map_err(|error| format!("{}: {error}", path.display()))?

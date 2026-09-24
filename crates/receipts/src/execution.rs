@@ -263,7 +263,7 @@ impl std::fmt::Display for ReceiptError {
             }
             Self::Tampered => write!(
                 f,
-                "the receipt's digest does not recompute over its contents"
+                "the receipt's digest does not match its contents, so the receipt changed after it was sealed"
             ),
             Self::Missing(field) => write!(f, "the receipt names no {field}"),
         }

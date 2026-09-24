@@ -66,8 +66,9 @@ impl Channel {
     /// The handshake must succeed and a challenge, if sent, must be
     /// answered inside [`IO_WAIT`].
     pub fn connect(url: &str, signer: &RelaySigner) -> Result<Self> {
-        let (mut socket, _response) = tungstenite::connect(url)
-            .map_err(|error| Error::relay(format!("connect {url}: {error}")))?;
+        let (mut socket, _response) = tungstenite::connect(url).map_err(|error| {
+            Error::relay(format!("could not connect to the relay at {url}: {error}"))
+        })?;
         set_timeouts(&mut socket);
         let mut channel = Channel {
             socket,
@@ -90,7 +91,9 @@ impl Channel {
             match value[0].as_str().unwrap_or_default() {
                 "AUTH" => {
                     let Some(challenge) = value[1].as_str() else {
-                        return Err(Error::relay("malformed AUTH challenge"));
+                        return Err(Error::relay(
+                            "the relay sent an AUTH message with no challenge string",
+                        ));
                     };
                     let event = signer.sign(
                         unix_now(),
@@ -105,7 +108,10 @@ impl Channel {
                     self.send(&json!(["AUTH", event]))?;
                     let verdict = self.wait_verdict(&auth_id, deadline)?;
                     if !verdict.accepted {
-                        return Err(Error::relay(format!("NIP-42 refused: {}", verdict.message)));
+                        return Err(Error::relay(format!(
+                            "the relay refused NIP-42 authentication: {}",
+                            verdict.message
+                        )));
                     }
                     return Ok(());
                 }
@@ -155,7 +161,7 @@ impl Channel {
         loop {
             let value = self
                 .read_frame(deadline)?
-                .ok_or_else(|| Error::relay("the socket closed before EOSE".to_string()))?;
+                .ok_or_else(|| Error::relay("the relay connection closed before the relay finished sending stored events (EOSE)".to_string()))?;
             match value[0].as_str().unwrap_or_default() {
                 "EVENT" if value[1].as_str() == Some(sub.as_str()) => {
                     if let Ok(event) = serde_json::from_value::<Event>(value[2].clone()) {
@@ -165,7 +171,7 @@ impl Channel {
                 "EOSE" if value[1].as_str() == Some(sub.as_str()) => break,
                 "CLOSED" if value[1].as_str() == Some(sub.as_str()) => {
                     return Err(Error::relay(format!(
-                        "subscription refused: {}",
+                        "the relay refused the subscription: {}",
                         value[2].as_str().unwrap_or_default()
                     )));
                 }
@@ -173,7 +179,10 @@ impl Channel {
                 _ => {}
             }
             if Instant::now() >= deadline {
-                return Err(Error::relay("no EOSE inside the wait".to_string()));
+                return Err(Error::relay(
+                    "the relay did not finish sending stored events (EOSE) before the wait ran out"
+                        .to_string(),
+                ));
             }
         }
         self.send(&json!(["CLOSE", sub]))?;
@@ -183,9 +192,12 @@ impl Channel {
     /// Waits for `["OK", id, accepted, message]`.
     fn wait_verdict(&mut self, id: &str, deadline: Instant) -> Result<Verdict> {
         loop {
-            let value = self
-                .read_frame(deadline)?
-                .ok_or_else(|| Error::relay("the socket closed before the OK".to_string()))?;
+            let value = self.read_frame(deadline)?.ok_or_else(|| {
+                Error::relay(
+                    "the relay connection closed before the relay acknowledged the event"
+                        .to_string(),
+                )
+            })?;
             if value[0].as_str() == Some("OK") && value[1].as_str() == Some(id) {
                 return Ok(Verdict {
                     accepted: value[2].as_bool().unwrap_or(false),
@@ -193,7 +205,9 @@ impl Channel {
                 });
             }
             if Instant::now() >= deadline {
-                return Err(Error::relay(format!("no OK for {id} inside the wait")));
+                return Err(Error::relay(format!(
+                    "the relay did not acknowledge event {id} before the wait ran out"
+                )));
             }
         }
     }
@@ -203,7 +217,7 @@ impl Channel {
         loop {
             let remaining = deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() {
-                return Err(Error::relay("timed out waiting on the relay".to_string()));
+                return Err(Error::relay("timed out waiting for the relay".to_string()));
             }
             match self.socket.read() {
                 Ok(Message::Text(text)) => match serde_json::from_str::<Value>(&text) {
@@ -231,7 +245,7 @@ impl Channel {
     fn send(&mut self, value: &Value) -> Result<()> {
         self.socket
             .send(Message::Text(value.to_string().into()))
-            .map_err(|error| Error::relay(format!("send: {error}")))
+            .map_err(|error| Error::relay(format!("could not send to the relay: {error}")))
     }
 }
 
@@ -244,8 +258,10 @@ impl Channel {
 /// The endpoint must answer inside [`IO_WAIT`]; a relay `error` field
 /// surfaces as an error carrying its text.
 pub fn manage(http_url: &str, signer: &RelaySigner, method: &str, params: Value) -> Result<Value> {
-    let body = serde_json::to_vec(&json!({"method": method, "params": params}))
-        .map_err(|error| Error::relay(format!("rpc body: {error}")))?;
+    let body =
+        serde_json::to_vec(&json!({"method": method, "params": params})).map_err(|error| {
+            Error::relay(format!("could not encode the management request: {error}"))
+        })?;
     let payload_hash = {
         use sha2::Digest;
         sha2::Sha256::digest(&body)
@@ -265,16 +281,25 @@ pub fn manage(http_url: &str, signer: &RelaySigner, method: &str, params: Value)
     );
     let header = format!(
         "Nostr {}",
-        nostr::nip44::primitives::base64_encode(
-            &serde_json::to_vec(&auth).map_err(|error| Error::relay(format!("auth: {error}")))?
-        )
+        nostr::nip44::primitives::base64_encode(&serde_json::to_vec(&auth).map_err(|error| {
+            Error::relay(format!(
+                "could not encode the management authorization event: {error}"
+            ))
+        })?)
     );
     let address = http_url
         .strip_prefix("http://")
         .and_then(|rest| rest.split('/').next())
-        .ok_or_else(|| Error::relay(format!("bad management url {http_url}")))?;
-    let mut stream = TcpStream::connect(address)
-        .map_err(|error| Error::relay(format!("management connect {address}: {error}")))?;
+        .ok_or_else(|| {
+            Error::relay(format!(
+                "the management URL {http_url} has no host and port"
+            ))
+        })?;
+    let mut stream = TcpStream::connect(address).map_err(|error| {
+        Error::relay(format!(
+            "could not connect to the relay management API at {address}: {error}"
+        ))
+    })?;
     let _ = stream.set_read_timeout(Some(IO_WAIT));
     let _ = stream.set_write_timeout(Some(IO_WAIT));
     let request = format!(
@@ -284,19 +309,23 @@ pub fn manage(http_url: &str, signer: &RelaySigner, method: &str, params: Value)
     stream
         .write_all(request.as_bytes())
         .and_then(|()| stream.write_all(&body))
-        .map_err(|error| Error::relay(format!("management send: {error}")))?;
+        .map_err(|error| Error::relay(format!("could not send the management request: {error}")))?;
     let mut response = Vec::new();
     stream
         .read_to_end(&mut response)
-        .map_err(|error| Error::relay(format!("management read: {error}")))?;
+        .map_err(|error| Error::relay(format!("could not read the management reply: {error}")))?;
     let text = String::from_utf8_lossy(&response);
     let Some((_, body_text)) = text.split_once("\r\n\r\n") else {
-        return Err(Error::relay(format!("bad management reply: {text}")));
+        return Err(Error::relay(format!(
+            "the management reply has no HTTP body: {text}"
+        )));
     };
     let answer: Value = serde_json::from_str(body_text)
-        .map_err(|error| Error::relay(format!("management reply: {error}")))?;
+        .map_err(|error| Error::relay(format!("the management reply is not JSON: {error}")))?;
     if let Some(error) = answer.get("error").and_then(Value::as_str) {
-        return Err(Error::relay(format!("management {method}: {error}")));
+        return Err(Error::relay(format!(
+            "the relay refused management call {method}: {error}"
+        )));
     }
     Ok(answer)
 }

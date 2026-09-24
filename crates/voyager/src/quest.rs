@@ -125,7 +125,7 @@ pub fn stage(fixture: &Path, work: &Path) -> Result<(String, String)> {
     let source = fixture.join("fixture");
     if !source.is_dir() {
         return Err(Error::episode(format!(
-            "quest fixture has no fixture/ at {}",
+            "the quest directory has no fixture/ directory at {}",
             source.display()
         )));
     }
@@ -396,8 +396,9 @@ mod tests {
 
     /// The shipped solver's write, as the episode performs it.
     fn solve_builtin(tree: &Path) -> Result<()> {
-        std::fs::write(tree.join("src/lib.rs"), builtin_source())
-            .map_err(|error| Error::episode(format!("solver write: {error}")))
+        std::fs::write(tree.join("src/lib.rs"), builtin_source()).map_err(|error| {
+            Error::episode(format!("the solver could not write its patch: {error}"))
+        })
     }
 
     #[test]
@@ -438,8 +439,9 @@ mod tests {
             1,
             &|tree: &Path| {
                 let source = builtin_source().replace("Material::Planks", "Material::Dirt");
-                std::fs::write(tree.join("src/lib.rs"), source)
-                    .map_err(|error| Error::episode(format!("solver write: {error}")))
+                std::fs::write(tree.join("src/lib.rs"), source).map_err(|error| {
+                    Error::episode(format!("the solver could not write its patch: {error}"))
+                })
             },
             dir,
         )

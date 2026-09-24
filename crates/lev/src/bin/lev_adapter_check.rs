@@ -46,8 +46,14 @@ fn main() {
         (None, Some(release)) => emit(None, release, &options),
         (None, None) => {
             eprintln!(
-                "usage: lev-adapter-check <manifest.json | package.fmadapter> \
-                 [--emit <name>@<version>]"
+                "Check a Lev release manifest or adapter package, or print a new manifest.\n\
+                 \n\
+                 Usage:\n  \
+                 lev-adapter-check MANIFEST.json\n  \
+                 lev-adapter-check PACKAGE.fmadapter\n  \
+                 lev-adapter-check [PACKAGE.fmadapter] --emit NAME@VERSION [--base SIGNATURE] [options]\n\
+                 \n\
+                 Given a manifest, it checks it. Given a package, it describes it. With --emit, it prints a new manifest."
             );
             std::process::exit(2);
         }
@@ -109,7 +115,7 @@ impl Options {
                     options.window = value().parse().unwrap_or(options.window);
                 }
                 other => {
-                    eprintln!("unknown flag {other}");
+                    eprintln!("lev-adapter-check: unknown flag `{other}`");
                     std::process::exit(2);
                 }
             }
@@ -309,7 +315,7 @@ fn emit(package: Option<Package>, release: &str, options: &Options) {
     let (name, version) = match release.split_once('@') {
         Some((name, version)) => (name.to_string(), version.parse::<u32>().unwrap_or(0)),
         None => {
-            eprintln!("--emit takes <name>@<version>, such as lev-adapted@1");
+            eprintln!("lev-adapter-check: --emit needs NAME@VERSION, such as lev-adapted@1");
             std::process::exit(2);
         }
     };
@@ -327,7 +333,9 @@ fn emit(package: Option<Package>, release: &str, options: &Options) {
         None => options.base.clone(),
     };
     if signature.is_empty() {
-        eprintln!("a manifest with no package pins its base with --base <signature>");
+        eprintln!(
+            "lev-adapter-check: without an adapter package, pass the base model signature with --base SIGNATURE"
+        );
         std::process::exit(2);
     }
     let manifest = Manifest {
@@ -360,7 +368,7 @@ fn emit(package: Option<Package>, release: &str, options: &Options) {
     match manifest.to_json() {
         Ok(text) => println!("{text}"),
         Err(error) => {
-            eprintln!("the manifest did not encode: {error}");
+            eprintln!("lev-adapter-check: cannot encode the manifest as JSON: {error}");
             std::process::exit(1);
         }
     }

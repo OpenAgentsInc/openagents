@@ -123,7 +123,7 @@ pub async fn dispatch(
     let base = git(repository, &["rev-parse", "HEAD"]).await?;
     if base.trim() != assignment.base {
         return Err(
-            "repository base changed before dispatch; refresh and review the assignment".into(),
+            "the repository's base commit changed before the task started; update the assignment's base and review it again".into(),
         );
     }
     let mut program: Program = serde_json::from_str(include_str!("project-task.json"))
@@ -172,7 +172,9 @@ pub async fn dispatch(
         .await;
     trace.finish("ended");
     if let Some(error) = trace.failure() {
-        return Err(format!("execution evidence is incomplete: {error}"));
+        return Err(format!(
+            "could not finish writing the task's trace: {error}"
+        ));
     }
     let delegation = run.delegations.first();
     Ok(DispatchReport {
@@ -200,7 +202,7 @@ pub async fn dispatch(
 /// Evidence is host-owned state, outside checkout and executor write grants.
 pub fn protect_evidence(repository: &Path, path: &Path, survey: &Survey) -> Result<(), String> {
     if std::fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_symlink()) {
-        return Err("host-owned execution state cannot be a symlink".into());
+        return Err("the evidence path cannot be a symbolic link".into());
     }
     let repository = repository.canonicalize().map_err(|e| e.to_string())?;
     let parent = path
@@ -209,13 +211,17 @@ pub fn protect_evidence(repository: &Path, path: &Path, survey: &Survey) -> Resu
         .canonicalize()
         .map_err(|e| e.to_string())?;
     if parent.starts_with(&repository) {
-        return Err("execution evidence must be outside the delegated repository".into());
+        return Err(
+            "the evidence directory must be outside the repository the task runs in".into(),
+        );
     }
     if let Some(executor) = survey.executor("devin-local") {
         for writable in executor.policy().writable() {
             let writable = writable.canonicalize().map_err(|e| e.to_string())?;
             if parent.starts_with(writable) {
-                return Err("execution evidence is inside an executor write grant".into());
+                return Err(
+                    "the evidence directory is inside a directory the executor may write to".into(),
+                );
             }
         }
     }
@@ -304,7 +310,7 @@ mod tests {
         let error = dispatch(repository.path(), survey, &task(), &trace)
             .await
             .unwrap_err();
-        assert!(error.contains("base changed"));
+        assert!(error.contains("base commit changed"));
         assert!(!trace.exists());
     }
 }

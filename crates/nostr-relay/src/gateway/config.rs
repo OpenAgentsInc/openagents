@@ -271,7 +271,9 @@ impl GatewayConfig {
                 let signer = RelaySigner::from_secret_hex(&secret)
                     .map_err(|error| GatewayError::Config(error.to_string()))?;
                 let key = SecretKey::from_byte_array(decode_secret(&secret)?).map_err(|_| {
-                    GatewayError::Config("NOSTR_RELAY_PUSH_SECRET is not a secret key".to_owned())
+                    GatewayError::Config(
+                        "NOSTR_RELAY_PUSH_SECRET is not a valid Nostr secret key".to_owned(),
+                    )
                 })?;
                 Some(PushExecutor {
                     secret: key,
@@ -289,7 +291,9 @@ impl GatewayConfig {
 
     pub fn validate(&self) -> Result<(), GatewayError> {
         if self.database_url.trim().is_empty() {
-            return Err(config("database connection settings are empty"));
+            return Err(config(
+                "the database connection settings are empty; set DATABASE_URL",
+            ));
         }
         if !(1..=64).contains(&self.db_connections) {
             return Err(config(
@@ -401,7 +405,9 @@ impl GatewayConfig {
                 .as_ref()
                 .is_some_and(|value| value.len() > 2_048)
         {
-            return Err(config("relay identity field exceeds its configured bound"));
+            return Err(config(
+                "NOSTR_RELAY_DESCRIPTION must be at most 16384 bytes and NOSTR_RELAY_CONTACT at most 2048 bytes",
+            ));
         }
         if let Some(pubkey) = &self.identity.pubkey
             && (pubkey.len() != 64 || !is_lower_hex(pubkey))
@@ -501,11 +507,14 @@ impl GatewayConfig {
                 || push.app_profile.is_empty()
             {
                 return Err(config(
-                    "NOSTR_RELAY_PUSH_GATEWAY must be an http:// URL and the app profile must be set",
+                    "NOSTR_RELAY_PUSH_GATEWAY must be an http:// URL and NOSTR_RELAY_PUSH_APP_PROFILE must be set",
                 ));
             }
-            nostr::push_lease::validate_descriptor(&push.descriptor())
-                .map_err(|reason| config(format!("push descriptor: {reason}")))?;
+            nostr::push_lease::validate_descriptor(&push.descriptor()).map_err(|reason| {
+                config(format!(
+                    "the push notification settings are invalid: {reason}"
+                ))
+            })?;
         }
         if !matches!(self.log_level.as_str(), "error" | "warn" | "info" | "debug") {
             return Err(config(
@@ -667,9 +676,11 @@ fn parse_value<T>(name: &str, value: &str) -> Result<T, GatewayError>
 where
     T: FromStr,
 {
-    value
-        .parse()
-        .map_err(|_| config(format!("{name} has invalid value {value:?}")))
+    value.parse().map_err(|_| {
+        config(format!(
+            "{name} is set to {value:?}, which is not a valid value for it"
+        ))
+    })
 }
 
 fn is_lower_hex(value: &str) -> bool {

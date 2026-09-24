@@ -68,7 +68,7 @@ impl AuthState {
             return Err("invalid: authentication event must have kind 22242".to_owned());
         }
         if event.created_at.abs_diff(now) > AUTH_WINDOW_SECONDS {
-            return Err("invalid: authentication event timestamp is outside 10 minutes".to_owned());
+            return Err("invalid: the authentication event's timestamp is more than 10 minutes from the relay's clock".to_owned());
         }
         if !event
             .tag_values("challenge")

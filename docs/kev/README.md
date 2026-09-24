@@ -90,9 +90,9 @@ either refusal answers `branch_too_long` at 413 and names the bytes.
 The forward permit is the final stage, and it is three bounds taken at
 once: a host slot, a slot of the variant the request resolved to, and the
 variant's share of a working-memory budget. When any of the three is at
-its limit, the server answers `busy` at 503 naming which — `the host's
-forward slots`, ``the `kev-0.5b` forward slots``, or `the working-memory
-budget in MiB` — rather than queueing, so a client's cancellation leaves
+its limit, the server answers `busy` at 503 naming which — `the inference
+slots on this host`, ``the inference slots for `kev-0.5b` ``, or `the
+working-memory budget (counted in MiB)` — rather than queueing, so a client's cancellation leaves
 nothing waiting behind it. The permit rides with the blocking forward and
 is returned when the forward ends, not when the caller stops waiting.
 

@@ -156,7 +156,7 @@ struct Leg<'s, 'w> {
 pub fn run_ensemble(world: &World, plan: &Plan, progress: impl Fn(&str) + Sync) -> Result<Report> {
     if world.agents.is_empty() {
         return Err(Error::episode(format!(
-            "world {} enrolls no agents; run it as a solo episode",
+            "world {} has an empty agents list; list the agents, or run it as a solo episode with one agent",
             world.name
         )));
     }
@@ -192,8 +192,12 @@ pub fn run_ensemble(world: &World, plan: &Plan, progress: impl Fn(&str) + Sync) 
             section.port,
             &run_dir.join("relay.log"),
         )?;
-        let mgmt = RelaySigner::from_secret_hex(&crate::relay::management_secret())
-            .map_err(|error| Error::relay(format!("management key: {error}")))?;
+        let mgmt =
+            RelaySigner::from_secret_hex(&crate::relay::management_secret()).map_err(|error| {
+                Error::relay(format!(
+                    "the relay management key could not be derived: {error}"
+                ))
+            })?;
         let mut guilds: Vec<&str> = Vec::new();
         for member in &world.agents {
             if !guilds.contains(&member.guild.as_str()) {
@@ -648,8 +652,11 @@ impl Ensemble<'_> {
                 &work,
                 n,
                 &|tree: &std::path::Path| {
-                    std::fs::write(tree.join("src/lib.rs"), crate::quest::builtin_source())
-                        .map_err(|error| Error::episode(format!("solver write: {error}")))
+                    std::fs::write(tree.join("src/lib.rs"), crate::quest::builtin_source()).map_err(
+                        |error| {
+                            Error::episode(format!("the solver could not write its patch: {error}"))
+                        },
+                    )
                 },
                 &dir,
             )?;
@@ -819,8 +826,12 @@ impl Ensemble<'_> {
         let Some(relay) = &self.relay else {
             return Ok(json!({"published": false, "why": "the world runs no relay"}));
         };
-        let signer = RelaySigner::from_secret_hex(&crate::relay::management_secret())
-            .map_err(|error| Error::relay(format!("label signer: {error}")))?;
+        let signer =
+            RelaySigner::from_secret_hex(&crate::relay::management_secret()).map_err(|error| {
+                Error::relay(format!(
+                    "the achievement label signing key could not be derived: {error}"
+                ))
+            })?;
         let url = relay.url.clone();
         let mut channel = Channel::connect(&url, &signer)?;
         let event = signer.sign(
@@ -945,8 +956,9 @@ impl Ensemble<'_> {
         let Some(relay) = &self.relay else {
             return Ok(());
         };
-        let observer = RelaySigner::from_secret_hex(&observer_secret())
-            .map_err(|error| Error::relay(format!("observer key: {error}")))?;
+        let observer = RelaySigner::from_secret_hex(&observer_secret()).map_err(|error| {
+            Error::relay(format!("the observer key could not be derived: {error}"))
+        })?;
         let mut channel = Channel::connect(&relay.url, &observer)?;
         for guild_id in self
             .shared
@@ -1042,13 +1054,13 @@ impl Shared<'_> {
     fn bounded(&self) -> Result<()> {
         if self.actions.load(Ordering::Relaxed) >= self.world.episode.max_actions as usize {
             return Err(Error::episode(format!(
-                "the episode used its {} actions",
+                "the episode reached its limit of {} actions",
                 self.world.episode.max_actions
             )));
         }
         if self.started.elapsed() > Duration::from_secs(self.world.episode.max_seconds) {
             return Err(Error::episode(format!(
-                "the episode used its {} seconds",
+                "the episode reached its limit of {} seconds",
                 self.world.episode.max_seconds
             )));
         }

@@ -109,7 +109,7 @@ pub fn check_with(task: &Task, repository: &Path, trust: &Trust) -> Vec<Checked>
                     trust,
                 );
                 substituted.requirement = format!(
-                    "{} (in place of {slug}, by {DELEGATE_VAR})",
+                    "{} (replacing {slug}, as {DELEGATE_VAR} says)",
                     substituted.requirement
                 );
                 checked.push(substituted);
@@ -166,7 +166,7 @@ fn capability(
 ) -> Checked {
     let refused = refuses.get(slug).filter(|what| !what.is_empty());
     let requirement = match refused {
-        Some(what) => format!("capability {slug}, which refuses {}", what.join(", ")),
+        Some(what) => format!("capability {slug}, which must refuse {}", what.join(", ")),
         None => format!("capability {slug}"),
     };
     let dirs = registries(Some(repository));
@@ -175,7 +175,7 @@ fn capability(
         return Checked {
             requirement,
             found: format!(
-                "nothing describes it — no {slug}.json under {}",
+                "no manifest describes it: there is no {slug}.json under {}",
                 dirs.iter()
                     .map(|dir| dir.path.display().to_string())
                     .collect::<Vec<_>>()
@@ -220,7 +220,7 @@ fn relay_capability(requirement: String) -> Checked {
         (Some(relay), Some(worker)) => Checked {
             requirement,
             found: format!(
-                "a worker {worker} over {relay}; the run's capability_probe check says whether it answers"
+                "worker {worker} on relay {relay}; the run's capability_probe check shows whether the worker answers"
             ),
             met: true,
         },
@@ -235,7 +235,7 @@ fn relay_capability(requirement: String) -> Checked {
             Checked {
                 requirement,
                 found: format!(
-                    "a relay capability with nothing to ask — set {}",
+                    "a relay capability, but no relay or worker to ask is named: set {}",
                     missing.join(" and ")
                 ),
                 met: false,
@@ -405,12 +405,12 @@ fn git(repository: &Path, arguments: &[&str]) -> Result<String, String> {
     let mut command = Command::new("git");
     command.arg("-C").arg(repository).args(arguments);
     let reported = drive::output(command, DETECT_TIMEOUT)
-        .map_err(|error| format!("git {} — {error}", arguments.join(" ")))?;
+        .map_err(|error| format!("git {}: {error}", arguments.join(" ")))?;
     if reported.code == Some(0) {
         Ok(reported.out.trim().to_string())
     } else {
         Err(format!(
-            "{} is not a checkout this can read — {}",
+            "{} is not a Git checkout that coderbench can read: {}",
             repository.display(),
             reported.err.trim()
         ))

@@ -439,7 +439,8 @@ impl Gateway {
         }
         if failed {
             Err(GatewayError::Internal(
-                "Postgres notification or worker state became non-current".to_owned(),
+                "the relay lost its Postgres notification listener or a database worker failed"
+                    .to_owned(),
             ))
         } else {
             Ok(())
@@ -1157,7 +1158,7 @@ async fn handle_event(
             pending.push_back(ok_message(
                 &event.id,
                 false,
-                "restricted: push executor is not configured or advertised",
+                "restricted: this relay does not send push notifications",
             ));
             return Ok(());
         };
@@ -1313,7 +1314,7 @@ async fn handle_identity_archive(
                 pending.push_back(ok_message(
                     &event.id,
                     false,
-                    "restricted: no self, admin, or owner consent path accepts this request",
+                    "restricted: only the identity itself, its owner, or a relay administrator can make this request",
                 ));
                 return Ok(());
             }
@@ -1350,7 +1351,7 @@ async fn handle_identity_archive(
             if changed {
                 ""
             } else {
-                "duplicate: archive state already current"
+                "duplicate: the identity is already in this archive state"
             },
         )),
         Err(error) => {
@@ -1417,7 +1418,7 @@ async fn handle_dm_visibility(
             if changed {
                 ""
             } else {
-                "duplicate: visibility state already current"
+                "duplicate: the visibility is already set to this state"
             },
         )),
         Err(StoreError::Management(reason)) => pending.push_back(ok_message(
@@ -1457,7 +1458,7 @@ async fn handle_agent_observer_event(
         pending.push_back(ok_message(
             &event.id,
             false,
-            "invalid: agent observer timestamp is outside the five-minute freshness window",
+            "invalid: the agent observer frame's timestamp is more than five minutes from the relay's clock",
         ));
         return Ok(());
     }
@@ -1794,7 +1795,7 @@ async fn handle_count(
         Ok(Some(count)) => pending.push_back(count_message(&query_id, count)),
         Ok(None) => pending.push_back(closed_message(
             &query_id,
-            "restricted: count exceeds the configured query bound",
+            "restricted: this count would cost more than the relay's query limit allows; narrow the filters",
         )),
         Err(_) => pending.push_back(closed_message(&query_id, "error: count query failed")),
     }
@@ -1844,7 +1845,9 @@ fn owner_scoped_filter_denial(filters: &[Filter], read_pubkeys: &[String]) -> Op
                     .all(|value| read_pubkeys.iter().any(|pubkey| pubkey == value))
         });
         if kinds.contains(&1_059) && !p_scoped {
-            return Some("restricted: gift-wrap reads must be scoped to #p self");
+            return Some(
+                "restricted: to read gift wraps, filter #p to your own authenticated public key",
+            );
         }
         if kinds.iter().any(|kind| {
             matches!(
@@ -1853,17 +1856,23 @@ fn owner_scoped_filter_denial(filters: &[Filter], read_pubkeys: &[String]) -> Op
             )
         }) && !p_scoped
         {
-            return Some("restricted: recipient-private reads must be scoped to #p self");
+            return Some(
+                "restricted: to read these private events, filter #p to your own authenticated public key",
+            );
         }
         if kinds
             .iter()
             .any(|kind| matches!(*kind, EVENT_REMINDER_KIND | PUSH_LEASE_KIND))
             && !author_scoped
         {
-            return Some("restricted: author-private reads must be scoped to authors self");
+            return Some(
+                "restricted: to read these private events, filter authors to your own authenticated public key",
+            );
         }
         if kinds.contains(&AGENT_ENGRAM_KIND) && !p_scoped && !author_scoped {
-            return Some("restricted: engram reads must be scoped to agent author or #p owner");
+            return Some(
+                "restricted: to read agent engrams, filter authors to the agent or #p to its owner, using your authenticated public key",
+            );
         }
     }
     None
@@ -2014,7 +2023,7 @@ fn admission_response(outcome: AdmissionOutcome) -> (bool, String) {
             AdmissionRejection::TimestampTooFarInFuture { .. }
             | AdmissionRejection::TimestampTooOld { .. } => (
                 false,
-                "invalid: event timestamp is outside relay bounds".to_owned(),
+                "invalid: the event's created_at timestamp is too far in the past or the future for this relay".to_owned(),
             ),
             AdmissionRejection::AuthEvent => (
                 false,
@@ -2033,11 +2042,11 @@ fn admission_response(outcome: AdmissionOutcome) -> (bool, String) {
             }
             AdmissionRejection::GroupUnauthorized => (
                 false,
-                "restricted: group membership or administrator role required".to_owned(),
+                "restricted: only a group member or administrator can do this".to_owned(),
             ),
             AdmissionRejection::GroupClosed => (false, "restricted: group is closed".to_owned()),
             AdmissionRejection::GroupAlreadyMember => {
-                (false, "duplicate: already a group member".to_owned())
+                (false, "duplicate: you are already a member of this group".to_owned())
             }
             AdmissionRejection::GroupUnsupportedKind => (
                 false,
@@ -2045,7 +2054,7 @@ fn admission_response(outcome: AdmissionOutcome) -> (bool, String) {
             ),
             AdmissionRejection::GroupPreviousUnknown => (
                 false,
-                "invalid: group previous reference is not in recent relay history".to_owned(),
+                "invalid: the event's previous tag names an event that is not in this relay's recent group history".to_owned(),
             ),
             AdmissionRejection::GroupSigningUnavailable => (
                 false,
@@ -2065,8 +2074,10 @@ fn store_error_response(error: &StoreError) -> String {
         | StoreError::EphemeralTooLarge(_) => {
             format!("invalid: {}", bounded(&error.to_string(), 512))
         }
-        StoreError::QueryCancelled => "error: admission was cancelled".to_owned(),
-        _ => "error: storage unavailable".to_owned(),
+        StoreError::QueryCancelled => {
+            "error: the relay cancelled storing this event; try again".to_owned()
+        }
+        _ => "error: the relay's storage is unavailable; try again later".to_owned(),
     }
 }
 

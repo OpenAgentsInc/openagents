@@ -77,7 +77,11 @@ pub fn run(command: Command, wall: Duration) -> Result<Said, Stop> {
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
-            .map_err(|error| Stop::Failed(format!("no runtime to supervise the probe: {error}")))?;
+            .map_err(|error| {
+                Stop::Failed(format!(
+                    "couldn't start the runtime that runs the probe: {error}"
+                ))
+            })?;
         Ok(runtime.block_on(
             Job::from_command(command)
                 .bounded(Limits::within(wall).keeping(OUTPUT_MAX))

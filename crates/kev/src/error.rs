@@ -79,9 +79,9 @@ pub enum Bound {
 impl std::fmt::Display for Bound {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Host => f.write_str("the host's forward slots"),
-            Self::Variant(model) => write!(f, "the `{model}` forward slots"),
-            Self::Memory => f.write_str("the working-memory budget in MiB"),
+            Self::Host => f.write_str("the inference slots on this host"),
+            Self::Variant(model) => write!(f, "the inference slots for `{model}`"),
+            Self::Memory => f.write_str("the working-memory budget (counted in MiB)"),
         }
     }
 }
@@ -111,21 +111,21 @@ pub enum Error {
     #[error("score question `{id}` needs at least two levels, has {count}")]
     TooFewLevels { id: String, count: usize },
     /// The state alone exceeds the encoding's token budget under `strict`.
-    #[error("state exceeds {max} tokens: {tokens}")]
+    #[error("the state is {tokens} tokens; at most {max} fit")]
     StateTooLong { tokens: usize, max: usize },
     /// A question branch plus the state exceeds the token budget.
-    #[error("branch too long: {tokens} > {max}")]
+    #[error("a question plus the state is {tokens} tokens; at most {max} fit")]
     BranchTooLong { tokens: usize, max: usize },
     /// The request carries more questions than the door admits in one pass.
-    #[error("{count} questions; at most {max} are admitted in one request")]
+    #[error("{count} questions in one request; at most {max} are allowed")]
     TooManyQuestions { count: usize, max: usize },
     /// The request's options, summed over every question, exceed the bound.
-    #[error("{count} options across all questions; at most {max} are admitted")]
+    #[error("{count} options across all questions; at most {max} are allowed")]
     TooManyTotalOptions { count: usize, max: usize },
     /// The packed sequence exceeds the door's total token budget; the
     /// attention mask it would need is quadratic in that length.
     #[error(
-        "packed sequence of {tokens} tokens exceeds {max}; its attention mask would need about {attention_bytes} bytes"
+        "the request packs into {tokens} tokens, over the limit of {max}; its attention mask would need about {attention_bytes} bytes"
     )]
     TooManyTokens {
         tokens: usize,
@@ -135,7 +135,7 @@ pub enum Error {
     /// The delimiter tokens the request's shape alone packs to exceed the
     /// door's total token budget, before any text is tokenized.
     #[error(
-        "the request's {questions} questions and {options} options pack to at least {floor} tokens; at most {max} are admitted"
+        "the request's {questions} questions and {options} options need at least {floor} tokens before any text; at most {max} are allowed"
     )]
     SequenceFloorTooLong {
         questions: usize,
@@ -146,17 +146,17 @@ pub enum Error {
     /// A forward bound is saturated: the host's slots, the named variant's
     /// slots, or the working-memory budget. `in_flight` and `limit` count
     /// forwards for the first two and MiB for the budget.
-    #[error("busy: {bound} at its limit, {in_flight} of {limit} in use")]
+    #[error("busy: no room in {bound}, {in_flight} of {limit} in use; retry shortly")]
     Busy {
         bound: Bound,
         in_flight: usize,
         limit: usize,
     },
     /// The `model` field names no loaded variant.
-    #[error("unknown model `{model}`; known: {}", known.join(", "))]
+    #[error("unknown model `{model}`; this server serves: {}", known.join(", "))]
     UnknownModel { model: String, known: Vec<String> },
     /// The tokenizer failed to load or to encode.
-    #[error("tokenizer: {0}")]
+    #[error("tokenizer failed: {0}")]
     Tokenize(String),
     /// A model, adapter, or head artifact is missing or malformed.
     #[error("artifact: {0}")]

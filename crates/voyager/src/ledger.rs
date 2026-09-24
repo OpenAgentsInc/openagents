@@ -267,13 +267,12 @@ impl Ledger {
     ///
     /// The id must name an open hold and `spent` must not exceed it.
     pub fn settle(&mut self, id: &str, spent: u64) -> Result<()> {
-        let hold = self
-            .holds
-            .get(id)
-            .ok_or_else(|| Error::world(format!("settle {id}: no open hold")))?;
+        let hold = self.holds.get(id).ok_or_else(|| {
+            Error::world(format!("cannot settle hold {id}: no open hold has that ID"))
+        })?;
         if spent > hold.credits {
             return Err(Error::world(format!(
-                "settle {id}: spent {spent} exceeds the {} held",
+                "cannot settle hold {id}: {spent} credits spent is more than the {} held",
                 hold.credits
             )));
         }
@@ -317,7 +316,9 @@ impl Ledger {
     /// The id must name an open hold.
     pub fn release(&mut self, id: &str) -> Result<()> {
         if !self.holds.contains_key(id) {
-            return Err(Error::world(format!("release {id}: no open hold")));
+            return Err(Error::world(format!(
+                "cannot release hold {id}: no open hold has that ID"
+            )));
         }
         self.append(Event::Release { id: id.to_string() })
     }
@@ -326,7 +327,7 @@ impl Ledger {
     /// only sees what the disk accepted.
     fn append(&mut self, event: Event) -> Result<()> {
         let mut line = serde_json::to_vec(&event)
-            .map_err(|error| Error::world(format!("ledger serialize: {error}")))?;
+            .map_err(|error| Error::world(format!("could not encode the ledger event: {error}")))?;
         line.push(b'\n');
         self.file
             .write_all(&line)

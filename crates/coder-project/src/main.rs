@@ -19,10 +19,23 @@ const USAGE: &str = "Usage:
   coder-project snapshot REPOSITORY OWNER REPO PROJECT_NUMBER
   coder-project pin-config TEMPLATE.json NEW_CONFIGURATION.json
 
-run-one executes one explicitly prepared task through Coder. It requires the
-operator's capability approval and program authority. Results require review.
-inspect checks a committed scratch artifact without running its code or tests.
-project polls the scoped project and refills prepared tasks; host review remains required.
+Commands:
+  run-one         Run one prepared task through Coder. You must have approved
+                  the executor's capability and allowed the task's program.
+                  Review the result before you use it.
+  inspect         Check a committed change in a scratch worktree without
+                  running its code or tests.
+  verify          Run the checks in a verification plan on a scratch worktree.
+  run-suite       Run the repository's test suite on a scratch worktree, as a
+                  verification plan describes.
+  review-changes  Run a plan's checks, then review the change's diff.
+  gym-suite       Measure a Gym suite for a verification plan and print the
+                  result as JSON.
+  project         Poll a GitHub project and start its prepared tasks. With
+                  --watch, keep polling. You still review every result.
+  snapshot        Print a GitHub project's current items as JSON.
+  pin-config      Fill a configuration template's pinned commits and digests,
+                  and write the result to a new file.
 ";
 
 fn read_assignment(path: &Path) -> Result<Assignment, String> {
@@ -32,7 +45,7 @@ fn read_assignment(path: &Path) -> Result<Assignment, String> {
         .read_to_end(&mut bytes)
         .map_err(|e| e.to_string())?;
     if bytes.len() > 128 * 1024 {
-        return Err("assignment exceeds 128 KiB".into());
+        return Err("the assignment file is larger than 128 KiB".into());
     }
     let assignment: Assignment = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
     assignment.validate()?;
@@ -77,11 +90,13 @@ async fn execute(args: &[String]) -> Result<u8, String> {
             let output = PathBuf::from(&args[3]);
             let parent = output
                 .parent()
-                .ok_or("output directory needs an existing parent")?
+                .ok_or("the output directory's parent directory must exist")?
                 .canonicalize()
                 .map_err(|e| e.to_string())?;
             if parent.starts_with(&repo) {
-                return Err("execution evidence must be outside the delegated repository".into());
+                return Err(
+                    "the output directory must be outside the repository the task runs in".into(),
+                );
             }
             std::fs::DirBuilder::new()
                 .mode(0o700)
@@ -92,7 +107,7 @@ async fn execute(args: &[String]) -> Result<u8, String> {
             let trace = output.join("trace.atif.jsonl");
             let report = tokio::select! {
                 result = dispatch(&repo, survey, &assignment, &trace) => result?,
-                _ = tokio::signal::ctrl_c() => return Err("dispatch interrupted; reconcile the retained attempt before retrying".into()),
+                _ = tokio::signal::ctrl_c() => return Err("the task was interrupted; check the retained attempt in the output directory before you run it again".into()),
             };
             record(&output.join("result.json"), &report)?;
             println!(
@@ -137,7 +152,7 @@ async fn execute(args: &[String]) -> Result<u8, String> {
                 .read_to_end(&mut bytes)
                 .map_err(|e| e.to_string())?;
             if bytes.len() > 1024 * 1024 {
-                return Err("verification plan exceeds 1 MiB".into());
+                return Err("the verification plan is larger than 1 MiB".into());
             }
             let value: serde_json::Value =
                 serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
@@ -195,7 +210,9 @@ async fn execute(args: &[String]) -> Result<u8, String> {
             };
             trace.finish("ended");
             if let Some(error) = trace.failure() {
-                return Err(format!("verification trace is incomplete: {error}"));
+                return Err(format!(
+                    "could not finish writing the verification trace: {error}"
+                ));
             }
             let (value, code) = match result {
                 Ok(run) => (
@@ -232,7 +249,9 @@ async fn execute(args: &[String]) -> Result<u8, String> {
             let scope = coder_project::github::Scope {
                 owner: args[2].clone(),
                 repository: args[3].clone(),
-                project: args[4].parse().map_err(|_| "invalid project number")?,
+                project: args[4]
+                    .parse()
+                    .map_err(|_| "PROJECT_NUMBER must be a whole number")?,
             };
             let snapshot = coder_project::github::fetch(&scope, Path::new(&args[1])).await?;
             println!(

@@ -63,7 +63,11 @@ impl Skill {
     fn digest_bytes(&self) -> Result<Vec<u8>> {
         let mut body = self.clone();
         body.digest.clear();
-        serde_json::to_vec(&body).map_err(|error| Error::episode(format!("skill: {error}")))
+        serde_json::to_vec(&body).map_err(|error| {
+            Error::episode(format!(
+                "could not encode the skill for its digest: {error}"
+            ))
+        })
     }
 
     /// The digest this record earns.
@@ -145,7 +149,7 @@ impl SkillStore {
     pub fn add(&self, name: &str, description: &str, source: &str) -> Result<Skill> {
         if !valid_name(name) {
             return Err(Error::episode(format!(
-                "skill name {name:?} is not a usable file stem"
+                "skill name {name:?} can't be a file name; use only letters, digits, hyphens, and underscores"
             )));
         }
         let index = self.index()?;
@@ -182,8 +186,9 @@ impl SkillStore {
         let (name, version) = match name.split_once('@') {
             Some((name, at)) => (
                 name,
-                at.parse::<u32>()
-                    .map_err(|_| Error::episode(format!("skill version in {name:?}@{at:?}")))?,
+                at.parse::<u32>().map_err(|_| {
+                    Error::episode(format!("the version in {name:?}@{at:?} is not a number"))
+                })?,
             ),
             None => {
                 let index = self.index()?;
@@ -209,7 +214,7 @@ impl SkillStore {
         }
         if skill.digest != skill.digest()? {
             return Err(Error::episode(format!(
-                "{}: digest does not match the record",
+                "{}: the stored digest does not match the skill's contents; the file changed after it was saved",
                 path.display()
             )));
         }

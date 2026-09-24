@@ -103,8 +103,8 @@ impl std::fmt::Display for ScriptError {
                 write!(f, "script does not parse at {position}: {message}")
             }
             Self::Runtime { at, message } => write!(f, "{at}: {message}"),
-            Self::Exhausted => write!(f, "the script used its instruction budget"),
-            Self::Timeout => write!(f, "the script used its time budget"),
+            Self::Exhausted => write!(f, "the script ran out of its instruction budget"),
+            Self::Timeout => write!(f, "the script ran out of time"),
         }
     }
 }
@@ -341,7 +341,7 @@ fn run_script(
         x if x == Stop::Timeout as u8 => Some(ScriptError::Timeout),
         x if x == Stop::Depth as u8 => Some(ScriptError::Runtime {
             at: "script".to_string(),
-            message: "the script used its call-depth budget".to_string(),
+            message: "the script exceeded its function call depth limit".to_string(),
         }),
         _ => None,
     };
@@ -476,7 +476,9 @@ impl Host for BridgeHost<'_> {
             "mine" => 90,
             "wait" => 45,
             other => {
-                return Err(Error::episode(format!("unknown op {other:?}")));
+                return Err(Error::episode(format!(
+                    "unknown bridge operation {other:?}"
+                )));
             }
         };
         self.bridge

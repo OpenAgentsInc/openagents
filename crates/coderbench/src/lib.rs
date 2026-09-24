@@ -598,8 +598,8 @@ impl std::fmt::Display for Fault {
             }
             Self::DelegationUnverified { id } => write!(
                 f,
-                "delegation {id} recorded no answer anybody checked, \
-                 so nothing says it answered correctly"
+                "delegation {id} has no recorded check of its answer, \
+                 so nothing shows that it answered correctly"
             ),
             Self::DelegationsCorrect {
                 expected,
@@ -607,8 +607,8 @@ impl std::fmt::Display for Fault {
                 unverified,
             } => write!(
                 f,
-                "{verified} delegations are recorded correct, expected {expected}; \
-                 {unverified} recorded nothing either way"
+                "{verified} delegations have answers recorded as correct, expected {expected}; \
+                 {unverified} have no recorded check"
             ),
             Self::DecisionMissing { name } => write!(f, "never asked the {name} decision"),
             Self::DecisionFailed { name, outcome } => {
@@ -634,7 +634,10 @@ impl std::fmt::Display for Fault {
                 write!(f, "the {name} check {outcome} rather than completing")
             }
             Self::OutOfOrder { step, before } => {
-                write!(f, "ran {step} before {before}, which the path puts first")
+                write!(
+                    f,
+                    "ran {step} before {before}, but the task expects {before} first"
+                )
             }
             Self::UnexpectedWrite { path } => write!(f, "wrote {path}, expected no writes"),
             Self::WriteCount { expected, found } => {
@@ -642,7 +645,7 @@ impl std::fmt::Display for Fault {
             }
             Self::WritesUnobserved => write!(
                 f,
-                "nothing compared the workspace, so writing nothing is unobserved rather than shown"
+                "nothing compared the workspace before and after the run, so no evidence shows that it wrote nothing"
             ),
             Self::Ended { found, allowed } => write!(
                 f,
@@ -667,7 +670,7 @@ impl std::fmt::Display for Fault {
             }
             Self::TornTrace { lines } => write!(
                 f,
-                "{lines} {} of the trace did not read back",
+                "{lines} {} of the trace could not be read",
                 if *lines == 1 { "line" } else { "lines" }
             ),
             Self::ExpectationMalformed { why } => {

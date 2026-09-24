@@ -239,12 +239,18 @@ async fn serve_upload(
             &mut stream,
             405,
             "Method Not Allowed",
-            "upload requires PUT",
+            "uploads must use PUT",
         )
         .await;
     }
     if !rate.media_from_ip(ip) {
-        return media_error(&mut stream, 429, "Too Many Requests", "media rate exceeded").await;
+        return media_error(
+            &mut stream,
+            429,
+            "Too Many Requests",
+            "too many media requests; try again later",
+        )
+        .await;
     }
     let media_config = config
         .media
@@ -289,15 +295,33 @@ async fn serve_upload(
     match head.header("x-sha-256") {
         Some(value) if value == sha256 => {}
         Some(value) if is_lower_hex_64(value) => {
-            return media_error(&mut stream, 400, "Bad Request", "X-SHA-256 does not match").await;
+            return media_error(
+                &mut stream,
+                400,
+                "Bad Request",
+                "the X-SHA-256 header does not match the digest in the authorization event",
+            )
+            .await;
         }
         Some(_) => {
-            return media_error(&mut stream, 400, "Bad Request", "invalid X-SHA-256").await;
+            return media_error(
+                &mut stream,
+                400,
+                "Bad Request",
+                "the X-SHA-256 header must be a 64-character lowercase hex SHA-256 digest",
+            )
+            .await;
         }
         None => {}
     }
     if !rate.media_from_pubkey(&auth.pubkey) {
-        return media_error(&mut stream, 429, "Too Many Requests", "media rate exceeded").await;
+        return media_error(
+            &mut stream,
+            429,
+            "Too Many Requests",
+            "too many media requests; try again later",
+        )
+        .await;
     }
     let outcome = match db
         .register_media(
@@ -322,14 +346,20 @@ async fn serve_upload(
             .await;
         }
         Err(StoreError::Media(_)) => {
-            return media_error(&mut stream, 409, "Conflict", "authorization already used").await;
+            return media_error(
+                &mut stream,
+                409,
+                "Conflict",
+                "this authorization event was already used; sign a new one",
+            )
+            .await;
         }
         Err(_) => {
             return media_error(
                 &mut stream,
                 503,
                 "Service Unavailable",
-                "media database unavailable",
+                "the media database is unavailable",
             )
             .await;
         }
@@ -349,7 +379,7 @@ async fn serve_upload(
                 &mut stream,
                 503,
                 "Service Unavailable",
-                "media storage unavailable",
+                "media storage is unavailable",
             )
             .await;
         }
@@ -374,7 +404,7 @@ async fn serve_upload(
             &mut stream,
             400,
             "Bad Request",
-            "body does not match the authorized payload digest",
+            "the upload body does not match the SHA-256 digest in the authorization event",
         )
         .await;
     }
@@ -389,7 +419,7 @@ async fn serve_upload(
             &mut stream,
             503,
             "Service Unavailable",
-            "media storage unavailable; upload may be retried",
+            "media storage is unavailable; you can retry the upload",
         )
         .await;
     }
@@ -402,7 +432,7 @@ async fn serve_upload(
                 &mut stream,
                 409,
                 "Conflict",
-                "media ownership was deleted during upload",
+                "the blob was deleted while the upload was in progress",
             )
             .await;
         }
@@ -415,7 +445,7 @@ async fn serve_upload(
                 &mut stream,
                 503,
                 "Service Unavailable",
-                "media publication was not finalized; upload may be retried",
+                "the upload did not finish; you can retry it",
             )
             .await;
         }
@@ -470,7 +500,7 @@ async fn serve_blob(
                 head,
                 503,
                 "Service Unavailable",
-                "media database unavailable",
+                "the media database is unavailable",
                 &[],
             )
             .await;
@@ -501,7 +531,7 @@ async fn serve_blob(
                 head,
                 503,
                 "Service Unavailable",
-                "blob storage is not current",
+                "the stored file for this blob is missing or incomplete",
                 &[],
             )
             .await;
@@ -512,7 +542,7 @@ async fn serve_blob(
                 head,
                 503,
                 "Service Unavailable",
-                "media storage unavailable",
+                "media storage is unavailable",
                 &[],
             )
             .await;
@@ -524,7 +554,7 @@ async fn serve_blob(
             head,
             503,
             "Service Unavailable",
-            "blob storage is not current",
+            "the stored file for this blob is missing or incomplete",
             &[],
         )
         .await;
@@ -608,7 +638,13 @@ async fn serve_delete(
     sha256: String,
 ) -> Result<(), GatewayError> {
     if !rate.media_from_ip(ip) {
-        return media_error(&mut stream, 429, "Too Many Requests", "media rate exceeded").await;
+        return media_error(
+            &mut stream,
+            429,
+            "Too Many Requests",
+            "too many media requests; try again later",
+        )
+        .await;
     }
     let Some(authorization) = head.header("authorization") else {
         return unauthorized(&mut stream).await;
@@ -625,7 +661,13 @@ async fn serve_delete(
         Err(_) => return unauthorized(&mut stream).await,
     };
     if !rate.media_from_pubkey(&auth.pubkey) {
-        return media_error(&mut stream, 429, "Too Many Requests", "media rate exceeded").await;
+        return media_error(
+            &mut stream,
+            429,
+            "Too Many Requests",
+            "too many media requests; try again later",
+        )
+        .await;
     }
     match db
         .delete_media(auth.event_id, auth.pubkey, sha256.clone())
@@ -645,7 +687,7 @@ async fn serve_delete(
                         &mut stream,
                         503,
                         "Service Unavailable",
-                        "blob metadata removed; operator physical cleanup is required",
+                        "blob record deleted; the relay operator must remove the stored file",
                     )
                     .await;
                 }
@@ -653,14 +695,20 @@ async fn serve_delete(
             media_success(&mut stream, "blob deleted").await
         }
         Err(StoreError::Media(_)) => {
-            media_error(&mut stream, 409, "Conflict", "authorization already used").await
+            media_error(
+                &mut stream,
+                409,
+                "Conflict",
+                "this authorization event was already used; sign a new one",
+            )
+            .await
         }
         Err(_) => {
             media_error(
                 &mut stream,
                 503,
                 "Service Unavailable",
-                "media database unavailable",
+                "the media database is unavailable",
             )
             .await
         }

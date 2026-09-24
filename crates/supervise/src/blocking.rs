@@ -43,7 +43,7 @@ pub fn wait(child: &mut Child, wall: Duration) -> Ending {
             let _ = child.kill();
             let _ = child.wait();
             return Ending::Failed(
-                "the child does not lead a group of its own, so it was not spawned through own_group"
+                "the child process was not started in a process group of its own; start it through own_group"
                     .to_string(),
             );
         }

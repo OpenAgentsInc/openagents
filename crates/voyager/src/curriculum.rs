@@ -294,7 +294,11 @@ impl Responses {
             .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(300))
             .build()
-            .map_err(|error| Error::episode(format!("responses door: {error}")))?;
+            .map_err(|error| {
+                Error::episode(format!(
+                    "the HTTP client for the Open Responses door did not start: {error}"
+                ))
+            })?;
         Ok(Responses {
             http,
             url: section.url.trim_end_matches('/').to_string(),
@@ -323,21 +327,24 @@ impl Responses {
         if let Some(key) = &self.key {
             request = request.bearer_auth(key);
         }
-        let response = request
-            .json(&body)
-            .send()
-            .map_err(|error| Error::episode(format!("curriculum door: {error}")))?;
+        let response = request.json(&body).send().map_err(|error| {
+            Error::episode(format!(
+                "the curriculum request to the Open Responses door failed: {error}"
+            ))
+        })?;
         let status = response.status();
-        let body: Value = response
-            .json()
-            .map_err(|error| Error::episode(format!("curriculum door body: {error}")))?;
+        let body: Value = response.json().map_err(|error| {
+            Error::episode(format!(
+                "the Open Responses door sent a curriculum reply that is not JSON: {error}"
+            ))
+        })?;
         if !status.is_success() {
             let message = body["error"]["message"]
                 .as_str()
-                .unwrap_or("the door refused")
+                .unwrap_or("the door refused the request")
                 .to_string();
             return Err(Error::episode(format!(
-                "curriculum door {status}: {message}"
+                "the Open Responses door refused the curriculum request with {status}: {message}"
             )));
         }
         // The answer is the output items' text, joined — the same
@@ -358,7 +365,9 @@ impl Responses {
             text.push_str(text_field);
         }
         if text.trim().is_empty() {
-            return Err(Error::episode("responses door answered no text"));
+            return Err(Error::episode(
+                "the Open Responses door answered with no text",
+            ));
         }
         Ok(text)
     }
@@ -425,12 +434,15 @@ fn parse_proposal(text: &str) -> Result<Proposed> {
     let end = text.rfind('}');
     let (Some(start), Some(end)) = (start, end) else {
         return Err(Error::episode(format!(
-            "curriculum answer held no JSON: {}",
+            "the curriculum reply has no JSON object: {}",
             &text[..text.len().min(120)]
         )));
     };
-    let value: Value = serde_json::from_str(&text[start..=end])
-        .map_err(|error| Error::episode(format!("curriculum answer did not parse: {error}")))?;
+    let value: Value = serde_json::from_str(&text[start..=end]).map_err(|error| {
+        Error::episode(format!(
+            "the curriculum reply's JSON object does not parse: {error}"
+        ))
+    })?;
     if value["done"].as_bool().unwrap_or(false) {
         return Ok(Proposed::Done);
     }
@@ -441,7 +453,7 @@ fn parse_proposal(text: &str) -> Result<Proposed> {
         .to_string();
     if goal.is_empty() {
         return Err(Error::episode(
-            "curriculum answer named no goal".to_string(),
+            "the curriculum reply names no goal".to_string(),
         ));
     }
     let verify: Spec = serde_json::from_value(value["verify"].clone()).unwrap_or(Spec::Noul);

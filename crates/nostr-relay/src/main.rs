@@ -30,13 +30,13 @@ async fn run() -> Result<(), GatewayError> {
     if let Some(command) = arguments.next() {
         if arguments.next().is_some() {
             return Err(GatewayError::Config(
-                "operator command accepts no positional arguments".to_owned(),
+                "the import-jsonl command takes no arguments".to_owned(),
             ));
         }
         return match command.as_str() {
             "import-jsonl" => operations::import_signed_events().await,
             _ => Err(GatewayError::Config(format!(
-                "unknown operator command: {command}"
+                "unknown command {command:?}; the only command is import-jsonl, or run with no arguments to start the relay"
             ))),
         };
     }

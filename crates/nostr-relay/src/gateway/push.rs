@@ -156,7 +156,8 @@ pub async fn post_reconnect(gateway: &str, endpoint: &str) -> Result<(), String>
     let (host, port) = match authority.split_once(':') {
         Some((host, port)) => (
             host,
-            port.parse::<u16>().map_err(|_| "gateway port".to_owned())?,
+            port.parse::<u16>()
+                .map_err(|_| "the push gateway port is not a number".to_owned())?,
         ),
         None => (authority, 80),
     };
@@ -186,13 +187,14 @@ fn matching(lease: &AcceptedLease, event: &Event, now: u64) -> bool {
 fn xonly(pubkey: &str) -> Result<XOnlyPublicKey, String> {
     let mut bytes = [0_u8; 32];
     if pubkey.len() != 64 {
-        return Err("author pubkey".to_owned());
+        return Err("the author public key is not valid".to_owned());
     }
     for (index, byte) in bytes.iter_mut().enumerate() {
         *byte = u8::from_str_radix(&pubkey[index * 2..index * 2 + 2], 16)
-            .map_err(|_| "author pubkey".to_owned())?;
+            .map_err(|_| "the author public key is not valid".to_owned())?;
     }
-    XOnlyPublicKey::from_byte_array(bytes).map_err(|_| "author pubkey".to_owned())
+    XOnlyPublicKey::from_byte_array(bytes)
+        .map_err(|_| "the author public key is not valid".to_owned())
 }
 
 #[cfg(test)]

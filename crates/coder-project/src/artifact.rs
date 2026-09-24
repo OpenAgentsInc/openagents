@@ -90,7 +90,7 @@ async fn verify_program(
     )
     .await?;
     if before.tip != requirements.tip || before.digest() != requirements.plan.input_digest {
-        return Err("verification plan does not bind the inspected artifact".into());
+        return Err("the verification plan's tip and input_digest do not match the inspected commit; run inspect again and update the plan".into());
     }
     let program = coder::Program::parse(program_json.as_bytes())?;
     let survey = coder::Survey::read(Some(repository), repository);
@@ -153,7 +153,7 @@ pub async fn review_changes(
     }
     let before = inspect(repository, worktree, &pins.base, &pins.owned_paths).await?;
     if before.tip != pins.tip || before.digest() != pins.plan.input_digest {
-        return Err("review plan does not bind the inspected artifact".into());
+        return Err("the review plan's tip and input_digest do not match the inspected commit; run inspect again and update the plan".into());
     }
     let diff = observe(
         worktree,
@@ -266,7 +266,10 @@ async fn observe(worktree: &Path, args: &[&str]) -> Result<String, String> {
         .run()
         .await;
     if !result.ending.success() || result.truncated() {
-        return Err("scratch Git observation failed or exceeded its output bound".into());
+        return Err(
+            "a Git command in the scratch worktree failed or printed more output than allowed"
+                .into(),
+        );
     }
     Ok(result.stdout.text)
 }
@@ -285,7 +288,7 @@ pub async fn inspect(
         return Err("artifact base must be a full commit ID".into());
     }
     if allowed.is_empty() {
-        return Err("writing acceptance requires explicit owned paths".into());
+        return Err("a task that writes files needs a list of the paths it owns".into());
     }
     for path in allowed {
         relative(path)?;
@@ -296,7 +299,7 @@ pub async fn inspect(
         .map_err(|e| e.to_string())?;
     let canonical = worktree.canonicalize().map_err(|e| e.to_string())?;
     if canonical.parent() != Some(parent.as_path()) {
-        return Err("artifact is not a direct retained worktree of this repository".into());
+        return Err("the worktree is not a retained worktree of this repository".into());
     }
     let metadata =
         std::fs::symlink_metadata(canonical.join(".coder-git")).map_err(|e| e.to_string())?;

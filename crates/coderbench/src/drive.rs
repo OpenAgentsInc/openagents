@@ -129,8 +129,9 @@ pub fn find_coder(named: Option<&Path>) -> Result<PathBuf, String> {
     {
         return Ok(beside);
     }
-    crate::preflight::resolve("coder")
-        .ok_or_else(|| "no coder binary — build one, or name it with --coder".to_string())
+    crate::preflight::resolve("coder").ok_or_else(|| {
+        "cannot find a coder binary: build one, or pass its path with --coder".to_string()
+    })
 }
 
 /// Reads a named binary as a path from here.
@@ -143,7 +144,7 @@ fn here(named: &Path) -> Result<PathBuf, String> {
     if named.exists() {
         Ok(named)
     } else {
-        Err(format!("{}, which is not there", named.display()))
+        Err(format!("{}, which does not exist", named.display()))
     }
 }
 
@@ -173,7 +174,7 @@ pub fn coder(
 ) -> Result<Run, String> {
     if trace.exists() {
         return Err(format!(
-            "{} already exists, and a session never writes over another session's record",
+            "{} already exists: choose a new trace path, because a run never overwrites another run's trace",
             trace.display()
         ));
     }
@@ -202,14 +203,14 @@ pub fn coder(
         // A run that never started has no record to leave behind.
         let _ = std::fs::remove_file(&stdout);
         let _ = std::fs::remove_file(&stderr);
-        format!("{} will not start — {error}", binary.display())
+        format!("cannot start {}: {error}", binary.display())
     })?;
     let outcome = match blocking::wait(&mut child, timeout) {
         Ending::Exited(code) => Outcome::of(code),
         Ending::TimedOut => Outcome::TimedOut,
         Ending::Failed(why) => {
             return Err(format!(
-                "{} could not be waited on — {why}",
+                "could not wait for {} to finish: {why}",
                 binary.display()
             ));
         }

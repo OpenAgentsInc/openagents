@@ -18,7 +18,7 @@ impl fmt::Display for GatewayError {
             Self::Io(error) => write!(f, "I/O error: {error}"),
             Self::Store(error) => write!(f, "store error: {error}"),
             Self::WebSocket(error) => write!(f, "WebSocket error: {error}"),
-            Self::Internal(reason) => write!(f, "gateway invariant failed: {reason}"),
+            Self::Internal(reason) => write!(f, "internal relay error: {reason}"),
         }
     }
 }

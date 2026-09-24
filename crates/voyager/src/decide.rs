@@ -72,8 +72,9 @@ impl Door {
     /// The client must build; the decisions directory must create.
     pub fn local(url: &str, model: &str, dir: impl AsRef<Path>) -> Result<Self> {
         std::fs::create_dir_all(dir.as_ref())?;
-        let client = jev::BlockingClient::new(jev::Config::local(url, model))
-            .map_err(|error| Error::decision(format!("client: {error}")))?;
+        let client = jev::BlockingClient::new(jev::Config::local(url, model)).map_err(|error| {
+            Error::decision(format!("the decision client did not start: {error}"))
+        })?;
         Ok(Door {
             client,
             model: model.to_string(),
@@ -95,7 +96,9 @@ impl Door {
         std::fs::create_dir_all(dir.as_ref())?;
         let client =
             jev::BlockingClient::new(jev::Config::new().base_url(url).default_model(model))
-                .map_err(|error| Error::decision(format!("client: {error}")))?;
+                .map_err(|error| {
+                    Error::decision(format!("the decision client did not start: {error}"))
+                })?;
         Ok(Door {
             client,
             model: model.to_string(),
@@ -137,9 +140,9 @@ impl Door {
             // abandons a healthy answer mid-flight.
             .timeout(Duration::from_secs(240))
             .retry(retry);
-        let body = request
-            .body(&self.model)
-            .map_err(|error| Error::decision(format!("request: {error}")))?;
+        let body = request.body(&self.model).map_err(|error| {
+            Error::decision(format!("the decision request could not be built: {error}"))
+        })?;
         let started = std::time::Instant::now();
         let response = self.client.system_one(request);
         let milliseconds = started.elapsed().as_millis() as u64;
@@ -214,9 +217,11 @@ impl Door {
         }
         let (response, record) =
             self.call(&state, Questions::new().with("pick", choice), purpose)?;
-        let picked = response
-            .choice("pick")
-            .map_err(|error| Error::decision(format!("answer: {error}")))?;
+        let picked = response.choice("pick").map_err(|error| {
+            Error::decision(format!(
+                "the decision answer does not match the question: {error}"
+            ))
+        })?;
         // NIP-CJ's decision family normalizes `confidence` to the
         // selected option's probability; the SDK accepts any value in
         // [0,1], so the door's own field is not trusted — the recorded
@@ -253,9 +258,11 @@ impl Door {
             Questions::new().with("verdict", Noul::new(instructions)),
             purpose,
         )?;
-        let answer = response
-            .noul("verdict")
-            .map_err(|error| Error::decision(format!("answer: {error}")))?;
+        let answer = response.noul("verdict").map_err(|error| {
+            Error::decision(format!(
+                "the decision answer does not match the question: {error}"
+            ))
+        })?;
         Ok(Judged {
             probability: answer.noul,
             record,

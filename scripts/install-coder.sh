@@ -76,15 +76,15 @@ rollback() {
   test -r "$record" || die "no previous build is recorded in $record"
   local previous
   previous="$(cat "$record")"
-  test -n "$previous" && test "$previous" != none || die "$record records no build"
-  test -x "$previous" || die "the recorded build $previous is not an executable"
+  test -n "$previous" && test "$previous" != none || die "$record is empty, so there is no previous build to roll back to"
+  test -x "$previous" || die "the previous build $previous is missing or not executable"
   local was
   was="$(current)"
   switch_to "$previous"
   echo "$was" >"$record"
-  say "rolled back: $link -> $previous"
-  say "replaced:    $was (recorded in $record)"
-  "$link" --version || die "$link --version failed after the rollback"
+  say "rolled back: $link now points to $previous"
+  say "replaced:    $was (saved in $record, so a second --rollback undoes this one)"
+  "$link" --version || die "$link --version failed after the rollback; the rolled-back build does not run"
 }
 
 install() {
@@ -100,7 +100,7 @@ install() {
     name="$name-dirty"
   fi
 
-  say "building coder $short$(test "$dirty" = 1 && echo ' (dirty)') in $target_dir"
+  say "building coder at commit $short$(test "$dirty" = 1 && echo ' with uncommitted changes') in $target_dir"
   (
     cd "$source_dir"
     CARGO_TARGET_DIR="$target_dir" \
@@ -109,7 +109,7 @@ install() {
       "$cargo" build --release --locked -p coder --bin coder
   ) || die "the build failed; $link is unchanged"
   local built="$target_dir/release/coder"
-  test -x "$built" || die "the build produced no executable at $built"
+  test -x "$built" || die "the build finished but left no executable at $built; $link is unchanged"
 
   mkdir -p "$versions"
   local installed="$versions/$name"
@@ -124,20 +124,20 @@ install() {
   if test "$was" != "$installed"; then
     echo "$was" >"$record"
   fi
-  say "installed: $link -> $installed"
+  say "installed: $link now points to $installed"
   say "previous:  $was"
   say "history:   $history"
   if test "$was" != none && test "$was" != "$installed"; then
-    say "roll back with: scripts/install-coder.sh --rollback (or ln -sfn '$was' '$link')"
+    say "to go back to the previous build, run scripts/install-coder.sh --rollback (or ln -sfn '$was' '$link')"
   fi
-  "$link" --version || die "$link --version failed; roll back with --rollback"
+  "$link" --version || die "$link --version failed, so the new build does not run; go back with scripts/install-coder.sh --rollback"
 
   local found
   found="$(command -v coder || true)"
   if test -z "$found"; then
-    say "coder is not on PATH: add $bin_dir to PATH, or link ~/.local/bin/coder to $link"
+    say "coder is not on your PATH; add $bin_dir to PATH, or link ~/.local/bin/coder to $link"
   elif test "$(readlink -f "$found")" != "$(readlink -f "$link")"; then
-    say "note: coder on PATH is $found, which does not resolve to $link"
+    say "note: the coder on your PATH is $found, not this install; put $bin_dir earlier in PATH to run $link"
   fi
 }
 

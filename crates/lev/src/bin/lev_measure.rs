@@ -135,7 +135,7 @@ fn main() {
     let mut bridge = match Bridge::discover() {
         Ok(bridge) => bridge,
         Err(refusal) => {
-            eprintln!("no helper: {refusal}");
+            eprintln!("lev-measure: cannot start the lev-bridge helper: {refusal}");
             std::process::exit(2);
         }
     };

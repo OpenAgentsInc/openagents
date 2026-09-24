@@ -101,7 +101,7 @@ fn run(args: &[String]) -> Result<()> {
             "--scenario" => {
                 let name = rest.next().cloned().unwrap_or_default();
                 scenario = Some(Scenario::named(&name).ok_or_else(|| {
-                    Error::episode(format!("scenario {name:?} is not quest or war"))
+                    Error::episode(format!("--scenario must be quest or war, not {name:?}"))
                 })?);
             }
             "--port" => {
@@ -117,7 +117,9 @@ fn run(args: &[String]) -> Result<()> {
         }
     }
     let Some(world_arg) = world_arg else {
-        return Err(Error::episode(format!("run needs --world\n{USAGE}")));
+        return Err(Error::episode(format!(
+            "voyager run needs a world; pass --world <manifest-or-name>\n{USAGE}"
+        )));
     };
     let world = World::load(world_path(&world_arg)?)?;
     let jar = jar.map(Ok).unwrap_or_else(|| server_jar(&world))?;
@@ -156,15 +158,17 @@ fn run(args: &[String]) -> Result<()> {
     }
     eprintln!();
     eprintln!(
-        "voyager: {} actions, run dir {}",
+        "voyager: {} actions; run directory {}",
         report.actions,
         report.run_dir.display()
     );
-    eprintln!("voyager: trace {}", report.trace.display());
+    eprintln!("voyager: trace file {}", report.trace.display());
     if report.all_ok() {
         Ok(())
     } else {
-        Err(Error::episode("one or more tasks failed (see above)"))
+        Err(Error::episode(
+            "one or more tasks failed; the list above says which",
+        ))
     }
 }
 
@@ -173,7 +177,7 @@ fn run(args: &[String]) -> Result<()> {
 fn evidence(args: &[String]) -> Result<()> {
     let Some(dir) = args.first() else {
         return Err(Error::episode(format!(
-            "evidence needs a run directory\n{USAGE}"
+            "voyager evidence needs a run directory\n{USAGE}"
         )));
     };
     let path = voyager::evidence::render(Path::new(dir))?;
@@ -186,7 +190,9 @@ fn evidence(args: &[String]) -> Result<()> {
 /// never written.
 fn keys(args: &[String]) -> Result<()> {
     if args.is_empty() {
-        return Err(Error::episode(format!("keys needs usernames\n{USAGE}")));
+        return Err(Error::episode(format!(
+            "voyager keys needs at least one username\n{USAGE}"
+        )));
     }
     for username in args {
         println!("{}\t{}", username, voyager::keys::agent_pubkey(username)?);
@@ -251,7 +257,7 @@ fn world_path(arg: &str) -> Result<PathBuf> {
         }
     }
     Err(Error::world(format!(
-        "no world manifest at {arg:?}; looked there and under worlds/"
+        "no world manifest at {arg:?} or under worlds/; pass a manifest path or a world name"
     )))
 }
 
@@ -299,7 +305,7 @@ fn server_jar(world: &World) -> Result<PathBuf> {
         return Ok(jar);
     }
     Err(Error::episode(format!(
-        "no server jar for minecraft {}; run \
+        "no server jar for Minecraft {}; download it with \
          ./scripts/fetch-mc-server.sh {}",
         world.minecraft.version, world.minecraft.version
     )))
@@ -342,6 +348,7 @@ fn java_path() -> Result<PathBuf> {
         }
     }
     Err(Error::Java(
-        "no working java found; install a JDK or set VOYAGER_JAVA".to_string(),
+        "no working Java runtime found; install a JDK or set VOYAGER_JAVA to a java binary"
+            .to_string(),
     ))
 }

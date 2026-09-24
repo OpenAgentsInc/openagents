@@ -67,7 +67,7 @@ impl Server {
     pub fn start(world: &World, jar: &Path, java: &Path, dir: &Path, port: u16) -> Result<Self> {
         if !jar.is_file() {
             return Err(Error::server(format!(
-                "no server jar at {}; run scripts/fetch-mc-server.sh {}",
+                "no server jar at {}; download it with ./scripts/fetch-mc-server.sh {}",
                 jar.display(),
                 world.minecraft.version
             )));
@@ -145,7 +145,7 @@ impl Server {
     pub fn command(&mut self, command: &str) -> Result<()> {
         writeln!(self.stdin, "{command}")
             .and_then(|()| self.stdin.flush())
-            .map_err(|error| Error::server(format!("the console closed: {error}")))
+            .map_err(|error| Error::server(format!("the server console closed: {error}")))
     }
 
     /// Whether the server process still runs.
@@ -205,7 +205,7 @@ impl Server {
             std::thread::sleep(POLL);
         }
         Err(Error::server(format!(
-            "no Done line within {}s; log tail: {}",
+            "the server did not log its \"Done\" ready line within {}s; log tail: {}",
             READY_WAIT.as_secs(),
             tail(&self.log)
         )))

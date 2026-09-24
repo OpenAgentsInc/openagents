@@ -82,7 +82,11 @@ impl Relay {
             )));
         }
         let management = nostr::domain::RelaySigner::from_secret_hex(&management_secret())
-            .map_err(|error| Error::relay(format!("management key: {error}")))?;
+            .map_err(|error| {
+                Error::relay(format!(
+                    "the relay management key could not be derived: {error}"
+                ))
+            })?;
         let log_file = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
@@ -137,7 +141,7 @@ impl Relay {
             std::thread::sleep(POLL);
         }
         Err(Error::relay(format!(
-            "no listener within {}s; see {}",
+            "the relay did not accept connections within {}s; see {}",
             READY_WAIT.as_secs(),
             self.log.display()
         )))

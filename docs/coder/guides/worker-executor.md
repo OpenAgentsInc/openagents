@@ -170,13 +170,13 @@ executor's whole answer arrives.
 
 - `names no capability this host can see` — the workdir is outside the
   checkout and `CODER_CAPABILITY_DIR` is unset.
-- `present and unavailable here: untrusted_workspace` — the CLI refuses the
+- `refuses to work in this workspace: untrusted_workspace` — the CLI refuses the
   work directory; trust it interactively. A worktree delegation is trusted
   by Coder, so this refusal from one means the worker's `XDG_DATA_HOME`
   and the CLI's disagree about which list to read.
 - `writable path X overlaps protected path X` — the writable grant is the
   work directory; separate them.
-- `present and unavailable here: executor_state_not_writable` — the executor
+- `refuses to work in this workspace: executor_state_not_writable` — the executor
   state directory resolves outside every writable grant, or cannot be resolved.
   Set `XDG_DATA_HOME` inside an approved writable directory before probing.
   The probe checks the default `~/.local/share/devin` when `XDG_DATA_HOME`

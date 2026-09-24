@@ -200,16 +200,26 @@ impl fmt::Display for Fault {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Fault::Root { path, error } => {
-                write!(f, "cannot observe {}: {error}", path.display())
+                write!(
+                    f,
+                    "can't read the snapshot root {}: {error}",
+                    path.display()
+                )
             }
             Fault::Read { path, error } => {
-                write!(f, "cannot read {}: {error}", path.display())
+                write!(f, "can't read {}: {error}", path.display())
             }
             Fault::Entries { limit } => {
-                write!(f, "the {limit}-entry bound was reached")
+                write!(
+                    f,
+                    "the snapshot stopped at its limit of {limit} files and directories"
+                )
             }
             Fault::Bytes { limit } => {
-                write!(f, "the {limit}-byte hashing bound was reached")
+                write!(
+                    f,
+                    "the snapshot stopped at its limit of {limit} bytes of file content to hash"
+                )
             }
         }
     }
@@ -353,9 +363,14 @@ impl fmt::Display for Change {
             Change::Created { path } => write!(f, "created {}", path.display()),
             Change::Removed { path } => write!(f, "removed {}", path.display()),
             Change::Modified { path } => write!(f, "modified {}", path.display()),
-            Change::Retyped { path } => write!(f, "retyped {}", path.display()),
+            Change::Retyped { path } => write!(f, "changed the file type of {}", path.display()),
             Change::Renamed { from, to, altered } => match altered {
-                true => write!(f, "renamed {} to {}, altered", from.display(), to.display()),
+                true => write!(
+                    f,
+                    "renamed {} to {} and changed its contents",
+                    from.display(),
+                    to.display()
+                ),
                 false => write!(f, "renamed {} to {}", from.display(), to.display()),
             },
         }
@@ -403,7 +418,7 @@ impl Verdict {
 /// What two observations of the same root establish together.
 pub fn compare(before: &Snapshot, after: &Snapshot) -> Verdict {
     if before.root != after.root {
-        return Verdict::Unverifiable("the two snapshots are not of the same root".to_string());
+        return Verdict::Unverifiable("the two snapshots are of different directories".to_string());
     }
     for (which, snapshot) in [("before", before), ("after", after)] {
         if let Some(fault) = snapshot.faults.first() {

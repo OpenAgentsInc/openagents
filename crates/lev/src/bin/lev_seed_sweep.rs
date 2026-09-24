@@ -93,7 +93,7 @@ fn main() {
             "--item" => headline = args.next(),
             "--adapter" => adapter = args.next(),
             other => {
-                eprintln!("unknown flag {other}");
+                eprintln!("lev-seed-sweep: unknown flag `{other}`");
                 std::process::exit(2);
             }
         }
@@ -123,7 +123,7 @@ fn main() {
     let pool = match Pool::discover(helpers) {
         Ok(pool) => pool,
         Err(refusal) => {
-            eprintln!("no helper: {refusal}");
+            eprintln!("lev-seed-sweep: cannot start the lev-bridge helper: {refusal}");
             std::process::exit(2);
         }
     };

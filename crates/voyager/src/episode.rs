@@ -647,13 +647,13 @@ impl Runner<'_> {
     fn bounded(&mut self) -> Result<()> {
         if self.actions >= self.world.episode.max_actions as usize {
             return Err(Error::episode(format!(
-                "the episode used its {} actions",
+                "the episode reached its limit of {} actions",
                 self.world.episode.max_actions
             )));
         }
         if self.started.elapsed() > Duration::from_secs(self.world.episode.max_seconds) {
             return Err(Error::episode(format!(
-                "the episode used its {} seconds",
+                "the episode reached its limit of {} seconds",
                 self.world.episode.max_seconds
             )));
         }
@@ -697,7 +697,11 @@ impl Host for TaskHost<'_, '_> {
             "goto" | "explore" => 75,
             "mine" => 90,
             "wait" => 45,
-            other => return Err(Error::episode(format!("unknown op {other:?}"))),
+            other => {
+                return Err(Error::episode(format!(
+                    "unknown bridge operation {other:?}"
+                )));
+            }
         };
         let result = self
             .runner

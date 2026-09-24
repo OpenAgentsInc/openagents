@@ -79,8 +79,8 @@ pub enum Bound {
 impl std::fmt::Display for Bound {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Host => f.write_str("the host's forward slots"),
-            Self::Variant(model) => write!(f, "the `{model}` forward slots"),
+            Self::Host => f.write_str("the inference slots on this host"),
+            Self::Variant(model) => write!(f, "the inference slots for `{model}`"),
         }
     }
 }
@@ -106,7 +106,7 @@ pub enum Error {
     MissingScoreCriteria { id: String },
     /// A noul question's `criteria` names an outcome other than `true`
     /// or `false` — a field the model never reads.
-    #[error("noul question `{id}` criteria key `{key}` is not `true` or `false`")]
+    #[error("noul question `{id}` has criteria key `{key}`; only `true` and `false` are allowed")]
     UnsupportedNoulCriteria { id: String, key: String },
     /// A question carries more options than the contract admits.
     #[error("question `{id}` has {count} options; at most {MAX_OPTIONS} are allowed")]
@@ -115,29 +115,31 @@ pub enum Error {
     #[error("score question `{id}` needs at least two levels, has {count}")]
     TooFewLevels { id: String, count: usize },
     /// The request carries more questions than the door admits in one pass.
-    #[error("{count} questions; at most {max} are admitted in one request")]
+    #[error("{count} questions in one request; at most {max} are allowed")]
     TooManyQuestions { count: usize, max: usize },
     /// The request's options, summed over every question, exceed the bound.
-    #[error("{count} options across all questions; at most {max} are admitted")]
+    #[error("{count} options across all questions; at most {max} are allowed")]
     TooManyTotalOptions { count: usize, max: usize },
     /// The question's options cannot each fit a marker inside the
     /// checkpoint's `head_max_len`: the reference answers this with an
     /// exception rather than scoring a truncated answer space.
-    #[error("question `{id}`: options do not fit in head_max_len={max} tokens")]
+    #[error(
+        "question `{id}`: the options do not fit in the model's {max}-token answer window (head_max_len)"
+    )]
     OptionsDoNotFit { id: String, max: usize },
     /// A forward bound is saturated: the host's slots or the named
     /// variant's slots. `in_flight` and `limit` count forwards.
-    #[error("busy: {bound} at its limit, {in_flight} of {limit} in use")]
+    #[error("busy: no room in {bound}, {in_flight} of {limit} in use; retry shortly")]
     Busy {
         bound: Bound,
         in_flight: usize,
         limit: usize,
     },
     /// The `model` field names no loaded variant.
-    #[error("unknown model `{model}`; known: {}", known.join(", "))]
+    #[error("unknown model `{model}`; this server serves: {}", known.join(", "))]
     UnknownModel { model: String, known: Vec<String> },
     /// The tokenizer failed to load or to encode.
-    #[error("tokenizer: {0}")]
+    #[error("tokenizer failed: {0}")]
     Tokenize(String),
     /// A model, tokenizer, or config artifact is missing or malformed.
     #[error("artifact: {0}")]

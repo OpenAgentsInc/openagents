@@ -51,7 +51,10 @@ fn parse_args() -> Result<Args, String> {
     let mut aliases = Vec::new();
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
-        let mut take = |name: &str| args.next().ok_or_else(|| format!("{name} needs a value"));
+        let mut take = |name: &str| {
+            args.next()
+                .ok_or_else(|| format!("{name} needs a value after it"))
+        };
         match arg.as_str() {
             "--model-dir" => model_dir = Some(take("--model-dir")?),
             "--bundle-dir" => bundle_dir = Some(take("--bundle-dir")?),
@@ -59,7 +62,7 @@ fn parse_args() -> Result<Args, String> {
             "--port" => {
                 port = take("--port")?
                     .parse()
-                    .map_err(|_| "--port needs a number".to_string())?
+                    .map_err(|_| "--port must be a whole number".to_string())?
             }
             "--default" => default = take("--default")?,
             "--device" => device = take("--device")?,
@@ -67,37 +70,55 @@ fn parse_args() -> Result<Args, String> {
                 concurrency = Some(
                     take("--concurrency")?
                         .parse()
-                        .map_err(|_| "--concurrency needs a number".to_string())?,
+                        .map_err(|_| "--concurrency must be a whole number".to_string())?,
                 )
             }
             "--max-questions" => {
                 max_questions = Some(
                     take("--max-questions")?
                         .parse()
-                        .map_err(|_| "--max-questions needs a number".to_string())?,
+                        .map_err(|_| "--max-questions must be a whole number".to_string())?,
                 )
             }
             "--memory-budget-mib" => {
                 memory_budget_mib = Some(
                     take("--memory-budget-mib")?
                         .parse()
-                        .map_err(|_| "--memory-budget-mib needs a number".to_string())?,
+                        .map_err(|_| "--memory-budget-mib must be a whole number".to_string())?,
                 )
             }
             "--alias" => aliases.push(take("--alias")?),
             "--help" | "-h" => {
                 eprintln!(
-                    "laya-serve --model-dir DIR [--host H] [--port P] [--device cpu|metal]\n\
-                     laya-serve --bundle-dir DIR [--default ID] [--alias NAME] [...]\n\
-                     [--concurrency N] [--max-questions N] [--memory-budget-mib N]"
+                    "Serve laya decision models on POST /v1/systemone.\n\
+                     \n\
+                     Usage:\n  \
+                     laya-serve --model-dir DIR [options]\n  \
+                     laya-serve --bundle-dir DIR [options]\n\
+                     \n\
+                     Options:\n  \
+                     --model-dir DIR          One checkpoint directory\n  \
+                     --bundle-dir DIR         Load every checkpoint in DIR\n  \
+                     --default ID             The checkpoint a request gets when it names none\n  \
+                     --alias NAME             Another name for the default checkpoint; repeatable\n  \
+                     --host H                 Address to listen on (default: 127.0.0.1)\n  \
+                     --port P                 Port to listen on (default: 8010)\n  \
+                     --device cpu|metal       Where inference runs (default: cpu)\n  \
+                     --concurrency N          Most inference passes at once across all checkpoints\n  \
+                     --max-questions N        Most questions one request may carry\n  \
+                     --memory-budget-mib N    Working memory for inference, in MiB (default: measured from the host)"
                 );
                 std::process::exit(0);
             }
-            other => return Err(format!("unknown argument {other}")),
+            other => {
+                return Err(format!(
+                    "unknown argument `{other}`; run with --help to see the options"
+                ));
+            }
         }
     }
     if bundle_dir.is_none() && model_dir.is_none() {
-        return Err("--model-dir or --bundle-dir is required".to_string());
+        return Err("pass --model-dir or --bundle-dir".to_string());
     }
     Ok(Args {
         model_dir: model_dir.map(PathBuf::from),
@@ -116,8 +137,10 @@ fn parse_args() -> Result<Args, String> {
 fn device(name: &str) -> Result<Device, String> {
     match name {
         "cpu" => Ok(Device::Cpu),
-        "metal" => Device::new_metal(0).map_err(|e| format!("metal unavailable: {e}")),
-        other => Err(format!("unknown device {other} (cpu or metal)")),
+        "metal" => {
+            Device::new_metal(0).map_err(|e| format!("the Metal device is unavailable: {e}"))
+        }
+        other => Err(format!("unknown device `{other}`; use cpu or metal")),
     }
 }
 
@@ -138,7 +161,7 @@ fn load_variant(id: &str, dir: &Path, device: &Device) -> Result<Variant, String
 /// and load each under its directory name.
 fn load_bundle(bundle: &Path, device: &Device) -> Result<Vec<Variant>, String> {
     let mut entries: Vec<PathBuf> = std::fs::read_dir(bundle)
-        .map_err(|e| format!("read bundle dir {}: {e}", bundle.display()))?
+        .map_err(|e| format!("cannot read the bundle directory {}: {e}", bundle.display()))?
         .filter_map(|e| e.ok().map(|e| e.path()))
         .filter(|p| {
             p.is_dir()
@@ -149,7 +172,7 @@ fn load_bundle(bundle: &Path, device: &Device) -> Result<Vec<Variant>, String> {
     entries.sort();
     if entries.is_empty() {
         return Err(format!(
-            "no checkpoints under {} (dirs with rl_agent_config.json + model.safetensors)",
+            "found no checkpoints in {}; each checkpoint is a subdirectory that holds rl_agent_config.json and model.safetensors",
             bundle.display()
         ));
     }
@@ -213,7 +236,7 @@ async fn main() -> ExitCode {
         .position(|v| v.model_id == args.default)
         .unwrap_or(0);
     eprintln!(
-        "laya-serve: {} variants loaded, default {}",
+        "laya-serve: loaded {} variants; the default is {}",
         variants.len(),
         variants[default].model_id
     );
@@ -223,7 +246,7 @@ async fn main() -> ExitCode {
             Some(bytes) => bytes,
             None => {
                 eprintln!(
-                    "laya-serve: this host reports no available memory; pass --memory-budget-mib"
+                    "laya-serve: this host does not report its available memory; set a budget with --memory-budget-mib"
                 );
                 return ExitCode::from(2);
             }
@@ -247,26 +270,26 @@ async fn main() -> ExitCode {
         }
     };
     eprintln!(
-        "laya-serve: memory budget {} MiB, {} forwards at once across variants",
+        "laya-serve: memory budget is {} MiB; at most {} inference passes run at once across all variants",
         state.memory_mib, state.admission.concurrency
     );
     for (variant, share) in state.variants.iter().zip(&state.variant_slots) {
         eprintln!(
-            "laya-serve: {}: one forward at {} rows needs {} MiB, {} at once",
+            "laya-serve: {}: one inference pass at {} questions needs {} MiB; at most {} run at once",
             variant.model_id, state.admission.max_questions, share.forward_mib, share.limit
         );
     }
     let addr: SocketAddr = match format!("{}:{}", args.host, args.port).parse() {
         Ok(addr) => addr,
         Err(e) => {
-            eprintln!("laya-serve: bad listen address: {e}");
+            eprintln!("laya-serve: --host and --port do not form a valid listen address: {e}");
             return ExitCode::from(2);
         }
     };
     let listener = match tokio::net::TcpListener::bind(addr).await {
         Ok(listener) => listener,
         Err(e) => {
-            eprintln!("laya-serve: bind {addr}: {e}");
+            eprintln!("laya-serve: cannot listen on {addr}: {e}");
             return ExitCode::from(1);
         }
     };

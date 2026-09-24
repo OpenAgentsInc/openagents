@@ -492,7 +492,7 @@ async fn system_one(State(door): State<Arc<Door>>, body: String) -> Response {
         Err(error) => {
             return Wire(Refusal::new(
                 RefusalCode::InvalidRequest,
-                format!("the request body did not parse: {error}"),
+                format!("the request body is not a valid System One request: {error}"),
             ))
             .into_response();
         }
@@ -502,7 +502,7 @@ async fn system_one(State(door): State<Arc<Door>>, body: String) -> Response {
         return Wire(Refusal::new(
             RefusalCode::Busy,
             format!(
-                "busy: {} requests already wait on this door's helpers",
+                "busy: {} requests are already waiting for this server's helpers; retry shortly",
                 door.max_in_flight
             ),
         ))
@@ -533,7 +533,7 @@ async fn blocking<T: Send + 'static>(
         .unwrap_or_else(|error| {
             Err(Refusal::new(
                 RefusalCode::BridgeError,
-                format!("the door's worker did not finish: {error}"),
+                format!("the worker thread for this request stopped before it answered: {error}"),
             ))
         })
 }

@@ -40,13 +40,20 @@ fn main() {
         "show" => show(&options),
         other => {
             if !other.is_empty() {
-                eprintln!("unknown command {other}");
+                eprintln!("lev-policy: unknown command `{other}`");
             }
             eprintln!(
-                "usage: lev-policy <publish | fetch | show> [--manifest <path>] [--window <24h>] \
-                 [--revoke <name@version>] [--revoke-base <signature>] [--families a,b] \
-                 [--reason <text>] [--source <path>] [--cache <path>] [--expect <sha256>] \
-                 [--release <name@version>] [--base <signature>]"
+                "Publish, fetch, or show the policy snapshot that says whether a Lev release may serve.\n\
+                 \n\
+                 Usage:\n  \
+                 lev-policy publish [--window 24h] [--revoke NAME@VERSION] [--revoke-base SIGNATURE] \
+                 [--families A,B] [--reason TEXT]\n  \
+                 lev-policy fetch (--manifest PATH | --source PATH --cache PATH) [--expect SHA256]\n  \
+                 lev-policy show (--manifest PATH | --source PATH --cache PATH) \
+                 [--release NAME@VERSION] [--base SIGNATURE] [--window 24h]\n\
+                 \n\
+                 publish prints a new snapshot to standard output. fetch copies a snapshot into \
+                 the cache a server reads. show says whether the release may still serve."
             );
             std::process::exit(2);
         }
@@ -93,7 +100,7 @@ impl Options {
                 "--release" => options.release = Some(value()),
                 "--base" => options.base = Some(value()),
                 other => {
-                    eprintln!("unknown flag {other}");
+                    eprintln!("lev-policy: unknown flag `{other}`");
                     std::process::exit(2);
                 }
             }
@@ -105,7 +112,7 @@ impl Options {
 /// `86400`, `24h`, `30m`, or `7d`, in seconds.
 fn seconds(value: &str) -> u64 {
     lev::policy::duration(value).unwrap_or_else(|| {
-        eprintln!("--window takes a count of seconds, or one of 30m, 24h, 7d");
+        eprintln!("lev-policy: --window must be a number of seconds, or a duration such as 30m, 24h, or 7d");
         std::process::exit(2);
     })
 }
@@ -119,7 +126,9 @@ fn publish(options: &Options) {
     if revoking > 0 && options.reason.trim().is_empty() {
         // A revocation with no reason is a refusal nobody can act on, and the
         // reason is what a caller reads on the wire.
-        eprintln!("a revocation needs --reason; it is what the refusal says");
+        eprintln!(
+            "lev-policy: a revocation needs --reason; refused requests show that reason to the caller"
+        );
         std::process::exit(2);
     }
     let reason = options.reason.clone();
@@ -141,7 +150,7 @@ fn publish(options: &Options) {
     match snapshot.to_json() {
         Ok(text) => println!("{text}"),
         Err(error) => {
-            eprintln!("the snapshot did not encode: {error}");
+            eprintln!("lev-policy: cannot encode the snapshot as JSON: {error}");
             std::process::exit(1);
         }
     }
@@ -164,7 +173,9 @@ fn fetch(options: &Options) {
         }
         Err(trouble) => {
             eprintln!("{trouble}");
-            eprintln!("the cache is unchanged, and the door goes stale on schedule");
+            eprintln!(
+                "lev-policy: the cache is unchanged; a server that reads it stops answering when the cached snapshot expires"
+            );
             std::process::exit(1);
         }
     }
@@ -241,7 +252,9 @@ fn show(options: &Options) {
         // Belt and braces: a report that says current and expired at once
         // would mean the two readings disagree, and that is worth a line
         // rather than a silent pass.
-        eprintln!("the standing and the expiry disagree, which is a defect");
+        eprintln!(
+            "lev-policy: the snapshot reads as current but has already expired; this is a bug in lev-policy"
+        );
         std::process::exit(1);
     }
 }
@@ -259,7 +272,7 @@ fn paths(options: &Options) -> (PathBuf, PathBuf) {
     match (&options.source, &options.cache) {
         (Some(source), Some(cache)) => (PathBuf::from(source), PathBuf::from(cache)),
         _ => {
-            eprintln!("pass --manifest <path>, or both --source and --cache");
+            eprintln!("lev-policy: pass --manifest PATH, or both --source and --cache");
             std::process::exit(2);
         }
     }

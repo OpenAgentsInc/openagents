@@ -183,40 +183,69 @@ impl std::fmt::Display for Reason {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Dependency { dependency, state } => {
-                write!(f, "dependency `{dependency}` is {state:?}, not completed")
+                write!(
+                    f,
+                    "dependency `{dependency}` is not completed yet (its state is {state:?})"
+                )
             }
             Self::DependencyAbsent { dependency } => write!(
                 f,
-                "dependency `{dependency}` is in no catalog and no completion set — unknown"
+                "dependency `{dependency}` is not in the catalog or the list of completed tasks, so its state is unknown"
             ),
             Self::Conflict {
                 other,
                 path,
                 other_path,
                 kind,
-            } => write!(
-                f,
-                "{kind:?} on `{path}` against `{}` from `{other}`",
-                other_path.as_deref().unwrap_or("<unknown>"),
-            ),
+            } => {
+                let other_path = other_path.as_deref().map_or_else(
+                    || "paths it did not list".to_string(),
+                    |path| format!("`{path}`"),
+                );
+                match kind {
+                    ConflictKind::WriteWrite => write!(
+                        f,
+                        "both this task and `{other}` write files: `{path}` overlaps {other_path}"
+                    ),
+                    ConflictKind::WriteRead => write!(
+                        f,
+                        "one of this task and `{other}` writes files the other reads: \
+                         `{path}` overlaps {other_path}"
+                    ),
+                }
+            }
             Self::Exclusion { owner, path } => {
-                write!(f, "path `{path}` is owned by `{owner}`")
+                write!(
+                    f,
+                    "path `{path}` belongs to `{owner}`, outside this scheduler"
+                )
             }
             Self::QuietHostBusy => {
-                write!(f, "the task needs a quiet host and the host is occupied")
+                write!(
+                    f,
+                    "the task needs the host to itself, and other tasks are running"
+                )
             }
             Self::QuietHostHeld { holder } => write!(
                 f,
-                "quiet-host task `{holder}` holds the host — nothing else admits"
+                "task `{holder}` needs the host to itself and is running, so no other task can start"
             ),
             Self::QuietDrain { waiting } => write!(
                 f,
-                "quiet-host task `{waiting}` is ready — the host drains before new work"
+                "task `{waiting}` needs the host to itself and is waiting, so no new task starts until the running ones finish"
             ),
-            Self::Capacity(bound) => write!(f, "the host is out of {bound}"),
+            Self::Capacity(bound) => {
+                let resource = match bound {
+                    Bound::ExecutorSlots => "enough free executor slots",
+                    Bound::CpuUnits => "enough free CPU units",
+                    Bound::MemoryMib => "enough free memory",
+                    Bound::Integration => "a free integration lane",
+                };
+                write!(f, "the host does not have {resource} for this task")
+            }
             Self::ReviewBacklog { cap } => write!(
                 f,
-                "the review backlog is at its cap of {cap} — review before more work"
+                "the review queue is full: {cap} of {cap} finished tasks are waiting for review; review some before more tasks start"
             ),
         }
     }

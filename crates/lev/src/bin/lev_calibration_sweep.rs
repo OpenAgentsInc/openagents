@@ -143,7 +143,7 @@ fn read_options() -> Options {
             // not need it drawn again.
             "--no-band" => options.band = false,
             other => {
-                eprintln!("unknown flag {other}");
+                eprintln!("lev-calibration-sweep: unknown flag `{other}`");
                 std::process::exit(2);
             }
         }
@@ -202,7 +202,7 @@ fn locked_items() -> BTreeSet<String> {
 fn main() {
     let options = read_options();
     if options.out.is_empty() {
-        eprintln!("--out is required: the draws are the point of the run");
+        eprintln!("lev-calibration-sweep: pass --out PATH; the run writes its draws there");
         std::process::exit(2);
     }
     let suite = Suite::load(SUITE).expect("the shipped suite loads");
@@ -212,14 +212,17 @@ fn main() {
         .filter(|item| options.split == "all" || item.split == options.split)
         .collect();
     if items.is_empty() {
-        eprintln!("no items in split {}", options.split);
+        eprintln!(
+            "lev-calibration-sweep: the suite has no items in split {}",
+            options.split
+        );
         std::process::exit(2);
     }
 
     let pool = match Pool::discover(options.helpers) {
         Ok(pool) => pool,
         Err(refusal) => {
-            eprintln!("no helper: {refusal}");
+            eprintln!("lev-calibration-sweep: cannot start the lev-bridge helper: {refusal}");
             std::process::exit(2);
         }
     };
@@ -235,7 +238,7 @@ fn main() {
     let adapter_identifier = options.adapter.as_deref().map(|path| {
         lev::adapter::Package::open(path).map_or_else(
             |error| {
-                eprintln!("the adapter package did not open: {error}");
+                eprintln!("lev-calibration-sweep: cannot open the adapter package: {error}");
                 std::process::exit(2);
             },
             |package| package.metadata.adapter_identifier,
@@ -351,7 +354,7 @@ fn main() {
             file.flush().expect("the draws file flushes");
             written += 1;
         }
-        eprintln!("block {block} done, {written} draws written so far");
+        eprintln!("finished seed block {block}; {written} draws written so far");
     }
-    eprintln!("{written} draws written, {refused_items} items the door did not answer");
+    eprintln!("wrote {written} draws; the server did not answer {refused_items} items");
 }

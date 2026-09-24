@@ -254,7 +254,7 @@ impl Trust {
                     .map_err(|error| format!("{}: {error}", store.display()))?;
                 if stored.v != STORE_VERSION {
                     return Err(format!(
-                        "{}: store version is {}, this version reads {STORE_VERSION}",
+                        "{}: the trust store has format version {}, but this program reads only version {STORE_VERSION}",
                         store.display(),
                         stored.v
                     ));
@@ -368,7 +368,7 @@ impl Trust {
         }
         if let Some(error) = &self.error {
             return Verified::Unapproved(format!(
-                "the trust store could not be read ({error}), so nothing it names may run"
+                "Coder can't read the trust store ({error}), so it runs no capability probes"
             ));
         }
         // A stored trust's records are the file's, read now — a deleted
@@ -378,7 +378,7 @@ impl Trust {
                 Ok(fresh) => fresh.records,
                 Err(error) => {
                     return Verified::Unapproved(format!(
-                        "the trust store could not be read ({error}), so nothing it names may run"
+                        "Coder can't read the trust store ({error}), so it runs no capability probes"
                     ));
                 }
             }
@@ -390,8 +390,8 @@ impl Trust {
             .find(|record| record.manifest == entry.digest)
         else {
             return Verified::Unapproved(format!(
-                "no approval names this exact manifest — \
-                 `capability-trust approve {}` records one in {}",
+                "this version of the capability manifest isn't approved; \
+                 run `capability-trust approve {}` to approve it in {}",
                 entry.manifest.slug,
                 self.store.display()
             ));
@@ -404,7 +404,7 @@ impl Trust {
             Ok(work) => work,
             Err(error) => {
                 return Verified::Unapproved(format!(
-                    "the workspace {} cannot be resolved ({error}), so nothing may run in it",
+                    "the workspace {} can't be found ({error}), so no capability probe runs in it",
                     workspace.display()
                 ));
             }
@@ -413,16 +413,16 @@ impl Trust {
             Ok(store) => store,
             Err(error) => {
                 return Verified::Unapproved(format!(
-                    "the trust store at {} cannot be resolved ({error}), so the approval \
-                     it names cannot be checked — nothing it names may run",
+                    "the trust store path {} can't be found ({error}), so Coder can't check \
+                     its approvals and runs no capability probes",
                     self.store.display()
                 ));
             }
         };
         if store.starts_with(&work) {
             return Verified::Unapproved(format!(
-                "the trust store at {} sits inside the workspace it would approve — \
-                 set {STORE_ENV} to a path outside it",
+                "the trust store at {} is inside the workspace it approves, so the workspace \
+                 could approve itself; set {STORE_ENV} to a path outside the workspace",
                 store.display()
             ));
         }
@@ -443,15 +443,16 @@ impl Trust {
             match root {
                 Some(root) if store.starts_with(&root) => {
                     return Verified::Unapproved(format!(
-                        "the trust store at {} sits inside the repository the manifest came from — \
-                         a manifest cannot approve itself",
+                        "the trust store at {} is inside the repository that the manifest comes from, \
+                         so the repository could approve its own manifest; set {STORE_ENV} to a path \
+                         outside the repository",
                         store.display()
                     ));
                 }
                 None => {
                     return Verified::Unapproved(format!(
-                        "the manifest at {} cannot be resolved, so the store's place \
-                         against its repository cannot be checked — nothing it names may run",
+                        "the manifest path {} can't be found, so Coder can't check that the trust \
+                         store is outside the manifest's repository, and it runs no capability probes",
                         entry.path.display()
                     ));
                 }
@@ -473,7 +474,7 @@ impl Trust {
         let binary = &entry.manifest.detect.binary;
         let resolved = resolve(binary, &search_dirs()).ok_or_else(|| {
             format!(
-                "the approved adapter {} is not findable — {binary} resolves to nothing now",
+                "the approved adapter {} is missing: no program named {binary} is on the PATH",
                 record.adapter.display()
             )
         })?;
@@ -482,8 +483,8 @@ impl Trust {
             .map_err(|error| format!("{}: {error}", resolved.display()))?;
         if canonical != record.adapter {
             return Err(format!(
-                "{binary} resolves to {}, which is not the approved {} — \
-                 `capability-trust approve {}` renews it",
+                "{binary} is now the program at {}, not the approved {}; \
+                 run `capability-trust approve {}` to approve the new one",
                 canonical.display(),
                 record.adapter.display(),
                 entry.manifest.slug
@@ -492,8 +493,8 @@ impl Trust {
         let digest = digest_file(&canonical)?;
         if digest != record.adapter_digest {
             return Err(format!(
-                "the approved adapter at {} changed on disk — \
-                 `capability-trust approve {}` renews it",
+                "the approved adapter at {} changed on disk since it was approved; \
+                 run `capability-trust approve {}` to approve the new version",
                 canonical.display(),
                 entry.manifest.slug
             ));
@@ -505,15 +506,15 @@ impl Trust {
             // a record without its word cannot be re-resolved at all.
             if pinned.word.is_empty() {
                 return Err(
-                    "an argv approval lacks its original path; approve the manifest again"
+                    "an approval record is missing the file path from the adapter's command; approve the manifest again"
                         .to_string(),
                 );
             }
             let current = resolve_word(&pinned.word, work)?;
             if current != pinned.path {
                 return Err(format!(
-                    "argv {:?} resolves to {}, not the approved {} — \
-                     `capability-trust approve {}` renews it",
+                    "the adapter's command argument {:?} now points to {}, not the approved {}; \
+                     run `capability-trust approve {}` to approve the new file",
                     pinned.word,
                     current.display(),
                     pinned.path.display(),
@@ -522,14 +523,14 @@ impl Trust {
             }
             let digest = digest_file(&pinned.path).map_err(|error| {
                 format!(
-                    "the adapter file {} the approval pins could not be verified: {error}",
+                    "Coder can't read the approved adapter file {} to check it: {error}",
                     pinned.path.display()
                 )
             })?;
             if digest != pinned.digest {
                 return Err(format!(
-                    "{} changed since the manifest was approved — \
-                     `capability-trust approve {}` renews it",
+                    "{} changed since the manifest was approved; \
+                     run `capability-trust approve {}` to approve the new version",
                     pinned.path.display(),
                     entry.manifest.slug
                 ));
@@ -555,9 +556,9 @@ impl Trust {
             };
             if !record.pinned.iter().any(|pinned| pinned.path == resolved) {
                 return Err(format!(
-                    "argv {word:?} resolves to {} in this workspace — a file the approval \
-                     does not pin, so it cannot run under it; name it absolutely and \
-                     `capability-trust approve {}` again",
+                    "the adapter's command argument {word:?} points to {} in this workspace, \
+                     a file the approval doesn't cover; write it as an absolute path in the \
+                     manifest and run `capability-trust approve {}` again",
                     resolved.display(),
                     entry.manifest.slug
                 ));
@@ -579,7 +580,7 @@ impl Trust {
         }
         if let Some(error) = &self.error {
             return Err(format!(
-                "the trust store could not be read ({error}), so it will not be overwritten"
+                "can't read the trust store ({error}), so it isn't overwritten"
             ));
         }
         // A stored trust re-reads before it writes, so records held here
@@ -606,7 +607,7 @@ impl Trust {
     pub fn revoke(&mut self, slug: &str) -> Result<usize, String> {
         if let Some(error) = &self.error {
             return Err(format!(
-                "the trust store could not be read ({error}), so it will not be overwritten"
+                "can't read the trust store ({error}), so it isn't overwritten"
             ));
         }
         if self.stored {
@@ -647,7 +648,10 @@ impl Trust {
         writable: &[PathBuf],
     ) -> Result<Approval, String> {
         if self.unconditional {
-            return Err("a trust that approves everything writes no records".to_string());
+            return Err(
+                "this trust approves every capability, so it has no store to write an approval to"
+                    .to_string(),
+            );
         }
         if !is_slug(slug) {
             return Err(format!("{slug:?} is not a capability slug"));
@@ -656,7 +660,7 @@ impl Trust {
         let registry = Registry::open(&dirs);
         let entry = registry.entry(slug).cloned().ok_or_else(|| {
             format!(
-                "no {slug}.json under {}",
+                "no capability manifest named {slug}.json in {}",
                 dirs.iter()
                     .map(|dir| dir.path.display().to_string())
                     .collect::<Vec<_>>()
@@ -671,22 +675,22 @@ impl Trust {
         if let Some(root) = repository {
             let store = canonical_or_parent(&self.store).map_err(|error| {
                 format!(
-                    "the trust store at {} cannot be resolved ({error}), so its place \
-                     against the repository cannot be checked",
+                    "the trust store path {} can't be found ({error}), so Coder can't check \
+                     that it is outside the repository",
                     self.store.display()
                 )
             })?;
             let root = root.canonicalize().map_err(|error| {
                 format!(
-                    "the repository {} cannot be resolved ({error}), so the store's place \
-                     against it cannot be checked",
+                    "the repository path {} can't be found ({error}), so Coder can't check \
+                     that the trust store is outside it",
                     root.display()
                 )
             })?;
             if store.starts_with(&root) {
                 return Err(format!(
-                    "the trust store at {} sits inside the repository it would approve — \
-                     set {STORE_ENV} to a path outside it",
+                    "the trust store at {} is inside the repository it approves, so the \
+                     repository could approve itself; set {STORE_ENV} to a path outside the repository",
                     self.store.display()
                 ));
             }
@@ -695,8 +699,9 @@ impl Trust {
         // The adapter is pinned by canonical path and content — what the
         // probe resolves is what the record names.
         let binary = &entry.manifest.detect.binary;
-        let resolved = resolve(binary, &search_dirs())
-            .ok_or_else(|| format!("no {binary} on this machine to approve"))?;
+        let resolved = resolve(binary, &search_dirs()).ok_or_else(|| {
+            format!("no program named {binary} is on the PATH, so there is nothing to approve")
+        })?;
         let adapter = resolved
             .canonicalize()
             .map_err(|error| format!("{}: {error}", resolved.display()))?;
@@ -708,7 +713,7 @@ impl Trust {
         for dir in writable {
             if !dir.is_absolute() {
                 return Err(format!(
-                    "{} is not absolute — an approval names real paths",
+                    "--writable {} is not absolute; give the full path to the directory",
                     dir.display()
                 ));
             }
@@ -791,7 +796,7 @@ fn resolve_word(word: &str, cwd: &Path) -> Result<PathBuf, String> {
     };
     candidate.canonicalize().map_err(|error| {
         format!(
-            "{word:?} resolves to {}, which cannot be read: {error}",
+            "{word:?} points to {}, which can't be read: {error}",
             candidate.display()
         )
     })
@@ -812,8 +817,9 @@ fn resolve_word(word: &str, cwd: &Path) -> Result<PathBuf, String> {
 fn pinned_argvs(manifest: &Manifest, repository: Option<&Path>) -> Result<Vec<Pinned>, String> {
     let base = match repository {
         Some(root) => root.to_path_buf(),
-        None => std::env::current_dir()
-            .map_err(|error| format!("no working directory to resolve argvs in: {error}"))?,
+        None => std::env::current_dir().map_err(|error| {
+            format!("can't read the current directory to find the adapter's files: {error}")
+        })?,
     };
     let mut pinned = Vec::new();
     let mut seen = std::collections::BTreeSet::new();
@@ -825,7 +831,7 @@ fn pinned_argvs(manifest: &Manifest, repository: Option<&Path>) -> Result<Vec<Pi
             let path = resolve_word(word, Path::new("/"))?;
             if !path.is_file() {
                 return Err(format!(
-                    "argv names {word:?}, which resolves to {} — a directory, not a file an approval can pin",
+                    "the adapter's command argument {word:?} points to {}, a directory; an approval covers files only",
                     path.display()
                 ));
             }
@@ -839,8 +845,9 @@ fn pinned_argvs(manifest: &Manifest, repository: Option<&Path>) -> Result<Vec<Pi
             });
         } else if base.join(word).is_file() {
             return Err(format!(
-                "argv {word:?} is a relative path that resolves to {} — it would run whatever \
-                 the probe's directory holds, so approve it absolutely or not at all",
+                "the adapter's command argument {word:?} is a relative path, here {}; a relative \
+                 path can name a different file in each directory the probe runs in, so write \
+                 it as an absolute path in the manifest before you approve it",
                 base.join(word).display()
             ));
         }
@@ -894,7 +901,7 @@ impl std::fmt::Display for Approval {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "approved {} — {} manifest ({})\n  manifest {}\n  adapter  {}\n  invoke   {}\n  store    {}",
+            "Approved {} ({} manifest, digest {})\n  manifest      {}\n  adapter       {}\n  command       {}\n  trust store   {}",
             self.slug,
             self.source.word(),
             &self.digest[..12.min(self.digest.len())],
@@ -904,22 +911,22 @@ impl std::fmt::Display for Approval {
             self.store.display(),
         )?;
         if !self.invoke_writing.is_empty() {
-            write!(f, "\n  writing  {}", self.invoke_writing.join(" "))?;
+            write!(f, "\n  write command {}", self.invoke_writing.join(" "))?;
         }
         for pinned in &self.pinned {
             if pinned.word.is_empty() {
-                write!(f, "\n  pinned   {}", pinned.path.display())?;
+                write!(f, "\n  checked file  {}", pinned.path.display())?;
             } else {
                 write!(
                     f,
-                    "\n  pinned   {} = {}",
+                    "\n  checked file  {} = {}",
                     pinned.word,
                     pinned.path.display()
                 )?;
             }
         }
         for dir in &self.writable {
-            write!(f, "\n  writable {}", dir.display())?;
+            write!(f, "\n  may write to  {}", dir.display())?;
         }
         Ok(())
     }

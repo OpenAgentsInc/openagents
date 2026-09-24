@@ -165,7 +165,7 @@ impl Entry {
             return Found {
                 manifest: self.manifest.clone(),
                 presence: Presence::Unprobed {
-                    reason: "a relay capability is probed by the host's relay door, not an argv"
+                    reason: "a relay capability runs on a remote worker, so the relay connection checks it instead of a local command"
                         .to_string(),
                 },
                 workspace: workspace.to_path_buf(),
@@ -183,7 +183,7 @@ impl Entry {
                     proof,
                     Presence::Unprobed {
                         reason: format!(
-                            "transport {} is not an argv this host runs",
+                            "transport {} is not a local command, so this machine can't probe it",
                             self.manifest.transport
                         ),
                     },

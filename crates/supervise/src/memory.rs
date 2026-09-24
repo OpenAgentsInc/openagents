@@ -142,10 +142,10 @@ pub fn parse_bytes(text: &str) -> Result<Option<u64>, String> {
     let count: u64 = digits
         .trim()
         .parse()
-        .map_err(|_| format!("`{text}` is not a byte count"))?;
-    let bytes = count
-        .checked_mul(1u64 << shift)
-        .ok_or_else(|| format!("`{text}` is past the largest byte count"))?;
+        .map_err(|_| format!("`{text}` is not a byte count; use a number with an optional K, M, G, or T suffix, or none"))?;
+    let bytes = count.checked_mul(1u64 << shift).ok_or_else(|| {
+        format!("`{text}` is larger than the largest byte count this program can hold")
+    })?;
     Ok((bytes > 0).then_some(bytes))
 }
 
@@ -376,7 +376,7 @@ fn pipe() -> Result<(OwnedFd, OwnedFd), String> {
     };
     if made != 0 {
         return Err(format!(
-            "could not make the memory cap's pipe: {}",
+            "couldn't create the pipe that enforces the memory limit: {}",
             std::io::Error::last_os_error()
         ));
     }

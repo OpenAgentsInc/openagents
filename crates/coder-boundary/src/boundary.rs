@@ -148,25 +148,28 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Error::Unsupported(os) => {
-                write!(f, "no enforced filesystem boundary exists on {os}")
+                write!(
+                    f,
+                    "{os} has no supported way to limit which files a command can write"
+                )
             }
             Error::Unavailable(path) => {
-                write!(f, "no sandbox backend at {}", path.display())
+                write!(f, "the sandbox program {} is not installed", path.display())
             }
             Error::Inoperable { backend, error } => write!(
                 f,
-                "the sandbox backend at {} cannot confine a command on this host: {error}",
+                "the sandbox program {} can't restrict a command on this machine: {error}",
                 backend.display()
             ),
             Error::Relative(path) => {
                 write!(f, "{} is not an absolute path", path.display())
             }
             Error::Resolve { path, error } => {
-                write!(f, "cannot resolve {}: {error}", path.display())
+                write!(f, "can't find {}: {error}", path.display())
             }
             Error::Unsafe(path) => write!(
                 f,
-                "{} cannot be written into a sandbox profile",
+                "the path {} contains characters that a sandbox profile can't hold",
                 path.display()
             ),
             Error::Overlap {
@@ -178,7 +181,7 @@ impl fmt::Display for Error {
                 writable.display(),
                 protected.display()
             ),
-            Error::Io(error) => write!(f, "cannot set up the boundary: {error}"),
+            Error::Io(error) => write!(f, "can't set up the filesystem write boundary: {error}"),
         }
     }
 }

@@ -134,7 +134,7 @@ impl Configuration {
     pub fn validate(&self) -> Result<(), String> {
         self.project.validate()?;
         if self.v != 1 || !self.repository.is_absolute() || self.tasks.len() > 256 {
-            return Err("supervisor requires version 1, an absolute repository, and at most 256 prepared tasks".into());
+            return Err("the supervisor configuration must set v to 1, give an absolute repository path, and list at most 256 prepared tasks".into());
         }
         if !(1..=64).contains(&self.capacity.executor_slots)
             || !(1..=128).contains(&self.review_cap)
@@ -145,15 +145,17 @@ impl Configuration {
             || self.capacity.integration_lanes != 1
         {
             return Err(
-                "supervisor capacity, review, dispatch, polling, or wall bounds are invalid".into(),
+                "a supervisor limit is out of range: check capacity.executor_slots, capacity.integration_lanes, review_cap, dispatch_limit, admission_minutes, poll_seconds, and quota_backoff_seconds".into(),
             );
         }
         if self.external_reservation.quiet_host || self.external_reservation.integration {
-            return Err("external reservations must describe ordinary occupied capacity".into());
+            return Err(
+                "external_reservation cannot reserve the quiet host or the integration lane".into(),
+            );
         }
         for owner in &self.external_owners {
             if owner.owner.trim().is_empty() || owner.writes.is_empty() {
-                return Err("external ownership needs an owner and declared paths".into());
+                return Err("each external owner needs a name and the paths it writes".into());
             }
             for path in &owner.writes {
                 crate::artifact::relative(path)?;
@@ -174,14 +176,17 @@ impl Configuration {
                 || !prepared.tracker_base.bytes().all(|b| b.is_ascii_hexdigit())
             {
                 return Err(format!(
-                    "task {} is excluded or its pinned assignment does not match its scheduling record",
+                    "task {} is excluded, or its pinned assignment does not match its scheduling record",
                     task.id
                 ));
             }
             if let Footprint::Declared { writes, .. } = &task.footprint
                 && prepared.assignment.writes == writes.is_empty()
             {
-                return Err(format!("task {} has inconsistent write authority", task.id));
+                return Err(format!(
+                    "task {}'s assignment and scheduling record disagree about whether it may write files",
+                    task.id
+                ));
             }
         }
         self.catalog()?.validate().map_err(|e| e.to_string())
@@ -243,7 +248,7 @@ pub async fn pin_configuration(input: &Path, output: &Path) -> Result<(), String
         let issue = snapshot
             .issues
             .get(&prepared.scheduling.issue)
-            .ok_or("prepared task is absent from the scoped project")?;
+            .ok_or("a prepared task's issue is not in the configured GitHub project")?;
         prepared.issue_updated = issue.updated_at.clone();
         prepared.issue_body_digest = issue.body_digest.clone();
         prepared.tracker_base = snapshot.default_branch_revision.clone();
@@ -340,24 +345,24 @@ fn tracker_block(
     snapshot: &github::Snapshot,
 ) -> Option<String> {
     if snapshot.default_branch_revision != prepared.tracker_base {
-        return Some("default branch changed; integrate and repin queued work".into());
+        return Some("the default branch moved; merge the new commits and run pin-config again before queued tasks start".into());
     }
     let Some(issue) = snapshot.issues.get(&prepared.scheduling.issue) else {
-        return Some("issue is absent from the scoped project".into());
+        return Some("the issue is not in the configured GitHub project".into());
     };
     if issue.closed {
-        return Some("issue is closed".into());
+        return Some("the issue is closed".into());
     }
     if issue.updated_at != prepared.issue_updated {
-        return Some("issue version changed; refresh its prepared assignment".into());
+        return Some("the issue was edited; update its prepared assignment".into());
     }
     if issue.body_digest != prepared.issue_body_digest {
-        return Some("issue content changed; refresh its prepared assignment".into());
+        return Some("the issue's text changed; update its prepared assignment".into());
     }
     for blocker in &issue.blockers {
         if blocker.repository != configuration.project.repository_name() || !blocker.closed {
             return Some(format!(
-                "open or out-of-scope prerequisite {}#{}",
+                "prerequisite {}#{} is still open or is outside this repository",
                 blocker.repository, blocker.number
             ));
         }
@@ -414,11 +419,11 @@ fn plan_round(
             .expect("catalog contains prepared tasks");
         let now = atif::now_ms() / 1000;
         let reason = match ledger.record(&task.id).and_then(|r| r.backoff_until) {
-            Some(until) if until > now => Some(format!("executor capacity backoff until {until}")),
+            Some(until) if until > now => Some(format!("the executor refused for lack of capacity; waiting until {until} (Unix time) to retry")),
             _ => match snapshot {
                 Err(error) => Some(error.clone()),
                 Ok(snapshot) if !snapshot.issues.contains_key(&task.issue) => {
-                    Some("issue is no longer visible in the scoped project".into())
+                    Some("the issue is no longer in the configured GitHub project".into())
                 }
                 Ok(snapshot) => tracker_block(configuration, prepared, snapshot),
             },
@@ -509,13 +514,13 @@ pub async fn run(configuration_path: &Path, state: &Path, watch: bool) -> Result
         consume_reviews(state, &mut ledger)?;
         let configuration = Configuration::load(configuration_path)?;
         if configuration.capacity.executor_slots > executor_limit {
-            return Err("project capacity exceeds the approved executor's declared limit".into());
+            return Err("executor_slots is higher than the concurrency limit the approved executor declares".into());
         }
         if configuration.repository != initial.repository
             || configuration.project.repository_name() != initial.project.repository_name()
             || configuration.project.project != initial.project.project
         {
-            return Err("a running supervisor cannot change repository or project scope".into());
+            return Err("a running supervisor cannot change its repository or GitHub project; restart it to use a new one".into());
         }
         let catalog = configuration.catalog()?;
         ledger.register(&catalog).map_err(|e| e.to_string())?;
@@ -527,7 +532,7 @@ pub async fn run(configuration_path: &Path, state: &Path, watch: bool) -> Result
             ) && catalog.task(id).is_none()
         });
         if missing || !drift.is_empty() {
-            return Err("pinned in-flight or reviewed tasks changed or disappeared; restore their catalog before resuming".into());
+            return Err("the configuration changed or removed a task that is running or awaiting review; restore that task's entry before you restart".into());
         }
         if started.elapsed() >= deadline || launched >= initial.dispatch_limit {
             stop = true;
@@ -535,7 +540,7 @@ pub async fn run(configuration_path: &Path, state: &Path, watch: bool) -> Result
         let snapshot = if !stop {
             github::fetch(&configuration.project, &configuration.repository).await
         } else {
-            Err("supervisor admission bound reached; draining active work".into())
+            Err("the supervisor reached its dispatch or time limit; waiting for running tasks to finish".into())
         };
         let Round {
             plan,
@@ -587,7 +592,7 @@ pub async fn run(configuration_path: &Path, state: &Path, watch: bool) -> Result
             let survey = survey.clone();
             let id = admission.task;
             let owned = owner.clone();
-            eprintln!("dispatch {id} attempt {attempt}");
+            eprintln!("started task {id}, attempt {attempt}");
             jobs.push(async move {
                 let result = dispatch(
                     &repository,
@@ -617,15 +622,15 @@ pub async fn run(configuration_path: &Path, state: &Path, watch: bool) -> Result
                         // retrying hot.
                         let until = atif::now_ms() / 1000 + configuration.quota_backoff_seconds;
                         ledger.backoff(&id, &attempt, &owner, &result_digest, until).map_err(|e| e.to_string())?;
-                        eprintln!("result {id} attempt {attempt}: capacity refusal ({cause}); requeued under backoff until {until}");
+                        eprintln!("task {id}, attempt {attempt}: the executor refused for lack of capacity ({cause}); retrying after {until} (Unix time)");
                     } else {
                         ledger.settle(&id, &attempt, &owner, &result_digest).map_err(|e| e.to_string())?;
-                        eprintln!("result {id} attempt {attempt}: pending independent review");
+                        eprintln!("task {id}, attempt {attempt}: finished; waiting for a separate review");
                     }
                 }
             }
             _ = tokio::time::sleep(Duration::from_secs(configuration.poll_seconds)) => {},
-            _ = tokio::signal::ctrl_c() => { stop = true; eprintln!("stop requested; draining active attempts and preserving results"); },
+            _ = tokio::signal::ctrl_c() => { stop = true; eprintln!("stopping: waiting for running tasks to finish and keeping their results"); },
         }
     }
     Ok(())
@@ -873,7 +878,7 @@ mod tests {
         let round = plan_round(&configuration, &catalog, &ledger, &Ok(snapshot()));
         assert!(round.plan.admit.is_empty());
         assert!(
-            round.reasons["task-a"].contains("owned by `root-integration`"),
+            round.reasons["task-a"].contains("belongs to `root-integration`"),
             "{:?}",
             round.reasons
         );
@@ -925,7 +930,7 @@ mod tests {
         assert_eq!(round.plan.admit[0].task, "task-a");
         assert_eq!(
             round.reasons["task-b"],
-            "issue is no longer visible in the scoped project"
+            "the issue is no longer in the configured GitHub project"
         );
 
         // A failed fetch blocks every queued task — nothing dispatches
@@ -1156,7 +1161,7 @@ mod tests {
             vec![Reason::Capacity(Bound::CpuUnits)]
         );
         assert!(
-            round.reasons["task-a"].contains("cpu-units"),
+            round.reasons["task-a"].contains("CPU units"),
             "the round record names the bound: {:?}",
             round.reasons
         );
@@ -1213,7 +1218,7 @@ mod tests {
         let round = plan_round(&configuration, &catalog, &ledger, &Ok(snapshot.clone()));
         assert!(round.plan.admit.is_empty());
         assert!(
-            round.reasons["task-b"].contains("review backlog is at its cap of 1"),
+            round.reasons["task-b"].contains("review queue is full: 1 of 1"),
             "{:?}",
             round.reasons
         );
@@ -1265,7 +1270,7 @@ mod tests {
         let round = plan_round(&configuration, &catalog, &ledger, &Ok(snapshot()));
         assert!(round.plan.admit.is_empty());
         assert!(
-            round.reasons["task-a"].contains("executor capacity backoff"),
+            round.reasons["task-a"].contains("lack of capacity; waiting until"),
             "{:?}",
             round.reasons
         );

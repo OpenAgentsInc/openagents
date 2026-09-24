@@ -173,7 +173,7 @@ impl std::fmt::Display for CatalogError {
             Self::Tampered => {
                 write!(
                     f,
-                    "the catalog's digest does not recompute over its contents"
+                    "the catalog's contents do not match its digest, so it was changed after it was sealed"
                 )
             }
             Self::DuplicateId(id) => write!(f, "two tasks share id `{id}`"),
@@ -184,7 +184,7 @@ impl std::fmt::Display for CatalogError {
             Self::BadPath { task, path, reason } => {
                 write!(f, "task `{task}` declares path `{path}`: {reason}")
             }
-            Self::EmptyId => write!(f, "a task or a dependency names an empty id"),
+            Self::EmptyId => write!(f, "a task or a dependency has an empty id"),
         }
     }
 }
@@ -366,25 +366,25 @@ fn one_tick() -> u64 {
 /// [`Footprint::Unknown`], not `.`.
 fn check_path(path: &str) -> Result<(), &'static str> {
     if path.is_empty() {
-        return Err("an empty path names nothing");
+        return Err("the path is empty");
     }
     if path.starts_with('/') {
-        return Err("an absolute path escapes the tree");
+        return Err("the path is absolute; use a path relative to the repository root");
     }
     if path.starts_with('~') {
-        return Err("a `~` path escapes the tree");
+        return Err("a path that starts with `~` points outside the repository");
     }
     if path.contains('\\') {
-        return Err("a backslash is a separator on some platforms");
+        return Err("the path contains a backslash; use `/` as the separator");
     }
     if path.contains('\0') {
         return Err("a NUL byte cannot appear in a path");
     }
     for segment in path.split('/') {
         match segment {
-            "" => return Err("an empty segment is not normalized"),
-            "." => return Err("a `.` segment is not normalized"),
-            ".." => return Err("a `..` segment escapes the tree"),
+            "" => return Err("the path contains an empty segment, such as `//`"),
+            "." => return Err("the path contains a `.` segment; remove it"),
+            ".." => return Err("the path contains `..`, which can point outside the repository"),
             _ => {}
         }
     }

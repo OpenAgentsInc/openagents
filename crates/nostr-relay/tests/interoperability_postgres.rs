@@ -132,7 +132,7 @@ fn publish(address: SocketAddr) -> Published {
         hidden[2]
             .as_str()
             .unwrap()
-            .starts_with("restricted: author-private"),
+            .starts_with("restricted: to read these private events, filter authors"),
         "{hidden}"
     );
 
@@ -187,7 +187,7 @@ fn recover(address: SocketAddr, published: &Published) {
         hidden[2]
             .as_str()
             .unwrap()
-            .starts_with("restricted: author-private"),
+            .starts_with("restricted: to read these private events, filter authors"),
         "{hidden}"
     );
     send(

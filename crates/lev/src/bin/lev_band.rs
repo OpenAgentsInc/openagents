@@ -58,7 +58,7 @@ fn main() {
             "--label" => label = args.next().unwrap_or(label),
             "--split" => split = args.next().unwrap_or(split),
             "--calibrate" => calibrate = true,
-            other => eprintln!("unknown flag {other}"),
+            other => eprintln!("lev-band: unknown flag `{other}`"),
         }
     }
 

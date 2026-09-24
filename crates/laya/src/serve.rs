@@ -294,11 +294,11 @@ impl ServeState {
         admission: Admission,
     ) -> Result<Self, Error> {
         if variants.is_empty() {
-            return Err(Error::Artifact("no variants loaded".to_string()));
+            return Err(Error::Artifact("no model variants are loaded".to_string()));
         }
         if default >= variants.len() {
             return Err(Error::Artifact(format!(
-                "default variant index {default} names none of {} loaded variants",
+                "the default variant index {default} is out of range; {} variants are loaded",
                 variants.len()
             )));
         }
@@ -307,7 +307,7 @@ impl ServeState {
             .find(|alias| variants.iter().any(|v| &v.model_id == *alias))
         {
             return Err(Error::Artifact(format!(
-                "alias `{alias}` is also a variant id"
+                "alias `{alias}` is already the name of a loaded variant"
             )));
         }
         if admission.max_questions == 0
@@ -316,13 +316,13 @@ impl ServeState {
             || admission.memory_budget_bytes == 0
         {
             return Err(Error::Artifact(
-                "admission bounds must be at least one".to_string(),
+                "every admission limit must be at least 1".to_string(),
             ));
         }
         let memory_mib = admission.memory_budget_bytes.div_ceil(MIB);
         if memory_mib > Semaphore::MAX_PERMITS || u32::try_from(memory_mib).is_err() {
             return Err(Error::Artifact(format!(
-                "memory budget of {memory_mib} MiB exceeds what the door can count"
+                "the memory budget of {memory_mib} MiB is larger than this server can track; pass a smaller --memory-budget-mib"
             )));
         }
         let mut variant_slots = Vec::with_capacity(variants.len());
@@ -333,7 +333,7 @@ impl ServeState {
                 .max(1);
             if forward_mib > memory_mib {
                 return Err(Error::Artifact(format!(
-                    "`{}`: one forward at {} rows needs {forward_mib} MiB; the memory budget is {memory_mib} MiB",
+                    "`{}`: one inference pass at {} questions needs {forward_mib} MiB, more than the {memory_mib} MiB memory budget; raise --memory-budget-mib or lower --max-questions",
                     variant.model_id, admission.max_questions
                 )));
             }
@@ -447,7 +447,7 @@ impl ServeState {
                 Ok(self.default)
             } else {
                 Err(Error::Artifact(format!(
-                    "default variant index {} is not loaded",
+                    "the default variant index {} is out of range",
                     self.default
                 )))
             };
@@ -545,8 +545,8 @@ async fn systemone(
     body: Result<Bytes, BytesRejection>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     let body = received(body)?;
-    let request: SystemOneRequest =
-        serde_json::from_slice(&body).map_err(|e| invalid(format!("request body: {e}")))?;
+    let request: SystemOneRequest = serde_json::from_slice(&body)
+        .map_err(|e| invalid(format!("the request body is not valid: {e}")))?;
     state
         .admission
         .admit_shape(&request)

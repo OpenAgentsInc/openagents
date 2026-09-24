@@ -367,7 +367,7 @@ impl std::fmt::Display for Refusal {
             }
             Self::InconsistentPolicy => write!(
                 f,
-                "the policy's digest does not recompute over its contents"
+                "the policy's digest does not match its contents, so the policy changed after it was sealed"
             ),
             Self::Undeclared { classes } => write!(
                 f,
@@ -381,11 +381,14 @@ impl std::fmt::Display for Refusal {
             ),
             Self::Unsalted { classes } => write!(
                 f,
-                "the policy hashes {} but carries no salt",
+                "the policy hashes {} but has no salt to hash with",
                 class_list(classes)
             ),
             Self::ContentLeaves => {
-                write!(f, "the policy lets `content` leave — content never exports")
+                write!(
+                    f,
+                    "the policy lets `content` be exported, but content is never exported"
+                )
             }
             Self::Unconsented { classes } => {
                 write!(f, "the consent does not cover {}", class_list(classes))

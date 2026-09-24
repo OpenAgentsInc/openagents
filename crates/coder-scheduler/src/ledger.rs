@@ -183,10 +183,13 @@ impl std::fmt::Display for LedgerError {
                  writer is running"
             ),
             Self::Transition { task, from, to } => {
-                write!(f, "task `{task}` is {from:?} — it cannot move to {to}")
+                write!(f, "task `{task}` is {from:?}, so it cannot move to {to}")
             }
             Self::Unregistered(task) => {
-                write!(f, "task `{task}` has no record — register it first")
+                write!(
+                    f,
+                    "task `{task}` has no record in the ledger; register it first"
+                )
             }
             Self::Ownership { task, check } => write!(
                 f,

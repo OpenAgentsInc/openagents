@@ -317,7 +317,7 @@ impl Bridge {
             .map_err(|error| {
                 Refusal::new(
                     RefusalCode::BridgeError,
-                    format!("the helper at {} did not start: {error}", path.display()),
+                    format!("cannot start the helper at {}: {error}", path.display()),
                 )
             })?;
         let stdin = child.stdin.take().expect("stdin was piped");
@@ -330,7 +330,7 @@ impl Bridge {
             .map_err(|error| {
                 Refusal::new(
                     RefusalCode::BridgeError,
-                    format!("the helper's reader thread did not start: {error}"),
+                    format!("cannot start the thread that reads the helper's output: {error}"),
                 )
             })?;
         let stderr = Arc::new(Mutex::new(Tail::default()));
@@ -342,7 +342,7 @@ impl Bridge {
             .map_err(|error| {
                 Refusal::new(
                     RefusalCode::BridgeError,
-                    format!("the helper's stderr drainer did not start: {error}"),
+                    format!("cannot start the thread that reads the helper's stderr: {error}"),
                 )
             })?;
         Ok(Self {
@@ -456,7 +456,7 @@ impl Bridge {
             .ok_or_else(|| {
                 Refusal::new(
                     RefusalCode::BridgeError,
-                    "no identifier carried a signature prefix",
+                    "the helper's adapter identifiers carry no base model signature",
                 )
             })
     }
@@ -511,7 +511,7 @@ impl Bridge {
         let line = serde_json::to_string(request).map_err(|error| {
             Refusal::new(
                 RefusalCode::BridgeError,
-                format!("request did not encode: {error}"),
+                format!("cannot encode the request for the helper: {error}"),
             )
         })?;
         if let Err(error) = writeln!(self.stdin, "{line}").and_then(|()| self.stdin.flush()) {
@@ -541,7 +541,9 @@ impl Bridge {
         let wire: Wire = match serde_json::from_str(response.trim()) {
             Ok(wire) => wire,
             Err(error) => {
-                return Err(self.retire(format!("the helper answered with {error}")));
+                return Err(self.retire(format!(
+                    "the helper sent a reply that is not valid JSON: {error}"
+                )));
             }
         };
         if wire.id.as_deref() != Some(id) {
@@ -619,7 +621,7 @@ fn verify_signature(path: &Path) -> Result<()> {
         .map_err(|error| {
             Refusal::new(
                 RefusalCode::BridgeError,
-                format!("codesign did not run: {error}"),
+                format!("cannot run codesign to check the helper's signature: {error}"),
             )
         })?;
     if output.status.success() {
@@ -734,9 +736,12 @@ impl Pool {
 
     /// The first lane, or the refusal an empty pool answers with.
     fn first(&self) -> Result<&Lane> {
-        self.lanes
-            .first()
-            .ok_or_else(|| Refusal::new(RefusalCode::ModelUnavailable, "this door holds no helper"))
+        self.lanes.first().ok_or_else(|| {
+            Refusal::new(
+                RefusalCode::ModelUnavailable,
+                "this server has no lev-bridge helper running",
+            )
+        })
     }
 
     /// Runs `calls` across the pool, preserving input order.
@@ -754,7 +759,7 @@ impl Pool {
                 .map(|_| {
                     Err(Refusal::new(
                         RefusalCode::ModelUnavailable,
-                        "this door holds no helper",
+                        "this server has no lev-bridge helper running",
                     ))
                 })
                 .collect();

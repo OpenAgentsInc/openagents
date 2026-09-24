@@ -191,7 +191,7 @@ impl std::fmt::Display for Ending {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Ending::Exited(Some(code)) => write!(f, "exit {code}"),
-            Ending::Exited(None) => write!(f, "died on a signal"),
+            Ending::Exited(None) => write!(f, "stopped by a signal"),
             Ending::TimedOut => write!(f, "timed out"),
             Ending::Failed(why) => write!(f, "failed: {why}"),
         }

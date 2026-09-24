@@ -38,7 +38,7 @@ the same path with the run step removed, for a trace somebody already has.
 
 The trace is named rather than searched for, which is what
 [`--trace`](coder/guides/headless.md) is for, and the path must not already exist:
-a session never writes over another session's record. Standard output and
+a run never overwrites another run's trace. Standard output and
 standard error land beside it as `<trace>.stdout` and `<trace>.stderr`, so
 what the agent said is readable next to what it did. Those two files are
 part of the run's record and are kept; a preflight probe's output is read
@@ -51,12 +51,12 @@ during the next one. Read [`coder/subprocesses.md`](coder/runtime/subprocesses.m
 
 | Exit code | Meaning |
 | --- | --- |
-| `0` | The run took the path the task expects, and the evidence shows it. |
-| `1` | The run left the path. Every fault is printed. |
-| `2` | The machine does not hold what the task requires. Nothing ran. |
-| `3` | There is no trace to judge. |
-| `4` | The evidence a judgment needs is missing. Not a pass. |
-| `64` | The command line was wrong. |
+| `0` | The run took the steps the task expects, and the trace shows it. |
+| `1` | The run did not take the steps the task expects. Every fault is printed. |
+| `2` | This machine does not meet the task's requirements. Nothing ran. |
+| `3` | There is no trace to check. |
+| `4` | The trace lacks the evidence needed to decide. This is not a pass. |
+| `64` | The command line is wrong. |
 
 A run that times out with a readable, complete trace still fails its
 allowed-ending check and exits `1`. If it times out before creating any
@@ -290,8 +290,8 @@ A trace does not carry the exit code, and it does not carry the checkout. So
 which is the honest answer rather than a shortcoming to route around:
 
 ```text
-unverifiable: 2 faults, in the order the path takes:
-   1. [unverifiable] nothing compared the workspace, so writing nothing is unobserved rather than shown
+unverifiable: 2 faults, in the order of the task's expected steps:
+   1. [unverifiable] nothing compared the workspace before and after the run, so no evidence shows that it wrote nothing
    2. [unverifiable] the trace closed without saying how the episode ended; the task allows answered
 ```
 

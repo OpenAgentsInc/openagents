@@ -67,7 +67,7 @@ async fn main() {
             "--manifest" => manifest = args.next(),
             "--admission-record" => {
                 admission_record = Some(args.next().unwrap_or_else(|| {
-                    eprintln!("--admission-record requires a new output path");
+                    eprintln!("lev-serve: --admission-record needs the path of a file that does not exist yet");
                     std::process::exit(2);
                 }));
             }
@@ -91,7 +91,9 @@ async fn main() {
                     Some(value) => match lev::policy::duration(value) {
                         Some(seconds) if seconds > 0 => Some(seconds),
                         _ => {
-                            eprintln!("--policy-refresh takes off, or a duration such as 15m");
+                            eprintln!(
+                                "lev-serve: --policy-refresh must be `off` or a duration such as 15m"
+                            );
                             std::process::exit(2);
                         }
                     },
@@ -122,28 +124,28 @@ async fn main() {
                 loose.push("--seed-base");
             }
             other => {
-                eprintln!("unknown flag {other}");
+                eprintln!("lev-serve: unknown flag `{other}`");
                 std::process::exit(2);
             }
         }
     }
     if manifest.is_some() && !loose.is_empty() {
         eprintln!(
-            "lev-serve: {} cannot be passed beside --manifest, which already names the artifact, \
-             the estimator, and the sample count. One document decides, or none does.",
+            "lev-serve: {} cannot be used with --manifest, because the manifest already sets the \
+             adapter, the estimator, and the sample count",
             loose.join(" and ")
         );
         std::process::exit(2);
     }
 
     if admission_record.is_some() && manifest.is_none() {
-        eprintln!("--admission-record requires --manifest");
+        eprintln!("lev-serve: --admission-record needs --manifest");
         std::process::exit(2);
     }
     let pool = match Pool::discover(helpers) {
         Ok(pool) => pool,
         Err(refusal) => {
-            eprintln!("{refusal}");
+            eprintln!("lev-serve: {refusal}");
             std::process::exit(2);
         }
     };
@@ -182,7 +184,7 @@ async fn main() {
                 match lev::adapter::Package::open(&path) {
                     Ok(package) => {
                         eprintln!(
-                            "lev-serve: adapter {} pinned to base {}, and no manifest names it",
+                            "lev-serve: serving adapter {} for base model {} without a release manifest",
                             package.metadata.adapter_identifier,
                             package.metadata.base_model_signature
                         );
@@ -213,7 +215,7 @@ async fn main() {
             tokio::spawn(refresher(policy.clone(), every));
         } else {
             eprintln!(
-                "lev-serve: policy refresh is off; this door serves until its snapshot goes stale"
+                "lev-serve: policy refresh is off; this server answers until its cached policy expires"
             );
         }
     }
@@ -221,29 +223,34 @@ async fn main() {
     let samples = door.samples();
     let seed_base = door.seed_base();
     let door = Arc::new(door);
-    let listener = tokio::net::TcpListener::bind(("127.0.0.1", port))
-        .await
-        .expect("the port is free");
+    let listener = match tokio::net::TcpListener::bind(("127.0.0.1", port)).await {
+        Ok(listener) => listener,
+        Err(error) => {
+            eprintln!("lev-serve: cannot listen on 127.0.0.1:{port}: {error}");
+            std::process::exit(1);
+        }
+    };
     eprintln!(
-        "lev-serve on http://127.0.0.1:{port}, {samples} samples per question from seed block \
-         {seed_base} across {} helpers",
+        "lev-serve: listening on http://127.0.0.1:{port}; {samples} samples per question, seed \
+         block {seed_base}, {} bridge helpers",
         door.pool_width()
     );
-    axum::serve(listener, door.router())
-        .await
-        .expect("the server runs");
+    if let Err(error) = axum::serve(listener, door.router()).await {
+        eprintln!("lev-serve: the server stopped: {error}");
+        std::process::exit(1);
+    }
 }
 
 /// Fetches the snapshot and says where this door stands.
 fn announce(policy: &Policy) {
     match policy.fetch() {
         Ok(digest) => eprintln!(
-            "lev-serve: policy {} from {} ({})",
+            "lev-serve: fetched policy {} from {} into {}",
             &digest[..16],
             policy.source().display(),
             policy.cache().display()
         ),
-        Err(trouble) => eprintln!("lev-serve: the policy did not fetch — {trouble}"),
+        Err(trouble) => eprintln!("lev-serve: cannot fetch the policy: {trouble}"),
     }
     let report = policy.report();
     for revocation in &report.revoked {
@@ -256,15 +263,13 @@ fn announce(policy: &Policy) {
     }
     match policy.admits("") {
         Ok(()) => eprintln!(
-            "lev-serve: {} serves for another {} seconds unless the snapshot is refreshed",
+            "lev-serve: {} may serve for another {} seconds unless a newer policy arrives",
             policy.release(),
             report.expires_in_seconds
         ),
         Err(refusal) => {
             eprintln!("lev-serve: {}", refusal.message);
-            eprintln!(
-                "lev-serve: starting anyway, and refusing every question, so the reason is on the wire"
-            );
+            eprintln!("lev-serve: starting anyway; every request is refused with this reason");
         }
     }
 }
@@ -284,13 +289,15 @@ async fn refresher(policy: Policy, every: u64) {
             Ok(_) => {
                 let after = policy.standing().label();
                 if before != after {
-                    eprintln!("lev-serve: policy {before} -> {after}");
+                    eprintln!("lev-serve: the policy changed from {before} to {after}");
                     if let Err(refusal) = policy.admits("") {
                         eprintln!("lev-serve: {}", refusal.message);
                     }
                 }
             }
-            Err(trouble) => eprintln!("lev-serve: the policy did not refresh — {trouble}"),
+            Err(trouble) => eprintln!(
+                "lev-serve: cannot refresh the policy, so the cached one stays: {trouble}"
+            ),
         }
     }
 }
@@ -353,17 +360,17 @@ fn admitted(path: &str, pool: &Pool, calibration: Option<&str>, record: Option<&
 /// Says which records in `dir` this door serves, and why it refused the rest.
 fn report_calibration(dir: &str, held: &Calibration) {
     if held.is_empty() {
-        eprintln!("lev-serve: no record in {dir} may serve this door");
+        eprintln!("lev-serve: no calibration record in {dir} matches this server");
     } else {
         eprintln!(
-            "lev-serve: serving fitted maps for {}",
+            "lev-serve: serving calibrated probabilities for {}",
             held.families().join(", ")
         );
     }
     if let Some(trouble) = held.trouble() {
-        eprintln!("lev-serve: {dir} could not be read: {trouble}");
+        eprintln!("lev-serve: cannot read {dir}: {trouble}");
     }
     for (named, reason) in held.refusals() {
-        eprintln!("lev-serve: {named} refused — {reason}");
+        eprintln!("lev-serve: skipped calibration record {named}: {reason}");
     }
 }

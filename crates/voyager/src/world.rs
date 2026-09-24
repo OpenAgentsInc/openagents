@@ -544,7 +544,7 @@ impl World {
             for block in &deposit.blocks {
                 if !positions.insert(block) {
                     return Err(Error::world(format!(
-                        "{}: deposit {:?} shares a block position",
+                        "{}: deposit {:?} uses a block position another deposit already uses",
                         self.path.display(),
                         deposit.id
                     )));
@@ -554,7 +554,7 @@ impl World {
         if let Some(quest) = &self.quest {
             if !self.effects.contains_key(&quest.effect) {
                 return Err(Error::world(format!(
-                    "{}: quest {:?} names effect {:?}, which is not in effects",
+                    "{}: quest {:?} names effect {:?}, which the effects section does not define",
                     self.path.display(),
                     quest.id,
                     quest.effect

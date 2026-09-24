@@ -467,7 +467,7 @@ impl Manifest {
     pub fn validate(&self) -> Result<(), String> {
         if self.v != MANIFEST_VERSION {
             return Err(format!(
-                "body version is {}, this version reads {MANIFEST_VERSION}",
+                "the manifest has format version {}, but this program reads only version {MANIFEST_VERSION}",
                 self.v
             ));
         }
@@ -479,21 +479,25 @@ impl Manifest {
         }
         if self.transport == RELAY || self.profile == "native" || self.profile == "plugin" {
             if !self.detect.binary.is_empty() || !self.detect.version.is_empty() {
-                return Err("a relay manifest detects nothing on this machine".to_string());
+                return Err("a relay, native, or plugin manifest can't set detect, because this machine doesn't run its program".to_string());
             }
             if !self.invoke.is_empty() || !self.invoke_writing.is_empty() {
-                return Err("a relay manifest runs no argv here".to_string());
+                return Err("a relay, native, or plugin manifest can't set invoke, because this machine doesn't run its program".to_string());
             }
             if self.workspace_probe.is_some() {
-                return Err("a relay manifest probes no workspace here".to_string());
+                return Err("a relay, native, or plugin manifest can't set workspace_probe, because this machine doesn't run its program".to_string());
             }
             return self.check_claims();
         }
         if self.detect.binary.is_empty() || self.detect.binary.contains('\0') {
-            return Err("detect names no binary".to_string());
+            return Err(
+                "detect.binary is empty or invalid; name the program to look for".to_string(),
+            );
         }
         if self.detect.version.is_empty() {
-            return Err("detect carries no version argv".to_string());
+            return Err(
+                "detect.version is empty; give the command that prints the version".to_string(),
+            );
         }
         self.check_argv(&self.detect.version, "detect.version")?;
         if let Some(probe) = &self.detect.probe {
@@ -507,7 +511,7 @@ impl Manifest {
         }
         if !self.invoke_writing.is_empty() {
             if self.invoke.is_empty() {
-                return Err("invoke_writing without invoke drives nothing".to_string());
+                return Err("invoke_writing is set but invoke is empty; set invoke too".to_string());
             }
             self.check_argv(&self.invoke_writing, "invoke_writing")?;
         }
@@ -525,7 +529,7 @@ impl Manifest {
             .collect();
         if !overlap.is_empty() {
             return Err(format!(
-                "{}: a bound cannot be both kept and admitted-ignored",
+                "{}: a limit can't be listed in both claims_enforced and claims_not_enforced",
                 overlap.join(", ")
             ));
         }
@@ -539,10 +543,10 @@ impl Manifest {
         match argv.first() {
             Some(head) if same_binary(&self.detect.binary, head) => Ok(()),
             Some(head) => Err(format!(
-                "{field} starts with {head:?}, not the binary {:?} detect resolves",
+                "{field} starts with {head:?}, but its first word must be the program named in detect.binary, {:?}",
                 self.detect.binary
             )),
-            None => Err(format!("{field} carries no argv")),
+            None => Err(format!("{field} is empty; it needs a command")),
         }
     }
 
@@ -646,7 +650,7 @@ impl Manifest {
         let Some(path) = resolve(&self.detect.binary, &dirs) else {
             return Presence::Absent {
                 reason: format!(
-                    "no {} in {} directories on this machine",
+                    "no program named {} in the {} directories searched on this machine",
                     self.detect.binary,
                     dirs.len()
                 ),
@@ -664,7 +668,7 @@ impl Manifest {
             }
             Err(Stop::Failed(why)) => {
                 return Presence::Absent {
-                    reason: format!("{} will not run: {why}", path.display()),
+                    reason: format!("{} failed to start: {why}", path.display()),
                     looked_in: dirs,
                 };
             }
@@ -672,7 +676,7 @@ impl Manifest {
         if said.truncated {
             return Presence::Unknown {
                 reason: format!(
-                    "{}'s version answer overran the output bound",
+                    "the version output of {} was longer than the output bound allows",
                     path.display()
                 ),
                 version: None,
@@ -681,7 +685,11 @@ impl Manifest {
         }
         if said.code != Some(0) {
             return Presence::Unknown {
-                reason: format!("{}'s version argv {}", path.display(), exit_word(said.code)),
+                reason: format!(
+                    "the version command of {} {}",
+                    path.display(),
+                    exit_word(said.code)
+                ),
                 version: None,
                 path: Some(path),
             };
@@ -690,7 +698,7 @@ impl Manifest {
         let Some(version) = version_in(&report) else {
             return Presence::Absent {
                 reason: format!(
-                    "{} printed {report:?}, which carries no version",
+                    "{} printed {report:?}, which contains no version number",
                     path.display()
                 ),
                 looked_in: dirs,
@@ -710,14 +718,16 @@ impl Manifest {
                 path: Some(path),
             },
             Err(Stop::Failed(why)) => Presence::Unknown {
-                reason: format!("the workspace probe would not run: {why}"),
+                reason: format!("the workspace probe failed to start: {why}"),
                 version: Some(version),
                 path: Some(path),
             },
             Ok(said) => {
                 if said.truncated {
                     return Presence::Unknown {
-                        reason: "the workspace probe's answer overran the output bound".to_string(),
+                        reason:
+                            "the workspace probe's output was longer than the output bound allows"
+                                .to_string(),
                         version: Some(version),
                         path: Some(path),
                     };
@@ -743,7 +753,7 @@ impl Manifest {
                 }
                 Presence::Unknown {
                     reason: format!(
-                        "the workspace probe {} without a declared word",
+                        "the workspace probe {} and printed none of the words the manifest accepts",
                         exit_word(said.code)
                     ),
                     version: Some(version),
@@ -757,7 +767,7 @@ impl Manifest {
 /// How an exited argv ended, in words a reason can carry.
 fn exit_word(code: Option<i32>) -> String {
     match code {
-        Some(code) => format!("exited {code}"),
-        None => "died on a signal".to_string(),
+        Some(code) => format!("exited with code {code}"),
+        None => "was stopped by a signal".to_string(),
     }
 }

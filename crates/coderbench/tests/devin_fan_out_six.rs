@@ -63,7 +63,7 @@ fn a_trace_alone_is_unverifiable() {
     assert_eq!(
         said,
         vec![
-            "nothing compared the workspace, so writing nothing is unobserved rather than shown"
+            "nothing compared the workspace before and after the run, so no evidence shows that it wrote nothing"
                 .to_string(),
             "the trace closed without saying how the episode ended; the task allows answered"
                 .to_string(),
@@ -210,8 +210,8 @@ fn faults_come_back_in_path_order() {
             .map(|want| format!("no delegation asked {}", want.prompt)),
     );
     wanted.extend([
-        "0 delegations are recorded correct, expected 6; 0 recorded nothing either way".to_string(),
-        "nothing compared the workspace, so writing nothing is unobserved rather than shown"
+        "0 delegations have answers recorded as correct, expected 6; 0 have no recorded check".to_string(),
+        "nothing compared the workspace before and after the run, so no evidence shows that it wrote nothing"
             .to_string(),
         "the trace has no end record, so the session never closed".to_string(),
         "nothing observed how the episode ended; the task allows answered".to_string(),

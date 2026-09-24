@@ -293,8 +293,8 @@ impl std::fmt::Display for Problem {
                 attempt_id,
             } => write!(
                 f,
-                "receipt `{attempt_id}` ({request} attempt {attempt}) does not recompute \
-                 over its contents"
+                "receipt `{attempt_id}` ({request} attempt {attempt}) has a digest that does not \
+                 match its contents"
             ),
             Self::MismatchedIdentity {
                 step,
@@ -308,15 +308,17 @@ impl std::fmt::Display for Problem {
                 step.session, step.turn, step.step
             ),
             Self::DuplicateRequestAttempt { request, attempt } => {
-                write!(f, "{request} attempt {attempt} was claimed more than once")
+                write!(
+                    f,
+                    "more than one receipt claims {request} attempt {attempt}"
+                )
             }
             Self::OrphanRevision {
                 revises,
                 attempt_id,
             } => write!(
                 f,
-                "attempt `{attempt_id}` claims to revise `{revises}`, which no record \
-                 names"
+                "attempt `{attempt_id}` says it revises `{revises}`, but no record has that ID"
             ),
         }
     }

@@ -253,7 +253,7 @@ impl Bridge {
             .spawn(move || drain_stderr(stderr_pipe, &tail, &done))
             .map_err(|error| {
                 Error::bridge(format!(
-                    "the helper's stderr drainer did not start: {error}"
+                    "the thread that reads the helper's stderr did not start: {error}"
                 ))
             })?;
         Ok(Self {
@@ -321,7 +321,7 @@ impl Bridge {
     pub fn call(&mut self, op: &str, args: Value, deadline: Duration) -> Result<Value> {
         if self.retired {
             return Err(Error::bridge(
-                "the helper was retired after an earlier fault",
+                "the helper stopped after an earlier fault; start a new episode",
             ));
         }
         static NEXT: AtomicU64 = AtomicU64::new(1);
@@ -495,6 +495,6 @@ pub fn helper_path() -> Result<PathBuf> {
         }
     }
     Err(Error::bridge(
-        "no mc-bridge binary; run ./scripts/build-mc-bridge.sh first".to_string(),
+        "no mc-bridge binary found; build it with ./scripts/build-mc-bridge.sh".to_string(),
     ))
 }

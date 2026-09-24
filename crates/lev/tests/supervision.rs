@@ -182,7 +182,7 @@ fn faults_retire_a_helper_and_the_lane_recovers() {
     // A helper that stops speaking JSON.
     mode(&fake, "garbage");
     let mut bridge = start(&path);
-    bridge_error(&mut bridge, "answered with");
+    bridge_error(&mut bridge, "not valid JSON");
 
     // Recovery: the first helper in the lane hangs and is retired; the
     // pool's next call on that lane runs on a fresh process and succeeds.

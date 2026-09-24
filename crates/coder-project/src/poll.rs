@@ -687,19 +687,15 @@ fn parse_item(node: &Value, id: &str) -> Result<Item, String> {
     let number = field(node, &["number"])
         .and_then(Value::as_u64)
         .filter(|number| *number > 0)
-        .ok_or_else(|| {
-            format!("project item {id} carries no issue number — an incomplete observation, not a guessable one")
-        })?;
+        .ok_or_else(|| format!("project item {id} has no issue number in the snapshot"))?;
     let title = field(node, &["title"])
         .and_then(Value::as_str)
         .filter(|title| !title.trim().is_empty())
-        .ok_or_else(|| format!("issue #{number} carries no title — an incomplete observation"))?
+        .ok_or_else(|| format!("issue #{number} has no title in the snapshot"))?
         .to_string();
     let status = status(node)
         .filter(|status| !status.trim().is_empty())
-        .ok_or_else(|| {
-            format!("issue #{number} carries no status field value — an incomplete observation")
-        })?;
+        .ok_or_else(|| format!("issue #{number} has no status value in the snapshot"))?;
     let version = Version {
         updated_at: field(node, &["updatedAt", "updated_at", "updated"])
             .and_then(Value::as_str)
@@ -720,7 +716,7 @@ fn parse_item(node: &Value, id: &str) -> Result<Item, String> {
     };
     if version.updated_at.is_empty() && version.content_digest.is_empty() {
         return Err(format!(
-            "issue #{number} carries neither an updated-at nor a content digest — an incomplete observation cannot pin a version"
+            "issue #{number} has neither an updated-at time nor a content digest in the snapshot, so its version cannot be pinned"
         ));
     }
     let state = match field(node, &["state"]).and_then(Value::as_str) {
@@ -915,7 +911,7 @@ mod tests {
             serde_json::json!({"items": [{"number": 1, "title": "No pin", "status": "Ready"}]}),
         ] {
             let error = Board::from_snapshot(&mutation).unwrap_err();
-            assert!(error.contains("observation"), "{error}");
+            assert!(error.contains("in the snapshot"), "{error}");
         }
         let content_digest_pin = serde_json::json!({"items": [
             {"number": 1, "title": "Digest-pinned", "status": "Ready", "bodyDigest": "abc123"}

@@ -156,14 +156,14 @@ impl Found {
     pub fn message(&self) -> String {
         let slug = &self.manifest.slug;
         match &self.presence {
-            Presence::Present { report, .. } => format!("{slug} is present: {report}."),
-            Presence::Absent { reason, .. } => format!("{slug} is absent: {reason}."),
+            Presence::Present { report, .. } => format!("{slug} is installed: {report}."),
+            Presence::Absent { reason, .. } => format!("{slug} isn't installed: {reason}."),
             Presence::Unavailable { refusal, .. } => {
-                format!("{slug} is present and unavailable here: {refusal}.")
+                format!("{slug} is installed but refuses to work in this workspace: {refusal}.")
             }
-            Presence::Unprobed { reason } => format!("{slug} was not probed: {reason}."),
+            Presence::Unprobed { reason } => format!("{slug} wasn't checked: {reason}."),
             Presence::Unknown { reason, .. } => {
-                format!("{slug} could not be established: {reason}.")
+                format!("Coder couldn't tell whether {slug} is installed: {reason}.")
             }
         }
     }
@@ -180,11 +180,11 @@ impl Found {
                 refusal,
                 ..
             } => format!(
-                "{report} at {}, refusing this workspace: {refusal}",
+                "{report} at {}, but it refuses this workspace: {refusal}",
                 path.display()
             ),
-            Presence::Unprobed { reason } => format!("unprobed: {reason}"),
-            Presence::Unknown { reason, .. } => format!("unknown: {reason}"),
+            Presence::Unprobed { reason } => format!("not checked: {reason}"),
+            Presence::Unknown { reason, .. } => format!("result unknown: {reason}"),
         }
     }
 
@@ -358,10 +358,10 @@ pub(crate) fn check_executor_state(slug: &str, proof: &Proof, presence: Presence
             Ok(resolved) if proof.writable().iter().any(|grant| {
                 grant.canonicalize().is_ok_and(|grant| resolved.starts_with(grant))
             }) => None,
-            Ok(_) => Some(format!("executor state {} is outside every writable grant; set XDG_DATA_HOME inside an approved writable directory", state.display())),
-            Err(error) => Some(format!("cannot resolve executor state {}: {error}", state.display())),
+            Ok(_) => Some(format!("the executor keeps its state in {}, which is outside every directory the approval lets it write to; set XDG_DATA_HOME to a directory inside one approved with --writable", state.display())),
+            Err(error) => Some(format!("can't find the executor's state directory {}: {error}", state.display())),
         },
-        None => Some("executor state cannot be resolved: XDG_DATA_HOME and HOME name no absolute data directory".to_string()),
+        None => Some("can't find the executor's state directory: neither XDG_DATA_HOME nor HOME is an absolute path".to_string()),
     };
     match failure {
         Some(detail) => Presence::Unavailable {

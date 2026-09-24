@@ -27,9 +27,12 @@ impl fmt::Display for StoreError {
         match self {
             Self::Database(error) => write!(f, "Postgres error: {error}"),
             Self::Domain(error) => write!(f, "invalid event: {error}"),
-            Self::ConnectionClosed => f.write_str("Postgres connection driver is not current"),
+            Self::ConnectionClosed => f.write_str("the Postgres connection closed"),
             Self::WorkQueueFull => f.write_str("database work queue is full"),
-            Self::MigrationDrift(reason) => write!(f, "schema migration drift: {reason}"),
+            Self::MigrationDrift(reason) => write!(
+                f,
+                "the database schema does not match the relay's migrations: {reason}"
+            ),
             Self::InvalidPolicy(reason) => write!(f, "invalid relay admission policy: {reason}"),
             Self::Management(reason) => write!(f, "management request failed: {reason}"),
             Self::Media(reason) => write!(f, "media request failed: {reason}"),
@@ -38,10 +41,16 @@ impl fmt::Display for StoreError {
                 write!(f, "ephemeral event is {bytes} bytes; maximum is 1048576")
             }
             Self::TimestampOutOfRange { field, value } => {
-                write!(f, "{field} timestamp {value} exceeds Postgres bigint range")
+                write!(
+                    f,
+                    "{field} timestamp {value} is too large for the database to store"
+                )
             }
             Self::InvalidLimit(value) => {
-                write!(f, "query limit {value} exceeds Postgres bigint range")
+                write!(
+                    f,
+                    "query limit {value} is too large for the database to store"
+                )
             }
             Self::Serialization(reason) => write!(f, "event serialization failed: {reason}"),
             Self::CorruptRow(reason) => write!(f, "stored event is corrupt: {reason}"),

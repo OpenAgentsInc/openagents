@@ -47,43 +47,44 @@ const EXIT_UNVERIFIABLE: u8 = 4;
 const EXIT_USAGE: u8 = 64;
 
 const USAGE: &str = "\
-coderbench — run a Coder episode and judge it against the path it owes.
+coderbench — run a Coder task and check whether it took the steps the task expects.
 
 Usage:
-  coderbench run <TASK>            Run the task and judge what it did.
-  coderbench diff <TASK> <TRACE>   Judge a trace somebody already has.
-  coderbench tune <TASK>           Measure a series and compare it with a baseline.
+  coderbench run <TASK>            Run the task and check what it did.
+  coderbench diff <TASK> <TRACE>   Check a trace recorded earlier.
+  coderbench tune <TASK>           Measure several runs and compare them with a baseline.
 
 Options for run:
       --repository <DIR>  The checkout to run in. Default: this directory.
       --coder <PATH>      The coder binary. Default: CODERBENCH_CODER, the
                           binary beside this one, then PATH.
-      --trace <PATH>      Where the run's trace lands. Default: a new file
-                          under ~/.openagents/coderbench/. The path must
-                          not exist: a session never writes over another
-                          session's record.
+      --trace <PATH>      Where to write the run's trace. Default: a new
+                          file under ~/.openagents/coderbench/. The path
+                          must not exist, so a run never overwrites
+                          another run's trace.
       --timeout <SECS>    Override the task's own timeout.
 
 Options for tune:
-      --against <PATH>    A baseline trace or a directory of them. Repeat
-                          the flag to add more.
-      --trace <PATH>      A recorded candidate trace or a directory of them.
-                          Repeat the flag to add more. Nothing runs live.
-      --runs <N>          How many live runs to make. Default: 8.
-      --out <DIR>         Where live traces land. Default: a new directory
+      --against <PATH>    A baseline trace or a directory of traces.
+                          Repeat the flag to add more.
+      --trace <PATH>      A recorded candidate trace or a directory of
+                          traces. Repeat the flag to add more. With this
+                          flag, tune starts no new runs.
+      --runs <N>          How many new runs to start. Default: 8.
+      --out <DIR>         Where to write the new runs' traces. Default: a new directory
                           under ~/.openagents/coderbench/.
-      --repository, --coder, --timeout as for run.
+      --repository, --coder, --timeout  The same as for run.
   -h, --help              Show this text.
 
 <TASK> is a task identifier, or a path to a task.json.
 
 Exit codes:
-  0   The run took the path the task expects, and the evidence shows it.
-  1   The run left the path. Every fault is printed.
-  2   The machine does not hold what the task requires. Nothing ran.
-  3   There is no trace to judge.
-  4   The evidence a judgment needs is missing. Not a pass.
-  64  The command line was wrong.";
+  0   The run took the steps the task expects, and the trace shows it.
+  1   The run did not take the steps the task expects. Every fault is printed.
+  2   This machine does not meet the task's requirements. Nothing ran.
+  3   There is no trace to check.
+  4   The trace lacks the evidence needed to decide. This is not a pass.
+  64  The command line is wrong.";
 
 fn main() {
     let arguments: Vec<String> = std::env::args().skip(1).collect();
@@ -179,19 +180,17 @@ fn parse(arguments: &[String]) -> Result<Command, String> {
                 runs = Some(
                     count
                         .parse::<usize>()
-                        .map_err(|_| format!("--runs takes a positive number, not {count}"))?,
+                        .map_err(|_| format!("--runs must be a positive number, not {count}"))?,
                 );
                 if runs == Some(0) {
-                    return Err("--runs takes a positive number, not 0".to_string());
+                    return Err("--runs must be a positive number, not 0".to_string());
                 }
             }
             "--timeout" => {
                 let seconds = value("--timeout")?;
-                timeout = Some(
-                    seconds
-                        .parse::<u64>()
-                        .map_err(|_| format!("--timeout takes seconds, not {seconds}"))?,
-                );
+                timeout = Some(seconds.parse::<u64>().map_err(|_| {
+                    format!("--timeout must be a whole number of seconds, not {seconds}")
+                })?);
             }
             other if other.starts_with('-') && other.len() > 1 => {
                 return Err(format!("unknown option {other}"));
@@ -201,7 +200,7 @@ fn parse(arguments: &[String]) -> Result<Command, String> {
     }
 
     match free.split_first() {
-        None => Err("run a task, or diff a trace against one".to_string()),
+        None => Err("no command given: use run, diff, or tune".to_string()),
         Some((verb, rest)) if verb == "run" => match rest {
             [task] => Ok(Command::Run(Options {
                 task: task.clone(),
@@ -230,7 +229,7 @@ fn parse(arguments: &[String]) -> Result<Command, String> {
             };
             let traces = trace_values;
             if runs.is_some() && !traces.is_empty() {
-                return Err("--runs and --trace do not combine".to_string());
+                return Err("--runs and --trace cannot be used together: --runs starts new runs, and --trace reads recorded ones".to_string());
             }
             Ok(Command::Tune(TuneOptions {
                 task: task.clone(),
@@ -243,7 +242,7 @@ fn parse(arguments: &[String]) -> Result<Command, String> {
                 out,
             }))
         }
-        Some((verb, _)) => Err(format!("no such command as {verb}")),
+        Some((verb, _)) => Err(format!("unknown command {verb}: use run, diff, or tune")),
     }
 }
 
@@ -259,7 +258,12 @@ fn run(options: &Options) -> u8 {
         .map_or_else(std::env::current_dir, Ok)
     {
         Ok(repository) => drive::absolute(&repository),
-        Err(why) => return complain(&format!("no directory to run in — {why}"), EXIT_USAGE),
+        Err(why) => {
+            return complain(
+                &format!("cannot read the current directory: {why}"),
+                EXIT_USAGE,
+            );
+        }
     };
 
     println!("{} — {}", task.id, task.request);
@@ -280,18 +284,18 @@ fn run(options: &Options) -> u8 {
     if !unmet.is_empty() {
         println!();
         println!(
-            "Refused before starting Coder. {} requirement{} of {} did not hold:",
+            "Coder did not start: this machine does not meet {} of the task's {} requirement{}:",
             unmet.len(),
-            if unmet.len() == 1 { "" } else { "s" },
-            checked.len()
+            checked.len(),
+            if checked.len() == 1 { "" } else { "s" }
         );
         for one in unmet {
             println!("  {} — {}", one.requirement, one.found);
         }
         println!();
         println!(
-            "A run this machine cannot hold up produces faults about the machine. \
-             Nothing was started."
+            "A run on a machine that does not meet the requirements reports faults \
+             in the machine rather than in Coder, so nothing ran."
         );
         return EXIT_REFUSED;
     }
@@ -320,7 +324,7 @@ fn run(options: &Options) -> u8 {
         Err(why) => return complain(&why, EXIT_NO_TRACE),
     };
     println!(
-        "  {} in {:.1} s. Reply in {}, progress in {}.",
+        "  {} in {:.1} s. Reply saved to {}, progress log saved to {}.",
         ran.outcome,
         ran.seconds,
         ran.stdout.display(),
@@ -328,13 +332,14 @@ fn run(options: &Options) -> u8 {
     );
     if ran.outcome == Outcome::Usage {
         return complain(
-            "coder refused the command line this built. The two are out of step.",
+            "coder rejected the command line that coderbench built, so the two \
+             binaries do not match. Build both from the same checkout.",
             EXIT_USAGE,
         );
     }
 
     if let Some(reason) = workspace_error {
-        println!("  workspace observation is unverifiable: {reason}");
+        println!("  could not check the workspace for changes: {reason}");
     }
     report(&task, &run, &ran.trace)
 }
@@ -357,7 +362,7 @@ fn observe_episode(
     repository: &Path,
     ran: drive::Run,
 ) -> Result<(Observed, drive::Run, Option<String>), String> {
-    let mut run = observe(&ran.trace).map_err(|why| format!("nothing to judge — {why}"))?;
+    let mut run = observe(&ran.trace).map_err(|why| format!("no trace to check: {why}"))?;
     run.ending = ran.outcome.into();
     let after = Snapshot::observe(repository);
     let workspace_error = match Workspace::between(&before, &after) {
@@ -431,7 +436,7 @@ fn tune(options: &TuneOptions) -> u8 {
             Err(why) => return complain(&why, EXIT_NO_TRACE),
         };
         println!();
-        println!("Against the baseline");
+        println!("Compared with the baseline");
         println!("  fixed       {}", names(&tuning.fixed));
         println!("  introduced  {}", names(&tuning.introduced));
         println!("  remaining   {}", names(&tuning.remaining));
@@ -477,7 +482,7 @@ fn measured_series(task: &Task, label: &str, paths: &[PathBuf]) -> Result<Series
     for path in paths {
         runs.push(
             tune::measure_trace(task, path)
-                .map_err(|why| format!("trace {} did not read back: {why}", path.display()))?,
+                .map_err(|why| format!("cannot read trace {}: {why}", path.display()))?,
         );
     }
     Ok(Series {
@@ -492,7 +497,12 @@ fn live_series(task: &Task, options: &TuneOptions) -> Result<Series, (u8, String
         .clone()
         .map_or_else(std::env::current_dir, Ok)
         .map(|path| drive::absolute(&path))
-        .map_err(|why| (EXIT_USAGE, format!("no directory to run in — {why}")))?;
+        .map_err(|why| {
+            (
+                EXIT_USAGE,
+                format!("cannot read the current directory: {why}"),
+            )
+        })?;
     println!("{} — {}", task.id, task.request);
     println!();
     let checked = preflight::check(task, &repository);
@@ -508,20 +518,23 @@ fn live_series(task: &Task, options: &TuneOptions) -> Result<Series, (u8, String
     if !unmet.is_empty() {
         println!();
         println!(
-            "Refused before starting Coder. {} requirement{} of {} did not hold:",
+            "Coder did not start: this machine does not meet {} of the task's {} requirement{}:",
             unmet.len(),
-            if unmet.len() == 1 { "" } else { "s" },
-            checked.len()
+            checked.len(),
+            if checked.len() == 1 { "" } else { "s" }
         );
         for one in unmet {
             println!("  {} — {}", one.requirement, one.found);
         }
         println!();
         println!(
-            "A run this machine cannot hold up produces faults about the machine. \
-             Nothing was started."
+            "A run on a machine that does not meet the requirements reports faults \
+             in the machine rather than in Coder, so nothing ran."
         );
-        return Err((EXIT_REFUSED, "requirements are unmet".to_string()));
+        return Err((
+            EXIT_REFUSED,
+            "this machine does not meet the task's requirements".to_string(),
+        ));
     }
     let binary = drive::find_coder(options.coder.as_deref()).map_err(|why| (EXIT_USAGE, why))?;
     let count = options.runs.unwrap_or(8);
@@ -559,14 +572,17 @@ fn default_tune_dir(task: &str) -> PathBuf {
 
 fn print_floor(series: &Series) {
     let floor = series.floor();
-    println!("Noise floor — {}, {} runs", series.label, floor.runs);
+    println!(
+        "Run-to-run variation (noise floor) — {}, {} runs",
+        series.label, floor.runs
+    );
     println!("  passed {} of {}", floor.passed, floor.runs);
     if floor.runs < 2 {
-        println!("  no spread: one run is not a trial repeated");
+        println!("  no variation to report: that takes at least two runs");
         return;
     }
     for (name, spread) in [
-        ("faults/run", floor.faults.as_ref()),
+        ("faults per run", floor.faults.as_ref()),
         ("steps", floor.steps.as_ref()),
         ("seconds", floor.seconds.as_ref()),
         ("verified delegations", floor.delegations_verified.as_ref()),
@@ -605,11 +621,11 @@ fn print_faults(series: &Series) {
 fn print_shift(shift: &tune::Shift) {
     let relation = match shift.inside_spread() {
         Some(true) => format!(
-            "inside the baseline's spread (detectable {:.1})",
+            "within the baseline's run-to-run variation (smallest detectable change {:.1})",
             shift.detectable.unwrap_or_default()
         ),
-        Some(false) => "outside the baseline's spread".to_string(),
-        None => "no floor".to_string(),
+        Some(false) => "outside the baseline's run-to-run variation".to_string(),
+        None => "no baseline variation to compare with".to_string(),
     };
     println!(
         "  {:<20} {:.1} → {:.1}   {relation}",
@@ -619,11 +635,15 @@ fn print_shift(shift: &tune::Shift) {
 
 fn print_verdict_sentence(verdict: Verdict, detail: Option<&str>) {
     match verdict {
-        Verdict::Passed => println!("passed: the candidate clears the comparison."),
-        Verdict::Failed => println!("failed: the candidate does not clear the comparison."),
+        Verdict::Passed => {
+            println!("passed: the candidate meets every criterion of the comparison.")
+        }
+        Verdict::Failed => {
+            println!("failed: the candidate does not meet the comparison's criteria.")
+        }
         Verdict::Unverifiable => println!(
             "unverifiable: this is not a pass because {}.",
-            detail.unwrap_or("the series does not contain enough evidence")
+            detail.unwrap_or("the runs do not contain enough evidence")
         ),
     }
 }
@@ -675,7 +695,7 @@ fn report(task: &Task, run: &Observed, trace: &Path) -> u8 {
         ),
     };
     println!();
-    println!("What the trace holds:");
+    println!("What the trace records:");
     println!("  trace          {}", trace.display());
     println!(
         "  program        {}",
@@ -716,7 +736,7 @@ fn report(task: &Task, run: &Observed, trace: &Path) -> u8 {
                 workspace.changed.join(", ")
             ),
             None => format!(
-                "{} self-reported, and nobody looked at the workspace",
+                "{} reported by Coder; nothing checked the workspace",
                 run.writes.len()
             ),
         }
@@ -727,7 +747,7 @@ fn report(task: &Task, run: &Observed, trace: &Path) -> u8 {
         if run.closed {
             String::new()
         } else {
-            ", with no end record".to_string()
+            ", but the trace has no end record".to_string()
         }
     );
     if run.unreadable_lines > 0 {
@@ -737,11 +757,11 @@ fn report(task: &Task, run: &Observed, trace: &Path) -> u8 {
     let judgment = task.judge(run);
     println!();
     if judgment.faults.is_empty() {
-        println!("No faults. The run took the path {} expects.", task.id);
+        println!("No faults. The run took the steps {} expects.", task.id);
         return EXIT_CLEAN;
     }
     println!(
-        "{}: {} fault{}, in the order the path takes:",
+        "{}: {} fault{}, in the order of the task's expected steps:",
         judgment.verdict,
         judgment.faults.len(),
         if judgment.faults.len() == 1 { "" } else { "s" }
@@ -752,8 +772,8 @@ fn report(task: &Task, run: &Observed, trace: &Path) -> u8 {
     if judgment.verdict == Verdict::Unverifiable {
         println!();
         println!(
-            "Nothing here says the run left the path. It says the evidence to show it \
-             took the path is missing, which is not a pass."
+            "None of these faults shows the run went wrong. They show the trace lacks \
+             the evidence that it went right, so this is not a pass."
         );
     }
     match judgment.verdict {
@@ -878,14 +898,14 @@ mod tests {
     #[test]
     fn a_wrong_command_line_says_so() {
         for (arguments, expected) in [
-            (vec![], "run a task"),
+            (vec![], "no command given"),
             (vec!["run"], "run needs a task"),
             (vec!["run", "one", "two"], "run takes one task"),
             (vec!["diff", "one"], "diff needs a task and a trace"),
-            (vec!["judge", "one"], "no such command as judge"),
+            (vec!["judge", "one"], "unknown command judge"),
             (
                 vec!["run", "one", "--timeout", "soon"],
-                "--timeout takes seconds",
+                "--timeout must be a whole number of seconds",
             ),
             (vec!["run", "one", "--verbose"], "unknown option --verbose"),
         ] {

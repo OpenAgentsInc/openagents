@@ -321,7 +321,7 @@ fn a_wrong_commit_refuses_before_the_run() {
         report.contains("capability nothing-describes-this"),
         "{report}"
     );
-    assert!(report.contains("Refused before starting Coder"), "{report}");
+    assert!(report.contains("Coder did not start"), "{report}");
     assert!(!trace.exists(), "nothing ran, so nothing recorded");
 }
 
@@ -383,7 +383,7 @@ fn a_timeout_before_any_trace_exits_with_no_trace() {
 
     let report = said(&output);
     assert_eq!(output.status.code(), Some(3), "{report}");
-    assert!(report.contains("nothing to judge"), "{report}");
+    assert!(report.contains("no trace to check"), "{report}");
     assert!(!trace.exists());
     assert!(started.elapsed() < std::time::Duration::from_secs(20));
 }
@@ -591,7 +591,7 @@ fn tune_reads_recorded_series_and_uses_the_decision_gate() {
     let output = coderbench(&refs);
     let report = said(&output);
     assert_eq!(output.status.code(), Some(4), "{report}");
-    assert!(report.contains("Noise floor"), "{report}");
+    assert!(report.contains("noise floor"), "{report}");
     assert!(report.contains("decision-v1"), "{report}");
     assert!(report.contains("unverifiable"), "{report}");
 }
@@ -647,7 +647,7 @@ fn tune_refuses_before_a_required_capability_run() {
         .expect("the binary runs");
     let report = said(&output);
     assert_eq!(output.status.code(), Some(2), "{report}");
-    assert!(report.contains("Refused before starting Coder"), "{report}");
+    assert!(report.contains("Coder did not start"), "{report}");
 }
 
 #[test]

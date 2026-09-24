@@ -1623,7 +1623,7 @@ fn protected_and_private_contract(address_one: SocketAddr, address_two: SocketAd
         json!([
             "CLOSED",
             "not-my-dm",
-            "restricted: gift-wrap reads must be scoped to #p self"
+            "restricted: to read gift wraps, filter #p to your own authenticated public key"
         ])
     );
     send_json(&mut outsider, json!(["REQ", "broad-outsider", {}]));

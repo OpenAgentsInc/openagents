@@ -23,22 +23,30 @@ use std::process::ExitCode;
 use capability::{Trust, store_path};
 
 const USAGE: &str = "\
-capability-trust — the host-owned approval for probing an adapter
+capability-trust: approve capability adapters so Coder can run their probes
 
+Usage:
   capability-trust approve <slug> [--writable DIR]... [--in REPO]
-      approve the manifest <slug> resolves to: pin its digest, the
-      adapter's canonical path and content digest, and every repo file
-      an argv interprets. --writable DIR grants adapter state a later
-      filesystem boundary may let the executor write; DIR must be
-      absolute and exist.
+      Approve the capability manifest named <slug>. The approval records
+      the manifest's digest, the adapter program's full path and content
+      digest, and every repository file that the adapter's command reads.
+      If any of them changes later, the approval no longer applies.
+      --writable DIR  Let the adapter write to DIR when a later command
+                      runs inside a filesystem write boundary. DIR must be
+                      an absolute path to a directory that exists. Repeat
+                      the flag for more directories.
+      --in REPO       Look up <slug> in the repository at REPO. The
+                      default is the repository you are in, or the
+                      current directory.
 
   capability-trust list
-      show the trust store.
+      Show every approval in the trust store.
 
   capability-trust revoke <slug>
-      remove every record naming <slug>.
+      Remove every approval for <slug>.
 
-The store lives at CODER_CAPABILITY_TRUST or ~/.openagents/capability-trust.json.";
+The trust store is the file that CODER_CAPABILITY_TRUST names, or
+~/.openagents/capability-trust.json when that variable is unset.";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -59,18 +67,36 @@ fn approve(args: &[String]) -> ExitCode {
         match arg.as_str() {
             "--writable" => match rest.next() {
                 Some(dir) => writable.push(PathBuf::from(dir)),
-                None => return complain("--writable wants a directory\n\n{USAGE}", 64),
+                None => {
+                    return complain(
+                        &format!("--writable needs a directory path after it.\n\n{USAGE}"),
+                        64,
+                    );
+                }
             },
             "--in" => match rest.next() {
                 Some(dir) => repository = Some(PathBuf::from(dir)),
-                None => return complain("--in wants a repository root\n\n{USAGE}", 64),
+                None => {
+                    return complain(
+                        &format!("--in needs a repository path after it.\n\n{USAGE}"),
+                        64,
+                    );
+                }
             },
             _ if slug.is_none() => slug = Some(arg.clone()),
-            _ => return complain(&format!("unexpected {arg:?}\n\n{USAGE}"), 64),
+            _ => {
+                return complain(
+                    &format!("Unexpected argument {arg:?}: approve takes one slug.\n\n{USAGE}"),
+                    64,
+                );
+            }
         }
     }
     let Some(slug) = slug else {
-        return complain(&format!("approve wants a slug\n\n{USAGE}"), 64);
+        return complain(
+            &format!("approve needs the slug of a capability manifest.\n\n{USAGE}"),
+            64,
+        );
     };
     let repository = repository.or_else(repository_at_cwd);
     match capability::approve(repository.as_deref(), &slug, &writable) {
@@ -87,29 +113,33 @@ fn list() -> ExitCode {
     match Trust::load(&store) {
         Ok(trust) => {
             if trust.records().is_empty() {
-                println!("{} holds no approvals.", store.display());
+                println!("The trust store at {} has no approvals.", store.display());
             } else {
                 println!(
-                    "{} — {} approval(s):",
+                    "The trust store at {} has {} approval(s):",
                     store.display(),
                     trust.records().len()
                 );
                 for record in trust.records() {
                     println!(
-                        "  {} — manifest {} , adapter {}",
+                        "  {}: manifest digest {}, adapter {}",
                         record.slug,
                         &record.manifest[..12.min(record.manifest.len())],
                         record.adapter.display()
                     );
                     for pinned in &record.pinned {
                         if pinned.word.is_empty() {
-                            println!("      pinned   {}", pinned.path.display());
+                            println!("      checked file  {}", pinned.path.display());
                         } else {
-                            println!("      pinned   {} = {}", pinned.word, pinned.path.display());
+                            println!(
+                                "      checked file  {} = {}",
+                                pinned.word,
+                                pinned.path.display()
+                            );
                         }
                     }
                     for dir in &record.writable {
-                        println!("      writable {}", dir.display());
+                        println!("      may write to  {}", dir.display());
                     }
                 }
             }
@@ -121,15 +151,23 @@ fn list() -> ExitCode {
 
 fn revoke(args: &[String]) -> ExitCode {
     let Some(slug) = args.first() else {
-        return complain(&format!("revoke wants a slug\n\n{USAGE}"), 64);
+        return complain(
+            &format!("revoke needs the slug of an approved capability.\n\n{USAGE}"),
+            64,
+        );
     };
     let store = store_path();
     match Trust::load(&store)
         .and_then(|mut trust| trust.revoke(slug).map(|removed| (removed, trust)))
     {
-        Ok((0, _)) => complain(&format!("no approval named {slug:?}"), 1),
+        Ok((0, _)) => complain(
+            &format!(
+                "No approval exists for {slug:?}. Run `capability-trust list` to see every approval."
+            ),
+            1,
+        ),
         Ok((removed, _)) => {
-            println!("revoked {removed} approval(s) naming {slug}");
+            println!("Revoked {removed} approval(s) for {slug}.");
             ExitCode::SUCCESS
         }
         Err(why) => complain(&why, 1),

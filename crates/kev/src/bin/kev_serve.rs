@@ -56,7 +56,10 @@ fn parse_args() -> Result<Args, String> {
     let mut memory_budget_mib = None;
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
-        let mut take = |name: &str| args.next().ok_or_else(|| format!("{name} needs a value"));
+        let mut take = |name: &str| {
+            args.next()
+                .ok_or_else(|| format!("{name} needs a value after it"))
+        };
         match arg.as_str() {
             "--adapter-dir" => adapter_dir = Some(take("--adapter-dir")?),
             "--base-dir" => base_dir = Some(take("--base-dir")?),
@@ -65,7 +68,7 @@ fn parse_args() -> Result<Args, String> {
             "--port" => {
                 port = take("--port")?
                     .parse()
-                    .map_err(|_| "--port needs a number".to_string())?
+                    .map_err(|_| "--port must be a whole number".to_string())?
             }
             "--default" => default = take("--default")?,
             "--device" => device = take("--device")?,
@@ -74,47 +77,67 @@ fn parse_args() -> Result<Args, String> {
             "--bucket-size" => {
                 bucket_size = take("--bucket-size")?
                     .parse()
-                    .map_err(|_| "--bucket-size needs 0 or 64".to_string())?
+                    .map_err(|_| "--bucket-size must be 0 or 64".to_string())?
             }
             "--max-tokens" => {
                 max_tokens = Some(
                     take("--max-tokens")?
                         .parse()
-                        .map_err(|_| "--max-tokens needs a number".to_string())?,
+                        .map_err(|_| "--max-tokens must be a whole number".to_string())?,
                 )
             }
             "--memory-budget-mib" => {
                 memory_budget_mib = Some(
                     take("--memory-budget-mib")?
                         .parse()
-                        .map_err(|_| "--memory-budget-mib needs a number".to_string())?,
+                        .map_err(|_| "--memory-budget-mib must be a whole number".to_string())?,
                 )
             }
             "--help" | "-h" => {
                 eprintln!(
-                    "kev-serve --adapter-dir DIR --base-dir DIR [--host H] [--port P] [--device cpu|metal] [--dtype fp32|bf16]\n\
-                     kev-serve --bundle-dir DIR [--default ID] [...]\n\
-                     [--max-tokens N] [--memory-budget-mib N] [--attention eager|sdpa] [--bucket-size 0|64]"
+                    "Serve kev decision models on POST /v1/systemone.\n\
+                     \n\
+                     Usage:\n  \
+                     kev-serve --adapter-dir DIR --base-dir DIR [options]\n  \
+                     kev-serve --bundle-dir DIR [options]\n\
+                     \n\
+                     Options:\n  \
+                     --adapter-dir DIR        One variant's adapter and head files\n  \
+                     --base-dir DIR           The base checkpoint that variant builds on\n  \
+                     --bundle-dir DIR         Load every kev-* variant in DIR\n  \
+                     --default ID             The variant a request gets when it names none (default: kev-latest)\n  \
+                     --host H                 Address to listen on (default: 127.0.0.1)\n  \
+                     --port P                 Port to listen on (default: 8009)\n  \
+                     --device cpu|metal       Where inference runs (default: cpu)\n  \
+                     --dtype fp32|bf16        Weight precision (default: fp32)\n  \
+                     --attention eager|sdpa   Attention implementation; sdpa needs --device metal\n  \
+                     --bucket-size 0|64       Pad each request to a multiple of this many tokens (0: no padding)\n  \
+                     --max-tokens N           Most tokens one request may pack into\n  \
+                     --memory-budget-mib N    Working memory for inference, in MiB (default: measured from the host)"
                 );
                 std::process::exit(0);
             }
-            other => return Err(format!("unknown argument {other}")),
+            other => {
+                return Err(format!(
+                    "unknown argument `{other}`; run with --help to see the options"
+                ));
+            }
         }
     }
     if !matches!(attention.as_str(), "eager" | "sdpa") {
-        return Err("--attention needs eager or sdpa".to_string());
+        return Err("--attention must be eager or sdpa".to_string());
     }
     if !matches!(bucket_size, 0 | 64) {
-        return Err("--bucket-size needs 0 or 64".to_string());
+        return Err("--bucket-size must be 0 or 64".to_string());
     }
     if attention == "sdpa" && device != "metal" {
         return Err("--attention sdpa requires --device metal".to_string());
     }
     if bundle_dir.is_none() && adapter_dir.is_none() {
-        return Err("--adapter-dir or --bundle-dir is required".to_string());
+        return Err("pass --adapter-dir with --base-dir, or --bundle-dir".to_string());
     }
     if bundle_dir.is_none() && base_dir.is_none() {
-        return Err("--base-dir is required with --adapter-dir".to_string());
+        return Err("--adapter-dir also needs --base-dir".to_string());
     }
     Ok(Args {
         adapter_dir: adapter_dir.map(PathBuf::from),
@@ -135,8 +158,10 @@ fn parse_args() -> Result<Args, String> {
 fn device(name: &str) -> Result<Device, String> {
     match name {
         "cpu" => Ok(Device::Cpu),
-        "metal" => Device::new_metal(0).map_err(|e| format!("metal unavailable: {e}")),
-        other => Err(format!("unknown device {other} (cpu or metal)")),
+        "metal" => {
+            Device::new_metal(0).map_err(|e| format!("the Metal device is unavailable: {e}"))
+        }
+        other => Err(format!("unknown device `{other}`; use cpu or metal")),
     }
 }
 
@@ -144,7 +169,7 @@ fn dtype(name: &str) -> Result<DType, String> {
     match name {
         "fp32" | "f32" => Ok(DType::F32),
         "bf16" => Ok(DType::BF16),
-        other => Err(format!("unknown dtype {other} (fp32 or bf16)")),
+        other => Err(format!("unknown dtype `{other}`; use fp32 or bf16")),
     }
 }
 
@@ -207,14 +232,14 @@ fn load_variant(
 /// its base as `<bundle>/<base dir name>`.
 fn load_bundle(bundle: &Path, device: &Device, dtype: DType) -> Result<Vec<Variant>, String> {
     let mut entries: Vec<PathBuf> = std::fs::read_dir(bundle)
-        .map_err(|e| format!("read bundle dir {}: {e}", bundle.display()))?
+        .map_err(|e| format!("cannot read the bundle directory {}: {e}", bundle.display()))?
         .filter_map(|e| e.ok().map(|e| e.path()))
         .filter(|p| p.is_dir() && p.join("head.safetensors").exists())
         .collect();
     entries.sort();
     if entries.is_empty() {
         return Err(format!(
-            "no variants under {} (dirs with head.safetensors)",
+            "found no variants in {}; each variant is a subdirectory that holds head.safetensors",
             bundle.display()
         ));
     }
@@ -230,7 +255,7 @@ fn load_bundle(bundle: &Path, device: &Device, dtype: DType) -> Result<Vec<Varia
             .as_str()
             .map(base_dir_name)
             .map(|name| bundle.join(&name))
-            .ok_or_else(|| format!("{id}: head_meta.json missing base"))?;
+            .ok_or_else(|| format!("{id}: head_meta.json has no `base` field, so the base checkpoint cannot be found"))?;
         variants.push(load_variant(&id, &adapter_dir, &base, device, dtype)?);
     }
     Ok(variants)
@@ -284,7 +309,7 @@ async fn main() -> ExitCode {
         "eager" => kev::model::AttentionBackend::Eager,
         "sdpa" => kev::model::AttentionBackend::MetalSdpa,
         _ => {
-            eprintln!("kev-serve: --attention needs eager or sdpa");
+            eprintln!("kev-serve: --attention must be eager or sdpa");
             return ExitCode::from(2);
         }
     };
@@ -323,7 +348,7 @@ async fn main() -> ExitCode {
         })
         .unwrap_or(0);
     eprintln!(
-        "kev-serve: {} variants loaded, default {}",
+        "kev-serve: loaded {} variants; the default is {}",
         variants.len(),
         variants[default].model_id
     );
@@ -333,7 +358,7 @@ async fn main() -> ExitCode {
             Some(bytes) => bytes,
             None => {
                 eprintln!(
-                    "kev-serve: this host reports no available memory; pass --memory-budget-mib"
+                    "kev-serve: this host does not report its available memory; set a budget with --memory-budget-mib"
                 );
                 return ExitCode::from(2);
             }
@@ -361,26 +386,26 @@ async fn main() -> ExitCode {
         }
     };
     eprintln!(
-        "kev-serve: memory budget {} MiB, {} forwards at once across variants",
+        "kev-serve: memory budget is {} MiB; at most {} inference passes run at once across all variants",
         state.memory_mib, state.admission.concurrency
     );
     for (variant, share) in state.variants.iter().zip(&state.variant_slots) {
         eprintln!(
-            "kev-serve: {}: one forward at {} tokens needs {} MiB, {} at once",
+            "kev-serve: {}: one inference pass at {} tokens needs {} MiB; at most {} run at once",
             variant.model_id, state.admission.max_total_tokens, share.forward_mib, share.limit
         );
     }
     let addr: SocketAddr = match format!("{}:{}", args.host, args.port).parse() {
         Ok(addr) => addr,
         Err(e) => {
-            eprintln!("kev-serve: bad listen address: {e}");
+            eprintln!("kev-serve: --host and --port do not form a valid listen address: {e}");
             return ExitCode::from(2);
         }
     };
     let listener = match tokio::net::TcpListener::bind(addr).await {
         Ok(listener) => listener,
         Err(e) => {
-            eprintln!("kev-serve: bind {addr}: {e}");
+            eprintln!("kev-serve: cannot listen on {addr}: {e}");
             return ExitCode::from(1);
         }
     };

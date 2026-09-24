@@ -132,7 +132,7 @@ impl std::fmt::Display for Fault {
             }
             Self::InconsistentDigest => write!(
                 f,
-                "the receipt's digest does not recompute over its contents"
+                "the receipt's digest does not match its contents, so the receipt changed after it was sealed"
             ),
             Self::InconsistentIdentity {
                 request,

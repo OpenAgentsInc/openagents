@@ -428,7 +428,9 @@ fn main() {
                         label: label.to_string(),
                         adapter: (!path.is_empty()).then(|| path.to_string()),
                     }),
-                    None => eprintln!("--door takes label=adapter-path, got {spec}"),
+                    None => {
+                        eprintln!("lev-order-sweep: --door needs LABEL=ADAPTER-PATH, not `{spec}`")
+                    }
                 }
             }
             "--helpers" => {
@@ -438,13 +440,15 @@ fn main() {
                     .unwrap_or(helpers);
             }
             other => {
-                eprintln!("unknown flag {other}");
+                eprintln!("lev-order-sweep: unknown flag `{other}`");
                 std::process::exit(2);
             }
         }
     }
     if doors.is_empty() {
-        eprintln!("no doors; pass --door label=adapter-path, with an empty path for the base");
+        eprintln!(
+            "lev-order-sweep: pass at least one --door LABEL=ADAPTER-PATH; leave the path empty to use the base model"
+        );
         std::process::exit(2);
     }
 
@@ -475,7 +479,7 @@ fn main() {
     }) {
         Some(width) if width > 1 => width,
         _ => {
-            eprintln!("the evaluation split holds no Choice item to permute");
+            eprintln!("lev-order-sweep: the evaluation split has no choice question to reorder");
             std::process::exit(2);
         }
     };
@@ -506,7 +510,7 @@ fn main() {
     let pool = match Pool::discover(helpers) {
         Ok(pool) => pool,
         Err(refusal) => {
-            eprintln!("no helper: {refusal}");
+            eprintln!("lev-order-sweep: cannot start the lev-bridge helper: {refusal}");
             std::process::exit(2);
         }
     };
@@ -553,7 +557,10 @@ fn main() {
             let own = match Pool::discover(helpers) {
                 Ok(own) => own,
                 Err(refusal) => {
-                    eprintln!("no helper for {}: {refusal}", door.label);
+                    eprintln!(
+                        "lev-order-sweep: cannot start the lev-bridge helper for {}: {refusal}",
+                        door.label
+                    );
                     std::process::exit(2);
                 }
             };
@@ -585,7 +592,9 @@ fn main() {
         }
         match std::fs::write(path, lines) {
             Ok(()) => eprintln!("wrote the answers to {path}"),
-            Err(trouble) => eprintln!("the answers were not written to {path}: {trouble}"),
+            Err(trouble) => {
+                eprintln!("lev-order-sweep: cannot write the answers to {path}: {trouble}")
+            }
         }
     }
 

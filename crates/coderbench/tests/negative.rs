@@ -272,8 +272,8 @@ fn reordered_steps_are_a_fault() {
             .map(ToString::to_string)
             .collect::<Vec<_>>(),
         vec![
-            "ran program_registry before capability_probe, which the path puts first",
-            "ran admission_check before independence, which the path puts first",
+            "ran program_registry before capability_probe, but the task expects capability_probe first",
+            "ran admission_check before independence, but the task expects independence first",
         ]
     );
 }

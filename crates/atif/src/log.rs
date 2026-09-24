@@ -349,12 +349,12 @@ impl fmt::Display for FaultKind {
             Self::NotUtf8 => "the line is not UTF-8",
             Self::NotJson => "the line is not a JSON object",
             Self::UnknownRecord => "the record kind is unknown",
-            Self::BadSession => "the session does not read",
-            Self::BadStep => "the step does not read",
-            Self::RepeatedSession => "a second session record",
-            Self::RepeatedEnd => "a second end record",
-            Self::AfterEnd => "a record after the end",
-            Self::BeforeSession => "a record before the session",
+            Self::BadSession => "the session record is not a valid session",
+            Self::BadStep => "the step record is not a valid step",
+            Self::RepeatedSession => "the log has a second session record",
+            Self::RepeatedEnd => "the log has a second end record",
+            Self::AfterEnd => "a record comes after the end record",
+            Self::BeforeSession => "a record comes before the session record",
         })
     }
 }

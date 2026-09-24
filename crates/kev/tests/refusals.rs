@@ -814,7 +814,9 @@ async fn a_full_door_answers_busy_and_recovers() {
     });
     expect_refusal(&refused, 503, "busy");
     assert!(
-        refused.to_string().contains("the host's forward slots"),
+        refused
+            .to_string()
+            .contains("the inference slots on this host"),
         "{refused}"
     );
     drop(held);
@@ -896,7 +898,9 @@ async fn a_saturated_variant_refuses_alone() {
     });
     expect_refusal(&refused, 503, "busy");
     assert!(
-        refused.to_string().contains("the `kev-wide` forward slots"),
+        refused
+            .to_string()
+            .contains("the inference slots for `kev-wide`"),
         "{refused}"
     );
     assert_eq!(
@@ -947,7 +951,7 @@ async fn a_spent_memory_budget_refuses_with_free_slots() {
     assert!(
         refused
             .to_string()
-            .contains("the working-memory budget in MiB"),
+            .contains("the working-memory budget (counted in MiB)"),
         "{refused}"
     );
     assert_eq!(state.in_flight(test), 0, "a refusal holds no variant slot");
@@ -1153,7 +1157,7 @@ fn an_invalid_serving_state_is_refused_at_construction() {
     };
     let cases: [(&str, Result<ServeState, kev::Error>); 7] = [
         (
-            "no variants",
+            "no model variants",
             ServeState::new(Vec::new(), 0, aliases(), cpu(), admission()),
         ),
         (
@@ -1171,7 +1175,7 @@ fn an_invalid_serving_state_is_refused_at_construction() {
             ),
         ),
         (
-            "admission bounds",
+            "admission limit",
             ServeState::new(
                 vec![variant()],
                 0,
@@ -1184,7 +1188,7 @@ fn an_invalid_serving_state_is_refused_at_construction() {
             ),
         ),
         (
-            "admission bounds",
+            "admission limit",
             ServeState::new(
                 vec![variant()],
                 0,
@@ -1197,11 +1201,11 @@ fn an_invalid_serving_state_is_refused_at_construction() {
             ),
         ),
         (
-            "admission bounds",
+            "admission limit",
             ServeState::new(vec![variant()], 0, aliases(), cpu(), Admission::default()),
         ),
         (
-            "the memory budget is 1 MiB",
+            "the 1 MiB memory budget",
             ServeState::new(
                 vec![variant()],
                 0,
