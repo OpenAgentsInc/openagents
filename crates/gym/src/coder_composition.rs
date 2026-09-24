@@ -601,14 +601,23 @@ pub struct BestOfArm {
 }
 
 impl BestOfArm {
-    /// Every arm among `rows`, in name order.
+    /// Every arm among `rows`, in name order. An experiment's job,
+    /// `PROFILE--ARM--TASK--RUN`, names the arm; one profile can run
+    /// several arms with different policies, so the job's arm wins over
+    /// the attempt's profile.
     #[must_use]
     pub fn of(rows: &[Row]) -> Vec<BestOfArm> {
         let mut arms: std::collections::BTreeMap<String, BestOfArm> =
             std::collections::BTreeMap::new();
         for row in rows {
-            let arm = arms.entry(row.arm.clone()).or_insert_with(|| BestOfArm {
-                arm: row.arm.clone(),
+            let parts: Vec<&str> = row.job.split("--").collect();
+            let name = if parts.len() >= 4 {
+                parts[1].to_owned()
+            } else {
+                row.arm.clone()
+            };
+            let arm = arms.entry(name.clone()).or_insert_with(|| BestOfArm {
+                arm: name,
                 attempts: 0,
                 graded: 0,
                 passed: 0,
@@ -1717,6 +1726,10 @@ mod tests {
             detail.contains("verdict fail (p_fail 0.40) · verifier 1.0"),
             "{detail}"
         );
+        // An experiment's job names the arm, whatever profile ran it.
+        let mut named = picked("coder-one-tunable-luna-pack", Some(0.0), Value::Null);
+        named.job = "tb4--luna-bo1--mvcc-lsm-compaction--best-of-9587-r1".to_owned();
+        assert_eq!(BestOfArm::of(&[named])[0].arm, "luna-bo1");
         let skipped = json!({ "n": 5, "skipped": "the workspace is over 256 MiB" });
         assert_eq!(
             best_of_lines(&skipped),
