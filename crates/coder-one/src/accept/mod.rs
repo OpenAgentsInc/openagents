@@ -95,6 +95,10 @@ pub const REJECTED_DIR: &str = "rejected";
 /// They're replaced at the freeze by a `run.sh` for the edit sessions.
 pub const HARNESS: [&str; 2] = ["run.sh", "env.sh"];
 
+/// Where the writer lists the decisive facts, relative to the suite
+/// directory: one per line, as `R3: the fact`.
+pub const FACTS: &str = "facts.md";
+
 /// The most output kept from one test's run.
 pub const OUTPUT_CHARS: usize = 1_500;
 
@@ -147,6 +151,9 @@ pub struct Options {
     /// A requirement is decided at or above this probability that its
     /// tests would fail without it.
     pub decides_min: f64,
+    /// A requirement's tests check its rule exactly at or above this
+    /// probability.
+    pub exact_min: f64,
     /// Jev requests sent at once.
     pub jev_parallel: usize,
 }
@@ -158,11 +165,14 @@ impl Default for Options {
             spend_usd: 1.0,
             max_tests: 40,
             test_sec: 120,
-            faithful_min: 0.5,
-            hardcoded_max: 0.5,
-            trivial_max: 0.5,
+            // None of these is calibrated yet, so a Jev judgment rejects a
+            // test or names a gap only when it's clear.
+            faithful_min: 0.25,
+            hardcoded_max: 0.7,
+            trivial_max: 0.7,
             keeps_min: 0.5,
-            decides_min: 0.5,
+            decides_min: 0.3,
+            exact_min: 0.3,
             jev_parallel: 6,
         }
     }
@@ -345,6 +355,10 @@ pub struct Coverage {
     pub tests: Vec<String>,
     /// Jev's probability that the tests would fail without it.
     pub decides: Option<f64>,
+    /// Jev's probability that the tests check its rule exactly, not a
+    /// simplification.
+    #[serde(default)]
+    pub exact: Option<f64>,
     pub covered: bool,
 }
 
@@ -743,6 +757,12 @@ pub fn decidable(map: &RequirementMap) -> Vec<&crate::requirements::Requirement>
 pub const GUIDANCE: &str = "You write the acceptance tests for the task before anyone solves it. \
 Don't solve the task, and don't change the solution workspace: your tools can write only in this \
 suite directory.
+
+First find the decisive facts: every exact format, edge case, unit, threshold, ordering, and \
+rule that the task or its data states and that a simpler reading would get wrong. Read the task \
+and the workspace's data for them. Write them to facts.md, one per line, as `R3: the fact`. \
+Then encode each fact as a test that fails for the simpler reading, and name the fact in the \
+test's `# what:` line. Write at least one test per requirement.
 
 Write one test per file under tests/, named tests/T1.sh, tests/T2.sh, and so on. A test is a POSIX \
 shell script that exits 0 when its requirement is met and nonzero when it isn't. Start each test \

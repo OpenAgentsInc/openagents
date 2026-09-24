@@ -24,13 +24,18 @@ pub const FAITHFUL: &str = "The acceptance test in `test` was written before the
 pub const HARDCODED: &str = "The acceptance test in `test` checks the requirements in `requirements` of the task in `task`. A test may build its own small inputs and expect the output the task's rules give for them, or compute the expected output with its own implementation of the task's rules; that is not hardcoding. Does the test instead expect a specific value for a case the task's words, examples, and rules don't determine, such as a guessed answer for the task's own data or a choice the task leaves open?";
 
 /// Could the test pass without its requirement met?
-pub const TRIVIAL: &str = "Could the acceptance test in `test` pass even though the requirements in `requirements` of the task in `task` are not met, for example because it only checks that a file or a name exists, accepts any output, or can't fail?";
+pub const TRIVIAL: &str = "Does the acceptance test in `test` check almost nothing of substance about the requirements in `requirements` of the task in `task`, for example only that a file or a name exists, that a command runs, or that some output appears, so that nearly any attempt would pass it?";
 
 /// Does the requirement keep something already true?
 pub const KEEPS: &str = "Read the requirements in `requirements` of the task in `task`. Do they ask to keep something that is already true of the existing workspace, such as leaving a file unchanged or keeping existing behavior working, rather than to create, fix, or change something?";
 
 /// Do the requirement's tests decide it?
 pub const DECIDES: &str = "The acceptance tests in `tests` were written to check the requirement in `requirement` of the task in `task`. If a solution met the rest of the task but not this requirement, would at least one of these tests fail?";
+
+/// Do the requirement's tests check its rule exactly, not a
+/// simplification? A cheap model's commonest failure is reading the fact
+/// that decides a test and then applying a simpler rule.
+pub const EXACT: &str = "The task in `task` states the requirement in `requirement`, and `facts` lists the exact formats, edge cases, units, and rules the suite's writer found for it. Do the tests in `tests` check this requirement's rule exactly as the task states it, including those facts, rather than a simpler or more lenient version of it?";
 
 /// The per-test question set.
 #[must_use]
@@ -85,6 +90,15 @@ pub fn coverage_questions() -> Questions {
                 .when_false(
                     "a solution missing this requirement could pass every one of the tests",
                 ),
+        ),
+    )
+    .with(
+        "exact",
+        Noul::with_criteria(
+            EXACT,
+            NoulCriteria::new()
+                .when_true("the tests check the stated rule exactly, so a simplified rule fails them")
+                .when_false("a solution applying a simplified or lenient version of the rule could pass the tests"),
         ),
     )
 }
@@ -212,6 +226,22 @@ pub fn with_helpers(dir: &Path, source: &str) -> String {
         }
     }
     out
+}
+
+/// The lines of `facts` that name `id`, such as `R3: dates are UTC`.
+#[must_use]
+pub fn facts_for(facts: &str, id: &str) -> Vec<String> {
+    facts
+        .lines()
+        .map(|l| l.trim().trim_start_matches(['-', '*', ' ']))
+        .filter(|l| {
+            l.strip_prefix(id)
+                .is_some_and(|rest| rest.starts_with([':', ' ', ',', ')']))
+                || l.contains(&format!("({id})"))
+        })
+        .map(|l| crate::judge::clip(l, 400))
+        .take(12)
+        .collect()
 }
 
 fn requirement_state(inputs: &Inputs<'_>, ids: &[String]) -> Value {
@@ -443,6 +473,14 @@ pub async fn verify<R: Runner>(
         .filter(|t| !out.rejected.iter().any(|r| r.id == t.id))
         .collect();
     let decidable = super::decidable(inputs.requirements);
+    let facts = std::fs::read_to_string(dir.join(super::FACTS)).unwrap_or_default();
+    if facts.trim().is_empty() && !tests.is_empty() {
+        messages.push(format!(
+            "{} is missing or empty: list the decisive facts there first, one per line as \
+             `R3: fact`, and encode each as a test.",
+            super::FACTS
+        ));
+    }
     let mut coverage_answers: BTreeMap<String, Asked> = BTreeMap::new();
     let with_tests: Vec<_> = decidable
         .iter()
@@ -469,6 +507,7 @@ pub async fn verify<R: Runner>(
                     "text": requirement.text.split_whitespace().collect::<Vec<_>>().join(" "),
                 },
                 "tests": mine,
+                "facts": facts_for(&facts, &requirement.id),
             });
             ask_cached(
                 jev,
@@ -504,13 +543,33 @@ pub async fn verify<R: Runner>(
         let decides = coverage_answers
             .get(&requirement.id)
             .and_then(|a| a.noul("decides"));
-        let covered = !mine.is_empty() && decides.is_none_or(|d| d >= options.decides_min);
+        let exact = coverage_answers
+            .get(&requirement.id)
+            .and_then(|a| a.noul("exact"));
+        let decided = decides.is_none_or(|d| d >= options.decides_min);
+        let covered = !mine.is_empty() && decided && exact.is_none_or(|e| e >= options.exact_min);
         if mine.is_empty() {
             out.gaps.push(super::Gap {
                 requirement: requirement.id.clone(),
                 why: "no accepted test names it".to_string(),
             });
             untested.push(requirement.id.clone());
+        } else if decided && !covered {
+            out.gaps.push(super::Gap {
+                requirement: requirement.id.clone(),
+                why: format!(
+                    "Jev reads its tests as checking a simpler rule than the task states ({:.2})",
+                    exact.unwrap_or_default()
+                ),
+            });
+            messages.push(format!(
+                "{}'s tests ({}) may check a simplified version of its rule (Jev: {:.2} that \
+                 they check it exactly): add a test that fails for the simpler reading, using the \
+                 exact format, edge case, unit, or rule the task states.",
+                requirement.id,
+                mine.join(", "),
+                exact.unwrap_or_default()
+            ));
         } else if !covered {
             out.gaps.push(super::Gap {
                 requirement: requirement.id.clone(),
@@ -532,6 +591,7 @@ pub async fn verify<R: Runner>(
             requirement.id.clone(),
             json!({
                 "decides": decides,
+                "exact": exact,
                 "jev": coverage_answers.get(&requirement.id).map(|a| a.how),
                 "key": coverage_answers.get(&requirement.id).map(|a| a.key.clone()),
             }),
@@ -541,6 +601,7 @@ pub async fn verify<R: Runner>(
             kind: requirement.kind.word().to_string(),
             tests: mine,
             decides,
+            exact,
             covered,
         });
     }

@@ -32,6 +32,14 @@ impl Writer for Scripted {
 
     async fn write(&self, brief: &microluna::Brief, suite_dir: &Path, round: u32) -> Written {
         self.briefs.borrow_mut().push(brief.clone());
+        let facts = suite_dir.join(FACTS);
+        if !facts.exists() {
+            std::fs::write(
+                &facts,
+                "R1: the file holds exactly hello\nR2: hello, NAME\n",
+            )
+            .unwrap();
+        }
         let index = (round as usize - 1).min(self.rounds.len().saturating_sub(1));
         for (path, text) in self.rounds.get(index).cloned().unwrap_or_default() {
             let at = suite_dir.join(path);
@@ -419,6 +427,11 @@ fn static_rules_catch_trivial_and_broken_tests() {
     assert!(verify::broken_reason(&run("sh: 1: pytest: not found")).is_some());
     assert!(verify::broken_reason(&run("  File \"x\", line 2\nSyntaxError: bad")).is_some());
     assert!(verify::broken_reason(&run("sh: 1: ./solver: not found")).is_none());
+    let facts = "- R1: dates are UTC\nR10: not R1\nR2 (format): CSV\nthe header (R1) is fixed\n";
+    assert_eq!(
+        verify::facts_for(facts, "R1"),
+        ["R1: dates are UTC", "the header (R1) is fixed"]
+    );
 }
 
 /// Jev's answers, recorded under the keys a first run asked with, reject
@@ -475,7 +488,7 @@ async fn jev_rejects_a_hardcoded_test_and_names_an_undecided_requirement() {
     );
     recorded.entries.insert(
         key("/coverage/R1/key"),
-        answer(json!({ "decides": {"noul": 0.3} })),
+        answer(json!({ "decides": {"noul": 0.2}, "exact": {"noul": 0.9} })),
     );
 
     let fx2 = fixture();
@@ -503,7 +516,7 @@ async fn jev_rejects_a_hardcoded_test_and_names_an_undecided_requirement() {
     let gaps: Vec<&str> = suite.gaps.iter().map(|g| g.requirement.as_str()).collect();
     assert_eq!(gaps, ["R1", "R2"]);
     assert!(suite.gaps[0].why.contains("not deciding"));
-    assert_eq!(suite.coverage[0].decides, Some(0.3));
+    assert_eq!(suite.coverage[0].decides, Some(0.2));
 }
 
 /// The Microluna writer on a scripted transport: its file tools land in
