@@ -632,14 +632,20 @@ impl Pane {
         {
             // The open run against the cheapest passing public attempt on
             // its task, already playing.
-            // Both sides open at the elapsed time of the step in view, so the
-            // winner's transcript shows where it stood at the same moment.
+            // A running run opens at its latest step; a finished one at the
+            // step in view. Both sides then show where they stood at that
+            // moment.
+            let running = run.outcome == Outcome::Running;
             let offset = self.open.as_ref().and_then(|open| {
                 let blocks = &open.detail.transcript.blocks;
                 let start = blocks.iter().find_map(|block| block.at)?;
-                let here = blocks
-                    .get(open.selected.min(blocks.len().saturating_sub(1)))
-                    .and_then(|block| block.at)?;
+                let here = if running {
+                    blocks.iter().rev().find_map(|block| block.at)?
+                } else {
+                    blocks
+                        .get(open.selected.min(blocks.len().saturating_sub(1)))
+                        .and_then(|block| block.at)?
+                };
                 Some((here - start).max(0))
             });
             if self
@@ -1509,7 +1515,10 @@ pub(crate) fn draw_transcript(
             })
             .unwrap_or(blocks.len()),
         None => blocks.len(),
-    };
+    }
+    // Before the clock reaches a side's first step, the side still shows
+    // that step rather than an empty pane.
+    .max(usize::from(!blocks.is_empty()));
     let width = usize::from(area.width) + 1;
     let mut rows: Vec<Row> = Vec::new();
     let mut last_time = String::new();

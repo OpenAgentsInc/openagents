@@ -139,24 +139,6 @@ impl Screen {
             inner.width,
             inner.height.saturating_sub(5),
         );
-        if shown == 0 {
-            paragraph(
-                buf,
-                text,
-                &format!(
-                    "Transcript loaded.\n\n{} First event at {}.\n\nSpace {} playback.\nn jumps to the first event.\nEnd shows the full transcript.",
-                    if playback.playing {
-                        "Waiting."
-                    } else {
-                        "Paused."
-                    },
-                    clock(self.replay.events[0].elapsed_ms),
-                    if playback.playing { "pauses" } else { "starts" },
-                ),
-                ladder,
-            );
-            return;
-        }
         if !self.details && !self.blocks.is_empty() {
             crate::runs_tui::draw_transcript(
                 &self.blocks,
@@ -198,7 +180,11 @@ impl Screen {
                 wrapped.rows.push((event.elapsed_ms, Line::default()));
             }
         }
-        let available = wrapped.rows.partition_point(|(time, _)| *time <= elapsed);
+        // Before the clock reaches the first event, show that event anyway.
+        let first = wrapped.rows.first().map_or(0, |(time, _)| *time);
+        let available = wrapped
+            .rows
+            .partition_point(|(time, _)| *time <= elapsed.max(first));
         let max = available.saturating_sub(usize::from(text.height));
         let scroll = if self.follow.get() {
             max
@@ -1509,11 +1495,14 @@ mod tests {
     }
 
     #[test]
-    fn a_loaded_trace_explains_the_wait_before_its_first_event() {
+    fn a_loaded_trace_opens_on_its_first_event_without_waiting() {
         let (_dir, mut p) = pane();
         p.query = "coq".to_owned();
         p.key(Key::Enter);
         let screen = p.screens.as_mut().unwrap()[0].as_mut().unwrap();
+        // These cover the raw event record; the transcript view is
+        // tested through the Runs pane.
+        screen.blocks.clear();
         screen.replay.events = vec![crate::runs_replay::Event {
             elapsed_ms: 5000,
             timing: "host timestamp",
@@ -1522,21 +1511,13 @@ mod tests {
             parts: vec![],
             record: "FIRST RECORD".to_owned(),
         }];
-        // These cover the raw event record; the transcript view is
-        // tested through the Runs pane.
-        screen.blocks.clear();
         screen.replay.duration_ms = 5000;
         let area = Rect::new(0, 0, 150, 38);
         let mut buf = Buffer::empty(area);
         p.render(area, &mut buf, crate::tui::ladder_from_environment());
         let text = contents(&buf);
-        assert!(text.contains("Transcript loaded."));
-        assert!(text.contains("First event at 00:00:05."));
-        assert!(text.contains("Space starts playback."));
-        assert!(!text.contains("FIRST MESSAGE"));
-        p.key(Key::Char('n'));
-        p.render(area, &mut buf, crate::tui::ladder_from_environment());
-        assert!(contents(&buf).contains("FIRST MESSAGE"));
+        assert!(!text.contains("Transcript loaded."));
+        assert!(text.contains("FIRST MESSAGE"));
     }
 
     #[test]
