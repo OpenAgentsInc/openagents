@@ -95,6 +95,45 @@ runs cheaply and stops at its bounds, but Luna doesn't yet solve these
 tasks. The next iterations measure whether `read_first` and the acceptance
 gate move any B-set task to a pass.
 
+The matched `microluna-overnight-9585` run above did not finish: its worktree
+was removed while it ran, so its scheduler could no longer reach Harbor's
+verifier files and the trials failed on infrastructure, not on the task.
+`embedding-drift-monitor` on `microluna-v3` ended with zero sessions for that
+reason. The run below replaces it from an intact checkout.
+
+## Iteration 1: the budget was too small
+
+The loop stopped before it ran out of ideas. `microluna-v3` caps a dispatch
+at 8 sessions, $0.50, and a 600-second executor deadline, and that deadline
+was the binding limit: a whole dispatch ran in about 6 to 20 minutes, while
+Fable spends $3 to $7 and 30 to 90 minutes per pass. The
+[#9583 baseline](2026-09-24-luna-tb4-baseline.md) shows why more budget could
+help: Luna read the fact that decides the failing test in 14 of 23 attempts,
+then applied a simpler rule; it claimed success on a failing result in 17 of
+23; and the median attempt used 3.8 of its 480 agent minutes. Luna quits
+early and oversimplifies. Luna is 10 to 50 times cheaper per session than
+Fable, so it can afford many more sessions and still cost a fraction.
+
+Two changes, each a policy the loop reads, both defaulting off so v1 through
+v3 are unchanged (commit `6e63464136`):
+
+| Version | Change from v3 | Manifest |
+| --- | --- | --- |
+| `microluna-v4` | The budget raised: a 2400-second executor deadline, 30 sessions, 4 attempts per group, 900-second sessions, a $1.50 spend bound, and 20000 characters of per-session evidence. | `microluna-v4.json` |
+| `microluna-v5` | v4 plus `focus_actionable`: group only the behaviors, deliverables, and checks a session edits toward, and carry every constraint into each session's brief as a binding decisive fact rather than as its own group, with the session told to honor the constraints' exact values. A constraint such as "set the random seed to 149" is nothing a session completes on its own, so v1 through v4 spent sessions on constraint-only groups that made no edit and were downgraded to retry then stuck. | `microluna-v5.json` |
+
+The budget screen `microluna-budget-9585` runs `microluna-v3` against
+`microluna-v4` on `embedding-drift-monitor` (B), `html-js-filter` (A), and
+`interleaved-vigenere` (B), one attempt each, on the artifact
+`coder-one 0.1.0 (168ebb5339)` where the two behave differently only in their
+bounds. Early observation: on `embedding-drift-monitor` the `v4` arm reached
+its sixth loop session and kept going, where `v3` stops at eight; the raised
+budget produces the many sessions it was meant to. Results go here as trials
+finish.
+
+The grouping screen runs `microluna-v4` against `microluna-v5`, both on the
+new artifact `coder-one 0.1.0 (6e63464136)`, to isolate `focus_actionable`.
+
 ## Spend
 
 Luna list-price estimate so far: about $0.11 across the first comparison and
