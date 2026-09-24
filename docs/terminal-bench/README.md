@@ -6,6 +6,18 @@ evidence; it does not report the execution host's live queue.
 
 ## Latest status
 
+**GPT-6 Luna on 14 TB4 tasks: 0 of 23 graded attempts, directly or with Jev
+structure.** Luna in Codex passed 0 of 11 (0–26%) and Luna inside Coder
+One's Jev structure 0 of 12 (0–24%), against 16 of 31 for Claude Code on
+Opus 5.5 and 44 of 55 for Fable 5.1 max on the same 11 tasks. Luna cost
+$0.033 an attempt and stopped after a median 3.8 of 480 agent minutes. Of
+the 23 failures, 14 were a requirement Luna read and then simplified, 7
+were capability, and 2 were missing evidence. It's the Luna-in-Codex
+baseline Microluna has to beat. The operator stopped the experiment early
+for tonight's Microluna-only runs. See the
+[results](2026-09-24-luna-tb4-baseline.md) (issue
+[#9583](https://github.com/OpenAgentsInc/openagents/issues/9583)).
+
 **Microluna against Luna-in-Codex: one more mini-task pass at 73% of the
 cost, and the same 0 on hard TB4 tasks.** Coder One's in-process Luna
 executor ran the mini-handoff loop against Luna in the Codex CLI on four
@@ -200,6 +212,7 @@ still need the quota audit. See [harness validation](tb4-results.md#harness-vali
 | Document | Contents |
 | --- | --- |
 | [Best-of-N Luna, selected by the combined verdict](2026-09-24-best-of-n-luna.md) | Incomplete: `control.best_of` and how it keeps a candidate, mini-task runs with each candidate graded, and the 8 TB4 trials graded before the operator stopped Codex runs, with the one oracle hit the selection lost and what's needed to close #9587. |
+| [GPT-6 Luna on 14 TB4 tasks, direct and with Jev structure](2026-09-24-luna-tb4-baseline.md) | The Luna-in-Codex baseline for the Luna pivot: the task-selection and stopping rules, passes per task beside Opus 5.5 and Fable 5.1 max with cost per pass and time, Luna and Jev cost from token counts, every failure classified with its trace, and why the experiment stopped early. |
 | [Microluna against Luna-in-Codex](2026-09-24-microluna.md) | Coder One's in-process Luna executor and its mini-handoff loop against Luna in the Codex CLI: four mini-tasks with passes, cost, time, and sessions per task; three TB4 tasks matched to #9583; the CRLF grader mismatch behind every `log-severity` failure; a worked handoff trace; and the two fixes the runs drove. |
 | [Strategy fingerprints, Fable against Luna and Coder One](2026-09-24-strategy-fingerprints.md) | Every step of 505 trajectories on the Luna baseline subset placed in a phase, per-trajectory fingerprints, a worked Fable-against-Luna example, the candidate moves ranked with task counts, effect sizes, and run and step citations, what didn't separate winners from losers, and the Jev cost. |
 | [Truthful checks, calibrated against graded runs](2026-09-24-truthful-checks.md) | The 317-trial label set split by task, every check signal's fail precision, failure recall, and pass rate with Wilson intervals, the combined verdict's held-out numbers against today's checks, the signals it drops, and what labeled data would close the issue. |
