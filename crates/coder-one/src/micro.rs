@@ -1679,6 +1679,33 @@ impl Micro {
                 "  microluna ▸ suite {label}: {} of {} green",
                 result.passed, result.total
             ));
+            // The frozen suite must fail the way its red-first proof did. When
+            // most red tests now fail differently (a missing harness file, a
+            // shell error), no edit can turn them green, so the requirements
+            // loop takes over instead.
+            if number == 0
+                && let Some(proof) = suite.start.as_ref()
+            {
+                let differ = result
+                    .tests
+                    .iter()
+                    .filter(|now| {
+                        proof
+                            .tests
+                            .iter()
+                            .find(|then| then.id == now.id)
+                            .is_some_and(|then| then.green != now.green || then.exit != now.exit)
+                    })
+                    .count();
+                if differ * 2 > result.tests.len().max(1) {
+                    crate::say::line(&format!(
+                        "  microluna ▸ the frozen suite doesn't reproduce its proof ({differ} of {} tests \
+                         differ), so the requirements loop runs instead",
+                        result.tests.len()
+                    ));
+                    return None;
+                }
+            }
             moves.push(json!({
                 "kind": "run",
                 "after_session": number,
@@ -1777,6 +1804,20 @@ impl Micro {
             sessions.push(ran);
             if lost {
                 stopped = format!("session {number} lost its provider");
+                break;
+            }
+            // Two blocked sessions in a row: the next one would be blocked
+            // by the same thing.
+            if sessions.len() >= 2
+                && sessions[sessions.len() - 2..]
+                    .iter()
+                    .all(|ran| ran.status() == "blocked")
+            {
+                stopped = format!(
+                    "sessions {} and {number} were both blocked: {}",
+                    number - 1,
+                    crate::judge::clip(&sessions[sessions.len() - 1].summary(), 300)
+                );
                 break;
             }
         }

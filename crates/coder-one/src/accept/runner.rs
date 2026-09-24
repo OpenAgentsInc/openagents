@@ -136,7 +136,7 @@ echo "$green green, $red red"
     )
 }
 
-fn local_env_sh(workspace: &Path) -> String {
+pub fn local_env_sh(workspace: &Path) -> String {
     format!(
         "#!/bin/sh\n# Runs one command in the workspace root: sh env.sh 'COMMAND'\ncd {} && exec sh -c \"$1\"\n",
         sh_quote(&workspace.display().to_string())

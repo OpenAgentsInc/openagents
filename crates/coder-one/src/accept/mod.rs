@@ -743,13 +743,15 @@ fn natural_key(id: &str) -> (String, u64, String) {
     )
 }
 
-/// The requirements a suite must decide: every one but context, in map
-/// order.
+/// The requirements a suite must decide: every one but context and
+/// constraints, in map order. A constraint ("don't cheat", "you have 28800
+/// seconds") holds throughout and has no failing state to prove red; the
+/// edit sessions carry it as a fact instead.
 #[must_use]
 pub fn decidable(map: &RequirementMap) -> Vec<&crate::requirements::Requirement> {
     map.requirements
         .iter()
-        .filter(|r| r.kind != Kind::Context)
+        .filter(|r| !matches!(r.kind, Kind::Context | Kind::Constraint))
         .collect()
 }
 
@@ -939,7 +941,9 @@ pub async fn define<W: Writer, R: Runner>(
     }
     let verified = last.unwrap_or_default();
     // Freeze: rejected tests leave tests/, the harness is replaced by the
-    // edit sessions' run.sh, and the directory is digested.
+    // edit sessions' run.sh and env.sh (the tests call env.sh, so a frozen
+    // suite without it can't run a single assertion), and the directory is
+    // digested.
     let _ = std::fs::create_dir_all(dir.join(REJECTED_DIR));
     for rejected in &verified.rejected {
         let from = dir.join(TESTS_DIR).join(format!("{}.sh", rejected.id));
@@ -955,6 +959,7 @@ pub async fn define<W: Writer, R: Runner>(
         dir.join("run.sh"),
         runner::local_run_sh(inputs.workspace, options.test_sec),
     );
+    let _ = std::fs::write(dir.join("env.sh"), runner::local_env_sh(inputs.workspace));
     let kept: Vec<Test> = verified
         .tests
         .iter()

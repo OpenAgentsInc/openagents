@@ -225,7 +225,7 @@ async fn a_suite_red_at_the_start_is_accepted_frozen_and_runs_to_green() {
     assert_eq!((start.passed, start.total), (0, 2));
     assert!(suite.integrity().intact);
     assert!(suite.files.contains_key("run.sh"));
-    assert!(!suite.files.contains_key("env.sh"));
+    assert!(suite.files.contains_key("env.sh"));
     assert!(AcceptanceSuite::record_path(&fx.suite).is_file());
 
     let red = run(&suite, &fx.workspace, &runner(), Some(&recorder), "before")
