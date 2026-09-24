@@ -1511,6 +1511,8 @@ struct Signals {
     accepts: Option<bool>,
     attempts: u32,
     max_attempts: u32,
+    /// The per-part check judged every part of the focus met in the diff.
+    parts_met: bool,
 }
 
 /// The code rule over Jev's pick: a check that contradicts the group keeps
@@ -1528,6 +1530,7 @@ fn settle(picked: Option<Move>, ran: &Ran, signals: Signals) -> (Move, Option<St
         accepts,
         attempts,
         max_attempts,
+        parts_met,
     } = signals;
     // A read-only session never advances: it reconnoiters, then an edit
     // session follows on the same group.
@@ -1553,6 +1556,14 @@ fn settle(picked: Option<Move>, ran: &Ran, signals: Signals) -> (Move, Option<St
             Some("Jev gave no answer, so the session's own status decided".to_string()),
         ),
     };
+    // Jev's next-move pick once said retry three times while its own
+    // per-part check found every part met, and the loop gave up on work
+    // that was done. A session that finished done on a focus whose every
+    // part is met moves on, unless a check or the verdict says otherwise.
+    if parts_met && chosen == Move::Retry && finished_done && !contradicted && !verdict_fail {
+        why = Some("Jev found every part of the focus met, so retry became next".to_string());
+        chosen = Move::Next;
+    }
     if contradicted && matches!(chosen, Move::Next | Move::Done) {
         why = Some(format!(
             "a check contradicts the focus, so {} became retry",
@@ -2110,6 +2121,7 @@ impl Micro {
         checked: &Checked,
         attempts: u32,
         gaps: &[String],
+        parts_met: bool,
     ) -> (Move, Value, f64) {
         // The combined verdict over the task and this session's report:
         // the handoff signal issue #9584 calibrated against the verifier.
@@ -2194,6 +2206,7 @@ impl Micro {
                 },
                 attempts,
                 max_attempts: self.policy.max_attempts,
+                parts_met,
             },
         );
         let usd = [asked.input_tokens, verdict_asked.input_tokens]
@@ -2335,12 +2348,14 @@ impl Micro {
             } else {
                 Checked::default()
             };
-            let (gaps, gap_usd) = if self.policy.parts_check && !is_read {
+            let (judged, gap_usd) = if self.policy.parts_check && !is_read {
                 self.part_gaps(prepared, group, ran.number).await
             } else {
-                (Vec::new(), 0.0)
+                (None, 0.0)
             };
             spent += gap_usd;
+            let parts_met = judged.as_ref().is_some_and(Vec::is_empty);
+            let gaps = judged.unwrap_or_default();
             if !gaps.is_empty() {
                 crate::say::line(&format!(
                     "  microluna ▸ parts not met yet: {}",
@@ -2356,6 +2371,7 @@ impl Micro {
                     &checked,
                     attempts[cursor],
                     &gaps,
+                    parts_met,
                 )
                 .await;
             spent += usd;
@@ -4424,7 +4440,7 @@ impl Micro {
         prepared: &Prepared,
         group: &Group,
         session: u32,
-    ) -> (Vec<String>, f64) {
+    ) -> (Option<Vec<String>>, f64) {
         let parts: Vec<String> = group
             .lines
             .iter()
@@ -4432,13 +4448,13 @@ impl Micro {
             .take(PARTS_MAX)
             .collect();
         if parts.len() < 2 {
-            return (Vec::new(), 0.0);
+            return (None, 0.0);
         }
         let Some(diff) = workspace_diff(&self.workdir) else {
-            return (Vec::new(), 0.0);
+            return (None, 0.0);
         };
         if diff.trim().is_empty() {
-            return (parts, 0.0);
+            return (Some(parts), 0.0);
         }
         let mut questions = jev::Questions::new();
         let mut named = Map::new();
@@ -4471,6 +4487,9 @@ impl Micro {
         let usd = asked.input_tokens.map_or(0.0, |tokens| {
             tokens as f64 * jev_component::USD_PER_MILLION_INPUT / 1_000_000.0
         });
+        if !asked.answered() {
+            return (None, usd);
+        }
         let gaps = parts
             .into_iter()
             .enumerate()
@@ -4481,7 +4500,7 @@ impl Micro {
             })
             .map(|(_, part)| part)
             .collect();
-        (gaps, usd)
+        (Some(gaps), usd)
     }
 
     #[allow(clippy::too_many_arguments)]

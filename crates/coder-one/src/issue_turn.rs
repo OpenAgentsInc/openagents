@@ -622,6 +622,7 @@ fn style_problems(diff: &str) -> Vec<String> {
     let mut problems = Vec::new();
     let mut file = String::new();
     let mut fenced = false;
+    let mut joined = String::new();
     for line in diff.lines() {
         if let Some(path) = line.strip_prefix("+++ b/") {
             file = path.to_string();
@@ -675,7 +676,21 @@ fn style_problems(diff: &str) -> Vec<String> {
             }
         }
         if rust {
-            for literal in string_literals(added) {
+            // A string split into pieces, one per line as in `concat!`,
+            // renders as one line: the pieces are measured together.
+            let trimmed = added.trim().trim_end_matches(',');
+            let lone = trimmed.starts_with('"')
+                && trimmed.ends_with('"')
+                && string_literals(trimmed).len() == 1;
+            if lone {
+                joined.push_str(&string_literals(trimmed).concat());
+                continue;
+            }
+            let mut literals = string_literals(added);
+            if !joined.is_empty() {
+                literals.push(std::mem::take(&mut joined));
+            }
+            for literal in literals {
                 if literal.chars().count() > UI_LINE_MAX {
                     problems.push(format!(
                         "{file}: a {}-character string is longer than a {UI_LINE_MAX}-column terminal line: \"{}…\"",
@@ -685,6 +700,13 @@ fn style_problems(diff: &str) -> Vec<String> {
                 }
             }
         }
+    }
+    if joined.chars().count() > UI_LINE_MAX {
+        problems.push(format!(
+            "{file}: a {}-character string is longer than a {UI_LINE_MAX}-column terminal line: \"{}…\"",
+            joined.chars().count(),
+            joined.chars().take(40).collect::<String>()
+        ));
     }
     problems.dedup();
     problems
@@ -946,6 +968,14 @@ mod tests {
         assert!(problems[0].contains("\"pass/fail\""));
         assert!(problems[1].contains("hidden-from-the-"));
         assert!(problems[2].contains("120-character string"));
+        let split = format!(
+            "+++ b/src/v.rs\n+    concat!(\n+        \"{}\",\n+        \"{}\"\n+    )\n",
+            "a".repeat(60),
+            "b".repeat(60)
+        );
+        let problems = style_problems(&split);
+        assert_eq!(problems.len(), 1, "{problems:#?}");
+        assert!(problems[0].contains("120-character string"));
     }
 
     #[test]

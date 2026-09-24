@@ -339,7 +339,20 @@ fn a_contradicting_check_keeps_the_loop_on_its_group() {
         accepts: None,
         attempts,
         max_attempts: 2,
+        parts_met: false,
     };
+    // Every part met: a done session's retry moves on, unless the verdict
+    // calls it failed.
+    let met = Signals {
+        parts_met: true,
+        ..at(false, false, true, 1)
+    };
+    assert_eq!(settle(Some(Move::Retry), &ran, met).0, Move::Next);
+    let met_failing = Signals {
+        verdict_fail: true,
+        ..met
+    };
+    assert_eq!(settle(Some(Move::Retry), &ran, met_failing).0, Move::Retry);
     assert_eq!(
         settle(Some(Move::Next), &ran, at(false, false, false, 1)).0,
         Move::Next
@@ -386,6 +399,7 @@ fn a_contradicting_check_keeps_the_loop_on_its_group() {
         accepts: None,
         attempts: 1,
         max_attempts: 2,
+        parts_met: false,
     };
     // The accept gate: an ending move waits for the checks to confirm.
     let ev_last = Signals {

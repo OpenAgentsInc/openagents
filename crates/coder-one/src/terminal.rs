@@ -111,7 +111,10 @@ its tests: a document that describes it is not it. An earlier session's \
 summary is its claim, not a fact: check it against the files before you \
 rely on it. When the issue asks how long something takes or what it \
 costs, give measured figures from the repository, such as its docs and \
-recorded runs, and say where they come from, instead of saying it varies. \
+recorded runs, and say where they come from, instead of saying it varies; \
+quote the figure that answers the question as asked, such as the cost of \
+one run. When the issue names several places for the same content, each \
+place carries all of it, shortened to fit. \
 End with a short summary of what you changed and how you checked it.";
 
 /// What a review session adds to [`ISSUE_DIRECTIONS`].
@@ -120,8 +123,9 @@ it becomes a pull request. For each caller in the request, check that what \
 it assumes about a changed function or constant still holds: positions, \
 indexes, counts, order, widths, and formats. Read more of a caller's file \
 when its assumption isn't visible in the excerpt. Fix every bug you find \
-and add a test that fails without the fix. If nothing is wrong, change \
-nothing and say so.";
+and add a test that fails without the fix. Fix text as it renders, not \
+its source form: splitting a string into pieces doesn't shorten the line \
+a person sees. If nothing is wrong, change nothing and say so.";
 
 /// The briefing's account of what came before a review.
 const REVIEW_CONCLUSION: &str = "The host gathered the change's diff and the \
