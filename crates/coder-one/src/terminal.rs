@@ -368,9 +368,27 @@ pub async fn answer(request: &Request, on: Rc<dyn Fn(Progress)>) -> Answer {
     if request.jev.is_none() {
         crate::say::say!("jev ▸ no TypeSafe key: the briefing carries the request alone");
     }
-    judge.survey(&mut state).await;
+    // A question goes straight to one session: no requirement map, probe
+    // battery, file survey, or checks, which are for changing files. With no
+    // requirements, a Microluna turn runs its single mode.
+    let question = request.agent == Agent::Microluna && asks_only(request, &recorder).await;
+    if question {
+        crate::say::say!("route ▸ a question: one session, no survey");
+    } else {
+        judge.survey(&mut state).await;
+    }
 
-    let directions = directions(request.read_only, request.clarify);
+    // A question answers decisively, even when the router asked to
+    // clarify: "one of the open issues" has a sensible reading, and asking
+    // back cost a round trip for nothing.
+    let directions = if question {
+        format!(
+            "{} {MICROLUNA_QUESTIONS} {DECISIVE}",
+            directions(request.read_only, false)
+        )
+    } else {
+        directions(request.read_only, request.clarify)
+    };
     let mut inputs = BriefingInputs::gather(
         &state,
         &judge.evidence,
@@ -393,6 +411,7 @@ pub async fn answer(request: &Request, on: Rc<dyn Fn(Progress)>) -> Answer {
             inputs: &inputs,
             words: &words,
             directions: &directions,
+            question,
         })
         .await;
     }
@@ -514,6 +533,46 @@ pub async fn answer(request: &Request, on: Rc<dyn Fn(Progress)>) -> Answer {
     }
 }
 
+/// What a question's one session is told about choices the request leaves
+/// open, so it answers instead of asking back.
+pub const DECISIVE: &str = "When the request leaves a choice open, such as \
+\"one of the open issues\" or \"a file that does X\", make a sensible choice, \
+say which you chose, and answer; ask back only when no reasonable choice \
+exists. Use the command-line tools the machine has, such as `gh` for GitHub \
+issues and pull requests, and `git` for history.";
+
+/// The Noul that sends a terminal turn down the fast path.
+pub const ASKS_ONLY: &str = "Does the request in `request` only ask for information, an \
+explanation, a summary, or an answer, and ask to change no file? Reading files or running \
+read-only commands to find the answer still counts as only asking. Take the conversation in \
+`earlier` into account.";
+
+/// Whether Jev reads the request as a question that changes nothing. With
+/// no Jev key, or no clear answer, the turn takes the full path.
+async fn asks_only(request: &Request, recorder: &Recorder) -> bool {
+    let Some(client) = request.jev.clone() else {
+        return false;
+    };
+    let asked = crate::component::jev::ask(
+        &crate::component::jev::JevMode::Live(client),
+        recorder,
+        crate::component::jev::Ask {
+            component: "route.question",
+            name: "jev_asks_only",
+            id: "jev_asks_only-1".to_string(),
+            state: json!({
+                "request": request.request,
+                "earlier": crate::judge::clip(&request.earlier, 2_000),
+            }),
+            questions: jev::Questions::new().with("asks_only", jev::Noul::new(ASKS_ONLY)),
+            parent: None,
+            deadline: None,
+        },
+    )
+    .await;
+    asked.noul("asks_only").is_some_and(|p| p >= 0.6)
+}
+
 /// The session ID a host-loop record names.
 fn session_of(record: &Value) -> Option<String> {
     record
@@ -568,6 +627,8 @@ struct Turn<'a> {
     inputs: &'a BriefingInputs,
     words: &'a str,
     directions: &'a str,
+    /// Jev read the request as a question: one session, no loop.
+    question: bool,
 }
 
 /// A turn Microluna answers in this process: short Luna sessions on the
@@ -587,6 +648,7 @@ async fn microluna_turn(turn: Turn<'_>) -> Answer {
         inputs,
         words,
         directions,
+        question,
     } = turn;
     let read_only = request.read_only;
     let boundary_words = if read_only {
@@ -611,7 +673,11 @@ async fn microluna_turn(turn: Turn<'_>) -> Answer {
     // The loop's sessions read the task, not the briefing, so the
     // directions ride with the task's words.
     let prepared = Prepared {
-        instruction: format!("{words}\n\n{directions} {MICROLUNA_QUESTIONS}"),
+        instruction: if question {
+            format!("{words}\n\n{directions}")
+        } else {
+            format!("{words}\n\n{directions} {MICROLUNA_QUESTIONS}")
+        },
         title: state.issue.title.clone(),
         directions: directions.to_string(),
         requirements,
@@ -637,7 +703,14 @@ async fn microluna_turn(turn: Turn<'_>) -> Answer {
         &artifacts,
         recorder.clone(),
         0,
-        microluna_policy(read_only),
+        if question {
+            crate::micro::Policy {
+                mode: crate::micro::Mode::Single,
+                ..microluna_policy(read_only)
+            }
+        } else {
+            microluna_policy(read_only)
+        },
         isolation,
     );
     if let Some(script) = &request.script {
