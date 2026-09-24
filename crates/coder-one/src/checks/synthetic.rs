@@ -48,6 +48,7 @@ fn input(task: &str, candidate: Candidate, observed: Observed) -> Input {
         observed,
         budget: Budget::default(),
         workspace: None,
+        distrust: Vec::new(),
     }
 }
 

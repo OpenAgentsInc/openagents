@@ -16,6 +16,9 @@ pub const USAGE: &str = "usage: coder-one checks synthetic [NAME] [--json]
                                [--write-fixtures DIR] [--json]
        coder-one checks recall [ARM...] [TASK...] [--jobs DIR] [--match TEXT]
                                [--out DIR] [--json]
+       coder-one checks truth [--jobs DIR] [--traces DIR] [--rows FILE]
+                              [--jev live|recorded|off] [--set all|calibration|held_out]
+                              [--out DIR] [--json]
 
 synthetic runs the known-good and known-bad candidates and says whether each
 scenario tells them apart. run checks the candidate in an input file
@@ -42,7 +45,19 @@ also the behavior scenarios; both by default), and reports recall on the
 verifier's failures and false alarms on its passes, beside the episode's
 own first check. TASK names limit it to those tasks. Reports go to
 <out>/<job>/<trial>/checks-<arm>.json and the table to <out>/summary.json;
---out defaults to ~/.openagents/coder-one/checks-recall.";
+--out defaults to ~/.openagents/coder-one/checks-recall.
+
+truth builds the truthful-checks label set: every graded Coder One trial
+with a composition record under --jobs (~/.openagents/terminal-bench/jobs by
+default) and --traces (bench/terminal-bench/traces by default), each labeled
+with its verifier reward and split by task into calibration and held-out
+halves. It asks Jev the report questions over each trial's task and final
+report (--jev recorded replays <out>/jev-recorded.json only; live, the
+default, asks for what isn't recorded), measures every signal's fail
+precision, failure recall, and pass rate with Wilson intervals, and scores
+the combined verdict. --rows FILE reads rows a previous run wrote instead
+of scanning. It writes <out>/rows.jsonl and <out>/summary.json; --out
+defaults to ~/.openagents/coder-one/checks-truth.";
 
 /// The schema of a recovery summary.
 pub const RECOVERY_SCHEMA: &str = "openagents.coder-one.checks-recovery.v1";
@@ -91,6 +106,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
     let mut policy = None;
     let mut fixtures_out = None;
     let mut json_output = false;
+    let mut truth_options: Vec<String> = Vec::new();
     let mut iter = rest.iter();
     while let Some(arg) = iter.next() {
         let mut value = |name: &str| {
@@ -108,6 +124,9 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
             "--policy" => policy = Some(PathBuf::from(value("--policy")?)),
             "--write-fixtures" => fixtures_out = Some(PathBuf::from(value("--write-fixtures")?)),
             "--json" => json_output = true,
+            "--jev" => truth_options.push(format!("jev={}", value("--jev")?)),
+            "--set" => truth_options.push(format!("set={}", value("--set")?)),
+            "--rows" => input = Some(PathBuf::from(value("--rows")?)),
             other if other.starts_with("--") => return Err(format!("unknown option {other}")),
             other => positional.push(other.to_string()),
         }
@@ -307,8 +326,101 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
             }
             Ok(0)
         }
+        "truth" => {
+            truth_command(
+                jobs,
+                traces,
+                out,
+                input,
+                &truth_options.join(","),
+                json_output,
+            )
+            .await
+        }
         _ => Err(USAGE.to_string()),
     }
+}
+
+/// `checks truth`. `--rows` arrives as `input`; `--jev` and `--set` as
+/// `jev=…,set=…`.
+async fn truth_command(
+    jobs: Option<String>,
+    traces: Option<PathBuf>,
+    out: Option<PathBuf>,
+    rows_file: Option<PathBuf>,
+    options: &str,
+    json_output: bool,
+) -> Result<i32, String> {
+    use super::truth;
+    let option = |name: &str| {
+        options
+            .split(',')
+            .find_map(|kv| kv.strip_prefix(&format!("{name}=")).map(str::to_string))
+    };
+    let jev_word = option("jev").unwrap_or_else(|| "live".to_string());
+    let set = option("set").unwrap_or_else(|| "held_out".to_string());
+    if !["all", "calibration", "held_out"].contains(&set.as_str()) {
+        return Err(format!(
+            "--set must be all, calibration, or held_out, not {set}"
+        ));
+    }
+    let out = out
+        .or_else(truth::default_dir)
+        .ok_or("no --out and no HOME")?;
+    std::fs::create_dir_all(&out).map_err(|e| format!("cannot create {}: {e}", out.display()))?;
+    let rows = if let Some(path) = rows_file {
+        truth::read_rows(&path)?
+    } else {
+        let jobs = match jobs {
+            Some(dir) => Some(PathBuf::from(dir)),
+            None => std::env::var_os("HOME")
+                .map(|home| PathBuf::from(home).join(".openagents/terminal-bench/jobs")),
+        };
+        let traces = traces.or_else(|| Some(PathBuf::from("bench/terminal-bench/traces")));
+        let mut loaded = truth::scan(jobs.as_deref(), traces.as_deref());
+        let recorded_path = out.join(truth::RECORDED_FILE);
+        let mut recorded = crate::component::jev::Recorded::load(&recorded_path)?;
+        let client = match jev_word.as_str() {
+            "live" => {
+                let dir = crate::credentials::openagents_dir().ok_or("HOME is not set")?;
+                let key = crate::credentials::jev_key(|name| std::env::var(name).ok(), &dir)?;
+                Some(crate::credentials::jev_client(&key.secret)?)
+            }
+            "recorded" => None,
+            "off" => {
+                recorded = crate::component::jev::Recorded::empty();
+                None
+            }
+            other => return Err(format!("--jev must be live, recorded, or off, not {other}")),
+        };
+        let (replayed, live, tokens) =
+            truth::ask_reports(&mut loaded, &mut recorded, client.as_ref()).await;
+        if live > 0 {
+            recorded.save(&recorded_path)?;
+        }
+        if !json_output {
+            eprintln!(
+                "{} trials · report answers: {replayed} recorded, {live} live ({tokens} input tokens, ${:.4})",
+                loaded.len(),
+                tokens as f64 * crate::component::jev::USD_PER_MILLION_INPUT / 1e6
+            );
+        }
+        let rows: Vec<truth::Row> = loaded.into_iter().map(|l| l.row).collect();
+        truth::write_rows(&out.join("rows.jsonl"), &rows)?;
+        rows
+    };
+    let summary = truth::summary(&rows);
+    let text = serde_json::to_string_pretty(&summary).map_err(|e| e.to_string())?;
+    crate::record::write_atomic(&out.join("summary.json"), format!("{text}\n").as_bytes())?;
+    if json_output {
+        println!("{text}");
+    } else {
+        for line in truth::lines(&summary, &set) {
+            println!("{line}");
+        }
+        println!("Wrote {}.", out.join("summary.json").display());
+    }
+    Ok(0)
 }
 
 /// Where `checks recall` writes by default.

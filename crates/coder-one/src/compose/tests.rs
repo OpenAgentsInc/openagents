@@ -850,6 +850,7 @@ fn a_standing_prefers_fewer_failures_then_more_confirmed_requirements() {
         confirmed,
         passed_scenarios: 1,
         unresolved: 0,
+        verdict_fail: false,
     };
     assert!(standing(1, 0, 3).beaten_by(&standing(0, 0, 1)));
     assert!(standing(0, 0, 1).beaten_by(&standing(0, 0, 2)));
@@ -1643,6 +1644,7 @@ fn standing(failed_checks: usize, self_reported: usize, contradicted: usize) -> 
         confirmed: 1,
         passed_scenarios: 1,
         unresolved: 0,
+        verdict_fail: false,
     }
 }
 
@@ -2170,4 +2172,43 @@ async fn a_round_that_makes_a_passing_check_fail_is_put_back() {
     assert_eq!(record["persist"]["stopped"], persist::NOTHING_LEFT);
     assert_eq!(ran.made.len(), 2);
     let _ = std::fs::remove_dir_all(runner.parent().unwrap());
+}
+
+#[test]
+fn the_verdict_trigger_fires_only_on_a_failed_verdict() {
+    let on = vec!["verdict".to_string()];
+    let mut first = standing(0, 0, 0);
+    assert!(first.fired(&on).is_empty());
+    first.verdict_fail = true;
+    assert_eq!(first.fired(&on), ["verdict"]);
+    // A failed check alone doesn't fire it.
+    assert!(standing(2, 1, 0).fired(&on).is_empty());
+    // And a standing without a verdict serializes as it always did.
+    assert!(
+        serde_json::to_value(standing(0, 0, 0))
+            .unwrap()
+            .get("verdict_fail")
+            .is_none()
+    );
+}
+
+#[test]
+fn verify_second_on_verdict_needs_verify_verdict() {
+    let mut verify = manifest("tunable-v9-escalate.json").policy.verify.unwrap();
+    verify.second.as_mut().unwrap().on = vec!["verdict".to_string()];
+    assert!(
+        verify
+            .validate()
+            .iter()
+            .any(|p| p.contains("needs verify.verdict"))
+    );
+    verify.verdict = true;
+    assert!(verify.validate().is_empty(), "{:?}", verify.validate());
+    verify.distrust = vec![" ".to_string()];
+    assert!(
+        verify
+            .validate()
+            .iter()
+            .any(|p| p.contains("empty scenario kind"))
+    );
 }

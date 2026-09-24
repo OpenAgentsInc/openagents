@@ -394,6 +394,7 @@ pub fn recover_tree(traces: &Path, arm: &str) -> Result<Vec<Recovered>, String> 
             observed,
             budget: Budget::default(),
             workspace: None,
+            distrust: Vec::new(),
         });
         out.push(recovered);
     }

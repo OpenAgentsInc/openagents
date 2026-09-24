@@ -315,6 +315,12 @@ pub fn reconstruct(episode: &Path) -> Result<Subject, String> {
             root: None,
             collected: Vec::new(),
         }),
+        distrust: verify["distrust"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|k| k.as_str().map(str::to_string))
+            .collect(),
     })
 }
 
@@ -593,6 +599,7 @@ mod tests {
                 root: None,
                 collected: Vec::new(),
             }),
+            distrust: Vec::new(),
         }
     }
 

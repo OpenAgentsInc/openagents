@@ -965,6 +965,7 @@ impl Micro {
                 root: None,
                 collected: Vec::new(),
             }),
+            distrust: Vec::new(),
         });
         subject.requirements = Some(prepared.requirements.clone());
         subject

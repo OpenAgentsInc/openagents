@@ -45,6 +45,8 @@ pub mod recover;
 pub mod replay;
 pub mod selfreport;
 pub mod synthetic;
+pub mod truth;
+pub mod verdict;
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -162,6 +164,32 @@ pub struct Input {
     /// the scratch-copy scenarios.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workspace: Option<generic::Workspace>,
+    /// Scenario kinds whose failures the policy distrusts
+    /// (`verify.distrust`): a failure of one reads as inconclusive, so it
+    /// contradicts no requirement and leaves no packet.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub distrust: Vec<String>,
+}
+
+/// Why a distrusted failure reads as inconclusive.
+pub const DISTRUSTED: &str = "the policy distrusts this scenario kind's failures (`verify.distrust`): on the labeled trials they don't separate passes from failures, so this failure reads as inconclusive";
+
+/// Reads each failed verdict of a kind in `distrust` as inconclusive,
+/// noting why.
+pub fn apply_distrust(scenarios: &[Scenario], verdicts: &mut [Verdict], distrust: &[String]) {
+    if distrust.is_empty() {
+        return;
+    }
+    for verdict in verdicts.iter_mut().filter(|v| v.verdict == "failed") {
+        let kind = scenarios
+            .iter()
+            .find(|s| s.id == verdict.scenario)
+            .map(|s| s.kind.as_str());
+        if kind.is_some_and(|k| distrust.iter().any(|d| d == k)) {
+            verdict.verdict = "inconclusive".to_string();
+            verdict.coverage.push(DISTRUSTED.to_string());
+        }
+    }
 }
 
 /// A span of the instruction a scenario rests on.
@@ -683,6 +711,7 @@ pub async fn check(input: &Input, recorder: &Recorder, scratch: &Path) -> Report
         verdicts.push(verdict);
     }
 
+    apply_distrust(&selected, &mut verdicts, &input.distrust);
     let id = stage(recorder, "coverage", &json!({ "verdicts": verdicts.len() }));
     let (covered, packets) = coverage(&map, &candidate_digest, &selected, &verdicts);
     recorder.end(
@@ -824,6 +853,10 @@ pub struct Subject {
     /// The generic scenarios' live workspace; its `dir` is set to the
     /// checked workspace. `None` runs only the scratch-copy scenarios.
     pub live: Option<generic::Workspace>,
+    /// Scenario kinds whose failures read as inconclusive
+    /// (`verify.distrust`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub distrust: Vec<String>,
 }
 
 impl Subject {
@@ -843,6 +876,7 @@ impl Subject {
             inputs: Some("logs".to_string()),
             budget: Budget::default(),
             live: None,
+            distrust: Vec::new(),
         }
     }
 
@@ -883,6 +917,7 @@ impl Subject {
                 live.dir = workdir.to_string_lossy().into_owned();
                 live
             }),
+            distrust: self.distrust.clone(),
         }
     }
 }

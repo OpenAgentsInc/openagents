@@ -238,6 +238,7 @@ async fn live_check(
             root: None,
             collected: Vec::new(),
         }),
+        distrust: Vec::new(),
     };
     let input = subject.input(&work);
     let report = check(&input, &Recorder::default(), &dir.join("scratch")).await;
@@ -440,6 +441,7 @@ async fn behavior_check(
             root: None,
             collected: Vec::new(),
         }),
+        distrust: Vec::new(),
     };
     let input = subject.input(&work);
     let report = check(&input, &Recorder::default(), &dir.join("scratch")).await;
@@ -579,4 +581,45 @@ fn a_replayed_input_carries_no_verifier_test_name() {
     );
     let text = serde_json::to_string(&input).unwrap();
     assert!(!text.contains("test_hidden_packet_uses_manifest_paths"));
+}
+
+#[test]
+fn a_distrusted_kind_fails_as_inconclusive_and_contradicts_nothing() {
+    use super::{Scenario, Verdict, apply_distrust};
+    let scenario = |id: &str, kind: &str| -> Scenario {
+        serde_json::from_value(serde_json::json!({
+            "id": id, "kind": kind, "requirements": ["R1"], "spans": [], "applies": [],
+            "interface": "", "bounds": { "seconds": 1, "processes": 1 }, "effects": [],
+            "candidate": "c", "input": "i",
+            "expected": { "statement": "", "derivation": "" }, "params": {}
+        }))
+        .expect("a scenario")
+    };
+    let scenarios = vec![
+        scenario("behavior.filter-preserves", "behavior.filter-preserves"),
+        scenario("generic.output:/app/a", "generic.output"),
+    ];
+    let failed = |id: &str| -> Verdict {
+        serde_json::from_value(serde_json::json!({
+            "scenario": id, "verdict": "failed", "observations": [], "coverage": []
+        }))
+        .expect("a verdict")
+    };
+    let mut verdicts = vec![
+        failed("behavior.filter-preserves"),
+        failed("generic.output:/app/a"),
+    ];
+    apply_distrust(
+        &scenarios,
+        &mut verdicts,
+        &["behavior.filter-preserves".to_string()],
+    );
+    assert_eq!(verdicts[0].verdict, "inconclusive");
+    assert!(
+        verdicts[0]
+            .coverage
+            .iter()
+            .any(|c| c.contains("verify.distrust"))
+    );
+    assert_eq!(verdicts[1].verdict, "failed");
 }

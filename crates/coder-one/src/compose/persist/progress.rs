@@ -487,6 +487,7 @@ mod tests {
             confirmed,
             passed_scenarios: 0,
             unresolved: 0,
+            verdict_fail: false,
         }
     }
 

@@ -548,6 +548,17 @@ pub struct VerifyPolicy {
     /// verifier can be replayed without a model call.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub snapshot: Option<crate::snapshot::SnapshotPolicy>,
+    /// `verify.distrust`: scenario kinds whose failures read as
+    /// inconclusive, because on the labeled trials they don't separate
+    /// passes from failures (`coder-one checks truth`). Nothing is removed:
+    /// the scenario still runs and its observations stay in the report.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub distrust: Vec<String>,
+    /// `verify.verdict`: ask Jev the report questions about the first and
+    /// the final candidate and record the calibrated verdict
+    /// (`checks::verdict`); `verify.second.on` may then name `verdict`.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub verdict: bool,
 }
 
 #[allow(clippy::trivially_copy_pass_by_ref)]
@@ -570,6 +581,8 @@ impl VerifyPolicy {
             behavior: false,
             second: None,
             snapshot: None,
+            distrust: Vec::new(),
+            verdict: false,
         }
     }
 
@@ -585,6 +598,12 @@ impl VerifyPolicy {
             if !self.support {
                 problems.push("verify.support_budget needs verify.support".to_string());
             }
+        }
+        if self.distrust.iter().any(|k| k.trim().is_empty()) {
+            problems.push("verify.distrust names an empty scenario kind".to_string());
+        }
+        if (!self.distrust.is_empty() || self.verdict) && !self.checks {
+            problems.push("verify.distrust and verify.verdict need verify.checks".to_string());
         }
         if (self.self_report || self.optional_outputs || self.behavior) && !self.checks {
             problems.push(
@@ -615,6 +634,9 @@ impl VerifyPolicy {
             }
             if second.on.iter().any(|on| on == "self_report") && !self.self_report {
                 problems.push("verify.second.on self_report needs verify.self_report".to_string());
+            }
+            if second.on.iter().any(|on| on == "verdict") && !self.verdict {
+                problems.push("verify.second.on verdict needs verify.verdict".to_string());
             }
             if !(second.share > 0.0 && second.share <= 1.0) {
                 problems.push("verify.second.share must be above 0 and at most 1".to_string());
@@ -675,7 +697,7 @@ fn second_max_copy_mb() -> u64 {
 }
 
 /// The words `verify.second.on` takes.
-pub const TRIGGERS: [&str; 4] = ["check", "self_report", "failed", "unconfirmed"];
+pub const TRIGGERS: [&str; 5] = ["check", "self_report", "failed", "unconfirmed", "verdict"];
 
 /// `verify.second`: verify by a second executor. When a trigger in `on`
 /// holds for the first line's result, the host puts that candidate aside
@@ -693,7 +715,8 @@ pub struct SecondPolicy {
     /// itself that the result fails. `failed`: either of those, or
     /// `verify.support` read a requirement as contradicted. `unconfirmed`:
     /// no scenario other than the self-report passed, or `verify.support`
-    /// left a requirement unresolved.
+    /// left a requirement unresolved. `verdict`: the calibrated verdict
+    /// (`verify.verdict`) called the first candidate failed.
     pub on: Vec<String>,
     /// The share of the time left that the second executor asks for.
     #[serde(default = "second_share")]
@@ -1482,6 +1505,7 @@ where
             root: None,
             collected: Vec::new(),
         }),
+        distrust: verify.distrust.clone(),
     };
     let support_params = verify.support_params(long);
 
@@ -1670,6 +1694,13 @@ where
     };
     // The final report of the session that produced the candidate.
     let mut previous = first_delegation.report.output();
+
+    // verify.verdict on the first candidate.
+    let first_verdict = if verify.verdict && usage_limited.is_none() && checked.is_some() {
+        Some(assess_verdict(setup, &previous, "first").await)
+    } else {
+        None
+    };
 
     // control.handoff escalate.
     let mut escalated = false;
@@ -1874,6 +1905,7 @@ where
             fallback,
             isolation: plan.isolation,
             briefing: &first_delegation.briefing,
+            verdict: first_verdict.as_ref().map(|(v, _)| v),
         };
         let outcome = verify_by_second(
             &context,
@@ -1925,7 +1957,7 @@ where
             tier: first.clone(),
             checked: checked.take(),
             support: support.take(),
-            previous,
+            previous: std::mem::take(&mut previous),
         };
         let persisted = persist::run(&context, policy, current, factory, &mut runs).await?;
         branches.extend(persisted.branches);
@@ -1936,11 +1968,27 @@ where
         first = persisted.current.tier;
         checked = persisted.current.checked;
         support = persisted.current.support;
+        previous = persisted.current.previous;
         persist_record = persisted.record;
         usage_limited = limited(setup.recorder);
     }
 
-    let record = json!({
+    // verify.verdict on the final candidate: the first's verdict when the
+    // candidate's report is unchanged.
+    let verdict_record = match &first_verdict {
+        Some((_, first_record)) if usage_limited.is_none() => {
+            let last = if previous == first_delegation.report.output() {
+                first_record.clone()
+            } else {
+                assess_verdict(setup, &previous, "final").await.1
+            };
+            json!({ "first": first_record, "final": last })
+        }
+        Some((_, first_record)) => json!({ "first": first_record, "final": null }),
+        None => Value::Null,
+    };
+
+    let mut record = json!({
         "schema": SCHEMA,
         "route": route_record,
         "first": routed,
@@ -1968,11 +2016,45 @@ where
         "snapshot": snapshot,
         "usage_limited": usage_limited,
     });
+    if !verdict_record.is_null() {
+        record["verdict"] = verdict_record;
+    }
     Ok(Composed {
         ended,
         delegated,
         record,
     })
+}
+
+/// `verify.verdict`: the report questions and the calibrated verdict on
+/// the candidate whose session ended with `report`, recorded as a decision
+/// and returned with its record.
+async fn assess_verdict(
+    setup: &Setup<'_>,
+    report: &str,
+    which: &str,
+) -> (crate::checks::verdict::Verdict, Value) {
+    let (evidence, verdict, asked) = crate::checks::verdict::assess(
+        &setup.jev,
+        setup.recorder,
+        setup.instruction,
+        report,
+        Some(setup.deadline.clone()),
+        &crate::checks::verdict::fitted(),
+    )
+    .await;
+    let record = json!({
+        "call": verdict.call,
+        "p_fail": verdict.p_fail,
+        "precision": verdict.precision,
+        "why": verdict.why,
+        "evidence": evidence,
+        "jev": asked.how,
+        "key": asked.key,
+    });
+    record_decision(setup.recorder, "verify.verdict", which, &record);
+    println!("  verdict ▸ {which}: {} ({})", verdict.call, verdict.why);
+    (verdict, record)
 }
 
 async fn judge_support(
@@ -2177,6 +2259,10 @@ pub struct Standing {
     pub passed_scenarios: usize,
     /// Requirements `verify.support` left unresolved.
     pub unresolved: usize,
+    /// Whether the calibrated verdict (`verify.verdict`) called the
+    /// candidate failed.
+    #[serde(skip_serializing_if = "is_false")]
+    pub verdict_fail: bool,
 }
 
 impl Standing {
@@ -2235,6 +2321,7 @@ impl Standing {
             confirmed: confirmed.len(),
             passed_scenarios,
             unresolved,
+            verdict_fail: false,
         }
     }
 
@@ -2283,6 +2370,12 @@ impl Standing {
                 ),
             ));
         }
+        if wants("verdict") && self.verdict_fail {
+            out.push((
+                "verdict",
+                "verdict: the calibrated verdict called the result failed".to_string(),
+            ));
+        }
         if wants("unconfirmed") {
             if self.passed_scenarios == 0 {
                 out.push((
@@ -2314,6 +2407,9 @@ struct SecondContext<'a> {
     fallback: u64,
     isolation: &'a str,
     briefing: &'a Briefing,
+    /// The calibrated verdict on the first candidate, under
+    /// `verify.verdict`.
+    verdict: Option<&'a crate::checks::verdict::Verdict>,
 }
 
 /// What the second executor left.
@@ -2371,7 +2467,8 @@ async fn verify_by_second<F: Factory>(
         let record = json!({ "skipped": "no check ran on the first candidate" });
         return Ok(SecondOutcome::skipped(finish(record, &base)));
     };
-    let before = Standing::of(first_report, support);
+    let mut before = Standing::of(first_report, support);
+    before.verdict_fail = context.verdict.is_some_and(|v| v.call == "fail");
     let triggers = before.triggers(&policy.on);
     let fired = before.fired(&policy.on);
     if triggers.is_empty() {
