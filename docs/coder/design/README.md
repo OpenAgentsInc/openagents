@@ -25,6 +25,7 @@ discovery, and package distribution.
 | [decision-function-inventory](decision-function-inventory.md) | Coder decision-function inventory |
 | [luna-pivot](luna-pivot.md) | The Luna pivot: Jev structure around GPT-6 Luna, and the Microluna harness |
 | [microluna](microluna.md) | Microluna: calling Luna directly on a logged-in Codex session, and what to keep from Codex |
+| [prompt-audit](prompt-audit.md) | Every Coder One and Microluna prompt line judged against the determinism thesis, what changed, and whether Fable 5.1's trajectories record a system prompt |
 | [rebuild-plan](rebuild-plan.md) | Coder agent and terminal rebuild plan |
 | [relay-backend-plan](relay-backend-plan.md) | Relay backend plan: coder on `relay.openagents.com` |
 | [service-spec](service-spec.md) | Coder service: Nostr auth, free usage, and deployment |
