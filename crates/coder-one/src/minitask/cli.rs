@@ -13,6 +13,8 @@ use crate::session::Controls;
 
 /// The mini-task commands' usage.
 pub const USAGE: &str = "usage: coder-one minitask list [--json]
+       coder-one minitask setup ID DIR
+       coder-one minitask grade ID DIR [--json]
        coder-one minitask run ID [--executor scripted|claude-code|codex|microluna]
                                  [--microluna single|requirements]
                                  [--script good|bad|FILE] [--model MODEL]
@@ -43,7 +45,11 @@ always), within what is left of --deadline, from the diagnostic packets
 checks. PROFILE is a scripted repair profile (fix, fix-if-packet,
 claim-only, break) or AGENT:MODEL, such as codex:gpt-6-luna. Runs record
 under ~/.openagents/coder-one/minitasks unless --out names another
-directory. The exit code is 0 when the grader passed.";
+directory. The exit code is 0 when the grader passed.
+
+setup writes the task's files to DIR and its instruction to
+DIR.instruction.md, so `coder-one episode run` can run any policy manifest
+on it from DIR; grade grades what DIR holds.";
 
 /// Runs a mini-task command and returns the exit code.
 ///
@@ -119,6 +125,38 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
                 }
             }
             Ok(0)
+        }
+        // A task's files in a directory, and its instruction beside them, so
+        // `coder-one episode run` can run any policy on it; `grade` then
+        // grades what the episode left.
+        "setup" | "grade" => {
+            let [id, dir] = positional.as_slice() else {
+                return Err(format!(
+                    "minitask {verb} needs a task ID and a directory\n{USAGE}"
+                ));
+            };
+            let task = find(id)?;
+            let dir = std::path::Path::new(dir);
+            if verb == "setup" {
+                crate::minitask::setup(&task, dir)?;
+                let instruction = dir.with_extension("instruction.md");
+                std::fs::write(&instruction, task.instruction)
+                    .map_err(|error| format!("{}: {error}", instruction.display()))?;
+                println!("{}", instruction.display());
+                return Ok(0);
+            }
+            let scratch = dir.with_extension("grader");
+            let grade = crate::minitask::grade(&task, dir, &scratch).await;
+            let _ = std::fs::remove_dir_all(&scratch);
+            if json_output {
+                println!(
+                    "{}",
+                    serde_json::to_string(&grade).map_err(|error| error.to_string())?
+                );
+            } else {
+                println!("{}: {}", grade.verdict, grade.detail);
+            }
+            Ok(i32::from(grade.verdict != "passed"))
         }
         "run" => {
             let [id] = positional.as_slice() else {
