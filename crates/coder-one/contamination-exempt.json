@@ -1,0 +1,40 @@
+{
+  "schema": "openagents.coder-one.contamination-exempt.v1",
+  "note": "Reviewed task-specific strings in code that no prompt reads. `coder-one contamination check` ignores exactly these strings in exactly these files; any other match in the same file is still a finding. Add an entry only for code that selects, labels, or reports runs offline, and say why no model can read it.",
+  "exempt": [
+    {
+      "path": "crates/coder-one/src/checks/labeled.rs",
+      "matches": [
+        "heat-pump-warranty",
+        "html-js-filter",
+        "ks-solver-cpp",
+        "production-planning",
+        "protein-autointerp-disulfide",
+        "risk-scorer-replay",
+        "rs-archive-clone",
+        "sglang-qwen-burst",
+        "wal-recovery-ordering"
+      ],
+      "reason": "checks::labeled::TARGETS, the recall study's target tasks. `coder-one checks` summarizes labeled rows by it offline; no episode or prompt reads it."
+    },
+    {
+      "path": "crates/coder-one/src/checks/recover.rs",
+      "matches": [
+        "log-summary-date-ranges",
+        "headless-terminal",
+        "cancel-async-tasks"
+      ],
+      "reason": "checks::recover::TASKS, which parses a retained job's name to find its task when scenarios are recovered offline; no episode or prompt reads it."
+    },
+    {
+      "path": "crates/coder-one/src/proposal/mod.rs",
+      "matches": [
+        "log-summary-date-ranges",
+        "headless-terminal",
+        "cancel-async-tasks",
+        "fix-git"
+      ],
+      "reason": "proposal::MINI_FOR_TASK maps a task to the mini-task that reproduces its failure family, for the proposal result record; no episode or prompt reads it."
+    }
+  ]
+}

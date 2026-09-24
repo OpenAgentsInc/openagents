@@ -29,6 +29,7 @@ pub mod checks;
 pub mod collect;
 pub mod component;
 pub mod compose;
+pub mod contamination;
 pub mod credentials;
 pub mod deadline;
 pub mod delegate;
