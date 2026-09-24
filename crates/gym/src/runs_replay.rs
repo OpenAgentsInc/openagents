@@ -412,7 +412,10 @@ fn transcript_parts(value: &Value) -> Vec<Part> {
         }
     }
     let mut parts = Vec::new();
-    if let Some(reasoning) = value.get("reasoning_content") {
+    if let Some(reasoning) = value
+        .get("reasoning_content")
+        .or_else(|| value.get("reasoning"))
+    {
         parts.push(Part::new("Thinking".to_owned(), false));
         prose(reasoning, true, &mut parts);
     }
@@ -874,7 +877,7 @@ mod tests {
         );
         let session = [
             json!({"record": "session", "session": {"id": "microluna-1-1"}}),
-            json!({"record": "step", "step": {"at": 1150, "source": "Agent", "message": "",
+            json!({"record": "step", "step": {"at": 1150, "source": "Agent", "message": "I will check the cache.",
                 "reasoning": reasoning}}),
             json!({"record": "step", "step": {"at": 1200, "source": "Agent", "message": "",
                 "call": {"id": "c1", "name": "run_command", "arguments": {"command": "ls /app"},

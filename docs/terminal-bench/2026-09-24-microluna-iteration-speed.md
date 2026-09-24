@@ -150,8 +150,8 @@ stochastic attempts cannot establish a latency penalty; response content,
 reasoning work, and service variability differ. A summary called `detailed`
 can still be short: the retained responses contain lists of bold headings,
 including “Checking LRU cache defects,” rather than a full reasoning transcript.
-This confirms that those headings come from the provider; Gym did not truncate
-a longer hidden text. The setting does not expose encrypted internal reasoning.
+This confirms that those headings come from the provider; the measurement
+contains no longer readable reasoning text. The setting does not expose encrypted internal reasoning.
 
 A further three requests omitted effort. The provider chose `medium`, accepted
 all settings, and returned readable summaries. The `auto` request took 19.78
@@ -163,8 +163,12 @@ a different effort for them.
 
 The native transport already preserves `response.output_item.done` events when
 the final `response.completed.output` array is empty. Microluna writes their
-readable summaries into ATIF; Gym reads those native session logs and renders
-the full summary as Markdown. Regression tests cover empty final output,
+readable summaries into ATIF. The new Gym regression exposed a separate reader
+bug: exported ATIF uses `reasoning_content`, while the native log uses
+`reasoning`. Gym previously recognized only the exported field. In a native
+step with an ordinary message, it could omit the summary; otherwise it could
+fall back to raw JSON. The reader now handles both fields and renders the full
+readable summary as Markdown. Regression tests cover empty final output,
 multiple summary paragraphs, default-effort requests, and a long summary's last
 paragraph in Gym.
 
@@ -191,4 +195,7 @@ and default/feature tests for Coder One and Microluna. The Python candidate
 regressions passed. The first broader Python check exposed a missing profile
 name in the expected-arm set, which was fixed, plus the existing macOS address
 space limit test; Linux verification distinguishes that platform issue from
-the new grader's behavior. Final verification records accompany publication.
+the new grader's behavior. The first full Rust gate caught the native reasoning-field mismatch through
+that new regression. The reader was fixed before publication; both the failed
+run and the subsequent verification are retained. Final verification records
+accompany publication.

@@ -1,5 +1,8 @@
 """Agent profiles: auth-mode detection and credential templating."""
 
+import json
+from pathlib import Path
+
 import pytest
 
 from tbench.agents import agent_config_env, configured_auth_modes, load_agents
@@ -93,6 +96,17 @@ def test_claude_api_key_mode_detected(agents):
         agents["claude-code"], env={"ANTHROPIC_API_KEY": "redacted"}
     )
     assert [m.name for m in modes] == ["api-key"]
+
+
+def test_retained_v13_changes_only_candidate_recording(agents):
+    root = Path(__file__).resolve().parents[3]
+    baseline = agents["coder-one-microluna-v13"]
+    retained = agents["coder-one-microluna-v13-retained"]
+    before = json.loads((root / baseline.kwargs["policy"]).read_text())
+    after = json.loads((root / retained.kwargs["policy"]).read_text())
+    assert after["policy"]["executor"]["microluna"]["lean"].pop("retain_candidates") is True
+    assert after["policy"] == before["policy"]
+    assert after["protected"] == before["protected"]
 
 
 def test_claude_oauth_needs_token_only(agents):
