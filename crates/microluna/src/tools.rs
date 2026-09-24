@@ -489,6 +489,7 @@ impl Workspace {
                 if let Some(scratch) = boundary.scratch() {
                     command.env("TMPDIR", scratch);
                 }
+                withhold_credentials(&mut command);
                 supervise::Job::from_command(command)
                     .bounded(supervise::Limits::within(wall).keeping(COMMAND_KEEP))
                     .run_holding(boundary.hold())
@@ -498,6 +499,7 @@ impl Workspace {
                 let mut command = std::process::Command::new("/bin/sh");
                 command.args(["-c", args.command.as_str()]);
                 command.current_dir(&self.root);
+                withhold_credentials(&mut command);
                 supervise::Job::from_command(command)
                     .bounded(supervise::Limits::within(wall).keeping(COMMAND_KEEP))
                     .run()
@@ -708,8 +710,57 @@ struct WriteFile {
     contents: String,
 }
 
+/// Removes from a model command's environment every credential and the
+/// host's policy manifest, so a model that runs `env` sees neither. Coder
+/// One's own shell does the same (`coder_one::shell::is_credential`).
+fn withhold_credentials(command: &mut std::process::Command) {
+    for (name, _) in std::env::vars_os() {
+        if name.to_str().is_some_and(is_withheld) {
+            command.env_remove(&name);
+        }
+    }
+}
+
+/// A variable a model's command must not see: a named credential, any
+/// `*_API_KEY`, `*_TOKEN`, or `*_SECRET`, the Codex login's path, or the
+/// host's policy manifest.
+fn is_withheld(name: &str) -> bool {
+    const NAMED: &[&str] = &[
+        "OPENAGENTS_API_KEY",
+        "TYPESAFE_API_KEY",
+        "CLAUDE_CODE_OAUTH_TOKEN",
+        "ANTHROPIC_API_KEY",
+        "ANTHROPIC_AUTH_TOKEN",
+        "OPENAI_API_KEY",
+        "CODEX_AUTH_JSON_PATH",
+        "CODER_ONE_POLICY",
+    ];
+    let upper = name.to_ascii_uppercase();
+    NAMED.contains(&upper.as_str())
+        || upper.ends_with("_API_KEY")
+        || upper.ends_with("_TOKEN")
+        || upper.ends_with("_SECRET")
+}
+
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_model_command_never_sees_a_credential_or_the_policy() {
+        for name in [
+            "OPENAGENTS_API_KEY",
+            "TYPESAFE_API_KEY",
+            "GITHUB_TOKEN",
+            "X_SECRET",
+            "CODER_ONE_POLICY",
+        ] {
+            assert!(super::is_withheld(name), "{name}");
+        }
+        for name in ["PATH", "HOME", "LANG", "WORKSPACE"] {
+            assert!(!super::is_withheld(name), "{name}");
+        }
+    }
+
     use super::*;
 
     fn workspace() -> (tempfile::TempDir, Workspace) {
