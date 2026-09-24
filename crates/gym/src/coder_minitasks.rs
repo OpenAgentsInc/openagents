@@ -314,6 +314,11 @@ pub fn lines(runs: &[Run], errors: &[String], selected: Option<usize>) -> Vec<St
             "Coder One mini-task runs · {} runs · local episodes with their own graders, not Terminal-Bench attempts",
             runs.len()
         ),
+        "The grader checks the task after the episode. This is a quick local check,".to_owned(),
+        "not a Terminal-Bench 4.0 benchmark result.".to_owned(),
+        "Scripted episodes take about 1 second without a model or container.".to_owned(),
+        "Real-executor time and cost are recorded for each run.".to_owned(),
+        "Details and measured real-run figures: docs/coder/guides/coder-one-minitasks.md".to_owned(),
         HEADER.to_owned(),
     ];
     if runs.is_empty() {

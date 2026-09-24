@@ -6,6 +6,18 @@ in about a second and with no model or container. Run the same task with
 Claude Code or Codex to see whether a real executor uses what the
 components give it.
 
+The grader runs after the episode and checks the task's concrete outcome.
+Its verdict is a quick local check, not a Terminal-Bench 4.0 result.
+Mini-tasks isolate a small failure family or recovery. Terminal-Bench 4.0
+tasks are curated benchmark tasks run in their benchmark environment.
+Passing here does not establish a Terminal-Bench 4.0 score or predict
+passing that benchmark. The scripted run
+takes about 1 second and costs $0 in model inference. Real-executor figures
+come from recorded runs: the 2026-09-24 overnight report records about $0.004
+for one Luna mini-task pass (and about $0.006 for its read-first variant);
+the [Microluna report](../../terminal-bench/2026-09-24-microluna.md)
+compares mini-task pass rates and TB4 scores separately.
+
 This is rung 2 and rung 3 of the ladder in
 [Coder as a tunable system](../../optimization/coder-components.md#test-each-component-in-isolation):
 components alone come first, in the
