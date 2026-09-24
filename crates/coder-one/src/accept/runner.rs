@@ -321,14 +321,12 @@ impl Docker {
         docker(&["start", &id])?;
         if let Some(candidate) = &self.candidate {
             // The image may run as another user: the host's own steps run
-            // as root, and the candidate keeps the workdir's owner.
+            // as root, and the candidate belongs to the user the image
+            // runs as, who wrote it during the trial.
             let workdir = sh_quote(&self.workdir);
-            let prepare = format!(
-                "owner=$(stat -c %u:%g {workdir}) && \
-                 find {workdir} -mindepth 1 -maxdepth 1 -exec rm -rf {{}} + && \
-                 echo \"$owner\""
-            );
-            let owner = docker(&["exec", "-u", "0", &id, "sh", "-c", &prepare])?;
+            let owner = docker(&["exec", &id, "sh", "-c", "echo \"$(id -u):$(id -g)\""])?;
+            let clear = format!("find {workdir} -mindepth 1 -maxdepth 1 -exec rm -rf {{}} +");
+            docker(&["exec", "-u", "0", &id, "sh", "-c", &clear])?;
             let from = format!("{}/.", candidate.display());
             docker(&["cp", &from, &format!("{id}:/")])?;
             let chown = format!("chown -R {} {workdir}", sh_quote(owner.trim()));
