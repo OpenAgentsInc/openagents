@@ -105,7 +105,11 @@ pub const ISSUE_DIRECTIONS: &str = "Resolve the issue in the current working \
 directory, a fresh clone on a new branch. Make the change the issue asks \
 for, add the tests it asks for, and run the tests that cover what you \
 changed. Do not commit, push, or create branches: the host does that when \
-you finish. End with a short summary of what you changed and how you \
+you finish. When the issue names something the program shows, such as a \
+view, a screen, or a command's output, change the code that draws it and \
+its tests: a document that describes it is not it. An earlier session's \
+summary is its claim, not a fact: check it against the files before you \
+rely on it. End with a short summary of what you changed and how you \
 checked it.";
 
 /// The directions for a question, which runs with no survey: the other
@@ -861,11 +865,28 @@ async fn microluna_turn(turn: Turn<'_>) -> Answer {
     }
 }
 
-/// Each session's finish summary in `record`, in order and without
-/// repeats.
+/// The finish summaries of the sessions in `record` that changed a file,
+/// in order and without repeats; every session's when none did. A session
+/// that changed nothing only reports on the others' work: four of five
+/// once filled a pull request with "confirmed, no change".
 fn session_summaries(record: &Value) -> Vec<String> {
+    let sessions: Vec<&Value> = record["sessions"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .collect();
+    let changed: Vec<&Value> = sessions
+        .iter()
+        .copied()
+        .filter(|session| session["changed"].as_array().is_some_and(|c| !c.is_empty()))
+        .collect();
+    let chosen = if changed.is_empty() {
+        sessions
+    } else {
+        changed
+    };
     let mut kept: Vec<String> = Vec::new();
-    for session in record["sessions"].as_array().into_iter().flatten() {
+    for session in chosen {
         let summary = session["finish"]["summary"]
             .as_str()
             .unwrap_or_default()

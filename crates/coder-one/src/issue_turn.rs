@@ -394,11 +394,15 @@ fn prepare(
 
     let inner = Request {
         workdir: workdir.clone(),
+        // The title rides as a heading, which the requirement map reads as
+        // context: as a line of its own it became a requirement that
+        // duplicated the body's, and two sessions split one job.
         request: format!(
-            "Resolve GitHub issue {}: {}\n\n{}",
-            issue.url,
+            "# Issue #{}: {}\n\n{}\n\n{}",
+            reference.number,
             issue.title,
-            issue.body.trim()
+            issue.body.trim(),
+            issue.url
         ),
         earlier: String::new(),
         resume: None,

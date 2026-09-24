@@ -810,6 +810,16 @@ fn probabilities(answer: &Value) -> BTreeMap<String, f64> {
     out
 }
 
+/// Whether `text` is one Markdown ATX heading line, such as `## Goal`.
+fn heading(text: &str) -> bool {
+    let text = text.trim();
+    let hashes = text.chars().take_while(|&c| c == '#').count();
+    !text.contains('\n')
+        && (1..=6).contains(&hashes)
+        && text[hashes..].starts_with(' ')
+        && !text[hashes..].trim().is_empty()
+}
+
 /// Builds the map from spans and whatever answers came back, keyed by
 /// question ID. A span without an answer is placed by rule and marked
 /// `unjudged` when the rule keeps it.
@@ -833,7 +843,12 @@ pub fn decide(body: &str, spans: &[Span], answers: &Value, params: Params) -> Re
             .and_then(|a| a.get("noul"))
             .and_then(Value::as_f64);
         let answered = !kinds.is_empty();
-        let (kind, binding, p) = if answered {
+        let (kind, binding, p) = if heading(&span.text) {
+            // A heading names the section under it and is never a
+            // requirement itself: "## Goal" once became one, and a session
+            // spent itself on it.
+            (Kind::Context, None, None)
+        } else if answered {
             let context = kinds.get("context").copied().unwrap_or(0.0);
             let p = 1.0 - context;
             let best = kinds
@@ -1068,6 +1083,23 @@ mod tests {
     use super::*;
 
     const LOG: &str = "You are given multiple log files stored in /app/logs. Each log file name follows the pattern YYYY-MM-DD_<source>.log (e.g., 2025-08-10_db.log), indicating the date. Your task is to count each severity within the following date ranges:\nToday (the current date)\nLast 7 days (including today)\n\nThe severity levels to count are exactly: ERROR, WARNING, and INFO.\nWrite a CSV file /app/summary.csv with the following structure (including the header):\nperiod,severity,count\ntoday,ERROR,<count>\n\nThe current date is 2025-08-12. Use this as the reference date.\n";
+
+    #[test]
+    fn a_markdown_heading_is_never_a_requirement() {
+        assert!(heading("## Goal"));
+        assert!(heading("# #9597 Docs: explain mini-tasks"));
+        assert!(!heading("#9597 needs a fix."));
+        assert!(!heading("##"));
+        let body = "## Goal\nWrite the report to out.txt.";
+        let spans = split(body);
+        let answers = json!({
+            "kind_s1": {"choice": "deliverable", "probabilities": {"deliverable": 0.9, "context": 0.1}},
+            "kind_s2": {"choice": "deliverable", "probabilities": {"deliverable": 0.9, "context": 0.1}},
+        });
+        let map = decide(body, &spans, &answers, Params::default());
+        assert_eq!(map.requirements.len(), 1, "{:?}", map.requirements);
+        assert!(map.requirements[0].text.contains("out.txt"));
+    }
 
     #[test]
     fn spans_cover_every_character_and_follow_the_text() {
