@@ -6,6 +6,17 @@ evidence; it does not report the execution host's live queue.
 
 ## Latest status
 
+**Task anatomy for tonight's Microluna runs: the decisive facts and
+candidate acceptance tests for 18 TB4 tasks.** For 11 tasks that Fable 5.1
+mostly fails but an earlier Coder One passed, and 7 that Fable passes,
+each section names what the verifier tests, the facts a solution must get
+right with their sources, why Fable fails, and test ideas that are red on
+the untouched workspace, ranked by feasibility for Luna plus Microluna. A
+JSON companion maps each task to its facts and test ideas for the
+`accept.define` builder. See the [task anatomy](2026-09-24-task-anatomy.md)
+(issues [#9585](https://github.com/OpenAgentsInc/openagents/issues/9585)
+and [#9588](https://github.com/OpenAgentsInc/openagents/issues/9588)).
+
 **GPT-6 Luna on 14 TB4 tasks: 0 of 23 graded attempts, directly or with Jev
 structure.** Luna in Codex passed 0 of 11 (0–26%) and Luna inside Coder
 One's Jev structure 0 of 12 (0–24%), against 16 of 31 for Claude Code on
