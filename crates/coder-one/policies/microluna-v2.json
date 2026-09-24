@@ -1,7 +1,7 @@
 {
   "schema": "openagents.coder-one.policy.v1",
-  "name": "coder-one-microluna-best-of-3",
-  "note": "microluna-v1 with control.best_of: 3 Microluna dispatches on GPT-6 Luna run at once, each in its own copy of the workspace, with the workspace's path rewritten in the task and evidence each reads. The host keeps the candidate with the best calibrated verdict, then the best check scorecard, then the lowest cost, and archives every candidate's workspace under best-of/. verify.repair is removed, as in microluna-best-of-1. Written for issue #9587.",
+  "name": "coder-one-microluna-v2",
+  "note": "microluna-v1 with the two Fable moves from #9586's fingerprints: read_first runs a read-only reconnaissance session on each group before any edit, and require_evidence (also on in v1) accepts a done only when the session edited a file and ran a command after it. Everything else is microluna-v1: Microluna on the Codex login, the mini-handoff loop, verify.checks and the combined verdict between sessions, one verify.repair, and no escalation to Opus. Written for issue #9585.",
   "policy": {
     "jev": {
       "mode": "deep",
@@ -28,11 +28,6 @@
         "long_after_sec": 3600,
         "long_effort": "high",
         "long_command_sec": 3600
-      },
-      "best_of": {
-        "n": 3,
-        "max_copy_mb": 256,
-        "archive": true
       }
     },
     "brief": {
@@ -58,14 +53,17 @@
         "spend_usd": 0.5,
         "evidence_chars": 14000,
         "checks": true,
-        "require_evidence": true,
-        "read_first": false
+        "read_first": true,
+        "require_evidence": true
       }
     },
     "verify": {
       "checks": true,
       "support": false,
-      "verdict": true
+      "repair": {
+        "brief": "packet",
+        "trigger": "detected"
+      }
     }
   },
   "protected": {

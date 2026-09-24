@@ -43,6 +43,12 @@ answer if the task asked a question.";
 /// The step extension that holds a reply's full usage and cost.
 pub const USAGE_EXTENSION: &str = "microluna.usage.v1";
 
+/// How many times a request that failed transiently is sent again.
+pub const RETRIES: u32 = 2;
+
+/// The wait before a retry, times the retry's number.
+pub const RETRY_WAIT: Duration = Duration::from_secs(3);
+
 /// What the model is told when it answers without calling a tool.
 pub const NUDGE: &str = "Continue with a tool call. When you're done, call finish.";
 
@@ -375,20 +381,42 @@ pub async fn run<T: Transport>(
             cache_key: config.cache_key.clone(),
         };
         let asked = Instant::now();
-        let answered = match left {
-            Some(left) => match tokio::time::timeout(left, transport.respond(&request)).await {
-                Ok(answered) => answered,
-                Err(_) => {
+        let mut tries = 0;
+        let answered = loop {
+            let answered = match config
+                .deadline
+                .map(|deadline| deadline.saturating_sub(started.elapsed()))
+            {
+                Some(left) => match tokio::time::timeout(left, transport.respond(&request)).await {
+                    Ok(answered) => answered,
+                    Err(_) => {
+                        recorder.record(atif::Step::said(
+                            atif::Source::System,
+                            "The session's time bound passed while a request was open; its \
+                             usage is unknown.",
+                        ));
+                        report.ending = Ending::Deadline;
+                        break 'turns;
+                    }
+                },
+                None => transport.respond(&request).await,
+            };
+            // A broken stream or a provider's transient refusal usually
+            // clears on a second try; the request is sent again whole, and
+            // a failed one reported no usage to count.
+            match answered {
+                Err(error) if error.transient() && tries < RETRIES => {
+                    tries += 1;
                     recorder.record(atif::Step::said(
                         atif::Source::System,
-                        "The session's time bound passed while a request was open; its usage \
-                         is unknown.",
+                        &format!(
+                            "The request failed ({error}); trying again, {tries} of {RETRIES}."
+                        ),
                     ));
-                    report.ending = Ending::Deadline;
-                    break;
+                    tokio::time::sleep(RETRY_WAIT * tries).await;
                 }
-            },
-            None => transport.respond(&request).await,
+                answered => break answered,
+            }
         };
         let reply = match answered {
             Ok(reply) => reply,

@@ -130,6 +130,23 @@ pub struct Policy {
     pub evidence_chars: usize,
     /// Whether the checks run between sessions.
     pub checks: bool,
+    /// Require evidence before a session's move ends the loop or advances
+    /// a group: the session must have edited a file and run a command
+    /// after its last edit. A `done` or advancing move without both is a
+    /// retry. This is Fable's move that Luna lacks: a claim of done backed
+    /// by an edit and a test, not by reading.
+    #[serde(default = "yes")]
+    pub require_evidence: bool,
+    /// Run the first session of each group read-only: it reproduces and
+    /// runs the task's own tests before any edit, then always retries into
+    /// an edit session, without spending one of the group's attempts. This
+    /// is Fable's move of reading longer before the first edit.
+    #[serde(default)]
+    pub read_first: bool,
+}
+
+fn yes() -> bool {
+    true
 }
 
 impl Default for Policy {
@@ -144,6 +161,8 @@ impl Default for Policy {
             spend_usd: 0.50,
             evidence_chars: 14_000,
             checks: true,
+            require_evidence: true,
+            read_first: false,
         }
     }
 }
@@ -317,6 +336,12 @@ struct Ran {
     trace: String,
     commands: Vec<(String, Option<i64>)>,
     changed: Vec<String>,
+    /// The session made at least one edit.
+    edited: bool,
+    /// A command ran after the session's last edit: the edit was exercised.
+    ran_after_edit: bool,
+    /// The session ran read-only, so it was never meant to edit.
+    read_only: bool,
 }
 
 impl Ran {
@@ -362,6 +387,9 @@ impl Ran {
             "trace": self.trace,
             "commands": self.commands.iter().map(|(c, e)| json!({ "command": c, "exit": e })).collect::<Vec<_>>(),
             "changed": self.changed,
+            "edited": self.edited,
+            "ran_after_edit": self.ran_after_edit,
+            "read_only": self.read_only,
         })
     }
 }
@@ -577,6 +605,12 @@ struct Signals {
     verdict_fail: bool,
     /// The group is the last one.
     last: bool,
+    /// The session ran read-only, so it only reconnoiters and retries.
+    read_only: bool,
+    /// The session edited a file and ran a command after its last edit.
+    evidence: bool,
+    /// Whether a move that ends the loop needs that evidence.
+    require_evidence: bool,
     attempts: u32,
     max_attempts: u32,
 }
@@ -590,9 +624,20 @@ fn settle(picked: Option<Move>, ran: &Ran, signals: Signals) -> (Move, Option<St
         contradicted,
         verdict_fail,
         last,
+        read_only,
+        evidence,
+        require_evidence,
         attempts,
         max_attempts,
     } = signals;
+    // A read-only session never advances: it reconnoiters, then an edit
+    // session follows on the same group.
+    if read_only {
+        return (
+            Move::Retry,
+            Some("the read-only first session retries into an edit session".to_string()),
+        );
+    }
     let finished_done = matches!(
         ran.finish.as_ref().map(|f| f.status),
         Some(microluna::FinishStatus::Done)
@@ -612,6 +657,15 @@ fn settle(picked: Option<Move>, ran: &Ran, signals: Signals) -> (Move, Option<St
     if contradicted && matches!(chosen, Move::Next | Move::Done) {
         why = Some(format!(
             "a check contradicts the focus, so {} became retry",
+            chosen.word()
+        ));
+        chosen = Move::Retry;
+    }
+    let ends = chosen == Move::Done || (last && chosen == Move::Next);
+    if require_evidence && ends && !evidence {
+        why = Some(format!(
+            "{}the session made no edit it then tested, so {} became retry",
+            why.map(|w| format!("{w}; ")).unwrap_or_default(),
             chosen.word()
         ));
         chosen = Move::Retry;
@@ -739,7 +793,14 @@ fn events_of(step: &Step) -> Vec<EventKind> {
 
 impl Micro {
     /// Runs one session, recording it; `why` names what it works on.
-    async fn session(&self, number: u32, focus: &[String], why: &str, brief: &Brief) -> Ran {
+    async fn session(
+        &self,
+        number: u32,
+        focus: &[String],
+        why: &str,
+        brief: &Brief,
+        read_only: bool,
+    ) -> Ran {
         let dispatch = self.dispatch();
         let session_id = format!("microluna-{dispatch}-{number}");
         let text: String = brief
@@ -795,6 +856,10 @@ impl Micro {
         let revision = Rc::new(Cell::new(0u64));
         let commands = Rc::new(std::cell::RefCell::new(Vec::<(String, Option<i64>)>::new()));
         let changed = Rc::new(std::cell::RefCell::new(Vec::<String>::new()));
+        // Set when an edit is seen, cleared when a real command runs after
+        // it: at the end it says whether the last edit went untested.
+        let untested_edit = Rc::new(Cell::new(false));
+        let ran_after_edit = Rc::new(Cell::new(false));
         let sink = {
             let recorder = self.recorder.clone();
             let session_id = session_id.clone();
@@ -802,6 +867,8 @@ impl Micro {
             let revision = revision.clone();
             let commands = commands.clone();
             let changed = changed.clone();
+            let untested_edit = untested_edit.clone();
+            let ran_after_edit = ran_after_edit.clone();
             move |step: &Step| {
                 if step.call.is_some() || step.source == atif::Source::Agent {
                     crate::say::line(&format!("  {}", microluna::session::line(step)));
@@ -810,9 +877,18 @@ impl Micro {
                     match &kind {
                         EventKind::CommandCompleted {
                             command, exit_code, ..
-                        } => commands.borrow_mut().push((command.clone(), *exit_code)),
+                        } => {
+                            commands.borrow_mut().push((command.clone(), *exit_code));
+                            // A read_file's synthetic command doesn't test an edit.
+                            if !command.starts_with("read_file ") && untested_edit.get() {
+                                untested_edit.set(false);
+                                ran_after_edit.set(true);
+                            }
+                        }
                         EventKind::ArtifactChanged { path, .. } => {
                             revision.set(revision.get() + 1);
+                            untested_edit.set(true);
+                            ran_after_edit.set(false);
                             if !changed.borrow().contains(path) {
                                 changed.borrow_mut().push(path.clone());
                             }
@@ -911,6 +987,9 @@ impl Micro {
             trace: format!("artifacts/{trace}"),
             commands: commands.borrow().clone(),
             changed: changed.borrow().clone(),
+            edited: !changed.borrow().is_empty(),
+            ran_after_edit: ran_after_edit.get(),
+            read_only,
         };
         // The dispatch's exec.session carries the sessions' cost, as it
         // does for a CLI; each session states its own share in its summary,
@@ -959,6 +1038,7 @@ impl Micro {
                 &["the briefing".to_string()],
                 "the host briefed it",
                 &brief,
+                false,
             )
             .await,
         ]
@@ -1073,6 +1153,9 @@ impl Micro {
                 contradicted,
                 verdict_fail: verdict.call == "fail",
                 last: later.is_empty(),
+                read_only: ran.read_only,
+                evidence: ran.edited && ran.ran_after_edit,
+                require_evidence: self.policy.require_evidence,
                 attempts,
                 max_attempts: self.policy.max_attempts,
             },
@@ -1089,6 +1172,9 @@ impl Micro {
             "contradicted": contradicted,
             "checks": checked.summary,
             "verdict": verdict,
+            "edited": ran.edited,
+            "ran_after_edit": ran.ran_after_edit,
+            "read_only": ran.read_only,
             "attempts": attempts,
             "move": chosen.word(),
             "overridden": overridden,
@@ -1109,6 +1195,7 @@ impl Micro {
         let mut sessions: Vec<Ran> = Vec::new();
         let mut moves: Vec<Value> = Vec::new();
         let mut attempts = vec![0u32; groups.len()];
+        let mut read_done = vec![false; groups.len()];
         let mut spent = 0.0;
         let mut cursor = 0;
         let mut last_checked: Option<Checked> = None;
@@ -1136,7 +1223,12 @@ impl Micro {
                 break;
             }
             let group = &groups[cursor];
-            attempts[cursor] += 1;
+            // The read-only first session of a group reconnoiters before an
+            // edit session; it doesn't spend one of the group's attempts.
+            let is_read = self.policy.read_first && !read_done[cursor];
+            if !is_read {
+                attempts[cursor] += 1;
+            }
             let brief = self.brief(
                 prepared,
                 &groups,
@@ -1144,15 +1236,27 @@ impl Micro {
                 attempts[cursor],
                 &sessions,
                 last_checked.as_ref(),
+                is_read,
             );
-            let why = format!(
-                "session {number} works on {} (group {} of {}, attempt {})",
-                group.ids.join(", "),
-                cursor + 1,
-                groups.len(),
-                attempts[cursor]
-            );
-            let ran = self.session(number, &group.ids, &why, &brief).await;
+            let why = if is_read {
+                format!(
+                    "session {number} reads before editing {} (group {} of {})",
+                    group.ids.join(", "),
+                    cursor + 1,
+                    groups.len()
+                )
+            } else {
+                format!(
+                    "session {number} works on {} (group {} of {}, attempt {})",
+                    group.ids.join(", "),
+                    cursor + 1,
+                    groups.len(),
+                    attempts[cursor]
+                )
+            };
+            let ran = self
+                .session(number, &group.ids, &why, &brief, is_read)
+                .await;
             spent += ran.cost_usd.unwrap_or(0.0);
             let lost = matches!(ran.ending, Ending::Transport(_));
             sessions.push(ran);
@@ -1188,6 +1292,9 @@ impl Micro {
                 )
                 .await;
             spent += usd;
+            if is_read {
+                read_done[cursor] = true;
+            }
             let to = match chosen {
                 Move::Retry => {
                     format!("{AGENT} session {} on {}", number + 1, group.ids.join(", "))
@@ -1252,6 +1359,7 @@ impl Micro {
 
     /// One session's brief: the task first, then the group and its
     /// evidence, then the state.
+    #[allow(clippy::too_many_arguments)]
     fn brief(
         &self,
         prepared: &Prepared,
@@ -1260,6 +1368,7 @@ impl Micro {
         attempt: u32,
         sessions: &[Ran],
         checked: Option<&Checked>,
+        read_only: bool,
     ) -> Brief {
         let group = &groups[cursor];
         let later: Vec<String> = groups[cursor + 1..]
@@ -1291,11 +1400,22 @@ impl Micro {
                 later.join(", ")
             ));
         }
-        guidance.push_str(
-            "When the focus is met and you've checked it by running something, call finish \
-             with status done. If you can't meet it, call finish with blocked or failed and \
-             say why in the summary.",
-        );
+        if read_only {
+            guidance.push_str(
+                "This is a read-only session: you can't edit files, only read and run \
+                 commands. Reproduce the problem and run the task's own tests or example so \
+                 the next session starts from what actually happens. When you've seen enough, \
+                 call finish with a summary of what you found and what the edit session should \
+                 change.",
+            );
+        } else {
+            guidance.push_str(
+                "Make the edit the focus needs, then run something that exercises it: the \
+                 task's test, its example, or a command that shows the new behavior. Only call \
+                 finish with status done once you've made an edit and seen it work. If you \
+                 can't meet the focus, call finish with blocked or failed and say why.",
+            );
+        }
         let mut state = vec![format!(
             "Session {} of at most {}; attempt {attempt} on this focus.",
             sessions.len() + 1,

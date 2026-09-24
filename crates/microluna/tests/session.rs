@@ -153,8 +153,8 @@ async fn a_transport_failure_ends_the_session_with_its_usage_kept() {
         usage(100, 0, 10),
     )]);
     transport.then_fail(TransportError::Http {
-        status: 429,
-        body: "slow down".to_string(),
+        status: 401,
+        body: "signed out".to_string(),
     });
     let mut recorder = Recorder::new();
     let report = run(
@@ -165,7 +165,7 @@ async fn a_transport_failure_ends_the_session_with_its_usage_kept() {
         &mut recorder,
     )
     .await;
-    assert!(matches!(report.ending, Ending::Transport(ref why) if why.contains("429")));
+    assert!(matches!(report.ending, Ending::Transport(ref why) if why.contains("401")));
     assert_eq!(report.usage.input, 100);
     let read = recorder
         .steps()
@@ -275,4 +275,61 @@ async fn a_forwarding_recorder_hands_every_step_to_the_host() {
     assert_eq!(report.ending, Ending::Finished);
     assert_eq!(seen.get(), recorder.steps().len());
     assert!(seen.get() >= 3);
+}
+
+#[tokio::test]
+async fn a_broken_stream_is_sent_again_and_the_session_goes_on() {
+    let dir = tempfile::tempdir().unwrap();
+    let workspace = Workspace::new(dir.path()).unwrap();
+    let transport = FakeTransport::new(Vec::new());
+    transport.then_fail(TransportError::Stream(
+        "error decoding response body".to_string(),
+    ));
+    transport.then(call(
+        "f",
+        "finish",
+        &json!({"status": "done", "summary": "Done.", "answer": ""}),
+        usage(10, 0, 5),
+    ));
+    let mut recorder = Recorder::new();
+    let report = run(
+        &transport,
+        &workspace,
+        &Brief::task("Finish."),
+        &Config::luna("t"),
+        &mut recorder,
+    )
+    .await;
+    assert_eq!(report.ending, Ending::Finished);
+    assert_eq!(report.turns, 1);
+    assert_eq!(transport.requests().len(), 2);
+    assert!(
+        recorder
+            .steps()
+            .iter()
+            .any(|step| step.message.contains("trying again, 1 of 2"))
+    );
+}
+
+#[tokio::test]
+async fn a_read_only_workspace_refuses_edits_but_runs_commands() {
+    let dir = tempfile::tempdir().unwrap();
+    let workspace = Workspace::new(dir.path()).unwrap().reading_only();
+    let wrote = workspace
+        .call(
+            "write_file",
+            &json!({"path": "a.txt", "contents": "x"}).to_string(),
+        )
+        .await;
+    assert_eq!(wrote.status, atif::Outcome::Cancelled);
+    assert!(!dir.path().join("a.txt").exists());
+    let patched = workspace
+        .call(
+            "apply_patch",
+            &json!({"patch": "*** Begin Patch\n*** Add File: b.txt\n+x\n*** End Patch"})
+                .to_string(),
+        )
+        .await;
+    assert_eq!(patched.status, atif::Outcome::Cancelled);
+    assert!(!dir.path().join("b.txt").exists());
 }

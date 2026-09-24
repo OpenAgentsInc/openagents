@@ -52,7 +52,9 @@
         "session_sec": 600,
         "spend_usd": 0.5,
         "evidence_chars": 14000,
-        "checks": true
+        "checks": true,
+        "require_evidence": true,
+        "read_first": false
       }
     },
     "verify": {

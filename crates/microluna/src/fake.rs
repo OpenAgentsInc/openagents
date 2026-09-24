@@ -30,6 +30,11 @@ impl FakeTransport {
         self.script.borrow_mut().push_back(Err(error));
     }
 
+    /// Adds a reply as the next answer.
+    pub fn then(&self, reply: Reply) {
+        self.script.borrow_mut().push_back(Ok(reply));
+    }
+
     /// The requests sent so far.
     #[must_use]
     pub fn requests(&self) -> Vec<Request> {

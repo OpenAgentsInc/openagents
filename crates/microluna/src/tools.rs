@@ -225,6 +225,7 @@ impl Isolation {
 pub struct Workspace {
     root: PathBuf,
     isolation: Isolation,
+    read_only: bool,
 }
 
 impl Workspace {
@@ -237,7 +238,16 @@ impl Workspace {
         Ok(Workspace {
             root: root.canonicalize()?,
             isolation: Isolation::Boundary,
+            read_only: false,
         })
+    }
+
+    /// The same workspace, with `apply_patch` and `write_file` refused, for
+    /// a session that only reads and runs. Commands still run.
+    #[must_use]
+    pub fn reading_only(mut self) -> Self {
+        self.read_only = true;
+        self
     }
 
     /// The same workspace, with commands confined by `isolation`.
@@ -273,6 +283,11 @@ impl Workspace {
                 Ok(args) => self.read_file(&args),
                 Err(refusal) => *refusal,
             },
+            "apply_patch" | "write_file" if self.read_only => Outcome::refused(
+                "This session only reads and runs: it can't edit files. Report what you found \
+                 with finish."
+                    .to_string(),
+            ),
             "apply_patch" => match parse::<ApplyPatch>(arguments) {
                 Ok(args) => self.apply_patch(&args.patch),
                 Err(refusal) => *refusal,

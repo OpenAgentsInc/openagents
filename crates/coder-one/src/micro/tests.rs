@@ -242,13 +242,19 @@ fn a_contradicting_check_keeps_the_loop_on_its_group() {
         milliseconds: 0,
         session_id: "s".to_string(),
         trace: String::new(),
-        commands: Vec::new(),
-        changed: Vec::new(),
+        commands: vec![("cargo test".to_string(), Some(0))],
+        changed: vec!["src/lib.rs".to_string()],
+        edited: true,
+        ran_after_edit: true,
+        read_only: false,
     };
     let at = |contradicted, verdict_fail, last, attempts| Signals {
         contradicted,
         verdict_fail,
         last,
+        read_only: false,
+        evidence: true,
+        require_evidence: true,
         attempts,
         max_attempts: 2,
     };
@@ -285,6 +291,94 @@ fn a_contradicting_check_keeps_the_loop_on_its_group() {
     assert_eq!(
         settle(Some(Move::Done), &ran, at(false, true, false, 2)).0,
         Move::Stuck
+    );
+    // Without evidence, an ending move is a retry; a between-group next is
+    // not gated.
+    let no_ev = |ending| Signals {
+        contradicted: false,
+        verdict_fail: false,
+        last: ending,
+        read_only: false,
+        evidence: false,
+        require_evidence: true,
+        attempts: 1,
+        max_attempts: 2,
+    };
+    assert_eq!(settle(Some(Move::Done), &ran, no_ev(false)).0, Move::Retry);
+    assert_eq!(settle(Some(Move::Next), &ran, no_ev(true)).0, Move::Retry);
+    assert_eq!(settle(Some(Move::Next), &ran, no_ev(false)).0, Move::Next);
+    // A read-only session always retries into an edit session.
+    let read = Signals {
+        read_only: true,
+        ..no_ev(false)
+    };
+    assert_eq!(settle(Some(Move::Done), &ran, read).0, Move::Retry);
+}
+
+#[tokio::test]
+async fn read_first_runs_a_read_only_reconnaissance_then_an_edit_session() {
+    let dir = tempfile::tempdir().unwrap();
+    // One group: read-only session 1 finishes without editing, then the
+    // edit session writes and tests, then finishes done.
+    let mut executor = micro(
+        dir.path(),
+        vec![
+            call(
+                "r1",
+                "run_command",
+                &json!({ "command": "cat hello.txt || true", "timeout_seconds": null }),
+                usage(600, 0, 20),
+            ),
+            finish(
+                "r2",
+                "done",
+                "hello.txt is missing; the edit session should create it.",
+            ),
+            call(
+                "e1",
+                "write_file",
+                &json!({ "path": "hello.txt", "contents": "hello\n" }),
+                usage(700, 0, 30),
+            ),
+            call(
+                "e2",
+                "run_command",
+                &json!({ "command": "cat hello.txt", "timeout_seconds": null }),
+                usage(800, 0, 20),
+            ),
+            finish("e3", "done", "Wrote and checked hello.txt."),
+        ],
+        Policy {
+            checks: false,
+            read_first: true,
+            max_groups: 1,
+            ..Policy::default()
+        },
+    );
+    executor.take_evidence(&prepared());
+    let report = executor.execute(&briefing(TASK)).await;
+    assert_eq!(report.status, Status::Answered);
+    let record = executor.last.clone().unwrap();
+    let sessions = record["sessions"].as_array().unwrap();
+    // The first session ran read-only and made no edit; the second edited.
+    assert_eq!(sessions[0]["read_only"], json!(true));
+    assert_eq!(sessions[0]["changed"], json!([]));
+    assert_eq!(sessions[1]["read_only"], json!(false));
+    assert_eq!(sessions[1]["changed"], json!(["hello.txt"]));
+    let moves: Vec<&str> = record["moves"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| m["move"].as_str().unwrap())
+        .collect();
+    // The read session retries into the edit session, which then advances
+    // past the last group with its edit and test as evidence.
+    assert_eq!(moves, ["retry", "next"]);
+    // The edit session had its write refused? No: read-only was only the
+    // first session, so hello.txt exists.
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("work/hello.txt")).unwrap(),
+        "hello\n"
     );
 }
 

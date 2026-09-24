@@ -168,6 +168,20 @@ impl fmt::Display for TransportError {
 
 impl std::error::Error for TransportError {}
 
+impl TransportError {
+    /// Whether sending the request again may succeed: a broken stream, a
+    /// rate limit, or a server error. A refused login or a failed or
+    /// incomplete response is not.
+    #[must_use]
+    pub fn transient(&self) -> bool {
+        match self {
+            TransportError::Stream(_) => true,
+            TransportError::Http { status, .. } => *status == 429 || *status >= 500,
+            _ => false,
+        }
+    }
+}
+
 /// Something that answers a [`Request`].
 pub trait Transport {
     /// Sends one request and waits for the whole reply.
