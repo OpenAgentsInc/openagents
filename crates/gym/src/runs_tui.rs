@@ -625,11 +625,23 @@ impl Pane {
         {
             // The open run against the cheapest passing public attempt on
             // its task, already playing.
+            // Both sides open at the elapsed time of the step in view, so the
+            // winner's transcript shows where it stood at the same moment.
+            let offset = self.open.as_ref().and_then(|open| {
+                let blocks = &open.detail.transcript.blocks;
+                let start = blocks.iter().find_map(|block| block.at)?;
+                let here = blocks
+                    .get(open.selected.min(blocks.len().saturating_sub(1)))
+                    .and_then(|block| block.at)?;
+                Some((here - start).max(0))
+            });
             if self
                 .open_replay_on(&run.task, Some(&run.id()), Some("best"))
                 .is_err()
             {
                 self.open_replay();
+            } else if let (Some(offset), Some(replay)) = (offset, self.replay.as_mut()) {
+                replay.clock.seek(offset);
             }
             return Reply::Handled;
         }

@@ -973,14 +973,17 @@ impl Micro {
             .join("\n");
         if self.policy.mode == Mode::Requirements {
             // A section per session: the Gym shows each as a takeover.
-            self.recorder.push(Step::said(
-                Source::System,
-                &format!(
-                    "Delegating to {AGENT} ({}) because {why}. Briefing: {} characters, sha256 {}.",
-                    self.model,
-                    text.chars().count(),
-                    sha256(&text)
+            self.recorder.push(crate::delegate::with_briefing(
+                Step::said(
+                    Source::System,
+                    &format!(
+                        "Delegating to {AGENT} ({}) because {why}. Briefing: {} characters, sha256 {}.",
+                        self.model,
+                        text.chars().count(),
+                        sha256(&text)
+                    ),
                 ),
+                &text,
             ));
         }
         let invocation = self.recorder.enter(

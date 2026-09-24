@@ -246,6 +246,9 @@ impl Block {
                 lines.extend(preview(output, OUTPUT_LINES));
                 lines
             }
+            Kind::Tool { name, output, .. } if expanded && name.starts_with(BRIEFING) => {
+                output.lines().map(str::to_owned).collect()
+            }
             Kind::Look { output, .. } | Kind::Tool { output, .. } if expanded => {
                 preview(output, OUTPUT_LINES)
             }
@@ -1075,6 +1078,10 @@ fn microluna_stream(path: &Path) -> (Vec<Block>, Option<f64>, Option<String>) {
     let mut blocks = Vec::new();
     let mut cost = None::<f64>;
     let mut report = None;
+    // The session's header holds its briefing: every User message the
+    // session opened with, which is exactly what Luna was given.
+    let mut header: Option<usize> = None;
+    let mut briefing: Vec<String> = Vec::new();
     for record in read_lines(path) {
         if record.get("record").and_then(Value::as_str) == Some("session") {
             let id = record
@@ -1086,13 +1093,27 @@ fn microluna_stream(path: &Path) -> (Vec<Block>, Option<f64>, Option<String>) {
                 .and_then(Value::as_str)
                 .unwrap_or_default();
             let at = record.get("at").and_then(Value::as_i64);
-            blocks.push(Block::new(at, Kind::Note(format!("{id}: {directive}"))));
+            blocks.push(Block::new(
+                at,
+                Kind::Tool {
+                    name: format!("{BRIEFING} {id}"),
+                    input: directive.to_owned(),
+                    output: String::new(),
+                },
+            ));
+            header = Some(blocks.len() - 1);
             continue;
         }
         let Some(step) = record.get("step") else {
             continue;
         };
         let at = step.get("at").and_then(Value::as_i64);
+        if step.get("source").and_then(Value::as_str) == Some("User") {
+            if let Some(message) = text(step, "message") {
+                briefing.push(message);
+            }
+            continue;
+        }
         if step.get("source").and_then(Value::as_str) != Some("Agent") {
             continue;
         }
@@ -1176,8 +1197,17 @@ fn microluna_stream(path: &Path) -> (Vec<Block>, Option<f64>, Option<String>) {
         };
         blocks.push(Block::new(at, kind));
     }
+    if let Some(index) = header
+        && let Kind::Tool { output, .. } = &mut blocks[index].kind
+    {
+        *output = briefing.join("\n\n");
+    }
     (blocks, cost, report)
 }
+
+/// The name a Microluna session's header block carries; expanding the
+/// block shows the whole briefing rather than a preview.
+const BRIEFING: &str = "Briefing for";
 
 /// Appends one Microluna session's blocks and counts them into the current
 /// executor session.
@@ -1292,6 +1322,22 @@ pub fn coder_one(episode: Option<&Path>, log: &Path) -> Transcript {
                 },
             ));
             section = Some(transcript.blocks.len() - 1);
+            // The briefing the host gave the executor, when the log keeps
+            // it. Microluna's sessions carry their own, per session.
+            if !who.to_lowercase().contains("microluna")
+                && let Some(briefing) = step
+                    .pointer("/extensions/briefing/text")
+                    .and_then(Value::as_str)
+            {
+                transcript.blocks.push(Block::new(
+                    at,
+                    Kind::Tool {
+                        name: format!("{BRIEFING} {who}"),
+                        input: String::new(),
+                        output: briefing.to_owned(),
+                    },
+                ));
+            }
             continue;
         }
         if let Some(event) = step.pointer("/extensions/executor_event") {

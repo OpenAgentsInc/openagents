@@ -440,19 +440,22 @@ pub async fn answer(request: &Request, on: Rc<dyn Fn(Progress)>) -> Answer {
     let (report, briefing) = loop {
         let head = if resume.is_some() { RESUMED_HEAD } else { HEAD };
         let briefing = Briefing::build_under(head, &inputs, policy.policy.brief.cap);
-        recorder.push(Step::said(
-            Source::System,
-            &format!(
-                "Delegating to {} ({}) in a {boundary_words} boundary{}. Briefing: {} characters, sha256 {}.",
-                cli.agent.word(),
-                cli.model,
-                resume
-                    .as_deref()
-                    .map(|id| format!(", resuming session {id}"))
-                    .unwrap_or_default(),
-                briefing.chars(),
-                briefing.sha256()
+        recorder.push(crate::delegate::with_briefing(
+            Step::said(
+                Source::System,
+                &format!(
+                    "Delegating to {} ({}) in a {boundary_words} boundary{}. Briefing: {} characters, sha256 {}.",
+                    cli.agent.word(),
+                    cli.model,
+                    resume
+                        .as_deref()
+                        .map(|id| format!(", resuming session {id}"))
+                        .unwrap_or_default(),
+                    briefing.chars(),
+                    briefing.sha256()
+                ),
             ),
+            &briefing.text,
         ));
         crate::say::say!(
             "brief ▸ {} characters · {} included · {} left out",

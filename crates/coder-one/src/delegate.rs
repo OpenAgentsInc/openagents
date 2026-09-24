@@ -2114,20 +2114,37 @@ pub async fn delegate<E: Executor>(
     recorder: &Recorder,
     calls: u32,
 ) -> Report {
-    recorder.push(Step::said(
-        Source::System,
-        &format!(
-            "Delegating to {} ({}) because {}. Briefing: {} characters, sha256 {}.",
-            executor.agent(),
-            executor.model(),
-            delegation.reason,
-            briefing.chars(),
-            briefing.sha256()
+    recorder.push(with_briefing(
+        Step::said(
+            Source::System,
+            &format!(
+                "Delegating to {} ({}) because {}. Briefing: {} characters, sha256 {}.",
+                executor.agent(),
+                executor.model(),
+                delegation.reason,
+                briefing.chars(),
+                briefing.sha256()
+            ),
         ),
+        &briefing.text,
     ));
     let report = executor.execute(briefing).await;
     recorder.push(record(executor, briefing, delegation, &report, calls + 1));
     report
+}
+
+/// Keeps the whole briefing on the step that announces a delegation, so the
+/// episode log shows what the executor was given, not only its digest.
+pub fn with_briefing(mut step: Step, text: &str) -> Step {
+    step.extensions.insert(
+        "briefing".to_owned(),
+        serde_json::json!({
+            "schema": "openagents.coder-one.briefing.v1",
+            "chars": text.chars().count(),
+            "text": text,
+        }),
+    );
+    step
 }
 
 /// The ATIF step for one delegation.
