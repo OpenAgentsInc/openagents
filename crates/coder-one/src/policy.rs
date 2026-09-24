@@ -207,6 +207,12 @@ pub struct ControlPolicy {
     /// Absent, the horizon's effort holds, and the digest is unchanged.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub effort: Option<crate::effort::EffortPolicy>,
+    /// `control.best_of`: N candidates of the first executor at once, each
+    /// in its own copy of the workspace, and the one the calibrated
+    /// verdict, then the checks, then cost rank first kept. Absent, one
+    /// candidate runs, and the digest is unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub best_of: Option<crate::compose::best_of::BestOfPolicy>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -542,6 +548,7 @@ impl Manifest {
                     horizon: None,
                     persist: None,
                     effort: None,
+                    best_of: None,
                 },
                 brief: BriefPolicy {
                     cap: delegate::BRIEFING_CAP,
@@ -785,6 +792,35 @@ impl Manifest {
             {
                 problems.push(
                     "control.persist.long_only needs control.horizon.long_after_sec".to_string(),
+                );
+            }
+        }
+        if let Some(best_of) = &self.policy.control.best_of {
+            problems.extend(best_of.validate());
+            if policy.control.delegate == DelegateMode::Off {
+                problems.push("control.best_of needs a delegate mode other than off".to_string());
+            }
+            if self
+                .policy
+                .control
+                .handoff
+                .as_ref()
+                .is_some_and(|h| h.pattern != crate::handoff::Pattern::Single)
+            {
+                problems.push(
+                    "control.best_of runs the first executor N times; it takes no control.handoff"
+                        .to_string(),
+                );
+            }
+            if !self
+                .policy
+                .verify
+                .as_ref()
+                .is_some_and(|v| v.checks && v.verdict)
+            {
+                problems.push(
+                    "control.best_of needs verify.checks and verify.verdict to rank its candidates"
+                        .to_string(),
                 );
             }
         }
@@ -1447,6 +1483,26 @@ pub const REFERENCE: &[(&str, &str)] = &[
     (
         "microluna-v1.json",
         include_str!("../policies/microluna-v1.json"),
+    ),
+    (
+        "luna-best-of-1.json",
+        include_str!("../policies/luna-best-of-1.json"),
+    ),
+    (
+        "luna-best-of-3.json",
+        include_str!("../policies/luna-best-of-3.json"),
+    ),
+    (
+        "luna-best-of-5.json",
+        include_str!("../policies/luna-best-of-5.json"),
+    ),
+    (
+        "microluna-best-of-1.json",
+        include_str!("../policies/microluna-best-of-1.json"),
+    ),
+    (
+        "microluna-best-of-3.json",
+        include_str!("../policies/microluna-best-of-3.json"),
     ),
 ];
 

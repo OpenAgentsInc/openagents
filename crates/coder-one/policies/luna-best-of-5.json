@@ -1,0 +1,80 @@
+{
+  "schema": "openagents.coder-one.policy.v1",
+  "name": "coder-one-luna-best-of-5",
+  "note": "tunable-luna-pack-solo with control.best_of: 5 Codex sessions on GPT-6 Luna run at once, each in its own copy of the workspace with the workspace's path rewritten in its briefing. The host checks each candidate in the real workspace and asks the calibrated verdict (checks::verdict) about its final report, then keeps the one with the best verdict, then the best check scorecard, then the lowest cost. Each candidate's workspace is archived under best-of/ so the verifier can grade every candidate afterwards. control.monitor and verify.repair are removed, as in luna-best-of-1, so the arms differ only in N. Written for issue #9587.",
+  "policy": {
+    "jev": {
+      "mode": "deep",
+      "model": "jev-1.13.0",
+      "question_sets": "builtin-v1"
+    },
+    "evidence": {
+      "probes": "v2",
+      "survey_files": 40
+    },
+    "control": {
+      "delegate": "always",
+      "explore_steps": 0,
+      "max_steps": 50,
+      "command_timeout_sec": 300,
+      "lane": "free",
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "horizon": {
+        "first_share": 0.55,
+        "later_share": 0.75,
+        "min_dispatch_sec": 300,
+        "check_share": 0.05,
+        "long_after_sec": 3600,
+        "long_effort": "high",
+        "long_command_sec": 3600
+      },
+      "best_of": {
+        "n": 5,
+        "max_copy_mb": 256,
+        "archive": true
+      }
+    },
+    "brief": {
+      "cap": 12000,
+      "directions": "batch-checked",
+      "packer": "coverage-jev"
+    },
+    "executor": {
+      "agent": "codex",
+      "version": "0.155.1",
+      "model": "gpt-6-luna",
+      "effort": null,
+      "tools": null,
+      "prompt_cache_ttl": null,
+      "deadline_sec": 600,
+      "system": {
+        "mode": "replace",
+        "sections": [
+          "role",
+          "security",
+          "authority",
+          "verify",
+          "report",
+          "code-style"
+        ]
+      }
+    },
+    "verify": {
+      "checks": true,
+      "support": false,
+      "verdict": true
+    }
+  },
+  "protected": {
+    "isolation": "task-container",
+    "effect_policy": "executor-bypasses-its-own-sandbox",
+    "acceptance": "task-verifier",
+    "ceilings": {
+      "episode_deadline_sec": null,
+      "reserve_sec": 30,
+      "spend_soft_usd": null,
+      "spend_hard_usd": null
+    }
+  }
+}

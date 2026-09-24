@@ -53,6 +53,19 @@ pub const VIEW_SCHEMA: &str = "openagents.gym.coder-composition.v1";
 /// The schema of `--escalations --json`.
 pub const ESCALATIONS_SCHEMA: &str = "openagents.gym.coder-escalations.v1";
 
+/// The schema of `--best-of --json`.
+pub const BEST_OF_SCHEMA: &str = "openagents.gym.coder-best-of.v1";
+
+/// Where an episode keeps the verifier's grade of each `control.best_of`
+/// candidate, relative to the episode: `{"schema": BEST_OF_GRADES_SCHEMA,
+/// "rewards": [1.0, 0.0, null]}`, one reward per candidate number, `null`
+/// where the verifier gave none. The loader attaches it to the
+/// composition record as `best_of.grades`.
+pub const BEST_OF_GRADES: &str = "best-of/grades.json";
+
+/// The schema of [`BEST_OF_GRADES`].
+pub const BEST_OF_GRADES_SCHEMA: &str = "openagents.coder-one.best-of-grades.v1";
+
 fn words(value: &Value) -> String {
     value.as_str().map_or_else(|| "?".to_owned(), str::to_owned)
 }
@@ -192,6 +205,10 @@ impl Row {
             "escalated": self.record["escalated"],
             "second_kept": self.record["second"]["kept"],
             "second_fired": fired(&self.record["second"]),
+            "best_of_n": self.record["best_of"]["n"],
+            "best_of_kept": self.record["best_of"]["kept"],
+            "best_of_verdicts": self.record["best_of"]["verdicts"],
+            "best_of_oracle": BestOf::of(self).oracle,
             "persist_rounds": self.record["persist"]["rounds"].as_array().map(Vec::len),
             "persist_stopped": self.record["persist"]["stopped"],
             "persist_totals": self.record["persist"]["totals"],
@@ -434,6 +451,282 @@ pub fn detail_lines(record: &Value) -> Vec<String> {
     ));
     lines.extend(second_line);
     lines.extend(persist_lines(&record["persist"]));
+    lines.extend(best_of_lines(&record["best_of"]));
+    lines
+}
+
+/// `control.best_of`: each candidate's status, cost, time, checks, and
+/// verdict, the verifier's grade when the candidates were graded, and
+/// which one was kept and why.
+fn best_of_lines(best: &Value) -> Vec<String> {
+    if best.is_null() {
+        return Vec::new();
+    }
+    if let Some(why) = best["skipped"].as_str() {
+        return vec![format!(
+            "  best of {}: one candidate ran: {why}",
+            best["n"].as_u64().unwrap_or(0)
+        )];
+    }
+    let rewards = best["grades"]["rewards"].as_array();
+    let mut lines = vec![format!(
+        "  best of {}: kept candidate {} · {}{}",
+        best["n"].as_u64().unwrap_or(0),
+        best["kept"].as_u64().unwrap_or(0),
+        words(&best["why"]),
+        if best["leaked"] == true {
+            " · the real workspace changed while the candidates ran"
+        } else {
+            ""
+        }
+    )];
+    for candidate in best["candidates"].as_array().into_iter().flatten() {
+        let number = candidate["number"].as_u64().unwrap_or(0);
+        let verdict = &candidate["verdict"];
+        let grade = rewards
+            .and_then(|r| r.get(usize::try_from(number).unwrap_or(0).saturating_sub(1)))
+            .map(|reward| {
+                reward.as_f64().map_or_else(
+                    || " · verifier: none".to_owned(),
+                    |r| format!(" · verifier {r:.1}"),
+                )
+            })
+            .unwrap_or_default();
+        lines.push(format!(
+            "    candidate {number}{} {:<10} {:>6} · {} · {} · verdict {}{}{grade}",
+            if best["kept"] == number { "*" } else { " " },
+            words(&candidate["status"]),
+            seconds(&candidate["milliseconds"]),
+            money(&candidate["cost_usd"]),
+            if candidate["checks"].is_object() {
+                verdicts(&candidate["checks"])
+            } else {
+                "no checks".to_owned()
+            },
+            verdict["call"].as_str().unwrap_or("not asked"),
+            verdict["p_fail"]
+                .as_f64()
+                .map_or_else(String::new, |p| format!(" (p_fail {p:.2})")),
+        ));
+    }
+    lines
+}
+
+/// One attempt's `control.best_of` outcome, or a single candidate's.
+#[derive(Clone, Debug, PartialEq)]
+pub struct BestOf {
+    /// Candidates that ran: `best_of.n`, or 1 without `best_of` or when it
+    /// was skipped.
+    pub candidates: usize,
+    /// Whether any candidate passed the verifier: the kept one's reward for
+    /// a single candidate, the graded candidates' otherwise; `None` when
+    /// the candidates weren't all graded.
+    pub oracle: Option<bool>,
+    /// The kept candidate's verdict call.
+    pub verdict: Option<String>,
+}
+
+impl BestOf {
+    /// The outcome of `row`.
+    #[must_use]
+    pub fn of(row: &Row) -> Self {
+        let best = &row.record["best_of"];
+        let ran = best["candidates"]
+            .as_array()
+            .filter(|_| best["skipped"].is_null());
+        let passed = row.reward.map(|r| r >= 1.0);
+        match ran {
+            Some(candidates) => {
+                let rewards = best["grades"]["rewards"].as_array();
+                let oracle = rewards.and_then(|rewards| {
+                    let graded: Vec<f64> = rewards.iter().filter_map(Value::as_f64).collect();
+                    if graded.iter().any(|r| *r >= 1.0) {
+                        Some(true)
+                    } else if graded.len() == candidates.len() {
+                        Some(false)
+                    } else {
+                        None
+                    }
+                });
+                // The kept candidate passing is enough to know one did.
+                let oracle = if passed == Some(true) {
+                    Some(true)
+                } else {
+                    oracle
+                };
+                let kept = best["kept"].as_u64().unwrap_or(0);
+                let verdict = candidates
+                    .iter()
+                    .find(|c| c["number"] == kept)
+                    .and_then(|c| c["verdict"]["call"].as_str())
+                    .map(str::to_owned);
+                BestOf {
+                    candidates: candidates.len(),
+                    oracle,
+                    verdict,
+                }
+            }
+            None => BestOf {
+                candidates: 1,
+                oracle: passed,
+                verdict: row.record["verdict"]["first"]["call"]
+                    .as_str()
+                    .map(str::to_owned),
+            },
+        }
+    }
+}
+
+/// `--best-of`: per arm, the pass rate beside the oracle rate (whether any
+/// candidate passed), the selection's accuracy on the attempts where one
+/// did, and the cost and time per attempt and per pass.
+#[derive(Clone, Debug, PartialEq)]
+pub struct BestOfArm {
+    pub arm: String,
+    pub attempts: usize,
+    pub graded: usize,
+    pub passed: usize,
+    /// Attempts whose every candidate was graded, or whose kept one passed.
+    pub oracle_known: usize,
+    pub oracle_passed: usize,
+    /// Of the attempts where some candidate passed, those whose kept
+    /// candidate passed.
+    pub selected_right: usize,
+    pub candidates: usize,
+    pub cost_usd: f64,
+    pub cost_unknown: usize,
+    pub agent_ms: u64,
+    /// The kept candidates' verdict calls.
+    pub verdicts: std::collections::BTreeMap<String, usize>,
+}
+
+impl BestOfArm {
+    /// Every arm among `rows`, in name order.
+    #[must_use]
+    pub fn of(rows: &[Row]) -> Vec<BestOfArm> {
+        let mut arms: std::collections::BTreeMap<String, BestOfArm> =
+            std::collections::BTreeMap::new();
+        for row in rows {
+            let arm = arms.entry(row.arm.clone()).or_insert_with(|| BestOfArm {
+                arm: row.arm.clone(),
+                attempts: 0,
+                graded: 0,
+                passed: 0,
+                oracle_known: 0,
+                oracle_passed: 0,
+                selected_right: 0,
+                candidates: 0,
+                cost_usd: 0.0,
+                cost_unknown: 0,
+                agent_ms: 0,
+                verdicts: std::collections::BTreeMap::new(),
+            });
+            let outcome = BestOf::of(row);
+            let passed = row.reward.is_some_and(|r| r >= 1.0);
+            arm.attempts += 1;
+            arm.graded += usize::from(row.reward.is_some());
+            arm.passed += usize::from(passed);
+            if let Some(oracle) = outcome.oracle {
+                arm.oracle_known += 1;
+                arm.oracle_passed += usize::from(oracle);
+                arm.selected_right += usize::from(oracle && passed);
+            }
+            arm.candidates += outcome.candidates;
+            match row.cost_usd {
+                Some(usd) => arm.cost_usd += usd,
+                None => arm.cost_unknown += 1,
+            }
+            arm.agent_ms += row.agent_ms.unwrap_or(0);
+            *arm.verdicts
+                .entry(outcome.verdict.unwrap_or_else(|| "none".to_owned()))
+                .or_default() += 1;
+        }
+        arms.into_values().collect()
+    }
+
+    fn rate(part: usize, whole: usize) -> String {
+        if whole == 0 {
+            "—".to_owned()
+        } else {
+            format!(
+                "{part}/{whole} ({:.0}%)",
+                100.0 * part as f64 / whole as f64
+            )
+        }
+    }
+
+    fn to_json(&self) -> Value {
+        json!({
+            "arm": self.arm,
+            "attempts": self.attempts,
+            "graded": self.graded,
+            "passed": self.passed,
+            "oracle_known": self.oracle_known,
+            "oracle_passed": self.oracle_passed,
+            "selected_right": self.selected_right,
+            "candidates": self.candidates,
+            "cost_usd": self.cost_usd,
+            "cost_unknown": self.cost_unknown,
+            "cost_per_pass_usd": (self.passed > 0).then(|| self.cost_usd / self.passed as f64),
+            "agent_ms": self.agent_ms,
+            "kept_verdicts": self.verdicts,
+        })
+    }
+}
+
+/// `--best-of` as text.
+#[must_use]
+pub fn best_of_summary(arms: &[BestOfArm]) -> Vec<String> {
+    let mut lines = vec![
+        "Best of N · the pass rate beside the oracle rate (any candidate passed)".to_owned(),
+        format!(
+            "{:<34} {:>5} {:>12} {:>12} {:>12} {:>10} {:>11} {:>9}  {}",
+            "arm",
+            "cands",
+            "passed",
+            "oracle",
+            "selection",
+            "cost",
+            "cost/pass",
+            "agent/att",
+            "kept verdicts"
+        ),
+    ];
+    for arm in arms {
+        lines.push(format!(
+            "{:<34} {:>5} {:>12} {:>12} {:>12} {:>10} {:>11} {:>9}  {}",
+            short(&arm.arm, 34),
+            arm.candidates,
+            BestOfArm::rate(arm.passed, arm.graded),
+            BestOfArm::rate(arm.oracle_passed, arm.oracle_known),
+            BestOfArm::rate(arm.selected_right, arm.oracle_passed),
+            format!(
+                "${:.3}{}",
+                arm.cost_usd,
+                if arm.cost_unknown > 0 { "+" } else { "" }
+            ),
+            if arm.passed > 0 {
+                format!("${:.3}", arm.cost_usd / arm.passed as f64)
+            } else {
+                "—".to_owned()
+            },
+            if arm.attempts > 0 {
+                format!("{:.0}s", arm.agent_ms as f64 / 1000.0 / arm.attempts as f64)
+            } else {
+                "—".to_owned()
+            },
+            arm.verdicts
+                .iter()
+                .map(|(call, n)| format!("{call} {n}"))
+                .collect::<Vec<_>>()
+                .join(", "),
+        ));
+    }
+    if arms.iter().any(|a| a.oracle_known < a.attempts) {
+        lines.push(format!(
+            "The oracle is unknown where a candidate wasn't graded: grade each archived candidate with `tbench verify --candidate` and write {BEST_OF_GRADES} in the episode."
+        ));
+    }
     lines
 }
 
@@ -907,6 +1200,11 @@ job, or trial contains it for detail; the newest is shown otherwise.
                            triggers, executor, outcome, and cost, and the
                            conditional success, the graded escalations that
                            kept the second candidate and passed
+  --best-of                report control.best_of instead: per arm, the
+                           candidates run, the pass rate beside the oracle
+                           rate (any candidate passed, from each episode's
+                           best-of/grades.json), the selection's accuracy
+                           where a candidate passed, and cost and time
   --json                   print versioned JSON instead of text";
 
 /// `gym coder composition`.
@@ -922,6 +1220,7 @@ pub fn command(args: &[String], out: &mut impl std::io::Write) -> Result<i32, St
     let mut traces = Some(repo.join("traces"));
     let mut json_out = false;
     let mut escalations = false;
+    let mut best_of = false;
     let mut arm: Option<String> = None;
     let mut job: Option<String> = None;
     let mut query = None;
@@ -935,6 +1234,7 @@ pub fn command(args: &[String], out: &mut impl std::io::Write) -> Result<i32, St
             }
             "--json" => json_out = true,
             "--escalations" => escalations = true,
+            "--best-of" => best_of = true,
             "--arm" | "--job" => {
                 let value = args
                     .get(index + 1)
@@ -974,6 +1274,22 @@ pub fn command(args: &[String], out: &mut impl std::io::Write) -> Result<i32, St
                 .is_none_or(|job| row.job.contains(job.as_str()))
         })
         .collect();
+    if best_of {
+        let arms = BestOfArm::of(&rows);
+        if json_out {
+            let value = json!({
+                "schema": BEST_OF_SCHEMA,
+                "arms": arms.iter().map(BestOfArm::to_json).collect::<Vec<_>>(),
+            });
+            serde_json::to_writer_pretty(&mut *out, &value).map_err(|error| error.to_string())?;
+            writeln!(out).map_err(|error| error.to_string())?;
+        } else {
+            for line in best_of_summary(&arms) {
+                writeln!(out, "{line}").map_err(|error| error.to_string())?;
+            }
+        }
+        return Ok(0);
+    }
     if escalations {
         let summary = EscalationSummary::of(&rows);
         if json_out {
@@ -1305,6 +1621,107 @@ mod tests {
         // The detail line shows the escalation's cost and time.
         let detail = detail_lines(&rows[0].record).join("\n");
         assert!(detail.contains("$2.5000 · 600s"), "{detail}");
+    }
+
+    /// A composed attempt of `arm` graded `reward`, with `best_of`.
+    fn picked(arm: &str, reward: Option<f64>, best_of: Value) -> Row {
+        let mut value = record();
+        value["best_of"] = best_of;
+        let mut attempt = crate::terminal_bench::test_attempt();
+        attempt.arm = arm.to_owned();
+        attempt.reward = reward;
+        attempt.cost_usd = Some(0.1);
+        attempt.phases_ms[2] = Some(60_000);
+        attempt.composition = Some(value);
+        Row::of(&attempt).unwrap()
+    }
+
+    fn candidates(calls: &[&str]) -> Value {
+        json!(
+            calls
+                .iter()
+                .enumerate()
+                .map(|(i, call)| json!({
+                    "number": i + 1,
+                    "status": "answered",
+                    "milliseconds": 30_000,
+                    "cost_usd": 0.02,
+                    "checks": { "verdicts": { "passed": 2 } },
+                    "verdict": { "call": call, "p_fail": 0.4 },
+                }))
+                .collect::<Vec<_>>()
+        )
+    }
+
+    #[test]
+    fn best_of_separates_what_selection_loses_from_what_generation_lacks() {
+        let rows = vec![
+            // Kept a passing candidate.
+            picked(
+                "luna-best-of-3",
+                Some(1.0),
+                json!({ "n": 3, "kept": 2, "candidates": candidates(&["fail", "pass", "unknown"]), "grades": { "rewards": [0.0, 1.0, 1.0] } }),
+            ),
+            // One candidate passed, but the selection kept another.
+            picked(
+                "luna-best-of-3",
+                Some(0.0),
+                json!({ "n": 3, "kept": 1, "candidates": candidates(&["unknown", "fail", "unknown"]), "grades": { "rewards": [0.0, 1.0, 0.0] } }),
+            ),
+            // None passed.
+            picked(
+                "luna-best-of-3",
+                Some(0.0),
+                json!({ "n": 3, "kept": 3, "candidates": candidates(&["unknown", "unknown", "unknown"]), "grades": { "rewards": [0.0, 0.0, 0.0] } }),
+            ),
+            // Not graded: the oracle is unknown.
+            picked(
+                "luna-best-of-3",
+                Some(0.0),
+                json!({ "n": 3, "kept": 1, "candidates": candidates(&["unknown", "unknown", "unknown"]) }),
+            ),
+            // A single candidate is its own oracle.
+            picked("luna-best-of-1", Some(1.0), Value::Null),
+        ];
+        let arms = BestOfArm::of(&rows);
+        assert_eq!(arms.len(), 2);
+        let single = &arms[0];
+        assert_eq!(single.arm, "luna-best-of-1");
+        assert_eq!(
+            (
+                single.oracle_known,
+                single.oracle_passed,
+                single.selected_right
+            ),
+            (1, 1, 1)
+        );
+        let three = &arms[1];
+        assert_eq!(three.attempts, 4);
+        assert_eq!(three.candidates, 12);
+        assert_eq!(three.passed, 1);
+        assert_eq!(three.oracle_known, 3);
+        assert_eq!(three.oracle_passed, 2);
+        assert_eq!(three.selected_right, 1);
+        assert_eq!(three.verdicts.get("pass"), Some(&1));
+        let text = best_of_summary(&arms).join("\n");
+        assert!(text.contains("2/3 (67%)"), "{text}");
+        assert!(text.contains("1/2 (50%)"), "{text}");
+        assert!(text.contains("tbench verify --candidate"), "{text}");
+        // The detail shows each candidate, the kept one starred, and its
+        // grade.
+        let detail = detail_lines(&rows[1].record).join("\n");
+        assert!(detail.contains("best of 3: kept candidate 1"), "{detail}");
+        assert!(detail.contains("candidate 1* answered"), "{detail}");
+        assert!(detail.contains("candidate 2  answered"), "{detail}");
+        assert!(
+            detail.contains("verdict fail (p_fail 0.40) · verifier 1.0"),
+            "{detail}"
+        );
+        let skipped = json!({ "n": 5, "skipped": "the workspace is over 256 MiB" });
+        assert_eq!(
+            best_of_lines(&skipped),
+            ["  best of 5: one candidate ran: the workspace is over 256 MiB"]
+        );
     }
 
     #[test]

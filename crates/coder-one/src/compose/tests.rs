@@ -2212,3 +2212,200 @@ fn verify_second_on_verdict_needs_verify_verdict() {
             .any(|p| p.contains("empty scenario kind"))
     );
 }
+
+// ---------------------------------------------------------------------------
+// control.best_of.
+// ---------------------------------------------------------------------------
+
+fn delegate_calls(recorder: &Recorder) -> usize {
+    recorder
+        .steps()
+        .iter()
+        .filter(|s| s.call.as_ref().is_some_and(|c| c.name == "delegate"))
+        .count()
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn best_of_three_keeps_the_candidate_whose_checks_pass_and_records_every_one() {
+    if !python() {
+        return;
+    }
+    let ran = compose(
+        "best-of-3",
+        &manifest("luna-best-of-3.json"),
+        vec![
+            // A wrong sum, then two right ones; each leaves a file of its own.
+            script_saying("luna-1", 5, &["one.txt"], "Done."),
+            script_saying("luna-2", 6, &["two.txt"], "Done."),
+            script_saying("luna-3", 6, &["three.txt"], "Done."),
+        ],
+        None,
+        Duration::from_secs(900),
+    )
+    .await;
+    let record = &ran.record;
+    let best = &record["best_of"];
+    assert_eq!(best["n"], 3, "{record:#}");
+    assert_eq!(
+        best["order"],
+        json!(["verdict", "scorecard", "cost", "number"])
+    );
+    // Jev is off, so every verdict is unknown and the checks decide: the
+    // wrong sum fails the public test, and of the two right ones the lower
+    // number stays.
+    assert_eq!(best["verdicts"], json!(["unknown", "unknown", "unknown"]));
+    assert_eq!(best["kept"], 2, "{best:#}");
+    let candidates = best["candidates"].as_array().unwrap();
+    assert_eq!(candidates.len(), 3);
+    assert!(candidates[0]["score"]["failures"].as_u64().unwrap() > 0);
+    assert_eq!(candidates[1]["score"]["failures"], 0);
+    for (i, candidate) in candidates.iter().enumerate() {
+        assert_eq!(candidate["number"], i + 1);
+        assert_eq!(candidate["status"], "answered");
+        assert!(ran.out.join(best_of::checks_file(i + 1)).is_file());
+        let archive = candidate["archive"]["path"].as_str().unwrap();
+        assert!(ran.out.join(archive).is_file(), "{archive}");
+    }
+    assert_eq!(best["leaked"], false);
+    // The kept candidate's copy is the workspace, and only its own file is
+    // in it.
+    assert_eq!(sum_in(&ran.work), 6);
+    assert!(ran.work.join("two.txt").is_file());
+    assert!(!ran.work.join("one.txt").exists());
+    assert!(!ran.work.join("three.txt").exists());
+    // Each candidate is a dispatch and a delegate call, so each is charged.
+    assert_eq!(roles(record), ["candidate-1", "candidate-2", "candidate-3"]);
+    let kept: Vec<bool> = record["branches"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|b| b["kept"] == true)
+        .collect();
+    assert_eq!(kept, [false, true, false]);
+    assert_eq!(delegate_calls(&ran.recorder), 3);
+    assert_eq!(ran.made.len(), 3);
+    // The kept candidate's checks are the first checks.
+    assert_eq!(record["checks"].as_array().unwrap().len(), 3);
+    assert!(
+        record["final_checks"]["verdicts"]["failed"].is_null(),
+        "{record:#}"
+    );
+    let first = std::fs::read_to_string(ran.out.join(checks::COVERAGE_FILE)).unwrap();
+    let kept_checks = std::fs::read_to_string(ran.out.join(best_of::checks_file(2))).unwrap();
+    assert_eq!(first, kept_checks);
+    // The verdict on the kept candidate is the composition's.
+    assert_eq!(record["verdict"]["first"]["call"], "unknown");
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn each_candidate_works_in_its_own_copy_until_one_is_kept() {
+    if !python() {
+        return;
+    }
+    // Every candidate writes answer.json; were they sharing the workspace,
+    // the last write would win whichever candidate the checks keep.
+    let ran = compose(
+        "best-of-copies",
+        &manifest("luna-best-of-3.json"),
+        vec![
+            script_saying("luna-1", 7, &[], "Done."),
+            script_saying("luna-2", 6, &[], "Done."),
+            script_saying("luna-3", 8, &[], "Done."),
+        ],
+        None,
+        Duration::from_secs(900),
+    )
+    .await;
+    let best = &ran.record["best_of"];
+    assert_eq!(best["kept"], 2, "{best:#}");
+    assert_eq!(sum_in(&ran.work), 6);
+    // Every copy is gone once one is kept.
+    let copies = std::fs::read_dir(std::env::temp_dir())
+        .unwrap()
+        .flatten()
+        .filter(|e| {
+            e.file_name()
+                .to_string_lossy()
+                .starts_with(&format!("coder-one-best-of-{}-", std::process::id()))
+        })
+        .count();
+    assert_eq!(copies, 0);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_workspace_too_large_to_copy_runs_one_candidate_and_says_why() {
+    if !python() {
+        return;
+    }
+    let mut manifest = manifest("luna-best-of-3.json");
+    manifest
+        .policy
+        .control
+        .best_of
+        .as_mut()
+        .unwrap()
+        .max_copy_mb = 0;
+    let ran = compose(
+        "best-of-too-large",
+        &manifest,
+        vec![script_saying("luna", 6, &[], "Done.")],
+        None,
+        Duration::from_secs(900),
+    )
+    .await;
+    let record = &ran.record;
+    assert!(
+        record["best_of"]["skipped"]
+            .as_str()
+            .unwrap()
+            .contains("too large to copy"),
+        "{record:#}"
+    );
+    assert_eq!(roles(record), ["primary"]);
+    assert_eq!(ran.made.len(), 1);
+    assert_eq!(sum_in(&ran.work), 6);
+}
+
+#[test]
+fn the_best_of_manifests_differ_from_their_single_arm_only_in_n() {
+    let single = manifest("luna-best-of-1.json");
+    assert!(single.policy.control.best_of.is_none());
+    assert!(single.policy.control.monitor.is_none());
+    let verify = single.policy.verify.clone().unwrap();
+    assert!(verify.checks && verify.verdict && verify.repair.is_none());
+    for (file, n) in [("luna-best-of-3.json", 3), ("luna-best-of-5.json", 5)] {
+        let mut many = manifest(file);
+        assert_eq!(many.policy.control.best_of.take().unwrap().n, n);
+        assert_eq!(many.policy, single.policy, "{file}");
+    }
+    let micro = manifest("microluna-best-of-1.json");
+    let mut many = manifest("microluna-best-of-3.json");
+    assert_eq!(many.policy.control.best_of.take().unwrap().n, 3);
+    assert_eq!(many.policy, micro.policy);
+    assert_eq!(
+        micro.policy.executor.agent,
+        crate::policy::AgentName::Microluna
+    );
+}
+
+#[test]
+fn best_of_needs_the_verdict_and_takes_no_handoff() {
+    let mut unverdicted = manifest("luna-best-of-3.json");
+    unverdicted.policy.verify.as_mut().unwrap().verdict = false;
+    let error = unverdicted.validate().unwrap_err();
+    assert!(
+        error.contains("needs verify.checks and verify.verdict"),
+        "{error}"
+    );
+    let mut one = manifest("luna-best-of-3.json");
+    one.policy.control.best_of.as_mut().unwrap().n = 1;
+    assert!(one.validate().unwrap_err().contains("from 2 to 8"));
+    let mut handed = manifest("luna-best-of-3.json");
+    handed.policy.control.handoff = manifest("handoff-escalate.json").policy.control.handoff;
+    assert!(
+        handed
+            .validate()
+            .unwrap_err()
+            .contains("takes no control.handoff")
+    );
+}

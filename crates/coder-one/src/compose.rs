@@ -77,6 +77,7 @@ pub const SECOND_SUPPORT: &str = "verification/support-second.json";
 /// The component that runs the second executor.
 pub const SECOND: &str = "verify.second";
 
+pub mod best_of;
 pub mod persist;
 pub mod scorecard;
 pub use persist::PersistPolicy;
@@ -822,6 +823,7 @@ pub fn composes(manifest: &crate::policy::Manifest) -> bool {
         || control.route.is_some()
         || control.horizon.is_some()
         || control.persist.is_some()
+        || control.best_of.is_some()
         || control
             .handoff
             .as_ref()
@@ -1573,12 +1575,44 @@ where
         1.0
     };
     let first_sec = horizon.dispatch_sec(setup.deadline.allowance(), fallback, follows);
-    let mut exec = factory.make(&first, Duration::from_secs(first_sec), runs)?;
-    exec.watch(monitor_for(
-        setup,
-        escalate.as_ref().map(|(h, _)| h),
-        first_sec,
-    ));
+    // control.best_of: N candidates at once, each in its own copy, when
+    // the workspace can be copied; one candidate otherwise.
+    let mut best_of_record = Value::Null;
+    let mut fan = match &control.best_of {
+        Some(policy) => match best_of::Fan::prepare(
+            setup,
+            policy,
+            &first,
+            Duration::from_secs(first_sec),
+            runs,
+            factory,
+        )? {
+            Ok(fan) => Some(fan),
+            Err(why) => {
+                println!("  best of {} ▸ one candidate: {why}", policy.n);
+                best_of_record = json!({ "n": policy.n, "skipped": why, "policy": policy });
+                record_decision(
+                    setup.recorder,
+                    best_of::COMPONENT,
+                    "skipped",
+                    &best_of_record,
+                );
+                None
+            }
+        },
+        None => None,
+    };
+    let mut exec = match &fan {
+        Some(_) => None,
+        None => Some(factory.make(&first, Duration::from_secs(first_sec), runs)?),
+    };
+    if let Some(exec) = &mut exec {
+        exec.watch(monitor_for(
+            setup,
+            escalate.as_ref().map(|(h, _)| h),
+            first_sec,
+        ));
+    }
     let steps_before = setup.recorder.steps().len();
     let plan_first = Plan {
         mode: plan.mode,
@@ -1593,23 +1627,66 @@ where
         isolation: plan.isolation,
         base: plan.base,
     };
-    let (mut ended, delegated) = delegate::explore_then_delegate(
-        state,
-        &plan_first,
-        judge,
-        generator,
-        shell,
-        &mut exec,
-        setup.recorder,
-        checkpoint,
-    )
-    .await;
-    runs = exec.runs();
-    let last = exec.last();
-    if let Some(d) = &delegated {
-        branches.push(row("primary", &first, &d.report, &last, first_sec));
+    let (mut ended, mut delegated) = match (&mut exec, &mut fan) {
+        (Some(exec), _) => {
+            delegate::explore_then_delegate(
+                state,
+                &plan_first,
+                judge,
+                generator,
+                shell,
+                exec,
+                setup.recorder,
+                checkpoint,
+            )
+            .await
+        }
+        (None, Some(fan)) => {
+            delegate::explore_then_delegate(
+                state,
+                &plan_first,
+                judge,
+                generator,
+                shell,
+                fan,
+                setup.recorder,
+                checkpoint,
+            )
+            .await
+        }
+        (None, None) => unreachable!("an executor or a fan is always made"),
+    };
+    let mut selected = None;
+    let mut last = Value::Null;
+    if let Some(exec) = &exec {
+        runs = exec.runs();
+        last = exec.last();
+        if let Some(d) = &delegated {
+            branches.push(row("primary", &first, &d.report, &last, first_sec));
+        }
     }
     drop(exec);
+    if let (Some(fan), Some(policy)) = (&mut fan, &control.best_of) {
+        runs = fan.runs();
+        if let Some(d) = &mut delegated {
+            let picked =
+                best_of::select(setup, &subject, &verify, policy, fan, &first, first_sec).await;
+            ended = delegate::ending(
+                &ended,
+                &picked.report,
+                state.history.len(),
+                &state.issue.title,
+            );
+            d.report = picked.report.clone();
+            last = picked.last.clone();
+            branches.extend(picked.branches.iter().cloned());
+            best_of_record = picked.record.clone();
+            selected = Some(picked);
+        } else {
+            fan.discard();
+        }
+    }
+    drop(fan);
     let Some(first_delegation) = delegated.as_ref() else {
         // The explorer finished without delegating: nothing to verify here.
         let record = json!({ "schema": SCHEMA, "route": route_record, "branches": branches, "note": "the explorer ended without delegating" });
@@ -1666,20 +1743,24 @@ where
             checks::check_subject_as(&subject, setup.workdir, setup.dir, setup.recorder, file).await
         }
     };
-    let mut checked = if verify.checks && usage_limited.is_none() {
-        Some(
-            check(
-                checks::COVERAGE_FILE,
-                Some(first_delegation.report.output()),
-            )
-            .await,
+    let mut first_verdict = None;
+    let mut checked = if let Some(picked) = selected {
+        // control.best_of checked every candidate, and asked the verdict
+        // about each, in the real workspace.
+        checks_log.extend(picked.checks_log);
+        first_verdict = picked.verdict;
+        picked.checked.filter(|_| usage_limited.is_none())
+    } else if verify.checks && usage_limited.is_none() {
+        let checked = check(
+            checks::COVERAGE_FILE,
+            Some(first_delegation.report.output()),
         )
+        .await;
+        checks_log.push(json!({ "after": "primary", "file": checks::COVERAGE_FILE, "summary": checked.1.summary(), "self_report": self_reported(&checked.1) }));
+        Some(checked)
     } else {
         None
     };
-    if let Some((_, report)) = &checked {
-        checks_log.push(json!({ "after": "primary", "file": checks::COVERAGE_FILE, "summary": report.summary(), "self_report": self_reported(report) }));
-    }
     let mut support = if usage_limited.is_none() {
         judge_support(
             setup,
@@ -1695,12 +1776,11 @@ where
     // The final report of the session that produced the candidate.
     let mut previous = first_delegation.report.output();
 
-    // verify.verdict on the first candidate.
-    let first_verdict = if verify.verdict && usage_limited.is_none() && checked.is_some() {
-        Some(assess_verdict(setup, &previous, "first").await)
-    } else {
-        None
-    };
+    // verify.verdict on the first candidate, unless control.best_of
+    // already asked it.
+    if first_verdict.is_none() && verify.verdict && usage_limited.is_none() && checked.is_some() {
+        first_verdict = Some(assess_verdict(setup, &previous, "first").await);
+    }
 
     // control.handoff escalate.
     let mut escalated = false;
@@ -2016,6 +2096,9 @@ where
         "snapshot": snapshot,
         "usage_limited": usage_limited,
     });
+    if !best_of_record.is_null() {
+        record["best_of"] = best_of_record;
+    }
     if !verdict_record.is_null() {
         record["verdict"] = verdict_record;
     }

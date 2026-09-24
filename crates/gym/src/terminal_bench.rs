@@ -987,6 +987,15 @@ fn attach_episode(attempt: &mut Attempt, path: &Path, episode: &Path, records: &
                 .and_then(Value::as_str)
                 .filter(|relative| !relative.contains(".."))
                 .and_then(|relative| read_json(&episode.join(relative)).ok());
+            // `control.best_of`: the verifier's grade of each candidate's
+            // archived workspace, when the operator graded them afterwards.
+            if let Some(composition) = attempt.composition.as_mut()
+                && composition["best_of"].is_object()
+                && let Ok(grades) =
+                    read_json(&episode.join(crate::coder_composition::BEST_OF_GRADES))
+            {
+                composition["best_of"]["grades"] = grades;
+            }
             attempt.delegate_agent = string(&value, "/delegate/agent");
             if let Some(delegate) = value.pointer("/delegate/delegation") {
                 attempt.delegate_turns = delegate.get("num_turns").and_then(Value::as_u64);
