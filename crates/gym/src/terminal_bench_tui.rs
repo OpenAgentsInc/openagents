@@ -697,7 +697,7 @@ impl App {
             | View::Router
             | View::Live
             | View::Study => Some(self.cursor()),
-            View::MiniTasks => (!self.minitasks.0.is_empty()).then(|| 2 + self.cursor()),
+            View::MiniTasks => (!self.minitasks.0.is_empty()).then(|| 6 + self.cursor()),
             View::Pulse => Some(self.cursor()),
         }
     }
@@ -1374,8 +1374,13 @@ mod tests {
         let mut app = App::new(Records::default()).with_minitasks(runs, errors);
         assert_eq!(View::from_digit('9'), Some(View::MiniTasks));
         app.open(View::MiniTasks);
+        assert_eq!(app.selected_line(), Some(6));
         let text = app.to_text(150, 40);
         assert!(text.contains("mini-task runs"), "{text}");
+        assert!(text.contains("failure family"), "{text}");
+        assert!(text.contains("Fast screen before Terminal-Bench 4.0"), "{text}");
+        assert!(text.contains("27 s and $0.0041 per run"), "{text}");
+        assert!(text.contains("not a TB4 result"), "{text}");
         assert!(text.contains("log-severity"), "{text}");
         assert!(text.contains("Grade: failed"), "{text}");
         assert!(text.contains("Episode timeline"), "{text}");

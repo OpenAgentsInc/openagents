@@ -6,6 +6,14 @@ in about a second and with no model or container. Run the same task with
 Claude Code or Codex to see whether a real executor uses what the
 components give it.
 
+Mini-tasks reproduce one failure family from a Terminal-Bench task in a
+small local fixture. The grader checks the resulting workspace after the
+episode; it does not reveal its answer to the agent. This makes them a fast
+local screen for iteration, not a Terminal-Bench 4.0 result or score. In the
+Microluna report's 12 Luna mini-task attempts, runs averaged 27 seconds and
+$0.0041 each in model cost (Jev grading cost is additional); scripted
+episodes take about one second with no model cost.
+
 This is rung 2 and rung 3 of the ladder in
 [Coder as a tunable system](../../optimization/coder-components.md#test-each-component-in-isolation):
 components alone come first, in the

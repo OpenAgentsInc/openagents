@@ -311,10 +311,14 @@ pub const HEADER: &str = "started           task                   executor     
 pub fn lines(runs: &[Run], errors: &[String], selected: Option<usize>) -> Vec<String> {
     let mut lines = vec![
         format!(
-            "Coder One mini-task runs · {} runs · local episodes with their own graders, not Terminal-Bench attempts",
+            "Coder One mini-task runs · {} runs · small local tasks reproducing a failure family; their own grader checks the result, not a TB4 benchmark score",
             runs.len()
         ),
         HEADER.to_owned(),
+        "Fast screen before Terminal-Bench 4.0: scripted runs take about 1 s with no model or container.".to_owned(),
+        "Live runs take seconds to minutes and cost tokens.".to_owned(),
+        "Microluna report: 12 Luna runs averaged 27 s and $0.0041 per run (4 tasks × 3 attempts).".to_owned(),
+        "Live Jev is additional. Passing here is not a TB4 result.".to_owned(),
     ];
     if runs.is_empty() {
         lines.push("  No runs. Record one with `coder-one minitask run ID`.".to_owned());
