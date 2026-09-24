@@ -772,8 +772,10 @@ with three header lines:
 # what: one sentence that says what the test asserts
 A test runs with the workspace root as its working directory. $ACCEPT_DIR is this suite \
 directory, $WORKSPACE the workspace root, and $ACCEPT_TMP an empty scratch directory. Put helper \
-programs and fixture files under lib/ and call them as \"$ACCEPT_DIR/lib/...\". Write scratch \
-output only under $ACCEPT_TMP. Refer to the task's own paths as the task states them.
+programs and fixture files under lib/ and call them as \"$ACCEPT_DIR/lib/...\". When the task \
+names an output file or location, a test checks that file at that location: run the program the \
+way the task says, so it writes where the task says, then check what it wrote there. Put other \
+scratch files under $ACCEPT_TMP. Refer to the task's own paths as the task states them.
 
 Cover every requirement in the list: the task's stated examples with their exact expected values, \
 the edge cases the task implies, the output's format and location, and the error behavior the \

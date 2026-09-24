@@ -7,6 +7,35 @@ use super::*;
 use crate::component::jev::{Recorded, RecordedAnswer};
 use crate::requirements::{Binding, Extracted, Requirement, State};
 
+#[test]
+fn anatomy_evidence_keeps_only_facts_the_agent_can_see() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("anatomy.json");
+    std::fs::write(
+        &path,
+        json!({
+            "tasks": [{
+                "task": "demo",
+                "decisive_facts": [
+                    {"id": "F1", "fact": "dates are UTC", "source_kind": "instruction", "source": "line 3"},
+                    {"id": "F2", "fact": "the golden value is 42", "source_kind": "verifier-only", "source": "tests"}
+                ],
+                "test_ideas": [
+                    {"id": "T1", "command": "run it", "assertion": "UTC", "support": "workspace"},
+                    {"id": "T2", "command": "peek", "assertion": "42", "support": "verifier-only"}
+                ]
+            }]
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let evidence = offline::anatomy_evidence(&path, "demo").unwrap();
+    assert!(evidence.text.contains("dates are UTC"));
+    assert!(evidence.text.contains("T1: run it"));
+    assert!(!evidence.text.contains("42"));
+    assert!(offline::anatomy_evidence(&path, "other").is_none());
+}
+
 /// A writer that plays one scripted round per call: files to write and
 /// files to delete, relative to the suite directory.
 struct Scripted {

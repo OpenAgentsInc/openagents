@@ -15,7 +15,7 @@ pub const USAGE: &str = "usage: coder-one accept minitask ID [--sessions N] [--r
                                   [--jev live|off] [--out DIR] [--echo]
        coder-one accept offline TASK [--trials NAME,…] [--image IMAGE]
                                   [--rounds N] [--jev live|off] [--out DIR]
-                                  [--reuse] [--echo]
+                                  [--reuse] [--facts ANATOMY.json] [--echo]
        coder-one accept validity DIR [--rows FILE] [--json]
        coder-one accept run RECORD WORKSPACE [--docker IMAGE --workdir DIR
                                   [--candidate DIR]] [--json]
@@ -28,7 +28,9 @@ sessions run out, and grades the result with the task's own grader.
 
 offline writes a suite for a Terminal-Bench task from its instruction, in
 its warm environment image, and runs it against every retained trial's
-post-executor snapshot. validity joins the offline records under DIR with
+post-executor snapshot. --facts gives the writer a task-anatomy file's
+decisive facts and test ideas for the task, keeping only those the
+instruction or the workspace supports. validity joins the offline records under DIR with
 the check-truth label rows and prints how often a green suite, today's
 checks, and the combined verdict agree with the verifier.
 
@@ -65,6 +67,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
     let mut trials = Vec::new();
     let mut image = None;
     let mut reuse = false;
+    let mut facts = None;
     let mut rows = None;
     let mut docker_image = None;
     let mut workdir = "/app".to_string();
@@ -98,6 +101,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
             }
             "--image" => image = Some(value("--image")?),
             "--reuse" => reuse = true,
+            "--facts" => facts = Some(PathBuf::from(value("--facts")?)),
             "--rows" => rows = Some(PathBuf::from(value("--rows")?)),
             "--docker" => docker_image = Some(value("--docker")?),
             "--workdir" => workdir = value("--workdir")?,
@@ -163,6 +167,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
                 writer_turns: 50,
                 writer_sec: 900,
                 echo,
+                facts,
             };
             if let Some(rounds) = rounds {
                 options.define.max_rounds = rounds;

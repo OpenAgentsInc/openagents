@@ -156,6 +156,59 @@ pub struct TaskOptions {
     pub writer_turns: usize,
     pub writer_sec: u64,
     pub echo: bool,
+    /// A task-anatomy JSON file whose decisive facts and test ideas for
+    /// the task are given to the writer as evidence; only those the
+    /// instruction or the workspace supports, never a verifier-only one.
+    pub facts: Option<PathBuf>,
+}
+
+/// The decisive facts and test ideas a task-anatomy file holds for
+/// `task`, keeping only those whose source the agent can see.
+#[must_use]
+pub fn anatomy_evidence(path: &Path, task: &str) -> Option<microluna::Evidence> {
+    let value: Value = serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()?;
+    let entry = match &value["tasks"] {
+        Value::Array(tasks) => tasks.iter().find(|t| t["task"] == task)?.clone(),
+        Value::Object(tasks) => tasks.get(task)?.clone(),
+        _ => return None,
+    };
+    let visible = |kind: &Value| matches!(kind.as_str(), Some("instruction" | "workspace"));
+    let mut text = String::from(
+        "Facts a reading of this task and its workspace found decisive. Each is stated in the \
+         instruction or visible in the workspace. Check each against the task, then encode it \
+         as a test that fails for the simpler reading.\n",
+    );
+    let mut kept = 0;
+    for fact in entry["decisive_facts"].as_array().into_iter().flatten() {
+        if visible(&fact["source_kind"]) {
+            kept += 1;
+            text.push_str(&format!(
+                "\n- {}: {} (source: {})",
+                fact["id"].as_str().unwrap_or_default(),
+                fact["fact"].as_str().unwrap_or_default(),
+                fact["source"].as_str().unwrap_or_default()
+            ));
+        }
+    }
+    let mut ideas = String::new();
+    for idea in entry["test_ideas"].as_array().into_iter().flatten() {
+        if visible(&idea["support"]) {
+            ideas.push_str(&format!(
+                "\n- {}: {} Asserts: {}",
+                idea["id"].as_str().unwrap_or_default(),
+                idea["command"].as_str().unwrap_or_default(),
+                idea["assertion"].as_str().unwrap_or_default()
+            ));
+        }
+    }
+    if !ideas.is_empty() {
+        text.push_str("\n\nTest ideas:\n");
+        text.push_str(&ideas);
+    }
+    (kept > 0 || !ideas.is_empty()).then(|| microluna::Evidence {
+        label: "Decisive facts from the task anatomy".to_string(),
+        text,
+    })
 }
 
 /// What the writer is told about reaching the workspace in the container.
@@ -260,10 +313,16 @@ pub async fn task(name: &str, jev: &JevMode, options: &TaskOptions) -> Result<Va
             instruction: instruction.clone(),
         };
         let workspace = PathBuf::from(&workdir);
+        let evidence: Vec<microluna::Evidence> = options
+            .facts
+            .as_deref()
+            .and_then(|path| anatomy_evidence(path, name))
+            .into_iter()
+            .collect();
         let inputs = Inputs {
             task: &task,
             requirements: &map,
-            evidence: &[],
+            evidence: &evidence,
             workspace: &workspace,
             suite_dir: &suite_dir,
             workspace_note: CONTAINER_NOTE.replace("WORKDIR", &workdir),
