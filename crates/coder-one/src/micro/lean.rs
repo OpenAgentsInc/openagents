@@ -98,7 +98,32 @@ pub struct Lean {
     /// Add the standard-form practice ([`STANDARD_FORMS`]).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub standard_forms: bool,
+    /// Scan the source for comments that give a reason for a choice
+    /// (`accept::rationale_choices`), have Jev rank each as a likely
+    /// defect against the task, and put the likely ones in every brief as
+    /// suspects each session must decide on.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub rationale: bool,
 }
+
+/// Jev's question on each comment that gives a reason for a choice.
+#[must_use]
+pub fn suspect_question(j: usize) -> String {
+    format!(
+        "Could the behavior that the comment in `comments[{j}]` describes or justifies cause one \
+         of the problems the task in `task` describes, or depart from what the task asks?"
+    )
+}
+
+/// Above this probability a comment is a likely defect.
+pub const SUSPECT_P: f64 = 0.5;
+
+/// What a session is told about the ranked suspects.
+pub const SUSPECTS_NOTE: &str = "The comments below give a reason for a choice in the code, and \
+Jev read each as a likely cause of a problem the task describes. A comment is a claim, not a \
+specification. Decide each one explicitly against the task: fix it when it causes a described \
+problem or departs from the standard form, and say in your finish summary what you decided for \
+each.";
 
 #[allow(clippy::trivially_copy_pass_by_ref)]
 fn is_zero(n: &u64) -> bool {
@@ -444,6 +469,69 @@ fn persist(
     })
 }
 
+impl Micro {
+    /// The comments that give a reason for a choice, ranked by Jev as
+    /// likely defects: the evidence for the likely ones, the record, and
+    /// Jev's cost.
+    async fn rank_suspects(&self, prepared: &Prepared) -> (Option<Evidence>, Value, f64) {
+        let comments = crate::accept::rationale_choices(&self.workdir);
+        if comments.is_empty() {
+            return (None, Value::Null, 0.0);
+        }
+        let mut questions = jev::Questions::new();
+        for j in 0..comments.len() {
+            questions = questions.with(
+                format!("suspect_{j}"),
+                jev::Noul::new(suspect_question(j).as_str()),
+            );
+        }
+        let asked = jev_component::ask(
+            &prepared.jev,
+            &self.recorder,
+            jev_component::Ask {
+                component: "microluna.lean",
+                name: "jev_suspects",
+                id: format!("jev-suspects-{}", self.dispatch()),
+                state: json!({
+                    "task": clip_lines(&prepared.instruction, 4_000),
+                    "comments": comments,
+                }),
+                questions,
+                parent: None,
+                deadline: prepared.deadline.clone(),
+            },
+        )
+        .await;
+        let usd = asked.input_tokens.map_or(0.0, |t| {
+            t as f64 * jev_component::USD_PER_MILLION_INPUT / 1_000_000.0
+        });
+        let mut ranked: Vec<(f64, &String)> = comments
+            .iter()
+            .enumerate()
+            .map(|(j, c)| (asked.noul(&format!("suspect_{j}")).unwrap_or(0.0), c))
+            .collect();
+        ranked.sort_by(|a, b| b.0.total_cmp(&a.0));
+        let likely: Vec<String> = ranked
+            .iter()
+            .filter(|(p, _)| *p >= SUSPECT_P)
+            .take(8)
+            .map(|(p, c)| format!("{c} (p = {p:.2})"))
+            .collect();
+        let record = json!({
+            "kind": "lean.suspects",
+            "comments": ranked.iter().map(|(p, c)| json!({"comment": c, "p": p})).collect::<Vec<_>>(),
+            "likely": likely.len(),
+            "jev": { "how": asked.how, "error": asked.error },
+            "jev_usd": usd,
+        });
+        let evidence = (!likely.is_empty()).then(|| Evidence {
+            label: "Likely defects: comments that justify a choice".to_string(),
+            text: format!("{SUSPECTS_NOTE}\n\n{}", likely.join("\n")),
+        });
+        (evidence, record, usd)
+    }
+}
+
 /// The best workspace so far.
 struct Best {
     session: u32,
@@ -638,12 +726,22 @@ impl Micro {
         };
         let files = parallel::workspace_files(&self.workdir);
         let named = parallel::files_named(&prepared.instruction, &files);
+        let mut spent_before = 0.0;
         let mut samples = data_samples(&self.workdir, lean.sample_chars);
         if lean.defended {
             let defended = crate::accept::defended_choices_general(&self.workdir);
             if !defended.is_empty() {
                 samples.insert(0, crate::accept::defended_evidence(&defended, true));
             }
+        }
+        let mut suspects_record = Value::Null;
+        if lean.rationale {
+            let (evidence, record, usd) = self.rank_suspects(prepared).await;
+            if let Some(evidence) = evidence {
+                samples.insert(0, evidence);
+            }
+            suspects_record = record;
+            spent_before += usd;
         }
         let wall = (lean.wall_sec > 0).then(|| Duration::from_secs(lean.wall_sec));
         let wall_left = || wall.map(|w| w.saturating_sub(started.elapsed()));
@@ -673,7 +771,10 @@ impl Micro {
         let mut best_cleanup: Vec<PathBuf> = Vec::new();
         let mut sessions: Vec<Ran> = Vec::new();
         let mut moves: Vec<Value> = Vec::new();
-        let mut spent = 0.0;
+        let mut spent = spent_before;
+        if !suspects_record.is_null() {
+            moves.push(suspects_record);
+        }
         let mut history: Vec<String> = Vec::new();
         let mut flag_note: Option<String> = None;
         let mut stopped = String::new();

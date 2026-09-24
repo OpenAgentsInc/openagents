@@ -1437,6 +1437,7 @@ fn lean_shape() -> lean::Lean {
         symptoms: false,
         example_first: false,
         standard_forms: false,
+        rationale: false,
     }
 }
 
@@ -1612,4 +1613,18 @@ fn a_word_list_isnt_hard_coded_examples_but_a_table_of_answers_is() {
     let flagged = lean::literal_examples(work, &start, &records);
     assert_eq!(flagged.len(), 1, "{flagged:?}");
     assert_eq!(flagged[0].2, 40);
+}
+
+#[test]
+fn a_comment_that_gives_a_reason_is_a_suspect() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("window.py"),
+        "\"\"\"Keeps a window.\n\nThe window slides because recent data matters more.\n\"\"\"\n\
+         def keep(x):\n    # plain comment\n    return x\n",
+    )
+    .unwrap();
+    let found = crate::accept::rationale_choices(dir.path());
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert!(found[0].starts_with("window.py:3:"), "{found:?}");
 }
