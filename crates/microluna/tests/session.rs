@@ -434,3 +434,101 @@ fn only_reading_calls_count_as_reads() {
     ));
     assert!(!reads_only("apply_patch", "{}"));
 }
+
+#[tokio::test]
+async fn the_host_turns_back_a_finish_below_the_score_then_lets_one_stand() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("score.sh"),
+        "if [ -f done.txt ]; then echo SCORE 2 2; else echo SCORE 1 2; fi\n",
+    )
+    .unwrap();
+    let workspace = Workspace::new(dir.path())
+        .unwrap()
+        .isolated_by(microluna::Isolation::TaskContainer);
+    let finish = |id: &str, status: &str| {
+        call(
+            id,
+            "finish",
+            &json!({"status": status, "summary": "Stopped.", "answer": ""}),
+            usage(10, 0, 5),
+        )
+    };
+    let transport = FakeTransport::new(vec![
+        finish("c1", "done"),
+        call(
+            "c2",
+            "write_file",
+            &json!({"path": "done.txt", "contents": "yes\n"}),
+            usage(10, 0, 5),
+        ),
+        finish("c3", "done"),
+    ]);
+    let config = Config {
+        max_turns: 10,
+        persist: Some(microluna::Persist {
+            max_returns: 3,
+            not_done: true,
+            score_command: Some("sh score.sh".to_string()),
+            reserve_turns: 2,
+            reserve_sec: 0,
+        }),
+        ..Config::luna("t")
+    };
+    let mut recorder = Recorder::new();
+    let report = run(
+        &transport,
+        &workspace,
+        &Brief::task("Score."),
+        &config,
+        &mut recorder,
+    )
+    .await;
+    assert_eq!(report.ending, Ending::Finished);
+    assert_eq!(report.turns, 3);
+    assert!(
+        recorder
+            .steps()
+            .iter()
+            .any(|s| s.message.contains("scores the workspace 1 of 2")),
+        "the turned-back finish is recorded"
+    );
+}
+
+#[tokio::test]
+async fn a_blocked_finish_goes_back_until_the_returns_run_out() {
+    let dir = tempfile::tempdir().unwrap();
+    let workspace = Workspace::new(dir.path())
+        .unwrap()
+        .isolated_by(microluna::Isolation::TaskContainer);
+    let blocked = |id: &str| {
+        call(
+            id,
+            "finish",
+            &json!({"status": "blocked", "summary": "Hard.", "answer": "", "cause": "other"}),
+            usage(10, 0, 5),
+        )
+    };
+    let transport = FakeTransport::new(vec![blocked("c1"), blocked("c2"), blocked("c3")]);
+    let config = Config {
+        max_turns: 10,
+        persist: Some(microluna::Persist {
+            max_returns: 2,
+            not_done: true,
+            score_command: None,
+            reserve_turns: 2,
+            reserve_sec: 0,
+        }),
+        ..Config::luna("t")
+    };
+    let report = run(
+        &transport,
+        &workspace,
+        &Brief::task("Try."),
+        &config,
+        &mut Recorder::new(),
+    )
+    .await;
+    assert_eq!(report.turns, 3);
+    assert_eq!(report.finish.unwrap().status, FinishStatus::Blocked);
+}

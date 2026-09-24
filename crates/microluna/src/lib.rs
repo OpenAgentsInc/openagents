@@ -28,6 +28,6 @@ pub mod session;
 pub mod tools;
 pub mod transport;
 
-pub use session::{Brief, Config, Ending, Evidence, Recorder, Report, run};
+pub use session::{Brief, Config, Ending, Evidence, Persist, Recorder, Report, run};
 pub use tools::{Cause, Finish, FinishStatus, Isolation, Workspace};
 pub use transport::{Reply, Request, TokenUsage, Transport, TransportError};

@@ -153,6 +153,42 @@ pub struct Config {
     /// turn only reads ([`crate::tools::reads_only`]), they run at the same
     /// time; otherwise in order.
     pub parallel_tools: bool,
+    /// When the host turns a `finish` back and the session keeps working,
+    /// or `None` to let every finish stand.
+    pub persist: Option<Persist>,
+}
+
+/// When the host turns a session's `finish` back. The model decides when
+/// it is done least reliably of all: sessions on hard tasks finished with
+/// most of their turns unused, at a partial result their own checks
+/// measured. The host decides instead, from a program state.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Persist {
+    /// The most finishes the host turns back in one session.
+    pub max_returns: u32,
+    /// Turn back a finish whose status isn't `done`, unless its cause is a
+    /// missing tool or missing information.
+    pub not_done: bool,
+    /// A shell command the host runs in the workspace on each finish. When
+    /// it prints a last `SCORE <passed> <total>` line with `passed` below
+    /// `total`, the finish is turned back.
+    pub score_command: Option<String>,
+    /// A finish is turned back only while at least this many turns and
+    /// this many seconds of the session are left.
+    pub reserve_turns: usize,
+    pub reserve_sec: u64,
+}
+
+/// The last `SCORE <passed> <total>` line in `output`, with `total` above 0.
+#[must_use]
+pub fn parse_score(output: &str) -> Option<(u64, u64)> {
+    output.lines().rev().find_map(|line| {
+        let mut words = line.split_whitespace();
+        (words.next()? == "SCORE").then_some(())?;
+        let passed: u64 = words.next()?.parse().ok()?;
+        let total: u64 = words.next()?.parse().ok()?;
+        (total > 0).then_some((passed.min(total), total))
+    })
 }
 
 impl Config {
@@ -168,6 +204,7 @@ impl Config {
             deadline: None,
             orient_effort: None,
             parallel_tools: false,
+            persist: None,
         }
     }
 }
@@ -378,6 +415,7 @@ pub async fn run<T: Transport>(
     };
     let mut nudged = false;
     let mut edited = false;
+    let mut returned = 0u32;
     'turns: while report.turns < config.max_turns {
         let left = config
             .deadline
@@ -545,6 +583,26 @@ pub async fn run<T: Transport>(
                 purpose: None,
                 extra: outcome.extra.clone(),
             }));
+            if let Some(finish) = &outcome.finish
+                && let Some(why) = turn_back(
+                    config,
+                    workspace,
+                    finish,
+                    returned,
+                    report.turns,
+                    started.elapsed(),
+                )
+                .await
+            {
+                returned += 1;
+                recorder.record(atif::Step::said(atif::Source::System, &why));
+                input.push(json!({
+                    "type": "function_call_output",
+                    "call_id": call.call_id,
+                    "output": why,
+                }));
+                continue;
+            }
             input.push(json!({
                 "type": "function_call_output",
                 "call_id": call.call_id,
@@ -559,6 +617,70 @@ pub async fn run<T: Transport>(
     }
     report.milliseconds = elapsed(started);
     report
+}
+
+/// Why the host turns `finish` back, or `None` to let it stand.
+async fn turn_back(
+    config: &Config,
+    workspace: &Workspace,
+    finish: &tools::Finish,
+    returned: u32,
+    turns: usize,
+    spent: Duration,
+) -> Option<String> {
+    let persist = config.persist.as_ref()?;
+    let turns_left = config.max_turns.saturating_sub(turns);
+    let time_left = config
+        .deadline
+        .map_or(u64::MAX, |d| d.saturating_sub(spent).as_secs());
+    if returned >= persist.max_returns
+        || turns_left < persist.reserve_turns
+        || time_left < persist.reserve_sec
+    {
+        return None;
+    }
+    let mut reasons = Vec::new();
+    if persist.not_done
+        && finish.status != tools::FinishStatus::Done
+        && !matches!(
+            finish.cause,
+            tools::Cause::MissingTool | tools::Cause::NeedsInformation
+        )
+    {
+        reasons.push(format!(
+            "you finished as {} with {turns_left} turns left, and a hard task isn't a reason to \
+             stop",
+            serde_json::to_value(finish.status)
+                .ok()
+                .and_then(|v| v.as_str().map(str::to_string))
+                .unwrap_or_default()
+        ));
+    }
+    if let Some(command) = &persist.score_command {
+        let ran = workspace
+            .call(
+                "run_command",
+                &json!({ "command": command, "timeout_seconds": 120 }).to_string(),
+            )
+            .await;
+        if let Some((passed, total)) = parse_score(&ran.output)
+            && passed < total
+        {
+            reasons.push(format!(
+                "the evaluation script scores the workspace {passed} of {total}"
+            ));
+        }
+    }
+    if reasons.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "The host turned this finish back: {}. Keep working with the turns you have. Look at \
+         what still fails, find the general cause, and try a different approach from the one \
+         that stalled; measure after each change. Call finish again when the task is met or \
+         your turns are nearly spent.",
+        reasons.join("; and ")
+    ))
 }
 
 fn elapsed(since: Instant) -> u64 {

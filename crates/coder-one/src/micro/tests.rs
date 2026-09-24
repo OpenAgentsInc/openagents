@@ -1413,6 +1413,7 @@ fn lean_shape() -> lean::Lean {
         hardcode_check: false,
         keep_best: false,
         score_sec: 20,
+        persist: None,
     }
 }
 

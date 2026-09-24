@@ -1,7 +1,7 @@
 {
   "schema": "openagents.coder-one.policy.v1",
   "name": "coder-one-microluna-v9",
-  "note": "The lean loop: microluna-solo plus an evaluation script the first session writes and the host freezes, a score after every session, the best-scoring workspace kept and restored at the end, held-out examples, and a hard-coding scan in code and Jev. At most four work sessions and a self-check. No acceptance suite, so nothing can reverse a fix. The spend bound is $0.09 a dispatch.",
+  "note": "The lean loop: microluna-solo plus an evaluation script the first session writes and the host freezes, a score after every session, the best-scoring workspace kept and restored at the end, held-out examples, and a hard-coding scan in code and Jev. A work session whose finish is not done, or whose score is below full, is turned back up to three times while turns remain. At most four work sessions and a self-check. No acceptance suite, so nothing can reverse a fix. The spend bound is $0.09 a dispatch.",
   "policy": {
     "jev": {
       "mode": "deep",
@@ -65,7 +65,13 @@
           "holdout": true,
           "hardcode_check": true,
           "keep_best": true,
-          "score_sec": 120
+          "score_sec": 120,
+          "persist": {
+            "max_returns": 3,
+            "not_done": true,
+            "reserve_turns": 8,
+            "reserve_sec": 90
+          }
         }
       }
     },

@@ -60,6 +60,26 @@ pub struct Lean {
     /// The score script's wall-time bound, in seconds.
     #[serde(default = "score_sec")]
     pub score_sec: u64,
+    /// When the host turns a work session's `finish` back, or `None` to let
+    /// every finish stand.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub persist: Option<LeanPersist>,
+}
+
+/// `executor.microluna.lean.persist`: when a work session's finish is
+/// turned back ([`microluna::Persist`]). With `keep_best`, a finish also
+/// goes back while the evaluation script scores below full.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LeanPersist {
+    /// The most finishes turned back in one session.
+    pub max_returns: u32,
+    /// Turn back a finish whose status isn't `done`.
+    pub not_done: bool,
+    /// Turns and seconds of the session that must be left for a finish to
+    /// go back.
+    pub reserve_turns: usize,
+    pub reserve_sec: u64,
 }
 
 fn score_sec() -> u64 {
@@ -254,13 +274,7 @@ fn data_samples(workdir: &Path, chars: usize) -> Vec<Evidence> {
 /// The last `SCORE <passed> <total>` line in `output`.
 #[must_use]
 pub fn parse_score(output: &str) -> Option<(u64, u64)> {
-    output.lines().rev().find_map(|line| {
-        let mut words = line.split_whitespace();
-        (words.next()? == "SCORE").then_some(())?;
-        let passed: u64 = words.next()?.parse().ok()?;
-        let total: u64 = words.next()?.parse().ok()?;
-        (total > 0).then_some((passed.min(total), total))
-    })
+    microluna::session::parse_score(output)
 }
 
 /// A score as a fraction, for comparing workspaces.
@@ -281,6 +295,36 @@ pub fn eval_dir(workdir: &Path, isolation: Isolation) -> PathBuf {
     } else {
         workdir.join(".microluna-eval")
     }
+}
+
+/// The finish gate for a session: none for the self-check; with
+/// `keep_best`, the frozen score once it exists, and the session's own
+/// script before.
+fn persist(
+    lean: &Lean,
+    checking: bool,
+    have_score: bool,
+    eval: &Path,
+    frozen: &Path,
+) -> Option<microluna::Persist> {
+    let gate = lean.persist.as_ref().filter(|_| !checking)?;
+    let score_command = lean.keep_best.then(|| {
+        if have_score {
+            format!("sh {}/score.sh", frozen.display())
+        } else {
+            format!(
+                "test -f {e}/score.sh && sh {e}/score.sh",
+                e = eval.display()
+            )
+        }
+    });
+    Some(microluna::Persist {
+        max_returns: gate.max_returns,
+        not_done: gate.not_done,
+        score_command,
+        reserve_turns: gate.reserve_turns,
+        reserve_sec: gate.reserve_sec,
+    })
 }
 
 /// The best workspace so far.
@@ -586,6 +630,7 @@ impl Micro {
                     &brief,
                     false,
                     Place {
+                        persist: persist(lean, checking, have_score, &eval, &frozen),
                         group: Some(if checking {
                             "the self-check".to_string()
                         } else {

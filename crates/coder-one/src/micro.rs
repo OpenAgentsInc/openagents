@@ -1025,6 +1025,8 @@ struct Place {
     /// What else runs beside it that isn't a session, such as
     /// `accept.define`.
     alongside: Option<String>,
+    /// When the host turns the session's finish back.
+    persist: Option<microluna::Persist>,
 }
 
 impl Place {
@@ -1859,6 +1861,7 @@ impl Micro {
             deadline: Some(Duration::from_secs(self.policy.session_sec).min(left)),
             orient_effort: self.policy.orient_effort.clone(),
             parallel_tools: self.policy.parallel_tools,
+            persist: place.persist.clone(),
         };
         let workspace = microluna::Workspace::new(&workdir).map(|workspace| {
             let workspace = workspace.isolated_by(self.isolation);
@@ -2385,6 +2388,7 @@ impl Micro {
                 deadline: Some(Duration::from_secs(self.policy.session_sec).min(time_left())),
                 orient_effort: None,
                 parallel_tools: self.policy.parallel_tools,
+                persist: None,
             },
             isolation: self.isolation,
             traces: Some(self.artifacts.clone()),
@@ -4196,6 +4200,7 @@ impl Micro {
                 batch: format!("round {round}"),
                 parallel_with,
                 alongside: None,
+                persist: None,
             };
             let focus = lane.requirements.clone();
             let number = numbers[i];
