@@ -6,6 +6,16 @@ in about a second and with no model or container. Run the same task with
 Claude Code or Codex to see whether a real executor uses what the
 components give it.
 
+The grader checks task-specific outcomes after the episode (for example,
+whether the output counts severity fields correctly); it is separate from
+the agent and unseen by it. This is a fast local screen, not a Terminal-Bench
+4.0 result: mini-tasks exercise selected failure families, not TB4's curated
+benchmark tasks, and their grades do not count as benchmark scores. In the
+recorded four-task comparison below, a scripted run takes under 10 seconds
+and costs $0; the measured Opus single-pass policy averages 22.0 seconds and
+$0.0537 per run across the four tasks (table below). Real executor costs
+depend on the executor and run.
+
 This is rung 2 and rung 3 of the ladder in
 [Coder as a tunable system](../../optimization/coder-components.md#test-each-component-in-isolation):
 components alone come first, in the
