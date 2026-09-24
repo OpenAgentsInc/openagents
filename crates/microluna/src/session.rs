@@ -679,7 +679,15 @@ async fn turn_back(
                 &json!({ "command": command, "timeout_seconds": 120 }).to_string(),
             )
             .await;
-        match (ran.status, parse_score(&ran.output)) {
+        let stdout = ran.output.split("\n[stderr]\n").next().unwrap_or_default();
+        let score = (ran
+            .extra
+            .get("truncated")
+            .and_then(serde_json::Value::as_bool)
+            != Some(true))
+        .then(|| parse_score(stdout))
+        .flatten();
+        match (ran.status, score) {
             (atif::Outcome::Completed, Some((passed, total))) if passed == total => {}
             (atif::Outcome::Completed, Some((passed, total))) => reasons.push(format!(
                 "the evaluation script scores the workspace {passed} of {total}"

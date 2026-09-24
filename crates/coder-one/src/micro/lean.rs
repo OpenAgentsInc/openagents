@@ -555,9 +555,7 @@ impl Micro {
             &format!("{}\n{}", stdout.trim_end(), stderr.trim_end()),
             1_200,
         );
-        let score = ended
-            .ending
-            .success()
+        let score = (ended.ending.success() && !ended.stdout.truncated)
             .then(|| parse_score(&stdout))
             .flatten();
         (

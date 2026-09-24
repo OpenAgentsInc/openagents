@@ -4344,6 +4344,7 @@ impl Micro {
                 deadline: None,
                 spend_usd: None,
                 command_max: None,
+                observe_only: false,
             };
             let focus = lane.requirements.clone();
             let number = numbers[i];
