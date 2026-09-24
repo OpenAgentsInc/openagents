@@ -454,7 +454,10 @@ timeouts, resume, and missing evidence.
 `gym terminal-bench experiment run|plan|status|stop` forwards to `tbench
 experiment`, which compares two or more arms on a few tasks, three
 interleaved attempts per task per arm by default, on the long-lived Claude
-token, with an optional Claude quota budget.
+token, with an optional Claude quota budget. After every graded trial, the
+scheduler applies the early-stopping rule described in
+[Stop losers early](#stop-losers-early); `--no-stop-early` runs every
+planned attempt.
 
 ```sh
 gym terminal-bench experiment plan --id v7-vs-cc-0924 --profile tb4 \
@@ -480,3 +483,143 @@ against the budget. `--markdown` fills the results sections of the
 and `--json` has schema `openagents.gym.terminal-bench-experiment.v1`.
 `--experiments-dir PATH` reads experiments from somewhere other than
 `~/.openagents/terminal-bench/experiments/`.
+
+## Read an experiment in flight
+
+`gym experiment pulse` reads a running or finished experiment's
+`status.json`, each finished trial's verifier reward and harness attempt
+record, and Coder One's `composition.json` where a trial ran Coder One. It
+makes no model call.
+
+```sh
+gym experiment list                        # every experiment, most recently updated first
+gym experiment pulse effort-9569           # one experiment
+gym experiment pulse effort-9569 escalate-9571b escalate-9571c v10-persist-9570
+gym experiment pulse effort-9569 --json    # schema openagents.gym.experiment-pulse.v1
+gym experiment replay effort-9569          # the stopping rule, replayed
+```
+
+The pulse shows:
+
+- **Arms.** Each arm's passes over graded attempts with a 95% Wilson
+  interval, its mean and total cost per graded attempt from the attempt
+  records, its mean time, and the Claude quota it drew, then passes per
+  task and arm.
+- **The stopping verdict.** The rule in [Stop losers early](#stop-losers-early)
+  applied to the trials as they stand, each comparison's exact McNemar
+  p-value now and at best for each side, and every stop the scheduler
+  recorded in the ledger.
+- **Signal discrimination.** How the final checks' verdicts (all passed,
+  inconclusive, a check failed), Jev's support answers, and the effort
+  score line up with the verifier: passes and fails per row with a Wilson
+  interval, a two-sided Fisher exact test of the first row against the
+  rest, and, for the score, the area under its ROC curve. A signal that
+  doesn't separate says `no separation`.
+- **Component fire rates.** For escalation (`verify.second`), repair,
+  persistence, and handoff escalation: how many trials configured it, how
+  many it fired on, and how those trials ended, with each skip reason and
+  persistence's stop reasons grouped with their numbers replaced by `N`,
+  and persistence's rounds per trial.
+- **Notable trials.** A trial whose final checks all passed and that the
+  verifier failed, a check that failed a pass, a kept second candidate, a
+  near miss (a failure with at least 80% of the verifier's tests passing),
+  a task one arm passed at least twice and another never in at least two
+  attempts, and the costliest trial.
+
+With several experiments, the pulse prints each one's standing, then the
+component health of all their trials pooled. Pooled on 2026-09-24 over
+`effort-9569`, `escalate-9571b`, `escalate-9571c`, and `v10-persist-9570`,
+the final checks didn't separate passes from failures:
+
+```text
+Combined component health of effort-9569, escalate-9571b, escalate-9571c, v10-persist-9570: 83 graded trials ran Coder One with a composition record
+  Final checks against the verifier
+    all passed                                    19 pass  19 fail    50%  95% 35–65%
+    inconclusive                                  17 pass  19 fail    47%  95% 32–63%  (6 ran no scenario: 6 pass, 0 fail)
+    a check failed                                 4 pass   5 fail    44%  95% 19–73%
+    "all passed" against the rest: Fisher exact p = 0.827, no separation
+  ...
+  Escalation (verify.second): configured on 39, fired on 17 (44%)
+    ...
+    ran 17 times with 3 passes; second executors cost $28.40
+    skipped on 19 trials (no check failed and the executor reported no failure), and 8 of those failed anyway
+```
+
+Two of those experiments were still running, so the counts grow as trials
+finish.
+
+### Ask Jev about finished and running trials
+
+`--jev` runs `gym runs rank`'s `runs-learning-v1` set on each finished
+trial that has no answer yet, and groups its 18 judgments by arm. It also
+asks three experiment questions (`experiment-pulse-v1`), each only where it
+applies: whether escalation changed the candidate (when the second
+executor ran), whether the effort level plausibly decided the outcome (when
+Coder One recorded an effort score), and whether a failure was a near miss.
+The state is the trial's outcome and failing tests, its compact
+composition record, and every arm's passes on the task. Answers are kept
+under `~/.openagents/gym/pulse/answers.json` by the digest of the state and
+questions, so a trial is asked once. The pulse reports what it asked, what
+came from the cache, and the cost at Jev's $0.042 per million input
+tokens. On 2026-09-24, the experiment questions on `effort-9569` took 27
+requests and $0.0011.
+
+`--live` asks Jev, advisory only, about each running trial's live tail
+(`experiment-live-v1`): whether the agent is looping, stalled on transport,
+or done but still spending. The state is the last 30 executor events, the
+time since the last event and the last poll, the current component, and
+the spend so far; code adds a note when the log has been quiet past the
+stale window or the copy stopped polling. Nothing is stopped by these
+answers. A trial without a live tail, such as a plain Claude Code or Codex
+arm, is listed and not judged.
+
+Both read the TypeSafe key from `TYPESAFE_API_KEY` or `api_key` in
+`~/.openagents/jev.json`. `--recorded FILE` answers from a recorded file,
+`--pulse-dir PATH` and `--learning-dir PATH` keep answers elsewhere, and
+`--no-reference` leaves the leaderboard out of the runs-learning state.
+
+## Stop losers early
+
+`tbench experiment run` applies an early-stopping rule after every graded
+trial. It compares every candidate arm with the baseline, the first arm
+that isn't a control (`nop` or `oracle`), on attempts paired by task and
+attempt number. A candidate stops when one of these holds, in this order:
+
+1. **Dominated.** Even if every open attempt of the arm passes, it ends
+   with fewer passes than another arm has now, and its mean cost per
+   graded attempt isn't lower.
+2. **Decided.** The exact McNemar test is below the significance level
+   (`--stop-alpha`, 0.05 by default) and stays below it with the same
+   winner even if every open pair goes the other way.
+3. **Undecidable.** Even if every open pair went one way, the test
+   couldn't get below the level. A design too small to get below it even
+   if every planned pair went one way, such as one task with three
+   attempts, is exploratory, and this test never stops it.
+4. **Below the acceptance bar.** Even if every open attempt passes, the
+   arm's pass rate stays under `--accept-pass-rate`. There's no bar unless
+   you set one.
+
+A stopped arm's pending trials are skipped; its running trials finish. The
+experiment ends when every candidate has stopped. Each stop is appended to
+the experiment's `ledger.jsonl` as an `event: stop` record with its scope,
+its state, why, the graded trials it read, and the jobs it skipped, and
+`status.json` carries the settings and the latest verdict under
+`stop_early`. A restart keeps the stops. `--no-stop-early` turns the rule
+off, and a restart with it runs the skipped trials. The rule makes no
+correction for comparing several arms.
+
+The rule is code: `crates/gym/src/terminal_bench_stop.rs` for the Gym and
+`bench/terminal-bench/tbench/stop_rule.py` for the scheduler, both tested
+against `bench/terminal-bench/tests/fixtures/stop-rule/cases.json`.
+
+`gym experiment replay ID` runs a recorded experiment's graded trials back
+through the rule in the order they finished, reading a trial only if it
+would have started, and says where the rule stops each arm and the
+experiment, and which trials that ran to the end would not have started,
+with their cost. Replayed on 2026-09-24:
+
+| Experiment | Where the rule stops | Trials and cost saved |
+| --- | --- | --- |
+| `effort-9569` | `coder-one-tunable-v9` undecidable against `coder-one-tunable-v3` after graded trial 32 of 44; `v2` against `v3` stays open | 4 trials that ran, $10.12, and 3 more that never finished |
+| `matched-v8-9567` | `coder-one-matched-v8` undecidable, ending the experiment, after graded trial 50 of 60 | 9 trials that ran, $11.13 |
+| `escalate-9571b` | Never: its only other arm is `nop`, a control | none |

@@ -104,6 +104,10 @@ Expert views:
   b, m, r        Open the briefings, the outcome matrix, or the router.
   f              Open the live view: attempts in progress, read again every
                  two seconds while it is open.
+  w              Open the experiment pulse: every targeted experiment, and
+                 the chosen one's arms, stopping verdict, component health,
+                 and notable trials, read again every two seconds. Code
+                 only; enter on an experiment shows its pulse.
   tab, h, l      Walk the views.
   j, k, arrows   Move the cursor.
   g, G           Jump to the first or last item.
@@ -192,6 +196,7 @@ fn terminal_bench_mode(arguments: &[String]) -> io::Result<()> {
                 .unwrap_or_default(),
         )
         .with_live(live)
+        .with_pulse(gym::terminal_bench_experiment::default_dir(), jobs.clone())
         .with_studies(studies, study_errors)
         .with_runs(terminal_bench_tui_runs(runs, jev && !print_only));
     if head_to_head {

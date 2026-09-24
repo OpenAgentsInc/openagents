@@ -55,9 +55,9 @@ def _finish(launcher, job, *, reward=None, stream=None, exception=None):
 
 
 def _experiment(tmp_path, *, tasks=("alpha", "beta"), attempts=3, quota=None,
-                providers=None, slots=0):
+                providers=None, slots=0, max_concurrent=None, **stop):
     spec = Spec(id="x1", profile="tb4", arms=["plain", "coder"], tasks=list(tasks),
-                attempts=attempts, quota_usd=quota)
+                attempts=attempts, quota_usd=quota, **stop)
     jobs = tmp_path / "jobs"
     jobs.mkdir(parents=True, exist_ok=True)
     launcher = FakeLauncher(jobs, tmp_path / "logs")
@@ -73,7 +73,7 @@ def _experiment(tmp_path, *, tasks=("alpha", "beta"), attempts=3, quota=None,
                                     "coder": frozenset({"anthropic"})},
         credential_source="setup-token",
         budget=Budget(max_cpus=24, max_mem_gb=100, order="listed",
-                      max_claude_concurrent=slots),
+                      max_claude_concurrent=slots, max_concurrent=max_concurrent),
         jobs_dir=jobs,
         directory=tmp_path / "experiment",
         launcher=launcher,

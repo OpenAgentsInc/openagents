@@ -30,12 +30,14 @@ pub enum View {
     Router,
     Live,
     Study,
+    /// A targeted experiment's pulse, from its status file and trials.
+    Pulse,
     /// The Runs pane: recent runs in plain words.
     Runs,
 }
 
 impl View {
-    pub const ALL: [Self; 16] = [
+    pub const ALL: [Self; 17] = [
         Self::Overview,
         Self::Comparison,
         Self::Attempt,
@@ -51,6 +53,7 @@ impl View {
         Self::Router,
         Self::Live,
         Self::Study,
+        Self::Pulse,
         Self::Runs,
     ];
     pub fn title(self) -> &'static str {
@@ -70,6 +73,7 @@ impl View {
             Self::Router => "router",
             Self::Live => "live",
             Self::Study => "study",
+            Self::Pulse => "experiment pulse",
             Self::Runs => "runs",
         }
     }
@@ -90,13 +94,14 @@ impl View {
             Self::Router => 12,
             Self::Live => 13,
             Self::Study => 14,
-            Self::Runs => 15,
+            Self::Pulse => 15,
+            Self::Runs => 16,
         }
     }
     /// The view a key opens: `1` to `9` open the first nine, `0` the
     /// tenth, `b` the briefings, `m` the outcome matrix, `r` the router,
-    /// `f` the live view, which follows attempts in progress, and `s` the
-    /// latest study.
+    /// `f` the live view, which follows attempts in progress, `s` the
+    /// latest study, and `w` the experiment pulse.
     pub fn from_digit(digit: char) -> Option<Self> {
         let index = match digit {
             '1'..='9' => digit as usize - '1' as usize,
@@ -106,6 +111,7 @@ impl View {
             'r' => 12,
             'f' => 13,
             's' => 14,
+            'w' => 15,
             _ => return None,
         };
         Self::ALL.get(index).copied()
@@ -150,6 +156,10 @@ pub struct App {
     patterns: Option<crate::coder_handoff::Report>,
     /// The Runs pane, when it is attached.
     runs: Option<crate::runs_tui::Pane>,
+    /// Where the Pulse view finds experiments, and the trials' jobs.
+    pulse: Option<(std::path::PathBuf, Option<std::path::PathBuf>)>,
+    /// The experiment the Pulse view shows, by its place in the list.
+    pulse_selected: usize,
 }
 
 impl App {
@@ -198,6 +208,72 @@ impl App {
             monitor: crate::coder_monitor::load(&crate::coder_monitor::default_path()).ok(),
             patterns: crate::coder_handoff::load(&crate::coder_handoff::default_path()).ok(),
             runs: None,
+            pulse: None,
+            pulse_selected: 0,
+        }
+    }
+
+    /// Adds the Pulse view's experiments directory and jobs directory.
+    #[must_use]
+    pub fn with_pulse(
+        mut self,
+        experiments: std::path::PathBuf,
+        jobs: Option<std::path::PathBuf>,
+    ) -> Self {
+        self.pulse = Some((experiments, jobs));
+        self
+    }
+
+    /// The Pulse view: every experiment, most recently updated first, and
+    /// the selected one's pulse, read again at every draw. Code only.
+    fn pulse(&self) -> Vec<String> {
+        let Some((dir, jobs)) = &self.pulse else {
+            return vec!["The pulse view has no experiments directory.".to_owned()];
+        };
+        let listed = crate::terminal_bench_pulse::list(dir);
+        let mut lines = vec![
+            format!(
+                "Experiments in {} · code only, no model calls · reads again every 2 seconds",
+                dir.display()
+            ),
+            "enter on an experiment shows its pulse; j/k scroll".to_owned(),
+        ];
+        if listed.is_empty() {
+            lines.push("No experiment has a status file yet.".to_owned());
+            return lines;
+        }
+        let chosen = self.pulse_selected.min(listed.len() - 1);
+        for (index, experiment) in listed.iter().enumerate() {
+            lines.push(format!(
+                "{} {:<30} {:<9} {:>3}/{:<3} graded  updated {}",
+                if index == chosen { "*" } else { " " },
+                experiment.id,
+                experiment.state,
+                experiment.graded,
+                experiment.trials,
+                experiment.updated_at
+            ));
+        }
+        lines.push(String::new());
+        let selected = &listed[chosen];
+        match crate::terminal_bench_pulse::Pulse::load(&selected.status, jobs.as_deref(), None) {
+            Ok(pulse) => lines.extend(pulse.lines()),
+            Err(error) => lines.push(error),
+        }
+        lines
+    }
+
+    fn pulse_count(&self) -> usize {
+        self.pulse
+            .as_ref()
+            .map_or(0, |(dir, _)| crate::terminal_bench_pulse::list(dir).len())
+    }
+
+    /// Shows the experiment on the cursor's row, when it is on one.
+    fn inspect_pulse(&mut self) {
+        let row = self.cursor();
+        if (2..2 + self.pulse_count()).contains(&row) {
+            self.pulse_selected = row - 2;
         }
     }
 
@@ -345,6 +421,7 @@ impl App {
     #[must_use]
     pub fn follows(&self) -> bool {
         (self.view == View::Live && self.live.is_some())
+            || (self.view == View::Pulse && self.pulse.is_some())
             || (self.view == View::Runs && self.runs.as_ref().is_some_and(|pane| pane.follows()))
     }
 
@@ -415,6 +492,8 @@ impl App {
             View::Router => self.router.lines().len(),
             View::Live => self.live().len(),
             View::Study => self.study().len(),
+            // The list and the pulse scroll line by line.
+            View::Pulse => self.pulse().len(),
             View::Runs => 0,
         }
     }
@@ -456,6 +535,7 @@ impl App {
             | View::Live
             | View::Study
             | View::Runs => {}
+            View::Pulse => self.inspect_pulse(),
         }
     }
     fn current(&self) -> Option<&Attempt> {
@@ -533,9 +613,9 @@ impl App {
             )),
         );
         let keys = if self.runs.is_some() {
-            "1-9,0,b,m,r,f,s view  tab/h/l switch  j/k move  enter inspect  esc runs  q quit"
+            "1-9,0,b,m,r,f,s,w view  tab/h/l switch  j/k move  enter inspect  esc runs  q quit"
         } else {
-            "1-9,0,b,m,r,f,s view  tab/h/l switch  j/k move  enter inspect  q quit"
+            "1-9,0,b,m,r,f,s,w view  tab/h/l switch  j/k move  enter inspect  q quit"
         };
         rail(
             box_area,
@@ -598,6 +678,7 @@ impl App {
             | View::Live
             | View::Study => Some(self.cursor()),
             View::MiniTasks => (!self.minitasks.0.is_empty()).then(|| 2 + self.cursor()),
+            View::Pulse => Some(self.cursor()),
         }
     }
 
@@ -622,6 +703,7 @@ impl App {
             View::Router => self.router.lines(),
             View::Live => self.live(),
             View::Study => self.study(),
+            View::Pulse => self.pulse(),
             View::Runs => self.runs.as_ref().map_or_else(
                 || vec!["The Runs pane is not attached.".to_owned()],
                 |pane| pane.lines(),
@@ -1359,6 +1441,28 @@ mod tests {
         let text = app.lines().join("\n");
         assert!(text.contains("fitted without it"), "{text}");
         assert!(text.contains("fixed opus"), "{text}");
+    }
+
+    #[test]
+    fn the_pulse_view_lists_experiments_and_shows_the_chosen_ones_pulse() {
+        let temp = tempfile::tempdir().unwrap();
+        let (experiments, jobs) =
+            crate::terminal_bench_pulse::fixture::write_experiment(temp.path());
+        let mut app = App::new(Records::default()).with_pulse(experiments, Some(jobs));
+        app.open(View::from_digit('w').unwrap());
+        assert_eq!(app.view(), View::Pulse);
+        assert!(app.follows());
+        let text = app.lines().join("\n");
+        assert!(text.contains("* x "), "{text}");
+        assert!(text.contains("Pulse of x (tb4): 2 arms"), "{text}");
+        assert!(text.contains("Stopping rule (alpha 0.05)"), "{text}");
+        assert!(text.contains("Final checks against the verifier"), "{text}");
+        // Enter on the experiment's row keeps it chosen; the view scrolls.
+        app.down();
+        app.down();
+        app.inspect();
+        assert!(app.length() > 10);
+        assert!(app.to_text(150, 30).contains("experiment pulse"));
     }
 
     #[test]

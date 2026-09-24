@@ -205,6 +205,17 @@ fn main() {
     if command == "coder" {
         std::process::exit(coder_cli::run(args.collect()));
     }
+    if command == "experiment" {
+        let args: Vec<String> = args.collect();
+        let mut out = std::io::stdout().lock();
+        match gym::terminal_bench_pulse::command(&args, &mut out) {
+            Ok(code) => std::process::exit(code),
+            Err(message) => {
+                eprintln!("{message}");
+                std::process::exit(2);
+            }
+        }
+    }
     let options = read_options(args);
     match command.as_str() {
         "eval" => run(eval_command(options)),
@@ -252,6 +263,11 @@ gym runs     Terminal-Bench runs in plain words; `gym runs show <job>` reads one
              `gym runs rank` asks Jev which are most worth learning from, and
              `gym runs --order learning` lists them that way
 gym terminal-bench  inspect evidence or run the pinned Harbor harness
+gym experiment pulse  how a targeted experiment stands while it runs:
+             passes, cost, signal discrimination, component fire rates, the
+             early-stopping verdict, and notable trials; `--jev` and `--live`
+             add Jev's judgments; `gym experiment replay` runs the recorded
+             trials back through the stopping rule
 gym coder policy    list, show, and diff Coder One policy manifests
 gym coder requirements  Coder One requirement maps from suites and episodes
 gym coder briefing  what Coder One briefings delivered and left out

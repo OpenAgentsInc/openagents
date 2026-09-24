@@ -578,8 +578,13 @@ def _experiment_spec(args: argparse.Namespace):
             raise RunError(f"--arm-kwarg wants ARM:key=value, got {pair!r}")
         arm_args.setdefault(arm, []).extend(["--agent-kwarg", kwarg])
     tasks = [t.strip() for part in args.tasks or [] for t in part.split(",") if t.strip()]
+    stop = {
+        "stop_early": args.stop_early,
+        "stop_alpha": args.stop_alpha,
+        "accept_pass_rate": args.accept_pass_rate,
+    }
     if pinned is not None and not (args.profile or args.arm or tasks):
-        spec = experiment.Spec.from_pinned(pinned, args.quota_usd)
+        spec = experiment.Spec.from_pinned(pinned, args.quota_usd, **stop)
     else:
         if not (args.profile and args.arm and tasks):
             raise RunError(
@@ -602,6 +607,7 @@ def _experiment_spec(args: argparse.Namespace):
             arm_args=arm_args,
             quota_usd=args.quota_usd,
             arm_profiles=arm_profiles,
+            **stop,
         )
     spec.validate()
     for name in spec.arm_args:
@@ -819,6 +825,18 @@ def cmd_experiment(args: argparse.Namespace) -> int:
                 if spec.quota_usd is not None
                 else "no Claude quota budget"
             )
+            + "; "
+            + (
+                f"early stopping on (alpha {spec.stop_alpha}"
+                + (
+                    f", acceptance bar {100 * spec.accept_pass_rate:.0f}%"
+                    if spec.accept_pass_rate is not None
+                    else ""
+                )
+                + ")"
+                if spec.stop_early
+                else "early stopping off"
+            )
         )
         for index, trial in enumerate(scheduler.trials, 1):
             print(f"{index:>4}  r{trial.attempt}  {trial.task.id:<32} {trial.arm}")
@@ -895,6 +913,27 @@ def add_experiment_parser(sub) -> None:
             type=float,
             help="Claude quota budget, as the list-price value Claude Code reports; "
             "no Claude trial starts once it's used",
+        )
+        p.add_argument(
+            "--stop-early",
+            action=argparse.BooleanOptionalAction,
+            default=True,
+            help="after every graded trial, stop an arm that is dominated, decided, "
+            "undecidable, or can't reach --accept-pass-rate, and end the experiment "
+            "when every candidate arm has stopped (default on; --no-stop-early runs "
+            "every planned attempt)",
+        )
+        p.add_argument(
+            "--stop-alpha",
+            type=float,
+            default=0.05,
+            help="the stopping rule's two-sided exact McNemar level (default 0.05)",
+        )
+        p.add_argument(
+            "--accept-pass-rate",
+            type=float,
+            help="the acceptance bar: stop a candidate arm that can't reach this pass "
+            "rate even if every open attempt passes (0 to 1; no bar by default)",
         )
         p.add_argument(
             "--allow-login-token",

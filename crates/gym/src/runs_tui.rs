@@ -684,7 +684,7 @@ impl Pane {
                 self.cursor = 0;
             }
             Key::Char('q') => return Reply::Quit,
-            Key::Char(c) if c.is_ascii_digit() || "bmrfs".contains(c) => return Reply::Open(c),
+            Key::Char(c) if c.is_ascii_digit() || "bmrfsw".contains(c) => return Reply::Open(c),
             _ => {}
         }
         Reply::Handled
@@ -724,7 +724,7 @@ impl Pane {
                 open.scroll.set(0);
                 return Reply::Handled;
             }
-            Key::Char(c) if c.is_ascii_digit() || "bmrfs".contains(c) => return Reply::Open(c),
+            Key::Char(c) if c.is_ascii_digit() || "bmrfsw".contains(c) => return Reply::Open(c),
             _ => {}
         }
         match open.tab {

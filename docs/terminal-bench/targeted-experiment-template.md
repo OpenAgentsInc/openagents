@@ -60,6 +60,29 @@ uv run tbench experiment run --id v7-vs-cc-0924 --profile tb4 \
   `~/.openagents/terminal-bench/failed/`, recorded in the experiment's
   `ledger.jsonl`, and run again. A credential failure also stops every
   further trial on that provider until you fix the credential and restart.
+- **Early stopping.** After every graded trial, the scheduler stops a
+  candidate arm that is dominated (it can't catch up with another arm and
+  costs no less), decided (the paired exact McNemar test separates it from
+  the baseline whichever way the open pairs go), undecidable (no outcome
+  of the open pairs could separate it), or below the acceptance bar
+  (`--accept-pass-rate`, when you set one). The experiment ends when every
+  candidate has stopped; running trials finish. Each stop and why is in
+  `ledger.jsonl`. It's on by default; `--no-stop-early` runs every planned
+  attempt, and `--stop-alpha` sets the level. The
+  [Gym CLI](../gym/terminal-bench-cli.md#stop-losers-early) states the rule.
+
+Read the experiment while it runs, with no model call:
+
+```sh
+gym experiment pulse v7-vs-cc-0924          # arms, stopping verdict, signals, notables
+gym experiment pulse v7-vs-cc-0924 --jev    # add Jev's judgments; reports the cost
+gym experiment replay v7-vs-cc-0924         # where the stopping rule stops it
+```
+
+The pulse also shows whether Coder One's final checks, Jev's support
+answers, and the effort score separate the verifier's passes from its
+failures, and how often escalation, repair, and persistence fired. In the
+Gym terminal, `w` opens the same view.
 
 `uv run tbench experiment status --id ID` shows progress, and
 `uv run tbench experiment stop --id ID` stops the scheduler; a restart
@@ -78,10 +101,11 @@ Paste its output under the results heading below, and keep its JSON
 finished trials with a verifier reward. Lost, ungraded, and unrun
 attempts are listed but never enter a denominator.
 
-Publish only when the report says every scheduled attempt is graded and
-no lost attempt remains unreplaced. If the quota budget stopped the
-schedule early, say so in the summary and report the incomplete cells as
-incomplete.
+Publish only when the report says every scheduled attempt is graded, or
+the early-stopping rule ended the experiment, and no lost attempt remains
+unreplaced. If the stopping rule or the quota budget stopped the schedule
+early, say so in the summary, quote the ledger's reason, and report the
+incomplete cells as incomplete.
 
 ---
 
@@ -110,7 +134,7 @@ isn't yet distinguishable from chance."
 | Arms | Agent profile IDs, artifact digests, and policy manifest digests. |
 | Held fixed | Model, effort, tools, prompt cache, timeouts, and task pins. |
 | Varied | What the treatment changes. |
-| Stopping rule | Run every scheduled attempt once; no success-based stopping. |
+| Stopping rule | The early-stopping rule at alpha 0.05, with the acceptance bar if one was set, or `--no-stop-early` and why. Name every stop the ledger records. |
 | Quota budget | The `--quota-usd` value and why. |
 
 ## Results

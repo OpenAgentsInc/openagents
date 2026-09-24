@@ -37,9 +37,19 @@ and none while the running trials, at the mean cost so far, could take
 the total past it. The value measures subscription use; it isn't a cash
 charge.
 
+After every graded trial, the scheduler applies the early-stopping rule
+(``stop_rule``): it stops a candidate arm that is dominated, decided,
+undecidable, or can't reach the acceptance bar, and ends the experiment
+when every candidate has stopped. A stopped arm's pending trials are
+skipped; running trials finish. Each stop is recorded in the ledger with
+why, the graded trials it read, and the trials it skipped. The rule is on
+by default; ``--no-stop-early`` runs every planned attempt, and a restart
+with it resumes the skipped trials.
+
 ``gym terminal-bench experiment report`` reads the status file this
 writes and reports each arm's passes with Wilson intervals, the paired
-comparison, the losses, and the quota used.
+comparison, the losses, and the quota used. ``gym experiment pulse``
+reads it while the experiment runs.
 """
 
 from __future__ import annotations
@@ -50,11 +60,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from . import credentials, paths, usage_limit
+from . import credentials, paths, stop_rule, usage_limit
 from .panel import Task
 from .suite import (
     FINISHED,
+    PENDING,
     RUNNING,
+    SKIPPED,
     Budget,
     Host,
     JobState,
@@ -120,6 +132,11 @@ class Spec:
     # An arm named apart from the agent profile it runs, such as a
     # proposal's policy on its base profile: ``{arm: profile}``.
     arm_profiles: dict[str, str] = field(default_factory=dict)
+    # The early-stopping rule (``stop_rule``). Not pinned: an operator may
+    # turn it off, or change the level or the bar, on a restart.
+    stop_early: bool = True
+    stop_alpha: float = stop_rule.DEFAULT_ALPHA
+    accept_pass_rate: float | None = None
 
     def profile_of(self, arm: str) -> str:
         """The agent profile an arm runs."""
@@ -142,6 +159,10 @@ class Spec:
             raise ExperimentError("--attempts must be at least 1")
         if self.quota_usd is not None and self.quota_usd <= 0:
             raise ExperimentError("--quota-usd must be positive")
+        if not 0 < self.stop_alpha < 1:
+            raise ExperimentError("--stop-alpha must be between 0 and 1")
+        if self.accept_pass_rate is not None and not 0 <= self.accept_pass_rate <= 1:
+            raise ExperimentError("--accept-pass-rate must be from 0 to 1")
         for arm, profile in self.arm_profiles.items():
             if arm not in self.arms:
                 raise ExperimentError(f"arm {arm!r} runs {profile!r} but isn't an arm")
@@ -166,7 +187,7 @@ class Spec:
         return pinned
 
     @classmethod
-    def from_pinned(cls, data: dict[str, Any], quota_usd: float | None) -> Spec:
+    def from_pinned(cls, data: dict[str, Any], quota_usd: float | None, **stop: Any) -> Spec:
         return cls(
             id=data["id"],
             profile=data["profile"],
@@ -176,6 +197,7 @@ class Spec:
             arm_args={k: list(v) for k, v in (data.get("arm_args") or {}).items()},
             quota_usd=quota_usd,
             arm_profiles=dict(data.get("arm_profiles") or {}),
+            **stop,
         )
 
 
@@ -210,6 +232,23 @@ def read_status(experiment: str) -> dict[str, Any] | None:
         return json.loads((experiment_dir(experiment) / "status.json").read_text())
     except (OSError, ValueError):
         return None
+
+
+def trial_cost(job_dir: Path) -> float | None:
+    """A finished trial's whole cost from its harness attempt record."""
+    records = job_dir / "tbench" / "attempts"
+    try:
+        paths_ = sorted(records.glob("*.json"))
+    except OSError:
+        return None
+    for path in reversed(paths_):
+        try:
+            cost = (json.loads(path.read_text()).get("cost") or {}).get("amount_usd")
+        except (OSError, ValueError):
+            continue
+        if isinstance(cost, (int, float)):
+            return float(cost)
+    return None
 
 
 def _zero_usage() -> dict[str, Any]:
@@ -271,10 +310,22 @@ class ExperimentScheduler(Scheduler):
         ]
         self.ledger = directory / "ledger.jsonl"
         self.usage: dict[str, dict[str, Any]] = {}
+        # Each graded trial's whole cost, for the stopping rule's cost test.
+        self.costs: dict[str, float] = {}
         self.losses: dict[str, list[dict[str, Any]]] = {}
+        # Arms the stopping rule stopped, and the experiment's end, as the
+        # ledger recorded them: a restart keeps them.
+        self.stops: dict[str, tuple[str, str]] = {}
+        self.ended: dict[str, Any] | None = None
+        self.stop_verdict: dict[str, Any] | None = None
         for record in self._read_ledger():
             if record.get("event") == "loss":
                 self.losses.setdefault(record["job"], []).append(record)
+            elif record.get("event") == "stop":
+                if record.get("arm"):
+                    self.stops[record["arm"]] = (record["state"], record.get("reason") or "")
+                else:
+                    self.ended = record
         self.quota_note: str | None = None
 
     # -- the ledger ----------------------------------------------------------
@@ -350,6 +401,102 @@ class ExperimentScheduler(Scheduler):
         super()._apply(trial, state)
         if trial.state == FINISHED:
             self.usage[trial.job] = self.usage_of(self.jobs_dir / trial.job)
+            cost = trial_cost(self.jobs_dir / trial.job)
+            if cost is None:
+                cost = (self.usage[trial.job] or {}).get("usd") or None
+            if cost is not None:
+                self.costs[trial.job] = cost
+
+    # -- the early-stopping rule --------------------------------------------
+
+    def reconcile(self) -> None:
+        super().reconcile()
+        if self.spec.stop_early:
+            for trial in self.trials:
+                if trial.state != PENDING:
+                    continue
+                if self.ended:
+                    self._skip(trial, f"the experiment ended {self.ended['state']}")
+                elif trial.arm in self.stops:
+                    self._skip(trial, f"{trial.arm} stopped {self.stops[trial.arm][0]}")
+            self.apply_stop_rule()
+
+    def poll(self) -> list[Trial]:
+        settled = super().poll()
+        if self.spec.stop_early and any(
+            t.state == FINISHED and t.reward is not None for t in settled
+        ):
+            self.apply_stop_rule()
+        return settled
+
+    def _skip(self, trial: Trial, why: str) -> None:
+        trial.state = SKIPPED
+        trial.reason = f"stopped early: {why}"
+
+    def stop_input(self) -> stop_rule.Input:
+        """The rule's input from the trials as they stand."""
+        data = stop_rule.Input(
+            arms=list(self.spec.arms),
+            tasks=list(self.spec.tasks),
+            attempts=self.spec.attempts,
+            stopped=dict(self.stops),
+        )
+        sums: dict[str, list[float]] = {}
+        for trial in self.trials:
+            data.cells[(trial.arm or "", trial.task.id, trial.attempt)] = stop_rule.cell_of(
+                trial.state, trial.reward
+            )
+            if trial.state == FINISHED and trial.reward is not None and trial.job in self.costs:
+                sums.setdefault(trial.arm or "", []).append(self.costs[trial.job])
+        data.mean_cost = {arm: sum(costs) / len(costs) for arm, costs in sums.items()}
+        return data
+
+    def apply_stop_rule(self) -> dict[str, Any]:
+        """Evaluate the rule; skip a newly stopped arm's pending trials, or
+        every pending trial when the experiment ended, and record why."""
+        verdict = stop_rule.evaluate(
+            self.stop_input(),
+            alpha=self.spec.stop_alpha,
+            accept_pass_rate=self.spec.accept_pass_rate,
+        )
+        self.stop_verdict = verdict
+        graded = sum(1 for t in self.trials if t.state == FINISHED and t.reward is not None)
+        for arm in verdict["arms"]:
+            if arm["state"] not in stop_rule.STOPPED or arm["arm"] in self.stops:
+                continue
+            self.stops[arm["arm"]] = (arm["state"], arm["reason"])
+            skipped = []
+            for trial in self.trials:
+                if trial.arm == arm["arm"] and trial.state == PENDING:
+                    self._skip(trial, f"{arm['arm']} stopped {arm['state']}")
+                    skipped.append(trial.job)
+            self._append({
+                "event": "stop", "at": utc_now(), "scope": "arm", "arm": arm["arm"],
+                "state": arm["state"], "reason": arm["reason"], "after_graded": graded,
+                "skipped": skipped,
+            })
+            self.event(
+                f"stopped arm {arm['arm']} early ({arm['state'].replace('_', ' ')}): "
+                f"{arm['reason']}; skipped {len(skipped)} pending trials"
+            )
+        if verdict["ended"] and self.ended is None:
+            skipped = []
+            for trial in self.trials:
+                if trial.state == PENDING:
+                    self._skip(trial, f"the experiment ended {verdict['verdict']}")
+                    skipped.append(trial.job)
+            self.ended = {
+                "event": "stop", "at": utc_now(), "scope": "experiment", "arm": None,
+                "state": verdict["verdict"], "reason": verdict["reason"],
+                "after_graded": graded, "skipped": skipped,
+            }
+            self._append(self.ended)
+            self.event(
+                f"experiment ended early ({verdict['verdict'].replace('_', ' ')}): "
+                f"{verdict['reason']}; skipped {len(skipped)} pending trials; "
+                "running trials finish"
+            )
+        return verdict
 
     def _set_aside(self, trial: Trial, label: str) -> Path:
         job_dir = self.jobs_dir / trial.job
@@ -418,6 +565,17 @@ class ExperimentScheduler(Scheduler):
                 "by_arm": by_arm,
                 "measure": "Claude Code total_cost_usd: list-price value, not a cash charge",
             },
+            "stop_early": {
+                "enabled": self.spec.stop_early,
+                "alpha": self.spec.stop_alpha,
+                "accept_pass_rate": self.spec.accept_pass_rate,
+                "stopped_arms": {
+                    arm: {"state": state, "reason": reason}
+                    for arm, (state, reason) in self.stops.items()
+                },
+                "ended": self.ended,
+                "verdict": self.stop_verdict,
+            },
             "trials": trials,
         }
 
@@ -437,6 +595,23 @@ def status_lines(status: dict[str, Any]) -> list[str]:
         f"Claude quota ${used or 0:.2f}"
         + (f" of ${budget:.2f}" if budget is not None else " (no budget)"),
     ]
+    stop = status.get("stop_early") or {}
+    if stop:
+        parts = [
+            f"early stopping {'on' if stop.get('enabled') else 'off'} "
+            f"(alpha {stop.get('alpha')}"
+            + (
+                f", acceptance bar {100 * stop['accept_pass_rate']:.0f}%"
+                if stop.get("accept_pass_rate") is not None
+                else ""
+            )
+            + ")"
+        ]
+        for arm, stopped in sorted((stop.get("stopped_arms") or {}).items()):
+            parts.append(f"{arm} stopped {stopped['state'].replace('_', ' ')}")
+        if stop.get("ended"):
+            parts.append(f"ended {stop['ended']['state'].replace('_', ' ')}")
+        lines.append("  " + " · ".join(parts))
     losses = [loss for t in status.get("trials") or [] for loss in t.get("losses") or []]
     if losses:
         causes: dict[str, int] = {}
@@ -461,4 +636,5 @@ __all__ = [
     "pin",
     "read_status",
     "status_lines",
+    "trial_cost",
 ]

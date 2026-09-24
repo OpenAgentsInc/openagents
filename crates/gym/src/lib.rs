@@ -98,7 +98,10 @@ pub mod store;
 pub mod suite;
 pub mod terminal_bench;
 pub mod terminal_bench_experiment;
+pub mod terminal_bench_pulse;
+pub mod terminal_bench_pulse_jev;
 pub mod terminal_bench_reference;
+pub mod terminal_bench_stop;
 pub mod timeline;
 pub mod views;
 

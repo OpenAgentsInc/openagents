@@ -1,0 +1,452 @@
+{
+  "schema": "openagents.tbench.stop-rule-cases.v1",
+  "about": "Shared cases for the early-stopping rule: crates/gym/src/terminal_bench_stop.rs and bench/terminal-bench/tbench/stop_rule.py must both give each expected verdict. A missing cell is open.",
+  "cases": [
+    {
+      "name": "two one-way pairs leave the comparison open",
+      "input": {
+        "arms": [
+          "base",
+          "cand"
+        ],
+        "tasks": [
+          "t"
+        ],
+        "attempts": 6,
+        "cells": [
+          {"arm": "base", "task": "t", "attempt": 1, "cell": "fail"},
+          {"arm": "cand", "task": "t", "attempt": 1, "cell": "pass"},
+          {"arm": "base", "task": "t", "attempt": 2, "cell": "fail"},
+          {"arm": "cand", "task": "t", "attempt": 2, "cell": "pass"}
+        ],
+        "mean_cost": {
+          "base": 1.0,
+          "cand": 1.0
+        }
+      },
+      "expect": {
+        "ended": false,
+        "verdict": null,
+        "arms": {
+          "base": "baseline",
+          "cand": "active"
+        }
+      }
+    },
+    {
+      "name": "eight one-way pairs decide the experiment",
+      "input": {
+        "arms": [
+          "base",
+          "cand"
+        ],
+        "tasks": [
+          "t"
+        ],
+        "attempts": 8,
+        "cells": [
+          {"arm": "base", "task": "t", "attempt": 1, "cell": "fail"},
+          {"arm": "cand", "task": "t", "attempt": 1, "cell": "pass"},
+          {"arm": "base", "task": "t", "attempt": 2, "cell": "fail"},
+          {"arm": "cand", "task": "t", "attempt": 2, "cell": "pass"},
+          {"arm": "base", "task": "t", "attempt": 3, "cell": "fail"},
+          {"arm": "cand", "task": "t", "attempt": 3, "cell": "pass"},
+          {"arm": "base", "task": "t", "attempt": 4, "cell": "fail"},
+          {"arm": "cand", "task": "t", "attempt": 4, "cell": "pass"},
+          {"arm": "base", "task": "t", "attempt": 5, "cell": "fail"},
+          {"arm": "cand", "task": "t", "attempt": 5, "cell": "pass"},
+          {"arm": "base", "task": "t", "attempt": 6, "cell": "fail"},
+          {"arm": "cand", "task": "t", "attempt": 6, "cell": "pass"},
+          {"arm": "base", "task": "t", "attempt": 7, "cell": "fail"},
+          {"arm": "cand", "task": "t", "attempt": 7, "cell": "pass"},
+          {"arm": "base", "task": "t", "attempt": 8, "cell": "fail"},
+          {"arm": "cand", "task": "t", "attempt": 8, "cell": "pass"}
+        ]
+      },
+      "expect": {
+        "ended": true,
+        "verdict": "decided",
+        "arms": {
+          "base": "baseline",
+          "cand": "decided"
+        }
+      }
+    },
+    {
+      "name": "two open pairs can't separate a one-one split",
+      "input": {
+        "arms": [
+          "base",
+          "cand"
+        ],
+        "tasks": [
+          "t1",
+          "t2",
+          "t3"
+        ],
+        "attempts": 3,
+        "cells": [
+          {"arm": "base", "task": "t1", "attempt": 1, "cell": "pass"},
+          {"arm": "cand", "task": "t1", "attempt": 1, "cell": "pass"},
+          {"arm": "base", "task": "t1", "attempt": 2, "cell": "pass"},
+          {"arm": "cand", "task": "t1", "attempt": 2, "cell": "pass"},
+          {"arm": "base", "task": "t2", "attempt": 1, "cell": "pass"},
+          {"arm": "cand", "task": "t2", "attempt": 1, "cell": "pass"},
+          {"arm": "base", "task": "t2", "attempt": 2, "cell": "pass"},
+          {"arm": "cand", "task": "t2", "attempt": 2, "cell": "pass"},
+          {"arm": "base", "task": "t3", "attempt": 1, "cell": "pass"},
+          {"arm": "cand", "task": "t3", "attempt": 1, "cell": "fail"},
+          {"arm": "base", "task": "t3", "attempt": 2, "cell": "fail"},
+          {"arm": "cand", "task": "t3", "attempt": 2, "cell": "pass"},
+          {"arm": "base", "task": "t3", "attempt": 3, "cell": "fail"},
+          {"arm": "cand", "task": "t3", "attempt": 3, "cell": "fail"}
+        ]
+      },
+      "expect": {
+        "ended": true,
+        "verdict": "undecidable",
+        "arms": {
+          "cand": "undecidable"
+        }
+      }
+    },
+    {
+      "name": "an arm that can't catch up and costs no less is dominated",
+      "input": {
+        "arms": [
+          "base",
+          "a",
+          "b"
+        ],
+        "tasks": [
+          "t"
+        ],
+        "attempts": 10,
+        "cells": [
+          {"arm": "base", "task": "t", "attempt": 1, "cell": "pass"},
+          {"arm": "base", "task": "t", "attempt": 2, "cell": "pass"},
+          {"arm": "base", "task": "t", "attempt": 3, "cell": "pass"},
+          {"arm": "base", "task": "t", "attempt": 4, "cell": "pass"},
+          {"arm": "base", "task": "t", "attempt": 5, "cell": "fail"},
+          {"arm": "a", "task": "t", "attempt": 1, "cell": "fail"},
+          {"arm": "a", "task": "t", "attempt": 2, "cell": "fail"},
+          {"arm": "a", "task": "t", "attempt": 3, "cell": "fail"},
+          {"arm": "a", "task": "t", "attempt": 4, "cell": "fail"},
+          {"arm": "a", "task": "t", "attempt": 5, "cell": "fail"},
+          {"arm": "a", "task": "t", "attempt": 6, "cell": "fail"},
+          {"arm": "a", "task": "t", "attempt": 7, "cell": "fail"},
+          {"arm": "a", "task": "t", "attempt": 8, "cell": "fail"},
+          {"arm": "a", "task": "t", "attempt": 9, "cell": "fail"}
+        ],
+        "mean_cost": {
+          "base": 1.0,
+          "a": 3.0,
+          "b": 2.0
+        }
+      },
+      "expect": {
+        "ended": false,
+        "verdict": null,
+        "arms": {
+          "base": "baseline",
+          "a": "dominated",
+          "b": "active"
+        }
+      }
+    },
+    {
+      "name": "a cheaper arm that can't catch up isn't dominated",
+      "input": {
+        "arms": [
+          "base",
+          "a",
+          "b"
+        ],
+        "tasks": [
+          "t"
+        ],
+        "attempts": 10,
+        "cells": [
+          {"arm": "base", "task": "t", "attempt": 1, "cell": "pass"},
+          {"arm": "base", "task": "t", "attempt": 2, "cell": "pass"},
+          {"arm": "base", "task": "t", "attempt": 3, "cell": "pass"},
+          {"arm": "base", "task": "t", "attempt": 4, "cell": "pass"},
+          {"arm": "base", "task": "t", "attempt": 5, "cell": "fail"},
+          {"arm": "a", "task": "t", "attempt": 1, "cell": "fail"},
+          {"arm": "a", "task": "t", "attempt": 2, "cell": "fail"},
+          {"arm": "a", "task": "t", "attempt": 3, "cell": "fail"},
+          {"arm": "a", "task": "t", "attempt": 4, "cell": "fail"},
+          {"arm": "a", "task": "t", "attempt": 5, "cell": "fail"},
+          {"arm": "a", "task": "t", "attempt": 6, "cell": "fail"},
+          {"arm": "a", "task": "t", "attempt": 7, "cell": "fail"},
+          {"arm": "a", "task": "t", "attempt": 8, "cell": "fail"},
+          {"arm": "a", "task": "t", "attempt": 9, "cell": "fail"}
+        ],
+        "mean_cost": {
+          "base": 1.0,
+          "a": 0.5,
+          "b": 2.0
+        }
+      },
+      "expect": {
+        "ended": false,
+        "verdict": null,
+        "arms": {
+          "a": "active",
+          "b": "active"
+        }
+      }
+    },
+    {
+      "name": "an arm with unknown cost isn't dominated",
+      "input": {
+        "arms": [
+          "base",
+          "a",
+          "b"
+        ],
+        "tasks": [
+          "t"
+        ],
+        "attempts": 10,
+        "cells": [
+          {"arm": "base", "task": "t", "attempt": 1, "cell": "pass"},
+          {"arm": "base", "task": "t", "attempt": 2, "cell": "pass"},
+          {"arm": "base", "task": "t", "attempt": 3, "cell": "pass"},
+          {"arm": "base", "task": "t", "attempt": 4, "cell": "pass"},
+          {"arm": "base", "task": "t", "attempt": 5, "cell": "fail"},
+          {"arm": "a", "task": "t", "attempt": 1, "cell": "fail"},
+          {"arm": "a", "task": "t", "attempt": 2, "cell": "fail"},
+          {"arm": "a", "task": "t", "attempt": 3, "cell": "fail"},
+          {"arm": "a", "task": "t", "attempt": 4, "cell": "fail"},
+          {"arm": "a", "task": "t", "attempt": 5, "cell": "fail"},
+          {"arm": "a", "task": "t", "attempt": 6, "cell": "fail"},
+          {"arm": "a", "task": "t", "attempt": 7, "cell": "fail"},
+          {"arm": "a", "task": "t", "attempt": 8, "cell": "fail"},
+          {"arm": "a", "task": "t", "attempt": 9, "cell": "fail"}
+        ],
+        "mean_cost": {
+          "base": 1.0
+        }
+      },
+      "expect": {
+        "ended": false,
+        "verdict": null,
+        "arms": {
+          "a": "active"
+        }
+      }
+    },
+    {
+      "name": "an arm that can't reach the acceptance bar stops",
+      "input": {
+        "arms": [
+          "base",
+          "cand"
+        ],
+        "tasks": [
+          "t"
+        ],
+        "attempts": 10,
+        "cells": [
+          {"arm": "cand", "task": "t", "attempt": 1, "cell": "fail"},
+          {"arm": "cand", "task": "t", "attempt": 2, "cell": "fail"},
+          {"arm": "cand", "task": "t", "attempt": 3, "cell": "fail"},
+          {"arm": "cand", "task": "t", "attempt": 4, "cell": "fail"},
+          {"arm": "cand", "task": "t", "attempt": 5, "cell": "fail"},
+          {"arm": "cand", "task": "t", "attempt": 6, "cell": "fail"},
+          {"arm": "cand", "task": "t", "attempt": 7, "cell": "fail"}
+        ],
+        "accept_pass_rate": 0.5
+      },
+      "expect": {
+        "ended": true,
+        "verdict": "below_bar",
+        "arms": {
+          "cand": "below_bar"
+        }
+      }
+    },
+    {
+      "name": "without a bar the same arm keeps running",
+      "input": {
+        "arms": [
+          "base",
+          "cand"
+        ],
+        "tasks": [
+          "t"
+        ],
+        "attempts": 10,
+        "cells": [
+          {"arm": "cand", "task": "t", "attempt": 1, "cell": "fail"},
+          {"arm": "cand", "task": "t", "attempt": 2, "cell": "fail"},
+          {"arm": "cand", "task": "t", "attempt": 3, "cell": "fail"},
+          {"arm": "cand", "task": "t", "attempt": 4, "cell": "fail"},
+          {"arm": "cand", "task": "t", "attempt": 5, "cell": "fail"},
+          {"arm": "cand", "task": "t", "attempt": 6, "cell": "fail"},
+          {"arm": "cand", "task": "t", "attempt": 7, "cell": "fail"}
+        ]
+      },
+      "expect": {
+        "ended": false,
+        "verdict": null,
+        "arms": {
+          "cand": "active"
+        }
+      }
+    },
+    {
+      "name": "a control arm stays outside the rule",
+      "input": {
+        "arms": [
+          "coder",
+          "nop"
+        ],
+        "tasks": [
+          "t"
+        ],
+        "attempts": 9,
+        "cells": [
+          {"arm": "coder", "task": "t", "attempt": 1, "cell": "pass"},
+          {"arm": "nop", "task": "t", "attempt": 1, "cell": "fail"},
+          {"arm": "coder", "task": "t", "attempt": 2, "cell": "pass"},
+          {"arm": "nop", "task": "t", "attempt": 2, "cell": "fail"},
+          {"arm": "coder", "task": "t", "attempt": 3, "cell": "pass"},
+          {"arm": "nop", "task": "t", "attempt": 3, "cell": "fail"},
+          {"arm": "coder", "task": "t", "attempt": 4, "cell": "pass"},
+          {"arm": "nop", "task": "t", "attempt": 4, "cell": "fail"},
+          {"arm": "coder", "task": "t", "attempt": 5, "cell": "pass"},
+          {"arm": "nop", "task": "t", "attempt": 5, "cell": "fail"},
+          {"arm": "coder", "task": "t", "attempt": 6, "cell": "pass"},
+          {"arm": "nop", "task": "t", "attempt": 6, "cell": "fail"},
+          {"arm": "coder", "task": "t", "attempt": 7, "cell": "pass"},
+          {"arm": "nop", "task": "t", "attempt": 7, "cell": "fail"},
+          {"arm": "coder", "task": "t", "attempt": 8, "cell": "pass"},
+          {"arm": "nop", "task": "t", "attempt": 8, "cell": "fail"},
+          {"arm": "coder", "task": "t", "attempt": 9, "cell": "pass"},
+          {"arm": "nop", "task": "t", "attempt": 9, "cell": "fail"}
+        ]
+      },
+      "expect": {
+        "ended": false,
+        "verdict": null,
+        "arms": {
+          "coder": "active",
+          "nop": "control"
+        }
+      }
+    },
+    {
+      "name": "an arm stopped earlier stays stopped and the verdict prefers decided",
+      "input": {
+        "arms": [
+          "base",
+          "a",
+          "b"
+        ],
+        "tasks": [
+          "t"
+        ],
+        "attempts": 8,
+        "cells": [
+          {"arm": "base", "task": "t", "attempt": 1, "cell": "fail"},
+          {"arm": "b", "task": "t", "attempt": 1, "cell": "pass"},
+          {"arm": "base", "task": "t", "attempt": 2, "cell": "fail"},
+          {"arm": "b", "task": "t", "attempt": 2, "cell": "pass"},
+          {"arm": "base", "task": "t", "attempt": 3, "cell": "fail"},
+          {"arm": "b", "task": "t", "attempt": 3, "cell": "pass"},
+          {"arm": "base", "task": "t", "attempt": 4, "cell": "fail"},
+          {"arm": "b", "task": "t", "attempt": 4, "cell": "pass"},
+          {"arm": "base", "task": "t", "attempt": 5, "cell": "fail"},
+          {"arm": "b", "task": "t", "attempt": 5, "cell": "pass"},
+          {"arm": "base", "task": "t", "attempt": 6, "cell": "fail"},
+          {"arm": "b", "task": "t", "attempt": 6, "cell": "pass"},
+          {"arm": "base", "task": "t", "attempt": 7, "cell": "fail"},
+          {"arm": "b", "task": "t", "attempt": 7, "cell": "pass"},
+          {"arm": "base", "task": "t", "attempt": 8, "cell": "fail"},
+          {"arm": "b", "task": "t", "attempt": 8, "cell": "pass"}
+        ],
+        "stopped": {
+          "a": "dominated"
+        }
+      },
+      "expect": {
+        "ended": true,
+        "verdict": "decided",
+        "arms": {
+          "a": "dominated",
+          "b": "decided"
+        }
+      }
+    },
+    {
+      "name": "a baseline that wins every pair decides against the candidate",
+      "input": {
+        "arms": [
+          "base",
+          "cand"
+        ],
+        "tasks": [
+          "t"
+        ],
+        "attempts": 8,
+        "cells": [
+          {"arm": "base", "task": "t", "attempt": 1, "cell": "pass"},
+          {"arm": "cand", "task": "t", "attempt": 1, "cell": "fail"},
+          {"arm": "base", "task": "t", "attempt": 2, "cell": "pass"},
+          {"arm": "cand", "task": "t", "attempt": 2, "cell": "fail"},
+          {"arm": "base", "task": "t", "attempt": 3, "cell": "pass"},
+          {"arm": "cand", "task": "t", "attempt": 3, "cell": "fail"},
+          {"arm": "base", "task": "t", "attempt": 4, "cell": "pass"},
+          {"arm": "cand", "task": "t", "attempt": 4, "cell": "fail"},
+          {"arm": "base", "task": "t", "attempt": 5, "cell": "pass"},
+          {"arm": "cand", "task": "t", "attempt": 5, "cell": "fail"},
+          {"arm": "base", "task": "t", "attempt": 6, "cell": "pass"},
+          {"arm": "cand", "task": "t", "attempt": 6, "cell": "fail"},
+          {"arm": "base", "task": "t", "attempt": 7, "cell": "pass"},
+          {"arm": "cand", "task": "t", "attempt": 7, "cell": "fail"},
+          {"arm": "base", "task": "t", "attempt": 8, "cell": "pass"},
+          {"arm": "cand", "task": "t", "attempt": 8, "cell": "fail"}
+        ],
+        "mean_cost": {
+          "base": 2.0,
+          "cand": 1.0
+        }
+      },
+      "expect": {
+        "ended": true,
+        "verdict": "decided",
+        "arms": {
+          "cand": "decided"
+        }
+      }
+    },
+    {
+      "name": "a design too small to separate is exploratory and never undecidable",
+      "input": {
+        "arms": [
+          "base",
+          "cand"
+        ],
+        "tasks": [
+          "t"
+        ],
+        "attempts": 3,
+        "cells": [
+          {"arm": "base", "task": "t", "attempt": 1, "cell": "pass"},
+          {"arm": "cand", "task": "t", "attempt": 1, "cell": "fail"},
+          {"arm": "base", "task": "t", "attempt": 2, "cell": "fail"},
+          {"arm": "cand", "task": "t", "attempt": 2, "cell": "pass"}
+        ]
+      },
+      "expect": {
+        "ended": false,
+        "verdict": null,
+        "arms": {
+          "cand": "active"
+        }
+      }
+    }
+  ]
+}

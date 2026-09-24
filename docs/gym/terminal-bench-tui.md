@@ -209,11 +209,25 @@ the [Gym CLI](terminal-bench-cli.md#read-recent-runs) and
 | --- | --- |
 | `1` to `9` | Open overview, comparison, attempt, evidence, history, runbooks, components, requirements, or mini-tasks. |
 | `f` | Open the live view, which reads attempts in progress again every two seconds while it is open. |
+| `w` | Open the experiment pulse: every targeted experiment and the chosen one's standing, read again every two seconds while it is open. |
 | `Tab`, `h`, `l` | Move between views. |
 | `j`, `k`, arrow keys, `g`, `G` | Move the selection. |
-| `Enter` | Open a selected group, attempt, or its evidence. |
+| `Enter` | Open a selected group, attempt, or its evidence. In the experiment pulse, show the experiment on the selected row. |
 | `Esc` | Go back to the Runs pane. |
 | `q` | Leave and restore the terminal. |
+
+**Experiment pulse** (`w`, from the Runs pane or any expert view) lists
+every experiment under `~/.openagents/terminal-bench/experiments/`, the
+most recently updated first, and shows the pulse of the one marked `*`:
+each arm's passes with a 95% Wilson interval, mean and total cost, and
+mean time; the per-task table; the early-stopping verdict and the stops
+the scheduler recorded; how the final checks, Jev's support answers, and
+the effort score line up with the verifier; how often escalation, repair,
+and persistence fired and how those trials ended; and notable trials.
+It's the same text `gym experiment pulse ID` prints, and it makes no
+model call. `j` and `k` scroll; `Enter` on an experiment's row shows that
+experiment. See
+[Read an experiment in flight](terminal-bench-cli.md#read-an-experiment-in-flight).
 
 **Overview** lists every task and arm with its attempt count, verifier
 rewards, terminal statuses, cost sources, and evidence health. Oracle and

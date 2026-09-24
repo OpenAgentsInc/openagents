@@ -100,6 +100,9 @@ pub struct Attempt {
     pub dir: PathBuf,
     pub log: PathBuf,
     pub state: State,
+    /// Whether its files say it is still going: no manifest for a mini-task
+    /// run, and a following tail with no `result.json` for a trial.
+    pub in_progress: bool,
     /// The newest event the log holds, in milliseconds since the epoch.
     pub last_event_at: Option<u64>,
     /// When the log file last changed.
@@ -251,6 +254,7 @@ fn read(found: Found, now: u64, sources: &Sources) -> Attempt {
         dir,
         log: log.to_path_buf(),
         state,
+        in_progress,
         last_event_at,
         modified_at,
         tail,
@@ -272,6 +276,43 @@ fn subdirs(dir: &Path) -> Vec<PathBuf> {
         .collect();
     dirs.sort();
     dirs
+}
+
+/// One Terminal-Bench trial directory's live tail, when the Harbor adapter
+/// wrote one, whether the trial is still going or not.
+#[must_use]
+pub fn read_trial(trial: &Path, now: u64, sources: &Sources) -> Option<Attempt> {
+    let live = trial.join("agent/live");
+    let text = std::fs::read_to_string(live.join("status.json")).ok()?;
+    let status = serde_json::from_str::<Value>(&text).ok()?;
+    if status.get("schema").and_then(Value::as_str) != Some(TAIL_SCHEMA) {
+        return None;
+    }
+    let following = status.get("state").and_then(Value::as_str) == Some("following");
+    let in_progress = following && !trial.join("result.json").is_file();
+    let name = |path: &Path| {
+        path.file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned()
+    };
+    let id = format!(
+        "{}/{}",
+        trial.parent().map(name).unwrap_or_default(),
+        name(trial)
+    );
+    Some(read(
+        Found {
+            kind: "terminal-bench",
+            id,
+            dir: trial.to_path_buf(),
+            log: live.join("episode.atif.jsonl"),
+            in_progress,
+            tail: Some(status),
+        },
+        now,
+        sources,
+    ))
 }
 
 /// Every attempt in progress, and every one that ended within the recent
@@ -311,39 +352,13 @@ pub fn discover(sources: &Sources, now: u64) -> Vec<Attempt> {
     if let Some(dir) = &sources.jobs {
         for job in subdirs(dir) {
             for trial in subdirs(&job) {
-                let live = trial.join("agent/live");
-                let Ok(text) = std::fs::read_to_string(live.join("status.json")) else {
-                    continue;
-                };
-                let Ok(status) = serde_json::from_str::<Value>(&text) else {
-                    continue;
-                };
-                if status.get("schema").and_then(Value::as_str) != Some(TAIL_SCHEMA) {
-                    continue;
+                let log = trial.join("agent/live/episode.atif.jsonl");
+                let recently = modified(&log).is_some_and(|at| now.saturating_sub(at) <= recent);
+                if let Some(attempt) = read_trial(&trial, now, sources)
+                    && (attempt.in_progress || recently)
+                {
+                    attempts.push(attempt);
                 }
-                let following = status.get("state").and_then(Value::as_str) == Some("following");
-                let in_progress = following && !trial.join("result.json").is_file();
-                let log = live.join("episode.atif.jsonl");
-                if !in_progress && modified(&log).is_none_or(|at| now.saturating_sub(at) > recent) {
-                    continue;
-                }
-                let id = format!(
-                    "{}/{}",
-                    job.file_name().unwrap_or_default().to_string_lossy(),
-                    trial.file_name().unwrap_or_default().to_string_lossy()
-                );
-                attempts.push(read(
-                    Found {
-                        kind: "terminal-bench",
-                        id,
-                        dir: trial.clone(),
-                        log,
-                        in_progress,
-                        tail: Some(status),
-                    },
-                    now,
-                    sources,
-                ));
             }
         }
     }
