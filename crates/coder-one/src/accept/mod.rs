@@ -746,7 +746,9 @@ Cover every requirement in the list: the task's stated examples with their exact
 the edge cases the task implies, the output's format and location, and the error behavior the \
 task states. Assert only what the task states or what follows from it. Never hardcode an answer \
 the task doesn't give: compute it from the task's own rules, or check a property that any correct \
-answer has. Every test must be able to fail: no test that only checks that a file exists, and none \
+answer has. Read the workspace's real inputs first. Prefer testing on them; when a test builds \
+its own input, copy their exact format, since a correct solution parses that format and nothing \
+else. Every test must be able to fail: no test that only checks that a file exists, and none \
 that passes whatever the program does.
 
 Run the suite with `sh run.sh`, or some tests with `sh run.sh T2 T5`. The work isn't done yet, so a \

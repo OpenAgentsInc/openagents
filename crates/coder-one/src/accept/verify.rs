@@ -18,10 +18,10 @@ use crate::component::jev::{self as jev_component, Ask, Asked, JevMode, USD_PER_
 use crate::record::Recorder;
 
 /// Does the test assert only what the task states?
-pub const FAITHFUL: &str = "The acceptance test in `test` was written before the task in `task` was solved, to check the requirements in `requirements`. Does every assertion in the test follow from what the task states, from its examples, or from its rules, with nothing the task doesn't ask for?";
+pub const FAITHFUL: &str = "The acceptance test in `test` was written before the task in `task` was solved, to check the requirements in `requirements`. Does every assertion in the test follow from what the task states, from its examples, or from its rules, with nothing the task doesn't ask for, and does every input the test builds follow the input format the task describes?";
 
 /// Does the test hardcode an answer the task doesn't give?
-pub const HARDCODED: &str = "The acceptance test in `test` checks the requirements in `requirements` of the task in `task`. Does the test compare the program's result against a specific value, output, or answer that the task neither states nor lets you derive from its own examples and rules?";
+pub const HARDCODED: &str = "The acceptance test in `test` checks the requirements in `requirements` of the task in `task`. A test may build its own small inputs and expect the output the task's rules give for them, or compute the expected output with its own implementation of the task's rules; that is not hardcoding. Does the test instead expect a specific value for a case the task's words, examples, and rules don't determine, such as a guessed answer for the task's own data or a choice the task leaves open?";
 
 /// Could the test pass without its requirement met?
 pub const TRIVIAL: &str = "Could the acceptance test in `test` pass even though the requirements in `requirements` of the task in `task` are not met, for example because it only checks that a file or a name exists, accepts any output, or can't fail?";
@@ -193,6 +193,27 @@ pub fn broken_reason(run: &TestRun) -> Option<String> {
     None
 }
 
+/// A test's source followed by every helper file under the suite
+/// directory it names, such as `lib/check.py`, so a judgment reads what
+/// the test runs.
+#[must_use]
+pub fn with_helpers(dir: &Path, source: &str) -> String {
+    let mut out = source.to_string();
+    for path in super::digest_files(dir).keys() {
+        if path.starts_with(super::TESTS_DIR)
+            || path.starts_with(super::REJECTED_DIR)
+            || super::HARNESS.contains(&path.as_str())
+            || !source.contains(path.as_str())
+        {
+            continue;
+        }
+        if let Ok(text) = std::fs::read_to_string(dir.join(path)) {
+            out.push_str(&format!("\n# ---- {path} ----\n{text}"));
+        }
+    }
+    out
+}
+
 fn requirement_state(inputs: &Inputs<'_>, ids: &[String]) -> Value {
     Value::Array(
         inputs
@@ -290,7 +311,7 @@ pub async fn verify<R: Runner>(
                     "id": test.id,
                     "kind": test.kind,
                     "what": test.what,
-                    "source": crate::judge::clip(&test.source, 5_000),
+                    "source": crate::judge::clip(&with_helpers(dir, &test.source), 6_000),
                 },
             });
             ask_cached(
@@ -473,6 +494,7 @@ pub async fn verify<R: Runner>(
         }
     }
     let mut coverage_judged = serde_json::Map::new();
+    let mut untested: Vec<String> = Vec::new();
     for requirement in &decidable {
         let mine: Vec<String> = surviving
             .iter()
@@ -488,10 +510,7 @@ pub async fn verify<R: Runner>(
                 requirement: requirement.id.clone(),
                 why: "no accepted test names it".to_string(),
             });
-            messages.push(format!(
-                "{} has no accepted test: write one that fails until {} is met.",
-                requirement.id, requirement.id
-            ));
+            untested.push(requirement.id.clone());
         } else if !covered {
             out.gaps.push(super::Gap {
                 requirement: requirement.id.clone(),
@@ -524,6 +543,13 @@ pub async fn verify<R: Runner>(
             decides,
             covered,
         });
+    }
+    if !untested.is_empty() {
+        messages.push(format!(
+            "No accepted test decides {}: write tests that fail until each is met, or fix the \
+             rejected tests above that name them.",
+            untested.join(", ")
+        ));
     }
     if tests.is_empty() {
         messages.insert(

@@ -91,6 +91,7 @@ async fn main() -> ExitCode {
         Some("episode") => return episode_command(&args[1..]).await,
         Some("component") => return component_command(&args[1..]).await,
         Some("minitask") => return minitask_command(&args[1..]).await,
+        Some("accept") => return accept_command(&args[1..]).await,
         Some("capabilities") => {
             return match coder_one::capabilities::command(&args[1..]).await {
                 Ok(code) => ExitCode::from(u8::try_from(code).unwrap_or(1)),
@@ -327,6 +328,23 @@ async fn repair_command(args: &[String]) -> ExitCode {
 }
 
 /// `coder-one minitask …`: 0 when the grader passed.
+async fn accept_command(args: &[String]) -> ExitCode {
+    if matches!(
+        args.first().map(String::as_str),
+        Some("help" | "--help" | "-h") | None
+    ) {
+        println!("{}", coder_one::accept::cli::USAGE);
+        return ExitCode::SUCCESS;
+    }
+    match coder_one::accept::cli::command(args).await {
+        Ok(code) => ExitCode::from(u8::try_from(code).unwrap_or(1)),
+        Err(message) => {
+            eprintln!("coder-one: {message}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
 async fn minitask_command(args: &[String]) -> ExitCode {
     if matches!(
         args.first().map(String::as_str),

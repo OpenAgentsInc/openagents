@@ -247,7 +247,7 @@ async fn a_requirement_without_a_test_is_a_named_gap_after_every_round() {
         briefs[1]
             .state
             .iter()
-            .any(|l| l.starts_with("R2 has no accepted test"))
+            .any(|l| l.starts_with("No accepted test decides R2"))
     );
 }
 
