@@ -224,6 +224,7 @@ pinned public downloads and cached under
 | `node-22.23.2-<platform>` | The Node build `nvm install 22` resolved on 2026-09-22 | The sha256 pinned in `tbench/toolchain.py` |
 | `codex-<version>-<platform>` | `@openai/codex` and its platform package, laid out as `npm install -g` lays them out | The npm registry's sha512 integrity |
 | `claude-code-<version>-<platform>` | Claude Code's native binary | The release manifest's sha256 |
+| `ca-bundle-2026.7.22-<platform>` | Mozilla's root certificates, `certifi/cacert.pem` from the certifi 2026.7.22 wheel on PyPI; placed with Codex only | The wheel's and the bundle's sha256, both pinned in `tbench/toolchain.py` |
 
 The platform is `linux-x64` or `linux-arm64`, with a `-musl` suffix on a
 musl image. The layers depend on the task image only through the C
@@ -235,6 +236,16 @@ links `node`, `npm`, `npx`, and `codex` or `claude` into `/usr/local/bin`.
 The trial runs no package manager and makes no network request to install
 anything. Layers hold public release files only. Each build scans its layer
 for your credential values and discards the layer if it finds one.
+
+The Codex wrapper in `/usr/local/bin/codex` sets `CODEX_CA_CERTIFICATE` to
+the CA bundle layer's `cacert.pem` unless the variable is already set.
+Codex verifies TLS against the image's roots, and some task images, such
+as `bun-sourcemap-leak`, have no `/etc/ssl/certs`: without the bundle,
+every connection fails with `UnknownIssuer` and Codex retries until its
+deadline ([#9581](https://github.com/OpenAgentsInc/openagents/issues/9581)).
+`CODEX_CA_CERTIFICATE` reaches only Codex, so the task's own tools keep the
+image's CA store. Claude Code bundles its own roots and needs no bundle.
+The network install doesn't place the bundle.
 
 Build the layers before a run so no trial pays the cold build:
 

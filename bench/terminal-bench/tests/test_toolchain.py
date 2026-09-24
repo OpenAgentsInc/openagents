@@ -6,6 +6,7 @@ import hashlib
 import io
 import json
 import tarfile
+import zipfile
 
 import pytest
 
@@ -35,6 +36,17 @@ def _tarball(files: dict[str, bytes], *, compression: str = "gz") -> bytes:
     return buffer.getvalue()
 
 
+PEM = b"-----BEGIN CERTIFICATE-----\nfixture\n-----END CERTIFICATE-----\n"
+
+
+def _wheel(pem: bytes) -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as wheel:
+        wheel.writestr("certifi/cacert.pem", pem)
+        wheel.writestr("certifi/__init__.py", "")
+    return buffer.getvalue()
+
+
 class _Registry:
     """Serves pinned-looking downloads and counts every fetch."""
 
@@ -49,6 +61,11 @@ class _Registry:
         )
         monkeypatch.setitem(
             toolchain.NODE_SHA256, "linux-x64", hashlib.sha256(node).hexdigest()
+        )
+        wheel = _wheel(PEM)
+        monkeypatch.setitem(toolchain.CA_BUNDLE, "sha256", hashlib.sha256(wheel).hexdigest())
+        monkeypatch.setitem(
+            toolchain.CA_BUNDLE, "pem_sha256", hashlib.sha256(PEM).hexdigest()
         )
         codex = _tarball({"package/bin/codex.js": b"#!/usr/bin/env node\n"})
         native = _tarball(
@@ -74,6 +91,7 @@ class _Registry:
                 }
             ).encode(),
             f"{toolchain.CLAUDE_RELEASES}/2.1.280/linux-x64/claude": claude_payload,
+            toolchain.CA_BUNDLE["url"]: wheel,
         }
 
     @staticmethod
@@ -97,6 +115,7 @@ def test_layers_put_node_first_and_pin_its_build():
     specs = layers_for("codex", "0.155.1", "linux-x64")
     assert [s.key for s in specs] == [
         "node-22.23.2-linux-x64",
+        "ca-bundle-2026.7.22-linux-x64",
         "codex-0.155.1-linux-x64",
     ]
     assert layers_for("claude-code", "2.1.280", "linux-x64")[1].name == "claude-code"
@@ -122,6 +141,36 @@ def test_a_layer_builds_cold_once_then_reuses_warm(tmp_path, monkeypatch):
     assert warm.cache == "warm"
     assert len(fetch.calls) == fetched
     assert warm.manifest["tree_sha256"] == cold.manifest["tree_sha256"]
+
+
+def test_the_ca_bundle_layer_holds_the_pinned_bundle(tmp_path, monkeypatch):
+    fetch = _Registry(monkeypatch)
+    spec = LayerSpec("ca-bundle", "2026.7.22", "linux-x64")
+    layer = ensure_layer(spec, root=tmp_path, fetch=fetch, credentials={})
+    assert (layer.root / "cacert.pem").read_bytes() == PEM
+    assert layer.links == {}
+    assert layer.manifest["certificates"] == 1
+    assert layer.manifest["source"]["member"] == "certifi/cacert.pem"
+    assert fetch.calls == [toolchain.CA_BUNDLE["url"]]
+
+
+def test_a_ca_bundle_that_differs_from_its_pin_is_refused(tmp_path, monkeypatch):
+    fetch = _Registry(monkeypatch)
+    fetch.files[toolchain.CA_BUNDLE["url"]] = _wheel(PEM + b"extra")
+    with pytest.raises(ToolchainError, match="pinned sha256"):
+        ensure_layer(
+            LayerSpec("ca-bundle", "2026.7.22", "linux-x64"),
+            root=tmp_path,
+            fetch=fetch,
+            credentials={},
+        )
+    with pytest.raises(ToolchainError, match="isn't pinned"):
+        ensure_layer(
+            LayerSpec("ca-bundle", "2020.1.1", "linux-x64"),
+            root=tmp_path,
+            fetch=fetch,
+            credentials={},
+        )
 
 
 def test_a_changed_download_is_refused(tmp_path, monkeypatch):
@@ -226,6 +275,7 @@ def test_placement_copies_links_and_verifies_without_network(tmp_path, monkeypat
     assert record["versions"] == {"node": "v22.23.2", "codex": "0.155.1"}
     assert [target for _, target in container.uploads] == [
         "/opt/openagents/toolchain/node-22.23.2-linux-x64",
+        "/opt/openagents/toolchain/ca-bundle-2026.7.22-linux-x64",
         "/opt/openagents/toolchain/codex-0.155.1-linux-x64",
     ]
     links = next(c for c in container.commands if "ln -sf" in c)
@@ -234,6 +284,12 @@ def test_placement_copies_links_and_verifies_without_network(tmp_path, monkeypat
         "exec /opt/openagents/toolchain/node-22.23.2-linux-x64/bin/node "
         "/opt/openagents/toolchain/codex-0.155.1-linux-x64/"
         "lib/node_modules/@openai/codex/bin/codex.js" in links
+    )
+    # The wrapper gives Codex the pinned roots unless the caller chose its own.
+    assert (
+        '[ -n "$CODEX_CA_CERTIFICATE" ] || export CODEX_CA_CERTIFICATE='
+        "/opt/openagents/toolchain/ca-bundle-2026.7.22-linux-x64/cacert.pem"
+        in links
     )
     # The layer's Node links only where the image has no Node of its own.
     assert "[ -e /usr/local/bin/node ] || ln -sf" in links

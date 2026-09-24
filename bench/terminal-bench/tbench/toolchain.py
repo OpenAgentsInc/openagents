@@ -17,6 +17,12 @@ C library, so the platform is the whole image identity they need. Layers
 hold public release files only: no credential, no task state. The build
 scans each layer for the host's credential values anyway, and refuses a
 layer that holds one.
+
+Codex also gets a CA bundle layer. Codex verifies TLS against the image's
+root certificates, and some task images, such as ``bun-sourcemap-leak``,
+have none: every connection then fails with ``UnknownIssuer`` and Codex
+retries until its deadline (issue #9581). Claude Code bundles its own
+roots, so it needs no such layer.
 """
 
 from __future__ import annotations
@@ -54,6 +60,27 @@ NODE_SHA256 = {
 NODE_URL = "https://nodejs.org/dist/v{version}/node-v{version}-{platform}.tar.xz"
 NPM_REGISTRY = "https://registry.npmjs.org"
 CLAUDE_RELEASES = "https://downloads.claude.ai/claude-code-releases"
+
+# Mozilla's root certificates as the certifi 2026.7.22 wheel packages them,
+# pinned with the wheel's sha256 from PyPI and the extracted bundle's own
+# sha256, so every build yields the same bytes. The file's path in PyPI's
+# storage is content-addressed.
+CA_BUNDLE = {
+    "version": "2026.7.22",
+    "url": (
+        "https://files.pythonhosted.org/packages/0b/a7/"
+        "71ac2cff56fec219ed242bb11b8efb69fcc4bec75db06fb7bfe35de520e6/"
+        "certifi-2026.7.22-py3-none-any.whl"
+    ),
+    "sha256": "62f22742b58a1a33014a2b6b706588a8d7e2a88ae7bd1a6ebe8c992928483775",
+    "member": "certifi/cacert.pem",
+    "pem_sha256": "9cc2a774b5198dcff14d9be1e66091f538975d867ce029a96bce15a55dfd730f",
+}
+CA_BUNDLE_FILE = "cacert.pem"
+# Codex's own variable for extra roots. It reaches Codex alone, where
+# ``SSL_CERT_FILE`` would also hand the task's own tools a CA store the
+# image doesn't have.
+CODEX_CA_VARIABLE = "CODEX_CA_CERTIFICATE"
 
 Fetch = Callable[[str], bytes]
 
@@ -193,6 +220,34 @@ def _build_codex(spec: LayerSpec, root: Path, fetch: Fetch) -> dict[str, Any]:
     }
 
 
+def _build_ca_bundle(spec: LayerSpec, root: Path, fetch: Fetch) -> dict[str, Any]:
+    import zipfile
+
+    if spec.version != CA_BUNDLE["version"]:
+        raise ToolchainError(
+            f"CA bundle {spec.version} isn't pinned; the pinned bundle is "
+            f"{CA_BUNDLE['version']}"
+        )
+    data = fetch(CA_BUNDLE["url"])
+    if _sha256(data) != CA_BUNDLE["sha256"]:
+        raise ToolchainError(f"{CA_BUNDLE['url']} doesn't match its pinned sha256")
+    with zipfile.ZipFile(io.BytesIO(data)) as wheel:
+        pem = wheel.read(CA_BUNDLE["member"])
+    if _sha256(pem) != CA_BUNDLE["pem_sha256"]:
+        raise ToolchainError(f"{CA_BUNDLE['member']} doesn't match its pinned sha256")
+    (root / CA_BUNDLE_FILE).write_bytes(pem)
+    return {
+        "source": {
+            "url": CA_BUNDLE["url"],
+            "sha256": CA_BUNDLE["sha256"],
+            "member": CA_BUNDLE["member"],
+            "member_sha256": CA_BUNDLE["pem_sha256"],
+        },
+        "links": {},
+        "certificates": pem.count(b"-----BEGIN CERTIFICATE-----"),
+    }
+
+
 def _build_claude(spec: LayerSpec, root: Path, fetch: Fetch) -> dict[str, Any]:
     base = f"{CLAUDE_RELEASES}/{spec.version}"
     manifest = json.loads(fetch(f"{base}/manifest.json"))
@@ -221,6 +276,7 @@ BUILDERS: dict[str, Callable[[LayerSpec, Path, Fetch], dict[str, Any]]] = {
     "node": _build_node,
     "codex": _build_codex,
     "claude-code": _build_claude,
+    "ca-bundle": _build_ca_bundle,
 }
 
 
@@ -328,7 +384,11 @@ def layers_for(executor: str, version: str, platform: str) -> list[LayerSpec]:
     """The layers one executor needs, Node first."""
     node = LayerSpec("node", NODE_VERSION, platform)
     if executor == "codex":
-        return [node, LayerSpec("codex", version, platform)]
+        return [
+            node,
+            LayerSpec("ca-bundle", CA_BUNDLE["version"], platform),
+            LayerSpec("codex", version, platform),
+        ]
     if executor == "claude-code":
         # Claude Code is one native binary; Node rides along because the
         # network install put Node on the PATH, and a delegate may use it.
@@ -349,6 +409,13 @@ def _node_binary(layers: list[Layer]) -> PurePosixPath | None:
     return None
 
 
+def _ca_bundle(layers: list[Layer]) -> PurePosixPath | None:
+    for layer in layers:
+        if layer.spec.name == "ca-bundle":
+            return layer.spec.container_dir / CA_BUNDLE_FILE
+    return None
+
+
 def link_command(layers: list[Layer]) -> str:
     """The root command that puts every layer's executables on the PATH.
 
@@ -356,9 +423,13 @@ def link_command(layers: list[Layer]) -> str:
     none of its own there, so a task's own Node version survives. A layer
     that runs on Node (Codex) gets a small wrapper that starts the pinned
     Node by absolute path, so it works whatever Node the image carries.
+    With a CA bundle layer, the Codex wrapper also points
+    ``CODEX_CA_CERTIFICATE`` at the bundle unless the caller set it, so
+    Codex has the same roots in every image.
     """
     parts = [f"mkdir -p {LINK_DIR}"]
     node = _node_binary(layers)
+    bundle = _ca_bundle(layers)
     for layer in layers:
         for name, relative in sorted(layer.links.items()):
             target = layer.spec.container_dir / relative
@@ -366,8 +437,14 @@ def link_command(layers: list[Layer]) -> str:
             if name in KEEP_IMAGE_LINKS:
                 parts.append(f"{{ [ -e {link} ] || ln -sf {target} {link}; }}")
             elif "node" in (layer.manifest.get("requires") or []) and node:
+                roots = (
+                    f'[ -n "${CODEX_CA_VARIABLE}" ] || '
+                    f"export {CODEX_CA_VARIABLE}={bundle}\\n"
+                    if bundle and layer.spec.name == "codex"
+                    else ""
+                )
                 parts.append(
-                    f"rm -f {link} && printf '#!/bin/sh\\nexec {node} {target} "
+                    f"rm -f {link} && printf '#!/bin/sh\\n{roots}exec {node} {target} "
                     f"\"$@\"\\n' > {link} && chmod 755 {link}"
                 )
             else:
@@ -482,6 +559,8 @@ async def place_toolchain(
     clock = lap("link", clock)
     versions: dict[str, str] = {}
     for layer in layers:
+        if "version_command" not in layer.manifest:
+            continue
         command = layer.manifest["version_command"]
         name = command.split()[0]
         executable = version_executable(layer, name)
@@ -549,7 +628,8 @@ def check_image(
     for layer in layers:
         mounts += ["-v", f"{layer.root}:{layer.spec.container_dir}:ro"]
     checks = []
-    for layer in layers:
+    versioned = [layer for layer in layers if "version_command" in layer.manifest]
+    for layer in versioned:
         command = layer.manifest["version_command"]
         name = command.split()[0]
         checks.append(f"{version_executable(layer, name)} {command.split(' ', 1)[1]}")
@@ -558,7 +638,7 @@ def check_image(
     words = text.split()
     missing = [
         layer.manifest["expected_version"]
-        for layer in layers
+        for layer in versioned
         if layer.manifest["expected_version"] not in words
     ]
     ok = code == 0 and not missing
