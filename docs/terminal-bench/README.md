@@ -199,6 +199,7 @@ still need the quota audit. See [harness validation](tb4-results.md#harness-vali
 
 | Document | Contents |
 | --- | --- |
+| [Best-of-N Luna, selected by the combined verdict](2026-09-24-best-of-n-luna.md) | Incomplete: `control.best_of` and how it keeps a candidate, mini-task runs with each candidate graded, and the 8 TB4 trials graded before the operator stopped Codex runs, with the one oracle hit the selection lost and what's needed to close #9587. |
 | [Microluna against Luna-in-Codex](2026-09-24-microluna.md) | Coder One's in-process Luna executor and its mini-handoff loop against Luna in the Codex CLI: four mini-tasks with passes, cost, time, and sessions per task; three TB4 tasks matched to #9583; the CRLF grader mismatch behind every `log-severity` failure; a worked handoff trace; and the two fixes the runs drove. |
 | [Strategy fingerprints, Fable against Luna and Coder One](2026-09-24-strategy-fingerprints.md) | Every step of 505 trajectories on the Luna baseline subset placed in a phase, per-trajectory fingerprints, a worked Fable-against-Luna example, the candidate moves ranked with task counts, effect sizes, and run and step citations, what didn't separate winners from losers, and the Jev cost. |
 | [Truthful checks, calibrated against graded runs](2026-09-24-truthful-checks.md) | The 317-trial label set split by task, every check signal's fail precision, failure recall, and pass rate with Wilson intervals, the combined verdict's held-out numbers against today's checks, the signals it drops, and what labeled data would close the issue. |
