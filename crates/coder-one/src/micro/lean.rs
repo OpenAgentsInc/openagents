@@ -164,7 +164,18 @@ pub struct Lean {
     /// The lanes' wall-time bound in seconds; 0 leaves the loop's.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub lane_sec: u64,
+    /// Put the tail of the frozen score's last output, the failures it
+    /// names, in each later brief, and add the failure practice
+    /// ([`FAILURES`]).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub failures: bool,
 }
+
+/// Added with `failures`. Sessions on the search tasks edited toward
+/// the score without the score's own list of what still failed.
+pub const FAILURES: &str = "Work from the failures. After each change, look at what the \
+evaluation still fails, group the failures by the smallest difference they share, and fix the \
+largest group first; make your evaluation print the failing cases so you can see them.";
 
 #[allow(clippy::trivially_copy_pass_by_ref)]
 fn is_zero_u32(n: &u32) -> bool {
@@ -1070,6 +1081,7 @@ impl Micro {
             (lean.symptoms, SYMPTOMS),
             (lean.example_first, EXAMPLE_FIRST),
             (lean.standard_forms, STANDARD_FORMS),
+            (lean.failures, FAILURES),
         ] {
             if on {
                 general.push_str("\n\n");
@@ -1156,6 +1168,7 @@ impl Micro {
         }
         let mut history: Vec<String> = Vec::new();
         let mut flag_note: Option<String> = None;
+        let mut last_tail: Option<String> = None;
         let mut stopped = String::new();
         let lanes = if lean.keep_best && lean.lanes > 1 && parallel::copyable(&self.workdir) {
             lean.lanes as usize
@@ -1325,6 +1338,9 @@ impl Micro {
                 if let Some(note) = &flag_note {
                     state.push(note.clone());
                 }
+                if let Some(tail) = &last_tail {
+                    state.push(tail.clone());
+                }
                 let changes = match &base {
                     Some(base) => crate::delegate::changes_since(base, &self.workdir),
                     None => crate::delegate::changes(&self.workdir, None),
@@ -1464,6 +1480,12 @@ impl Micro {
                         )
                 )
             });
+            if lean.failures && have_score {
+                last_tail = Some(format!(
+                    "The host's evaluation output after session {number}, its tail:\n{}",
+                    crate::judge::clip(&score_tail, 1_500)
+                ));
+            }
             if let Some((p, t)) = score {
                 history.push(format!(
                     "After session {number} the host's score was {p} of {t}{}.",

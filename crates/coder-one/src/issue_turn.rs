@@ -887,8 +887,104 @@ async fn gate(workdir: &Path, jev: Option<&jev::Client>, recorder: &Recorder) ->
     problems.extend(unsourced_figures(workdir, &diff));
     problems.extend(broken_links(workdir, &diff));
     problems.extend(stale_dependents(workdir, jev, recorder).await);
+    problems.extend(unclear_text(&diff, jev, recorder).await);
     problems
 }
+
+/// The most added texts the plain-language check asks about.
+const PLAIN_MAX: usize = 12;
+
+/// The Noul the plain-language check asks about each added text.
+pub const PLAIN_QUESTION: &str = "Would a reader who has never seen this project's code \
+understand the text in `texts.{id}` as written: plain words and complete phrases, with no \
+shorthand, cryptic abbreviations, or symbols standing in for words?";
+
+/// Added interface strings and prose lines that, as Jev reads them, a
+/// newcomer wouldn't understand: a view line once read "screen, not TB4;
+/// script <10 s $0".
+async fn unclear_text(diff: &str, jev: Option<&jev::Client>, recorder: &Recorder) -> Vec<String> {
+    let Some(client) = jev else {
+        return Vec::new();
+    };
+    let mut texts: Vec<(String, String)> = Vec::new();
+    let mut file = String::new();
+    let mut fenced = false;
+    for line in diff.lines() {
+        if let Some(path) = line.strip_prefix("+++ b/") {
+            file = path.to_string();
+            fenced = false;
+            continue;
+        }
+        let Some(added) = line.strip_prefix('+') else {
+            continue;
+        };
+        if file.ends_with(".md") && added.trim_start().starts_with("```") {
+            fenced = !fenced;
+            continue;
+        }
+        let candidates = if file.ends_with(".md") && !fenced {
+            vec![strip_code(added)]
+        } else if file.ends_with(".rs") && !added.trim_start().starts_with("assert") {
+            string_literals(added)
+        } else {
+            Vec::new()
+        };
+        for text in candidates {
+            let text = text.trim().to_string();
+            if text.split_whitespace().count() >= 4 && !texts.iter().any(|(_, seen)| *seen == text)
+            {
+                texts.push((file.clone(), text));
+            }
+        }
+    }
+    texts.truncate(PLAIN_MAX);
+    if texts.is_empty() {
+        return Vec::new();
+    }
+    let mut questions = jev::Questions::new();
+    let mut named = serde_json::Map::new();
+    for (i, (_, text)) in texts.iter().enumerate() {
+        let id = format!("t{}", i + 1);
+        named.insert(id.clone(), json!(text));
+        questions = questions.with(
+            format!("plain_{}", i + 1),
+            jev::Noul::new(PLAIN_QUESTION.replace("{id}", &id)),
+        );
+    }
+    let asked = crate::component::jev::ask(
+        &crate::component::jev::JevMode::Live(client.clone()),
+        recorder,
+        crate::component::jev::Ask {
+            component: "issue.gate",
+            name: "jev_plain_text",
+            id: "jev_plain_text-1".to_string(),
+            state: json!({ "texts": named }),
+            questions,
+            parent: None,
+            deadline: None,
+        },
+    )
+    .await;
+    texts
+        .iter()
+        .enumerate()
+        .filter_map(|(i, (file, text))| {
+            let p = asked.noul(&format!("plain_{}", i + 1))?;
+            (p < PLAIN_FLAG).then(|| {
+                format!(
+                    "{file}: \"{}\" reads as shorthand (Jev {p:.2}); say it in plain, complete \
+                     words, and add a line rather than abbreviate",
+                    crate::judge::clip(text, 120)
+                )
+            })
+        })
+        .collect()
+}
+
+/// How sure Jev must be that a newcomer understands a text for it to
+/// pass. Measured on 2026-09-24: shorthand view lines read 0.04 and 0.06,
+/// and a plain sentence with figures 0.38, so the line sits between.
+const PLAIN_FLAG: f64 = 0.2;
 
 /// The request for a fix round: the problems, then the diff.
 fn fix_request(workdir: &Path, number: u64, problems: &[String]) -> String {
