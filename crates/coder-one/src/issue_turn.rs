@@ -79,6 +79,13 @@ pub fn references(text: &str) -> Vec<Reference> {
             continue;
         }
         let starts_word = index == 0 || !(bytes[index - 1].is_ascii_alphanumeric());
+        // "issue 9597" and "issues 9597" name an issue as surely as "#9597".
+        if starts_word && let Some(number) = issue_word(rest) {
+            push(Reference {
+                repository: None,
+                number,
+            });
+        }
         if bytes[index] == b'#' && starts_word {
             let digits: String = rest[1..].chars().take_while(char::is_ascii_digit).collect();
             let ends_word = rest[1 + digits.len()..]
@@ -100,6 +107,27 @@ pub fn references(text: &str) -> Vec<Reference> {
         index += rest.chars().next().map_or(1, char::len_utf8);
     }
     found
+}
+
+/// Reads `issue N` or `issues N` at the start of `rest`, in any case.
+fn issue_word(rest: &str) -> Option<u64> {
+    let head = rest.get(..5)?;
+    if !head.eq_ignore_ascii_case("issue") {
+        return None;
+    }
+    let after = rest[5..].strip_prefix(['s', 'S']).unwrap_or(&rest[5..]);
+    let spaced = after.trim_start_matches([' ', '\t']);
+    if spaced.len() == after.len() {
+        return None;
+    }
+    let digits: String = spaced.chars().take_while(char::is_ascii_digit).collect();
+    let ends_word = spaced[digits.len()..]
+        .chars()
+        .next()
+        .is_none_or(|c| !c.is_ascii_alphanumeric());
+    ((1..=7).contains(&digits.len()) && ends_word)
+        .then(|| digits.parse().ok())
+        .flatten()
 }
 
 /// Reads `owner/name/issues/N` at the start of `tail`: the repository,
@@ -197,7 +225,7 @@ pub async fn run(
     recorder: &Recorder,
 ) -> Answer {
     let prepared = prepare(request, &reference);
-    let (inner, workdir, branch, issue) = match prepared {
+    let (inner, workdir, source, branch, issue) = match prepared {
         Ok(prepared) => prepared,
         Err(why) => {
             say!("issue ▸ could not start the issue flow: {why}");
@@ -221,16 +249,41 @@ pub async fn run(
 
     let reply = answer.report.summary.result.clone().unwrap_or_default();
     let finished = matches!(answer.report.status, crate::delegate::Status::Answered);
-    let outcome = land(&workdir, &branch, &issue, &reply, finished);
+    // The pull request says what every session did: the last reply alone
+    // once read "R3 is already addressed", about a run that changed three
+    // files.
+    let what = if answer.summaries.is_empty() {
+        reply.trim().to_string()
+    } else {
+        answer
+            .summaries
+            .iter()
+            .map(|summary| format!("- {summary}"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let outcome = land(&workdir, &branch, &issue, &what, finished);
+    if outcome
+        .as_ref()
+        .is_ok_and(|line| line.starts_with("Opened"))
+        && let Some(source) = &source
+    {
+        // The branch is pushed, so the worktree has nothing left to keep.
+        let _ = command(
+            source,
+            "git",
+            &["worktree", "remove", "--force", &workdir.to_string_lossy()],
+        );
+    }
     let closing = match outcome {
         Ok(line) => line,
         Err(why) => format!("The run's changes stay in {}: {why}", workdir.display()),
     };
     say!("issue ▸ {closing}");
-    answer.report.summary.result = Some(if reply.trim().is_empty() {
+    answer.report.summary.result = Some(if what.is_empty() {
         closing
     } else {
-        format!("{}\n\n{closing}", reply.trim())
+        format!("{what}\n\n{closing}")
     });
     answer
 }
@@ -240,7 +293,7 @@ pub async fn run(
 fn prepare(
     request: &Request,
     reference: &Reference,
-) -> Result<(Request, PathBuf, String, Fetched), String> {
+) -> Result<(Request, PathBuf, Option<PathBuf>, String, Fetched), String> {
     let repository = match &reference.repository {
         Some(repository) => repository.clone(),
         None => command(
@@ -296,23 +349,48 @@ fn prepare(
     let workdir = run_dir.join("repo");
     std::fs::create_dir_all(&run_dir)
         .map_err(|error| format!("cannot create {}: {error}", run_dir.display()))?;
-    say!("issue ▸ cloning {repository} into {}", workdir.display());
-    command(
-        &run_dir,
-        "gh",
-        &[
-            "repo",
-            "clone",
-            &repository,
-            &workdir.to_string_lossy(),
-            "--",
-            "--depth",
-            "1",
-            "--quiet",
-        ],
-    )?;
     let branch = format!("coder/issue-{number}-{stamp}");
-    command(&workdir, "git", &["checkout", "-q", "-b", &branch])?;
+    // A local checkout of the same repository lends a worktree: a fetch and
+    // a checkout take seconds, and a push from full history is quick. A
+    // shallow clone took 16 s, and pushing from it 50 s more.
+    let source = local_checkout(&request.workdir, &repository);
+    if let Some(source) = &source {
+        let base = default_branch(source);
+        say!(
+            "issue ▸ worktree of {} at origin/{base} in {}",
+            source.display(),
+            workdir.display()
+        );
+        command(source, "git", &["fetch", "-q", "origin", &base])?;
+        command(
+            source,
+            "git",
+            &[
+                "worktree",
+                "add",
+                "-q",
+                "-b",
+                &branch,
+                &workdir.to_string_lossy(),
+                &format!("origin/{base}"),
+            ],
+        )?;
+    } else {
+        say!("issue ▸ cloning {repository} into {}", workdir.display());
+        command(
+            &run_dir,
+            "gh",
+            &[
+                "repo",
+                "clone",
+                &repository,
+                &workdir.to_string_lossy(),
+                "--",
+                "--quiet",
+            ],
+        )?;
+        command(&workdir, "git", &["checkout", "-q", "-b", &branch])?;
+    }
 
     let inner = Request {
         workdir: workdir.clone(),
@@ -331,7 +409,32 @@ fn prepare(
         artifacts: run_dir.join("artifacts"),
         ..request.clone()
     };
-    Ok((inner, workdir, branch, issue))
+    Ok((inner, workdir, source, branch, issue))
+}
+
+/// The top of the git checkout at `dir` when its `origin` is
+/// `repository` on GitHub.
+fn local_checkout(dir: &Path, repository: &str) -> Option<PathBuf> {
+    let top = command(dir, "git", &["rev-parse", "--show-toplevel"]).ok()?;
+    let top = PathBuf::from(top.trim());
+    let origin = command(&top, "git", &["remote", "get-url", "origin"]).ok()?;
+    let origin = origin.trim().trim_end_matches('/').trim_end_matches(".git");
+    let named = origin
+        .rsplit_once("github.com")
+        .map(|(_, path)| path.trim_start_matches([':', '/']))?;
+    named.eq_ignore_ascii_case(repository).then_some(top)
+}
+
+/// The branch `origin/HEAD` names in `checkout`, or `main`.
+fn default_branch(checkout: &Path) -> String {
+    command(
+        checkout,
+        "git",
+        &["symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
+    )
+    .ok()
+    .and_then(|name| name.trim().strip_prefix("origin/").map(str::to_string))
+    .unwrap_or_else(|| "main".to_string())
 }
 
 /// Commits what the run changed, pushes the branch, and opens a draft
@@ -369,6 +472,7 @@ fn land(
     } else {
         reply.trim().to_string()
     };
+    let stat = stat.trim();
     command(
         workdir,
         "git",
@@ -376,7 +480,10 @@ fn land(
     )?;
     say!("issue ▸ pushing {branch}");
     command(workdir, "git", &["push", "-q", "-u", "origin", branch])?;
-    let body = format!("{summary}\n\nCloses {}\n\n---\nOpened by Coder.", issue.url);
+    let body = format!(
+        "{summary}\n\n{stat}\n\nCloses {}\n\n---\nOpened by Coder.",
+        issue.url
+    );
     let pr = command(
         workdir,
         "gh",
@@ -433,6 +540,13 @@ mod tests {
             Some("OpenAgentsInc/openagents")
         );
         assert_eq!(found[1].repository, None);
+    }
+
+    #[test]
+    fn the_word_issue_before_a_number_names_one() {
+        assert_eq!(numbers("work on issue 9597"), [9597]);
+        assert_eq!(numbers("Issues 12 and #13"), [12, 13]);
+        assert!(numbers("issue9597, issue 12a, tissue 5").is_empty());
     }
 
     #[test]

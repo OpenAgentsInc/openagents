@@ -220,6 +220,9 @@ pub struct Answer {
     pub model: String,
     /// The boundary it ran in, in words.
     pub boundary: String,
+    /// Each Microluna session's closing summary, in order and without
+    /// repeats: what a pull request says the run did. Empty for a CLI.
+    pub summaries: Vec<String>,
 }
 
 impl Answer {
@@ -587,6 +590,7 @@ pub async fn answer(request: &Request, on: Rc<dyn Fn(Progress)>) -> Answer {
         agent: cli.agent,
         model: cli.model.clone(),
         boundary: boundary_words.to_string(),
+        summaries: Vec::new(),
     }
 }
 
@@ -853,7 +857,24 @@ async fn microluna_turn(turn: Turn<'_>) -> Answer {
         agent: Agent::Microluna,
         model,
         boundary: boundary_words.to_string(),
+        summaries: session_summaries(&record),
     }
+}
+
+/// Each session's finish summary in `record`, in order and without
+/// repeats.
+fn session_summaries(record: &Value) -> Vec<String> {
+    let mut kept: Vec<String> = Vec::new();
+    for session in record["sessions"].as_array().into_iter().flatten() {
+        let summary = session["finish"]["summary"]
+            .as_str()
+            .unwrap_or_default()
+            .trim();
+        if !summary.is_empty() && !kept.iter().any(|seen| seen == summary) {
+            kept.push(summary.to_string());
+        }
+    }
+    kept
 }
 
 /// The reply a Microluna turn gives: each requirement group's last
