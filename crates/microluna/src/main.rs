@@ -2,8 +2,15 @@
 //!
 //! ```text
 //! microluna [--workspace DIR] [--model SLUG] [--effort LEVEL]
-//!           [--max-turns N] [--evidence FILE]... [--no-trace] TASK...
+//!           [--max-turns N] [--evidence FILE]... [--no-trace]
+//!           [--task-container] [--take-login] TASK...
 //! ```
+//!
+//! `--task-container` runs commands directly, as a Terminal-Bench trial
+//! does, for a process that already runs in a disposable container.
+//! `--take-login` reads the Codex login into memory and removes the file
+//! before the session starts, so the model's commands can't read it
+//! (issue #9599).
 //!
 //! The session's steps print to standard error as they happen. The typed
 //! finish, the usage, and the cost print to standard output as JSON. The
@@ -13,11 +20,11 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use microluna::codex::{CodexTransport, Login};
-use microluna::{Brief, Config, Ending, Evidence, Recorder, Workspace, run};
+use microluna::{Brief, Config, Ending, Evidence, Isolation, Recorder, Workspace, run};
 use serde_json::json;
 
 const USAGE: &str = "usage: microluna [--workspace DIR] [--model SLUG] [--effort LEVEL] \
-[--max-turns N] [--evidence FILE]... [--no-trace] TASK...";
+[--max-turns N] [--evidence FILE]... [--no-trace] [--task-container] [--take-login] TASK...";
 
 struct Args {
     workspace: PathBuf,
@@ -26,6 +33,8 @@ struct Args {
     max_turns: Option<usize>,
     evidence: Vec<PathBuf>,
     trace: bool,
+    task_container: bool,
+    take_login: bool,
     task: String,
 }
 
@@ -37,6 +46,8 @@ fn args() -> Result<Args, String> {
         max_turns: None,
         evidence: Vec::new(),
         trace: true,
+        task_container: false,
+        take_login: false,
         task: String::new(),
     };
     let mut words = Vec::new();
@@ -56,6 +67,8 @@ fn args() -> Result<Args, String> {
             }
             "--evidence" => args.evidence.push(PathBuf::from(value("--evidence")?)),
             "--no-trace" => args.trace = false,
+            "--task-container" => args.task_container = true,
+            "--take-login" => args.take_login = true,
             "-h" | "--help" => return Err(USAGE.to_string()),
             flag if flag.starts_with("--") => return Err(format!("unknown flag {flag}\n{USAGE}")),
             _ => words.push(arg),
@@ -78,6 +91,7 @@ async fn main() -> ExitCode {
         }
     };
     let workspace = match Workspace::new(&args.workspace) {
+        Ok(workspace) if args.task_container => workspace.isolated_by(Isolation::TaskContainer),
         Ok(workspace) => workspace,
         Err(error) => {
             eprintln!("microluna: can't use {}: {error}", args.workspace.display());
@@ -111,7 +125,12 @@ async fn main() -> ExitCode {
         eprintln!("microluna: no home directory to find the Codex login in");
         return ExitCode::from(2);
     };
-    let transport = match CodexTransport::new(login, &session_id) {
+    let transport = if args.take_login {
+        Login::take(&login).and_then(|login| CodexTransport::holding(login, &session_id))
+    } else {
+        CodexTransport::new(login, &session_id)
+    };
+    let transport = match transport {
         Ok(transport) => transport,
         Err(error) => {
             eprintln!("microluna: {error}");

@@ -419,6 +419,71 @@ def test_the_microluna_arm_installs_no_cli_and_places_only_the_codex_login(tmp_p
     manifest = json.loads(env["CODER_ONE_POLICY"])
     assert manifest["policy"]["executor"]["agent"] == "microluna"
     assert "handoff" not in manifest["policy"]["control"]
+    # The episode takes the login off the disk before any model command.
+    assert env["CODER_ONE_CODEX_LOGIN"] == "take"
+
+
+def test_the_microluna_arm_places_a_login_the_episode_can_remove(tmp_path, monkeypatch):
+    auth = tmp_path / "auth.json"
+    auth.write_text("{}")
+    monkeypatch.setenv("CODEX_AUTH_JSON_PATH", str(auth))
+    path, digest = _binary(tmp_path)
+    agent = CoderOneTunable(
+        logs_dir=tmp_path,
+        artifact_path=path,
+        artifact_sha256=digest,
+        policy="crates/coder-one/policies/microluna-v7.json",
+    )
+
+    class Environment(_CodexEnvironment):
+        default_user = "agent"
+
+        async def exec(self, command: str, env=None, **_: object) -> _Result:
+            if "episode doctor" in command:
+                self.commands.append(command)
+                self.envs.append(dict(env or {}))
+                name = json.loads(env["CODER_ONE_POLICY"])["name"]
+                return _Result(
+                    f"policy: {name} 0123 (inline)\n"
+                    "microluna login: take (read into memory and removed when the run starts)\nok\n"
+                )
+            return await super().exec(command, env=env)
+
+    import json
+
+    environment = Environment()
+    asyncio.run(agent.install(environment))
+    placed = next(command for command in environment.commands if "ln -sf" in command)
+    assert "chown agent /tmp/codex-secrets/auth.json /tmp/codex-home /tmp/codex-secrets" in placed
+    assert "chmod 700 /tmp/codex-home /tmp/codex-secrets" in placed
+    doctor_env = next(
+        env
+        for command, env in zip(environment.commands, environment.envs)
+        if "episode doctor" in command
+    )
+    assert doctor_env["CODER_ONE_CODEX_LOGIN"] == "take"
+
+
+def test_an_artifact_that_leaves_the_login_on_disk_is_refused(tmp_path):
+    path, digest = _binary(tmp_path)
+    agent = CoderOneTunable(
+        logs_dir=tmp_path,
+        artifact_path=path,
+        artifact_sha256=digest,
+        policy="crates/coder-one/policies/microluna-v1.json",
+    )
+    report = "policy: coder-one-microluna-v1 abc (inline)\nok\n"
+    with pytest.raises(EpisodeContractError, match="issue #9599"):
+        agent._check_doctor_report(report)
+    agent._check_doctor_report(
+        report + "microluna login: take (read into memory and removed when the run starts)\n"
+    )
+
+
+def test_an_arm_with_the_codex_cli_keeps_the_login_file(tmp_path):
+    agent = _tunable(tmp_path)
+    assert not agent._takes_codex_login()
+    assert "CODER_ONE_CODEX_LOGIN" not in agent._episode_env()
 
 
 def test_the_v4_manifest_names_astra_through_its_families_and_second_executor():

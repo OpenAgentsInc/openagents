@@ -269,6 +269,26 @@ commands run directly (`Isolation::TaskContainer`). On this machine, as
 in a mini-task, each command runs inside a `coder-boundary` boundary that
 lets it write only the task's directory.
 
+**The login in a task container** (issue #9599). The model's commands run
+as the same user as Coder One, so a login file on disk is a login the
+model can read. When Microluna is the only tier that needs the login, the
+adapter sets `CODER_ONE_CODEX_LOGIN=take`, and `episode run` does the
+following before anything else, and so before any model command:
+
+1. Marks the process non-dumpable (`PR_SET_DUMPABLE` 0). Its
+   `/proc/<pid>/mem`, `environ`, `maps`, and `fd` then need
+   `CAP_SYS_PTRACE`, which a task container doesn't grant, even to root.
+2. Reads the login into memory (`Login::take`), then removes the file
+   and the `CODEX_HOME` link to it. If the file can't be removed, the
+   episode stops before it runs anything.
+
+Every Microluna session then sends with the login in memory. That works
+because Microluna never refreshes the token. The episode doctor confirms
+the take, and the adapter refuses an artifact whose doctor doesn't. An
+arm that installs the Codex CLI keeps the file, because the CLI reads it
+for the whole run. `microluna --task-container --take-login` does the
+same outside Coder One.
+
 Each session is a `microluna.session` invocation in the episode log. Its
 tool calls and replies are recorded as normalized executor events, the
 shape the CLI adapters record, so the Gym reads a Microluna session the

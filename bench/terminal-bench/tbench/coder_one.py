@@ -40,7 +40,11 @@ cold or warm cache state, and the install phases.
 ``CoderOneTunable`` runs the tunable composition (``control.route``,
 ``control.handoff``, ``control.horizon``, and ``verify``): its manifest can
 dispatch to Claude Code and to Codex in one episode, so it installs both
-CLIs from prebuilt layers and places both credentials.
+CLIs from prebuilt layers and places both credentials. When Microluna is the
+only tier that needs the Codex login, the episode reads it into memory and
+removes it before any model command runs (``CODER_ONE_CODEX_LOGIN=take``,
+issue #9599), and the adapter refuses an artifact whose doctor doesn't
+confirm that. An arm that installs the Codex CLI keeps the file for the run.
 
 Every arm sizes its episode from the task's own agent timeout: the adapter
 reads the trial's ``lock.json`` and the task's ``task.toml`` for Harbor's
@@ -258,6 +262,11 @@ DEFAULT_MODELS = {"claude-code": "claude-opus-5-5", "codex": "gpt-6-luna"}
 CODEX_HOME = PurePosixPath("/tmp/codex-home")
 CODEX_SECRETS = PurePosixPath("/tmp/codex-secrets")
 CODEX_BIN = PurePosixPath("/usr/local/bin/codex")
+# A Microluna-only arm asks the episode to read the login into memory and
+# remove it before any model command runs (issue #9599); the doctor
+# confirms it with this line.
+TAKE_LOGIN_VAR = "CODER_ONE_CODEX_LOGIN"
+TAKE_LOGIN_LINE = "microluna login: take"
 _TRUTHY = ("1", "true", "yes", "on")
 TOOLCHAIN_MODES = ("prebuilt", "network")
 
@@ -571,23 +580,32 @@ class CoderOneDelegate(CoderOne):
         self._codex_bin = str(CODEX_BIN)
         await self._place_codex_auth(environment, auth)
 
-    async def _place_codex_auth(self, environment: BaseEnvironment, auth: Path) -> None:
+    async def _place_codex_auth(
+        self, environment: BaseEnvironment, auth: Path, *, take: bool = False
+    ) -> None:
         """Place the Codex login under ``CODEX_HOME``, owned by the agent's
-        user and readable only by it."""
+        user and readable only by it.
+
+        With ``take``, the episode removes the login once it has read it
+        (issue #9599), so both directories also belong to the agent's user
+        and close to everyone else.
+        """
         remote_auth = CODEX_SECRETS / "auth.json"
         await self.exec_as_root(
             environment, command=f"mkdir -p {CODEX_HOME} {CODEX_SECRETS}"
         )
         await environment.upload_file(str(auth), str(remote_auth))
+        owned = f"{remote_auth} {CODEX_HOME}" + (f" {CODEX_SECRETS}" if take else "")
         owner = (
-            f"chown {environment.default_user} {remote_auth} {CODEX_HOME} && "
+            f"chown {environment.default_user} {owned} && "
             if environment.default_user is not None
             else ""
         )
+        closed = f"chmod 700 {CODEX_HOME} {CODEX_SECRETS} && " if take else ""
         await self.exec_as_root(
             environment,
             command=(
-                f"{owner}chmod 600 {remote_auth} && "
+                f"{owner}{closed}chmod 600 {remote_auth} && "
                 f"ln -sf {remote_auth} {CODEX_HOME / 'auth.json'}"
             ),
         )
@@ -799,6 +817,17 @@ class CoderOneTunable(CoderOneDelegate):
         Microluna in process."""
         return "codex" in self._agents or "microluna" in getattr(self, "_in_process", set())
 
+    def _takes_codex_login(self) -> bool:
+        """Whether the episode takes the Codex login off the disk when it
+        starts (issue #9599): Microluna needs it, and no Codex CLI does.
+
+        Microluna reads the login once into memory. The Codex CLI reads its
+        file for the whole run, so an arm that installs it keeps the file.
+        """
+        return "microluna" in getattr(self, "_in_process", set()) and (
+            "codex" not in self._agents
+        )
+
     async def install(self, environment: BaseEnvironment) -> None:
         """Install every CLI the manifest can dispatch to, place their
         credentials, then Coder One and its doctor."""
@@ -818,7 +847,9 @@ class CoderOneTunable(CoderOneDelegate):
         if auth is not None and "codex" in self._agents:
             await self._place_codex(environment, auth)
         elif auth is not None:
-            await self._place_codex_auth(environment, auth)
+            await self._place_codex_auth(
+                environment, auth, take=self._takes_codex_login()
+            )
         if "claude-code" in self._agents:
             await self._check_claude(environment)
         # Coder One itself, and its doctor, which checks every CLI the
@@ -845,4 +876,18 @@ class CoderOneTunable(CoderOneDelegate):
             env["CODEX_HOME"] = str(CODEX_HOME)
             if self._codex_bin:
                 env["CODER_ONE_CODEX_BIN"] = self._codex_bin
+        if self._takes_codex_login():
+            env[TAKE_LOGIN_VAR] = "take"
         return env
+
+    def _check_doctor_report(self, report: str) -> None:
+        """Also refuses an artifact that would leave the Codex login on disk
+        for the model's commands: one whose doctor doesn't confirm it takes
+        the login when the run starts."""
+        super()._check_doctor_report(report)
+        if self._takes_codex_login() and TAKE_LOGIN_LINE not in report:
+            raise EpisodeContractError(
+                "the artifact's doctor didn't confirm it takes the Codex login "
+                f"({TAKE_LOGIN_VAR}=take); it predates issue #9599 and would leave "
+                "the login readable to the model's commands"
+            )

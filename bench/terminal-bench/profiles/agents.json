@@ -2606,7 +2606,7 @@
             "ANTHROPIC_API_KEY",
             "ANTHROPIC_AUTH_TOKEN"
           ],
-          "note": "The door and Jev keys as in coder-one. Microluna signs in with the host's ChatGPT-account auth.json, which the adapter places in the container under CODEX_HOME and removes after the run; Microluna only reads it and never refreshes it. No Claude credential is forwarded, and no CLI installs."
+          "note": "The door and Jev keys as in coder-one. Microluna signs in with the host's ChatGPT-account auth.json, which the adapter places in the container under CODEX_HOME; Coder One reads it into memory and removes it before any model command runs (CODER_ONE_CODEX_LOGIN=take, issue #9599), and the adapter removes what is left after the run. Microluna never refreshes it. No Claude credential is forwarded, and no CLI installs."
         }
       },
       "note": "Coder One with Microluna as the executor (crates/coder-one/policies/microluna-v1.json): GPT-6 Luna in the Coder One process on the Codex login, the mini-handoff loop over the requirement map with checks and a Jev move between short sessions, verify.checks, and one verify.repair on Microluna. Nothing escalates; no Claude Code or Codex CLI installs. Issue #9585."
@@ -2657,7 +2657,7 @@
             "ANTHROPIC_API_KEY",
             "ANTHROPIC_AUTH_TOKEN"
           ],
-          "note": "The door and Jev keys as in coder-one. Microluna signs in with the host's ChatGPT-account auth.json, which the adapter places in the container under CODEX_HOME and removes after the run; Microluna only reads it and never refreshes it. No Claude credential is forwarded, and no CLI installs."
+          "note": "The door and Jev keys as in coder-one. Microluna signs in with the host's ChatGPT-account auth.json, which the adapter places in the container under CODEX_HOME; Coder One reads it into memory and removes it before any model command runs (CODER_ONE_CODEX_LOGIN=take, issue #9599), and the adapter removes what is left after the run. Microluna never refreshes it. No Claude credential is forwarded, and no CLI installs."
         }
       },
       "note": "Coder One with Microluna and read_first: a read-only reconnaissance session on each requirement group before its edit sessions. Issue #9585."
@@ -2708,7 +2708,7 @@
             "ANTHROPIC_API_KEY",
             "ANTHROPIC_AUTH_TOKEN"
           ],
-          "note": "The door and Jev keys as in coder-one. Microluna signs in with the host's ChatGPT-account auth.json, which the adapter places in the container under CODEX_HOME and removes after the run; Microluna only reads it and never refreshes it. No Claude credential is forwarded, and no CLI installs."
+          "note": "The door and Jev keys as in coder-one. Microluna signs in with the host's ChatGPT-account auth.json, which the adapter places in the container under CODEX_HOME; Coder One reads it into memory and removes it before any model command runs (CODER_ONE_CODEX_LOGIN=take, issue #9599), and the adapter removes what is left after the run. Microluna never refreshes it. No Claude credential is forwarded, and no CLI installs."
         }
       },
       "note": "Coder One with Microluna, read_first, and the acceptance gate: a loop-ending move waits for verify.checks to confirm the focus. Issue #9585."
@@ -2759,7 +2759,7 @@
             "ANTHROPIC_API_KEY",
             "ANTHROPIC_AUTH_TOKEN"
           ],
-          "note": "The door and Jev keys as in coder-one. Microluna signs in with the host's ChatGPT-account auth.json, which the adapter places in the container under CODEX_HOME and removes after the run; Microluna only reads it and never refreshes it. No Claude credential is forwarded, and no CLI installs."
+          "note": "The door and Jev keys as in coder-one. Microluna signs in with the host's ChatGPT-account auth.json, which the adapter places in the container under CODEX_HOME; Coder One reads it into memory and removes it before any model command runs (CODER_ONE_CODEX_LOGIN=take, issue #9599), and the adapter removes what is left after the run. Microluna never refreshes it. No Claude credential is forwarded, and no CLI installs."
         }
       },
       "note": "Coder One with Microluna, v3's read_first and acceptance gate, and the loop's budget raised well above v3's: a 2400-second executor deadline, 30 sessions, 4 attempts per group, 900-second sessions, a $1.50 spend bound, and 20000 characters of per-session evidence. It tests whether Luna, cheap enough to run many more sessions, converges when the loop stops running out of budget before it runs out of ideas. Issue #9585."
@@ -2810,7 +2810,7 @@
             "ANTHROPIC_API_KEY",
             "ANTHROPIC_AUTH_TOKEN"
           ],
-          "note": "The door and Jev keys as in coder-one. Microluna signs in with the host's ChatGPT-account auth.json, which the adapter places in the container under CODEX_HOME and removes after the run; Microluna only reads it and never refreshes it. No Claude credential is forwarded, and no CLI installs."
+          "note": "The door and Jev keys as in coder-one. Microluna signs in with the host's ChatGPT-account auth.json, which the adapter places in the container under CODEX_HOME; Coder One reads it into memory and removes it before any model command runs (CODER_ONE_CODEX_LOGIN=take, issue #9599), and the adapter removes what is left after the run. Microluna never refreshes it. No Claude credential is forwarded, and no CLI installs."
         }
       },
       "note": "Coder One with Microluna, v4's raised budget, and focus_actionable: the loop groups only the behaviors, deliverables, and checks a session edits toward, and carries every constraint into each session as a binding decisive fact rather than as its own group. It tests whether keeping the decisive facts in front of a session, and not spending sessions on constraint-only groups, moves a task Luna oversimplifies. Issue #9585."
@@ -2861,7 +2861,7 @@
             "ANTHROPIC_API_KEY",
             "ANTHROPIC_AUTH_TOKEN"
           ],
-          "note": "The door and Jev keys as in coder-one. Microluna signs in with the host's ChatGPT-account auth.json, which the adapter places in the container under CODEX_HOME and removes after the run; Microluna only reads it and never refreshes it. No Claude credential is forwarded, and no CLI installs."
+          "note": "The door and Jev keys as in coder-one. Microluna signs in with the host's ChatGPT-account auth.json, which the adapter places in the container under CODEX_HOME; Coder One reads it into memory and removes it before any model command runs (CODER_ONE_CODEX_LOGIN=take, issue #9599), and the adapter removes what is left after the run. Microluna never refreshes it. No Claude credential is forwarded, and no CLI installs."
         }
       },
       "note": "Coder One with Microluna and the acceptance-suite loop (issue #9588) as the core: accept.define writes an executable test suite from the task, proves it red on the untouched workspace, freezes it, and edit sessions run until the suite is green. Done is the suite green, not a session's report. v4's raised budget. Issue #9585."
@@ -2912,7 +2912,7 @@
             "ANTHROPIC_API_KEY",
             "ANTHROPIC_AUTH_TOKEN"
           ],
-          "note": "The door and Jev keys as in coder-one. Microluna signs in with the host's ChatGPT-account auth.json, which the adapter places in the container under CODEX_HOME and removes after the run; Microluna only reads it and never refreshes it. No Claude credential is forwarded, and no CLI installs."
+          "note": "The door and Jev keys as in coder-one. Microluna signs in with the host's ChatGPT-account auth.json, which the adapter places in the container under CODEX_HOME; Coder One reads it into memory and removes it before any model command runs (CODER_ONE_CODEX_LOGIN=take, issue #9599), and the adapter removes what is left after the run. Microluna never refreshes it. No Claude credential is forwarded, and no CLI installs."
         }
       },
       "note": "Coder One with Microluna and microluna-v7: v6's acceptance-suite loop run in parallel and held to its evidence. The first edit session works while three writers write the suite on a snapshot of the untouched workspace; independent red tests run as up to three sessions at once in workspace copies, merged back; a partial green gets a gap round, and a green suite a joined closing judgment, an audit session when it doubts, and the task's own tests as a final guard. Issues #9585 and #9588."

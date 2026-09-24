@@ -2693,6 +2693,7 @@ dependencies = [
  "base64 0.22.1",
  "coder-boundary",
  "futures-util",
+ "libc",
  "reqwest",
  "serde",
  "serde_json",

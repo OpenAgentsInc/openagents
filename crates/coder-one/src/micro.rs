@@ -661,18 +661,68 @@ pub fn check_login() -> Vec<String> {
                     .map(|at| format!(", access token valid until {at} (Unix time)"))
                     .unwrap_or_default()
             );
-            Vec::new()
         }
-        Err(error) => vec![format!("microluna: {error}")],
+        Err(error) => return vec![format!("microluna: {error}")],
     }
+    if takes_login() {
+        // The adapter reads this line to refuse an artifact that would
+        // leave the login on disk for the model's commands.
+        println!("microluna login: take (read into memory and removed when the run starts)");
+    }
+    Vec::new()
 }
 
-/// The Codex transport on the login, or why there is none.
+/// The variable that asks `episode run` to take the Codex login.
+pub const TAKE_LOGIN_VAR: &str = "CODER_ONE_CODEX_LOGIN";
+
+/// Whether `CODER_ONE_CODEX_LOGIN` is `take`.
+#[must_use]
+pub fn takes_login() -> bool {
+    std::env::var(TAKE_LOGIN_VAR).is_ok_and(|value| value.trim().eq_ignore_ascii_case("take"))
+}
+
+/// The login [`take_login`] read, or why it couldn't, for this process.
+static TAKEN: std::sync::OnceLock<Result<Login, String>> = std::sync::OnceLock::new();
+
+/// Takes the Codex login into memory when `CODER_ONE_CODEX_LOGIN` is
+/// `take`, before the episode runs any command: the process is marked
+/// non-dumpable, the login is read, and the file and its link are removed
+/// (`microluna::codex::Login::take`). Every Microluna session in this
+/// process then sends with the login in memory. A missing or unusable
+/// login is kept as the reason Microluna has no transport.
+///
+/// # Errors
+///
+/// When the file couldn't be removed, which must stop the episode before
+/// the model runs anything.
+pub fn take_login() -> Result<(), String> {
+    if !takes_login() {
+        return Ok(());
+    }
+    let path = login_path().ok_or("no CODEX_HOME or HOME to find the Codex login in")?;
+    let taken = match Login::take(&path) {
+        Err(error @ microluna::codex::LoginError::Unremovable(..)) => {
+            return Err(error.to_string());
+        }
+        taken => taken.map_err(|error| error.to_string()),
+    };
+    let _ = TAKEN.set(taken);
+    Ok(())
+}
+
+/// The Codex transport on the login, or why there is none: the login
+/// [`take_login`] holds when it took one, else the file.
 ///
 /// # Errors
 ///
 /// The login's error, as a sentence.
 pub fn codex_wire(session_id: &str) -> Result<Wire, String> {
+    if let Some(taken) = TAKEN.get() {
+        let login = taken.clone()?;
+        return CodexTransport::holding(login, session_id)
+            .map(Wire::Codex)
+            .map_err(|error| error.to_string());
+    }
     let path = login_path().ok_or("no CODEX_HOME or HOME to find the Codex login in")?;
     CodexTransport::new(path, session_id)
         .map(Wire::Codex)

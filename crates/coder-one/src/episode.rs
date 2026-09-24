@@ -29,6 +29,7 @@
 //! | `CODER_ONE_CODEX_BIN` | The `codex` binary; the first on `PATH` when unset. |
 //! | `CLAUDE_CODE_OAUTH_TOKEN` | The Claude Code delegate's subscription token; or `ANTHROPIC_API_KEY`. |
 //! | `CODEX_HOME` | Where the Codex delegate finds `auth.json`; `~/.codex` when unset. |
+//! | `CODER_ONE_CODEX_LOGIN` | `take` makes `episode run` read the Codex login into memory for Microluna and remove the file before any command runs, so the model's commands can't read it; the Codex CLI can't run then. The file stays when unset. |
 //! | `CODER_ONE_DEEP` | `on` runs deep Jev mode: a parallel survey before the first step, a readiness question each step, and repeated-command hints. |
 //! | `CODER_ONE_PROBES` | `on`, with deep mode, runs a battery of read-only probes (listing, git state, README, tests, versions) and lets Jev pick the outputs that go into the survey and the briefing. |
 //! | `CODER_ONE_PROBE_V2` | `v3` adds directions that test every changed code path. `on`, with probes and deep mode: a Jev-gated setup pack, git probes in named repositories, whole edit targets, a 40-file survey, and batch-mode directions. |
@@ -371,6 +372,12 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
             args.contract
         ));
     }
+    // Before any command runs: the model's commands run as this process's
+    // user in a task container, so this process's `/proc` entries (its
+    // environment holds the door and Jev keys) are closed to them, and a
+    // Codex login the adapter placed for Microluna leaves the disk.
+    let _ = microluna::codex::protect_process();
+    crate::micro::take_login()?;
     let settings = Settings::from_env(args.model.as_deref())?;
     let policy = settings.policy().clone();
     // One monotonic deadline for the whole episode, from here on.

@@ -17,7 +17,18 @@
 //! command refreshes it the way Codex does.
 //!
 //! No token reaches a log line, an error, or a `Debug` string.
+//!
+//! # Taking the login in a task container
+//!
+//! Where the model's commands run as the same user as Microluna, as in a
+//! Terminal-Bench task container, a login file on disk is a login the
+//! model can read. [`Login::take`] marks the process non-dumpable, so
+//! another process of the same user can't read its memory, environment,
+//! or file descriptors through `/proc`, then reads the login into memory
+//! and removes the file and any link to it. [`CodexTransport::holding`]
+//! then sends with the login in memory and never opens a file again.
 
+use std::borrow::Cow;
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -53,6 +64,9 @@ pub enum LoginError {
     NotChatgpt(String),
     /// A field the transport needs is absent.
     Malformed(&'static str),
+    /// The login was read, but its file couldn't be removed, so it would
+    /// stay readable to the commands the model runs.
+    Unremovable(PathBuf, String),
     /// The access token has expired or is about to.
     Expiring {
         /// Seconds of validity left, zero when already expired.
@@ -75,6 +89,11 @@ impl fmt::Display for LoginError {
                 write!(f, "the Codex login uses {mode}, not a ChatGPT sign-in")
             }
             LoginError::Malformed(field) => write!(f, "the Codex login has no {field}"),
+            LoginError::Unremovable(path, why) => write!(
+                f,
+                "can't remove {} after reading it, so the model's commands could read it: {why}",
+                path.display()
+            ),
             LoginError::Expiring { seconds_left } => write!(
                 f,
                 "the Codex access token expires in {seconds_left} s; run any Codex command \
@@ -143,6 +162,58 @@ impl Login {
         Ok(login)
     }
 
+    /// Reads the login at `path` into memory and removes the file, so no
+    /// command this process runs afterward can read it. The process is
+    /// marked non-dumpable before the read (see [`protect_process`]).
+    ///
+    /// When `path` is a symbolic link, both the link and the file it names
+    /// are removed. The file is removed even when it can't be parsed. The
+    /// expiry isn't checked here: [`CodexTransport`] checks it before every
+    /// request.
+    ///
+    /// # Errors
+    ///
+    /// [`LoginError::Unremovable`] when the file stays on disk, which the
+    /// caller must treat as fatal, or the error of a missing, unreadable,
+    /// non-ChatGPT, or malformed login.
+    pub fn take(path: &Path) -> Result<Login, LoginError> {
+        let _ = protect_process();
+        let is_link = std::fs::symlink_metadata(path)
+            .map(|meta| meta.file_type().is_symlink())
+            .unwrap_or(false);
+        let target = if is_link {
+            std::fs::canonicalize(path).ok()
+        } else {
+            Some(path.to_path_buf())
+        };
+        let text = match &target {
+            Some(target) => std::fs::read_to_string(target),
+            None => Err(std::io::Error::from(std::io::ErrorKind::NotFound)),
+        };
+        if let Some(target) = &target {
+            remove(target)?;
+        }
+        if is_link {
+            remove(path)?;
+        }
+        let text = match text {
+            Ok(text) => text,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Err(LoginError::Missing(path.to_path_buf()));
+            }
+            Err(error) => {
+                return Err(LoginError::Unreadable(
+                    path.to_path_buf(),
+                    error.to_string(),
+                ));
+            }
+        };
+        Login::parse(&text).map_err(|error| match error {
+            LoginError::Unreadable(_, why) => LoginError::Unreadable(path.to_path_buf(), why),
+            other => other,
+        })
+    }
+
     /// Parses the contents of an `auth.json`, without checking expiry.
     ///
     /// # Errors
@@ -200,6 +271,43 @@ impl Login {
     }
 }
 
+/// Removes a file, counting one that is already gone as removed.
+fn remove(path: &Path) -> Result<(), LoginError> {
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(LoginError::Unremovable(
+            path.to_path_buf(),
+            error.to_string(),
+        )),
+    }
+}
+
+/// Marks this process non-dumpable (`PR_SET_DUMPABLE` 0) on Linux, and
+/// returns whether it is.
+///
+/// Reading a non-dumpable process's `/proc/<pid>/mem`, `environ`, `fd`,
+/// or `maps` needs `CAP_SYS_PTRACE`, even for a process of the same user,
+/// and the process can't be traced or dump core. A child regains the
+/// default when it executes a program, so the commands this process runs
+/// are unaffected. Elsewhere this does nothing and returns `false`.
+#[must_use = "false means the process memory is still readable"]
+pub fn protect_process() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        // SAFETY: PR_SET_DUMPABLE takes an integer, PR_GET_DUMPABLE takes
+        // nothing, and neither touches this process's memory.
+        unsafe {
+            libc::prctl(libc::PR_SET_DUMPABLE, 0, 0, 0, 0) == 0
+                && libc::prctl(libc::PR_GET_DUMPABLE, 0, 0, 0, 0) == 0
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        false
+    }
+}
+
 /// The `exp` claim of a JWT, without verifying it: the provider verifies.
 fn jwt_expiry(token: &str) -> Option<u64> {
     let payload = token.split('.').nth(1)?;
@@ -238,11 +346,20 @@ pub fn body(request: &Request) -> Value {
     body
 }
 
+/// Where a [`CodexTransport`] gets its login.
+#[derive(Debug)]
+enum Source {
+    /// Read from this file before every request.
+    File(PathBuf),
+    /// Held in memory, taken once by [`Login::take`].
+    Held(Login),
+}
+
 /// The Codex-login transport.
 #[derive(Debug)]
 pub struct CodexTransport {
     http: reqwest::Client,
-    login_path: PathBuf,
+    login: Source,
     url: String,
     session_id: String,
 }
@@ -257,22 +374,49 @@ impl CodexTransport {
     /// The login's error, when it can't be used now.
     pub fn new(login_path: PathBuf, session_id: &str) -> Result<CodexTransport, LoginError> {
         Login::load(&login_path)?;
+        CodexTransport::build(Source::File(login_path), session_id)
+    }
+
+    /// A transport on a login already in memory, such as one
+    /// [`Login::take`] returned. It opens no file, and still checks the
+    /// token's expiry before every request.
+    ///
+    /// # Errors
+    ///
+    /// [`LoginError::Expiring`] when the token is inside the margin now.
+    pub fn holding(login: Login, session_id: &str) -> Result<CodexTransport, LoginError> {
+        login.check(now_secs())?;
+        CodexTransport::build(Source::Held(login), session_id)
+    }
+
+    fn build(login: Source, session_id: &str) -> Result<CodexTransport, LoginError> {
         let http = reqwest::Client::builder()
             .user_agent(concat!("microluna/", env!("CARGO_PKG_VERSION")))
             .build()
-            .map_err(|error| LoginError::Unreadable(login_path.clone(), error.to_string()))?;
+            .map_err(|error| LoginError::Unreadable(PathBuf::new(), error.to_string()))?;
         Ok(CodexTransport {
             http,
-            login_path,
+            login,
             url: format!("{BASE_URL}/responses"),
             session_id: session_id.to_string(),
         })
+    }
+
+    /// The login to send with, checked for expiry now.
+    fn login(&self) -> Result<Cow<'_, Login>, LoginError> {
+        match &self.login {
+            Source::File(path) => Login::load(path).map(Cow::Owned),
+            Source::Held(login) => {
+                login.check(now_secs())?;
+                Ok(Cow::Borrowed(login))
+            }
+        }
     }
 }
 
 impl Transport for CodexTransport {
     async fn respond(&self, request: &Request) -> Result<Reply, TransportError> {
-        let login = Login::load(&self.login_path).map_err(TransportError::Login)?;
+        let login = self.login().map_err(TransportError::Login)?;
         let mut response = self
             .http
             .post(&self.url)
@@ -457,6 +601,61 @@ mod tests {
         let shown = format!("{login:?}");
         assert!(!shown.contains("acct-1"));
         assert!(!shown.contains(&token(5_000)));
+    }
+
+    #[test]
+    fn taking_a_login_removes_the_file_and_the_link_to_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let secrets = dir.path().join("secrets");
+        let home = dir.path().join("home");
+        std::fs::create_dir_all(&secrets).unwrap();
+        std::fs::create_dir_all(&home).unwrap();
+        let file = secrets.join("auth.json");
+        std::fs::write(&file, auth(now_secs() + 3_600)).unwrap();
+        let link = home.join("auth.json");
+        std::os::unix::fs::symlink(&file, &link).unwrap();
+
+        let login = Login::take(&link).unwrap();
+        assert!(login.check(now_secs()).is_ok());
+        assert!(std::fs::symlink_metadata(&link).is_err());
+        assert!(!file.exists());
+        // A second take finds nothing; the transport holds the first.
+        assert!(matches!(Login::take(&link), Err(LoginError::Missing(_))));
+        let transport = CodexTransport::holding(login, "s-1").unwrap();
+        assert!(transport.login().is_ok());
+        assert!(!format!("{transport:?}").contains("acct-1"));
+    }
+
+    #[test]
+    fn a_malformed_login_is_removed_all_the_same() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("auth.json");
+        std::fs::write(&file, "not json").unwrap();
+        assert!(matches!(
+            Login::take(&file),
+            Err(LoginError::Unreadable(..))
+        ));
+        assert!(!file.exists());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_taken_login_leaves_the_process_non_dumpable() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("auth.json");
+        std::fs::write(&file, auth(now_secs() + 3_600)).unwrap();
+        Login::take(&file).unwrap();
+        // SAFETY: PR_GET_DUMPABLE reads a flag and takes no pointers.
+        assert_eq!(unsafe { libc::prctl(libc::PR_GET_DUMPABLE, 0, 0, 0, 0) }, 0);
+    }
+
+    #[test]
+    fn a_held_login_is_still_refused_near_expiry() {
+        let login = Login::parse(&auth(now_secs() + 60)).unwrap();
+        assert!(matches!(
+            CodexTransport::holding(login, "s-1"),
+            Err(LoginError::Expiring { .. })
+        ));
     }
 
     #[test]
