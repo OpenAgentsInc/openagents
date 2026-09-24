@@ -61,6 +61,7 @@ pub mod support;
 pub mod system;
 pub mod tail;
 pub mod terminal;
+pub mod transport;
 
 pub use action::Action;
 pub use agent::{Bounds, Ended, Generate, Judge, Judgments, Shell, run};

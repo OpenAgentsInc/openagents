@@ -655,6 +655,9 @@ fn delegated(answer: &terminal::Answer, commands: usize) -> Delegated {
         DelegateStatus::Harness(why) => Some(GenerateError::Stream(format!(
             "{agent} could not run: {why}"
         ))),
+        DelegateStatus::Transport { detail, .. } => Some(GenerateError::Stream(format!(
+            "{agent} could not reach its provider: {detail}"
+        ))),
     };
     Delegated {
         text: summary

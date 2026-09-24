@@ -247,9 +247,10 @@ trial is a `<task>__<id>/` directory inside it.
 In the trajectory, the delegation is the step whose tool call is named
 `delegate`. Its `arguments` hold `agent`, `isolation`, `prompt` (the exact
 briefing), `bounds`, and `model`. Its `extra` holds the outcome (`status`:
-`answered`, `refused`, `timed_out`, `failed`, or `harness`), `num_turns`,
-`api_calls`, `input_tokens_per_call`, the CLI's `usage`, `total_cost_usd`
-with `cost_provenance`, the briefing's `sha256`, `chars`, `cap`,
+`answered`, `refused`, `timed_out`, `failed`, `harness`, or `transport`, for a
+Codex session that reported only connection errors for three minutes and
+was ended), `num_turns`, `api_calls`, `input_tokens_per_call`, the CLI's
+`usage`, `total_cost_usd` with `cost_provenance`, the briefing's `sha256`, `chars`, `cap`,
 `included`, and `omitted`, and the escalation reason. The manifest's
 `delegate` object repeats the mode, the policy, and the closing Jev check.
 

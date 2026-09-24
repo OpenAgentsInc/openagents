@@ -777,6 +777,10 @@ pub enum Status {
     Failed(i32),
     /// The host never got an answer: no binary, no spawn, no result.
     Harness(String),
+    /// The executor couldn't reach its provider: it reported only
+    /// connection errors for [`crate::transport::BOUND`], and the host
+    /// ended it. `reached` says whether it made any progress first.
+    Transport { detail: String, reached: bool },
 }
 
 impl Status {
@@ -789,6 +793,7 @@ impl Status {
             Status::TimedOut => "timed_out",
             Status::Failed(_) => "failed",
             Status::Harness(_) => "harness",
+            Status::Transport { .. } => "transport",
         }
     }
 
@@ -811,6 +816,7 @@ impl std::fmt::Display for Status {
             Status::TimedOut => write!(f, "timed out"),
             Status::Failed(code) => write!(f, "failed: exit {code}"),
             Status::Harness(why) => write!(f, "harness: {why}"),
+            Status::Transport { detail, .. } => write!(f, "transport: {detail}"),
         }
     }
 }
@@ -2226,6 +2232,13 @@ pub fn charge(report: &Report) -> (&'static str, &'static str) {
         Status::Harness(_) => (
             "unknown",
             "the session ended without reporting its final usage",
+        ),
+        Status::Transport { reached: false, .. } => {
+            ("zero", "the executor never reached its provider")
+        }
+        Status::Transport { reached: true, .. } => (
+            "unknown",
+            "the session lost its provider before it reported its final usage",
         ),
         Status::Refused(_) if !reported => ("zero", "the executor refused before any billed work"),
         _ if report.summary.subtype.as_deref() == Some("turn.failed") => (

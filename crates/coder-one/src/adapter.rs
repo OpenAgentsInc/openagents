@@ -225,6 +225,8 @@ struct Process {
     /// When a steerable process finished a turn: the host tick it was seen.
     turn_over: Option<u64>,
     last_line: usize,
+    /// Whether the stream says only that the provider is unreachable.
+    transport: crate::transport::Watch,
 }
 
 /// A Claude Code or Codex session the host controls.
@@ -250,6 +252,12 @@ pub struct CliSession<'a> {
     stderr: String,
     /// A failure before any process ran.
     harness: Option<String>,
+    /// How long a Codex process may report only connection errors before
+    /// the adapter ends it; [`crate::transport::BOUND`] by default.
+    pub transport_bound: Duration,
+    /// Why the adapter ended a process that couldn't reach its provider,
+    /// and whether it made progress first.
+    transport: Option<(String, bool)>,
 }
 
 impl<'a> CliSession<'a> {
@@ -273,6 +281,8 @@ impl<'a> CliSession<'a> {
             stop_reason: None,
             stderr: String::new(),
             harness: None,
+            transport_bound: crate::transport::BOUND,
+            transport: None,
         }
     }
 
@@ -328,6 +338,7 @@ impl<'a> CliSession<'a> {
             said_ended: false,
             turn_over: None,
             last_line: 0,
+            transport: crate::transport::Watch::new(self.transport_bound),
         });
         // A process that exits before reading its input is reported by its
         // ending, not by the write.
@@ -356,10 +367,12 @@ impl<'a> CliSession<'a> {
             retainer.push(&delivery.bytes);
         }
         let summary = &mut process.summary;
+        let transport = &mut process.transport;
         let events = process
             .normalizer
             .feed(delivery.offset, &delivery.bytes, &mut |line| {
-                summary.line(line)
+                summary.line(line);
+                transport.line(line, at_ms);
             });
         for event in &events {
             if let Kind::SessionStarted {
@@ -500,6 +513,21 @@ impl Session for CliSession<'_> {
         {
             live.close_input();
         }
+        // A Codex process that has reported only connection errors for its
+        // bound won't recover on its own: it retries until its deadline.
+        let unreachable = (self.cli.agent == Agent::Codex)
+            .then(|| process.transport.expired(now_ms))
+            .flatten();
+        if let Some(why) = unreachable
+            && let Some(live) = process.live.take()
+        {
+            let reached = process.transport.reached();
+            crate::say::say!("  delegate ▸ ended: {why}");
+            let stopped = live.stop().await;
+            self.close(stopped, now_ms);
+            self.transport = Some((why, reached));
+            return false;
+        }
         let finished = process.live.as_ref().is_some_and(supervise::Live::finished);
         if finished && let Some(live) = process.live.take() {
             let stopped = live.wait().await;
@@ -568,6 +596,7 @@ impl Session for CliSession<'_> {
             .ok_or_else(|| "the session never reported an ID to resume".to_string())?;
         self.stopped_by_deadline = false;
         self.stop_reason = None;
+        self.transport = None;
         self.launch(SessionArg::Resume(id), message).await
     }
 
@@ -603,6 +632,11 @@ impl Session for CliSession<'_> {
         let stderr = self.stderr.clone();
         let status = if let Some(why) = &self.harness {
             Status::Harness(why.clone())
+        } else if let Some((detail, reached)) = &self.transport {
+            Status::Transport {
+                detail: detail.clone(),
+                reached: *reached,
+            }
         } else if self.stopped_by_deadline {
             Status::TimedOut
         } else if let Some(reason) = &self.stop_reason {
@@ -701,6 +735,8 @@ fi
 
     /// `codex exec --json -` and `codex exec resume <id> -`: one turn per
     /// process, a command, and a message that answers `heard <word>`.
+    /// `STANDIN_OFFLINE` reports only connection errors until stopped, as
+    /// Codex does when it can't reach its provider.
     pub const CODEX: &str = r#"#!/bin/sh
 id="0199aaaa-bbbb-7ccc-8ddd-standin00001"
 [ "$1" = exec ] && [ "$2" = resume ] && id=$3
@@ -708,6 +744,13 @@ input=$(cat)
 case "$input" in *resume*) what=resume ;; *) what=briefing ;; esac
 echo "{\"type\":\"thread.started\",\"thread_id\":\"$id\"}"
 echo "{\"type\":\"turn.started\"}"
+if [ -n "$STANDIN_OFFLINE" ]; then
+  echo '{"type":"error","message":"Reconnecting... 2/5 (stream disconnected before completion: invalid peer certificate: UnknownIssuer)"}'
+  while :; do
+    echo '{"type":"error","message":"Reconnecting... waiting for network (Connection failed: error sending request)"}'
+    sleep 0.05
+  done
+fi
 sleep "${STANDIN_DELAY:-0}"
 if [ -n "$STANDIN_HANG" ] && [ "$what" = briefing ]; then
   (sleep 2; printf harmless > "$STANDIN_HANG") &
@@ -1040,6 +1083,43 @@ mod tests {
         assert_eq!(driven.report.status, Status::TimedOut);
         assert_eq!(driven.stops.len(), 1);
         assert!(driven.stops[0].cleanup.contains("empty"));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn a_codex_session_that_only_reports_connection_errors_ends_as_a_transport_failure() {
+        let dir = scratch("codex-offline");
+        let cli = cli(Agent::Codex, &dir, &[("STANDIN_OFFLINE", "1")]);
+        let recorder = Recorder::default();
+        let wrap = Ok;
+        let mut session = CliSession::new(&cli, cli.binary.clone().unwrap(), &wrap, "delegate-1");
+        session.transport_bound = Duration::from_millis(400);
+        let driven = session::drive(
+            &mut session,
+            &briefing(),
+            &controls(),
+            &recorder,
+            &mut session::virtual_time(),
+        )
+        .await;
+        session.shutdown().await;
+        let Status::Transport { detail, reached } = &driven.report.status else {
+            panic!("not a transport failure: {:?}", driven.report.status);
+        };
+        assert!(detail.contains("only connection errors"), "{detail}");
+        assert!(detail.contains("waiting for network"), "{detail}");
+        assert!(!reached);
+        assert_eq!(driven.report.status.word(), "transport");
+        assert!(
+            driven.elapsed_ms < 10_000,
+            "ended at {} ms",
+            driven.elapsed_ms
+        );
+        assert!(driven.stops.is_empty(), "the host deadline didn't act");
+        assert_eq!(
+            delegate::charge(&driven.report),
+            ("zero", "the executor never reached its provider")
+        );
         let _ = std::fs::remove_dir_all(dir);
     }
 
