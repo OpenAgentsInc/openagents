@@ -1574,14 +1574,19 @@ async fn a_wrong_selection_has_no_authority_from_bullet_prose() {
     let mut agent = agent(machine.path(), "delegate-fan-out")
         .await
         .with_program_grant(Some("none"));
+    let mut programs = Vec::new();
     let finished = turn::run(
         &mut agent,
         "Explain this list:\n- item one\n- item two".into(),
-        &mut |_| {},
+        &mut |event| {
+            if let turn::Event::Program(slug) = event {
+                programs.push(slug);
+            }
+        },
     )
     .await
     .unwrap();
-    let run = finished.program.expect("the stub selected a program");
-    assert!(run.delegations.is_empty());
-    assert_eq!(run.stopped.unwrap().code, "unauthorized");
+    assert!(finished.program.is_none(), "an ungranted program never runs");
+    assert!(programs.is_empty(), "no program execution was announced");
+    assert!(finished.reply.contains("stub door"), "{}", finished.reply);
 }
