@@ -1435,6 +1435,7 @@ fn lean_shape() -> lean::Lean {
         records: false,
         command_sec: 0,
         protect_candidates: false,
+        retain_candidates: false,
         observe_review: false,
         symptoms: false,
         example_first: false,
@@ -1620,6 +1621,90 @@ fn a_word_list_isnt_hard_coded_examples_but_a_table_of_answers_is() {
     let flagged = lean::literal_examples(work, &start, &records);
     assert_eq!(flagged.len(), 1, "{flagged:?}");
     assert_eq!(flagged[0].2, 40);
+}
+
+#[tokio::test]
+async fn retention_keeps_an_editing_reviews_tied_improvement_without_an_extra_evaluation() {
+    for break_copy in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let work = dir.path().join("work");
+        let eval = lean::eval_dir(&work, Isolation::TaskContainer);
+        let calls = dir.path().join("score-calls");
+        let script = format!(
+            "mkdir -p {} && printf 'printf x >> {}\\necho SCORE 1 1\\n' > {}/score.sh",
+            eval.display(),
+            calls.display(),
+            eval.display()
+        );
+        let mut executor = micro(
+            dir.path(),
+            vec![
+                call(
+                    "a1",
+                    "run_command",
+                    &json!({"command": script}),
+                    usage(100, 0, 10),
+                ),
+                call(
+                    "a2",
+                    "write_file",
+                    &json!({"path":"hello.txt","contents":"incomplete\n"}),
+                    usage(100, 0, 10),
+                ),
+                finish("a3", "done", "The weak check passes."),
+                call(
+                    "b1",
+                    "write_file",
+                    &json!({"path":"hello.txt","contents":"corrected\n"}),
+                    usage(100, 0, 10),
+                ),
+                finish("b2", "done", "The review fixed a missed requirement."),
+            ],
+            lean_policy(lean::Lean {
+                keep_best: true,
+                retain_candidates: true,
+                ..lean_shape()
+            }),
+        );
+        if break_copy {
+            let retained = dir.path().join("artifacts/lean-1");
+            std::fs::create_dir_all(&retained).unwrap();
+            std::fs::write(retained.join("session-2"), "not a directory").unwrap();
+        }
+        executor.prepared = Some(prepared());
+        executor.execute(&briefing(TASK)).await;
+        assert_eq!(
+            std::fs::read_to_string(work.join("hello.txt")).unwrap(),
+            "corrected\n"
+        );
+        assert_eq!(std::fs::read_to_string(calls).unwrap(), "xx");
+        let record = executor.last.as_ref().unwrap();
+        let moves = record["moves"].as_array().unwrap();
+        let attempts: Vec<_> = moves.iter().filter(|m| m["kind"] == "lean").collect();
+        assert_eq!(attempts.len(), 2);
+        assert_eq!(attempts[1]["kept"], true);
+        assert_eq!(attempts[1]["self_check"], true);
+        let first = PathBuf::from(attempts[0]["candidate"].as_str().unwrap());
+        assert_eq!(
+            std::fs::read_to_string(first.join("hello.txt")).unwrap(),
+            "incomplete\n"
+        );
+        let submitted = moves.last().unwrap();
+        assert_eq!(submitted["evaluation_rerun"], false);
+        assert_eq!(submitted["result"], "observed_without_revalidation");
+        assert_eq!(submitted["review_status"], "done");
+        if break_copy {
+            assert!(attempts[1]["snapshot_error"].is_string());
+            assert!(submitted["selected_session"].is_null());
+        } else {
+            assert_eq!(submitted["selected_session"], 2);
+            let second = PathBuf::from(attempts[1]["candidate"].as_str().unwrap());
+            assert_eq!(
+                std::fs::read_to_string(second.join("hello.txt")).unwrap(),
+                "corrected\n"
+            );
+        }
+    }
 }
 
 #[tokio::test]

@@ -144,6 +144,10 @@ pub struct Lean {
     /// an earlier tie, and validate the submitted workspace again.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub protect_candidates: bool,
+    /// Retain sequential candidates and the evaluator without changing
+    /// selection, review permissions, or stopping. Records observation only.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub retain_candidates: bool,
     /// The final review reads files and host-recorded evidence only. It
     /// cannot run commands or modify the candidate.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -318,9 +322,9 @@ impl Lean {
         if self.score_sec == 0 {
             problems.push("executor.microluna.lean.score_sec must be at least 1".to_string());
         }
-        if self.protect_candidates && self.lanes > 1 {
+        if (self.protect_candidates || self.retain_candidates) && self.lanes > 1 {
             problems
-                .push("candidate protection currently supports one first-attempt lane".to_string());
+                .push("candidate evidence currently supports one first-attempt lane".to_string());
         }
         if self.protect_candidates && !self.keep_best {
             problems.push("protect_candidates requires keep_best".to_string());
@@ -1143,12 +1147,13 @@ impl Micro {
         let _base_cleanup = Cleanup(base.clone());
         let eval = eval_dir(&self.workdir, self.isolation);
         let retained = self.artifacts.join(format!("lean-{}", self.dispatch()));
-        let frozen = if lean.protect_candidates {
+        let keep_evidence = lean.protect_candidates || lean.retain_candidates;
+        let frozen = if keep_evidence {
             retained.join("evaluator")
         } else {
             scratch("microluna-eval-frozen")
         };
-        let _frozen_cleanup = Cleanup((!lean.protect_candidates).then(|| frozen.clone()));
+        let _frozen_cleanup = Cleanup((!keep_evidence).then(|| frozen.clone()));
         let _eval_cleanup = Cleanup(
             (self.isolation != Isolation::TaskContainer || lean.keep_best).then(|| eval.clone()),
         );
@@ -1502,7 +1507,8 @@ impl Micro {
                 ));
             }
             let candidate = retained.join(format!("session-{number}"));
-            let snapshot = if lean.protect_candidates {
+            let snapshot_started = Instant::now();
+            let snapshot = if keep_evidence {
                 if !parallel::copyable(&self.workdir) {
                     Err("workspace exceeds the snapshot bound".to_string())
                 } else {
@@ -1517,10 +1523,11 @@ impl Micro {
             } else {
                 Ok(())
             };
+            let snapshot_ms = snapshot_started.elapsed().as_millis();
             // Protected selection keeps the earliest tied candidate. The
             // scalar score cannot establish that a later edit is better.
             let mut kept = false;
-            if lean.keep_best && !flagged && snapshot.is_ok() {
+            if lean.keep_best && !flagged && (!lean.protect_candidates || snapshot.is_ok()) {
                 let better = best.as_ref().is_none_or(|b| {
                     if lean.protect_candidates {
                         fraction(score) > fraction(b.score)
@@ -1575,18 +1582,22 @@ impl Micro {
                 "hardcoded": flag_record,
                 "kept": kept,
                 "spent_usd": spent,
-                "candidate": lean.protect_candidates.then(|| candidate.display().to_string()),
+                "candidate": keep_evidence.then(|| candidate.display().to_string()),
                 "snapshot_error": snapshot.err(),
-                "workspace_files": lean.protect_candidates.then(|| evidence_tree(&self.workdir).ok()),
+                "snapshot_ms": keep_evidence.then_some(snapshot_ms),
+                "workspace_files": keep_evidence.then(|| evidence_tree(&self.workdir).ok()),
                 "evaluator_files": evaluator_digest,
             }));
-            if lean.protect_candidates {
+            if keep_evidence {
                 let evidence = serde_json::to_vec_pretty(&moves).unwrap_or_default();
                 if let Err(error) =
                     crate::record::write_atomic(&retained.join("selection.json"), &evidence)
                 {
-                    stopped = format!("could not retain candidate evidence: {error}");
-                    break;
+                    moves.push(json!({"kind": "lean.evidence_error", "error": error}));
+                    if lean.protect_candidates {
+                        stopped = format!("could not retain candidate evidence: {error}");
+                        break;
+                    }
                 }
             }
             if checking {
@@ -1639,6 +1650,38 @@ impl Micro {
         }
         for dir in best_cleanup {
             let _ = std::fs::remove_dir_all(dir);
+        }
+        if lean.retain_candidates && !lean.protect_candidates {
+            let submitted = evidence_tree(&self.workdir);
+            let selected = moves.iter().rev().find(|item| {
+                let Some(path) = item["candidate"].as_str() else {
+                    return false;
+                };
+                item["snapshot_error"].is_null()
+                    && submitted.is_ok()
+                    && submitted == evidence_tree(Path::new(path))
+            });
+            let selected_session = selected.map(|item| item["after_session"].clone());
+            let score = selected.map(|item| item["score"].clone());
+            moves.push(json!({
+                "kind": "lean.submitted",
+                "selected_session": selected_session,
+                "selection_matches_workspace": selected_session.is_some(),
+                "result": "observed_without_revalidation",
+                "score": score,
+                "evaluation_rerun": false,
+                "review_status": moves.iter().rev().find(|item| item["self_check"] == true).map(|item| item["status"].clone()),
+                "workspace_files": submitted.as_ref().ok(),
+                "workspace_error": submitted.as_ref().err(),
+                "identity_scope": "file contents and link targets, excluding Git metadata, Python bytecode, and named caches",
+                "benchmark_outcome": Value::Null,
+            }));
+            if let Ok(bytes) = serde_json::to_vec_pretty(&moves)
+                && let Err(error) =
+                    crate::record::write_atomic(&retained.join("selection.json"), &bytes)
+            {
+                moves.push(json!({"kind": "lean.evidence_error", "error": error}));
+            }
         }
         if lean.protect_candidates {
             let intact = evaluator_digest
