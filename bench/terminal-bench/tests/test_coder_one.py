@@ -134,7 +134,7 @@ def test_delegate_install_refuses_the_wrong_claude_version(tmp_path, monkeypatch
 def test_codex_delegate_needs_no_claude_pin_and_defaults_to_luna(tmp_path):
     agent = _delegate(tmp_path, delegate="always", delegate_agent="codex")
     assert agent._delegate_model == "gpt-6-luna"
-    with pytest.raises(EpisodeContractError, match="claude-code or codex"):
+    with pytest.raises(EpisodeContractError, match="claude-code, codex, or microluna"):
         _delegate(tmp_path, delegate="always", delegate_agent="devin")
 
 
@@ -394,6 +394,31 @@ def test_the_tunable_arm_installs_every_cli_its_manifest_names(tmp_path):
     # The manifest carries the configuration; the switches stay unset.
     for name in ("CODER_ONE_DELEGATE", "CODER_ONE_DELEGATE_AGENT", "CODER_ONE_DELEGATE_TIMEOUT"):
         assert name not in env
+
+
+def test_the_microluna_arm_installs_no_cli_and_places_only_the_codex_login(tmp_path):
+    path, digest = _binary(tmp_path)
+    agent = CoderOneTunable(
+        logs_dir=tmp_path,
+        artifact_path=path,
+        artifact_sha256=digest,
+        policy="crates/coder-one/policies/microluna-v1.json",
+    )
+    # Microluna runs inside Coder One: no CLI to install or pin, and no
+    # Claude anywhere in the manifest.
+    assert agent._agents == {}
+    assert agent._in_process == {"microluna"}
+    assert agent._needs_codex_login()
+    agent._preflight()
+    env = agent._episode_env()
+    assert env["CODEX_HOME"] == "/tmp/codex-home"
+    assert "CODER_ONE_CLAUDE_BIN" not in env
+    assert "CODER_ONE_CODEX_BIN" not in env
+    import json
+
+    manifest = json.loads(env["CODER_ONE_POLICY"])
+    assert manifest["policy"]["executor"]["agent"] == "microluna"
+    assert "handoff" not in manifest["policy"]["control"]
 
 
 def test_the_v4_manifest_names_astra_through_its_families_and_second_executor():

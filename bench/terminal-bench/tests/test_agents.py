@@ -46,6 +46,7 @@ def test_known_arms(agents):
         "coder-one-tunable-opus",
         "coder-one-tunable-luna",
         "coder-one-tunable-luna-pack",
+        "coder-one-microluna-v1",
         "coder-one-tunable-v2",
         "coder-one-tunable-luna-v2",
         "coder-one-tunable-luna-snapshot",

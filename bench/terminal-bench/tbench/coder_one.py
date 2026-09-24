@@ -206,6 +206,9 @@ class CoderOne(CoderV05):
 CLAUDE_CODE_MIN = (2, 1, 280)
 DELEGATE_MODES = ("always", "auto")
 DELEGATE_AGENTS = ("claude-code", "codex")
+# Executors that run inside the Coder One process: nothing to install, and
+# Microluna signs in with the Codex login the adapter places.
+IN_PROCESS_AGENTS = ("microluna",)
 DEFAULT_MODELS = {"claude-code": "claude-opus-5-5", "codex": "gpt-6-luna"}
 
 # Where Codex's home and its credential live in the container, as in
@@ -364,11 +367,12 @@ class CoderOneDelegate(CoderOne):
             raise EpisodeContractError(
                 f"toolchain must be prebuilt or network, not {self._toolchain!r}"
             )
-        if self._delegate_agent not in DELEGATE_AGENTS:
+        if self._delegate_agent not in DELEGATE_AGENTS + IN_PROCESS_AGENTS:
             raise EpisodeContractError(
-                f"delegate_agent must be claude-code or codex, not {self._delegate_agent!r}"
+                "delegate_agent must be claude-code, codex, or microluna, "
+                f"not {self._delegate_agent!r}"
             )
-        if self._delegate_agent == "codex":
+        if self._delegate_agent in ("codex",) + IN_PROCESS_AGENTS:
             return
         version = _version_tuple(self._claude_code_version)
         if version is None or version < CLAUDE_CODE_MIN:
@@ -523,6 +527,11 @@ class CoderOneDelegate(CoderOne):
                 f"Codex CLI {words[-1]} installed, not the pinned {self._codex_version}"
             )
         self._codex_bin = str(CODEX_BIN)
+        await self._place_codex_auth(environment, auth)
+
+    async def _place_codex_auth(self, environment: BaseEnvironment, auth: Path) -> None:
+        """Place the Codex login under ``CODEX_HOME``, owned by the agent's
+        user and readable only by it."""
         remote_auth = CODEX_SECRETS / "auth.json"
         await self.exec_as_root(
             environment, command=f"mkdir -p {CODEX_HOME} {CODEX_SECRETS}"
@@ -702,12 +711,21 @@ class CoderOneTunable(CoderOneDelegate):
         tiers = manifest_tiers(manifest) + [
             {"agent": agent, "version": version} for agent, version in extra.items()
         ]
+        self._in_process: set[str] = set()
         for tier in tiers:
             agent = tier["agent"]
             version = tier.get("version")
+            if agent in IN_PROCESS_AGENTS:
+                if version:
+                    raise EpisodeContractError(
+                        f"the manifest pins {agent} at {version}, but it runs inside "
+                        "Coder One and installs nothing"
+                    )
+                self._in_process.add(agent)
+                continue
             if agent not in DELEGATE_AGENTS:
                 raise EpisodeContractError(
-                    f"coder-one-tunable runs claude-code and codex, not {agent!r}"
+                    f"coder-one-tunable runs claude-code, codex, and microluna, not {agent!r}"
                 )
             if not version:
                 raise EpisodeContractError(
@@ -734,11 +752,16 @@ class CoderOneTunable(CoderOneDelegate):
                     f"{'.'.join(map(str, CLAUDE_CODE_MIN))}; the API refuses Opus 5.5 to it"
                 )
 
+    def _needs_codex_login(self) -> bool:
+        """Whether a tier signs in with the Codex login: Codex CLI, or
+        Microluna in process."""
+        return "codex" in self._agents or "microluna" in getattr(self, "_in_process", set())
+
     async def install(self, environment: BaseEnvironment) -> None:
         """Install every CLI the manifest can dispatch to, place their
         credentials, then Coder One and its doctor."""
         auth = None
-        if "codex" in self._agents:
+        if self._needs_codex_login():
             auth = self.codex_auth_path()
             if auth is None or not auth.is_file():
                 raise EpisodeContractError(
@@ -748,9 +771,12 @@ class CoderOneTunable(CoderOneDelegate):
         records = []
         for agent in sorted(self._agents):
             records.append(await self._install_toolchain_for(environment, agent))
-        write_setup(self.logs_dir, merge_setup(records))
-        if auth is not None:
+        if records:
+            write_setup(self.logs_dir, merge_setup(records))
+        if auth is not None and "codex" in self._agents:
             await self._place_codex(environment, auth)
+        elif auth is not None:
+            await self._place_codex_auth(environment, auth)
         if "claude-code" in self._agents:
             await self._check_claude(environment)
         # Coder One itself, and its doctor, which checks every CLI the
@@ -761,7 +787,7 @@ class CoderOneTunable(CoderOneDelegate):
         try:
             await CoderOne.run(self, instruction, environment, context)
         finally:
-            if "codex" in self._agents:
+            if self._needs_codex_login():
                 try:
                     await self.exec_as_root(
                         environment, command=f"rm -rf {CODEX_SECRETS} {CODEX_HOME}"
@@ -773,7 +799,7 @@ class CoderOneTunable(CoderOneDelegate):
         env = CoderOne._episode_env(self)
         if self._claude_bin:
             env["CODER_ONE_CLAUDE_BIN"] = self._claude_bin
-        if "codex" in self._agents:
+        if self._needs_codex_login():
             env["CODEX_HOME"] = str(CODEX_HOME)
             if self._codex_bin:
                 env["CODER_ONE_CODEX_BIN"] = self._codex_bin
