@@ -381,7 +381,7 @@ fn read_lines(path: &Path) -> Vec<Value> {
 }
 
 /// The text of a tool result's content: a string, or a list of text parts.
-fn content_text(content: &Value) -> String {
+pub(crate) fn content_text(content: &Value) -> String {
     match content {
         Value::String(text) => text.clone(),
         Value::Array(parts) => parts
@@ -399,7 +399,7 @@ fn content_text(content: &Value) -> String {
 }
 
 /// Removes a shell wrapper Codex puts around every command.
-fn unwrap_shell(command: &str) -> String {
+pub(crate) fn unwrap_shell(command: &str) -> String {
     let command = command.trim();
     for prefix in ["/bin/bash -lc ", "bash -lc ", "/bin/sh -c ", "sh -c "] {
         if let Some(rest) = command.strip_prefix(prefix) {

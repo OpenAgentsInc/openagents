@@ -85,10 +85,13 @@ pub mod questions;
 pub mod regress;
 pub mod row;
 pub mod runs;
+pub mod runs_fingerprint;
 pub mod runs_group;
 pub mod runs_highlights;
 pub mod runs_learning;
 pub mod runs_marks;
+pub mod runs_moves;
+pub mod runs_phases;
 pub mod runs_replay;
 #[cfg(feature = "tui")]
 mod runs_replay_learning;

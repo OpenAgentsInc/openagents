@@ -1377,6 +1377,12 @@ pub fn command(args: &[String], out: &mut impl Write) -> Result<i32, String> {
     if args.first().map(String::as_str) == Some("highlights") {
         return crate::runs_highlights::command(args, out);
     }
+    if args
+        .first()
+        .is_some_and(|word| crate::runs_fingerprint::handles(word))
+    {
+        return crate::runs_fingerprint::command(args, out);
+    }
     let mut sources = Sources::standard();
     let mut marks_dir = crate::runs_marks::default_dir();
     let mut marked_only = false;

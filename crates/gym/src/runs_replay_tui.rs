@@ -28,13 +28,29 @@ struct Screen {
     scroll: Cell<usize>,
     follow: Cell<bool>,
     details: bool,
+    /// Each event's phases, from `runs_phases`: the rules, and Jev's stored
+    /// answers for the steps the rules leave.
+    phases: Vec<String>,
 }
 impl Screen {
     fn new(source: Source) -> Result<Self, String> {
         let replay = Replay::load(&source)?;
+        let fallback = match &source {
+            Source::Local(run) => run
+                .task_path
+                .as_ref()
+                .and_then(|path| std::fs::read_to_string(path.join("instruction.md")).ok()),
+            Source::Public { .. } => None,
+        };
+        let phases = crate::runs_phases::event_labels(
+            &replay,
+            &crate::runs_phases::task_of(&replay, fallback),
+            &crate::runs_phases::StepStore::open(crate::runs_phases::default_dir()),
+        );
         Ok(Self {
             source,
             replay,
+            phases,
             rows: RefCell::new(Wrapped {
                 width: 0,
                 ladder: Ladder::default(),
@@ -136,12 +152,17 @@ impl Screen {
             wrapped.width = usize::from(text.width);
             wrapped.ladder = ladder;
             wrapped.rows.clear();
-            for event in &self.replay.events {
+            for (index, event) in self.replay.events.iter().enumerate() {
+                let phase = self
+                    .phases
+                    .get(index)
+                    .filter(|label| !label.is_empty())
+                    .map_or(String::new(), |label| format!("  · {label}"));
                 wrapped.rows.push((
                     event.elapsed_ms,
                     Line::styled(
                         format!(
-                            "{}  {}  [{}]",
+                            "{}  {}  [{}]{phase}",
                             clock(event.elapsed_ms),
                             event.title,
                             event.timing

@@ -274,6 +274,8 @@ pub struct Replay {
     pub recorded: usize,
     pub estimated: usize,
     pub origin: String,
+    /// Each event's tool calls, parsed from its record, in event order.
+    pub extracted: Vec<crate::runs_phases::Extracted>,
 }
 
 struct Pending {
@@ -283,6 +285,7 @@ struct Pending {
     text: String,
     parts: Vec<Part>,
     record: String,
+    extracted: crate::runs_phases::Extracted,
 }
 
 fn time(value: &Value) -> Option<i64> {
@@ -492,6 +495,7 @@ fn pending(value: &Value, at: Option<i64>, timing: &'static str) -> Pending {
             .join("\n\n"),
         parts,
         record: safe_text(&display_value(value)),
+        extracted: crate::runs_phases::extract(value),
     }
 }
 
@@ -714,6 +718,7 @@ impl Replay {
             origin,
             ..Self::default()
         };
+        let mut paired = Vec::with_capacity(events.len());
         for event in events {
             let timing = if event.at.is_none() {
                 "estimated / untimed"
@@ -727,16 +732,20 @@ impl Replay {
             } else {
                 replay.recorded += 1;
             }
-            replay.events.push(Event {
-                elapsed_ms: at.saturating_sub(start).max(0) as u64,
-                timing,
-                title: event.title,
-                text: event.text,
-                parts: event.parts,
-                record: event.record,
-            });
+            paired.push((
+                Event {
+                    elapsed_ms: at.saturating_sub(start).max(0) as u64,
+                    timing,
+                    title: event.title,
+                    text: event.text,
+                    parts: event.parts,
+                    record: event.record,
+                },
+                event.extracted,
+            ));
         }
-        replay.events.sort_by_key(|e| e.elapsed_ms);
+        paired.sort_by_key(|(e, _)| e.elapsed_ms);
+        (replay.events, replay.extracted) = paired.into_iter().unzip();
         replay.duration_ms = replay.events.last().map(|e| e.elapsed_ms).unwrap_or(0).max(
             end.map(|e| e.saturating_sub(start).max(0) as u64)
                 .unwrap_or(0),
