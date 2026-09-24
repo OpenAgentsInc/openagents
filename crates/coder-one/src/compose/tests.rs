@@ -2390,6 +2390,12 @@ fn the_best_of_manifests_differ_from_their_single_arm_only_in_n() {
         (3, super::best_of::Select::Suite)
     );
     assert_eq!(suite.policy, micro.policy);
+    // The accept arm adds only accept.define to the suite arm.
+    let mut accept = manifest("microluna-best-of-3-accept.json");
+    let best_of = accept.policy.control.best_of.take().unwrap();
+    assert!(best_of.accept);
+    assert_eq!(best_of.select, super::best_of::Select::Suite);
+    assert_eq!(accept.policy, micro.policy);
     assert_eq!(
         micro.policy.executor.agent,
         crate::policy::AgentName::Microluna

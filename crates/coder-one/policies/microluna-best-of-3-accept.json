@@ -1,0 +1,85 @@
+{
+  "schema": "openagents.coder-one.policy.v1",
+  "name": "coder-one-microluna-best-of-3-accept",
+  "note": "microluna-best-of-3-suite with control.best_of.accept: while the 3 candidates run, accept.define writes, verifies with Jev, and freezes an acceptance suite from the task against the untouched workspace (2 rounds, at most $0.20). The kept candidate passes the most of its tests, then the most suite runs, then the verdict, then the checks, then cost. Written for issue #9587.",
+  "policy": {
+    "jev": {
+      "mode": "deep",
+      "model": "jev-1.13.0",
+      "question_sets": "builtin-v1"
+    },
+    "evidence": {
+      "probes": "v2",
+      "survey_files": 40
+    },
+    "control": {
+      "delegate": "always",
+      "explore_steps": 0,
+      "max_steps": 50,
+      "command_timeout_sec": 300,
+      "lane": "free",
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "horizon": {
+        "first_share": 0.55,
+        "later_share": 0.75,
+        "min_dispatch_sec": 300,
+        "check_share": 0.05,
+        "long_after_sec": 3600,
+        "long_effort": "high",
+        "long_command_sec": 3600
+      },
+      "best_of": {
+        "n": 3,
+        "max_copy_mb": 256,
+        "archive": true,
+        "select": "suite",
+        "accept": true
+      }
+    },
+    "brief": {
+      "cap": 12000,
+      "directions": "batch-checked",
+      "packer": "coverage-jev"
+    },
+    "executor": {
+      "agent": "microluna",
+      "version": null,
+      "model": "gpt-6-luna",
+      "effort": null,
+      "tools": null,
+      "prompt_cache_ttl": null,
+      "deadline_sec": 600,
+      "microluna": {
+        "mode": "requirements",
+        "max_sessions": 8,
+        "max_attempts": 2,
+        "max_groups": 4,
+        "session_turns": 30,
+        "session_sec": 600,
+        "spend_usd": 0.5,
+        "evidence_chars": 14000,
+        "checks": true,
+        "require_evidence": true,
+        "read_first": false,
+        "accept": false
+      }
+    },
+    "verify": {
+      "checks": true,
+      "support": false,
+      "verdict": true
+    }
+  },
+  "protected": {
+    "isolation": "task-container",
+    "effect_policy": "executor-bypasses-its-own-sandbox",
+    "acceptance": "task-verifier",
+    "ceilings": {
+      "episode_deadline_sec": null,
+      "reserve_sec": 30,
+      "spend_soft_usd": null,
+      "spend_hard_usd": null
+    }
+  }
+}

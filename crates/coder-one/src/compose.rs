@@ -1587,7 +1587,12 @@ where
             runs,
             factory,
         )? {
-            Ok(fan) => Some(fan),
+            Ok(mut fan) => {
+                if let (true, Some(map)) = (policy.accept, &subject.requirements) {
+                    fan.arm_accept(setup, map.clone());
+                }
+                Some(fan)
+            }
             Err(why) => {
                 println!("  best of {} ▸ one candidate: {why}", policy.n);
                 best_of_record = json!({ "n": policy.n, "skipped": why, "policy": policy });

@@ -102,6 +102,11 @@ pub struct BestOfPolicy {
         skip_serializing_if = "suite::is_default_sec"
     )]
     pub suite_sec: u64,
+    /// With `select: "suite"`, also write an `accept.define` suite from
+    /// the task while the candidates run, and rank by its green tests
+    /// before anything else.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub accept: bool,
 }
 
 impl BestOfPolicy {
@@ -120,6 +125,9 @@ impl BestOfPolicy {
         }
         if self.suite_sec == 0 {
             problems.push("control.best_of.suite_sec must be at least 1".to_string());
+        }
+        if self.accept && self.select != Select::Suite {
+            problems.push("control.best_of.accept needs select \"suite\"".to_string());
         }
         problems
     }
@@ -247,6 +255,10 @@ pub struct Fan {
     pub base: BTreeMap<String, String>,
     /// Whether the selection runs the suite, so the base is worth taking.
     pub suite: bool,
+    /// The `accept.define` job to run beside the candidates, when armed.
+    pub accept_job: Option<suite::AcceptJob>,
+    /// Its frozen suite, or why there is none.
+    pub accept: Option<Result<crate::accept::AcceptanceSuite, String>>,
 }
 
 /// Why a workspace can't be copied `n` times, or `None` when it can.
@@ -310,7 +322,29 @@ impl Fan {
             leaked: None,
             base: BTreeMap::new(),
             suite: policy.select == Select::Suite,
+            accept_job: None,
+            accept: None,
         }))
+    }
+
+    /// Arms `accept.define` to write a suite from `map` while the
+    /// candidates run, in the episode directory under `accept/`.
+    pub fn arm_accept(&mut self, setup: &Setup<'_>, map: crate::requirements::RequirementMap) {
+        let (container, model) = match &self.candidates[0].exec {
+            Exec::Micro(micro) => (
+                micro.isolation == microluna::Isolation::TaskContainer,
+                micro.model.clone(),
+            ),
+            _ => (false, "gpt-6-luna".to_string()),
+        };
+        self.accept_job = Some(suite::AcceptJob {
+            map,
+            jev: setup.jev.clone(),
+            container,
+            model,
+            instruction: setup.instruction.to_string(),
+            dir: setup.dir.join("accept"),
+        });
     }
 
     /// Dispatches run so far, the fan's included.
@@ -386,17 +420,29 @@ impl Executor for Fan {
             }
         }
         let workdir = self.workdir.clone();
-        let runs = futures_util::future::join_all(self.candidates.iter_mut().map(|candidate| {
-            let brief = candidate_briefing(briefing, &workdir, &candidate.dir);
-            async move {
-                let report = match &candidate.refused {
-                    Some(why) => harness(why.clone()),
-                    None => candidate.exec.execute(&brief).await,
-                };
-                (brief, report)
+        let candidates =
+            futures_util::future::join_all(self.candidates.iter_mut().map(|candidate| {
+                let brief = candidate_briefing(briefing, &workdir, &candidate.dir);
+                async move {
+                    let report = match &candidate.refused {
+                        Some(why) => harness(why.clone()),
+                        None => candidate.exec.execute(&brief).await,
+                    };
+                    (brief, report)
+                }
+            }));
+        // accept.define writes its suite against the untouched workspace
+        // while the candidates work in their copies.
+        let job = self.accept_job.as_ref();
+        let recorder = self.recorder.clone();
+        let define = async {
+            match job {
+                Some(job) => Some(suite::define_accept(job, &workdir, &recorder).await),
+                None => None,
             }
-        }))
-        .await;
+        };
+        let (runs, accept) = futures_util::future::join(candidates, define).await;
+        self.accept = accept;
         self.leaked = Some(delegate::fingerprint(&self.workdir) != self.before);
         let n = self.candidates.len();
         for (i, (candidate, (brief, report))) in self.candidates.iter_mut().zip(runs).enumerate() {
@@ -475,11 +521,16 @@ pub struct Score {
     /// With `select: "suite"`, the suite's passing runs and all its runs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub suite: Option<(usize, usize)>,
+    /// With `control.best_of.accept`, the `accept.define` suite's green
+    /// tests and all its tests.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accept: Option<(usize, usize)>,
 }
 
-/// A ranking key: lower ranks first.
+/// A ranking key: lower ranks first. The first part is the acceptance
+/// suite's green tests, then the suite's passing runs.
 type Key = (
-    std::cmp::Reverse<usize>,
+    std::cmp::Reverse<(usize, usize)>,
     u8,
     u64,
     usize,
@@ -489,7 +540,8 @@ type Key = (
 );
 
 /// The key parts' names, in the key's order.
-const KEY_PARTS: [&str; 6] = [
+const KEY_PARTS: [&str; 7] = [
+    "it passes the most acceptance tests",
     "it passes the most suite runs",
     "its verdict is the best",
     "its verdict's failure probability is the lowest",
@@ -519,9 +571,12 @@ impl Score {
         // An unknown cost ranks after every known one.
         let cost = self.cost_usd.map_or(u64::MAX, |usd| (usd * 1e9) as u64);
         let (passed, p_fail) = match select {
-            Select::Verdict => (0, 0),
+            Select::Verdict => ((0, 0), 0),
             Select::Suite => (
-                self.suite.map_or(0, |(passed, _)| passed),
+                (
+                    self.accept.map_or(0, |(green, _)| green),
+                    self.suite.map_or(0, |(passed, _)| passed),
+                ),
                 // No probability ranks after every known one.
                 self.p_fail.map_or(u64::MAX, |p| (p * 1e9) as u64),
             ),
@@ -540,18 +595,20 @@ impl Score {
 
 /// Which key part first separates `own` from `next`.
 fn decided_by(own: &Key, next: &Key) -> &'static str {
-    if own.0 != next.0 {
+    if own.0.0.0 != next.0.0.0 {
         KEY_PARTS[0]
-    } else if own.1 != next.1 {
+    } else if own.0 != next.0 {
         KEY_PARTS[1]
-    } else if own.2 != next.2 {
+    } else if own.1 != next.1 {
         KEY_PARTS[2]
-    } else if (own.3, own.4) != (next.3, next.4) {
+    } else if own.2 != next.2 {
         KEY_PARTS[3]
-    } else if own.5 != next.5 {
+    } else if (own.3, own.4) != (next.3, next.4) {
         KEY_PARTS[4]
-    } else {
+    } else if own.5 != next.5 {
         KEY_PARTS[5]
+    } else {
+        KEY_PARTS[6]
     }
 }
 
@@ -578,6 +635,10 @@ pub fn pick(scores: &[Score], select: Select) -> (usize, String) {
         (Select::Suite, Some((passed, total))) => format!("suite {passed} of {total}, "),
         (Select::Suite, None) => "no suite, ".to_string(),
         (Select::Verdict, _) => String::new(),
+    };
+    let suite = match kept.accept {
+        Some((green, total)) => format!("acceptance {green} of {total}, {suite}"),
+        None => suite,
     };
     let why = format!(
         "candidate {} kept: {decided_by} ({suite}verdict {}, {} failure(s), {} confirmed, {})",
@@ -715,6 +776,7 @@ pub async fn select(
     granted: u64,
 ) -> Selected {
     let workdir = setup.workdir;
+    let (accepted, accept_record) = suite::run_accept(setup, fan).await;
     let matrix = match policy.select {
         Select::Verdict => None,
         Select::Suite => Some(run_suite(setup, subject, policy, fan).await),
@@ -794,6 +856,7 @@ pub async fn select(
                 .flatten(),
             p_fail: verdict.as_ref().and_then(|(v, _)| v.p_fail),
             suite: matrix.as_ref().and_then(|m| m.score(i)),
+            accept: accepted.get(i).copied().flatten(),
         };
         entries.push(json!({
             "number": number,
@@ -851,6 +914,7 @@ pub async fn select(
         "select": policy.select,
         "order": match policy.select {
             Select::Verdict => ORDER.to_vec(),
+            Select::Suite if policy.accept => [&["accept"][..], &ORDER_SUITE[..]].concat(),
             Select::Suite => ORDER_SUITE.to_vec(),
         },
         "kept": best + 1,
@@ -865,6 +929,9 @@ pub async fn select(
     }
     if let Some(matrix) = &matrix {
         record["suite"] = matrix.record();
+    }
+    if !accept_record.is_null() {
+        record["accept"] = accept_record;
     }
     super::record_decision(setup.recorder, COMPONENT, "kept", &record);
     println!("  best of {} ▸ {why}", fan.candidates.len());
@@ -899,6 +966,7 @@ mod tests {
             cost_usd: Some(usd),
             p_fail: None,
             suite: None,
+            accept: None,
         }
     }
 
@@ -968,6 +1036,37 @@ mod tests {
         let (kept, why) = pick(&[score(2, "unknown", 0, 2, 0.001), a], Select::Suite);
         assert_eq!(kept, 1, "{why}");
         assert!(why.contains("no suite"), "{why}");
+    }
+
+    #[test]
+    fn acceptance_tests_rank_before_the_suite() {
+        let with = |mut s: Score, accept: usize, passed: usize| {
+            s.accept = Some((accept, 8));
+            s.suite = Some((passed, 3));
+            s
+        };
+        let scores = [
+            with(score(1, "pass", 0, 2, 0.001), 5, 3),
+            with(score(2, "unknown", 0, 2, 0.05), 7, 1),
+        ];
+        let (kept, why) = pick(&scores, Select::Suite);
+        assert_eq!(kept, 1, "{why}");
+        assert!(why.contains("the most acceptance tests"), "{why}");
+        assert!(why.contains("acceptance 7 of 8"), "{why}");
+        // Tied acceptance falls to the suite runs.
+        let scores = [
+            with(score(1, "pass", 0, 2, 0.001), 7, 1),
+            with(score(2, "unknown", 0, 2, 0.05), 7, 3),
+        ];
+        let (kept, why) = pick(&scores, Select::Suite);
+        assert_eq!(kept, 1, "{why}");
+        assert!(why.contains("the most suite runs"), "{why}");
+        // accept needs the suite selection.
+        let mut policy: BestOfPolicy =
+            serde_json::from_value(json!({ "n": 3, "accept": true })).unwrap();
+        assert!(policy.validate()[0].contains("needs select"));
+        policy.select = Select::Suite;
+        assert!(policy.validate().is_empty());
     }
 
     #[test]
@@ -1042,6 +1141,7 @@ mod tests {
             archive: true,
             select: Select::Verdict,
             suite_sec: 900,
+            accept: false,
         };
         assert!(policy(1).validate()[0].contains("from 2 to 8"));
         assert!(policy(9).validate()[0].contains("from 2 to 8"));
@@ -1055,6 +1155,7 @@ mod tests {
                 archive: true,
                 select: Select::Verdict,
                 suite_sec: 900,
+                accept: false,
             }
         );
         let parsed: BestOfPolicy =

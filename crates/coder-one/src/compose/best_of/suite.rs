@@ -41,6 +41,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
+use crate::accept;
 use crate::checks::{Subject, generic, place::Place};
 
 /// How `control.best_of` ranks its candidates first.
@@ -388,6 +389,186 @@ pub async fn run(
     }
     matrix.milliseconds = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
     matrix
+}
+
+/// An `accept.define` run to make beside the candidates.
+pub struct AcceptJob {
+    pub map: crate::requirements::RequirementMap,
+    pub jev: crate::component::jev::JevMode,
+    /// Whether the episode runs in a disposable task container, which is
+    /// then the tests' boundary.
+    pub container: bool,
+    pub model: String,
+    pub instruction: String,
+    /// Where the suite and the writer's traces go, outside the workspace.
+    pub dir: PathBuf,
+}
+
+impl AcceptJob {
+    /// The bounds: two rounds and $0.20 of writing and verifying, so a
+    /// best-of trial stays within cents.
+    #[must_use]
+    pub fn options() -> accept::Options {
+        accept::Options {
+            max_rounds: 2,
+            spend_usd: 0.2,
+            ..accept::Options::default()
+        }
+    }
+
+    /// Where the tests run.
+    #[must_use]
+    pub fn runner(&self) -> accept::Local {
+        accept::Local {
+            confine: if self.container {
+                accept::Confine::TaskContainer
+            } else {
+                accept::Confine::Writing
+            },
+            test_sec: Self::options().test_sec,
+        }
+    }
+}
+
+/// Writes, verifies, and freezes an acceptance suite for `workdir`, which
+/// no candidate touches while they run.
+///
+/// # Errors
+///
+/// Why the writer couldn't start, such as a missing Codex login.
+pub async fn define_accept(
+    job: &AcceptJob,
+    workdir: &Path,
+    recorder: &crate::record::Recorder,
+) -> Result<accept::AcceptanceSuite, String> {
+    let wire = crate::micro::codex_wire(&format!("accept-best-of-{}", atif::now_ms()))?;
+    let task = accept::Task {
+        title: "best-of acceptance suite".to_string(),
+        instruction: job.instruction.clone(),
+    };
+    let writer = accept::MicrolunaWriter {
+        transport: &wire,
+        config: microluna::Config {
+            model: job.model.clone(),
+            deadline: Some(Duration::from_secs(600)),
+            ..microluna::Config::luna(&format!(
+                "accept-writer-{}",
+                &accept::sha256(job.instruction.as_bytes())[..16]
+            ))
+        },
+        isolation: if job.container {
+            microluna::Isolation::TaskContainer
+        } else {
+            microluna::Isolation::Boundary
+        },
+        traces: Some(job.dir.clone()),
+        echo: false,
+    };
+    let suite_dir = job.dir.join("suite");
+    let inputs = accept::Inputs {
+        task: &task,
+        requirements: &job.map,
+        evidence: &[],
+        workspace: workdir,
+        suite_dir: &suite_dir,
+        workspace_note: String::new(),
+    };
+    let suite = accept::define(
+        &inputs,
+        &writer,
+        &job.runner(),
+        &job.jev,
+        recorder,
+        &AcceptJob::options(),
+    )
+    .await;
+    let _ = suite.save(&accept::AcceptanceSuite::record_path(&suite_dir));
+    Ok(suite)
+}
+
+/// Runs the fan's frozen acceptance suite on each candidate in the real
+/// workspace: each candidate's green and total tests, or `None` where it
+/// didn't run, and the record.
+pub async fn run_accept(
+    setup: &super::super::Setup<'_>,
+    fan: &super::Fan,
+) -> (Vec<Option<(usize, usize)>>, Value) {
+    let (Some(defined), Some(job)) = (&fan.accept, &fan.accept_job) else {
+        return (Vec::new(), Value::Null);
+    };
+    let suite = match defined {
+        Ok(suite) => suite,
+        Err(why) => return (Vec::new(), json!({ "error": why })),
+    };
+    let mut record = json!({
+        "status": suite.status,
+        "tests": suite.tests.len(),
+        "rejected": suite.rejected.len(),
+        "gaps": suite.gaps.len(),
+        "digest": suite.digest,
+        "start": suite.start.as_ref().map(|r| json!({ "passed": r.passed, "total": r.total })),
+        "writer_usd": suite.writer_usd,
+        "jev_usd": suite.jev_usd,
+        "milliseconds": suite.milliseconds,
+    });
+    if suite.tests.is_empty() {
+        record["note"] = json!("the suite has no accepted tests, so it ranks nothing");
+        return (Vec::new(), record);
+    }
+    let runner = job.runner();
+    let mut scores = Vec::new();
+    let mut runs = Vec::new();
+    for (i, candidate) in fan.candidates.iter().enumerate() {
+        let label = format!("candidate-{}", i + 1);
+        let placed = if candidate.refused.is_some() {
+            Err("its copy was never made".to_string())
+        } else {
+            super::super::replace_contents(setup.workdir, &candidate.dir)
+        };
+        let score = match placed {
+            Err(why) => {
+                runs.push(json!({ "candidate": i + 1, "error": why }));
+                None
+            }
+            Ok(()) => {
+                match accept::run(suite, setup.workdir, &runner, Some(setup.recorder), &label).await
+                {
+                    Ok(result) => {
+                        let red: Vec<String> = result
+                            .tests
+                            .iter()
+                            .filter(|t| !t.green)
+                            .map(|t| t.id.clone())
+                            .collect();
+                        runs.push(json!({
+                            "candidate": i + 1,
+                            "passed": result.passed,
+                            "total": result.total,
+                            "red": red,
+                        }));
+                        Some((result.passed, result.total))
+                    }
+                    Err(tampered) => {
+                        runs.push(json!({ "candidate": i + 1, "error": tampered.to_string() }));
+                        None
+                    }
+                }
+            }
+        };
+        scores.push(score);
+    }
+    let shown: Vec<String> = scores
+        .iter()
+        .map(|s| s.map_or_else(|| "-".to_string(), |(g, t)| format!("{g}/{t}")))
+        .collect();
+    println!(
+        "  best of {} ▸ acceptance suite of {} test(s): {}",
+        scores.len(),
+        suite.tests.len(),
+        shown.join(", ")
+    );
+    record["runs"] = json!(runs);
+    (scores, record)
 }
 
 #[cfg(test)]
