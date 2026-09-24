@@ -36,5 +36,9 @@ required-features = ["job"]
 name = "live"
 required-features = ["job"]
 
+[[test]]
+name = "memory"
+required-features = ["job"]
+
 [lints]
 workspace = true

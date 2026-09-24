@@ -45,8 +45,9 @@ This preserves a boundary wrapper's arguments, working directory, and
 complete environment policy, including `env_clear`. Supervision replaces
 standard input with null, captures both output streams, and establishes its
 own process group. The job owns the command and is no longer `Clone`.
-The prepared-command regression checks directory and environment preservation;
-all 25 supervisor tests and its doctest pass under Rust 1.97.1.
+The prepared-command regression checks directory and environment preservation,
+and it runs under the default memory cap, so the scope handshake below keeps
+`env_clear` too.
 
 A job that exits on its own is the same contract read the other way.
 Whatever is still in the group is a descendant that outlived the job it
@@ -86,6 +87,82 @@ behind.
 a delegation that did, both report what they printed first. A timed-out
 job's partial output is often the most useful thing it produced.
 
+## Memory is bounded per job
+
+Twice on this workspace's host, one analysis process grew to 118 to 124 GB
+of a 125 GB machine with no swap, and the out-of-memory killer took the
+desktop session with it
+([#9596](https://github.com/OpenAgentsInc/openagents/issues/9596)). A job
+now has a memory cap, and a job that passes it is killed alone and says so.
+
+| Setting | Value |
+| --- | --- |
+| Default cap per job | 16 GiB (`supervise::MEMORY_MAX`) |
+| Override for every job in a process | `SUPERVISE_MEMORY_MAX`: a byte count with an optional `K`, `M`, `G`, or `T` suffix, or `none` |
+| Override for one job | `Limits::memory(Some(bytes))`, or `Limits::memory(None)` for no cap |
+| Force the fallback | `SUPERVISE_MEMORY_SCOPE=off` |
+
+**The cap is a cgroup.** Where a systemd user manager runs, the job goes into
+a transient scope, `supervise-<pid>-<n>-<child>.scope`, with `MemoryMax` at
+the cap, `MemorySwapMax=0`, and `OOMPolicy=kill`. The scope sits under the
+slice the supervisor runs in, such as `agents.slice`, so it stays under that
+slice's ceiling. The kernel kills the job's tree inside the scope and nothing
+outside it, and systemd records the scope's result as `oom-kill`. The
+supervisor reads that result after cleanup and reports it in
+`Ended::memory` (`Stopped::memory` for a watched job), and
+`Ended::over_memory()` is true. The ending itself still reads as a signal or
+an exit code, because `Ending` is matched exhaustively across the workspace;
+`over_memory()` is what tells a memory kill apart from a crash.
+
+A cgroup rather than `RLIMIT_AS` or `RLIMIT_DATA`, for three reasons:
+
+- **It counts the tree.** A resource limit is per process and inherited, so
+  a shell that starts four compilers gives each the whole cap.
+- **It counts memory in use.** Bun, Node, the Go runtime, and CUDA reserve
+  address space they never touch, and `RLIMIT_AS` fails them at start. The
+  executors Coder One delegates to are among them.
+- **It reports.** A process past a resource limit sees a failed allocation,
+  and what it does next — an abort, an exception, an exit code of its own —
+  reads the same as any other failure.
+
+**The job is in the scope before it runs.** systemd makes a scope around
+processes that already exist, and a shell forks its first command within a
+millisecond, so a move after the spawn would miss it. The child therefore
+waits between `fork` and `exec`: it writes its process identifier to a pipe
+and blocks on a second one while a helper thread asks the user manager for
+the scope over D-Bus (`busctl`), waits for `/proc/<pid>/cgroup` to name it,
+and checks the cgroup has a `memory.max`. Only then does the child execute
+the program. Rewrapping the command in `systemd-run --scope` would be
+shorter, but the wrapper runs the program with its own environment, and a
+prepared command's `env_clear` can't be read back to rebuild it. Placement
+adds a few milliseconds to a spawn, and settling the scope's result a few
+more after cleanup.
+
+**The scope is the job's tree.** A descendant that called `setsid` leaves the
+process group but not the scope. When the scope still holds processes 250
+milliseconds after the job's cleanup, the supervisor kills them through
+systemd.
+
+**Where there is no scope, the child caps itself.** No user manager, no
+`busctl`, a manager without the memory controller, macOS, or
+`SUPERVISE_MEMORY_SCOPE=off`: the child sets `RLIMIT_DATA` to the cap before
+it executes the program. When an enclosing cgroup allows more, as a task
+container with a 32 GB budget does, the limit is that cgroup's `memory.max`
+instead: the container's limit already protects the host, and a lower one
+would fail a command the task's budget admits. That stops a runaway process, but per process, and
+the job is reported with `Enforcement::DataLimit` and `exceeded: false`,
+since nothing can tell its ending from a crash. A failed handshake falls back
+the same way, so no job runs uncapped because placement failed.
+
+**Nested supervision.** A supervised program that supervises jobs of its own
+puts each in a scope beside its own, under the same slice, not inside it: a
+scope can't hold another. Each job keeps its own cap.
+
+**Call sites keep the default.** Coder One's model commands, the executors it
+delegates to, and the harness helpers get 16 GiB each through
+`Limits::within`, with no change at the call site. The blocking half,
+`blocking::wait`, takes a command its caller spawned and applies no cap.
+
 ## Where the files go
 
 CoderBench is the exception to capture, on purpose. A run's output goes to
@@ -110,14 +187,15 @@ an implementation and tests is the failure this crate exists to remove.
 
 ## What this does not do
 
-- **It is not a sandbox.** It bounds time and captured output. It does not
-  bound what a program reads, writes, or sends, and it does not bound memory
-  or CPU. A probe's argv additionally runs only under an operator approval —
+- **It is not a sandbox.** It bounds time, captured output, and memory. It
+  does not bound what a program reads, writes, or sends, and it does not
+  bound CPU. A probe's argv additionally runs only under an operator approval —
   `crates/capability` owns that — and enforced admission for delegated work
   is separate work.
-- **A process that leaves the group escapes it.** A descendant that calls
-  `setsid` is no longer in the group the job owns, and nothing here reaches
-  it. The capture waits a bounded time for such a process to close its end
+- **A process that leaves the group escapes it without a scope.** A
+  descendant that calls `setsid` is no longer in the group the job owns. The
+  memory scope still holds it and ends it after cleanup; under the
+  `RLIMIT_DATA` fallback, nothing here reaches it. The capture waits a bounded time for such a process to close its end
   of a pipe rather than waiting forever.
 - **There is a window between reaping and the last signal.** A group
   identifier belongs to a job while its leader exists, and the supervisor
@@ -135,5 +213,9 @@ grandchild on a deadline, a cancelled future, an outer timeout, a child that
 exits while a descendant remains, two simultaneous jobs where only one is
 terminated, a child that ignores `SIGTERM`, reaping, oversized output on
 both streams at once, a producer that never stops, split UTF-8 at the cap,
-and partial output retained on a timeout. `crates/coder` and
+and partial output retained on a timeout. `tests/memory.rs` runs the test
+binary again as a job that allocates past a 64 MiB cap and checks that it is
+killed and reported as over its cap, that a job under its cap and a job that
+crashes are not, that a grandchild started at once is already in the scope,
+and that a `setsid` descendant ends with the scope. `crates/coder` and
 `crates/coderbench` each repeat the marker case through their own call site.

@@ -53,6 +53,16 @@
 //! was cut, and — this matters for a job that failed — what it managed to
 //! print before it did.
 //!
+//! # Memory is bounded per job
+//!
+//! A job has a memory cap, [`MEMORY_MAX`] unless the caller or the
+//! [`MEMORY_ENV`] variable says otherwise. On a host with a systemd user
+//! manager the job runs in a transient scope whose cgroup holds its whole
+//! tree to the cap, and a job the kernel killed for passing it is reported
+//! as such in [`Ended::memory`], apart from one that crashed. Elsewhere each
+//! process gets `RLIMIT_DATA` instead. The [`memory`] module has the design
+//! and the reasons for it.
+//!
 //! # Watching a job while it runs
 //!
 //! [`Job::start`] is the same contract for a caller that reads standard
@@ -81,6 +91,8 @@ compile_error!(
 
 mod group;
 
+pub mod memory;
+
 #[cfg(feature = "job")]
 mod job;
 
@@ -94,6 +106,7 @@ pub use group::{process_running, running};
 pub use job::Job;
 #[cfg(feature = "job")]
 pub use live::{Delivery, Gap, Input, Live, Stopped};
+pub use memory::{Enforcement, MEMORY_ENV, MEMORY_MAX, Memory};
 
 /// How long a terminated job has to exit on `SIGTERM` before the group is
 /// killed, and how long a drain has to reach the end of a pipe afterwards.
@@ -102,7 +115,8 @@ pub const GRACE: Duration = Duration::from_millis(250);
 /// The bytes one stream keeps, unless a caller says otherwise.
 pub const STREAM_MAX: usize = 64 * 1024;
 
-/// How much one job may take: wall time, and bytes per captured stream.
+/// How much one job may take: wall time, bytes per captured stream, and
+/// memory.
 #[derive(Clone, Copy, Debug)]
 pub struct Limits {
     /// How long the job may run before the supervisor terminates its tree.
@@ -110,15 +124,19 @@ pub struct Limits {
     /// The bytes each of stdout and stderr keeps. Bytes past this are
     /// counted and dropped as they arrive.
     pub stream_max: usize,
+    /// The memory the job's tree may take, in bytes, or `None` for no cap.
+    pub memory_max: Option<u64>,
 }
 
 impl Limits {
-    /// A job bounded in time, keeping [`STREAM_MAX`] bytes of each stream.
+    /// A job bounded in time, keeping [`STREAM_MAX`] bytes of each stream,
+    /// under the default memory cap ([`memory::default_max`]).
     #[must_use]
     pub fn within(wall: Duration) -> Self {
         Limits {
             wall,
             stream_max: STREAM_MAX,
+            memory_max: memory::default_max(),
         }
     }
 
@@ -126,6 +144,14 @@ impl Limits {
     #[must_use]
     pub fn keeping(mut self, stream_max: usize) -> Self {
         self.stream_max = stream_max;
+        self
+    }
+
+    /// The same bound under a different memory cap, in bytes; `None` runs
+    /// the job with no cap.
+    #[must_use]
+    pub fn memory(mut self, memory_max: Option<u64>) -> Self {
+        self.memory_max = memory_max;
         self
     }
 }
@@ -216,9 +242,20 @@ pub struct Ended {
     pub stderr: Captured,
     /// Wall time from spawn to the end of cleanup.
     pub elapsed: Duration,
+    /// The job's memory cap and whether the job ran into it, or `None` when
+    /// it ran without one.
+    pub memory: Option<Memory>,
 }
 
 impl Ended {
+    /// Whether the kernel killed a process in the job for passing its
+    /// memory cap. The ending then reads as a signal or an exit code, and
+    /// this is what tells it apart from a crash.
+    #[must_use]
+    pub fn over_memory(&self) -> bool {
+        self.memory.as_ref().is_some_and(|memory| memory.exceeded)
+    }
+
     /// How many bytes the job wrote across both streams, before the caps.
     #[must_use]
     pub fn bytes(&self) -> u64 {

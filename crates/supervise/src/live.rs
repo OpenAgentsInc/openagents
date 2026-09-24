@@ -30,7 +30,7 @@ use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 use tokio::time::timeout;
 
-use crate::{Captured, Ending, GRACE, Job, Sink, group};
+use crate::{Captured, Ending, GRACE, Job, Memory, Sink, group, memory};
 
 /// The bytes one read takes from a pipe.
 const CHUNK: usize = 8 * 1024;
@@ -91,6 +91,18 @@ pub struct Stopped {
     pub stdout_bytes: u64,
     pub stderr: Captured,
     pub elapsed: Duration,
+    /// The job's memory cap and whether the job ran into it, or `None` when
+    /// it ran without one.
+    pub memory: Option<Memory>,
+}
+
+impl Stopped {
+    /// Whether the kernel killed a process in the job for passing its
+    /// memory cap, which is what tells that ending apart from a crash.
+    #[must_use]
+    pub fn over_memory(&self) -> bool {
+        self.memory.as_ref().is_some_and(|memory| memory.exceeded)
+    }
 }
 
 /// Standard output waiting for the caller.
@@ -155,7 +167,7 @@ pub struct Live {
     stdout: Arc<Mutex<Pending>>,
     stdin: Option<ChildStdin>,
     stop: Option<oneshot::Sender<()>>,
-    supervisor: JoinHandle<(Ending, Captured, bool)>,
+    supervisor: JoinHandle<(Ending, Captured, bool, Option<Memory>)>,
     started: Instant,
 }
 
@@ -169,7 +181,12 @@ impl Job {
     pub fn start(self, input: Input) -> Result<Live, String> {
         let started = Instant::now();
         let limits = self.limits;
-        let mut command = Command::from(self.command);
+        let mut prepared = self.command;
+        let handshake = limits
+            .memory_max
+            .map(|max| memory::arm(&mut prepared, max))
+            .transpose()?;
+        let mut command = Command::from(prepared);
         command
             .stdin(match input {
                 Input::Null => Stdio::null(),
@@ -179,7 +196,23 @@ impl Job {
             .stderr(Stdio::piped())
             .process_group(0)
             .kill_on_drop(true);
-        let mut child = command.spawn().map_err(|error| error.to_string())?;
+        // With a cap, the child waits between `fork` and `exec` until the
+        // helper has placed it, so the spawn returns once it is placed.
+        let serving = handshake.map(memory::Handshake::serve);
+        let spawned = command.spawn();
+        let placed = serving.map(memory::Serving::finish);
+        let mut child = match spawned {
+            Ok(child) => child,
+            Err(error) => {
+                // A child that failed to execute may still have been
+                // placed; its scope is cleared away without holding up the
+                // caller.
+                if let Some(placed) = placed {
+                    std::thread::spawn(move || placed.settle());
+                }
+                return Err(error.to_string());
+            }
+        };
         let pid = child.id();
         let group = pid.and_then(|id| i32::try_from(id).ok());
         let stdin = child.stdin.take();
@@ -246,7 +279,8 @@ impl Job {
                 (true, Ending::TimedOut) => Ending::Exited(stopped_with.flatten()),
                 (_, ending) => ending,
             };
-            (ending, stderr, graceful)
+            let memory = crate::job::settle(placed).await;
+            (ending, stderr, graceful, memory)
         });
         Ok(Live {
             pid,
@@ -327,12 +361,13 @@ impl Live {
 
     async fn end(&mut self, requested: bool) -> Stopped {
         self.stdin = None;
-        let (ending, stderr, graceful) = match (&mut self.supervisor).await {
+        let (ending, stderr, graceful, memory) = match (&mut self.supervisor).await {
             Ok(result) => result,
             Err(error) => (
                 Ending::Failed(format!("the supervisor stopped: {error}")),
                 Captured::default(),
                 false,
+                None,
             ),
         };
         // A killed descendant stays in the group until its parent, or
@@ -363,6 +398,7 @@ impl Live {
             stdout_bytes,
             stderr,
             elapsed: self.started.elapsed(),
+            memory,
         }
     }
 }

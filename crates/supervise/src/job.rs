@@ -12,7 +12,8 @@ use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 use tokio::time::timeout;
 
-use crate::{Captured, Ended, Ending, GRACE, Limits, Sink, group};
+use crate::memory::{self, Placed};
+use crate::{Captured, Ended, Ending, GRACE, Limits, Memory, Sink, group};
 
 /// The bytes one read takes from a pipe. Two of these are the only capture
 /// memory a job holds beyond its caps.
@@ -128,6 +129,7 @@ impl Job {
                 stdout: Captured::default(),
                 stderr: Captured::default(),
                 elapsed: started.elapsed(),
+                memory: None,
             },
         };
         drop(held);
@@ -138,7 +140,15 @@ impl Job {
 /// Spawns the job, drains it, ends it, and reaps it.
 async fn supervise(job: Job, dropped: oneshot::Receiver<()>) -> Ended {
     let started = Instant::now();
-    let mut command = Command::from(job.command);
+    let mut prepared = job.command;
+    let handshake = match job.limits.memory_max {
+        Some(max) => match memory::arm(&mut prepared, max) {
+            Ok(handshake) => Some(handshake),
+            Err(why) => return unspawned(why, started),
+        },
+        None => None,
+    };
+    let mut command = Command::from(prepared);
     command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -148,15 +158,18 @@ async fn supervise(job: Job, dropped: oneshot::Receiver<()>) -> Ended {
         // runtime itself goes away mid-cleanup.
         .process_group(0)
         .kill_on_drop(true);
-    let mut child = match command.spawn() {
+    // With a cap, the child waits between `fork` and `exec` until the
+    // helper has placed it, so the spawn returns once it is placed.
+    let serving = handshake.map(memory::Handshake::serve);
+    let spawned = command.spawn();
+    let placed = serving.map(memory::Serving::finish);
+    let mut child = match spawned {
         Ok(child) => child,
         Err(error) => {
-            return Ended {
-                ending: Ending::Failed(error.to_string()),
-                stdout: Captured::default(),
-                stderr: Captured::default(),
-                elapsed: started.elapsed(),
-            };
+            // A child that failed to execute may still have been placed,
+            // and its scope is cleared away like any other.
+            settle(placed).await;
+            return unspawned(error.to_string(), started);
         }
     };
     // `process_group(0)` makes the child the leader of a new group, so the
@@ -188,11 +201,35 @@ async fn supervise(job: Job, dropped: oneshot::Receiver<()>) -> Ended {
 
     let stdout = finish(out).await;
     let stderr = finish(err).await;
+    let memory = settle(placed).await;
     Ended {
         ending,
         stdout,
         stderr,
         elapsed: started.elapsed(),
+        memory,
+    }
+}
+
+/// A job that never started.
+fn unspawned(why: String, started: Instant) -> Ended {
+    Ended {
+        ending: Ending::Failed(why),
+        stdout: Captured::default(),
+        stderr: Captured::default(),
+        elapsed: started.elapsed(),
+        memory: None,
+    }
+}
+
+/// Settles a job's memory cap once its tree is gone, off the runtime's
+/// worker threads, since it waits on systemd.
+pub(crate) async fn settle(placed: Option<Placed>) -> Option<Memory> {
+    let placed = placed?;
+    let fallback = placed.clone();
+    match tokio::task::spawn_blocking(move || placed.settle()).await {
+        Ok(memory) => Some(memory),
+        Err(_) => Some(fallback.unsettled()),
     }
 }
 
