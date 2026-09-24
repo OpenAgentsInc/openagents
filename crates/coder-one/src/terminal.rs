@@ -543,6 +543,15 @@ pub fn microluna_policy(read_only: bool) -> crate::micro::Policy {
     }
 }
 
+/// What a Microluna turn's task adds to the directions. The loop's session
+/// guidance is written for tasks that change files, and asks for an edit
+/// and a check before `done`; a terminal request is often a question, and
+/// on 2026-09-24 two of eight questions ended with an unrequested edit.
+pub const MICROLUNA_QUESTIONS: &str = "If the request is a question and asks \
+for no change, the answer is the whole result: change no file, and call finish \
+with status done and the answer as soon as the evidence supports it. This \
+outranks any session guidance that asks for an edit.";
+
 /// What a Microluna turn reads from [`answer`] once the survey is done.
 struct Turn<'a> {
     request: &'a Request,
@@ -598,7 +607,7 @@ async fn microluna_turn(turn: Turn<'_>) -> Answer {
     // The loop's sessions read the task, not the briefing, so the
     // directions ride with the task's words.
     let prepared = Prepared {
-        instruction: format!("{words}\n\n{directions}"),
+        instruction: format!("{words}\n\n{directions} {MICROLUNA_QUESTIONS}"),
         title: state.issue.title.clone(),
         directions: directions.to_string(),
         requirements,
