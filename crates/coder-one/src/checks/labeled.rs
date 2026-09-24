@@ -489,11 +489,13 @@ pub fn arm_options(arm: &str) -> Option<Options> {
             self_report: true,
             optional_outputs: true,
             behavior: false,
+            measured_acceptance: false,
         }),
         "v7" => Some(Options {
             self_report: true,
             optional_outputs: true,
             behavior: true,
+            measured_acceptance: false,
         }),
         _ => None,
     }

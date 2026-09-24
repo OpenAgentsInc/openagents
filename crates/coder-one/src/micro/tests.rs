@@ -650,6 +650,7 @@ fn one_round() -> Option<SuiteWriter> {
         inventory: false,
         standard_methods: false,
         guards: false,
+        general: false,
     })
 }
 
@@ -1068,6 +1069,311 @@ async fn a_partial_green_runs_a_gap_round_then_resumes() {
             .unwrap()
             .iter()
             .any(|b| b["batch"] == "gap round 1")
+    );
+}
+
+/// A writer that keeps a guard: T1 passes on the untouched workspace,
+/// where hello.txt already holds hello, and T2 fails there.
+fn writes_a_guard_and_a_deciding_test() -> Vec<microluna::Reply> {
+    vec![
+        call(
+            "w1",
+            "write_file",
+            &json!({ "path": "tests/T1.sh", "contents": HELLO_TEST }),
+            usage(900, 0, 40),
+        ),
+        call(
+            "w2",
+            "write_file",
+            &json!({ "path": "tests/T2.sh", "contents": WORLD_TEST }),
+            usage(900, 800, 40),
+        ),
+        finish("w3", "done", "Wrote a guard for R1 and T2 for R2."),
+    ]
+}
+
+/// Session 1 fixes world.txt and, following the task, changes the file
+/// the guard T1 pins; session 2, when it runs, restores the guard.
+fn turns_a_guard_red() -> Vec<microluna::Reply> {
+    vec![
+        call(
+            "s1a",
+            "write_file",
+            &json!({ "path": "world.txt", "contents": "world\n" }),
+            usage(900, 0, 40),
+        ),
+        call(
+            "s1b",
+            "write_file",
+            &json!({ "path": "hello.txt", "contents": "HELLO\n" }),
+            usage(900, 800, 40),
+        ),
+        finish("s1f", "done", "Wrote world.txt and changed hello.txt."),
+        call(
+            "s2a",
+            "write_file",
+            &json!({ "path": "hello.txt", "contents": "hello\n" }),
+            usage(900, 800, 40),
+        ),
+        finish("s2f", "done", "Restored hello.txt for T1."),
+    ]
+}
+
+fn guard_policy(advisory: bool) -> Policy {
+    let mut writer = one_round().unwrap();
+    writer.guards = true;
+    Policy {
+        suite: true,
+        checks: false,
+        suite_writer: Some(writer),
+        advisory_guards: advisory,
+        ..Policy::default()
+    }
+}
+
+async fn run_guarded(advisory: bool) -> (Value, tempfile::TempDir) {
+    let dir = tempfile::tempdir().unwrap();
+    let mut executor = micro(dir.path(), turns_a_guard_red(), guard_policy(advisory));
+    std::fs::write(dir.path().join("work/hello.txt"), "hello\n").unwrap();
+    std::fs::write(dir.path().join("work/world.txt"), "nope\n").unwrap();
+    fake(&executor).lane(
+        "Write an executable acceptance suite",
+        writes_a_guard_and_a_deciding_test(),
+    );
+    executor.take_evidence(&prepared());
+    let report = executor.execute(&briefing(TASK)).await;
+    let record = executor.last.clone().unwrap();
+    assert_eq!(report.status, Status::Answered, "{record:#}");
+    (record, dir)
+}
+
+/// v8's advisory guards: a guard that session 1 turns red doesn't send a
+/// second session to turn it green; the loop stops on the deciding test
+/// and names the guard. v7 sends the second session.
+#[tokio::test]
+async fn a_guard_an_edit_turns_red_doesnt_hold_the_loop() {
+    let (record, dir) = run_guarded(true).await;
+    assert_eq!(
+        record["sessions"].as_array().unwrap().len(),
+        1,
+        "{record:#}"
+    );
+    let stopped = record["stopped"].as_str().unwrap();
+    assert!(
+        stopped.contains("green after session 1 (1 of 1)"),
+        "{stopped}"
+    );
+    assert!(stopped.contains("the guard T1"), "{stopped}");
+    let run = record["moves"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["kind"] == "run" && m["after_session"] == 1)
+        .unwrap();
+    assert_eq!(run["advisory_guards"], json!(["T1"]), "{run:#}");
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("work/hello.txt")).unwrap(),
+        "HELLO\n",
+        "the change session 1 made stands"
+    );
+
+    let (record, dir) = run_guarded(false).await;
+    assert_eq!(
+        record["sessions"].as_array().unwrap().len(),
+        2,
+        "{record:#}"
+    );
+    assert!(
+        record["stopped"]
+            .as_str()
+            .unwrap()
+            .contains("green after session 2 (2 of 2)"),
+        "{record:#}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("work/hello.txt")).unwrap(),
+        "hello\n"
+    );
+}
+
+/// The note a later session reads names each red guard and says the host
+/// doesn't count it.
+#[test]
+fn the_guard_note_names_each_guard() {
+    let one = guard_note(&["T10".to_string()]);
+    assert!(one.starts_with("T10 passed on the untouched workspace and fails now."));
+    assert!(one.contains("doesn't count it"));
+    let two = guard_note(&["T1".to_string(), "T4".to_string()]);
+    assert!(two.starts_with("T1, T4 passed on the untouched workspace and fail now."));
+    assert!(two.contains("doesn't count them"));
+}
+
+/// v8's gap_overlap: the first gap round runs as soon as the suite is
+/// frozen with a gap, beside session 1, so the loop's first run already
+/// has the gap's test and no gap round follows the green.
+#[tokio::test]
+async fn the_gap_round_runs_beside_session_one() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut executor = micro(
+        dir.path(),
+        Vec::new(),
+        Policy {
+            suite: true,
+            checks: false,
+            suite_writer: one_round(),
+            overlap_suite: true,
+            gap_rounds: 1,
+            gap_overlap: true,
+            fast_runs: true,
+            ..Policy::default()
+        },
+    );
+    wrong_files(dir.path());
+    fake(&executor).lane(
+        "Write new tests only for them",
+        vec![
+            call(
+                "g1",
+                "write_file",
+                &json!({ "path": "tests/T1.sh", "contents": WORLD_TEST }),
+                usage(900, 0, 40),
+            ),
+            finish("g2", "done", "Wrote a test for R2."),
+        ],
+    );
+    fake(&executor).lane(
+        "Write an executable acceptance suite",
+        vec![
+            call(
+                "w1",
+                "write_file",
+                &json!({ "path": "tests/T1.sh", "contents": HELLO_TEST }),
+                usage(900, 0, 40),
+            ),
+            finish("w2", "done", "Wrote T1 for R1."),
+        ],
+    );
+    let mut early = vec![call(
+        "early-sleep",
+        "run_command",
+        &json!({ "command": "sleep 2", "timeout_seconds": null }),
+        usage(900, 0, 20),
+    )];
+    early.extend([
+        call(
+            "early-hello",
+            "write_file",
+            &json!({ "path": "hello.txt", "contents": "hello\n" }),
+            usage(900, 800, 40),
+        ),
+        call(
+            "early-world",
+            "write_file",
+            &json!({ "path": "world.txt", "contents": "world\n" }),
+            usage(900, 800, 40),
+        ),
+        finish("early-finish", "done", "Wrote both files."),
+    ]);
+    fake(&executor).lane("while the acceptance suite is written", early);
+    executor.take_evidence(&prepared());
+    let report = executor.execute(&briefing(TASK)).await;
+    let record = executor.last.clone().unwrap();
+    assert_eq!(report.status, Status::Answered, "{record:#}");
+    let gaps: Vec<&Value> = record["moves"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|m| m["kind"] == "gap")
+        .collect();
+    assert_eq!(gaps.len(), 1, "{record:#}");
+    assert_eq!(gaps[0]["overlapped"], json!(true));
+    assert_eq!(gaps[0]["added"], json!(1));
+    let session_end = record["sessions"][0]["end_ms"]
+        .as_u64()
+        .or_else(|| {
+            record["parallel"]["tracks"]
+                .as_array()?
+                .iter()
+                .find(|t| t["label"] == "session 1")?["end_ms"]
+                .as_u64()
+        })
+        .unwrap();
+    assert!(
+        gaps[0]["end_ms"].as_u64().unwrap() <= session_end,
+        "the gap round ended before session 1: {record:#}"
+    );
+    let stopped = record["stopped"].as_str().unwrap();
+    assert!(
+        stopped.contains("green after session 1 (2 of 2)"),
+        "{stopped}"
+    );
+    assert!(
+        !record["parallel"]["batches"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|b| b["batch"] == "gap round 1"),
+        "no gap round after the green: {record:#}"
+    );
+}
+
+#[test]
+fn v8_options_need_the_suite() {
+    let policy = Policy {
+        advisory_guards: true,
+        gap_overlap: true,
+        test_jobs: 9,
+        ..Policy::default()
+    };
+    let problems = policy.validate().join("\n");
+    assert!(
+        problems.contains("test_jobs must be from 1 to 8"),
+        "{problems}"
+    );
+    assert!(problems.contains("advisory_guards and gap_overlap need suite"));
+    assert!(problems.contains("gap_overlap needs gap_rounds and overlap_suite"));
+}
+
+/// The general texts carry none of the words the flagged texts took from
+/// one task's defects.
+#[test]
+fn the_general_guidance_is_task_neutral() {
+    let texts = [
+        EARLY_GUIDANCE_GENERAL.to_string(),
+        audit_rule(true, false).to_string(),
+        audit_rule(true, true).to_string(),
+        close_requirement_question_general(0),
+        crate::accept::DISCOVER_GENERAL.to_string(),
+        crate::accept::STANDARD_METHODS_GENERAL.to_string(),
+        crate::accept::verify::FAITHFUL_GENERAL.to_string(),
+        crate::accept::GENERAL_MARKS.join(" "),
+    ];
+    for text in &texts {
+        let lower = text.to_ascii_lowercase();
+        for word in [
+            "biased",
+            "estimator",
+            "statistic",
+            "window",
+            "calibrat",
+            "25, 50",
+            "sizes",
+            "adapts",
+            "non-degenerate",
+            "zero vector",
+            "distribution",
+            "textbook",
+        ] {
+            assert!(!lower.contains(word), "{word:?} in {text}");
+        }
+    }
+    // v7's texts are unchanged.
+    assert_eq!(
+        audit_rule(false, false),
+        "Audit the work: for each requirement, read the code that implements it and check it \
+         against the task's exact rule and the standard definition of any method the task names, \
+         and against the choices the code defends in its comments. Fix what's wrong without \
+         turning an acceptance test red, run the suite, and call finish."
     );
 }
 

@@ -41,6 +41,21 @@ pub const EXACT: &str = "The task in `task` states the requirement in `requireme
 /// definition of a method the task names as stated?
 pub const FAITHFUL_STANDARD: &str = "The acceptance test in `test` was written before the task in `task` was solved, to check the requirements in `requirements`. Count as stated by the task its words, its examples, its rules, and the standard definition and textbook properties of any method, statistic, estimator, metric, algorithm, or format the task names, even where the code's comments defend something else. Does every assertion in the test follow from what the task states in that sense, with nothing the task doesn't ask for, and does every input the test builds follow the input format the task describes?";
 
+/// [`FAITHFUL_STANDARD`] without the words of any one task's defect: the
+/// standard definition of a well-known method the task names counts as
+/// stated.
+pub const FAITHFUL_GENERAL: &str = "The acceptance test in `test` was written before the task in `task` was solved, to check the requirements in `requirements`. Count as stated by the task its words, its examples, its rules, and the standard definition of any well-known method, algorithm, protocol, or format the task names. Does every assertion in the test follow from what the task states in that sense, with nothing the task doesn't ask for, and does every input the test builds follow the input format the task describes?";
+
+/// The faithfulness question `options` ask.
+#[must_use]
+pub fn faithful_question(options: &super::Options) -> &'static str {
+    match (options.standard_methods, options.general) {
+        (true, true) => FAITHFUL_GENERAL,
+        (true, false) => FAITHFUL_STANDARD,
+        (false, _) => FAITHFUL,
+    }
+}
+
 /// Does at least one test fail on a module's current behavior?
 #[must_use]
 pub fn module_question(index: usize) -> String {
@@ -56,6 +71,16 @@ pub fn module_question(index: usize) -> String {
 /// counts the standard definition of a method the task names as stated.
 #[must_use]
 pub fn test_questions(standard: bool) -> Questions {
+    test_questions_with(if standard {
+        FAITHFUL_STANDARD
+    } else {
+        FAITHFUL
+    })
+}
+
+/// The per-test question set with `faithful` as the faithfulness question.
+#[must_use]
+pub fn test_questions_with(faithful: &str) -> Questions {
     let noul = |text: &str, yes: &str, no: &str| {
         Noul::with_criteria(text, NoulCriteria::new().when_true(yes).when_false(no))
     };
@@ -63,7 +88,7 @@ pub fn test_questions(standard: bool) -> Questions {
         .with(
             "faithful",
             noul(
-                if standard { FAITHFUL_STANDARD } else { FAITHFUL },
+                faithful,
                 "every assertion follows from the task's words, examples, or rules",
                 "some assertion checks something the task doesn't state or imply",
             ),
@@ -371,7 +396,7 @@ pub async fn verify<R: Runner>(
                 "jev_accept_test",
                 format!("jev-accept-test-{round}-{}", test.id),
                 state,
-                test_questions(options.standard_methods),
+                test_questions_with(faithful_question(options)),
             )
         });
         for ((key, asked), test) in join_all(asks).await.into_iter().zip(chunk) {

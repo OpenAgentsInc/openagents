@@ -426,6 +426,7 @@ impl AcceptJob {
                 accept::Confine::Writing
             },
             test_sec: Self::options().test_sec,
+            jobs: 1,
         }
     }
 }

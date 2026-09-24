@@ -560,6 +560,11 @@ pub struct VerifyPolicy {
     /// (`checks::verdict`); `verify.second.on` may then name `verdict`.
     #[serde(default, skip_serializing_if = "is_false")]
     pub verdict: bool,
+    /// `verify.suite_checks`: cost each frozen acceptance test at its
+    /// measured time in the check budget, not at the command bound, and
+    /// let the repair's recheck observe the frozen suite too.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub suite_checks: bool,
 }
 
 #[allow(clippy::trivially_copy_pass_by_ref)]
@@ -584,6 +589,7 @@ impl VerifyPolicy {
             snapshot: None,
             distrust: Vec::new(),
             verdict: false,
+            suite_checks: false,
         }
     }
 
@@ -670,6 +676,7 @@ impl VerifyPolicy {
             self_report: self.self_report,
             optional_outputs: self.optional_outputs,
             behavior: self.behavior,
+            measured_acceptance: self.suite_checks,
         }
     }
 }
@@ -1926,9 +1933,17 @@ where
     if let (Some(policy), Some((input, report)), None) =
         (verify.repair, checked.as_ref(), &usage_limited)
     {
+        // With suite_checks, the recheck after the repair observes the
+        // frozen suite, as the first checks did.
+        let mut rechecked = subject.clone();
+        if verify.suite_checks
+            && let Some(live) = &mut rechecked.live
+        {
+            live.suite = crate::accept::latest_record(setup.dir);
+        }
         let place = crate::repair::Place {
             task: None,
-            subject: &subject,
+            subject: &rechecked,
             work: setup.workdir,
             dir: setup.dir,
             artifacts: &setup.dir.join("artifacts"),

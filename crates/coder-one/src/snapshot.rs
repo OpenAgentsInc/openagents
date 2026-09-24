@@ -311,6 +311,7 @@ pub fn reconstruct(episode: &Path) -> Result<Subject, String> {
                 self_report: verify["self_report"].as_bool().unwrap_or(false),
                 optional_outputs: verify["optional_outputs"].as_bool().unwrap_or(false),
                 behavior: verify["behavior"].as_bool().unwrap_or(false),
+                measured_acceptance: verify["suite_checks"].as_bool().unwrap_or(false),
             },
             root: None,
             collected: Vec::new(),

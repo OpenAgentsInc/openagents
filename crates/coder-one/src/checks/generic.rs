@@ -135,6 +135,23 @@ pub struct Options {
     /// build the behavior scenarios in [`super::behavior`].
     #[serde(default)]
     pub behavior: bool,
+    /// Cost each `generic.acceptance` scenario at its measured time, four
+    /// times its run on the untouched workspace and at least
+    /// [`ACCEPTANCE_MIN_SEC`], instead of the episode's command bound, so
+    /// a suite's quick tests fit the check budget.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub measured_acceptance: bool,
+}
+
+/// The least a measured `generic.acceptance` scenario is costed at.
+pub const ACCEPTANCE_MIN_SEC: u64 = 10;
+
+/// A frozen test's measured bound: four times its run on the untouched
+/// workspace, at least [`ACCEPTANCE_MIN_SEC`], and at most `cap`.
+#[must_use]
+pub fn measured_bound(start_ms: Option<u64>, cap: u64) -> u64 {
+    let measured = start_ms.map_or(cap, |ms| (ms * 4).div_ceil(1000));
+    measured.max(ACCEPTANCE_MIN_SEC).min(cap.max(1))
 }
 
 impl Options {
@@ -645,7 +662,19 @@ pub fn build(context: &Context<'_>) -> Result<Vec<Scenario>, Vec<Ineligible>> {
                     test.requirements.join(", ")
                 )],
                 format!("the acceptance test {}", test.id),
-                command_sec,
+                if workspace.options.measured_acceptance {
+                    measured_bound(
+                        suite.start.as_ref().and_then(|s| {
+                            s.tests
+                                .iter()
+                                .find(|r| r.id == test.id)
+                                .map(|r| r.milliseconds)
+                        }),
+                        command_sec,
+                    )
+                } else {
+                    command_sec
+                },
                 Relation {
                     statement: format!(
                         "The acceptance test {} passes on the final state: {}",

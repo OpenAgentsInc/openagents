@@ -61,6 +61,9 @@ impl Confine {
 pub struct Local {
     pub confine: Confine,
     pub test_sec: u64,
+    /// Tests run at once; 0 and 1 run them one after another. Results
+    /// keep the suite's order either way.
+    pub jobs: usize,
 }
 
 impl Local {
@@ -70,6 +73,7 @@ impl Local {
         Local {
             confine: Confine::Writing,
             test_sec,
+            jobs: 1,
         }
     }
 }
@@ -100,6 +104,12 @@ fn millis(since: Instant) -> u64 {
 /// red test's output.
 #[must_use]
 pub fn local_run_sh(workspace: &Path, test_sec: u64) -> String {
+    local_run_sh_with(workspace, test_sec, 1)
+}
+
+/// [`local_run_sh`] running up to `jobs` tests at once.
+#[must_use]
+pub fn local_run_sh_with(workspace: &Path, test_sec: u64, jobs: usize) -> String {
     format!(
         r#"#!/bin/sh
 # Runs the acceptance tests from the workspace root, as the host does.
@@ -109,7 +119,72 @@ WORKSPACE=${{WORKSPACE:-{workspace}}}
 export ACCEPT_DIR WORKSPACE
 {tests}"#,
         workspace = sh_quote(&workspace.display().to_string()),
-        tests = tests_sh(test_sec),
+        tests = tests_sh_with(test_sec, jobs),
+    )
+}
+
+/// [`tests_sh`], or with `jobs` above 1 [`parallel_tests_sh`].
+fn tests_sh_with(test_sec: u64, jobs: usize) -> String {
+    if jobs > 1 {
+        parallel_tests_sh(test_sec, jobs)
+    } else {
+        tests_sh(test_sec)
+    }
+}
+
+/// The part of a `run.sh` that runs `$ACCEPT_DIR/tests/*.sh` from
+/// `$WORKSPACE` up to `jobs` at a time, then reports them in order the way
+/// [`tests_sh`] does. Tests that share a file can race, so a red test runs
+/// once more alone before it counts as red.
+fn parallel_tests_sh(test_sec: u64, jobs: usize) -> String {
+    format!(
+        r#"if command -v timeout >/dev/null 2>&1; then bound="timeout {test_sec}"; else bound=""; fi
+results=$(mktemp -d)
+run_one() {{
+  ACCEPT_TMP=$(mktemp -d)
+  export ACCEPT_TMP
+  (cd "$WORKSPACE" && $bound sh "$2") >"$results/$1.out" 2>&1
+  echo $? >"$results/$1.code"
+  rm -rf "$ACCEPT_TMP"
+}}
+ids=""
+running=0
+for test in "$ACCEPT_DIR"/tests/*.sh; do
+  [ -e "$test" ] || continue
+  id=$(basename "$test" .sh)
+  if [ $# -gt 0 ]; then
+    case " $* " in *" $id "*) ;; *) continue ;; esac
+  fi
+  ids="$ids $id"
+  run_one "$id" "$test" &
+  running=$((running + 1))
+  if [ "$running" -ge {jobs} ]; then
+    wait
+    running=0
+  fi
+done
+wait
+green=0
+red=0
+for id in $ids; do
+  code=$(cat "$results/$id.code" 2>/dev/null || echo 1)
+  if [ "$code" -ne 0 ]; then
+    run_one "$id" "$ACCEPT_DIR/tests/$id.sh"
+    code=$(cat "$results/$id.code" 2>/dev/null || echo 1)
+  fi
+  if [ "$code" -eq 0 ]; then
+    green=$((green + 1))
+    echo "GREEN $id"
+  else
+    red=$((red + 1))
+    echo "RED   $id (exit $code)"
+    tail -n 12 "$results/$id.out" | sed 's/^/      /'
+  fi
+done
+rm -rf "$results"
+echo "$green green, $red red"
+[ "$red" -eq 0 ]
+"#
     )
 }
 
@@ -165,6 +240,12 @@ fn sed_escape(text: &str) -> String {
 /// way [`Rebased`] proves the tests.
 #[must_use]
 pub fn rebasing_run_sh(real: &Path, snapshot: &Path, test_sec: u64) -> String {
+    rebasing_run_sh_with(real, snapshot, test_sec, 1)
+}
+
+/// [`rebasing_run_sh`] running up to `jobs` tests at once.
+#[must_use]
+pub fn rebasing_run_sh_with(real: &Path, snapshot: &Path, test_sec: u64, jobs: usize) -> String {
     format!(
         r#"#!/bin/sh
 # Runs the acceptance tests against the snapshot of the workspace, the way
@@ -193,7 +274,7 @@ exit $status
             sed_escape(&snapshot.display().to_string())
         )),
         workspace = sh_quote(&snapshot.display().to_string()),
-        tests = tests_sh(test_sec),
+        tests = tests_sh_with(test_sec, jobs),
     )
 }
 
@@ -247,6 +328,8 @@ pub struct Rebased<'a, R: Runner> {
     pub snapshot: PathBuf,
     /// One test's wall-time bound, for the writing session's `run.sh`.
     pub test_sec: u64,
+    /// Tests the writing session's `run.sh` runs at once.
+    pub jobs: usize,
 }
 
 impl<R: Runner> Runner for Rebased<'_, R> {
@@ -260,7 +343,7 @@ impl<R: Runner> Runner for Rebased<'_, R> {
         vec![
             (
                 "run.sh",
-                rebasing_run_sh(&self.real, &self.snapshot, self.test_sec),
+                rebasing_run_sh_with(&self.real, &self.snapshot, self.test_sec, self.jobs),
             ),
             ("env.sh", local_env_sh(&self.snapshot)),
         ]
@@ -319,12 +402,26 @@ impl Runner for Local {
 
     fn harness(&self, _suite_dir: &Path, workspace: &Path) -> Vec<(&'static str, String)> {
         vec![
-            ("run.sh", local_run_sh(workspace, self.test_sec)),
+            (
+                "run.sh",
+                local_run_sh_with(workspace, self.test_sec, self.jobs),
+            ),
             ("env.sh", local_env_sh(workspace)),
         ]
     }
 
     async fn run_all(&self, tests: &[Test], suite_dir: &Path, workspace: &Path) -> Vec<TestRun> {
+        if self.jobs > 1 && tests.len() > 1 {
+            use futures_util::StreamExt;
+            // In the suite's order. Tests that share a file can race when
+            // they run at once; `accept::run` reruns a red test once
+            // outside the start proof, as it does for a flaky one.
+            return futures_util::stream::iter(tests)
+                .map(|test| self.one(test, suite_dir, workspace))
+                .buffered(self.jobs)
+                .collect()
+                .await;
+        }
         let mut out = Vec::new();
         for test in tests {
             out.push(self.one(test, suite_dir, workspace).await);

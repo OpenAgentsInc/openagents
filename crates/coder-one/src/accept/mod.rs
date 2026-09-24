@@ -206,7 +206,55 @@ pub struct Options {
     /// requirement with only guards isn't decided: it's a gap.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub guards: bool,
+    /// Task-neutral guidance for [`Options::discover`] and
+    /// [`Options::standard_methods`]: [`DISCOVER_GENERAL`],
+    /// [`STANDARD_METHODS_GENERAL`], Jev's [`verify::FAITHFUL_GENERAL`],
+    /// and [`defended_choices_general`]'s words, in place of the texts
+    /// written after one task's analysis.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub general: bool,
+    /// Tests the suite's `run.sh` runs at once, for the writers and the
+    /// edit sessions. 1 runs them one after another.
+    #[serde(default = "one_job", skip_serializing_if = "is_one_job")]
+    pub test_jobs: usize,
 }
+
+fn one_job() -> usize {
+    1
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_one_job(n: &usize) -> bool {
+    *n <= 1
+}
+
+/// What a writer is told with [`Options::standard_methods`] and
+/// [`Options::general`]: the standard-definition rule without the words
+/// of any one task's defect.
+pub const STANDARD_METHODS_GENERAL: &str = "When the task names a well-known method, algorithm, \
+protocol, or format, its standard definition counts as stated by the task: test that a correct \
+implementation meets it. A comment or docstring that defends a simplification, a shortcut, or an \
+assumption about the input is a suspect, not a fact: check it against the task and the standard \
+definition.";
+
+/// What a writer is told with [`Options::discover`] and
+/// [`Options::general`]: find deciding facts by reading the documentation
+/// and probing general properties, with no schedule or defect taken from
+/// one task.
+pub const DISCOVER_GENERAL: &str = "Find the deciding facts by reading and running, not by \
+guessing.
+- Read every module the task touches in full: its docstrings, comments, parameter names, and \
+defaults. Each property the documentation states is a candidate fact. Where the task and the \
+documentation disagree, the task wins.
+- Before you write a test, run small property probes on the untouched code with env.sh: identity \
+and null inputs (a value against itself, an empty input), symmetry where the operation is defined \
+to be symmetric, scaling, monotonicity, boundary values on each side of every limit or threshold \
+the task states, and round trips such as encode then decode. Note what the code does now, then \
+decide what the task and the documentation say it should do. Encode the property they imply, \
+never the current behavior just because the code does it.
+- Treat every comment or docstring that defends a simplification, a shortcut, or an assumption \
+about the input as a suspect, not a fact: the evidence lists the ones the host found.
+List each fact in facts.md with where you found it: the task, the documentation, or a probe.";
 
 /// What a writer is told with [`Options::standard_methods`].
 pub const STANDARD_METHODS: &str = "When the task names a method, statistic, estimator, metric, \
@@ -312,24 +360,78 @@ pub fn inventory(map: &RequirementMap, workspace: &Path) -> (Vec<String>, Vec<St
 /// most 24.
 #[must_use]
 pub fn defended_choices(workspace: &Path) -> Vec<String> {
-    const MARKS: [&str; 16] = [
-        "biased",
-        "approximat",
-        "simplif",
-        "sufficient",
-        "good enough",
-        "for speed",
-        "for performance",
-        "for simplicity",
-        "assumes",
-        "assume ",
-        "adapts",
-        "intentional",
-        "by design",
-        "standard ",
-        "non-degenerate",
-        "should be fine",
-    ];
+    defended_with(workspace, &DEFENDED_MARKS)
+}
+
+/// [`defended_choices`] with the words of [`GENERAL_MARKS`]: comments
+/// that defend a simplification, a shortcut, an approximation, or an
+/// assumption, without the words taken from one task's defects.
+#[must_use]
+pub fn defended_choices_general(workspace: &Path) -> Vec<String> {
+    defended_with(workspace, &GENERAL_MARKS)
+}
+
+/// [`defended_choices_general`]'s words.
+pub const GENERAL_MARKS: [&str; 15] = [
+    "approximat",
+    "simplif",
+    "shortcut",
+    "sufficient",
+    "good enough",
+    "for speed",
+    "for performance",
+    "for simplicity",
+    "assumes",
+    "assume ",
+    "intentional",
+    "by design",
+    "heuristic",
+    "workaround",
+    "should be fine",
+];
+
+/// [`defended_choices`]'s words.
+const DEFENDED_MARKS: [&str; 16] = [
+    "biased",
+    "approximat",
+    "simplif",
+    "sufficient",
+    "good enough",
+    "for speed",
+    "for performance",
+    "for simplicity",
+    "assumes",
+    "assume ",
+    "adapts",
+    "intentional",
+    "by design",
+    "standard ",
+    "non-degenerate",
+    "should be fine",
+];
+
+/// The evidence entry that lists the defended choices; with `general`, it
+/// asks for a check against the task alone.
+#[must_use]
+pub fn defended_evidence(defended: &[String], general: bool) -> microluna::Evidence {
+    microluna::Evidence {
+        label: "Choices the code defends in its own comments".to_string(),
+        text: if general {
+            format!(
+                "Each of these may be the defect itself: check it against the task.\n{}",
+                defended.join("\n")
+            )
+        } else {
+            format!(
+                "Each of these may be the defect itself. Check it against the task and the \
+                 standard definition of what it names:\n{}",
+                defended.join("\n")
+            )
+        },
+    }
+}
+
+fn defended_with(workspace: &Path, marks: &[&str]) -> Vec<String> {
     let mut out = Vec::new();
     for path in source_files(workspace, 60) {
         let Ok(text) = std::fs::read_to_string(workspace.join(&path)) else {
@@ -351,7 +453,7 @@ pub fn defended_choices(workspace: &Path) -> Vec<String> {
                 in_docstring = !in_docstring;
             }
             let lower = trimmed.to_ascii_lowercase();
-            if commented && MARKS.iter().any(|mark| lower.contains(mark)) {
+            if commented && marks.iter().any(|mark| lower.contains(mark)) {
                 out.push(format!(
                     "{path}:{}: {}",
                     number + 1,
@@ -499,6 +601,8 @@ impl Default for Options {
             inventory: false,
             standard_methods: false,
             guards: false,
+            general: false,
+            test_jobs: 1,
         }
     }
 }
@@ -1245,6 +1349,7 @@ pub async fn define<W: Writer, R: Runner>(
                 real: target.to_path_buf(),
                 snapshot: inputs.workspace.to_path_buf(),
                 test_sec: options.test_sec,
+                jobs: options.test_jobs,
             };
             define_on(inputs, writer, &rebased, jev, recorder, options).await
         }
@@ -1271,11 +1376,19 @@ pub fn briefed(inputs: &Inputs<'_>, problems: &[String], options: &Options) -> m
     let mut out = brief(inputs, problems);
     if options.discover {
         out.guidance.push_str("\n\n");
-        out.guidance.push_str(DISCOVER);
+        out.guidance.push_str(if options.general {
+            DISCOVER_GENERAL
+        } else {
+            DISCOVER
+        });
     }
     if options.standard_methods {
         out.guidance.push_str("\n\n");
-        out.guidance.push_str(STANDARD_METHODS);
+        out.guidance.push_str(if options.general {
+            STANDARD_METHODS_GENERAL
+        } else {
+            STANDARD_METHODS
+        });
     }
     if options.guards {
         out.guidance.push_str(
@@ -1648,16 +1761,13 @@ async fn define_on<W: Writer, R: Runner>(
         });
     }
     if options.discover {
-        let defended = defended_choices(inputs.workspace);
+        let defended = if options.general {
+            defended_choices_general(inputs.workspace)
+        } else {
+            defended_choices(inputs.workspace)
+        };
         if !defended.is_empty() {
-            evidence.push(microluna::Evidence {
-                label: "Choices the code defends in its own comments".to_string(),
-                text: format!(
-                    "Each of these may be the defect itself. Check it against the task and the \
-                     standard definition of what it names:\n{}",
-                    defended.join("\n")
-                ),
-            });
+            evidence.push(defended_evidence(&defended, options.general));
         }
     }
     evidence.extend(inputs.evidence.iter().cloned());
@@ -1799,7 +1909,7 @@ async fn define_on<W: Writer, R: Runner>(
     }
     let _ = std::fs::write(
         dir.join("run.sh"),
-        runner::local_run_sh(frozen_on, options.test_sec),
+        runner::local_run_sh_with(frozen_on, options.test_sec, options.test_jobs),
     );
     let _ = std::fs::write(dir.join("env.sh"), runner::local_env_sh(frozen_on));
     let kept: Vec<Test> = verified
@@ -1940,6 +2050,7 @@ pub async fn extend<W: Writer, R: Runner>(
         real: target.to_path_buf(),
         snapshot: inputs.workspace.to_path_buf(),
         test_sec: options.test_sec,
+        jobs: options.test_jobs,
     });
     let harness = match &rebased {
         Some(rebased) => rebased.harness(&part, inputs.workspace),

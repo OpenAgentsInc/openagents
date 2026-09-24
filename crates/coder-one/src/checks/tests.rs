@@ -258,6 +258,26 @@ fn verdict_of<'a>(report: &'a Report, id: &str) -> &'a str {
 const DEPENDENCIES: &str = "Fix the planner so that it writes a correct plan to `plan.json`.\n\n\
 Write any Python dependencies needed to run your code to `requirements.txt`.";
 
+/// `verify.suite_checks` costs a frozen test at four times its run on the
+/// untouched workspace, at least ten seconds and at most the command
+/// bound; with no measurement, at the command bound.
+#[test]
+fn a_frozen_test_is_costed_at_its_measured_time() {
+    assert_eq!(generic::measured_bound(Some(3_200), 477), 13);
+    assert_eq!(generic::measured_bound(Some(230), 477), 10);
+    assert_eq!(generic::measured_bound(None, 477), 477);
+    assert_eq!(generic::measured_bound(Some(200_000), 120), 120);
+    // Thirteen tests like the ones that took 0.2 to 3.2 seconds fit a
+    // 1,433-second budget many times over; at 477 seconds, three do.
+    let measured: u64 = [3_200u64; 6]
+        .iter()
+        .chain([230u64; 7].iter())
+        .map(|ms| generic::measured_bound(Some(*ms), 477))
+        .sum();
+    assert!(measured < 1_433 / 5, "{measured}");
+    assert_eq!(1_433 / 477, 3);
+}
+
 fn optional_on() -> generic::Options {
     generic::Options {
         optional_outputs: true,

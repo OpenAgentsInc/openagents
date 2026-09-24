@@ -173,6 +173,7 @@ fn runner() -> Local {
     Local {
         confine: Confine::TaskContainer,
         test_sec: 20,
+        jobs: 1,
     }
 }
 
@@ -846,6 +847,7 @@ async fn a_suite_proven_on_a_snapshot_runs_on_the_real_workspace() {
         real: fx.workspace.clone(),
         snapshot: snapshot.clone(),
         test_sec: 20,
+        jobs: 1,
     };
     let again = run(&suite, &snapshot, &rebased, None, "snapshot")
         .await
@@ -1121,4 +1123,129 @@ async fn an_unnamed_inventory_module_goes_back_to_the_writer() {
     );
     assert!(suite.requirement_ids().contains(&"R4".to_string()));
     assert_eq!(suite.status, Status::Accepted, "{:#?}", suite.gaps);
+}
+
+/// Five tests that each sleep a second; T3 fails.
+fn sleepers(suite: &Path) -> Vec<Test> {
+    std::fs::create_dir_all(suite.join(TESTS_DIR)).unwrap();
+    ["T1", "T2", "T3", "T4", "T5"]
+        .iter()
+        .map(|id| {
+            let pass = *id != "T3";
+            let source = format!(
+                "# requirement: R1\n# kind: example\n# what: {id}\nsleep 1\n{}\n",
+                if pass {
+                    "exit 0"
+                } else {
+                    "echo broken; exit 1"
+                }
+            );
+            std::fs::write(suite.join(TESTS_DIR).join(format!("{id}.sh")), &source).unwrap();
+            Test {
+                id: (*id).to_string(),
+                requirements: vec!["R1".to_string()],
+                kind: "example".to_string(),
+                what: (*id).to_string(),
+                path: format!("{TESTS_DIR}/{id}.sh"),
+                source,
+                notes: Vec::new(),
+            }
+        })
+        .collect()
+}
+
+/// v8's `test_jobs`: four tests at once finish in about the time of two
+/// rounds, not five, and the results keep the suite's order.
+#[tokio::test]
+async fn tests_run_at_once_and_keep_their_order() {
+    let dir = tempfile::tempdir().unwrap();
+    let suite = dir.path().join("suite");
+    let tests = sleepers(&suite);
+    let local = Local {
+        jobs: 4,
+        ..runner()
+    };
+    let started = std::time::Instant::now();
+    let runs = local.run_all(&tests, &suite, dir.path()).await;
+    let took = started.elapsed();
+    assert!(took < std::time::Duration::from_millis(3_500), "{took:?}");
+    let ids: Vec<&str> = runs.iter().map(|r| r.id.as_str()).collect();
+    assert_eq!(ids, ["T1", "T2", "T3", "T4", "T5"]);
+    let green: Vec<bool> = runs.iter().map(|r| r.green).collect();
+    assert_eq!(green, [true, true, false, true, true]);
+    assert!(runs[2].output.contains("broken"), "{:?}", runs[2]);
+}
+
+/// The frozen `run.sh` with `test_jobs` runs tests at once, prints them in
+/// order with a red test's output, exits nonzero when one is red, and
+/// still takes test IDs.
+#[test]
+fn the_parallel_run_sh_reports_in_order() {
+    let dir = tempfile::tempdir().unwrap();
+    let suite = dir.path().join("suite");
+    sleepers(&suite);
+    std::fs::write(
+        suite.join("run.sh"),
+        runner::local_run_sh_with(dir.path(), 20, 4),
+    )
+    .unwrap();
+    let started = std::time::Instant::now();
+    let all = std::process::Command::new("sh")
+        .arg(suite.join("run.sh"))
+        .output()
+        .unwrap();
+    let took = started.elapsed();
+    let text = String::from_utf8_lossy(&all.stdout);
+    assert!(!all.status.success(), "{text}");
+    let lines: Vec<&str> = text
+        .lines()
+        .filter(|l| l.starts_with("GREEN") || l.starts_with("RED"))
+        .collect();
+    assert_eq!(
+        lines,
+        [
+            "GREEN T1",
+            "GREEN T2",
+            "RED   T3 (exit 1)",
+            "GREEN T4",
+            "GREEN T5"
+        ],
+        "{text}"
+    );
+    assert!(text.contains("      broken"), "{text}");
+    assert!(text.trim_end().ends_with("4 green, 1 red"), "{text}");
+    // Two rounds of sleeps, and T3 once more alone.
+    assert!(took < std::time::Duration::from_millis(4_500), "{took:?}");
+    let some = std::process::Command::new("sh")
+        .arg(suite.join("run.sh"))
+        .args(["T1", "T4"])
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&some.stdout);
+    assert!(some.status.success(), "{text}");
+    assert!(text.trim_end().ends_with("2 green, 0 red"), "{text}");
+}
+
+/// The general defended-comment scan flags a defended shortcut and leaves
+/// out the words taken from one task's defects.
+#[test]
+fn the_general_scan_flags_defended_shortcuts_only() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("calc.py"),
+        "# Rounds down; good enough for small inputs.\n\
+         def f(x):\n    return int(x)\n\
+         # Uses the biased form.\n\
+         def g(x):\n    return x\n\
+         # Adapts to recent input.\n\
+         def h(x):\n    return x\n",
+    )
+    .unwrap();
+    let general = defended_choices_general(dir.path());
+    assert_eq!(general.len(), 1, "{general:?}");
+    assert!(general[0].starts_with("calc.py:1:"), "{general:?}");
+    // v7's scan still flags all three.
+    assert_eq!(defended_choices(dir.path()).len(), 3);
+    let evidence = defended_evidence(&general, true);
+    assert!(!evidence.text.contains("standard definition"));
 }
