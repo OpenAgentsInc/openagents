@@ -271,7 +271,9 @@ pub async fn run(
             let reviewed = Box::pin(crate::terminal::answer(&review, on.clone())).await;
             absorb(&mut answer, reviewed);
             say!("issue ▸ running the tests and checks on the change");
-            remaining = gate(&workdir);
+            let checked = Recorder::default();
+            remaining = gate(&workdir, inner.jev.as_ref(), &checked).await;
+            answer.steps.extend(checked.steps());
             if remaining.is_empty() {
                 say!("issue ▸ the tests pass and the checks found nothing");
                 break;
@@ -582,6 +584,191 @@ fn land(
     Ok(format!("Opened draft pull request {}.", pr.trim()))
 }
 
+/// One place that uses a name the change touched, with the lines around
+/// it as they stand in the working tree.
+struct Excerpt {
+    file: String,
+    line: usize,
+    name: String,
+    text: String,
+}
+
+/// The places that use the Rust functions and constants the staged
+/// change touches, at most [`REVIEW_CALLERS`] of them.
+fn excerpts(workdir: &Path) -> Vec<Excerpt> {
+    let bare = command(workdir, "git", &["diff", "--cached", "-U0"]).unwrap_or_default();
+    let mut found = Vec::new();
+    for (path, name) in changed_names(workdir, &bare) {
+        for (file, line) in uses(workdir, &path, &name) {
+            if found.len() >= REVIEW_CALLERS {
+                return found;
+            }
+            let Ok(text) = std::fs::read_to_string(workdir.join(&file)) else {
+                continue;
+            };
+            let lines: Vec<&str> = text.lines().collect();
+            let from = line.saturating_sub(CALLER_BEFORE + 1);
+            let to = (line + CALLER_AFTER).min(lines.len());
+            found.push(Excerpt {
+                file,
+                line,
+                name: name.clone(),
+                text: (from..to)
+                    .map(|i| format!("{:>5} {}", i + 1, lines[i]))
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            });
+        }
+    }
+    found
+}
+
+/// The Noul the gate asks about each place that uses what changed; `{id}`
+/// names it.
+pub const DEPENDS_QUESTION: &str = "Does the code in `uses.{id}` depend on how many items, or \
+which positions, the changed code in `diff` produces, such as an index offset, a fixed count, \
+or a row number, and does the change alter that number or those positions without this code \
+being updated to match?";
+
+/// Places that use what changed and, as Jev reads them, depend on a count
+/// or position the change alters without being updated: a view once
+/// selected row `2 + cursor` after two lines went in above the rows, and
+/// every test still passed.
+async fn stale_dependents(
+    workdir: &Path,
+    jev: Option<&jev::Client>,
+    recorder: &Recorder,
+) -> Vec<String> {
+    let Some(client) = jev else {
+        return Vec::new();
+    };
+    let found = excerpts(workdir);
+    if found.is_empty() {
+        return Vec::new();
+    }
+    let diff = command(workdir, "git", &["diff", "--cached", "-U3"]).unwrap_or_default();
+    let mut questions = jev::Questions::new();
+    let mut uses = serde_json::Map::new();
+    for (i, excerpt) in found.iter().enumerate() {
+        let id = format!("u{}", i + 1);
+        uses.insert(
+            id.clone(),
+            json!(format!(
+                "{}:{} uses `{}`\n{}",
+                excerpt.file, excerpt.line, excerpt.name, excerpt.text
+            )),
+        );
+        questions = questions.with(
+            format!("depends_{}", i + 1),
+            jev::Noul::new(DEPENDS_QUESTION.replace("{id}", &id)),
+        );
+    }
+    let asked = crate::component::jev::ask(
+        &crate::component::jev::JevMode::Live(client.clone()),
+        recorder,
+        crate::component::jev::Ask {
+            component: "issue.gate",
+            name: "jev_stale_dependents",
+            id: "jev_stale_dependents-1".to_string(),
+            state: json!({ "diff": crate::judge::clip(&diff, 10_000), "uses": uses }),
+            questions,
+            parent: None,
+            deadline: None,
+        },
+    )
+    .await;
+    found
+        .iter()
+        .enumerate()
+        .filter_map(|(i, excerpt)| {
+            let p = asked.noul(&format!("depends_{}", i + 1))?;
+            (p >= 0.5).then(|| {
+                format!(
+                    "{}:{} depends on the number or positions of what `{}` produces, and the \
+                     change alters them (Jev {p:.2}); update that code to match and add a test \
+                     that checks it, such as which row a view selects",
+                    excerpt.file, excerpt.line, excerpt.name
+                )
+            })
+        })
+        .collect()
+}
+
+/// Relative Markdown links the change adds that point at no file, or at
+/// a heading the file doesn't have.
+fn broken_links(workdir: &Path, diff: &str) -> Vec<String> {
+    let mut problems = Vec::new();
+    let mut file = String::new();
+    for line in diff.lines() {
+        if let Some(path) = line.strip_prefix("+++ b/") {
+            file = path.to_string();
+            continue;
+        }
+        let Some(added) = line.strip_prefix('+') else {
+            continue;
+        };
+        if !file.ends_with(".md") {
+            continue;
+        }
+        let mut rest = added;
+        while let Some(at) = rest.find("](") {
+            let after = &rest[at + 2..];
+            let Some(end) = after.find(')') else {
+                break;
+            };
+            let target = &after[..end];
+            rest = &after[end..];
+            if target.contains("://") || target.starts_with("mailto:") || target.is_empty() {
+                continue;
+            }
+            let (path, anchor) = target.split_once('#').unwrap_or((target, ""));
+            let resolved = if path.is_empty() {
+                workdir.join(&file)
+            } else {
+                workdir
+                    .join(&file)
+                    .parent()
+                    .map_or_else(|| workdir.join(path), |dir| dir.join(path))
+            };
+            let Ok(resolved) = resolved.canonicalize() else {
+                problems.push(format!(
+                    "{file}: the link `{target}` points at a file that doesn't exist"
+                ));
+                continue;
+            };
+            if !resolved.starts_with(workdir.canonicalize().unwrap_or_default()) {
+                problems.push(format!(
+                    "{file}: the link `{target}` points outside the repository"
+                ));
+                continue;
+            }
+            if !anchor.is_empty()
+                && let Ok(text) = std::fs::read_to_string(&resolved)
+                && !text
+                    .lines()
+                    .filter(|l| l.starts_with('#'))
+                    .any(|l| slug(l.trim_start_matches('#')) == anchor)
+            {
+                problems.push(format!(
+                    "{file}: the link `{target}` names a heading the file doesn't have"
+                ));
+            }
+        }
+    }
+    problems
+}
+
+/// A heading's anchor as GitHub writes it.
+fn slug(heading: &str) -> String {
+    heading
+        .trim()
+        .to_lowercase()
+        .chars()
+        .filter(|c| c.is_alphanumeric() || matches!(c, ' ' | '-' | '_'))
+        .map(|c| if c == ' ' { '-' } else { c })
+        .collect()
+}
+
 /// Fix rounds after the review when the host's gate still finds problems.
 const FIX_ROUNDS: usize = 2;
 
@@ -612,12 +799,14 @@ fn absorb(answer: &mut Answer, mut reviewed: Answer) {
 /// What the host finds wrong with the staged change, without a model:
 /// failing tests in the Rust packages it touches, style problems, and
 /// added figures that appear nowhere else in the repository.
-fn gate(workdir: &Path) -> Vec<String> {
+async fn gate(workdir: &Path, jev: Option<&jev::Client>, recorder: &Recorder) -> Vec<String> {
     let _ = command(workdir, "git", &["add", "-A"]);
     let diff = command(workdir, "git", &["diff", "--cached", "-U0"]).unwrap_or_default();
     let mut problems = test_failures(workdir, &diff);
     problems.extend(style_problems(&diff));
     problems.extend(unsourced_figures(workdir, &diff));
+    problems.extend(broken_links(workdir, &diff));
+    problems.extend(stale_dependents(workdir, jev, recorder).await);
     problems
 }
 
@@ -824,30 +1013,12 @@ fn review_request(workdir: &Path, number: u64) -> Option<String> {
     if diff.trim().is_empty() {
         return None;
     }
-    let bare = command(workdir, "git", &["diff", "--cached", "-U0"]).ok()?;
-    let names = changed_names(workdir, &bare);
     let mut callers = String::new();
-    let mut shown = 0;
-    for (path, name) in &names {
-        for (file, line) in uses(workdir, path, name) {
-            if shown >= REVIEW_CALLERS {
-                break;
-            }
-            let Ok(text) = std::fs::read_to_string(workdir.join(&file)) else {
-                continue;
-            };
-            let lines: Vec<&str> = text.lines().collect();
-            let from = line.saturating_sub(CALLER_BEFORE + 1);
-            let to = (line + CALLER_AFTER).min(lines.len());
-            let excerpt: Vec<String> = (from..to)
-                .map(|i| format!("{:>5} {}", i + 1, lines[i]))
-                .collect();
-            callers.push_str(&format!(
-                "### {file}:{line} uses `{name}`\n\n```\n{}\n```\n\n",
-                excerpt.join("\n")
-            ));
-            shown += 1;
-        }
+    for excerpt in excerpts(workdir) {
+        callers.push_str(&format!(
+            "### {}:{} uses `{}`\n\n```\n{}\n```\n\n",
+            excerpt.file, excerpt.line, excerpt.name, excerpt.text
+        ));
     }
     if callers.is_empty() {
         callers = "No caller outside the change was found.\n".to_string();
@@ -1260,6 +1431,28 @@ mod tests {
         assert_eq!(problems.len(), 2, "{problems:#?}");
         assert!(problems[0].contains("\"per\""));
         assert!(problems[1].contains("\"about\""));
+    }
+
+    #[test]
+    fn broken_links_find_missing_files_and_headings() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::create_dir_all(root.join("docs/guides")).unwrap();
+        std::fs::create_dir_all(root.join("docs/bench")).unwrap();
+        std::fs::write(
+            root.join("docs/bench/r.md"),
+            "# R\n\n## Mini-task results\n",
+        )
+        .unwrap();
+        std::fs::write(root.join("docs/guides/g.md"), "text\n").unwrap();
+        let diff = "+++ b/docs/guides/g.md\n\
+            +See [ok](../bench/r.md#mini-task-results), [far](../../../bench/r.md),\n\
+            +[gone](../bench/x.md), and [heading](../bench/r.md#nothing).\n";
+        let problems = broken_links(root, diff);
+        assert_eq!(problems.len(), 3, "{problems:#?}");
+        assert!(problems[0].contains("../../../bench/r.md"));
+        assert!(problems[1].contains("../bench/x.md"));
+        assert!(problems[2].contains("#nothing"));
     }
 
     #[test]
