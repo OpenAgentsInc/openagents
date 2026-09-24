@@ -1751,6 +1751,46 @@ async fn failed_or_timed_out_evaluation_cannot_supply_a_green_score() {
     }
 }
 
+#[tokio::test]
+async fn a_final_evaluator_edit_cannot_claim_the_retained_candidates_identity() {
+    let dir = tempfile::tempdir().unwrap();
+    let work = dir.path().join("work");
+    let eval = lean::eval_dir(&work, Isolation::TaskContainer);
+    let script = format!(
+        "mkdir -p {} && printf 'printf x >> touched\\necho SCORE 1 1\\n' > {}/score.sh",
+        eval.display(),
+        eval.display()
+    );
+    let mut executor = micro(
+        dir.path(),
+        vec![
+            call(
+                "a1",
+                "run_command",
+                &json!({"command": script}),
+                usage(100, 0, 10),
+            ),
+            finish("a2", "done", "The local check passes."),
+        ],
+        lean_policy(lean::Lean {
+            sessions: 1,
+            self_check: false,
+            keep_best: true,
+            protect_candidates: true,
+            ..lean_shape()
+        }),
+    );
+    executor.prepared = Some(prepared());
+    executor.execute(&briefing(TASK)).await;
+    let record = executor.last.as_ref().unwrap();
+    let submitted = record["moves"].as_array().unwrap().last().unwrap();
+    assert_eq!(submitted["score"], json!({"passed": 1, "total": 1}));
+    assert_eq!(submitted["result"], "unknown");
+    assert_eq!(submitted["selection_matches_workspace"], false);
+    assert!(submitted["selected_session"].is_null());
+    assert_eq!(std::fs::read_to_string(work.join("touched")).unwrap(), "xx");
+}
+
 #[test]
 fn a_comment_that_gives_a_reason_is_a_suspect() {
     let dir = tempfile::tempdir().unwrap();
