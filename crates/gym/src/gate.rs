@@ -1858,7 +1858,7 @@ fn gain_criterion(
     let bound = multiple * error;
     let covers = rule.variance_basis.as_str();
     let detail = format!(
-        "accuracy gain {gain:+.3} against {multiple:.1} standard errors of {error:.3}, which is \
+        "accuracy gain {gain:+.3} compared with {multiple:.1} standard errors of {error:.3}, which is \
          {bound:.3}; the standard error covers {covers} only"
     );
     Criterion {
@@ -2058,8 +2058,8 @@ fn confident_errors_within_floor(
             Verdict::Passed
         },
         detail: format!(
-            "confident errors {before} to {after} over {items} items; a rise of {rise:+.0} against \
-             a seed noise floor of {allowance:.2}"
+            "confident errors {before} to {after} over {items} items; a rise of {rise:+.0} compared \
+             with a seed noise floor of {allowance:.2}"
         ),
     }
 }
@@ -2111,8 +2111,7 @@ fn ece_reduction(
             Verdict::Unverifiable
         },
         detail: format!(
-            "ECE {before:.3} to {after:.3}, a reduction of {:.0}% against the {:.0}% a candidate \
-             has to earn",
+            "ECE {before:.3} to {after:.3}, a reduction of {:.0}%, where a candidate needs {:.0}%",
             reduction * 100.0,
             margin * 100.0
         ),
@@ -2158,7 +2157,7 @@ fn brier_tolerance(
             Verdict::Passed
         },
         detail: format!(
-            "Brier {before:.3} to {after:.3} against a ceiling of {ceiling:.3}, the {:.0}% the \
+            "Brier {before:.3} to {after:.3}, compared with a ceiling of {ceiling:.3}, the {:.0}% the \
              binning is allowed to cost",
             tolerance * 100.0
         ),
@@ -2291,7 +2290,7 @@ fn latency_ceiling(
         rank: 1,
         verdict,
         detail: format!(
-            "{percentile} {measured:.0} ms against the {workload} ceiling of {ceiling:.0} ms, \
+            "{percentile} {measured:.0} ms, compared with the {workload} ceiling of {ceiling:.0} ms, \
              give or take {band:.0} ms; {}",
             band_note(rule)
         ),
@@ -2321,8 +2320,8 @@ fn cost_ceiling(blocked: Option<&str>, budget: Option<&Budget>, candidate: &Prof
             rank: 1,
             verdict: Verdict::Unverifiable,
             detail: format!(
-                "the lane is {}: it runs on hardware we own and nothing meters it. An unmetered \
-                 lane has no price to compare with the {workload} ceiling of \
+                "the door's cost is `{}`: it runs on hardware we own and nothing meters it. A \
+                 door without a meter has no price to compare with the {workload} ceiling of \
                  ${ceiling:.6} per decision, and the absence of a meter is not a price of zero",
                 cost.as_str()
             ),
@@ -2337,8 +2336,8 @@ fn cost_ceiling(blocked: Option<&str>, budget: Option<&Budget>, candidate: &Prof
             Verdict::Passed
         },
         detail: format!(
-            "${price:.6} per decision against the {workload} ceiling of ${ceiling:.6}, which is \
-             ${:.2} against ${:.2} per 100,000 decisions",
+            "${price:.6} per decision, compared with the {workload} ceiling of ${ceiling:.6}; \
+             that is ${:.2} compared with ${:.2} per 100,000 decisions",
             price * 100_000.0,
             ceiling * 100_000.0
         ),
@@ -2397,7 +2396,7 @@ fn refusal_ceiling(
         rank: 1,
         verdict,
         detail: format!(
-            "{} of {} calls declined, {:.1}%, against the {workload} ceiling of {:.1}%, give or \
+            "{} of {} calls declined, {:.1}%, compared with the {workload} ceiling of {:.1}%, give or \
              take {:.1} points at {sigmas:.1} binomial standard errors of that ceiling",
             candidate.refusals.unwrap_or_default(),
             candidate.calls,
@@ -2458,7 +2457,7 @@ fn latency_regression(
             Verdict::Unverifiable
         },
         detail: format!(
-            "{percentile} {before:.0} ms to {after:.0} ms, a rise of {:.0} ms against a band of \
+            "{percentile} {before:.0} ms to {after:.0} ms, a rise of {:.0} ms compared with a band of \
              {band:.0} ms; {}",
             after - before,
             band_note(rule)
@@ -2535,7 +2534,7 @@ fn refusal_regression(
             Verdict::Unverifiable
         },
         detail: format!(
-            "refusal rate {:.1}% to {:.1}% against {sigmas:.1} standard errors of {:.1} points, \
+            "refusal rate {:.1}% to {:.1}%, compared with {sigmas:.1} standard errors of {:.1} points, \
              which is {:.1} points",
             before * 100.0,
             after * 100.0,

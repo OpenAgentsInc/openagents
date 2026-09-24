@@ -1471,7 +1471,7 @@ replays answers instead, --record FILE writes the answers used, and
 `mark` records a person's word that a run, or one step of its transcript,
 is bad, with judgment IDs as tags and a note; --clear records that the run
 is fine. --marked keeps only marked runs, and the list, `show`, and the
-transcript show each mark. `agreement` measures Jev's judgments against the
+transcript show each mark. `agreement` compares Jev's judgments with the
 marks. `gym runs mark --help` says more. --marks-dir PATH keeps the marks
 somewhere other than ~/.openagents/gym/marks.
 
@@ -1480,8 +1480,9 @@ with its runs, numbers, sample size, and caveats; `gym runs highlights
 --help` says more. Nothing posts anywhere.
 
 `analyze` computes one finished run's analysis: the verifier's result, the
-true cost against Harbor's, the timeline and critical path, the suite
-against the verifier, reversals, anomalies, and Fable 5.1's cheapest pass.
+true cost compared with Harbor's figure, the timeline and the slowest chain
+of steps, how the acceptance tests compare with the verifier's tests,
+sessions that undid earlier work, anomalies, and Fable 5.1's cheapest pass.
 `gym runs analyze --help` says more.";
 
 /// `gym runs`: the list, or one run's summary and transcript.
@@ -2214,7 +2215,10 @@ mod tests {
         let (code, text) = run(&["rank", "--recorded", &recorded]);
         assert_eq!(code, 0, "{text}");
         assert!(text.contains("about 4, 4 answered, 0 failed"), "{text}");
-        assert!(text.contains("1 running runs wait"), "{text}");
+        assert!(
+            text.contains("Runs still running, to rank after they finish: 1."),
+            "{text}"
+        );
         assert!(text.contains("Most worth learning from:"), "{text}");
 
         // Unchanged evidence: a second pass makes no request.
@@ -2292,7 +2296,7 @@ mod tests {
             vec!["cancel-async-tasks", "wal-recovery-ordering"],
             "{value}"
         );
-        assert_eq!(value["filter"], "unearned_success ≥ 0.50");
+        assert_eq!(value["filter"], "unearned_success at 0.50 or above");
         // A higher threshold keeps one, and reasons combine.
         let value = json(&["--reason", "unearned_success=0.97", "--json"]);
         assert_eq!(ids(&value), vec!["wal-recovery-ordering"], "{value}");
@@ -2344,7 +2348,10 @@ mod tests {
         assert_eq!(total, 5, "{value}");
         let (_, text) = run(&["group", "--by", "policy", "--reason", "unearned_success"]);
         assert!(text.contains("grouped by policy"), "{text}");
-        assert!(text.contains("Showing: unearned_success ≥ 0.50"), "{text}");
+        assert!(
+            text.contains("Showing: unearned_success at 0.50 or above"),
+            "{text}"
+        );
 
         // One run's JSON has every judgment's probability, not only the
         // reasons, and numbered transcript steps.

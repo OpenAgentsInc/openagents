@@ -364,7 +364,7 @@ impl Learning {
             .or_else(|| self.judge.unavailable())
             .unwrap_or("");
         format!(
-            "Jev {state} · {}/{} ranked · {} unavailable · {} calls · ${:.4} estimated · {}",
+            "Jev {state} · {} of {} ranked · {} unavailable · {} calls · ${:.4} estimated · {}",
             self.answers.len(),
             self.entries.len(),
             self.failures.len(),

@@ -11,26 +11,29 @@ use std::path::{Path, PathBuf};
 const HELP: &str = "\
 gym coder policy  list, show, and compare Coder One policy manifests
 
-  policy list              every distinct manifest, by digest, with the arms
-                           and attempts that ran it and the files that hold it
+  policy list              every distinct manifest, by content digest, with the
+                           experiment arms and attempts that ran it and the
+                           files that hold it
   policy show QUERY        one manifest's fields
   policy diff QUERY QUERY  the fields two manifests set differently
 
-A QUERY is a digest or a prefix of six or more hex digits, a manifest name,
-an arm, or a manifest file name or path.
+A QUERY is a content digest or its first six or more hex digits, a manifest
+name, an experiment arm (a named configuration), or a manifest file name or
+path.
 
   --jobs-dir PATH          local Harbor jobs (default ~/.openagents/terminal-bench/jobs)
   --traces-dir PATH        retained checkout traces
   --policies-dir PATH      manifest files (default crates/coder-one/policies)
-  --no-jobs | --no-traces  omit one source
+  --no-jobs, --no-traces   leave out that source
   --json                   print versioned JSON instead of text
 
 gym coder components [--component ID] [--json]
                            each component's isolated fixture runs beside its
                            episode invocations; see gym coder components --help
 gym coder requirements [QUERY] [--json]
-                           task.requirements maps: spans, kinds, bindings,
-                           coverage, and recall and precision against labels
+                           requirement maps from task.requirements: spans,
+                           kinds, bindings, coverage, and recall and precision
+                           measured on labeled tasks
 gym coder minitasks [--run ID|latest] [--json]
                            mini-task runs with their grades and timelines;
                            see gym coder minitasks --help
@@ -60,7 +63,7 @@ gym coder families [--policy PATH] [--json]
 gym coder handoff [--json] control.handoff's patterns on the mini-tasks: pass, modeled
                            cost, episode time, and the objective per policy
 gym coder router [--json]  task features, router picks, and leave-one-task-out
-                           regret against fixed and hand-written baselines
+                           regret compared with fixed and hand-written baselines
 gym coder monitor [--json] control.monitor's replay over retained streams: trigger
                            precision for the rules and Jev, stale answers, and cost
 gym coder coverage [--attempt JOB/TRIAL | --run ID] [--json]
@@ -73,14 +76,15 @@ gym coder recall [--failures] [--json]
 gym coder truth [--set held-out|calibration|all] [--within] [--json]
                            truthful checks: each signal's fail precision,
                            failure recall, and pass rate with intervals, and
-                           the calibrated verdict against today's checks on
-                           held-out tasks; see gym coder truth --help
+                           the calibrated verdict compared with today's checks
+                           on held-out tasks; see gym coder truth --help
 gym coder asks [ID|latest] [--json]
                            the questions `coder-one ask` answered: citations
                            checked, claims verified, cost, and time
 gym coder proposals [ID|latest] [--json]
-                           the changes asks proposed: finding, change, decision,
-                           and result; approve|reject ID [--note TEXT] decides
+                           the changes that asks proposed: finding, change,
+                           decision, and result; `approve ID` or `reject ID`
+                           [--note TEXT] records a decision
 gym coder study [ID] [--all] [--json]
                            hill-climbing studies: candidates by tier, development
                            and held-out results, frontiers, promotions, and spend";
@@ -235,7 +239,10 @@ fn execute(args: &[String], out: &mut impl Write) -> Result<i32, String> {
         other => return Err(format!("unknown policy command {other}\n\n{HELP}")),
     };
     if options.positional.len() != expected {
-        return Err(format!("policy {command} expects {expected} values"));
+        return Err(format!(
+            "policy {command} takes {expected} arguments; got {}",
+            options.positional.len()
+        ));
     }
     let records = Records::load(options.jobs.as_deref(), options.traces.as_deref(), None);
     let dirs: Vec<&Path> = options.policies.iter().map(PathBuf::as_path).collect();
@@ -330,7 +337,7 @@ fn seen(entry: &Value) -> String {
         .collect();
     let mut parts = vec![format!("{} attempts", entry["attempts"])];
     if !arms.is_empty() {
-        parts.push(format!("arms {}", arms.join(", ")));
+        parts.push(format!("experiment arms {}", arms.join(", ")));
     }
     if !files.is_empty() {
         parts.push(format!("files {}", files.join(", ")));
@@ -348,13 +355,17 @@ fn render(value: &Value, out: &mut impl Write) -> io::Result<()> {
                 writeln!(out, "  {}", seen(entry))?;
             }
             for error in value["errors"].as_array().into_iter().flatten() {
-                writeln!(out, "ERROR: {}", error.as_str().unwrap_or("?"))?;
+                writeln!(out, "error: {}", error.as_str().unwrap_or("?"))?;
             }
         }
         Some("show") => {
             let entry = &value["policy"];
             writeln!(out, "policy {}", label(entry))?;
-            writeln!(out, "digest {}", entry["digest"].as_str().unwrap_or("?"))?;
+            writeln!(
+                out,
+                "content digest {}",
+                entry["digest"].as_str().unwrap_or("?")
+            )?;
             writeln!(out, "{}", seen(entry))?;
             for line in entry["overrides"].as_array().into_iter().flatten() {
                 writeln!(out, "override: {}", line.as_str().unwrap_or("?"))?;
@@ -368,16 +379,12 @@ fn render(value: &Value, out: &mut impl Write) -> io::Result<()> {
             writeln!(out, "b {}", label(&value["b"]))?;
             let differences = value["differences"].as_array().cloned().unwrap_or_default();
             if differences.is_empty() {
-                writeln!(
-                    out,
-                    "No field differs across {} fields.",
-                    value["fields_compared"]
-                )?;
+                writeln!(out, "All {} fields match.", value["fields_compared"])?;
             } else {
                 for difference in &differences {
                     writeln!(
                         out,
-                        "  {}: {} → {}",
+                        "  {}: a {}, b {}",
                         difference["field"].as_str().unwrap_or("?"),
                         difference["a"],
                         difference["b"]
@@ -419,11 +426,11 @@ mod tests {
         ]);
         assert_eq!(code, 0);
         assert!(
-            text.contains("policy.executor.agent: \"codex\" → \"claude-code\""),
+            text.contains("policy.executor.agent: a \"codex\", b \"claude-code\""),
             "{text}"
         );
         assert!(
-            text.contains("policy.brief.directions: \"batch-checked\" → \"batch\""),
+            text.contains("policy.brief.directions: a \"batch-checked\", b \"batch\""),
             "{text}"
         );
         assert!(text.contains("7 of "), "{text}");

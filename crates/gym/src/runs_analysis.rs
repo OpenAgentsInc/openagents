@@ -2466,7 +2466,7 @@ fn anomalies(records: &Records, analysis: &Analysis) -> Vec<Anomaly> {
         push(
             "false green",
             format!(
-                "The acceptance suite's last run (`{}`) was green, {} of {}, and the verifier failed the trial",
+                "The acceptance suite's last run (`{}`) passed {} of {} tests, and the verifier failed the trial",
                 last.label, last.passed, last.total
             ),
             None,
@@ -2484,7 +2484,7 @@ fn anomalies(records: &Records, analysis: &Analysis) -> Vec<Anomaly> {
             None => push(
                 "no finish",
                 format!(
-                    "`{id}` ({}) ended after {} turns without calling finish, as at a turn limit",
+                    "`{id}` ({}) ended after {} turns without calling finish, as if it hit a turn limit",
                     session.role.word(),
                     session.turns.len()
                 ),
@@ -2624,7 +2624,7 @@ fn anomalies(records: &Records, analysis: &Analysis) -> Vec<Anomaly> {
             push(
                 "hung test",
                 format!(
-                    "The suite run `{}` killed {} at its bound",
+                    "The suite run `{}` stopped {} at its time limit",
                     run.label,
                     killed.join(", ")
                 ),
@@ -2756,7 +2756,7 @@ fn anomalies(records: &Records, analysis: &Analysis) -> Vec<Anomaly> {
                 push(
                     "checks cut by budget",
                     format!(
-                        "The checks ran {selected} of {admitted} admitted scenarios; {budget_skips} were skipped because their bound exceeded the time left"
+                        "The checks ran {selected} of {admitted} admitted scenarios; {budget_skips} were skipped because their time limit was longer than the time left"
                     ),
                     None,
                 );
@@ -2980,10 +2980,11 @@ Usage:
 
 RUN is a job name, job/trial, a trial name, or a piece of a job name that
 only one job has. The analysis covers the verifier's result with each
-failing assertion, the true total cost against Harbor's, the timeline of
-every component and Luna session with the critical path, the acceptance
-suite against the verifier's tests, sessions that undid an earlier
-session's change, anomalies, and the cheapest passing Fable 5.1 attempt.
+failing assertion, the true total cost compared with Harbor's figure, the
+timeline of every component and Luna session with the critical path (the
+chain of steps that set the run's length), how the acceptance tests compare
+with the verifier's tests, sessions that undid an earlier session's change,
+anomalies, and the cheapest passing Fable 5.1 attempt.
 
 Code computes every number. Jev judges only whether an acceptance test
 checks what a verifier test checks, for the pairs the rules leave open;

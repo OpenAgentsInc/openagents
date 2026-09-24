@@ -14,21 +14,23 @@ gym terminal-bench  inspect local runs or call the pinned Harbor harness
 Evidence commands (read-only; add --json for structured output):
   overview                 list sources, statuses, coverage, profiles, and groups;
                            a tb4 profile lists the TB4 leaderboard's rows
-  compare [--task ID] [--arm ID]  compare groups and their member attempts;
+  compare [--task ID] [--arm ID]  compare groups of attempts at one task and
+                           arm (configuration), and the attempts in each;
                            a tb4 group shows the leaderboard's result per task
   attempt JOB TRIAL        inspect one attempt and its measurements
   attempt JOB TRIAL --timeline  list every component invocation in order,
                            with its parent, duration, cost, and spend so far
-  evidence JOB TRIAL       inspect one attempt's files and digest states
+  evidence JOB TRIAL       inspect one attempt's files and whether each matches
+                           its recorded digest
   evidence --missing       list every attempt's missing streams, artifacts, and files
-  history                 list every attempt, newest first
-  runbooks                list the operating documents
+  history                  list every attempt, newest first
+  runbooks                 list the operating documents
 
 Source options for evidence commands:
   --jobs-dir PATH          local Harbor jobs (default ~/.openagents/terminal-bench/jobs)
   --traces-dir PATH        retained checkout traces
   --samples-dir PATH       checked and nested resilience samples
-  --no-jobs | --no-traces | --no-samples  omit one source
+  --no-jobs, --no-traces, --no-samples  leave out that source
   --profile ID             only attempts of this job profile (overview, compare)
   --no-reference           omit the TB4 leaderboard reference rows
   --json                   print versioned JSON instead of text
@@ -43,17 +45,17 @@ Harness commands (forward remaining flags to the pinned tbench package):
   inspect-job JOB         show one job's trial results
   collect JOB             rebuild one job's attempt records
   report                  write the harness comparison report
-  experiment run|plan|status|stop --id ID ...
-                          run a targeted experiment: two or more --arm, --tasks,
-                          3 interleaved attempts per task per arm by default,
-                          an optional --quota-usd Claude budget, and the
-                          long-lived Claude token
+  experiment run, plan, status, or stop --id ID ...
+                          run a targeted experiment: two or more --arm
+                          configurations, --tasks, 3 interleaved attempts per
+                          task per arm by default, an optional --quota-usd
+                          Claude budget, and the long-lived Claude token
 
-  --uv PATH              uv executable (default: uv)
+  --uv PATH               uv executable (default: uv)
   --harness-dir PATH      tbench package directory (default: this checkout)
 
 Experiment report (read-only):
-  experiment report ID|PATH  each arm's passes with 95% Wilson intervals, the
+  experiment report ID or PATH  each arm's passes with 95% Wilson intervals, the
                           paired comparison (exact McNemar and sign tests),
                           attempts lost to credentials, quota, or
                           infrastructure, and the Claude quota used;
@@ -138,7 +140,7 @@ impl SourceOptions {
             0
         };
         if options.positional.len() != expected {
-            return Err(format!("{command} expects {expected} positional values"));
+            return Err(format!("{command} takes {expected} arguments"));
         }
         if command != "compare" && (options.task.is_some() || options.arm.is_some()) {
             return Err("--task and --arm apply only to compare".to_owned());
@@ -673,7 +675,7 @@ fn render_text(
                 for arm in profile["arms"].as_array().into_iter().flatten() {
                     writeln!(
                         out,
-                        "  {} · {} tasks · {}/{} graded passes · {} setup failures · cost {}",
+                        "  {} · {} tasks · {} of {} graded attempts passed · {} setup failures · cost {}",
                         arm["arm"].as_str().unwrap_or("?"),
                         arm["tasks"],
                         arm["passes"],
@@ -727,7 +729,7 @@ fn render_text(
                 )?;
             }
             for warning in &records.report_warnings {
-                writeln!(out, "REPORT WARNING: {warning}")?;
+                writeln!(out, "Report warning: {warning}")?;
             }
         }
         "compare" => {
@@ -741,7 +743,7 @@ fn render_text(
                 )?;
                 writeln!(
                     out,
-                    "  {} attempt{}; {} graded; reward mean {}; development observation",
+                    "  {} attempt{}; {} graded; mean reward {}; exploratory, not a controlled result",
                     group["attempts_total"],
                     if group["attempts_total"] == 1 {
                         ""
@@ -754,12 +756,12 @@ fn render_text(
                 if group["interval"].is_null() {
                     writeln!(
                         out,
-                        "  No controlled pass-rate interval (requires at least three fresh binary grades and complete identities)."
+                        "  No controlled pass-rate interval: it needs at least three fresh pass-or-fail grades and complete attempt identities."
                     )?;
                 } else {
                     writeln!(
                         out,
-                        "  Wilson 95% [{:.2}, {:.2}] over {} fresh graded attempts",
+                        "  95% Wilson interval [{:.2}, {:.2}] over {} fresh graded attempts",
                         group["interval"]["low"].as_f64().unwrap_or(0.0),
                         group["interval"]["high"].as_f64().unwrap_or(0.0),
                         group["interval"]["denominator"]
@@ -767,7 +769,7 @@ fn render_text(
                 }
                 writeln!(
                     out,
-                    "  Observed fresh spread: agent time {} ms · total {} ms · cost {} USD",
+                    "  Range over fresh attempts: agent time {} ms · total {} ms · cost {} USD",
                     range_text(&group["agent_time_ms_range"]),
                     range_text(&group["total_time_ms_range"]),
                     range_text(&group["cost_usd_range"])
@@ -785,7 +787,7 @@ fn render_text(
                     .unwrap_or_else(|| "—".to_owned());
                 writeln!(
                     out,
-                    "  Setup (agent_setup phase): {setup} · {} setup failures beside {} graded",
+                    "  Setup (agent_setup phase): {setup} · {} setup failures and {} graded attempts",
                     group["setup_failures"], group["graded_denominator"]
                 )?;
                 if let Some(rows) = group["reference"].as_array() {
@@ -814,7 +816,7 @@ fn render_text(
                 for attempt in group["attempts"].as_array().into_iter().flatten() {
                     writeln!(
                         out,
-                        "  {} / {} · reward {} · {} · setup {} ms ({}) · agent/total {} / {} ms · cost {} ({}) · tokens {}/{} ({}) · {}",
+                        "  {} / {} · reward {} · {} · setup {} ms ({}) · agent {} ms of {} ms total · cost {} ({}) · tokens in {} out {} ({}) · {}",
                         attempt["job"].as_str().unwrap_or("?"),
                         attempt["trial"].as_str().unwrap_or("?"),
                         show(&attempt["reward"]),
@@ -880,7 +882,7 @@ fn render_text(
             )?;
             writeln!(
                 out,
-                "Usage: in {} · cache {} · out {} · coverage {}",
+                "Tokens: input {} · cached {} · output {} · coverage {}",
                 show(&value["usage"]["input_tokens"]),
                 show(&value["usage"]["cache_tokens"]),
                 show(&value["usage"]["output_tokens"]),
@@ -989,7 +991,7 @@ fn render_text(
         _ => {}
     }
     for error in &records.errors {
-        writeln!(out, "READ ERROR: {error}")?;
+        writeln!(out, "Could not read: {error}")?;
     }
     Ok(())
 }
@@ -1097,7 +1099,7 @@ fn harness(command: &str, args: &[String], err: &mut impl Write) -> Result<i32, 
     if let Some(code) = status.code() {
         Ok(code)
     } else {
-        writeln!(err, "terminal-bench: harness ended from a signal")
+        writeln!(err, "terminal-bench: a signal stopped the harness")
             .map_err(|error| error.to_string())?;
         Ok(1)
     }
@@ -1208,7 +1210,7 @@ mod tests {
         execute(&args[..args.len() - 1], &mut text, &mut Vec::new()).unwrap();
         let text = String::from_utf8(text).unwrap();
         assert!(
-            text.contains("Setup (agent_setup phase): cold 70000 to 70000 ms · unknown 360000 to 360000 ms · warm 9000 to 12000 ms · 1 setup failures beside 3 graded"),
+            text.contains("Setup (agent_setup phase): cold 70000 to 70000 ms · unknown 360000 to 360000 ms · warm 9000 to 12000 ms · 1 setup failures and 3 graded attempts"),
             "{text}"
         );
         assert!(text.contains("setup 9000 ms (warm)"), "{text}");
@@ -1272,7 +1274,7 @@ mod tests {
             "{overview}"
         );
         assert!(
-            overview.contains("arm · 1 tasks · 1/2 graded passes"),
+            overview.contains("arm · 1 tasks · 1 of 2 graded attempts passed"),
             "{overview}"
         );
         assert!(

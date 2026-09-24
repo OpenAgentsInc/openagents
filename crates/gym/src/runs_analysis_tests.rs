@@ -608,11 +608,11 @@ fn write_keeps_markdown_and_json_beside_the_run() {
         "## Summary",
         "### The verifier",
         "### Per phase",
-        "### The critical path and the concurrency",
-        "## The suite against the verifier",
+        "### The critical path and overlapping work",
+        "## Acceptance tests compared with the verifier",
         "## Reversals",
         "## Anomalies",
-        "## Against Fable 5.1",
+        "## Compared with Fable 5.1",
     ] {
         assert!(text.contains(heading), "{heading} in\n{text}");
     }

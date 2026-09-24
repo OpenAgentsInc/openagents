@@ -113,7 +113,7 @@ impl Pane {
             "Highlights · {} candidate claims, strongest first",
             claims.len()
         );
-        let hint = format!("{n1} rest on one run · computed by rules · nothing posts");
+        let hint = format!("{n1} cite only one run · found by fixed rules · nothing is posted");
         let inner = self.framed(
             area,
             buf,
@@ -131,7 +131,7 @@ impl Pane {
             buf.set_stringn(
                 inner.left(),
                 inner.top(),
-                "No claim meets a rule yet. Rank runs with l, or run more arms of the same tasks.",
+                "No claim meets a rule yet. Rank runs with l, or run more configurations on the same tasks.",
                 width,
                 self.style(Intensity::Half),
             );
@@ -261,7 +261,7 @@ mod tests {
         ];
         let text = pane.to_text(140, 30);
         assert!(text.contains("Highlights · 2 candidate claims"), "{text}");
-        assert!(text.contains("1 rest on one run"), "{text}");
+        assert!(text.contains("1 cite only one run"), "{text}");
         assert!(text.contains("Claim cost-aaaa"), "{text}");
         assert!(text.contains("different batches"), "{text}");
         assert!(text.contains("enter open the cited runs"), "{text}");

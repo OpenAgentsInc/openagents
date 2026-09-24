@@ -462,18 +462,20 @@ pub enum BookError {
         to: Status,
     },
 
-    #[error("the book holds no job `{job}`")]
+    #[error("the job log has no job `{job}`")]
     UnknownJob { job: String },
 
-    #[error("job `{job}` declared no input `{input}`, and the book does not invent inputs")]
+    #[error(
+        "job `{job}` declared no input `{input}`, and the job log accepts only declared inputs"
+    )]
     UnknownInput { job: String, input: String },
 
     #[error("job `{job}` is {status}; attempts begin only while a job is running or cancelling")]
     NotRunning { job: String, status: Status },
 
     #[error(
-        "job `{job}` input `{input}` has no attempt {attempt} recorded \
-         started, and the book does not invent attempts"
+        "job `{job}` input `{input}` has no record that attempt {attempt} \
+         started, and the job log accepts only attempts that started"
     )]
     Unstarted {
         job: String,

@@ -506,7 +506,7 @@ pub fn render(report: &Report) -> Vec<String> {
     let mut out = vec!["Coverage".to_owned()];
     for cover in &report.coverage {
         out.push(format!(
-            "  {:<30} {} tasks with both sides · {} vs {} trajectories",
+            "  {:<30} {} tasks with both sides · {} compared with {} trajectories",
             cover.comparison, cover.tasks, cover.a, cover.b
         ));
     }
@@ -520,7 +520,7 @@ pub fn render(report: &Report) -> Vec<String> {
     }
     for (rank, one) in report.candidates.iter().enumerate() {
         out.push(format!(
-            "{:>3}. {} · {} {} {}: {} of {} tasks, mean delta {:+.2}, typical {} vs {}",
+            "{:>3}. {} · {} {} {}: {} of {} tasks, mean Cliff's delta {:+.2}, typical value {} compared with {}",
             rank + 1,
             one.comparison,
             one.a,
@@ -538,7 +538,7 @@ pub fn render(report: &Report) -> Vec<String> {
         ));
         for cite in &one.citations {
             out.push(format!(
-                "       {}: {}{} ({}) vs {}{} ({})",
+                "       {}: {}{} ({}) compared with {}{} ({})",
                 cite.task,
                 cite.a_run,
                 cite.a_step.map_or(String::new(), |n| format!(" step {n}")),

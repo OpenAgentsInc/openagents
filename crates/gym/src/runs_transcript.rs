@@ -1253,7 +1253,7 @@ pub fn parallel_block(summary: &Value) -> Kind {
     let concurrency = summary["concurrency"].as_f64().unwrap_or(0.0);
     let mut lines = vec![
         format!(
-            "{} sessions in {} of wall time and {} of session time: concurrency {concurrency:.2}×, peak {} at once.",
+            "{} sessions in {} of wall time and {} of session time: {concurrency:.2} at once on average, at most {}.",
             summary["sessions"].as_u64().unwrap_or(0),
             seconds_of(&summary["wall_ms"]),
             seconds_of(&summary["session_ms"]),
@@ -1297,9 +1297,12 @@ pub fn parallel_block(summary: &Value) -> Kind {
             continue;
         }
         lines.push(format!(
-            "{}: {} at once, longest {} of {} summed.",
+            "{}: {} at once, longest {} of {} in total.",
             batch["batch"].as_str().unwrap_or("batch"),
-            members.join(" ∥ "),
+            match members.split_last() {
+                Some((last, rest)) if rest.len() > 1 => format!("{}, and {last}", rest.join(", ")),
+                _ => members.join(" and "),
+            },
             seconds_of(&batch["longest_ms"]),
             seconds_of(&batch["sum_ms"]),
         ));
@@ -1307,7 +1310,7 @@ pub fn parallel_block(summary: &Value) -> Kind {
     Kind::Check {
         title: "Parallel sessions".to_owned(),
         verdict: format!(
-            "concurrency {concurrency:.2}×, saved about {}",
+            "{concurrency:.2} sessions at once on average, saved about {}",
             seconds_of(&summary["saved_ms"])
         ),
         lines,
@@ -2528,12 +2531,13 @@ mod tests {
             panic!("a check block");
         };
         assert_eq!(title, "Parallel sessions");
-        assert_eq!(verdict, "concurrency 1.50×, saved about 30.0s");
+        assert_eq!(
+            verdict,
+            "1.50 sessions at once on average, saved about 30.0s"
+        );
         assert!(
-            lines
-                .iter()
-                .any(|l| l
-                    == "round 1: session 2 ∥ session 3 at once, longest 30.0s of 55.0s summed.")
+            lines.iter().any(|l| l
+                == "round 1: session 2 and session 3 at once, longest 30.0s of 55.0s in total.")
         );
         assert!(
             lines

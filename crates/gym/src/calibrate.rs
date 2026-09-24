@@ -553,9 +553,7 @@ pub enum Mismatch {
     #[error("door_identity.verified: this door publishes incomplete model identity")]
     DoorUnverifiable,
     /// The base model underneath has changed.
-    #[error(
-        "base_model_signature: the map was fitted against {fitted} and this door runs {serving}"
-    )]
+    #[error("base_model_signature: the map was fitted on {fitted} and this door runs {serving}")]
     BaseModelSignature {
         /// The signature the map was fitted against.
         fitted: String,
@@ -563,7 +561,7 @@ pub enum Mismatch {
         serving: String,
     },
     /// The adapter has changed, which changes the door.
-    #[error("adapter: the map was fitted against {fitted} and this door serves {serving}")]
+    #[error("adapter: the map was fitted on {fitted} and this door serves {serving}")]
     Adapter {
         /// The adapter the map was fitted against, or `none`.
         fitted: String,
@@ -571,9 +569,7 @@ pub enum Mismatch {
         serving: String,
     },
     /// Checkpoint contents differ, even if the public model name is unchanged.
-    #[error(
-        "artifact_signature: the map was fitted against {fitted} and this door serves {serving}"
-    )]
+    #[error("artifact_signature: the map was fitted on {fitted} and this door serves {serving}")]
     ArtifactSignature {
         /// Content identity recorded when the map was fitted.
         fitted: String,

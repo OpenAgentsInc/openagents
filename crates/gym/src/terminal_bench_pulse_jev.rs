@@ -423,7 +423,7 @@ impl Learning {
     #[must_use]
     pub fn lines(&self) -> Vec<String> {
         let mut lines = vec![format!(
-            "Jev on finished trials ({}): {} runs; runs-learning-v1 asked {}, {} answered, {} cached; experiment questions asked {}, {} answered, {} cached; cost ${:.4}",
+            "Jev on finished trials ({}): {} runs; learning questions (runs-learning-v1) asked {}, {} answered, {} cached; experiment questions asked {}, {} answered, {} cached; cost ${:.4}",
             self.judge,
             self.runs,
             self.rank.asked,
@@ -435,7 +435,7 @@ impl Learning {
             self.cost_usd()
         )];
         for error in self.rank.errors.iter().chain(&self.errors).take(5) {
-            lines.push(format!("  ! {error}"));
+            lines.push(format!("  error: {error}"));
         }
         for arm in &self.arms {
             lines.push(format!("  {} · {} trials judged", arm.arm, arm.answered));
@@ -702,7 +702,7 @@ impl Advisory {
             lines.push("  no trial is running".to_owned());
         }
         for error in self.errors.iter().take(3) {
-            lines.push(format!("  ! {error}"));
+            lines.push(format!("  error: {error}"));
         }
         for trial in &self.trials {
             let flags: Vec<String> = LIVE_QUESTIONS
@@ -715,9 +715,9 @@ impl Advisory {
             let said = if let Some(note) = &trial.note {
                 note.clone()
             } else if flags.is_empty() {
-                "no flag".to_owned()
+                "Jev raised no concern".to_owned()
             } else {
-                format!("FLAG {}", flags.join(", "))
+                format!("Jev flags: {}", flags.join(", "))
             };
             lines.push(format!("  {}: {said}", trial.job));
             for mechanical in &trial.mechanical {

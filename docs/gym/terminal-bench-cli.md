@@ -84,9 +84,9 @@ zero. `--jobs-dir PATH` and `--traces-dir PATH` read other directories, and
 ## Analyze one run
 
 `gym runs analyze` computes a finished run's analysis: the verifier's
-result with each failing assertion, the true cost against Harbor's, the
+result with each failing assertion, the true cost compared with Harbor's figure, the
 timeline with the critical path and the cost by phase, the acceptance
-suite against the verifier's tests, sessions that undid an earlier
+suite compared with the verifier's tests, sessions that undid an earlier
 session's change, anomalies, and Fable 5.1's cheapest pass on the task.
 The harness writes it beside each trial when the trial ends.
 
@@ -534,10 +534,10 @@ The pulse shows:
   score line up with the verifier: passes and fails per row with a Wilson
   interval, a two-sided Fisher exact test of the first row against the
   rest, and, for the score, the area under its ROC curve. A signal that
-  doesn't separate says `no separation`.
+  doesn't separate says `no clear difference`.
 - **Component fire rates.** For escalation (`verify.second`), repair,
   persistence, and handoff escalation: how many trials configured it, how
-  many it fired on, and how those trials ended, with each skip reason and
+  many it ran on, and how those trials ended, with each skip reason and
   persistence's stop reasons grouped with their numbers replaced by `N`,
   and persistence's rounds per trial.
 - **Notable trials.** A trial whose final checks all passed and that the
@@ -553,13 +553,13 @@ the final checks didn't separate passes from failures:
 
 ```text
 Combined component health of effort-9569, escalate-9571b, escalate-9571c, v10-persist-9570: 83 graded trials ran Coder One with a composition record
-  Final checks against the verifier
+  Final checks compared with the verifier
     all passed                                    19 pass  19 fail    50%  95% 35–65%
     inconclusive                                  17 pass  19 fail    47%  95% 32–63%  (6 ran no scenario: 6 pass, 0 fail)
     a check failed                                 4 pass   5 fail    44%  95% 19–73%
-    "all passed" against the rest: Fisher exact p = 0.827, no separation
+    "all passed" compared with the other rows: Fisher exact p = 0.827, no clear difference
   ...
-  Escalation (verify.second): configured on 39, fired on 17 (44%)
+  Escalation (verify.second): configured on 39, ran on 17 (44%)
     ...
     ran 17 times with 3 passes; second executors cost $28.40
     skipped on 19 trials (no check failed and the executor reported no failure), and 8 of those failed anyway

@@ -860,7 +860,7 @@ pub fn agreement_text(agreement: &Agreement) -> Vec<String> {
     let unsupported = agreement.unsupported();
     if agreement.marked_runs == 0 {
         lines.push(
-            "No marks yet, so there is nothing to measure Jev against. Mark runs with `gym runs mark RUN --tag ID` or clear them with `gym runs mark RUN --clear`."
+            "No marks yet, so there is nothing to compare Jev's judgments with. Mark runs with `gym runs mark RUN --tag ID` or clear them with `gym runs mark RUN --clear`."
                 .to_owned(),
         );
         return lines;
@@ -876,7 +876,7 @@ pub fn agreement_text(agreement: &Agreement) -> Vec<String> {
         ));
     }
     lines.push(format!(
-        "Jev ({}, {} {}) against the marks on {} runs: {} marked bad ({} with no tag), {} cleared, {} with no Jev answer.",
+        "Jev ({}, question set {} version {}) compared with the marks on {} runs: {} marked bad ({} with no tag), {} cleared, {} with no Jev answer.",
         learning::JEV_MODEL,
         learning::QUESTION_SET,
         &learning::questions_digest()[..12],
@@ -897,12 +897,12 @@ pub fn agreement_text(agreement: &Agreement) -> Vec<String> {
     ));
     lines.push(String::new());
     lines.push(format!(
-        "{:<26} {:>4} {:>4}  {:<24} {:<24} {}",
-        "judgment", "pos", "neg", "agreement", "precision", "recall"
+        "{:<26} {:>8} {:>8}  {:<24} {:<24} {}",
+        "judgment", "positive", "negative", "agreement", "precision", "recall"
     ));
     for row in &agreement.rows {
         let head = format!(
-            "{:<26} {:>4} {:>4}  ",
+            "{:<26} {:>8} {:>8}  ",
             clip_words(&row.id, 26),
             row.positive,
             row.negative
@@ -936,7 +936,7 @@ pub fn agreement_text(agreement: &Agreement) -> Vec<String> {
 
 /// The usage of the marking subcommands.
 pub const USAGE: &str = "\
-gym runs mark, unmark, marks, agreement: a person's marks on runs, and Jev against them.
+gym runs mark, unmark, marks, agreement: a person's marks on runs, and how Jev agrees.
 
 Usage:
   gym runs mark RUN[/STEP] [--tag ID]... [--note TEXT] [--author NAME]
@@ -953,11 +953,11 @@ looped, or harness_fault. --note keeps a one-line note. --clear records
 that you read the run and found nothing wrong. A new mark on the same run or
 step replaces the old one; `unmark` removes it. --author defaults to $USER.
 
-Marks are appended to ~/.openagents/gym/marks/marks.jsonl, each with the
-digest of the evidence Jev reads for the run, and never edit the run.
+Marks are appended to ~/.openagents/gym/marks/marks.jsonl, each with a
+hash of the evidence Jev reads for the run, and never edit the run.
 --marks-dir PATH keeps them elsewhere.
 
-`agreement` measures Jev's judgments against the marks: a tag is a positive
+`agreement` compares Jev's judgments with the marks: a tag is a positive
 label for its judgment on that run, and a cleared run is a negative label
 for every judgment. It reports agreement, precision, and recall with 95%
 Wilson intervals and their denominators, and gives no number for a judgment

@@ -496,7 +496,7 @@ their sizes, the variant digest, and Jev's section answers.
 
   --jobs-dir PATH          local Harbor jobs (default ~/.openagents/terminal-bench/jobs)
   --traces-dir PATH        retained checkout traces
-  --no-jobs | --no-traces  omit one source
+  --no-jobs, --no-traces   leave out that source
   --json                   print versioned JSON instead of text";
 
 /// `gym coder prompt …`.

@@ -1264,10 +1264,10 @@ impl App {
             format!(
                 "{}{}{}{}{}{}{}{}{}{}",
                 left("door", 16),
-                right("acc", 8),
+                right("accuracy", 8),
                 right("ece", 8),
                 right("brier", 8),
-                right("logloss", 9),
+                right("log loss", 9),
                 right("conf.err", 9),
                 right("flip", 8),
                 right("scored", 8),
@@ -1579,11 +1579,11 @@ impl App {
             ChainStatus::Verified { rows, head } => {
                 body.push(field("chain", "verified", Intensity::ThreeQuarters));
                 body.push(field("rows", &rows.to_string(), Intensity::ThreeQuarters));
-                body.push(field("head", head, Intensity::Quarter));
+                body.push(field("last receipt", head, Intensity::Quarter));
                 body.push(Vec::new());
                 body.push(vec![Span::new(
-                    "Every row digests to the receipt it carries, and every row follows \
-                     the one before it.",
+                    "Every row's contents hash to the receipt it stores, and every row \
+                     links to the one before it.",
                     Intensity::Half,
                 )]);
             }
@@ -1594,13 +1594,13 @@ impl App {
             } => {
                 body.push(field("chain", "EDITED", Intensity::Full));
                 body.push(field("row", &row.to_string(), Intensity::Full));
-                body.push(field("carries", carries, Intensity::ThreeQuarters));
-                body.push(field("digests to", digests_to, Intensity::ThreeQuarters));
+                body.push(field("stored", carries, Intensity::ThreeQuarters));
+                body.push(field("recomputed", digests_to, Intensity::ThreeQuarters));
                 body.push(Vec::new());
                 body.push(vec![Span::new(
                     format!(
-                        "Row {row} carries a receipt its own contents do not produce. The \
-                         row was edited after it was written."
+                        "Row {row} stores a receipt that its own contents do not hash to. \
+                         The row was edited after it was written."
                     ),
                     Intensity::Full,
                 )]);
@@ -1612,13 +1612,13 @@ impl App {
             } => {
                 body.push(field("chain", "BROKEN", Intensity::Full));
                 body.push(field("row", &row.to_string(), Intensity::Full));
-                body.push(field("follows", follows, Intensity::ThreeQuarters));
+                body.push(field("links to", follows, Intensity::ThreeQuarters));
                 body.push(field("previous", previous, Intensity::ThreeQuarters));
                 body.push(Vec::new());
                 body.push(vec![Span::new(
                     format!(
-                        "Row {row} says it follows a receipt the row before it does not \
-                         carry. A row was inserted, removed, or reordered."
+                        "Row {row} links to a receipt that the row before it does not \
+                         store. A row was inserted, removed, or reordered."
                     ),
                     Intensity::Full,
                 )]);

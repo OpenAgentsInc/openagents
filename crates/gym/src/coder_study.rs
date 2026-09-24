@@ -188,12 +188,12 @@ pub fn lines(study: &Study, all: bool) -> Vec<String> {
     ));
     out.push(String::new());
     out.push(
-        "operators          proposals  built  dup  refused  best search J  best selection J"
+        "operator           proposals  built  duplicates  refused  best search J  best selection J"
             .to_string(),
     );
     for op in r["operators"].as_array().into_iter().flatten() {
         out.push(format!(
-            "  {:<16} {:>9}  {:>5}  {:>3}  {:>7}  {:>13}  {:>16}",
+            "  {:<16} {:>9}  {:>5}  {:>10}  {:>7}  {:>13}  {:>16}",
             op["operator"].as_str().unwrap_or("?"),
             op["proposals"].to_string(),
             op["built"].to_string(),
@@ -207,10 +207,10 @@ pub fn lines(study: &Study, all: bool) -> Vec<String> {
         }
     }
     out.push(String::new());
-    out.push("rungs (successive halving)".to_string());
+    out.push("rounds of successive halving".to_string());
     for rung in r["rungs"].as_array().into_iter().flatten() {
         out.push(format!(
-            "  {}/{}: {} evaluated → {} kept{}",
+            "  {}, {}: {} evaluated, {} kept{}",
             rung["tier"].as_str().unwrap_or("?"),
             rung["phase"].as_str().unwrap_or("?"),
             rung["evaluated"],
@@ -232,10 +232,18 @@ pub fn lines(study: &Study, all: bool) -> Vec<String> {
         "candidates by tier ({} built; ★ baseline, ◆ on a task frontier: count of tasks)",
         r["candidates"].as_array().map_or(0, Vec::len)
     ));
-    out.push(
-        "  tier       id            operator  search J  select J   chars  label cov  frontier  changes"
-            .to_string(),
-    );
+    out.push(format!(
+        "  {:<9}  {:<12}  {:<8}  {:>8}  {:>8}  {:>6}  {:>9}  {:>8}  {}",
+        "tier",
+        "id",
+        "operator",
+        "search J",
+        "select J",
+        "length",
+        "coverage",
+        "frontier",
+        "changes"
+    ));
     let ranked = ranked(r);
     let shown = if all { ranked.len() } else { 12 };
     for (i, c) in ranked.iter().enumerate() {
@@ -271,7 +279,7 @@ pub fn lines(study: &Study, all: bool) -> Vec<String> {
     }
     if let Some(frontier) = frontier {
         out.push(String::new());
-        out.push("per-task frontier (replay quality against briefing characters)".to_string());
+        out.push("per-task frontier (replay quality compared with briefing length)".to_string());
         for (task, ids) in frontier {
             let ids = ids.as_array().map_or(0, Vec::len);
             out.push(format!("  {task}: {ids} on the frontier"));
@@ -286,7 +294,7 @@ pub fn lines(study: &Study, all: bool) -> Vec<String> {
     match r.get("confirmation").filter(|c| !c.is_null()) {
         Some(confirmation) => {
             out.push(format!(
-                "held-out: selected J {} · baseline J {} · ΔJ {} (95% {}–{}) · chars {} · label coverage {}",
+                "held-out: selected J {} · baseline J {} · change in J {} (95% interval {} to {}) · characters {} · label coverage {}",
                 number(&confirmation["selected_result"]["j"], 4),
                 number(&confirmation["baseline_result"]["j"], 4),
                 number(&confirmation["paired"]["mean"], 4),
@@ -300,7 +308,7 @@ pub fn lines(study: &Study, all: bool) -> Vec<String> {
                 .into_iter()
                 .flatten()
             {
-                out.push(format!("  {task}: ΔJ {}", number(delta, 4)));
+                out.push(format!("  {task}: change in J {}", number(delta, 4)));
             }
             out.push(confirmation["statement"].as_str().unwrap_or("").to_string());
         }

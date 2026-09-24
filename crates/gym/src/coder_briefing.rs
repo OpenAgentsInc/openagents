@@ -194,7 +194,7 @@ impl Packed {
         if self.metrics.is_object() {
             let m = &self.metrics;
             lines.push(format!(
-                "  before → after: selected dropped {} → {}, duplicate bytes {} → {}, left out {} → {}, data characters {} → {}",
+                "  selected items dropped {} before, {} after · duplicate bytes {} before, {} after · items left out {} before, {} after · data characters {} before, {} after",
                 number(&m["before_selected_dropped"]),
                 number(&m["after_selected_dropped"]),
                 number(&m["before_duplicate_bytes"]),
@@ -297,10 +297,16 @@ impl Report {
                 let rows = self.replay_rows(query);
                 if query.is_some() {
                     lines.push(String::new());
-                    lines.push("  attempt                                                        selected dropped   duplicate bytes   data chars".to_owned());
+                    lines.push(format!(
+                        "  {:<62} {:<12}   {:<16}  {}",
+                        "attempt (each cell: before to after)",
+                        "dropped",
+                        "duplicate bytes",
+                        "data characters"
+                    ));
                     for row in rows {
                         lines.push(format!(
-                            "  {:<62} {:>4} → {:<4}   {:>6} → {:<6}  {:>6} → {:<6}",
+                            "  {:<62} {:>4} to {:<4}   {:>6} to {:<6}  {:>6} to {:<6}",
                             clip(
                                 &format!(
                                     "{} / {}",
@@ -333,7 +339,7 @@ impl Report {
             }
         }
         for error in &self.errors {
-            lines.push(format!("read error: {error}"));
+            lines.push(format!("could not read: {error}"));
         }
         lines
     }
@@ -350,7 +356,7 @@ attempts and fixtures whose name contains it and lists their items.
   --runs-dir PATH      component runs and replay reports (default ~/.openagents/coder-one/components)
   --jobs-dir PATH      local Harbor jobs (default ~/.openagents/terminal-bench/jobs)
   --traces-dir PATH    retained checkout traces
-  --no-runs | --no-jobs | --no-traces
+  --no-runs, --no-jobs, --no-traces  leave out that source
   --json               print versioned JSON instead of text";
 
 /// `gym coder briefing …`.

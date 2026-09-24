@@ -51,8 +51,7 @@ pub const FIXED_LUNA: &str = "coder-one-jevprobe3-luna";
 pub const FIXED_OPUS: &str = "coder-one-jevprobe2-opus-lean-low-5m";
 
 /// The hand-written rule, in words.
-pub const HAND_RULE: &str =
-    "Opus lean when concurrency ≥ 0.5 or difficulty ≥ 0.75; otherwise briefed Luna";
+pub const HAND_RULE: &str = "Opus lean when concurrency is at least 0.5 or difficulty is at least 0.75; otherwise briefed Luna";
 
 /// The checked-in feature export and task pool.
 #[must_use]
@@ -164,7 +163,7 @@ impl Rule {
                 threshold,
                 above,
                 below,
-            } => format!("{feature} ≥ {threshold:.3} → {above}; else {below}"),
+            } => format!("{above} when {feature} is at least {threshold:.3}; otherwise {below}"),
         }
     }
 }
@@ -500,7 +499,7 @@ impl Evaluation {
             ));
             for pick in &fold.picks {
                 lines.push(format!(
-                    "  {:<14} {:<40} J {}  regret {}  {}/{}",
+                    "  {:<14} {:<40} J {}  regret {}  {} of {} passed",
                     pick.router,
                     pick.key.as_deref().unwrap_or("—"),
                     pick.objective.map_or("—".to_owned(), |j| format!("{j:.4}")),
@@ -594,7 +593,7 @@ pub fn command(args: &[String], out: &mut impl std::io::Write) -> Result<i32, St
     {
         writeln!(
             out,
-            "gym coder router [--features PATH] [--json]\n\nEach development task's Jev features, the router's pick fitted without that\ntask, the oracle's pick, and the regret, for the fitted stump, the Jev Choice,\nthe hand-written rule, fixed Luna, and fixed Opus.\n\n  --features PATH          a task.profile export (default\n                           bench/terminal-bench/profiles/task-features.json)\n{}",
+            "gym coder router [--features PATH] [--json]\n\nEach development task's Jev features, the router's pick fitted without that\ntask, the oracle's pick, and the regret, for the fitted one-split rule, the Jev\nChoice, the hand-written rule, fixed Luna, and fixed Opus.\n\n  --features PATH          a task.profile export (default\n                           bench/terminal-bench/profiles/task-features.json)\n{}",
             crate::coder_matrix::SOURCE_HELP
         )
         .map_err(|error| error.to_string())?;

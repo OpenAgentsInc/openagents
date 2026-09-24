@@ -129,7 +129,7 @@ impl Screen {
             inner,
             2,
             &format!(
-                "{} / {} events · {} recorded · {} estimated · {}",
+                "{} of {} events · {} with recorded times · {} with estimated times · {}",
                 shown,
                 self.replay.events.len(),
                 self.replay.recorded,
@@ -897,9 +897,9 @@ impl Pane {
                 area,
                 1,
                 if self.analysis {
-                    "l chronological replay · Tab choose side · ↑/↓ PgUp/PgDn scroll assessment"
+                    "l back to replay · Tab choose side · ↑/↓ PgUp/PgDn scroll the assessment"
                 } else {
-                    "l Jev analysis · Space play/pause · +/- speed · ←/→ seek 30s · n/b event · r restart · End complete"
+                    "l Jev analysis · Space play or pause · +/- speed · ←/→ seek 30s · n/b next or previous event · r restart · End jump to end"
                 },
                 ladder,
                 Intensity::Half,
@@ -937,9 +937,9 @@ impl Pane {
                 area,
                 bottom,
                 if self.analysis {
-                    "Whole-run judgments include future replay events · l transcripts · Esc choose pair · q quit"
+                    "Judgments cover the whole run, including events not replayed yet · l transcripts · Esc choose pair · q quit"
                 } else {
-                    "↑/↓ select · enter open/close · e open all · g top · G latest and follow · Tab other side · d raw record · Esc choose pair · q quit"
+                    "↑/↓ select · enter open or close · e open all · g top · G latest and follow · Tab other side · d raw record · Esc choose pair · q quit"
                 },
                 ladder,
                 Intensity::Half,
@@ -954,7 +954,7 @@ impl Pane {
                     if self.learning.enabled {
                         "Jev learning order"
                     } else {
-                        "chronological: newest first"
+                        "newest first"
                     },
                     self.local.len(),
                     self.public.len(),
@@ -968,7 +968,7 @@ impl Pane {
                 buf,
                 area,
                 1,
-                "l chronological/Jev order · Tab/←/→ column · ↑/↓ choose · Enter load · / search tasks",
+                "l newest first or Jev order · Tab ←/→ column · ↑/↓ choose · Enter load · / search tasks",
                 ladder,
                 Intensity::Half,
             );
@@ -1073,7 +1073,7 @@ impl Pane {
                 buf,
                 area,
                 bottom,
-                "a Coder One/all local agents · o public/local opponent · c clear search · Esc back",
+                "a Coder One or all local agents · o public or local opponent · c clear search · Esc back",
                 ladder,
                 Intensity::Half,
             );
@@ -1093,7 +1093,7 @@ impl Pane {
                 area,
                 bottom - 1,
                 &format!(
-                    "{} notice(s): {}",
+                    "{} notices: {}",
                     self.errors.len(),
                     error.lines().next().unwrap_or(error)
                 ),

@@ -215,7 +215,7 @@ impl Signal {
     }
 
     fn lines(&self) -> Vec<String> {
-        let mut lines = vec![format!("  {} against the verifier", self.name)];
+        let mut lines = vec![format!("  {} compared with the verifier", self.name)];
         if self.rows.is_empty() {
             lines.push("    no graded trial recorded it".to_owned());
             return lines;
@@ -223,9 +223,13 @@ impl Signal {
         lines.extend(self.rows.iter().map(Split::line));
         if let Some((label, p)) = &self.fisher {
             lines.push(format!(
-                "    \"{label}\" against the rest: Fisher exact p = {}{}",
+                "    \"{label}\" compared with the other rows: Fisher exact p = {}{}",
                 p_text(*p),
-                if *p >= 0.05 { ", no separation" } else { "" }
+                if *p >= 0.05 {
+                    ", no clear difference"
+                } else {
+                    ""
+                }
             ));
         }
         if let Some((auc, passes, fails)) = self.auc {
@@ -263,7 +267,7 @@ impl Component {
 
     fn lines(&self) -> Vec<String> {
         let mut lines = vec![format!(
-            "  {}: configured on {}, fired on {} ({})",
+            "  {}: configured on {}, ran on {} ({})",
             self.name,
             self.configured,
             self.fired,
@@ -1199,7 +1203,14 @@ impl Pulse {
             String::new(),
             format!(
                 "  {:<34} {:>7} {:>5}  {:<9} {:>9} {:>10} {:>9} {:>9}",
-                "arm", "passes", "rate", "95%", "mean $", "total $", "mean time", "Claude $"
+                "arm",
+                "passes",
+                "rate",
+                "95% range",
+                "mean cost",
+                "total cost",
+                "mean time",
+                "Claude $"
             ),
         ];
         for a in &self.arms {
@@ -1270,7 +1281,7 @@ impl Pulse {
         }
         for stop in &self.ledger_stops {
             lines.push(format!(
-                "  ledger {}: {} {}, {} trials skipped: {}",
+                "  recorded stop at {}: {} {}, {} trials skipped: {}",
                 stop.at,
                 stop.arm.as_deref().unwrap_or("experiment"),
                 stop.state.replace('_', " "),
@@ -2096,7 +2107,7 @@ mod tests {
         assert_eq!(value["arms"][1]["graded"], 2);
         let text = pulse.lines().join("\n");
         assert!(text.contains("Pulse of x (tb4): 2 arms"));
-        assert!(text.contains("Escalation (verify.second): configured on 2, fired on 1 (50%)"));
+        assert!(text.contains("Escalation (verify.second): configured on 2, ran on 1 (50%)"));
     }
 
     #[test]

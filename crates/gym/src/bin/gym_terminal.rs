@@ -76,12 +76,13 @@ Usage:
 and --right pick the attempt on each side whose identity or description
 contains TEXT; --right pass picks the newest public attempt that passed and
 is on this computer, and --right best the cheapest passing one. In an open
-run, w does the same: that run against the best winner on its task.
+run, w does the same: it compares that run with the cheapest public attempt
+that passed its task.
 
 The default decision-model views open a built-in fixture. Terminal-Bench
-views read local Harbor jobs and retained evidence. Neither mode runs a
-door; the Runs pane asks Jev only in the learning order, and --no-jev
-stops that too.
+views read local Harbor jobs and retained evidence. Neither mode calls a
+decision model, except that the Runs pane asks Jev when you sort by what is
+worth learning from; --no-jev stops that too.
 
 Terminal-Bench views open from the startup index in ~/.openagents/gym/index:
 a run or attempt whose files are unchanged since the last start is read

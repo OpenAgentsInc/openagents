@@ -244,96 +244,103 @@ fn main() {
 }
 
 const USAGE: &str = "\
-gym eval     score doors against a suite, fit maps, and record the rows
-gym compare  compare doors from recorded rows
-gym fit      fit and judge from recorded rows, asking no door
-gym merge    fold one store's rows into another, re-sealing the chain
-gym spread   measure how far each metric moves across seed blocks
-gym permute  measure how much option order moves the answer, or read it back
-             from a store with --store
-gym latency  measure how much wall clock moves when nothing else does
-gym report   render a measured record from recorded rows
+gym eval     ask doors every item in a suite, score the answers, fit maps,
+             and record the rows
+gym compare  compare doors using rows already recorded
+gym fit      fit and judge maps from recorded rows without asking a door
+gym merge    copy one store's rows into another and rebuild its receipt chain
+gym spread   measure how much each metric varies between seed blocks
+gym permute  measure how much option order changes the answer, or read that
+             measurement back from a store with --store
+gym latency  measure how much response time varies when nothing else changes
+gym report   write a measured record from recorded rows
 gym publish  write a public benchmark and status snapshot from a store
-gym verify   walk a store's receipt chain and say where it breaks
-gym build    turn a caller's labelled JSONL into a suite and question set
-gym regress  compare a door with its own last recorded run
-gym admit    judge a frozen admission plan against recorded evidence and
-             write the decision a registry activates
-gym runs     Terminal-Bench runs in plain words; `gym runs show <job>` reads one,
-             `gym runs rank` asks Jev which are most worth learning from, and
-             `gym runs --order learning` lists them that way
-gym terminal-bench  inspect evidence or run the pinned Harbor harness
-gym experiment pulse  how a targeted experiment stands while it runs:
-             passes, cost, signal discrimination, component fire rates, the
-             early-stopping verdict, and notable trials; `--jev` and `--live`
-             add Jev's judgments; `gym experiment replay` runs the recorded
-             trials back through the stopping rule
-gym coder policy    list, show, and diff Coder One policy manifests
-gym coder requirements  Coder One requirement maps from suites and episodes
-gym coder briefing  what Coder One briefings delivered and left out
-gym coder capabilities  each executor adapter's session capability matrix
-gym coder live      follow Coder One attempts as they run
+gym verify   check a store's receipt chain and report where it breaks
+gym build    turn your labeled JSONL file into a suite and a question set
+gym regress  compare a door's latest run with its previous recorded run
+gym admit    decide whether a candidate passes its frozen admission plan,
+             using recorded evidence, and write the decision a registry
+             can activate
+gym runs     describe Terminal-Bench runs in plain words; `gym runs show <job>`
+             reads one, `gym runs rank` asks Jev which runs are most worth
+             learning from, and `gym runs --order learning` lists them in
+             that order
+gym terminal-bench  inspect recorded runs or run the pinned Harbor harness
+gym experiment pulse  show how a targeted experiment is going while it runs:
+             passes, cost, how well each signal separates passes from
+             failures, how often each component runs, whether to stop early,
+             and notable trials; `--jev` and `--live` add Jev's judgments;
+             `gym experiment replay` runs the recorded trials through the
+             early-stopping rule again
+gym coder policy    list, show, and compare Coder One policy manifests
+gym coder requirements  show Coder One requirement maps from suites and episodes
+gym coder briefing  show what Coder One briefings included and left out
+gym coder capabilities  show what each executor adapter can do in a session
+gym coder live      follow Coder One attempts while they run
 
   --door name=url     a door to ask; repeatable
-  --jev               hosted Jev, from TYPESAFE_API_KEY
+  --jev               hosted Jev, using TYPESAFE_API_KEY
   --suite path        a suite file; the committed three-way suite by default
-  --gate id           the acceptance rule; the suite's own by default
-  --questions id      the question set to serve; the suite's own by default
+  --gate id           the acceptance rule; the suite's own rule by default
+  --questions id      the question set to use; the suite's own set by default
   --partition name    calibration or development; both by default
-  --family name       the one family to ask; every family by default
-  --expect name       a door `report` was told the run was meant to ask;
+  --family name       the one question family to ask; every family by default
+  --expect name       a door that `report` expects the run to have asked;
                       repeatable
   --commitment path   where `report` writes the record's commitment, the
-                      file `verify` checks the store against, or the
+                      commitment file `verify` checks the store with, or the
                       commitment `publish` copies into the snapshot
-  --snapshot dir      the snapshot directory `verify` checks a store's
-                      claims against
-  --costs path        the per-door cost declarations `publish` renders
-  --status path       the live-status note `publish` renders beside the
+  --snapshot dir      the snapshot directory whose claims `verify` checks
+                      the store with
+  --costs path        the cost of each door, which `publish` includes
+  --status path       the current-status note `publish` includes next to the
                       historical evidence
   --fit               fit one map per family and judge it
   --record path       append every row to this store
-  --records dir       write one calibration record per family here
+  --records dir       write one calibration record per family to this directory
   --store path        the store `compare`, `fit`, `permute`, and `regress` read
   --draws path        the draws `spread` reads, from `lev-calibration-sweep`
-  --baseline name     the side `compare` measures the others against
-  --against path      the store `regress` measures the rows in `--store`
-                      against; the same store by default
-  --items path        narrow eval or a recorded view to these item ids
-  --from path         a store `merge` folds into `--store`; repeatable
+  --baseline name     the door `compare` measures the other doors relative to
+  --against path      the earlier store `regress` compares the rows in
+                      `--store` with; the same store by default
+  --items path        limit eval or a recorded view to the item IDs in this file
+  --from path         a store that `merge` copies into `--store`; repeatable
   --blocks n          how many passes `latency` makes; 8 by default
   --out path          the file `report` writes; stdout by default
-  --input path        the caller's JSONL `build` reads
-  --name id           the suite's name, and the question set's id
-  --label-source who  whose labels the records carry
+  --input path        your JSONL file that `build` reads
+  --name id           the suite's name, and the question set's ID
+  --label-source who  who produced the labels in the records
   --label-rule rule   how the labels were produced, in one sentence
-  --source text       where the caller's data came from
-  --licence text      the caller's licence statement for measurement use
+  --source text       where your data came from
+  --licence text      your license statement for measurement use
   --created date      the suite's creation date; today by default
   --description text  a description to use instead of the generated one
-  --agreement f=c     the ceiling a family's labels rest on; repeatable
-  --suite-out path    where `build` writes the suite; `<name>.json` here
+  --agreement f=c     the agreement ceiling that a family's labels rest on,
+                      as family=ceiling; repeatable
+  --suite-out path    where `build` writes the suite; `<name>.json` in the
+                      current directory by default
   --questions-out p   where `build` writes the question set
-  --timeout seconds   how long one call to a `--door` may take; the client's
-                      ten seconds by default, and worth raising on a busy
-                      machine, because a timeout loses the item entirely
-  --deployment-evidence p  explicit deployment profiles for admission
-  --locked-commitment p    separately retained locked report
-  --transfer-commitment p  separately retained transfer report
-  --plan path         the frozen admission plan `admit` judges
+  --timeout seconds   how long one call to a `--door` may take; 10 seconds by
+                      default. Raise it on a busy machine, because an item
+                      that times out is lost entirely
+  --deployment-evidence p  measured deployment profiles for admission
+  --locked-commitment p    the separately kept report for the locked store
+  --transfer-commitment p  the separately kept report for the transfer store
+  --plan path         the frozen admission plan that `admit` judges
   --locked path       the store `admit` reads the locked-confirmation rows
-                      from; with --ledger
-  --ledger path       the ledger `admit` checks the locked read was spent
-                      under; with --locked
-  --transfer-suite p  the transfer suite `admit` checks the candidate against
+                      from; use with --ledger
+  --ledger path       the ledger that records the single permitted read of
+                      the locked partition; use with --locked
+  --transfer-suite p  the transfer suite `admit` also tests the candidate on
   --transfer-store p  the store `admit` reads the transfer rows from
-  --at timestamp      when `admit` dates the decision; now by default
+  --at timestamp      the date and time `admit` puts on the decision; now by
+                      default
 
 `regress` exits 1 when something regressed, 2 when it could not compare, and
 0 otherwise. Read the report either way.
 
-`admit` writes the decision to `--out` or stdout and exits 1 when the ruling
-is not `passed`: only a passed decision may activate a candidate.";
+`admit` writes the decision to `--out` or stdout, and exits 1 when the ruling
+is not `passed`. Only a passed decision can activate a candidate.";
 
 fn run(outcome: Result<(), String>) {
     if let Err(trouble) = outcome {
@@ -435,11 +442,9 @@ fn partitions(options: &Options) -> Result<Vec<Partition>, String> {
         None => Ok(vec![Partition::Calibration, Partition::Development]),
         Some("calibration") => Ok(vec![Partition::Calibration]),
         Some("development") => Ok(vec![Partition::Development]),
-        Some("locked") => Err(
-            "the locked partition is spent through a ledger, not scored \
-             by a flag; see gym::suite::LockedLedger"
-                .to_string(),
-        ),
+        Some("locked") => Err("the locked partition is read once, through a ledger, and \
+             no flag can score it; see gym::suite::LockedLedger"
+            .to_string()),
         Some(other) => Err(format!("unknown partition {other}")),
     }
 }
@@ -459,7 +464,7 @@ fn read_item_ids(path: &str) -> Result<std::collections::BTreeSet<String>, Strin
         .map(str::to_string)
         .collect();
     if ids.is_empty() {
-        return Err(format!("{path} names no item ids"));
+        return Err(format!("{path} lists no item IDs"));
     }
     Ok(ids)
 }
@@ -553,7 +558,7 @@ fn open_doors(options: &Options) -> Result<Vec<(String, Client)>, String> {
         }
     }
     if doors.is_empty() {
-        return Err("no doors; pass --jev or --door name=url".to_string());
+        return Err("no door to ask; pass --jev or --door name=url".to_string());
     }
     Ok(doors)
 }
@@ -653,7 +658,9 @@ async fn ask(client: &Client, state: &Value, question: &Value) -> (Disposition, 
         Ok(response) => match response.answers.get("q") {
             Some(answer) => (eval::read_answer(answer), Some(elapsed)),
             None => (
-                Disposition::Harness("the door answered without the question".to_string()),
+                Disposition::Harness(
+                    "the door replied without an answer to the question".to_string(),
+                ),
                 None,
             ),
         },
@@ -716,7 +723,11 @@ async fn eval_command(options: Options) -> Result<(), String> {
             .collect();
         println!("Label evidence: {}.\n", detail.join(", "));
     }
-    println!("Judged by `{}`, digest `{}`.\n", gate.id, gate.digest());
+    println!(
+        "Judged by the gate `{}` (digest `{}`).\n",
+        gate.id,
+        gate.digest()
+    );
     println!(
         "Asked as `{}`, digest `{}`. The suite digest covers the items and the question set \
          covers the text, so a reword is a candidate against these items rather than another \
@@ -970,7 +981,7 @@ fn report_pass(pass: &Pass, asked: usize) {
     if !refusals.is_empty() {
         let detail: Vec<String> = refusals
             .iter()
-            .map(|(code, count)| format!("`{code}` x{count}"))
+            .map(|(code, count)| format!("`{code}` {count} times"))
             .collect();
         println!("Door refusals: {}.\n", detail.join(", "));
     }
@@ -1260,8 +1271,8 @@ fn compare_command(options: &Options) -> Result<(), String> {
         if sides.len() == 1 { "" } else { "s" }
     );
     println!(
-        "Read from `{path}`: {} rows over {} side{}. The chain verified, so no row was removed \
-         and none was inserted.\n",
+        "Read from `{path}`: {} rows over {} side{}. The receipt chain is unbroken, so no row was \
+         removed or inserted.\n",
         rows.len(),
         sides.len(),
         if sides.len() == 1 { "" } else { "s" }
@@ -1308,7 +1319,7 @@ fn compare_command(options: &Options) -> Result<(), String> {
     if !refusals.is_empty() {
         let detail: Vec<String> = refusals
             .iter()
-            .map(|(code, count)| format!("`{code}` x{count}"))
+            .map(|(code, count)| format!("`{code}` {count} times"))
             .collect();
         println!("Refusals across every door: {}.\n", detail.join(", "));
     }
@@ -1366,7 +1377,11 @@ fn compare_command(options: &Options) -> Result<(), String> {
     };
     let gate = gate::load(options.gate.as_deref().unwrap_or("decision-v1"))
         .map_err(|error| error.to_string())?;
-    println!("## Judged by `{}`, digest `{}`\n", gate.id, gate.digest());
+    println!(
+        "## Judged by the gate `{}` (digest `{}`)\n",
+        gate.id,
+        gate.digest()
+    );
     if labels.len() < 2 {
         println!(
             "Only `{baseline}` has rows in this store, so there is nothing to compare it \
@@ -1374,7 +1389,7 @@ fn compare_command(options: &Options) -> Result<(), String> {
         );
         return Ok(());
     }
-    println!("| Candidate | Against | Comparing | Verdict | Deciding criterion |");
+    println!("| Candidate | Baseline | Items compared | Verdict | Deciding criterion |");
     println!("| --- | --- | --- | --- | --- |");
     for label in labels.iter().filter(|label| *label != &baseline) {
         let Some(after) = measured.get(label) else {
@@ -1392,7 +1407,7 @@ fn compare_command(options: &Options) -> Result<(), String> {
             }
         };
         let outcome = gate.judge(&gate::Comparison::new(
-            format!("{label} against {baseline}"),
+            format!("{label} compared with {baseline}"),
             before.scores(),
             after.scores(),
         ));
@@ -2249,7 +2264,7 @@ fn verify_command(options: &Options) -> Result<(), String> {
     match verify_chain(&rows) {
         ChainVerdict::Ok { rows, head } => {
             let head = head.as_deref().unwrap_or("none");
-            println!("`{path}`: {rows} rows, chain intact, head `{head}`.");
+            println!("`{path}`: {rows} rows, receipt chain unbroken, last receipt `{head}`.");
         }
         ChainVerdict::Broken {
             index,
@@ -2273,7 +2288,7 @@ fn verify_command(options: &Options) -> Result<(), String> {
         let faults = gym::commitment::check(&commitment, &typed);
         if !faults.is_empty() {
             for fault in &faults {
-                eprintln!("against `{file}`: {fault}");
+                eprintln!("compared with `{file}`: {fault}");
             }
             return Err(format!("the store does not match the commitment in {file}"));
         }
@@ -2346,7 +2361,7 @@ fn verify_snapshot(path: &str, directory: &str, rows: &[Value]) -> Result<(), St
     let divergences = gym::views::check(&snapshot, &typed);
     if !divergences.is_empty() {
         for divergence in &divergences {
-            eprintln!("against `{directory}`: {divergence}");
+            eprintln!("compared with `{directory}`: {divergence}");
         }
         return Err(format!(
             "the store does not reproduce the snapshot in {directory}"
@@ -2443,7 +2458,7 @@ fn build_command(options: &Options) -> Result<(), String> {
         std::fs::write(path, text + "\n").map_err(|error| format!("{path}: {error}"))?;
         println!("wrote {path}");
     }
-    println!("digest {}", built.digest);
+    println!("suite digest {}", built.digest);
     println!(
         "{} items, {} shared and {} per-item question families",
         built.items, built.family_keyed, built.item_keyed
@@ -2562,7 +2577,7 @@ fn flips_command(options: &Options) -> Result<(), String> {
     let view = View::read(options, true)?;
     println!("# Option order, from the record\n");
     println!(
-        "Read from `{}`: {} rows. The chain verified, and no door was asked.\n",
+        "Read from `{}`: {} rows. The receipt chain is unbroken, and no door was asked.\n",
         view.path,
         view.rows.len()
     );
@@ -2798,7 +2813,11 @@ fn fit_command(options: &Options) -> Result<(), String> {
         suite.name,
         &suite.digest[..16]
     );
-    println!("Judged by `{}`, digest `{}`.\n", gate.id, gate.digest());
+    println!(
+        "Judged by the gate `{}` (digest `{}`).\n",
+        gate.id,
+        gate.digest()
+    );
 
     let mut doors: Vec<String> = Vec::new();
     for row in &scored {
@@ -3006,7 +3025,7 @@ async fn latency_command(options: Options) -> Result<(), String> {
 
     for (name, blocks) in &measured {
         println!("## `{name}`\n");
-        println!("| Block | Calls | Refused | Lost | p50 | p95 | Mean |");
+        println!("| Block | Calls | Refused | Lost | Median | 95th percentile | Mean |");
         println!("| --- | --- | --- | --- | --- | --- | --- |");
         for (index, block) in blocks.iter().enumerate() {
             println!(
@@ -3112,14 +3131,14 @@ fn regress_command(options: &Options) -> Result<(), String> {
     println!("# Did this commit move the numbers?\n");
     match options.against.as_deref() {
         Some(against) => println!(
-            "`{path}` holds {} rows and `{against}` holds {}. The chains verified, so neither \
-             side's numbers were quietly rewritten. No door was asked.\n",
+            "`{path}` holds {} rows and `{against}` holds {}. Both receipt chains are unbroken, so \
+             neither store's numbers were quietly rewritten. No door was asked.\n",
             latest.len(),
             earlier.as_ref().map_or(0, Vec::len),
         ),
         None => println!(
-            "`{path}` holds {} rows, and each door's newest run is measured against its own \
-             previous one. The chain verified, so the earlier numbers were not quietly \
+            "`{path}` holds {} rows, and each door's newest run is compared with its own \
+             previous run. The receipt chain is unbroken, so the earlier numbers were not quietly \
              rewritten. No door was asked.\n",
             latest.len()
         ),
@@ -3421,7 +3440,7 @@ fn spread_command(options: &Options) -> Result<(), String> {
             println!("### `{door}`, `{family}`\n");
             report_blocks(&draws, door, "evaluation", Some(family), &blocks);
         }
-        println!("### `{door}`, live ECE against frozen ECE\n");
+        println!("### `{door}`, live ECE compared with frozen ECE\n");
         report_frozen(&draws, door, "evaluation", &families, &blocks);
         println!("### `{door}`, the item-sampling interval\n");
         report_bootstrap(&draws, door, "evaluation", &families, &blocks);
@@ -3513,7 +3532,9 @@ fn report_frozen(draws: &Draws, door: &str, split: &str, families: &[String], bl
          movement or to absorb it.\n",
         blocks.len()
     );
-    println!("| Group | Live ECE sd | Frozen ECE sd | Live range | Frozen range |");
+    println!(
+        "| Group | Live ECE standard deviation | Frozen ECE standard deviation | Live range | Frozen range |"
+    );
     println!("| --- | --- | --- | --- | --- |");
     let mut groups: Vec<Option<&str>> = vec![None];
     groups.extend(families.iter().map(String::as_str).map(Some));
@@ -3851,7 +3872,9 @@ fn report_one_fixed_map(
 /// of the gain is the spread of the improvement itself rather than the two
 /// levels' noise added together.
 fn report_map_spread(raw: &[Metrics], pooled: &[Metrics], banded: &[Metrics]) {
-    println!("| Metric | Map | Mean | Standard deviation | Paired gain over raw | Gain sd |");
+    println!(
+        "| Metric | Map | Mean | Standard deviation | Paired gain over raw | Gain standard deviation |"
+    );
     println!("| --- | --- | --- | --- | --- | --- |");
     for metric in [
         Metric::Ece,

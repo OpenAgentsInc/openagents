@@ -398,7 +398,7 @@ impl Report {
         ];
         for s in &self.summaries {
             lines.push(format!(
-                "  {:<32} {:>3}/{:<3} graded  {:>5}  95% {}  ungraded {}  not run {}  lost {}  quota ${:.2}",
+                "  {:<32} {:>3} of {:<3} graded passed  {:>5}  95% interval {}  ungraded {}  not run {}  lost {}  quota ${:.2}",
                 s.arm,
                 s.passes,
                 s.graded,
@@ -412,7 +412,7 @@ impl Report {
         }
         for p in &self.paired {
             lines.push(format!(
-                "  paired {} vs {}: {} pairs, both pass {}, only {} {}, only {} {}, both fail {}; exact McNemar p = {}",
+                "  paired comparison, {} vs {}: {} pairs, both pass {}, only {} {}, only {} {}, both fail {}; exact McNemar p = {}",
                 p.arm,
                 p.baseline,
                 p.pairs,
@@ -446,7 +446,7 @@ impl Report {
             self.attempts
         ));
         lines.push(
-            "  Lost attempts ran again and never count; development observations, not promotion results."
+            "  Lost attempts ran again and are never counted. These results are exploratory; they are not grounds to promote a configuration."
                 .to_owned(),
         );
         lines
@@ -506,11 +506,11 @@ impl Report {
                 .unwrap_or_default()
         ));
         out.push_str("## Pass rates\n\n");
-        out.push_str("| Arm | Passes / graded | Pass rate | 95% Wilson interval | Ungraded | Not run | Lost and rerun | Claude quota |\n");
+        out.push_str("| Arm | Passes of graded | Pass rate | 95% Wilson interval | Ungraded | Not run | Lost and rerun | Claude quota |\n");
         out.push_str("| --- | --- | --- | --- | --- | --- | --- | --- |\n");
         for s in &self.summaries {
             out.push_str(&format!(
-                "| `{}` | {} / {} | {} | {} | {} | {} | {} | \\${:.2} |\n",
+                "| `{}` | {} of {} | {} | {} | {} | {} | {} | \\${:.2} |\n",
                 s.arm,
                 s.passes,
                 s.graded,
@@ -523,11 +523,11 @@ impl Report {
             ));
         }
         out.push_str("\n## Paired comparison\n\n");
-        out.push_str("| Comparison | Pairs | Both pass | Only the arm | Only the baseline | Both fail | Exact McNemar p | Tasks: arm better / baseline better / tied | Sign test p |\n");
+        out.push_str("| Comparison | Pairs | Both pass | Only the arm | Only the baseline | Both fail | Exact McNemar p | Tasks where the arm is better, the baseline is better, or they tie | Sign test p |\n");
         out.push_str("| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n");
         for p in &self.paired {
             out.push_str(&format!(
-                "| `{}` vs `{}` | {} | {} | {} | {} | {} | {} | {} / {} / {} | {} |\n",
+                "| `{}` vs `{}` | {} | {} | {} | {} | {} | {} | {}, {}, {} | {} |\n",
                 p.arm,
                 p.baseline,
                 p.pairs,
@@ -554,7 +554,7 @@ impl Report {
         for task in &self.tasks {
             out.push_str(&format!("| `{task}` |"));
             for (passes, graded) in self.task_cells(task) {
-                out.push_str(&format!(" {passes} / {graded} |"));
+                out.push_str(&format!(" {passes} of {graded} |"));
             }
             out.push('\n');
         }
@@ -839,7 +839,7 @@ mod tests {
         assert_eq!(value["arm_results"][1]["graded"], 4);
         assert_eq!(value["paired"][0]["mcnemar_exact_p"], 0.25);
         let markdown = report.markdown();
-        assert!(markdown.contains("| `coder` | 4 / 4 | 100% |"));
+        assert!(markdown.contains("| `coder` | 4 of 4 | 100% |"));
         assert!(markdown.contains("1 credentials, 1 quota"));
         assert!(markdown.contains("No lost attempt is in a denominator"));
         assert!(

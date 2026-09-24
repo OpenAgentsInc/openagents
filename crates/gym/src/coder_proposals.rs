@@ -405,7 +405,7 @@ pub fn one_lines(entry: &Entry, experiments: &Path) -> Vec<String> {
             ));
             if !materialized.is_null() {
                 lines.push(format!(
-                    "  Digest {} → {} ({})",
+                    "  Manifest digest changes from {} to {} ({})",
                     materialized["base_digest"].as_str().map_or("?", short),
                     materialized["digest"].as_str().map_or("?", short),
                     materialized["name"].as_str().unwrap_or("?")
@@ -485,7 +485,7 @@ pub fn one_lines(entry: &Entry, experiments: &Path) -> Vec<String> {
         return lines;
     }
     lines.push(format!(
-        "  Live stage: experiment {} {}, {} against {} on {}, {} attempts each, quota ${}",
+        "  Live stage: experiment {} {}, {} compared with {} on {}, {} attempts each, quota ${}",
         live["experiment"].as_str().unwrap_or("?"),
         if live["plan_only"] == true {
             "planned"
@@ -725,7 +725,7 @@ mod tests {
         assert!(text.contains("Finding"), "{text}");
         assert!(text.contains("The ask ask-1790000000000"), "{text}");
         assert!(text.contains("Patch on tunable-luna-v2"), "{text}");
-        assert!(text.contains("aaaaaaaaaaaa → bbbbbbbbbbbb"), "{text}");
+        assert!(text.contains("from aaaaaaaaaaaa to bbbbbbbbbbbb"), "{text}");
         assert!(text.contains("Approved by"), "{text}");
         assert!(text.contains("Not measured yet"), "{text}");
 

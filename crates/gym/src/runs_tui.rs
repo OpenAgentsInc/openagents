@@ -546,7 +546,7 @@ impl Pane {
                 } else if let Some(why) = unavailable {
                     let waiting = self.unranked().len();
                     if waiting > 0 {
-                        parts.push(format!("{waiting} wait: {why}"));
+                        parts.push(format!("{waiting} waiting: {why}"));
                     }
                 } else if let Some(error) = &learning.last_error {
                     parts.push(runs::clip_words(error, 60));
@@ -1271,8 +1271,8 @@ impl Pane {
             Tab::Summary => (
                 "Summary",
                 "t shows the transcript, A the analysis",
-                "↑↓ scroll · t transcript · w vs best winner · p head-to-head · d details · x mark bad · v mark fine · u unmark · esc back · q quit",
-                "↑↓ t A d x v u esc q",
+                "↑↓ scroll · t transcript · w compare with best · p head-to-head · d details · x mark bad · v mark fine · u unmark · esc back · q quit",
+                "↑↓ t w A d x v u esc q",
             ),
             Tab::Analysis => (
                 "Analysis",

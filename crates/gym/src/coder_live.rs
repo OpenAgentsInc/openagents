@@ -462,7 +462,7 @@ pub fn detail(attempt: &Attempt, now: u64) -> Vec<String> {
     lines.push(format!("  log: {}", attempt.log.display()));
     if let Some(tail) = &attempt.tail {
         lines.push(format!(
-            "  host tail: {} · {} bytes · {} polls · polled {} · {} errors",
+            "  host log copy: {} · {} bytes read · {} polls · last poll {} · {} errors",
             tail["state"].as_str().unwrap_or("?"),
             tail["offset"].as_u64().unwrap_or(0),
             tail["polls"].as_u64().unwrap_or(0),
@@ -482,7 +482,7 @@ pub fn detail(attempt: &Attempt, now: u64) -> Vec<String> {
                 ));
             }
             lines.push(format!(
-                "  spend so far: {} over {} finished invocations",
+                "  spend so far: {} over {} finished component calls",
                 money(attempt.spend()),
                 timeline
                     .entries
@@ -798,7 +798,7 @@ pub(crate) mod tests {
         assert!((2_000..10_000).contains(&poll), "{poll}");
         let text = lines(&attempts, &sources, now).join("\n");
         assert!(
-            text.contains("host tail: following · 1234 bytes · 7 polls"),
+            text.contains("host log copy: following · 1234 bytes read · 7 polls"),
             "{text}"
         );
         // Harbor's result ends it.

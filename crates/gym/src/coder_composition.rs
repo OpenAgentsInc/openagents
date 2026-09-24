@@ -178,7 +178,7 @@ impl Row {
                 |ms| format!("{:.0}s", ms as f64 / 1000.0)
             ),
             self.start(),
-            short(&self.roles().join("→"), 34),
+            short(&self.roles().join(", "), 34),
             short(
                 &self
                     .last_checks()
@@ -254,8 +254,7 @@ pub fn rows(records: &Records) -> Vec<Row> {
 /// each handoff, the checks after each dispatch, support, and the repair.
 #[must_use]
 pub fn detail_lines(record: &Value) -> Vec<String> {
-    let mut lines =
-        vec!["Composition (control.route → exec → verify → handoff → repair)".to_owned()];
+    let mut lines = vec!["Composition: route, run, check, hand off, and repair".to_owned()];
     let first = &record["first"];
     let route = &record["route"];
     let profile = &route["profile"];
@@ -346,7 +345,7 @@ pub fn detail_lines(record: &Value) -> Vec<String> {
     }
     for handoff in record["handoffs"].as_array().into_iter().flatten() {
         lines.push(format!(
-            "  handoff {}: {} → {} · {}",
+            "  handoff {}: from {} to {} · {}",
             words(&handoff["action"]),
             handoff["from"].as_str().unwrap_or("-"),
             handoff["to"].as_str().unwrap_or("-"),
@@ -508,7 +507,7 @@ pub fn parallel_lines(parallel: &Value) -> Vec<String> {
             .filter_map(|other| other["label"].as_str())
             .collect();
         lines.push(format!(
-            "      {label:<22} {:>7} → {:<7} {}{}{}",
+            "      {label:<22} {:>7} to {:<7} {}{}{}",
             secs(&track["start_ms"]),
             secs(&track["end_ms"]),
             track["batch"].as_str().unwrap_or(""),
@@ -518,7 +517,7 @@ pub fn parallel_lines(parallel: &Value) -> Vec<String> {
             if beside.is_empty() {
                 String::new()
             } else {
-                format!(" · ∥ {}", beside.join(", "))
+                format!(" · alongside {}", beside.join(", "))
             }
         ));
     }
@@ -824,7 +823,7 @@ fn persist_lines(persist: &Value) -> Vec<String> {
         persist["stopped"].as_str().unwrap_or("-"),
         if totals.is_object() {
             format!(
-                " · own tests +{} −{} · {} · {} escalation{}{}",
+                " · own tests {} fixed, {} broken · {} · {} escalation{}{}",
                 totals["tests_fixed"].as_u64().unwrap_or(0),
                 totals["tests_broken"].as_u64().unwrap_or(0),
                 money(&totals["cost_usd"]),
@@ -842,7 +841,7 @@ fn persist_lines(persist: &Value) -> Vec<String> {
         let files = round["files_changed"].as_array().map_or(0, Vec::len);
         let checks = if round["after"].is_object() {
             format!(
-                " · failed {} → {}",
+                " · failing checks {} before, {} after",
                 round["before"]["failed"].as_u64().unwrap_or(0),
                 round["after"]["failed"].as_u64().unwrap_or(0)
             )
@@ -852,7 +851,7 @@ fn persist_lines(persist: &Value) -> Vec<String> {
         let delta = &round["delta"];
         let tests = if delta.is_object() && round["tests"].is_object() {
             format!(
-                " · own tests +{} −{} ({} failing)",
+                " · own tests {} fixed, {} broken ({} failing)",
                 delta["tests_fixed"].as_u64().unwrap_or(0),
                 delta["tests_broken"].as_u64().unwrap_or(0),
                 round["tests"]["failed"].as_u64().unwrap_or(0)
@@ -1269,7 +1268,7 @@ job, or trial contains it for detail; the newest is shown otherwise.
 
   --jobs-dir PATH          local Harbor jobs (default ~/.openagents/terminal-bench/jobs)
   --traces-dir PATH        retained checkout traces
-  --no-jobs | --no-traces  omit one source
+  --no-jobs, --no-traces   leave out that source
   --arm NAME               only attempts of this arm
   --job TEXT               only attempts whose job name contains TEXT
   --escalations            report verify.second instead: each escalation's
@@ -1433,10 +1432,10 @@ mod tests {
         assert_eq!(rows[0].start(), "cheap");
         assert_eq!(rows[0].roles(), ["primary", "escalation"]);
         let text = lines(&rows, None).join("\n");
-        assert!(text.contains("primary→escalation"), "{text}");
+        assert!(text.contains("primary, escalation"), "{text}");
         assert!(
             text.contains(
-                "handoff escalate: codex/gpt-6-luna → claude-code/claude-opus-5-5 · a check failed"
+                "handoff escalate: from codex/gpt-6-luna to claude-code/claude-opus-5-5 · a check failed"
             ),
             "{text}"
         );
@@ -1504,7 +1503,10 @@ mod tests {
             text.contains("persist: 2 rounds · stopped: round 2 changed nothing"),
             "{text}"
         );
-        assert!(text.contains("1 file changed · failed 1 → 0"), "{text}");
+        assert!(
+            text.contains("1 file changed · failing checks 1 before, 0 after"),
+            "{text}"
+        );
         assert!(text.contains("no change"), "{text}");
         value["persist"] = json!({ "skipped": "not a long task", "rounds": [] });
         let text = detail_lines(&value).join("\n");
@@ -1537,12 +1539,12 @@ mod tests {
         ));
         let text = detail_lines(&value).join("\n");
         assert!(
-            text.contains("own tests +3 −1 · $1.2500 · 1 escalation · cap $3.00"),
+            text.contains("own tests 3 fixed, 1 broken · $1.2500 · 1 escalation · cap $3.00"),
             "{text}"
         );
         assert!(text.contains("codex/gpt-6-sol (high) [cheap]"), "{text}");
         assert!(
-            text.contains("own tests +0 −0 (8 failing) · escalates"),
+            text.contains("own tests 0 fixed, 0 broken (8 failing) · escalates"),
             "{text}"
         );
         assert!(text.contains("[escalated]"), "{text}");
@@ -1827,10 +1829,16 @@ mod tests {
                 .unwrap()
                 .clone()
         };
-        assert!(line("session 2").ends_with("· ∥ session 3"), "{lines:#?}");
-        assert!(line("accept.define").ends_with("∥ session 1"), "{lines:#?}");
         assert!(
-            line("accept-writer-1").ends_with("∥ session 1"),
+            line("session 2").ends_with("· alongside session 3"),
+            "{lines:#?}"
+        );
+        assert!(
+            line("accept.define").ends_with("alongside session 1"),
+            "{lines:#?}"
+        );
+        assert!(
+            line("accept-writer-1").ends_with("alongside session 1"),
             "{lines:#?}"
         );
         assert!(parallel_lines(&Value::Null).is_empty());

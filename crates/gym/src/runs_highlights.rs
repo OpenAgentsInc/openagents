@@ -411,14 +411,14 @@ fn arm_claim(
     ];
     let claim = match rule {
         Rule::Cost => format!(
-            "{} passed {task} for {share:.0}% of what {} spent: {low_text} against {high_text} a passing run on average, {ratio:.1} times as much for the second, over {} and {} runs.",
+            "{} passed {task} for {share:.0}% of what {} spent: {low_text} compared with {high_text} a passing run on average, {ratio:.1} times as much for the second, over {} and {} runs.",
             low.label,
             high.label,
             low.measured.len(),
             high.measured.len()
         ),
         _ => format!(
-            "{} passed {task} in {share:.0}% of {}'s agent time: {low_text} against {high_text} a passing run on average, {ratio:.1} times as long for the second, over {} and {} runs.",
+            "{} passed {task} in {share:.0}% of {}'s agent time: {low_text} compared with {high_text} a passing run on average, {ratio:.1} times as long for the second, over {} and {} runs.",
             low.label,
             high.label,
             low.measured.len(),
@@ -483,7 +483,7 @@ fn arm_claim(
     let rate = |arm: &Arm<'_>| arm.passed.len() as f64 / arm.graded.len().max(1) as f64;
     if rate(low) < rate(high) {
         caveats.push(format!(
-            "{} passed {} of its {} graded runs of the task and {} passed {} of {}: the {} arm fails more often.",
+            "{} passed {} of its {} graded runs of the task and {} passed {} of {}: the {} one fails more often.",
             low.label,
             low.passed.len(),
             low.graded.len(),
@@ -506,7 +506,7 @@ fn arm_claim(
     let (low_batches, high_batches) = (batches(low), batches(high));
     if low_batches.is_disjoint(&high_batches) {
         caveats.push(format!(
-            "The arms ran in different batches ({} and {}), not side by side.",
+            "The two ran in different batches ({} and {}), not side by side.",
             low_batches.into_iter().collect::<Vec<_>>().join(", "),
             high_batches.into_iter().collect::<Vec<_>>().join(", ")
         ));
@@ -639,7 +639,7 @@ fn leaderboard(inputs: &Inputs<'_>) -> Vec<Highlight> {
         );
         if passing.len() > 1 {
             numbers.push(Number::count("arms_passing_here", passing.len()));
-            claim.push_str(&format!(" {} arms here passed it.", passing.len()));
+            claim.push_str(&format!(" {} agents here passed it.", passing.len()));
         }
         let mut runs: Vec<String> = Vec::new();
         for (_, arm_runs, _) in &passing {
@@ -986,10 +986,10 @@ Usage:
 Computes candidate claims from the runs with fixed rules; no model writes a
 number, and nothing posts anywhere. The rules:
 
-  cost            both arms passed the same task, and one spent at least
+  cost            two agents passed the same task, and one spent at least
                   2 times as much on average
   time            the same, for the agent's own working time
-  leaderboard     an arm here passed a task that the leaderboard's rows
+  leaderboard     an agent here passed a task that the leaderboard's rows
                   ranked 5 or better pass in at most 20% of their trials
   shared-failure  a low-hanging-fruit or misbehavior judgment Jev gave runs
                   of at least 2 agents, 3 runs in all
@@ -1274,7 +1274,7 @@ mod tests {
         assert_eq!(claim.task.as_deref(), Some("cheap"));
         assert!(
             claim.claim.starts_with(
-                "Coder One · tunable-v6 passed cheap for 20% of what Claude Code · Opus 5.5 spent: $0.60 against $3.00"
+                "Coder One · tunable-v6 passed cheap for 20% of what Claude Code · Opus 5.5 spent: $0.60 compared with $3.00"
             ),
             "{}",
             claim.claim

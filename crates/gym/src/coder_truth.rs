@@ -163,7 +163,7 @@ pub fn lines(summary: &Value, set: &str, family: Option<&str>, within: bool) -> 
         ));
     }
     out.push(String::new());
-    out.push("  Held-out half: the combined verdict against today's checks".to_string());
+    out.push("  Held-out half: the combined verdict compared with today's checks".to_string());
     for (label, name) in [
         ("combined verdict", "verdict"),
         ("today's checks", "todays_checks"),

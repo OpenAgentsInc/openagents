@@ -591,7 +591,7 @@ impl Pane {
                 rows.push((String::new(), Intensity::Half, false));
                 push(
                     &format!(
-                        "{} of {} citations check · {} of {} claims verified · {} · {:.1}s",
+                        "{} of {} citations valid · {} of {} claims verified · {} · {:.1}s",
                         citations["valid_citations"],
                         citations["citations"],
                         citations["verified"],
@@ -905,7 +905,7 @@ mod tests {
             "✓ 1. It reported success.",
             "? 2. Another agrees.",
             "unverified: the Gym has no run tb4--nowhere/x__1",
-            "1 of 2 citations check",
+            "1 of 2 citations valid",
             "Cited runs",
             "(not in this list)",
         ] {

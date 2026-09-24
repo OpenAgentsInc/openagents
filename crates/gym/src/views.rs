@@ -1142,8 +1142,8 @@ fn render_cost(workload: &Workload, page: &mut String) {
             cost: Cost::UnmeteredLocalLane,
             ..
         }) => page.push_str(
-            "- Cost: unmetered local lane — own hardware, device time and power \
-             unpriced. Unmetered is not zero.\n",
+            "- Cost: not metered: the door runs on local hardware, and nobody prices \
+             its device time or power. Not metered does not mean free.\n",
         ),
         None => page.push_str("- Cost: not measured.\n"),
     }
@@ -1532,8 +1532,8 @@ mod tests {
             }],
         );
         let page = render(&unmetered, &[]);
-        assert!(page.contains("unmetered local lane"), "{page}");
-        assert!(page.contains("Unmetered is not zero"), "{page}");
+        assert!(page.contains("the door runs on local hardware"), "{page}");
+        assert!(page.contains("Not metered does not mean free"), "{page}");
         let unmeasured = snapshot(&rows, Some(&expected), &suite);
         assert!(render(&unmeasured, &[]).contains("Cost: not measured"));
     }

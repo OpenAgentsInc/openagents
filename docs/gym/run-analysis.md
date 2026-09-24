@@ -63,10 +63,10 @@ last overlap. Cost by phase assigns each session and each Jev request to
 preparation, suite writing, each edit session, the gap round, hand-offs,
 the joined close, the closing check, the checks, or the repair.
 
-**The suite against the verifier.** Each acceptance test from the frozen
+**Acceptance tests compared with the verifier.** Each acceptance test from the frozen
 suite's record, with its requirements, whether it was a guard (green on the
 untouched workspace), and how it stood at the first and last suite runs.
-Each verifier test against the suite: rules pick up to four candidates by
+For each verifier test, rules pick up to four candidate acceptance tests by
 the functions and classes both tests call, weighted by how rare each is
 among the verifier's tests, and by the words of the verifier test's name
 and docstring. A single strong candidate is taken as it is, and a verifier
@@ -100,7 +100,7 @@ critical path, a Harbor cost that disagrees with the true total, reverts,
 failing verifier tests no acceptance test checks, and acceptance tests
 that contradict a verifier test.
 
-**Against Fable 5.1.** From
+**Compared with Fable 5.1.** From
 `bench/terminal-bench/reference/fable-5.1-replays.json`, or the replay
 cache's copy: Fable's passes on the task, its cheapest passing attempt, the
 mean of its cheapest effort tier, and the mean over all efforts, beside the

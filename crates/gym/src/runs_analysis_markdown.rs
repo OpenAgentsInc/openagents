@@ -24,8 +24,8 @@ fn cell(text: &str) -> String {
 
 fn yes_no(value: Option<bool>) -> &'static str {
     match value {
-        Some(true) => "Green",
-        Some(false) => "Red",
+        Some(true) => "Passed",
+        Some(false) => "Failed",
         None => "—",
     }
 }
@@ -65,7 +65,7 @@ pub fn render(analysis: &Analysis) -> String {
                     ", policy `{policy}`{}",
                     run.policy_digest
                         .as_ref()
-                        .map(|d| format!(" (digest `{}`)", &d[..d.len().min(12)]))
+                        .map(|d| format!(" (hash `{}`)", &d[..d.len().min(12)]))
                         .unwrap_or_default()
                 )
             })
@@ -105,7 +105,7 @@ pub fn render(analysis: &Analysis) -> String {
     let _ = writeln!(out, "## Jev\n");
     let _ = writeln!(
         out,
-        "Jev ({}) answered the suite mapping's open pairs: {} requests asked, {} answers cached from earlier, {} failed, {} for {} input tokens.",
+        "Jev ({}) judged the acceptance-test and verifier-test pairs the rules left open: {} requests sent, {} answers reused from the cache, {} failed, {} for {} input tokens.",
         jev.mode,
         jev.asked,
         jev.cached,
@@ -563,7 +563,7 @@ fn timeline(out: &mut String, analysis: &Analysis) {
         }
         out.push('\n');
     }
-    let _ = writeln!(out, "### The critical path and the concurrency\n");
+    let _ = writeln!(out, "### The critical path and overlapping work\n");
     let total: u64 = timeline.critical_path.iter().map(|s| s.duration_ms).sum();
     let _ = writeln!(
         out,
@@ -602,7 +602,7 @@ fn timeline(out: &mut String, analysis: &Analysis) {
     out.push('\n');
     let _ = writeln!(
         out,
-        "Luna sessions ran {:.1} s in {:.1} s of episode: concurrency {:.2}, peak {} at once.{}{}\n",
+        "Luna sessions ran {:.1} s in {:.1} s of episode: {:.2} sessions at once on average, and at most {}.{}{}\n",
         timeline.session_ms as f64 / 1000.0,
         timeline.episode_ms as f64 / 1000.0,
         timeline.concurrency,
@@ -666,10 +666,10 @@ fn suite(out: &mut String, analysis: &Analysis) {
     let Some(suite) = &analysis.suite else {
         return;
     };
-    let _ = writeln!(out, "## The suite against the verifier\n");
+    let _ = writeln!(out, "## Acceptance tests compared with the verifier\n");
     let _ = writeln!(
         out,
-        "The frozen suite{}{} has {} tests, {} of them guards: green on the untouched workspace.\n",
+        "The frozen acceptance suite{}{} has {} tests. {} of them are guards: tests that already pass on the untouched workspace.\n",
         suite
             .status
             .as_ref()
@@ -678,7 +678,7 @@ fn suite(out: &mut String, analysis: &Analysis) {
         suite
             .digest
             .as_ref()
-            .map(|d| format!(" digest `{}`,", &d[..d.len().min(12)]))
+            .map(|d| format!(" hash `{}`,", &d[..d.len().min(12)]))
             .unwrap_or_default(),
         suite.tests.len(),
         suite.tests.iter().filter(|t| t.guard).count()
@@ -708,7 +708,7 @@ fn suite(out: &mut String, analysis: &Analysis) {
     if suite.verifier.is_empty() {
         return;
     }
-    let _ = writeln!(out, "### Each verifier test against the suite\n");
+    let _ = writeln!(out, "### Which acceptance tests check each verifier test\n");
     let _ = writeln!(
         out,
         "Rules pick candidates by the functions and words two tests share. Jev judged the ambiguous pairs: `checks` is its probability that the acceptance test checks what the verifier test checks, and `contradicts` that it requires behavior the verifier test forbids.\n"
@@ -861,11 +861,14 @@ fn reversals(out: &mut String, analysis: &Analysis) {
         out.push('\n');
     }
     if !analysis.guard_edits.is_empty() {
-        let _ = writeln!(out, "Guards that turned red and made a session edit:\n");
+        let _ = writeln!(
+            out,
+            "Guards that started failing and led a session to edit code:\n"
+        );
         for edit in &analysis.guard_edits {
             let _ = writeln!(
                 out,
-                "- `{}` passed on the untouched workspace, was red in {}, and `{}` then edited {}.",
+                "- `{}` passed on the untouched workspace, failed in {}, and `{}` then edited {}.",
                 edit.test,
                 edit.red_in,
                 edit.session,
@@ -907,7 +910,7 @@ fn fable(out: &mut String, analysis: &Analysis) {
     let Some(fable) = &analysis.fable else {
         return;
     };
-    let _ = writeln!(out, "## Against Fable 5.1\n");
+    let _ = writeln!(out, "## Compared with Fable 5.1\n");
     let _ = writeln!(
         out,
         "Fable 5.1 passed {} of {} public attempts on `{}`. Fable's times are trial wall times from the public records.\n",

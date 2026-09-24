@@ -731,13 +731,15 @@ impl Report {
                 )
             });
             for (what, (cut, skipped)) in &deadlines.cuts {
-                lines.push(format!("  cut {what}: {cut} shortened, {skipped} skipped"));
+                lines.push(format!(
+                    "  deadline cuts to {what}: {cut} shortened, {skipped} skipped"
+                ));
             }
         }
         lines.extend(
             self.errors
                 .iter()
-                .map(|error| format!("READ ERROR: {error}")),
+                .map(|error| format!("Could not read: {error}")),
         );
         lines
     }
@@ -751,7 +753,7 @@ gym coder components  isolated component runs and episode invocations, side by s
   --jobs-dir PATH          local Harbor jobs (default ~/.openagents/terminal-bench/jobs)
   --traces-dir PATH        retained checkout traces
   --repair-dir PATH        verify.repair recovery studies (default ~/.openagents/coder-one/repair)
-  --no-runs | --no-jobs | --no-traces | --no-repair  omit one source
+  --no-runs, --no-jobs, --no-traces, --no-repair  leave out that source
   --json                   print versioned JSON instead of text
 
 Record isolated runs with `coder-one component suite ID`. The latest
@@ -986,7 +988,7 @@ mod tests {
         assert!(text.contains("1 of 2 recorded attempts bounded"), "{text}");
         assert!(text.contains("80% of the deadline used"), "{text}");
         assert!(
-            text.contains("cut delegate: 1 shortened, 0 skipped"),
+            text.contains("deadline cuts to delegate: 1 shortened, 0 skipped"),
             "{text}"
         );
     }

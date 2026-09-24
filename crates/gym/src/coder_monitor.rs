@@ -115,7 +115,7 @@ impl Report {
                 totals["mean_state_chars"].as_u64().unwrap_or(0),
             ),
             format!(
-                "  trigger precision by question: flagged, precision, recall against hindsight labels · Jev compared on {} judgments it answered",
+                "  trigger precision by question: flagged, precision, and recall measured on hindsight labels · Jev compared on {} judgments it answered",
                 compared["triggers"].as_u64().unwrap_or(0)
             ),
             "  question       labels   rules alone, all streams   rules, answered   Jev, answered"
@@ -200,7 +200,7 @@ pub fn command(args: &[String], out: &mut impl std::io::Write) -> Result<i32, St
             "help" | "--help" | "-h" => {
                 writeln!(
                     out,
-                    "gym coder monitor [--report PATH] [--json]\n\ncontrol.monitor's shadow-mode replay over every retained native stream:\ntriggers, trigger precision per question for the rules alone and for Jev,\nstale answers, and the monitor's cost beside the executors' spend.\n\n  --report PATH  a replay report (default bench/terminal-bench/monitor/replay.json,\n                 written by coder-one component replay control.monitor)\n  --json         print versioned JSON instead of text"
+                    "gym coder monitor [--report PATH] [--json]\n\ncontrol.monitor replayed over every retained native stream, observing\nwithout acting: triggers, trigger precision per question for the rules\nalone and for Jev, stale answers, and the monitor's cost beside the\nexecutors' spend.\n\n  --report PATH  a replay report (default bench/terminal-bench/monitor/replay.json,\n                 written by coder-one component replay control.monitor)\n  --json         print versioned JSON instead of text"
                 )
                 .map_err(|error| error.to_string())?;
                 return Ok(0);

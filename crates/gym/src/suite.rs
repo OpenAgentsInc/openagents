@@ -183,7 +183,7 @@ pub enum SuiteError {
     NoQuestions,
     /// Someone asked [`Suite::partition`] for the locked items.
     #[error(
-        "the locked partition is not read through `partition`: spend it through a `LockedLedger`, which records the read"
+        "the locked partition cannot be read through `partition`; read it once through a `LockedLedger`, which records the read"
     )]
     LockedNotOpen,
     /// The manifest's exposure record does not describe the suite it is on.
@@ -213,14 +213,14 @@ pub enum SuiteError {
         successor: String,
     },
     /// A read of the locked partition left one of its own fields blank.
-    #[error("a read of the locked partition records why it was spent, and {field} is empty")]
+    #[error("a read of the locked partition must record why it was made, and {field} is empty")]
     Unrecorded {
         /// The field that was left blank.
         field: &'static str,
     },
     /// The locked partition has already been read.
     #[error(
-        "the locked partition of {suite} was read on {at}, spent on {subject}; reading it again is an override, not a read"
+        "the locked partition of {suite} was already read on {at}, for {subject}; reading it again is an override, not a new read"
     )]
     AlreadyRead {
         /// The suite whose locked partition is already spent.
@@ -574,7 +574,7 @@ impl Suite {
             successor: exposure
                 .successor
                 .as_deref()
-                .map(|successor| format!("; spend `{successor}` instead"))
+                .map(|successor| format!("; use `{successor}` instead"))
                 .unwrap_or_default(),
         })
     }

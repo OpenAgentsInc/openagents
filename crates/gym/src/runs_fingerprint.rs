@@ -533,7 +533,7 @@ pub fn render(print: &Fingerprint, steps: &[Step]) -> Vec<String> {
             }
         ),
         format!(
-            "Tests: {} ({:.2} a step{}) · verification by quarter {}/{}/{}/{}, {} after the last edit{}",
+            "Tests: {} ({:.2} a step{}) · test or verify steps in each quarter of the run: {}, {}, {}, {}, and {} after the last edit{}",
             print.tests,
             print.test_rate,
             print
@@ -925,15 +925,23 @@ pub fn command(args: &[String], out: &mut impl Write) -> Result<i32, String> {
                 write(
                     out,
                     &format!(
-                        "{:<44} {:<18} {:<7} {:>5} {:>6} {:>5} {:>5} {:>4} {:>3}  sequence",
-                        "run", "arm", "outcome", "steps", "edit@", "tests", "v-end", "rtry", "ex"
+                        "{:<44} {:<18} {:<7} {:>5} {:>10} {:>5} {:>12} {:>7} {:>7}  sequence",
+                        "run",
+                        "agent",
+                        "outcome",
+                        "steps",
+                        "first edit",
+                        "tests",
+                        "checks after",
+                        "retries",
+                        "example"
                     ),
                 )?;
                 for print in &prints {
                     write(
                         out,
                         &format!(
-                            "{:<44} {:<18} {:<7} {:>5} {:>6} {:>5} {:>5} {:>4} {:>3}  {}",
+                            "{:<44} {:<18} {:<7} {:>5} {:>10} {:>5} {:>12} {:>7} {:>7}  {}",
                             print.run.chars().take(44).collect::<String>(),
                             print.arm.chars().take(18).collect::<String>(),
                             print.outcome,
@@ -957,6 +965,10 @@ pub fn command(args: &[String], out: &mut impl Write) -> Result<i32, String> {
                 }
                 write(out, "")?;
                 write(out, &format!("{} fingerprints", prints.len()))?;
+                write(
+                    out,
+                    "first edit: the step of the first edit. checks after: test or verify steps after the last edit. retries: repeated failed commands and retries Jev found. example: whether the run ran the task's example before its first edit.",
+                )?;
                 write(out, &labeling_line(&labeling, &parsed.judge))?;
                 for error in errors.iter().take(5) {
                     write(out, &format!("unreadable: {error}"))?;

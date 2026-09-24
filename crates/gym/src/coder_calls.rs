@@ -105,14 +105,14 @@ pub fn lines(ledger: &[Value], deadline: Option<&Value>) -> Vec<String> {
         for cut in deadline["cuts"].as_array().into_iter().flatten() {
             if cut["skipped"].as_bool() == Some(true) {
                 lines.push(format!(
-                    "  cut: {} skipped at {} (asked {})",
+                    "  deadline cut: {} skipped at {} (it asked for {})",
                     cut["what"].as_str().unwrap_or("?"),
                     seconds(&cut["at_ms"]),
                     seconds(&cut["requested_ms"])
                 ));
             } else {
                 lines.push(format!(
-                    "  cut: {} at {}: asked {}, granted {}",
+                    "  deadline cut: {} at {}: asked for {}, given {}",
                     cut["what"].as_str().unwrap_or("?"),
                     seconds(&cut["at_ms"]),
                     seconds(&cut["requested_ms"]),
@@ -166,7 +166,7 @@ mod tests {
         assert!(text.contains("1740.0s hard"), "{text}");
         assert!(text.contains("(50%)"), "{text}");
         assert!(
-            text.contains("delegate-1 at 300.0s: asked 600.0s, granted 410.0s"),
+            text.contains("delegate-1 at 300.0s: asked for 600.0s, given 410.0s"),
             "{text}"
         );
         assert!(text.contains("jev_close skipped"), "{text}");

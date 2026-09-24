@@ -564,7 +564,7 @@ fn native(path: &Path, marks: &[(u64, i64)], warnings: &mut Vec<String>) -> Vec<
                 } else if exact.is_some() {
                     "host receipt"
                 } else {
-                    "estimated / untimed"
+                    "estimated, no timestamp"
                 },
             )
         })
@@ -741,7 +741,7 @@ impl Replay {
                     events,
                     start,
                     end,
-                    "Recorded step/message times and host receipts; estimates labeled".to_owned(),
+                    "Times come from recorded steps, messages, and host receipts; estimates are labeled".to_owned(),
                 )
             }
         };
@@ -770,13 +770,13 @@ impl Replay {
         let mut paired = Vec::with_capacity(events.len());
         for event in events {
             let timing = if event.at.is_none() {
-                "estimated / untimed"
+                "estimated, no timestamp"
             } else {
                 event.timing
             };
             let at = event.at.unwrap_or(last);
             last = at;
-            if timing == "estimated / untimed" {
+            if timing == "estimated, no timestamp" {
                 replay.estimated += 1;
             } else {
                 replay.recorded += 1;
@@ -977,7 +977,7 @@ mod tests {
         assert!(r.events[0].text.ends_with("LAST LINE"));
         assert_eq!(r.recorded, 0);
         assert_eq!(r.estimated, 1);
-        assert_eq!(r.events[0].timing, "estimated / untimed");
+        assert_eq!(r.events[0].timing, "estimated, no timestamp");
         assert_eq!(safe_text("\x1b[2J\ttext"), "\\u{1b}[2J    text");
     }
 
@@ -1090,9 +1090,9 @@ mod tests {
         std::fs::write(&path, "{}\n{}\n{}\n").unwrap();
         let events = native(&path, &[(2, 2000)], &mut Vec::new());
         assert_eq!(events[0].at, Some(2000));
-        assert_eq!(events[0].timing, "estimated / untimed");
+        assert_eq!(events[0].timing, "estimated, no timestamp");
         assert_eq!(events[1].timing, "host receipt");
-        assert_eq!(events[2].timing, "estimated / untimed");
+        assert_eq!(events[2].timing, "estimated, no timestamp");
     }
 
     #[test]

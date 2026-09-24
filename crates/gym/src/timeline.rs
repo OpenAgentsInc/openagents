@@ -318,7 +318,7 @@ impl Mark {
     pub fn handoff(record: &Value, at: u64) -> Self {
         let text = |key: &str| record.get(key).and_then(Value::as_str).unwrap_or("?");
         let summary = format!(
-            "{} · {} · {} → {} · {} · brief {} characters",
+            "{} · {} · from {} to {} · {} · brief {} characters",
             text("pattern"),
             text("action"),
             text("from"),
@@ -458,12 +458,12 @@ impl Timeline {
         let handoffs = self.marks.len() - judgments;
         if judgments > 0 {
             lines.push(format!(
-                "  {judgments} control.monitor judgments overlaid, marked ◆: trigger, the rules' and Jev's flags, the proposal, staleness, and [#sequence, revision]"
+                "  {judgments} control.monitor judgments shown, marked ◆: what triggered each, the flags the rules and Jev raised, the proposed action, whether it was stale, and [#sequence, revision]"
             ));
         }
         if handoffs > 0 {
             lines.push(format!(
-                "  {handoffs} control.handoff decisions overlaid, marked ⇢: pattern, action, from → to, trigger, and brief size"
+                "  {handoffs} control.handoff decisions shown, marked ⇢: pattern, action, the executors it moved from and to, what triggered it, and brief size"
             ));
         }
         lines.push(
@@ -1251,7 +1251,7 @@ mod tests {
             judgment.contains("STALE") && judgment.contains("[#2 rev 1]"),
             "{judgment}"
         );
-        assert!(lines[at("⇢ handoff")].contains("luna → opus"));
+        assert!(lines[at("⇢ handoff")].contains("from luna to opus"));
         let value = timeline.to_json();
         assert_eq!(value["executor_events"][0]["kind"], "command_started");
         assert_eq!(value["executor_events"][1]["session_id"], "s-1");

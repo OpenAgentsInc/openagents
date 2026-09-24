@@ -69,10 +69,10 @@ impl Reason {
             .is_some_and(|p| *p >= self.at)
     }
 
-    /// `unearned_success ≥ 0.50`.
+    /// `unearned_success at 0.50 or above`.
     #[must_use]
     pub fn describe(&self) -> String {
-        format!("{} ≥ {:.2}", self.id, self.at)
+        format!("{} at {:.2} or above", self.id, self.at)
     }
 }
 

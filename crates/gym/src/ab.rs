@@ -1451,8 +1451,8 @@ impl Rule {
                     after,
                 } => {
                     lines.push(format!(
-                        "{metric} {before:.3} to {after:.3}, a gain of {gain:+.3} against a \
-                         bound of {bound:.3}"
+                        "{metric} {before:.3} to {after:.3}, a gain of {gain:+.3} where \
+                         {bound:.3} is needed"
                     ));
                     if gain >= bound {
                         return (
@@ -1510,8 +1510,8 @@ impl Rule {
                     candidate_blocks,
                 ) {
                     Reading::Measured { gain, bound, .. } if gain >= bound => Some(format!(
-                        "{metric} cleared instead, gaining {gain:+.3} against \
-                                      {bound:.3}"
+                        "{metric} cleared instead, gaining {gain:+.3} where \
+                                      {bound:.3} is needed"
                     )),
                     _ => None,
                 }
@@ -1614,8 +1614,8 @@ impl Rule {
                 let gain = metric.gain(before.mean, after.mean);
                 if -gain > allowance {
                     losses.push(format!(
-                        "{family} {metric} {:.3} to {:.3}, a loss of {:.3} against an allowance \
-                         of {allowance:.3}",
+                        "{family} {metric} {:.3} to {:.3}, a loss of {:.3} where \
+                         at most {allowance:.3} is allowed",
                         before.mean, after.mean, -gain
                     ));
                 }
@@ -1776,7 +1776,7 @@ fn freshness(round: &Round, screening: &Round) -> Criterion {
             name,
             1,
             format!(
-                "the confirmation drew blocks {} against the screening's {}, and no seed is \
+                "the confirmation drew blocks {} and the screening drew {}, and no seed is \
                  shared",
                 list(&round.drawn()),
                 list(&screening.drawn())

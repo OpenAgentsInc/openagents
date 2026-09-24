@@ -245,7 +245,7 @@ impl Run {
         }
         match &self.timeline {
             Ok(timeline) => lines.extend(timeline.lines()),
-            Err(error) => lines.push(format!("Episode timeline unreadable: {error}")),
+            Err(error) => lines.push(format!("Could not read the episode timeline: {error}")),
         }
         lines
     }
@@ -260,7 +260,7 @@ fn clip(text: &str, width: usize) -> String {
 #[must_use]
 pub fn repair_lines(repair: &Value) -> Vec<String> {
     if let Some(why) = repair["skipped"].as_str() {
-        return vec![format!("Repair: none · {why}")];
+        return vec![format!("Repair: did not run · {why}")];
     }
     let brief = &repair["brief"];
     let session = &repair["session"];
@@ -276,9 +276,9 @@ pub fn repair_lines(repair: &Value) -> Vec<String> {
         format!(
             "  session: {} · {} · {} ({}) · {} · cost {}",
             if session["fresh"] == json!(true) {
-                "fresh, resumes nothing"
+                "new session"
             } else {
-                "resumed"
+                "resumed session"
             },
             session["session_id"].as_str().unwrap_or("?"),
             session["agent"].as_str().unwrap_or("?"),
@@ -292,11 +292,11 @@ pub fn repair_lines(repair: &Value) -> Vec<String> {
     let invalidated = repair["invalidated"].as_array().map_or(0, Vec::len);
     lines.push(match repair["recheck"].get("summary") {
         Some(summary) => format!(
-            "  candidate changed: {} requirement states invalidated · recheck {} scenarios, {} packets",
+            "  the repair changed the candidate: {} requirement results are out of date · rechecked {} scenarios and {} diagnostic packets",
             invalidated, summary["scenarios"], summary["packets"]
         ),
         None => format!(
-            "  candidate unchanged: {}",
+            "  the repair left the candidate unchanged: {}",
             repair["recheck"]["skipped"].as_str().unwrap_or("no recheck")
         ),
     });
@@ -304,7 +304,7 @@ pub fn repair_lines(repair: &Value) -> Vec<String> {
 }
 
 /// The header line above the rows.
-pub const HEADER: &str = "Started           task                   executor                 outcome          grade          took";
+pub const HEADER: &str = "started           task                   executor                 outcome          grade          time";
 
 /// The list of runs, then the selected run's detail.
 #[must_use]
@@ -320,7 +320,11 @@ pub fn lines(runs: &[Run], errors: &[String], selected: Option<usize>) -> Vec<St
         lines.push("  No runs. Record one with `coder-one minitask run ID`.".to_owned());
     }
     lines.extend(runs.iter().map(Run::row));
-    lines.extend(errors.iter().map(|error| format!("Unreadable: {error}")));
+    lines.extend(
+        errors
+            .iter()
+            .map(|error| format!("Could not read: {error}")),
+    );
     if let Some(run) = selected.and_then(|index| runs.get(index)) {
         lines.push(String::new());
         lines.extend(run.detail_lines());
@@ -333,7 +337,8 @@ gym coder minitasks [--runs-dir PATH] [--run ID|latest] [--task ID] [--json]
 
 Lists Coder One's mini-task runs, newest first: task, executor, how the
 episode ended, and the grader's verdict. --run shows one run's detail:
-its session control, requirement coverage, and invocation timeline.
+how the session was started and stopped, which requirements its checks
+covered, and every component call in order.
 Runs are read from ~/.openagents/coder-one/minitasks unless --runs-dir
 names another directory. Record one with `coder-one minitask run ID`.";
 

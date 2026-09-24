@@ -632,7 +632,7 @@ pub const SOURCE_HELP: &str = "\
   --min-trials N           trials an oracle pick needs, all passed (default 3)
   --jobs-dir PATH          local Harbor jobs (default ~/.openagents/terminal-bench/jobs)
   --traces-dir PATH        retained checkout traces
-  --no-jobs | --no-traces  omit one source
+  --no-jobs, --no-traces   leave out that source
   --json                   print versioned JSON instead of text";
 
 impl Source {

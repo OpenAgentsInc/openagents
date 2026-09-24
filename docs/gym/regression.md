@@ -177,7 +177,7 @@ nothing and removes the question.
 Here is the answer, verbatim except for the floors section:
 
 ```text
-## `lev-base` against itself
+## `lev-base` compared with its own earlier run
 
 `support-v2-three-way` at digest `54fbf4137c3de538`, estimator `l2`, 8 draws,
 seed block 0, the suite's own option order, the suite's own question text.
@@ -200,9 +200,9 @@ Floors from `ab-v1`, digest `gate:20977c41d1a3a14eaafa0e20361f2e8687d56bf16b...`
 | Group | Verdict | Criterion |
 | --- | --- | --- |
 | `overall` | unverifiable | brier_holds_within_the_noise: brier 0.150 to 0.164, a move of -0.014. Nothing has measured this suite's block-to-block spread of brier, so whether a loss of that size means anything cannot be told |
-| `routing` | passed | accuracy_holds_within_the_noise: accuracy 0.800 to 0.875, a move of +0.075 against a floor of 0.056 ... the change moved it further than the seeds do |
-| `urgency` | failed | accuracy_holds_within_the_noise: accuracy 0.833 to 0.708, a move of -0.125 against a floor of 0.056 ... the change lost more than the seeds do |
-| `severity` | failed | accuracy_holds_within_the_noise: accuracy 0.714 to 0.643, a move of -0.071 against a floor of 0.056 ... the change lost more than the seeds do |
+| `routing` | passed | accuracy_holds_within_the_noise: accuracy 0.800 to 0.875, a move of +0.075 compared with a noise floor of 0.056 ... the change moved it further than the seeds do |
+| `urgency` | failed | accuracy_holds_within_the_noise: accuracy 0.833 to 0.708, a move of -0.125 compared with a noise floor of 0.056 ... the change lost more than the seeds do |
+| `severity` | failed | accuracy_holds_within_the_noise: accuracy 0.714 to 0.643, a move of -0.071 compared with a noise floor of 0.056 ... the change lost more than the seeds do |
 
 **failed**
 ```

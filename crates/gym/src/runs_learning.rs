@@ -1613,7 +1613,7 @@ pub fn report_lines(report: &Report, judge: &Judge) -> Vec<String> {
     )];
     if report.running > 0 {
         lines.push(format!(
-            "{} running runs wait until they finish.",
+            "Runs still running, to rank after they finish: {}.",
             report.running
         ));
     }

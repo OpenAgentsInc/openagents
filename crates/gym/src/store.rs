@@ -209,7 +209,7 @@ pub enum StoreError {
         known: String,
     },
 
-    #[error("broken chain in {path}: {detail}")]
+    #[error("broken receipt chain in {path}: {detail}")]
     BrokenChain {
         path: String,
         index: usize,
@@ -1035,7 +1035,10 @@ mod tests {
                 ..
             }
         ));
-        assert!(error.to_string().contains("broken chain"), "{error}");
+        assert!(
+            error.to_string().contains("broken receipt chain"),
+            "{error}"
+        );
     }
 
     #[test]

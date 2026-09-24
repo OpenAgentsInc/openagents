@@ -301,7 +301,7 @@ pub enum Refusal {
     /// The store holds one run of this door and nothing to compare it with.
     #[error(
         "`{door}` has one recorded run, from {recorded_at}, so there is nothing to compare it \
-         against. Record a second run at the same suite digest and the same seed block, in \
+         with. Record a second run at the same suite digest and the same seed block, in \
          another store, and pass it as --against"
     )]
     OneRun {
@@ -312,7 +312,7 @@ pub enum Refusal {
     },
     /// The earlier run answered a different suite.
     #[error(
-        "`{door}` last ran against `{before_suite}` at digest {before_digest}, and this run \
+        "`{door}` last ran on `{before_suite}` at digest {before_digest}, and this run \
          answered `{after_suite}` at digest {after_digest}. A changed suite is a different \
          measurement, not a regression, and comparing across digests is how a suite edit comes \
          to read as a model result"
@@ -332,7 +332,7 @@ pub enum Refusal {
     /// The two runs served different question text.
     #[error(
         "`{door}` last ran under {before} and this run served {after}. Rewording a question \
-         makes a candidate against the same items rather than a regression in the door, and \
+         makes a new candidate on the same items, not a regression in the door, and \
          `gym compare` reads two question sets as what they are"
     )]
     QuestionsMoved {
@@ -761,7 +761,7 @@ fn answered(
             measure
                 .refusals
                 .iter()
-                .map(|(code, count)| format!("`{code}` x{count}"))
+                .map(|(code, count)| format!("`{code}` {count} times"))
                 .collect::<Vec<_>>()
                 .join(", ")
         }
@@ -863,10 +863,10 @@ fn metric_holds(
         };
     };
     let against = if group == OVERALL {
-        format!("against a floor of {floor:.3}")
+        format!("compared with a noise floor of {floor:.3}")
     } else {
         format!(
-            "against a floor of {floor:.3}, which is the suite's measured spread standing in \
+            "compared with a noise floor of {floor:.3}, which is the suite's measured spread standing in \
              for this family's, which nobody has measured"
         )
     };
@@ -983,7 +983,11 @@ fn render_refusal(refusal: &Refusal) -> String {
 #[allow(clippy::too_many_lines)]
 fn render_report(report: &Report) -> String {
     let mut out = String::new();
-    let _ = writeln!(out, "## `{}` against itself\n", report.door);
+    let _ = writeln!(
+        out,
+        "## `{}` compared with its own earlier run\n",
+        report.door
+    );
     let _ = writeln!(
         out,
         "`{}` at digest `{}`, {}. Recorded {} and {}; the door's identity is the same on both \
@@ -1005,7 +1009,7 @@ fn render_report(report: &Report) -> String {
         // "before" and "after" imply a clock nobody read.
         let _ = writeln!(
             out,
-            "The run being measured was recorded earlier than the one it is measured against. \
+            "The run being measured was recorded earlier than the run it is compared with. \
              These labels follow the flags, not the clock.\n"
         );
     }
@@ -1409,7 +1413,7 @@ mod tests {
             answered.detail
         );
         assert!(
-            answered.detail.contains("`guardrail` x4"),
+            answered.detail.contains("`guardrail` 4 times"),
             "{}",
             answered.detail
         );
@@ -1612,7 +1616,7 @@ mod tests {
             "{said}"
         );
         assert!(
-            said.contains("a candidate against the same items"),
+            said.contains("a new candidate on the same items"),
             "a reworded question is not a regression in the door: {said}"
         );
     }

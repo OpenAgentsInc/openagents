@@ -362,7 +362,7 @@ impl Report {
             }
         }
         for error in &self.errors {
-            lines.push(format!("read error: {error}"));
+            lines.push(format!("could not read: {error}"));
         }
         lines
     }
@@ -377,7 +377,7 @@ each span with the requirement it became or the context it stayed.
   --runs-dir PATH      component run logs (default ~/.openagents/coder-one/components)
   --jobs-dir PATH      local Harbor jobs (default ~/.openagents/terminal-bench/jobs)
   --traces-dir PATH    retained checkout traces
-  --no-runs | --no-jobs | --no-traces
+  --no-runs, --no-jobs, --no-traces  leave out that source
   --json               print versioned JSON instead of text";
 
 /// Where a Coder One record view reads from, and how it prints.

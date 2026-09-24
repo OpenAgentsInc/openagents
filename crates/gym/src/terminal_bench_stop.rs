@@ -394,7 +394,7 @@ impl Verdict {
                 .unwrap_or_default(),
             if self.ended {
                 format!(
-                    "ENDED, {}: {}",
+                    "ended, {}: {}",
                     self.verdict.unwrap_or("ended").replace('_', " "),
                     self.reason
                 )

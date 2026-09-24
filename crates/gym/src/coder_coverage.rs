@@ -127,7 +127,7 @@ fn probability(value: Option<&Value>) -> String {
 
 fn support_line(state: &Value) -> String {
     format!(
-        "         support {} · contradicts {} → {} ({}) · candidate {}",
+        "         supports {} · contradicts {} · result {} ({}) · candidate {}",
         probability(state.pointer("/judgment/supports")),
         probability(state.pointer("/judgment/contradicts")),
         state["state"].as_str().unwrap_or_default(),
@@ -136,6 +136,16 @@ fn support_line(state: &Value) -> String {
             .as_str()
             .map_or(String::new(), |c| c.chars().take(12).collect()),
     )
+}
+
+/// A requirement's coverage state in plain words; the record keeps the
+/// original word.
+fn state_label(state: &str) -> &str {
+    match state {
+        "unobserved" => "not checked",
+        "observed" => "checked",
+        other => other,
+    }
 }
 
 fn short(text: &str, width: usize) -> String {
@@ -170,7 +180,7 @@ pub fn lines(report: &Value) -> Vec<String> {
     )];
     if let Some(counts) = support_counts(report).as_object() {
         lines.push(format!(
-            "verify.support · {} judged: {} supported, {} contradicted, {} unresolved · cutoffs supports ≥ {}, contradicts ≥ {}",
+            "verify.support · {} judged: {} supported, {} contradicted, {} unresolved · thresholds: supports at least {}, contradicts at least {}",
             counts["judged"],
             counts["supported"],
             counts["contradicted"],
@@ -196,7 +206,7 @@ pub fn lines(report: &Value) -> Vec<String> {
         lines.push(format!(
             "  {:<4} {:<13} {}",
             id,
-            covered["state"].as_str().unwrap_or_default(),
+            state_label(covered["state"].as_str().unwrap_or_default()),
             short(covered["text"].as_str().unwrap_or_default(), 100)
         ));
         if let Some(state) = support {
@@ -223,12 +233,12 @@ pub fn lines(report: &Value) -> Vec<String> {
         .count();
     if unobserved > 0 {
         lines.push(format!(
-            "  {unobserved} requirements no admitted scenario observes"
+            "  {unobserved} requirements that no accepted scenario checks"
         ));
     }
     for packet in array(report, "packets") {
         lines.push(format!(
-            "  Packet · {} · {} · expected: {}",
+            "  Diagnostic packet · {} · {} · expected: {}",
             packet["requirement"].as_str().unwrap_or_default(),
             packet["scenario"].as_str().unwrap_or_default(),
             short(
@@ -555,10 +565,10 @@ pub(crate) mod tests {
         assert!(text.contains("1 passed, 1 failed"), "{text}");
         assert!(text.contains("R1   contradicted"), "{text}");
         assert!(text.contains("data.message-severity"), "{text}");
-        assert!(text.contains("Packet · R1"), "{text}");
+        assert!(text.contains("Diagnostic packet · R1"), "{text}");
         assert!(text.contains("hypothesis: The count reads"), "{text}");
         assert!(
-            text.contains("1 requirements no admitted scenario observes"),
+            text.contains("1 requirements that no accepted scenario checks"),
             "{text}"
         );
         assert_eq!(summary(&report())["contradicted"], json!(1));
@@ -641,12 +651,12 @@ pub(crate) mod tests {
             "{text}"
         );
         assert!(
-            text.contains("support 0.21 · contradicts 0.88 → contradicted"),
+            text.contains("supports 0.21 · contradicts 0.88 · result contradicted"),
             "{text}"
         );
         // R2 has no scenario, but its support state still shows.
-        assert!(text.contains("R2   unobserved"), "{text}");
-        assert!(!text.contains("no admitted scenario observes"), "{text}");
+        assert!(text.contains("R2   not checked"), "{text}");
+        assert!(!text.contains("no accepted scenario checks"), "{text}");
         assert_eq!(summary(&report)["support"]["contradicted"], json!(1));
         let _ = std::fs::remove_dir_all(dir);
     }

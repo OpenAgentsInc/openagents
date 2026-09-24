@@ -628,7 +628,7 @@ impl App {
             0,
             Some((self.view.title(), self.ladder.style(Intensity::Full))),
             Some((
-                "local evidence · no inference",
+                "local records · no model calls",
                 self.ladder.style(Intensity::Half),
             )),
         );
@@ -642,7 +642,7 @@ impl App {
             buf,
             box_area.height - 1,
             Some((keys, self.ladder.style(Intensity::Quarter))),
-            Some(("unknown ≠ 0", self.ladder.style(Intensity::Half))),
+            Some(("unknown is not zero", self.ladder.style(Intensity::Half))),
         );
         let inner = Rect::new(
             box_area.left() + 2,
@@ -739,10 +739,10 @@ impl App {
         let mut lines = vec![
             format!("Sources: {}", self.records.sources.join(" · ")),
             format!("Status: {}", self.records.status_counts().iter().map(|(s,n)| format!("{s} {n}")).collect::<Vec<_>>().join(" · ")),
-            format!("Controls: {} oracle/nop attempts; excluded from agent ranking", self.records.attempts.iter().filter(|a| a.is_control()).count()),
+            format!("Controls: {} oracle and nop attempts, left out of the agent ranking", self.records.attempts.iter().filter(|a| a.is_control()).count()),
             format!("Usage coverage: {}", self.records.attempts.iter().fold(BTreeMap::<&str, usize>::new(), |mut counts, attempt| { *counts.entry(&attempt.usage_coverage).or_default() += 1; counts }).iter().map(|(coverage, count)| format!("{coverage} {count}")).collect::<Vec<_>>().join(" · ")),
             format!("Latest: {}  ·  report: {}", self.records.attempts.iter().filter_map(|a| a.started_at.as_ref()).max().map_or(DASH, String::as_str), self.records.report_label.as_deref().unwrap_or("not loaded")),
-            "Task / arm                                    n  reward             status         cost source       evidence".to_owned(),
+            "Task / configuration                          n  reward             status         cost source       evidence".to_owned(),
         ];
         for group in &self.groups {
             let members: Vec<_> = group
@@ -823,14 +823,14 @@ impl App {
             let successes = fresh.iter().filter(|a| a.reward == Some(1.0)).count();
             let (low, high) = wilson_95(successes, fresh.len());
             format!(
-                "{} fresh graded attempts; observed pass fraction {}/{}; Wilson 95% [{low:.2}, {high:.2}]. Small development sample.",
+                "{} fresh graded attempts; {} of {} passed; Wilson 95% interval [{low:.2}, {high:.2}]. A small development sample.",
                 fresh.len(),
                 successes,
                 fresh.len()
             )
         } else if !complete_pin {
             format!(
-                "{} fresh graded attempts; pin, model, artifact, image state, or host identity is incomplete. No controlled interval.",
+                "{} fresh graded attempts; a pinned version, model, artifact, image state, or host is unrecorded, so no interval is shown.",
                 fresh.len()
             )
         } else {
@@ -845,7 +845,7 @@ impl App {
                 group.task,
                 group.arm,
                 if group.policy.is_some() {
-                    format!(" (arms: {})", group.arms.join(", "))
+                    format!(" (configurations: {})", group.arms.join(", "))
                 } else {
                     String::new()
                 },
@@ -920,7 +920,7 @@ impl App {
             }
         }
         lines.push(format!(
-            "Setup (Harbor agent_setup): {} · {setup_failures} setup failures beside {rewarded} graded. Agent is agent_execution; total is trial start to finish.",
+            "Setup time (Harbor's agent_setup phase): {} · {setup_failures} setup failures and {rewarded} graded. Agent time is the agent_execution phase; total runs from trial start to finish.",
             if setups.is_empty() {
                 DASH.to_owned()
             } else {
@@ -935,7 +935,7 @@ impl App {
         let costs: Vec<_> = fresh.iter().filter_map(|a| a.cost_usd).collect();
         lines.push(format!("Observed spread: agent time {} · cost {}. Missing measurements stay out of each range.", spread_u64(&times), spread_f64(&costs)));
         lines.push(
-            "Other arms on this task (separate pins and evidence identities stay separate):"
+            "Other configurations on this task (runs with different pinned versions are not pooled):"
                 .to_owned(),
         );
         for other in self
@@ -959,9 +959,9 @@ impl App {
                 .collect::<Vec<_>>()
                 .join(",");
             let pin = if other.pin == group.pin {
-                "same recorded pin"
+                "same pinned versions"
             } else {
-                "different or unknown pin"
+                "different or unknown pinned versions"
             };
             lines.push(format!(
                 "  {}  n={}  reward {}  cost {}  {}",
@@ -982,7 +982,7 @@ impl App {
         let mut lines = vec![
             format!("{} / {}   {}", a.job, a.trial, a.source),
             format!(
-                "Task {}   profile {}   arm {}   attempt kind {}",
+                "Task {}   profile {}   configuration {}   attempt kind {}",
                 a.task, a.profile, a.arm, a.kind
             ),
             format!("Commit {}", show::words(a.commit.as_deref())),
@@ -1075,7 +1075,8 @@ impl App {
         };
         let mut lines = vec![
             format!("{} / {}", a.job, a.trial),
-            "Digest status is checked against retained bytes when a digest exists.".to_owned(),
+            "When a file has a recorded hash, the Gym rehashes the kept file and compares the two."
+                .to_owned(),
         ];
         let missing = a.missing_evidence();
         if missing.is_empty() {
@@ -1122,8 +1123,8 @@ impl App {
     fn history(&self) -> Vec<String> {
         let mut lines = vec![
             "All attempts stay visible, including failed, invalid, and unverifiable runs.".to_owned(),
-            "Different pins, hosts, and missing identities require separate comparisons.".to_owned(),
-            "Started                   task / arm                                      reward  status              job / trial".to_owned(),
+            "Compare runs separately when their pinned versions or hosts differ or are unrecorded.".to_owned(),
+            "Started                   task / configuration                            reward  status              job / trial".to_owned(),
         ];
         for &index in &self.history_order {
             let a = &self.records.attempts[index];
@@ -1222,7 +1223,7 @@ impl App {
             "Runbooks and records".to_owned(),
             "  docs/coder/terminal-bench.md                   Harness: doctor, run, resume, inspect, compare".to_owned(),
             "  docs/terminal-bench/runbook.md                 Host, credentials, rate limits, prices, retention".to_owned(),
-            "  docs/terminal-bench/coder-one-delegate-runbook.md   Opus and Luna delegate arms".to_owned(),
+            "  docs/terminal-bench/coder-one-delegate-runbook.md   Opus and Luna delegate configurations".to_owned(),
             "  docs/terminal-bench/README.md                  Every retained result and written analysis".to_owned(),
             "  docs/coder/terminal-bench-contract.md          Headless episode and evidence contract".to_owned(),
             "  docs/gym/terminal-bench-tui.md                  This terminal reader".to_owned(),
@@ -1236,7 +1237,7 @@ impl App {
             String::new(),
             "Reading rule: a verifier reward is separate from agent status; unknown is never zero.".to_owned(),
             "A price estimate or subscription list price is not an observed bill.".to_owned(),
-            "One development trial is an observation, not a pass-rate or a win.".to_owned(),
+            "One development trial is an observation, not a pass rate or a win.".to_owned(),
         ];
         lines.push(String::new());
         lines.extend(crate::coder_capabilities::runbook_lines(
@@ -1362,7 +1363,7 @@ mod tests {
         app.inspect();
         let text = app.to_text(160, 60);
         assert!(text.contains("Requirement coverage"), "{text}");
-        assert!(text.contains("Packet · R1"), "{text}");
+        assert!(text.contains("Diagnostic packet · R1"), "{text}");
     }
 
     #[test]
@@ -1476,7 +1477,10 @@ mod tests {
         assert!(text.contains("* x "), "{text}");
         assert!(text.contains("Pulse of x (tb4): 2 arms"), "{text}");
         assert!(text.contains("Stopping rule (alpha 0.05)"), "{text}");
-        assert!(text.contains("Final checks against the verifier"), "{text}");
+        assert!(
+            text.contains("Final checks compared with the verifier"),
+            "{text}"
+        );
         // Enter on the experiment's row keeps it chosen; the view scrolls.
         app.down();
         app.down();
@@ -1568,7 +1572,7 @@ mod tests {
         let mut app = App::new(records);
         app.inspect();
         let text = app.to_text(150, 25);
-        assert!(text.contains("No controlled interval"), "{text}");
+        assert!(text.contains("no interval is shown"), "{text}");
         assert!(!text.contains("Wilson 95%"), "{text}");
     }
 
