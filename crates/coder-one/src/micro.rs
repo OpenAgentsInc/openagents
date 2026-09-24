@@ -151,6 +151,16 @@ pub struct Policy {
     /// #9588's accept.define lands.
     #[serde(default)]
     pub accept: bool,
+    /// Group only the requirements a session edits toward — behaviors,
+    /// deliverables, and checks — and carry every constraint into each
+    /// session's brief as a standing rule instead of grouping it. A
+    /// constraint such as "set the random seed to 149" or "you have 28800
+    /// seconds" is nothing a session can complete on its own, so a group
+    /// of constraints spends sessions that make no edit and get downgraded
+    /// to retry then stuck. Off keeps every non-context requirement in a
+    /// group, as v1 through v4 do.
+    #[serde(default)]
+    pub focus_actionable: bool,
 }
 
 fn yes() -> bool {
@@ -172,6 +182,7 @@ impl Default for Policy {
             require_evidence: true,
             read_first: false,
             accept: false,
+            focus_actionable: false,
         }
     }
 }
@@ -440,15 +451,38 @@ pub struct Group {
     pub lines: Vec<String>,
 }
 
-/// The requirement groups: every requirement but context, in map order,
-/// split into at most `max` consecutive groups of near-equal size.
+/// The requirement groups, in map order, split into at most `max`
+/// consecutive groups of near-equal size. Context is always left out. When
+/// `actionable_only`, constraints are left out too, so a group holds only
+/// the behaviors, deliverables, and checks a session edits toward; the
+/// constraints reach every session through the brief instead. When a task
+/// has no actionable requirement, `actionable_only` falls back to every
+/// non-context requirement so the loop still runs.
 #[must_use]
-pub fn groups(map: &crate::requirements::RequirementMap, max: u32) -> Vec<Group> {
-    let kept: Vec<_> = map
+pub fn groups(
+    map: &crate::requirements::RequirementMap,
+    max: u32,
+    actionable_only: bool,
+) -> Vec<Group> {
+    let actionable = |k: Kind| matches!(k, Kind::Behavior | Kind::Deliverable | Kind::Check);
+    let mut kept: Vec<_> = map
         .requirements
         .iter()
-        .filter(|r| r.kind != Kind::Context)
+        .filter(|r| {
+            if actionable_only {
+                actionable(r.kind)
+            } else {
+                r.kind != Kind::Context
+            }
+        })
         .collect();
+    if actionable_only && kept.is_empty() {
+        kept = map
+            .requirements
+            .iter()
+            .filter(|r| r.kind != Kind::Context)
+            .collect();
+    }
     if kept.is_empty() {
         return Vec::new();
     }
@@ -468,6 +502,27 @@ pub fn groups(map: &crate::requirements::RequirementMap, max: u32) -> Vec<Group>
                     )
                 })
                 .collect(),
+        })
+        .collect()
+}
+
+/// The constraints every session must honor: the `- R7 (constraint): text`
+/// lines for the map's constraint requirements, in map order. These are
+/// the standing rules a focused session works under when `focus_actionable`
+/// keeps them out of the groups. Context is left out, since it repeats the
+/// task rather than constraining the work.
+#[must_use]
+pub fn constraints(map: &crate::requirements::RequirementMap) -> Vec<String> {
+    map.requirements
+        .iter()
+        .filter(|r| r.kind == Kind::Constraint)
+        .map(|r| {
+            format!(
+                "- {} ({}): {}",
+                r.id,
+                r.kind.word(),
+                r.text.split_whitespace().collect::<Vec<_>>().join(" ")
+            )
         })
         .collect()
 }
@@ -1294,7 +1349,11 @@ impl Micro {
 
     /// The mini-handoff loop.
     async fn requirements(&self, prepared: &Prepared) -> (Vec<Ran>, Vec<Value>, String) {
-        let groups = groups(&prepared.requirements, self.policy.max_groups);
+        let groups = groups(
+            &prepared.requirements,
+            self.policy.max_groups,
+            self.policy.focus_actionable,
+        );
         let subject = self.subject(prepared);
         let dir = self
             .artifacts
@@ -1509,6 +1568,19 @@ impl Micro {
                 later.join(", ")
             ));
         }
+        if self.policy.focus_actionable {
+            let constraints = constraints(&prepared.requirements);
+            if !constraints.is_empty() {
+                guidance.push_str(&format!(
+                    "\n\nThese constraints are the decisive facts of the task; honor every one \
+                     exactly in what you do here. Use the exact values, formulas, seeds, \
+                     column names, ranges, and formats they state. Do not substitute a \
+                     simpler rule or an approximation for what a constraint specifies, and do \
+                     not skip one because it looks minor.\n\n{}\n\n",
+                    constraints.join("\n")
+                ));
+            }
+        }
         if read_only {
             guidance.push_str(
                 "This is a read-only session: you can't edit files, only read and run \
@@ -1611,10 +1683,14 @@ impl Executor for Micro {
 
     async fn execute(&mut self, briefing: &Briefing) -> Report {
         let started = Instant::now();
-        let prepared = self
-            .prepared
-            .clone()
-            .filter(|p| !groups(&p.requirements, self.policy.max_groups).is_empty());
+        let prepared = self.prepared.clone().filter(|p| {
+            !groups(
+                &p.requirements,
+                self.policy.max_groups,
+                self.policy.focus_actionable,
+            )
+            .is_empty()
+        });
         let (sessions, moves, stopped, mode) = match (&self.policy.mode, prepared) {
             (Mode::Requirements, Some(prepared)) => {
                 let (sessions, moves, stopped) = self.requirements(&prepared).await;

@@ -153,11 +153,85 @@ async fn a_single_session_records_executor_events_and_an_exact_price() {
     );
 }
 
+fn requirement(
+    id: &str,
+    kind: crate::requirements::Kind,
+    text: &str,
+) -> crate::requirements::Requirement {
+    crate::requirements::Requirement {
+        id: id.to_string(),
+        spans: Vec::new(),
+        kind,
+        binding: crate::requirements::Binding::Unjudged,
+        state: crate::requirements::State::Unobserved,
+        p: None,
+        exhaustive: None,
+        text: text.to_string(),
+        extracted: crate::requirements::Extracted::default(),
+    }
+}
+
+fn map_of(reqs: Vec<crate::requirements::Requirement>) -> crate::requirements::RequirementMap {
+    crate::requirements::RequirementMap {
+        schema: "test".to_string(),
+        instruction_sha256: String::new(),
+        method: "rule".to_string(),
+        spans: Vec::new(),
+        requirements: reqs,
+        coverage: crate::requirements::Coverage {
+            chars: 0,
+            covered: 0,
+            fraction: 0.0,
+            spans: 0,
+            requirement_spans: 0,
+            context_spans: 0,
+            unanswered_spans: 0,
+        },
+    }
+}
+
+#[test]
+fn focus_actionable_groups_only_actionable_requirements_and_lists_the_constraints() {
+    use crate::requirements::Kind;
+    let map = map_of(vec![
+        requirement("R1", Kind::Constraint, "use gene_name as the identifier"),
+        requirement("R2", Kind::Behavior, "run the analysis"),
+        requirement("R3", Kind::Deliverable, "save results.csv"),
+        requirement("R4", Kind::Constraint, "set the random seed to 149"),
+        requirement("R5", Kind::Context, "the data lives in data/"),
+    ]);
+    // Off: every non-context requirement is grouped, as v1 through v4 do.
+    let all = groups(&map, 4, false);
+    let all_ids: Vec<String> = all.iter().flat_map(|g| g.ids.clone()).collect();
+    assert_eq!(all_ids, vec!["R1", "R2", "R3", "R4"], "{all:?}");
+    // On: only the behavior and the deliverable are grouped.
+    let focused = groups(&map, 4, true);
+    let focused_ids: Vec<String> = focused.iter().flat_map(|g| g.ids.clone()).collect();
+    assert_eq!(focused_ids, vec!["R2", "R3"], "{focused:?}");
+    // The constraints reach the session through the brief instead.
+    let lines = constraints(&map);
+    assert_eq!(lines.len(), 2, "{lines:?}");
+    assert!(lines[0].contains("R1") && lines[0].contains("gene_name"));
+    assert!(lines[1].contains("R4") && lines[1].contains("149"));
+}
+
+#[test]
+fn focus_actionable_falls_back_when_a_task_has_only_constraints() {
+    use crate::requirements::Kind;
+    let map = map_of(vec![
+        requirement("R1", Kind::Constraint, "don't cheat"),
+        requirement("R2", Kind::Constraint, "you have 600 seconds"),
+    ]);
+    let focused = groups(&map, 4, true);
+    let ids: Vec<String> = focused.iter().flat_map(|g| g.ids.clone()).collect();
+    assert_eq!(ids, vec!["R1", "R2"], "a constraint-only task still runs");
+}
+
 #[tokio::test]
 async fn the_loop_rebuilds_each_session_and_bounds_retries() {
     let dir = tempfile::tempdir().unwrap();
     let map = prepared().requirements;
-    let groups = groups(&map, 4);
+    let groups = groups(&map, 4, false);
     assert_eq!(groups.len(), 2, "{groups:?}");
     let mut executor = micro(
         dir.path(),

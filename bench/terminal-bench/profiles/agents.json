@@ -2657,6 +2657,106 @@
       },
       "note": "Coder One with Microluna, read_first, and the acceptance gate: a loop-ending move waits for verify.checks to confirm the focus. Issue #9585."
     },
+    "coder-one-microluna-v4": {
+      "role": "candidate",
+      "harbor_import_path": "tbench.coder_one:CoderOneTunable",
+      "version": null,
+      "model": "free",
+      "kwargs": {
+        "policy": "crates/coder-one/policies/microluna-v4.json"
+      },
+      "required_kwargs": [
+        "artifact_path",
+        "artifact_sha256"
+      ],
+      "extra_allowed_hosts": [
+        "openagents.com",
+        "api.typesafe.ai",
+        "chatgpt.com"
+      ],
+      "cost_provenance": "mixed",
+      "cost_note": "Microluna's dispatches are list-price estimates from the exact token usage each Luna request reports, at OpenAI's standard short-context prices, supplied manually by the operator on 2026-09-22; Jev is a price estimate at the published input-token rate. Every dispatch (the first and the repair) is a delegate call in evaluation/usage.json. No Claude.",
+      "env_forward": [
+        "OPENAGENTS_API_KEY",
+        "OPENAGENTS_DOOR_URL",
+        "TYPESAFE_API_KEY",
+        "CODEX_AUTH_JSON_PATH",
+        "CODEX_FORCE_AUTH_JSON"
+      ],
+      "auth_modes": {
+        "auth-json": {
+          "requires_all": [
+            "OPENAGENTS_API_KEY",
+            "TYPESAFE_API_KEY"
+          ],
+          "requires_any": [
+            "CODEX_AUTH_JSON_PATH",
+            "CODEX_FORCE_AUTH_JSON"
+          ],
+          "env_overrides": {
+            "CODEX_AUTH_JSON_PATH": "~/.codex/auth.json"
+          },
+          "exclude_env": [
+            "CODEX_FORCE_AUTH_JSON",
+            "CLAUDE_CODE_OAUTH_TOKEN",
+            "ANTHROPIC_API_KEY",
+            "ANTHROPIC_AUTH_TOKEN"
+          ],
+          "note": "The door and Jev keys as in coder-one. Microluna signs in with the host's ChatGPT-account auth.json, which the adapter places in the container under CODEX_HOME and removes after the run; Microluna only reads it and never refreshes it. No Claude credential is forwarded, and no CLI installs."
+        }
+      },
+      "note": "Coder One with Microluna, v3's read_first and acceptance gate, and the loop's budget raised well above v3's: a 2400-second executor deadline, 30 sessions, 4 attempts per group, 900-second sessions, a $1.50 spend bound, and 20000 characters of per-session evidence. It tests whether Luna, cheap enough to run many more sessions, converges when the loop stops running out of budget before it runs out of ideas. Issue #9585."
+    },
+    "coder-one-microluna-v5": {
+      "role": "candidate",
+      "harbor_import_path": "tbench.coder_one:CoderOneTunable",
+      "version": null,
+      "model": "free",
+      "kwargs": {
+        "policy": "crates/coder-one/policies/microluna-v5.json"
+      },
+      "required_kwargs": [
+        "artifact_path",
+        "artifact_sha256"
+      ],
+      "extra_allowed_hosts": [
+        "openagents.com",
+        "api.typesafe.ai",
+        "chatgpt.com"
+      ],
+      "cost_provenance": "mixed",
+      "cost_note": "Microluna's dispatches are list-price estimates from the exact token usage each Luna request reports, at OpenAI's standard short-context prices, supplied manually by the operator on 2026-09-22; Jev is a price estimate at the published input-token rate. Every dispatch (the first and the repair) is a delegate call in evaluation/usage.json. No Claude.",
+      "env_forward": [
+        "OPENAGENTS_API_KEY",
+        "OPENAGENTS_DOOR_URL",
+        "TYPESAFE_API_KEY",
+        "CODEX_AUTH_JSON_PATH",
+        "CODEX_FORCE_AUTH_JSON"
+      ],
+      "auth_modes": {
+        "auth-json": {
+          "requires_all": [
+            "OPENAGENTS_API_KEY",
+            "TYPESAFE_API_KEY"
+          ],
+          "requires_any": [
+            "CODEX_AUTH_JSON_PATH",
+            "CODEX_FORCE_AUTH_JSON"
+          ],
+          "env_overrides": {
+            "CODEX_AUTH_JSON_PATH": "~/.codex/auth.json"
+          },
+          "exclude_env": [
+            "CODEX_FORCE_AUTH_JSON",
+            "CLAUDE_CODE_OAUTH_TOKEN",
+            "ANTHROPIC_API_KEY",
+            "ANTHROPIC_AUTH_TOKEN"
+          ],
+          "note": "The door and Jev keys as in coder-one. Microluna signs in with the host's ChatGPT-account auth.json, which the adapter places in the container under CODEX_HOME and removes after the run; Microluna only reads it and never refreshes it. No Claude credential is forwarded, and no CLI installs."
+        }
+      },
+      "note": "Coder One with Microluna, v4's raised budget, and focus_actionable: the loop groups only the behaviors, deliverables, and checks a session edits toward, and carries every constraint into each session as a binding decisive fact rather than as its own group. It tests whether keeping the decisive facts in front of a session, and not spending sessions on constraint-only groups, moves a task Luna oversimplifies. Issue #9585."
+    },
     "coder-one-tunable-luna-v2": {
       "role": "candidate",
       "harbor_import_path": "tbench.coder_one:CoderOneTunable",
