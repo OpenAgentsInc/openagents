@@ -1,10 +1,17 @@
 # Run Coder One on a mini-task
 
-A mini-task is a small local task with its own grader. Run an episode on
-one with the scripted executor to test how Coder One's components compose,
-in about a second and with no model or container. Run the same task with
-Claude Code or Codex to see whether a real executor uses what the
-components give it.
+A mini-task is a small, local task that reproduces one coding failure family;
+it has its own grader, which runs after the episode and is hidden from the
+agent. A pass means that grader accepts the candidate, not that a benchmark
+task passed. Scripted episodes take about a second with no model or container.
+For a concrete real-executor measurement, the 2026-09-24 Microluna comparison
+reports 12 attempts across four tasks, taking 906 seconds total (75.5 seconds
+per attempt). Microluna cost $0.0404 total: $0.0361 Luna and $0.0043 Jev,
+about $0.0034 per attempt. See its per-task results for timings.
+These tasks are a fast local screen for Coder One behavior, not Terminal-Bench
+4.0 results: TB4 runs use benchmark task containers and Harbor's verifier.
+Run the same task with Claude Code or Codex to see whether a real executor
+uses what the components give it.
 
 This is rung 2 and rung 3 of the ladder in
 [Coder as a tunable system](../../optimization/coder-components.md#test-each-component-in-isolation):
@@ -23,10 +30,13 @@ Each task covers one failure family from the v3 Luna trials, or a recovery:
 | `cancel-cleanup` | Cancellation lifecycle | After a real interrupt, both started tasks finish their cleanup. |
 | `git-recovery` | Recovery | A commit lost to a hard reset is back on `master`, and the tree is clean. |
 
-The grader runs after the episode ends, and the episode never sees it, as
-Harbor's verifier is to a Terminal-Bench task. The interactive and
-cancellation graders need `python3` on `PATH`; without it, their verdict is
-`unavailable`.
+The grader runs after the episode ends and checks the listed artifact or
+behavior, not the agent's account of what it did; the episode never sees the
+grader. A run is `passed` when those checks accept the result, `failed` when
+they reject it, or `unavailable` when the grader cannot run. The interactive
+and cancellation graders need `python3` on `PATH`; without it, their verdict
+is `unavailable`. This is analogous to Harbor's verifier running after a
+Terminal-Bench task, but these local checks are not TB4 benchmark results.
 
 ## Run an episode
 

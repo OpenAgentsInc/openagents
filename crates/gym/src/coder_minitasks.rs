@@ -311,9 +311,16 @@ pub const HEADER: &str = "started           task                   executor     
 pub fn lines(runs: &[Run], errors: &[String], selected: Option<usize>) -> Vec<String> {
     let mut lines = vec![
         format!(
-            "Coder One mini-task runs · {} runs · local episodes with their own graders, not Terminal-Bench attempts",
+            "Coder One mini-task runs · {} runs",
             runs.len()
         ),
+        "Hidden graders check each task's outcome after every episode.".to_owned(),
+        "A mini-task verdict is passed, failed, or unavailable.".to_owned(),
+        "These verdicts are not results from Terminal-Bench 4.0.".to_owned(),
+        "Fast local screen: scripted runs take about 1 second. In the 2026-09-24 Microluna report,".to_owned(),
+        "12 attempts took 906 seconds total, or 75.5 seconds per attempt.".to_owned(),
+        "Those attempts cost $0.0404 total: $0.0361 Luna and $0.0043 Jev, or about $0.0034 per attempt.".to_owned(),
+        "Terminal-Bench 4.0 uses benchmark task containers and Harbor's verifier.".to_owned(),
         HEADER.to_owned(),
     ];
     if runs.is_empty() {
@@ -488,7 +495,12 @@ pub(crate) mod tests {
         assert_eq!(run.verdict, "failed");
         assert!(run.timeline.as_ref().unwrap().complete);
         let text = lines(&runs, &errors, Some(0)).join("\n");
-        assert!(text.contains("not Terminal-Bench attempts"), "{text}");
+        assert!(text.contains("Hidden graders check each task's outcome after every episode."), "{text}");
+        assert!(text.contains("A mini-task verdict is passed, failed, or unavailable."), "{text}");
+        assert!(text.contains("These verdicts are not results from Terminal-Bench 4.0."), "{text}");
+        assert!(text.contains("Terminal-Bench 4.0 uses benchmark task containers and Harbor's verifier."), "{text}");
+        assert!(text.contains("75.5 seconds per attempt"), "{text}");
+        assert!(text.contains("$0.0034 per attempt"), "{text}");
         assert!(text.contains("Grade: failed"), "{text}");
         assert!(text.contains("Session control: start done"), "{text}");
         assert!(text.contains("Episode timeline"), "{text}");
