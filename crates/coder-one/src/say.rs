@@ -1,6 +1,6 @@
 //! Where the host's progress lines go.
 //!
-//! An episode prints its progress, such as `survey ▸ 40 files judged`, to
+//! An episode prints its progress, such as `survey ▸ Jev rated 40 files`, to
 //! standard output, where a person watching a run reads it. A host that
 //! owns standard output itself, such as Coder Terminal drawing a screen or
 //! `coder -p` writing only the reply there, takes the lines instead:
@@ -54,6 +54,27 @@ impl Drop for Captured {
     }
 }
 
+/// Writes `n` with commas between thousands, such as `8,061`, for a
+/// progress line.
+#[must_use]
+pub fn count(n: u64) -> String {
+    let digits = n.to_string();
+    let mut out = String::with_capacity(digits.len() + digits.len() / 3);
+    for (i, digit) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(digit);
+    }
+    out
+}
+
+/// Writes `ms` milliseconds as seconds with one decimal, such as `2.8 s`.
+#[must_use]
+pub fn seconds(ms: u128) -> String {
+    format!("{:.1} s", ms as f64 / 1000.0)
+}
+
 /// Says a formatted progress line through [`line`].
 macro_rules! say {
     ($($arg:tt)*) => {
@@ -80,5 +101,14 @@ mod tests {
         }
         assert_eq!(*heard.borrow(), vec!["survey ▸ 40 files".to_string()]);
         assert!(SINK.with(|sink| sink.borrow().is_none()));
+    }
+
+    #[test]
+    fn counts_carry_commas_between_thousands() {
+        assert_eq!(count(0), "0");
+        assert_eq!(count(999), "999");
+        assert_eq!(count(8_061), "8,061");
+        assert_eq!(count(1_234_567), "1,234,567");
+        assert_eq!(seconds(2_763), "2.8 s");
     }
 }

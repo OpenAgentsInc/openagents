@@ -367,7 +367,7 @@ pub async fn task(name: &str, jev: &JevMode, options: &TaskOptions) -> Result<Va
         match ran {
             Ok(result) => {
                 crate::say::line(&format!(
-                    "accept ▸ {}: {} of {} green; reward {:?}{}",
+                    "accept ▸ {}: {} of {} tests pass; reward {:?}{}",
                     trial.trial,
                     result.passed,
                     result.total,

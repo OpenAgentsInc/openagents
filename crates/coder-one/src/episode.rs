@@ -746,7 +746,7 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
     let (outcome, code) = match &limited {
         Some(limit) => {
             println!(
-                "\n  usage limit ▸ {} · resets {}",
+                "\n  usage limit ▸ {}; the limit resets {}",
                 limit["message"].as_str().unwrap_or("limited"),
                 limit["resets_at_iso"]
                     .as_str()

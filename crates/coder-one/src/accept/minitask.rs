@@ -226,7 +226,7 @@ pub async fn run_minitask(
             }
         };
         crate::say::line(&format!(
-            "accept ▸ {label}: {} of {} green",
+            "accept ▸ {label}: {} of {} tests pass",
             result.passed, result.total
         ));
         let green = result.green;

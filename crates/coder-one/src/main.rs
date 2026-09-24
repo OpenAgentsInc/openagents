@@ -484,7 +484,7 @@ fn doctor() -> Result<(), String> {
                 credential.word()
             ),
             (None, _) => println!(
-                "delegate: no {} binary; --delegate-agent {} needs one",
+                "delegate: {} isn't installed; --delegate-agent {} needs it",
                 agent.word(),
                 agent.word()
             ),
@@ -510,7 +510,7 @@ async fn solve(url: &str, options: Options) -> Result<(), String> {
     };
 
     let issue = fetch_issue(url)?;
-    let (repository, number) = parse_issue_url(url).ok_or("cannot read the issue URL")?;
+    let (repository, number) = parse_issue_url(url).ok_or("can't read the issue URL")?;
     println!("issue   {}#{number}: {}", repository, issue.title);
 
     let stamp = SystemTime::now()
@@ -722,7 +722,7 @@ async fn solve(url: &str, options: Options) -> Result<(), String> {
             Some((title.clone(), summary.clone()))
         }
         Ended::StepLimit { steps } => {
-            println!("stopped: the {steps}-step limit ran out");
+            println!("stopped: reached the limit of {steps} steps");
             None
         }
         Ended::GenerationFailed { error, steps } => {
@@ -740,7 +740,7 @@ async fn solve(url: &str, options: Options) -> Result<(), String> {
             summary,
             steps,
         } => {
-            println!("explored {steps} steps, then delegated: {status}");
+            println!("explored for {steps} steps, then handed the task on: {status}");
             println!("{summary}");
             answered.then(|| (title.clone(), summary.clone()))
         }
@@ -757,7 +757,7 @@ async fn solve(url: &str, options: Options) -> Result<(), String> {
     match (finished, changed) {
         (_, false) => println!("no changes in the checkout"),
         (None, true) => {
-            println!("changes are staged but not committed, because the run did not finish:");
+            println!("the run didn't finish, so the changes are staged but not committed:");
             println!(
                 "{}",
                 command(&workdir, "git", &["diff", "--cached", "--stat"])?

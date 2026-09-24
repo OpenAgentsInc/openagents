@@ -129,7 +129,7 @@ draws, under their own names: `program` (the selected slug), `classified`
 (the verdict's `route` and the `action` answer behind it, a halt's reason
 in `halt`, or the `note` saying classify did not run), `judgment` (a
 remote worker's feedback line, or a delegated turn's progress line such as
-`survey ▸ 40 files judged …` or `brief ▸ 10537 characters …`), and
+`survey ▸ Jev rated 40 files …` or `brief ▸ the briefing is 10,537 characters …`), and
 `shell_proposed`, `shell_outcome`,
 and `shell_verdict` — the command and its reason, its status and output,
 and the judge's line. A field an event does not have is `null`, not a

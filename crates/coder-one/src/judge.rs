@@ -221,7 +221,7 @@ impl JevJudge {
             .await;
         if !asked.answered() {
             crate::say::say!(
-                "  jev_setup ▸ Jev unavailable: {}",
+                "  jev_setup ▸ Jev didn't answer, so no setup commands run: {}",
                 asked.error.as_deref().unwrap_or("no answers")
             );
             self.recorder.end(
@@ -238,7 +238,7 @@ impl JevJudge {
             let command = &gate.command;
             let p = gate.p.unwrap_or(0.0);
             if !gate.approved {
-                crate::say::say!("  setup ▸ skipped `{command}` p={p:.2}");
+                crate::say::say!("  setup ▸ skipped `{command}` (Jev rated it {p:.2})");
                 continue;
             }
             // The command becomes a typed operation or a refusal; its text
@@ -246,7 +246,7 @@ impl JevJudge {
             let proposed = crate::ops::parse_setup(command, &self.workdir);
             let Some(operation) = proposed.operation else {
                 let why = proposed.refused.unwrap_or_default();
-                crate::say::say!("  setup ▸ refused `{command}`: {why}");
+                crate::say::say!("  setup ▸ won't run `{command}`: {why}");
                 refused.push(json!({ "command": command, "reason": why }));
                 continue;
             };
@@ -254,16 +254,14 @@ impl JevJudge {
                 .deadline
                 .grant("setup", std::time::Duration::from_secs(240))
             else {
-                crate::say::say!(
-                    "  setup ▸ skipped `{command}`: the episode deadline left no time"
-                );
+                crate::say::say!("  setup ▸ skipped `{command}`: no time left before the deadline");
                 continue;
             };
             let capture = self
                 .operate(&operation, "evidence.setup", &scope, limit)
                 .await;
             if let Some(refusal) = &capture.refused {
-                crate::say::say!("  setup ▸ refused `{command}`: {refusal}");
+                crate::say::say!("  setup ▸ won't run `{command}`: {refusal}");
                 refused.push(json!({ "command": command, "reason": refusal.to_string() }));
                 continue;
             }
@@ -271,7 +269,7 @@ impl JevJudge {
                 .exit
                 .map_or("no exit code".to_string(), |code| format!("exit {code}"));
             crate::say::say!(
-                "  setup ▸ ran {} p={p:.2}: {ending} in {:.1}s",
+                "  setup ▸ ran {} (Jev rated it {p:.2}): {ending} in {:.1} s",
                 capture.label,
                 capture.milliseconds as f64 / 1000.0
             );
@@ -321,18 +319,18 @@ impl JevJudge {
         }
         let answered = asked.iter().any(Asked::answered);
         crate::say::say!(
-            "  requirements ▸ {} spans, {} requirements ({} uncertain), {:.0}% of the instruction covered{}",
-            map.coverage.spans,
+            "  requirements ▸ found {} requirements ({} unclear) in {} parts of the request, covering {:.0}% of it{}",
             map.requirements.len(),
             map.requirements
                 .iter()
                 .filter(|r| r.binding == crate::requirements::Binding::Uncertain)
                 .count(),
+            map.coverage.spans,
             map.coverage.fraction * 100.0,
             if answered {
                 ""
             } else {
-                "; Jev did not answer, so the map is by rule"
+                "; Jev didn't answer, so a fixed rule split the request"
             }
         );
         if answered {
@@ -483,7 +481,7 @@ impl JevJudge {
             .deadline
             .grant("probes", std::time::Duration::from_secs(10))
         else {
-            crate::say::say!("  probe ▸ skipped: the episode deadline left no time");
+            crate::say::say!("  probe ▸ skipped: no time left before the deadline");
             self.recorder.end(
                 &planner,
                 Finish::new(Outcome::Skipped).summary(json!({ "reason": "episode deadline" })),
@@ -551,7 +549,7 @@ impl JevJudge {
             .await;
         if !asked.answered() {
             crate::say::say!(
-                "  probe ▸ Jev unavailable: {}",
+                "  probe ▸ Jev didn't answer, so no command output is kept: {}",
                 asked.error.as_deref().unwrap_or("no answers")
             );
             self.recorder.end(
@@ -568,7 +566,10 @@ impl JevJudge {
             };
             let p = choice.p.unwrap_or(0.0);
             total += choice.chars;
-            crate::say::say!("  probe ▸ kept {} p={p:.2}", probe.command);
+            crate::say::say!(
+                "  probe ▸ kept the output of {} (Jev rated it {p:.2})",
+                probe.command
+            );
             state.survey.push(Surveyed {
                 path: format!("$ {}", probe.command),
                 relevance: p,
@@ -578,11 +579,11 @@ impl JevJudge {
         }
         self.recorder.revise();
         crate::say::say!(
-            "  probe ▸ {} operations run and {} outputs judged in {} ms; {} chars kept",
+            "  probe ▸ ran {} commands and Jev rated {} outputs in {}; kept {} characters",
             captures.len(),
             outputs.len(),
-            started.elapsed().as_millis(),
-            total
+            crate::say::seconds(started.elapsed().as_millis()),
+            crate::say::count(total as u64)
         );
         self.recorder.end(
             &invocation,
@@ -615,7 +616,7 @@ impl JevJudge {
         let started = Instant::now();
         let pool = self.survey_pool(&state.issue);
         if pool.is_empty() {
-            crate::say::say!("  survey ▸ no candidate files");
+            crate::say::say!("  survey ▸ found no files to rate");
             return;
         }
         let candidates: Vec<evidence::Candidate> = pool
@@ -708,16 +709,15 @@ impl JevJudge {
         }
         self.recorder.revise();
         crate::say::say!(
-            "  survey ▸ {} files judged in {} parallel Jev requests, {} ms; {} put in the prompt ({} chars)",
+            "  survey ▸ Jev rated {} files in {} and put {} in the briefing ({} characters)",
             judged,
-            batches.len(),
-            started.elapsed().as_millis(),
+            crate::say::seconds(started.elapsed().as_millis()),
             state.survey.len(),
-            total
+            crate::say::count(total as u64)
         );
         for file in &state.survey {
             crate::say::say!(
-                "  survey ▸ {} relevance {:.2} edit {:.2}",
+                "  survey ▸ {}: relevant {:.2}, needs an edit {:.2}",
                 file.path,
                 file.relevance,
                 file.edit
@@ -809,7 +809,7 @@ impl JevJudge {
             // nothing on screen. A file past the cap is still a candidate
             // by name; its lines just aren't counted.
             crate::say::line(&format!(
-                "  survey ▸ counting keywords in up to {} tracked files (each under {} KB)",
+                "  survey ▸ searching up to {} tracked files under {} KB for the request's keywords",
                 tracked.len(),
                 SEARCH_FILE_CAP / 1024
             ));
@@ -1040,7 +1040,7 @@ impl JevJudge {
 
         if questions.is_empty() {
             // Nothing to judge yet: no candidate files and no command run.
-            crate::say::say!("  jev ▸ nothing to judge yet");
+            crate::say::say!("  jev ▸ nothing to rate yet");
             return Ok(self
                 .criteria
                 .iter()
@@ -1114,10 +1114,10 @@ impl JevJudge {
             .and_then(|body| body.get("answers").cloned())
             .unwrap_or(serde_json::Value::Null);
         crate::say::say!(
-            "  jev ▸ {} answers in {} ms, {} input tokens",
+            "  jev ▸ {} answers in {}, {} input tokens",
             response.answers.len(),
-            started.elapsed().as_millis(),
-            tokens
+            crate::say::seconds(started.elapsed().as_millis()),
+            crate::say::count(tokens)
         );
 
         let mut hints = Vec::new();
@@ -1139,7 +1139,7 @@ impl JevJudge {
             } else {
                 "Possibly relevant file (low)"
             };
-            crate::say::say!("  jev ▸ {label} {} p={p:.2}", candidate.path);
+            crate::say::say!("  jev ▸ {label}: {} ({p:.2})", candidate.path);
             hints.push(format!(
                 "{label} (Jev p={p:.2}): {}\n{}",
                 candidate.path, candidate.excerpt
@@ -1159,7 +1159,7 @@ impl JevJudge {
         }
         if let Ok(outcome) = response.choice("outcome") {
             crate::say::say!(
-                "  jev ▸ last command: {} ({:.2})",
+                "  jev ▸ the last command's outcome: {} ({:.2})",
                 outcome.choice,
                 outcome.confidence
             );
@@ -1176,7 +1176,7 @@ impl JevJudge {
         picked.truncate(3);
         picked.sort_by_key(|(_, k)| *k);
         for (p, k) in picked {
-            crate::say::say!("  jev ▸ key output chunk {k} p={p:.2}");
+            crate::say::say!("  jev ▸ part {k} of the last output matters ({p:.2})");
             if let Some((command, _)) = last {
                 self.evidence.spans.push(Span {
                     step: state.history.len(),
@@ -1191,7 +1191,10 @@ impl JevJudge {
             ));
         }
         if let Ok(ready) = response.noul("ready") {
-            crate::say::say!("  jev ▸ done and checked: p={:.2}", ready.noul);
+            crate::say::say!(
+                "  jev ▸ chance the task is done and checked: {:.2}",
+                ready.noul
+            );
             if ready.noul >= 0.8 {
                 hints.push(format!(
                     "The evidence suggests the task is complete and checked (Jev p={:.2}). If nothing is left to verify, call finished now.",
@@ -1251,7 +1254,7 @@ impl Judge for JevJudge {
             .is_empty();
         match judgments {
             Judgments::Answered(mut hints) if self.is_git && clean && steps >= STALL_STEPS => {
-                crate::say::say!("  host ▸ no file changed after {steps} steps");
+                crate::say::say!("  host ▸ no file has changed after {steps} steps");
                 hints.insert(
                     0,
                     format!(
@@ -1276,7 +1279,7 @@ impl JevJudge {
         }
         let Some(client) = self.client.take() else {
             crate::say::say!(
-                "  jev ▸ off; {} candidate files by search hits",
+                "  jev ▸ off, so {} files are ranked by keyword matches",
                 candidates.len()
             );
             return self.deterministic(&candidates, None);
@@ -1286,7 +1289,9 @@ impl JevJudge {
         match result {
             Ok(hints) => Judgments::Answered(hints),
             Err(error) => {
-                crate::say::say!("  jev ▸ unavailable: {error}");
+                crate::say::say!(
+                    "  jev ▸ didn't answer, so files are ranked by keyword matches: {error}"
+                );
                 self.deterministic(
                     &candidates,
                     Some(format!(

@@ -526,7 +526,7 @@ impl Session for CliSession<'_> {
             && let Some(live) = process.live.take()
         {
             let reached = process.transport.reached();
-            crate::say::say!("  delegate ▸ ended: {why}");
+            crate::say::say!("  delegate ▸ stopped the session: {why}");
             let stopped = live.stop().await;
             self.close(stopped, now_ms);
             self.transport = Some((why, reached));

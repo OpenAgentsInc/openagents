@@ -228,7 +228,9 @@ pub async fn run(
     let (inner, workdir, source, branch, issue) = match prepared {
         Ok(prepared) => prepared,
         Err(why) => {
-            say!("issue ▸ could not start the issue flow: {why}");
+            say!(
+                "issue ▸ couldn't set up the issue ({why}), so Coder answers in this checkout instead"
+            );
             // The ordinary turn answers instead, in the user's checkout.
             let fallback = Request {
                 issues: false,
@@ -238,7 +240,7 @@ pub async fn run(
         }
     };
     say!(
-        "issue ▸ working #{} in {} on {branch}",
+        "issue ▸ working on #{} in {}, on branch {branch}",
         reference.number,
         workdir.display()
     );
@@ -253,7 +255,7 @@ pub async fn run(
     // every test green.
     let finished = matches!(answer.report.status, crate::delegate::Status::Answered);
     if finished && let Some(text) = review_request(&workdir, reference.number) {
-        say!("issue ▸ reviewing the change against its callers");
+        say!("issue ▸ checking the code that uses what changed");
         let review = Request {
             request: text,
             review: true,
@@ -311,7 +313,10 @@ pub async fn run(
     }
     let closing = match outcome {
         Ok(line) => line,
-        Err(why) => format!("The run's changes stay in {}: {why}", workdir.display()),
+        Err(why) => format!(
+            "Coder couldn't open a pull request ({why}). The changes are in {}.",
+            workdir.display()
+        ),
     };
     say!("issue ▸ {closing}");
     answer.report.summary.result = Some(if what.is_empty() {
@@ -345,7 +350,10 @@ fn prepare(
         .trim()
         .to_string(),
     };
-    say!("issue ▸ reading {repository}#{}", reference.number);
+    say!(
+        "issue ▸ fetching {repository}#{} from GitHub",
+        reference.number
+    );
     let number = reference.number.to_string();
     let json = command(
         &request.workdir,
@@ -391,7 +399,7 @@ fn prepare(
     if let Some(source) = &source {
         let base = default_branch(source);
         say!(
-            "issue ▸ worktree of {} at origin/{base} in {}",
+            "issue ▸ creating a worktree of {} from origin/{base} in {}",
             source.display(),
             workdir.display()
         );
@@ -494,15 +502,15 @@ fn land(
         .success();
     if !changed {
         return Ok(format!(
-            "No changes, so no pull request. The checkout is {}.",
+            "Nothing changed, so there's no pull request. The checkout is in {}.",
             workdir.display()
         ));
     }
     let stat = command(workdir, "git", &["diff", "--cached", "--shortstat"])?;
-    say!("issue ▸ changed {}", stat.trim());
+    say!("issue ▸ {}", stat.trim());
     if !finished {
         return Ok(format!(
-            "The run did not finish, so its changes are staged but not committed in {}.",
+            "The work didn't finish, so the changes are staged but not committed in {}.",
             workdir.display()
         ));
     }
@@ -517,12 +525,12 @@ fn land(
         "git",
         &["commit", "-q", "-m", &issue.title, "-m", &summary],
     )?;
-    say!("issue ▸ pushing {branch}");
+    say!("issue ▸ pushing branch {branch}");
     command(workdir, "git", &["push", "-q", "-u", "origin", branch])?;
     // A loop that gave up on a requirement says so first, so nobody
     // reads the pull request as finished work.
     let warning = if stuck {
-        "**The loop gave up on a requirement before this opened: review it as unfinished.**\n\n"
+        "**Coder gave up on part of the issue. Review this as unfinished work.**\n\n"
     } else {
         ""
     };

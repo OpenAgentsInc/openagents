@@ -151,7 +151,7 @@ async fn main() -> ExitCode {
         );
         match atif::Log::create(&dir, &session) {
             Ok(log) => recorder = recorder.logging(log),
-            Err(error) => eprintln!("microluna: not tracing: {error}"),
+            Err(error) => eprintln!("microluna: can't record a trace: {error}"),
         }
     }
 

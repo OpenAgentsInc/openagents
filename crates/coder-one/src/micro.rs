@@ -1921,7 +1921,7 @@ impl Micro {
         match atif::Log::create_at(&self.artifacts.join(&trace), &atif_session) {
             Ok(log) => recorder = recorder.logging(log),
             Err(error) => crate::say::line(&format!(
-                "  microluna ▸ not tracing session {number}: {error}"
+                "  microluna ▸ can't record a trace of session {number}: {error}"
             )),
         }
         let left = self
@@ -2046,7 +2046,7 @@ impl Micro {
             })),
         );
         crate::say::line(&format!(
-            "  microluna ▸ session {number} ({}) {}{} in {:.1}s · {} turns ({} read-only) · {} calls · in {} (cached {}) out {} · ${:.5}",
+            "  microluna ▸ session {number} on {}: {}{} in {:.1} s, {} turns ({} only reading), {} tool calls, {} tokens in ({} cached), {} out, ${:.5}",
             focus.join(", "),
             ran.status(),
             match ran.cause() {
@@ -2057,9 +2057,9 @@ impl Micro {
             ran.turns,
             ran.read_turns,
             ran.calls,
-            ran.usage.input,
-            ran.usage.cached,
-            ran.usage.output,
+            crate::say::count(ran.usage.input),
+            crate::say::count(ran.usage.cached),
+            crate::say::count(ran.usage.output),
             ran.cost_usd.unwrap_or_default()
         ));
         ran
@@ -2539,7 +2539,7 @@ impl Micro {
             let dir = scratch("accept-base");
             if !parallel::copyable(&self.workdir) {
                 crate::say::line(
-                    "  microluna ▸ the workspace is too large to snapshot, so the suite comes first",
+                    "  microluna ▸ the workspace is too large to copy, so the tests are written before any fix",
                 );
                 None
             } else {
@@ -2547,7 +2547,7 @@ impl Micro {
                     Ok(()) => Some(dir),
                     Err(error) => {
                         crate::say::line(&format!(
-                            "  microluna ▸ no snapshot ({error}), so the suite comes first"
+                            "  microluna ▸ couldn't copy the workspace ({error}), so the tests are written before any fix"
                         ));
                         None
                     }
@@ -2588,9 +2588,9 @@ impl Micro {
             written_by.map_or_else(crate::accept::Options::default, SuiteWriter::options);
         options.test_jobs = self.policy.test_jobs as usize;
         crate::say::line(if snapshot.is_some() {
-            "  microluna ▸ writing the acceptance suite on a snapshot while session 1 starts"
+            "  microluna ▸ writing tests for the task on a copy of the workspace while session 1 starts"
         } else {
-            "  microluna ▸ writing the acceptance suite before any fix"
+            "  microluna ▸ writing tests for the task before any fix"
         });
         let define_started = atif::now_ms();
         let define = async {
@@ -2613,8 +2613,8 @@ impl Micro {
             {
                 let open: Vec<String> = suite.gaps.iter().map(|g| g.requirement.clone()).collect();
                 crate::say::line(&format!(
-                    "  microluna ▸ the suite is frozen partial (open: {}), so gap round 1 writes \
-                     deciding tests beside session 1",
+                    "  microluna ▸ the tests don't cover {} yet, so more tests are written \
+                     while session 1 works",
                     open.join(", ")
                 ));
                 let gap_inputs = crate::accept::Inputs {
@@ -2705,7 +2705,7 @@ impl Micro {
         let gap_overlapped = !overlapped_gap.is_null();
         if gap_overlapped {
             crate::say::line(&format!(
-                "  microluna ▸ gap round 1 beside session 1: {} new test{}",
+                "  microluna ▸ wrote {} more test{} while session 1 worked",
                 overlapped_gap["added"],
                 if overlapped_gap["added"] == 1 {
                     ""
@@ -2721,7 +2721,7 @@ impl Micro {
             + sessions.iter().filter_map(|r| r.cost_usd).sum::<f64>();
         if suite.tests.is_empty() {
             crate::say::line(
-                "  microluna ▸ the suite has no tests, so the requirements loop runs instead",
+                "  microluna ▸ no tests were written, so sessions work one requirement at a time instead",
             );
             return Err(sessions);
         }
@@ -2748,8 +2748,8 @@ impl Micro {
                 && let Some(differ) = unreproduced(&suite, start)
             {
                 crate::say::line(&format!(
-                    "  microluna ▸ the frozen suite doesn't reproduce its proof on the snapshot \
-                     ({differ} of {} tests differ), so the requirements loop runs instead",
+                    "  microluna ▸ {differ} of {} tests no longer fail the way they did when \
+                     written, so sessions work one requirement at a time instead",
                     start.tests.len()
                 ));
                 return Err(sessions);
@@ -2826,8 +2826,14 @@ impl Micro {
                 last_run = Some((tree, suite.digest.clone(), result.clone()));
             }
             crate::say::line(&format!(
-                "  microluna ▸ suite {label}: {} of {} green",
-                result.passed, result.total
+                "  microluna ▸ tests {}: {} of {} pass",
+                if number == 0 {
+                    "before any change".to_string()
+                } else {
+                    format!("after session {number}")
+                },
+                result.passed,
+                result.total
             ));
             // The frozen suite must fail the way its red-first proof did.
             // When most red tests now fail differently (a missing harness
@@ -2838,8 +2844,8 @@ impl Micro {
                 && let Some(differ) = unreproduced(&suite, &result)
             {
                 crate::say::line(&format!(
-                    "  microluna ▸ the frozen suite doesn't reproduce its proof ({differ} of {} tests \
-                     differ), so the requirements loop runs instead",
+                    "  microluna ▸ {differ} of {} tests no longer fail the way they did when \
+                     written, so sessions work one requirement at a time instead",
                     result.tests.len()
                 ));
                 return Err(sessions);
@@ -2857,8 +2863,8 @@ impl Micro {
                 result
             } else {
                 crate::say::line(&format!(
-                    "  microluna ▸ {} passed on the untouched workspace and {} red now; the loop \
-                     doesn't count {}",
+                    "  microluna ▸ {} passed before any change and {} failing now; the loop \
+                     ignores {}",
                     advisory.join(", "),
                     if advisory.len() == 1 { "is" } else { "are" },
                     if advisory.len() == 1 { "it" } else { "them" }
@@ -2898,8 +2904,8 @@ impl Micro {
                 gap_number += 1;
                 let open: Vec<String> = suite.gaps.iter().map(|g| g.requirement.clone()).collect();
                 crate::say::line(&format!(
-                    "  microluna ▸ the suite is green but partial (open: {}), so gap round \
-                     {gap_number} writes deciding tests on the snapshot",
+                    "  microluna ▸ the tests pass but don't cover {} yet, so round \
+                     {gap_number} writes more tests on a copy of the workspace",
                     open.join(", ")
                 ));
                 let gap_inputs = crate::accept::Inputs {
@@ -2950,7 +2956,7 @@ impl Micro {
                     "writer_usd": suite.writer_usd - usd_before,
                 }));
                 crate::say::line(&format!(
-                    "  microluna ▸ gap round {gap_number}: {added} new test{}; {}",
+                    "  microluna ▸ round {gap_number} wrote {added} more test{}; {}",
                     if added == 1 { "" } else { "s" },
                     suite.headline()
                 ));
@@ -3010,10 +3016,12 @@ impl Micro {
                     || !advisory_red.is_empty()
                     || done.is_none_or(|p| p < CLOSE_MIN);
                 crate::say::line(&format!(
-                    "  microluna ▸ joined close: done {}{}",
-                    done.map_or("unanswered".to_string(), |p| format!("p={p:.2}")),
+                    "  microluna ▸ final check: chance the task is done {}{}",
+                    done.map_or("unknown (Jev didn't answer)".to_string(), |p| format!(
+                        "{p:.2}"
+                    )),
                     if doubtful {
-                        ", so one audit session runs"
+                        ", so one more session reviews the work"
                     } else {
                         ""
                     }
@@ -3069,7 +3077,7 @@ impl Micro {
                             "output": crate::judge::clip_tail(&guard.output, 1_500),
                         }));
                         crate::say::line(&format!(
-                            "  microluna ▸ final guard: the task's own tests {}",
+                            "  microluna ▸ final check: the task's own tests {}",
                             if guard.green { "pass" } else { "fail" }
                         ));
                     }
@@ -3172,8 +3180,8 @@ impl Micro {
                             .collect();
                         if !broken.is_empty() {
                             crate::say::line(&format!(
-                                "  microluna ▸ session {} found the harness broken ({}), so the \
-                                 requirements loop runs instead",
+                                "  microluna ▸ session {} found the test setup broken ({}), so \
+                                 sessions work one requirement at a time instead",
                                 ran.number,
                                 broken.join(", ")
                             ));
@@ -3492,11 +3500,11 @@ impl Micro {
                 ),
             );
             crate::say::line(&format!(
-                "  microluna ▸ the loop stopped red{}, so session {number} audits the task",
+                "  microluna ▸ tests still fail{}, so session {number} reviews the whole task",
                 if missing.is_empty() {
                     String::new()
                 } else {
-                    format!(" with {} missing", missing.join(", "))
+                    format!(" and {} is missing", missing.join(", "))
                 }
             ));
             let ran = self
@@ -3559,7 +3567,7 @@ impl Micro {
         });
         summary["cost_usd"] = json!(spent);
         crate::say::line(&format!(
-            "  microluna ▸ parallel: {}",
+            "  microluna ▸ parallel sessions: {}",
             parallel::headline(&summary)
         ));
         self.recorder.push(
@@ -4122,7 +4130,7 @@ impl Micro {
             t as f64 * jev_component::USD_PER_MILLION_INPUT / 1_000_000.0
         });
         crate::say::line(&format!(
-            "  microluna ▸ plan: {} red units in {} lane{} ({})",
+            "  microluna ▸ plan: {} failing tests split across {} parallel session{} ({})",
             units.len(),
             lanes.len(),
             if lanes.len() == 1 { "" } else { "s" },
@@ -4193,7 +4201,7 @@ impl Micro {
         if let Err(error) = copied {
             let _ = std::fs::remove_dir_all(&root);
             crate::say::line(&format!(
-                "  microluna ▸ no copies for a parallel round ({error}); one session runs"
+                "  microluna ▸ couldn't copy the workspace for parallel sessions ({error}), so one session runs"
             ));
             let number = number + 1;
             let brief = self.suite_brief(
@@ -4215,7 +4223,7 @@ impl Micro {
             .collect();
         let n = lanes.len();
         crate::say::line(&format!(
-            "  microluna ▸ round {round}: sessions {} at once on {}",
+            "  microluna ▸ round {round}: sessions {} run at the same time on {}",
             numbers
                 .iter()
                 .map(u32::to_string)
@@ -4368,14 +4376,14 @@ impl Micro {
                 .join("\n")
         });
         crate::say::line(&format!(
-            "  microluna ▸ merged round {round}: {} of {n} sessions applied ({} files, {} joined line by line){}{}",
+            "  microluna ▸ round {round}: kept the changes from {} of {n} sessions ({} files, {} merged line by line){}{}",
             merged.applied.len(),
             merged.files.len(),
             merged.joined.len(),
             if merged.conflicts.is_empty() {
                 String::new()
             } else {
-                format!("; requeued {}", requeued.join(", "))
+                format!("; {} will run again", requeued.join(", "))
             },
             if leaked {
                 "; the workspace changed while the sessions ran"

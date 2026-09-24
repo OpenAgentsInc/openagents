@@ -754,7 +754,7 @@ async fn run_suite(
         })
         .collect();
     println!(
-        "  best of {} ▸ suite of {} command(s): {}",
+        "  best of {} ▸ tests passed per attempt, over {} test commands: {}",
         copies.len(),
         matrix.commands.len(),
         scores.join(", ")

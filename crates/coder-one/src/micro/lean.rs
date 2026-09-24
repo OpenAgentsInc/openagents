@@ -878,14 +878,20 @@ impl Micro {
                 }
             }
             crate::say::line(&format!(
-                "  microluna ▸ lean: session {number} {status}; score {}; {}{}",
-                score.map_or("none".to_string(), |(p, t)| format!("{p}/{t}")),
+                "  microluna ▸ session {number} {status}; {}; {}{}",
+                score.map_or("no tests ran".to_string(), |(p, t)| format!(
+                    "{p} of {t} tests pass"
+                )),
                 if flagged {
-                    "flagged as hard-coded"
+                    "the answer looks hard-coded"
                 } else {
-                    "not flagged"
+                    "the answer doesn't look hard-coded"
                 },
-                if kept { "; kept as best" } else { "" }
+                if kept {
+                    "; kept as the best so far"
+                } else {
+                    ""
+                }
             ));
             moves.push(json!({
                 "kind": "lean",

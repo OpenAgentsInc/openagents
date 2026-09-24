@@ -269,7 +269,11 @@ impl Generate for Door {
                 let backoff = Duration::from_secs(5 << (attempt - 1).min(4));
                 let wait = self.retry_after.take().unwrap_or(backoff).min(MAX_WAIT);
                 let wait = self.episode.allowance().map_or(wait, |left| wait.min(left));
-                println!("\n  gen ▸ retry {attempt} in {}s: {last}", wait.as_secs());
+                println!(
+                    "\n  gen ▸ retrying in {} s (try {}): {last}",
+                    wait.as_secs(),
+                    attempt + 1
+                );
                 tokio::time::sleep(wait).await;
             }
             let Some(limit) = self.episode.grant("generation", REQUEST_DEADLINE) else {
@@ -284,14 +288,14 @@ impl Generate for Door {
                     self.account(usage, &model);
                     let milliseconds = elapsed_ms(started);
                     println!(
-                        "\n  gen ▸ {:.1}s, {} in ({} cached) / {} out tokens, {}",
+                        "\n  gen ▸ {} answered in {:.1} s: {} tokens in ({} cached), {} out",
+                        if model.is_empty() { &self.lane } else { &model },
                         milliseconds as f64 / 1000.0,
-                        usage.input_tokens,
+                        crate::say::count(usage.input_tokens),
                         usage
                             .cached_tokens
-                            .map_or("?".to_string(), |c| c.to_string()),
-                        usage.output_tokens,
-                        if model.is_empty() { &self.lane } else { &model }
+                            .map_or("unknown".to_string(), crate::say::count),
+                        crate::say::count(usage.output_tokens)
                     );
                     let mut step = Step::said(Source::Agent, &reply)
                         .taking(milliseconds)
@@ -327,7 +331,7 @@ impl Generate for Door {
                 }
             }
         }
-        println!("\n  gen ▸ failed: {last}");
+        println!("\n  gen ▸ generation failed: {last}");
         self.recorder.push(
             Step::said(Source::System, &format!("generation failed: {last}"))
                 .taking(elapsed_ms(started))

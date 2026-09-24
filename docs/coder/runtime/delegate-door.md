@@ -161,11 +161,11 @@ draws the way a generated one does:
 | A command started | `Shell(Proposed)` |
 | A command finished | `Shell(Ran)`, with its exit code and output |
 | A file written or edited | `Judgment`, such as `update ▸ src/lib.rs` |
-| A probe, survey, or briefing line | `Judgment`, such as `survey ▸ 40 files judged …` |
-| A Microluna session starts | `Judgment`: `microluna ▸ session 2 works on R2 (group 2 of 3, attempt 1): <the requirement>` |
+| A probe, survey, or briefing line | `Judgment`, such as `survey ▸ Jev rated 40 files …` |
+| A Microluna session starts | `Judgment`: `microluna ▸ session 2 works on R2 (part 2 of 3, try 1): <the requirement>` |
 | A Microluna session calls `finish` | `Judgment`: `finish ▸ done: <its summary>` |
 | A Microluna session ends | `Judgment`: its status, time, turns, calls, tokens, and Luna cost |
-| Jev and code choose the next move | `Judgment`: `handoff ▸ after session 1: next · Jev picked next (0.91) · verdict pass` |
+| Jev and code choose the next move | `Judgment`: `next step ▸ after session 1: moving on from R1 (Jev wanted to move on, 0.91; the checks say it passed)` |
 
 Microluna's `run_command` and `read_file` calls are commands in the
 terminal, and its patches and writes are `Judgment` lines, so the

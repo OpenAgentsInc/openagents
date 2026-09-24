@@ -546,7 +546,10 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
         let env = |name: &str| std::env::var(name).ok();
         for agent in [Agent::ClaudeCode, Agent::Codex] {
             let Some(binary) = crate::delegate::binary(agent, env) else {
-                eprintln!("capabilities ▸ no {} binary; skipped", agent.program());
+                eprintln!(
+                    "capabilities ▸ skipped {}: it isn't installed",
+                    agent.program()
+                );
                 continue;
             };
             eprintln!(

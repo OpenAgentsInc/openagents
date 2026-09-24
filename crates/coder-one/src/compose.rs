@@ -1341,9 +1341,9 @@ async fn route(setup: &Setup<'_>, total: Option<u64>) -> (Routed, Value) {
         &record,
     );
     println!(
-        "  route ▸ {} {} · {}",
-        routed.start,
+        "  route ▸ starts on {} (the {} route): {}",
         routed.tier.label(),
+        routed.start,
         routed.reason
     );
     (routed, record)
@@ -1388,7 +1388,7 @@ async fn choose_effort(setup: &Setup<'_>, policy: &crate::effort::EffortPolicy) 
         &format!("effort {}", decided.effort),
         &record,
     );
-    println!("  effort ▸ {} · {}", decided.effort, decided.reason);
+    println!("  effort ▸ {}: {}", decided.effort, decided.reason);
     (decided.effort, record)
 }
 
@@ -1554,7 +1554,9 @@ where
     {
         planned = plan_first(setup, &planner, factory, &mut runs, &horizon, &mut branches).await;
         if let Some(limit) = limited(setup.recorder) {
-            println!("  usage limit ▸ the planner's session was throttled; stopping");
+            println!(
+                "  usage limit ▸ the provider throttled the planner's session, so the run stops"
+            );
             let record = json!({ "schema": SCHEMA, "route": route_record, "planner": planned, "branches": branches, "usage_limited": limit });
             let ended = Ended::Delegated {
                 answered: false,
@@ -1608,7 +1610,7 @@ where
                 Some(fan)
             }
             Err(why) => {
-                println!("  best of {} ▸ one candidate: {why}", policy.n);
+                println!("  best of {} ▸ only one attempt runs: {why}", policy.n);
                 best_of_record = json!({ "n": policy.n, "skipped": why, "policy": policy });
                 record_decision(
                     setup.recorder,
@@ -1720,7 +1722,9 @@ where
     // would draw on the same exhausted quota.
     let mut usage_limited = limited(setup.recorder);
     if usage_limited.is_some() {
-        println!("  usage limit ▸ the first executor's session was throttled; stopping");
+        println!(
+            "  usage limit ▸ the provider throttled the first agent's session, so the run stops"
+        );
     }
 
     // verify.snapshot: what the first executor left, with the subject the
@@ -1738,13 +1742,13 @@ where
             "  snapshot ▸ {}",
             if taken["taken"] == true {
                 format!(
-                    "{} files, {} bytes archived",
+                    "saved {} files ({} bytes)",
                     taken["files"], taken["archive"]["bytes"]
                 )
             } else {
                 format!(
-                    "subject only: {}",
-                    taken["reason"].as_str().unwrap_or("not archived")
+                    "saved only the files under review: {}",
+                    taken["reason"].as_str().unwrap_or("no reason recorded")
                 )
             }
         );
@@ -1856,7 +1860,7 @@ where
             });
             record_decision(setup.recorder, handoff::COMPONENT, "escalate", &record);
             println!(
-                "  handoff ▸ escalate {} → {} ({trigger})",
+                "  handoff ▸ handing the task from {} to {} ({trigger})",
                 first.label(),
                 to.label()
             );
@@ -2641,7 +2645,7 @@ async fn verify_by_second<F: Factory>(
             .horizon
             .dispatch_sec(setup.deadline.allowance(), context.fallback, policy.share);
     println!(
-        "  second ▸ {} on the original state ({trigger})",
+        "  second ▸ {} tries again from the original files ({trigger})",
         tier.label()
     );
     let mut exec = factory.make(&tier, Duration::from_secs(sec), *runs)?;
@@ -2766,7 +2770,7 @@ async fn verify_by_second<F: Factory>(
         record["restore_error"] = json!(error);
     }
     println!(
-        "  second ▸ kept the {} candidate · {why}",
+        "  second ▸ kept the {} attempt: {why}",
         if keep_second { "second" } else { "first" }
     );
     let record = finish(record, &base);

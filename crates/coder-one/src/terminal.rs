@@ -209,7 +209,7 @@ pub struct Request {
     /// clone: it runs under [`ISSUE_DIRECTIONS`] and [`issue_policy`].
     pub issue: bool,
     /// Whether this turn reviews the issue flow's change before it lands:
-    /// one session over the diff and the changed functions' callers, which
+    /// one session over the diff and the code that uses what changed, which
     /// the request carries, with no survey.
     pub review: bool,
 }
@@ -411,7 +411,10 @@ pub async fn answer(request: &Request, on: Rc<dyn Fn(Progress)>) -> Answer {
         && request.agent == Agent::Microluna
         && let Some(reference) = crate::issue_turn::asked(request, &recorder).await
     {
-        crate::say::say!("route ▸ work issue #{}: the issue flow", reference.number);
+        crate::say::say!(
+            "route ▸ issue #{} asks for work, so Coder works it on a new branch",
+            reference.number
+        );
         return crate::issue_turn::run(request, reference, on, &recorder).await;
     }
     let policy = policy();
@@ -447,7 +450,7 @@ pub async fn answer(request: &Request, on: Rc<dyn Fn(Progress)>) -> Answer {
         )
         .probe_v2(v2 && policy.deep());
     if request.jev.is_none() {
-        crate::say::say!("jev ▸ no TypeSafe key: the briefing carries the request alone");
+        crate::say::say!("jev ▸ no TypeSafe key, so the briefing holds only your request");
     }
     // A question goes straight to one session: no requirement map, probe
     // battery, file survey, or checks, which are for changing files. With no
@@ -457,9 +460,11 @@ pub async fn answer(request: &Request, on: Rc<dyn Fn(Progress)>) -> Answer {
     // A review is one session too: the host already gathered its evidence.
     let question = asked || request.review;
     if request.review {
-        crate::say::say!("review ▸ one session over the diff and its callers");
+        crate::say::say!("review ▸ one session reads the diff and the code that uses what changed");
     } else if question {
-        crate::say::say!("route ▸ a question: one session, no survey");
+        crate::say::say!(
+            "route ▸ a question, so one session answers it without scanning files first"
+        );
     } else {
         judge.survey(&mut state).await;
     }
@@ -576,8 +581,8 @@ pub async fn answer(request: &Request, on: Rc<dyn Fn(Progress)>) -> Answer {
             &briefing.text,
         ));
         crate::say::say!(
-            "brief ▸ {} characters · {} included · {} left out",
-            briefing.chars(),
+            "brief ▸ the briefing is {} characters: {} items in, {} left out to fit",
+            crate::say::count(briefing.chars() as u64),
             briefing.included.len(),
             briefing.omitted.len()
         );
@@ -603,7 +608,7 @@ pub async fn answer(request: &Request, on: Rc<dyn Fn(Progress)>) -> Answer {
             && report.summary.result.as_deref().is_none_or(str::is_empty);
         if lost {
             crate::say::say!(
-                "delegate ▸ could not resume session {}: {}; starting a new one",
+                "delegate ▸ couldn't resume session {} ({}), so starting a new one",
                 resume.as_deref().unwrap_or_default(),
                 report.status
             );
@@ -849,10 +854,15 @@ async fn microluna_turn(turn: Turn<'_>) -> Answer {
     micro.take_evidence(&prepared);
     recorder.watch(watcher(on.clone(), hushed, texts));
     on(Progress::Line(format!(
-        "delegate ▸ microluna ({model}) in a {boundary_words} boundary · {} evidence items · up to {} sessions, ${:.2}",
+        "delegate ▸ Microluna ({model}) takes over with {} findings, up to {} sessions, and ${:.2}; it {}",
         prepared.items.len(),
         micro.policy.max_sessions,
-        micro.policy.spend_usd
+        micro.policy.spend_usd,
+        if read_only {
+            "can only read files"
+        } else {
+            "can write only inside this workspace"
+        }
     )));
     let mut report = crate::delegate::delegate(
         &mut micro,
@@ -881,10 +891,10 @@ async fn microluna_turn(turn: Turn<'_>) -> Answer {
     }
     let sessions = record["sessions"].as_array().map_or(0, Vec::len);
     on(Progress::Line(format!(
-        "microluna ▸ {sessions} session{} · Luna ${:.5} · stopped at {}",
+        "microluna ▸ {sessions} session{}, ${:.5} in Luna calls; stopped: {}",
         if sessions == 1 { "" } else { "s" },
         report.summary.total_cost_usd.unwrap_or_default(),
-        record["stopped"].as_str().unwrap_or("an unknown point")
+        record["stopped"].as_str().unwrap_or("reason not recorded")
     )));
 
     let steps = recorder.steps();
@@ -1058,7 +1068,13 @@ fn watcher(
             .and_then(|rest| rest.split_once(" because session "))
             .and_then(|(_, rest)| rest.split_once(". Briefing:"))
         {
-            *why.borrow_mut() = Some(format!("session {}", rest.0));
+            // The record says "group 2 of 3, attempt 1"; the line says
+            // "part 2 of 3, try 1".
+            let plain = rest
+                .0
+                .replace(" (group ", " (part ")
+                .replace(", attempt ", ", try ");
+            *why.borrow_mut() = Some(format!("session {plain}"));
         }
     }
 }
@@ -1069,42 +1085,67 @@ fn session_line(number: &str, event: &Value) -> String {
     let summary = &event["output"]["summary"];
     let usage = &summary["usage"];
     format!(
-        "microluna ▸ {number} {} in {:.1}s · {} turns · {} calls · in {} (cached {}) out {} · ${:.5}",
+        "microluna ▸ {number} {} in {:.1} s: {} turns, {} tool calls, {} tokens in ({} cached), {} out, ${:.5}",
         summary["status"].as_str().unwrap_or("ended"),
         event["milliseconds"].as_f64().unwrap_or_default() / 1000.0,
         summary["turns"],
         summary["calls"],
-        usage["input"],
-        usage["cached"],
-        usage["output"],
+        crate::say::count(usage["input"].as_u64().unwrap_or_default()),
+        crate::say::count(usage["cached"].as_u64().unwrap_or_default()),
+        crate::say::count(usage["output"].as_u64().unwrap_or_default()),
         summary["cost_usd"].as_f64().unwrap_or_default()
     )
 }
 
-/// One line for a move between sessions: what Jev picked, how sure it
-/// was, what the combined verdict said, and what code settled on.
+/// One line for a move between sessions: what happens next, what Jev
+/// suggested and how sure it was, and what the checks said. The trace
+/// keeps the code rule's full reason when it overrode Jev.
 fn handoff_line(handoff: &Value) -> String {
+    let focus = handoff["focus"]
+        .as_array()
+        .map(|ids| {
+            ids.iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<_>>()
+                .join(", ")
+        })
+        .filter(|ids| !ids.is_empty())
+        .unwrap_or_else(|| "this part".to_string());
+    let tried = match handoff["attempts"].as_u64().unwrap_or_default() {
+        0 => String::new(),
+        1 => " after 1 try".to_string(),
+        n => format!(" after {n} tries"),
+    };
+    let next = match handoff["move"].as_str() {
+        Some("next") => format!("moving on from {focus}"),
+        Some("retry") => format!("trying {focus} again"),
+        Some("stuck") => format!("giving up on {focus}{tried}"),
+        Some("done") => "the task is done".to_string(),
+        Some(other) => other.to_string(),
+        None => "no decision recorded".to_string(),
+    };
     let picked = handoff["jev"]["picked"].as_str();
     let p = picked
         .and_then(|picked| handoff["jev"]["probabilities"][picked].as_f64())
-        .map(|p| format!(" ({p:.2})"))
+        .map(|p| format!(", {p:.2}"))
         .unwrap_or_default();
     let jev = match picked {
-        Some(picked) => format!("Jev picked {picked}{p}"),
-        None => "Jev gave no answer".to_string(),
+        Some("next") => format!("Jev wanted to move on{p}"),
+        Some("retry") => format!("Jev wanted another try{p}"),
+        Some("stuck") => format!("Jev wanted to give up{p}"),
+        Some("done") => format!("Jev said the task is done{p}"),
+        Some(other) => format!("Jev picked {other}{p}"),
+        None => "Jev didn't answer".to_string(),
     };
-    let verdict = handoff["verdict"]["call"]
-        .as_str()
-        .map(|call| format!(" · verdict {call}"))
-        .unwrap_or_default();
-    let code = handoff["overridden"]
-        .as_str()
-        .map(|why| format!(" · code: {why}"))
-        .unwrap_or_default();
+    let check = match handoff["verdict"]["call"].as_str() {
+        Some("pass") => "; the checks say it passed",
+        Some("fail") => "; the checks say it failed",
+        Some("unknown") => "; the checks couldn't tell",
+        _ => "",
+    };
     format!(
-        "handoff ▸ after session {}: {} · {jev}{verdict}{code}",
+        "next step ▸ after session {}: {next} ({jev}{check})",
         handoff["after_session"],
-        handoff["move"].as_str().unwrap_or("?"),
     )
 }
 
@@ -1137,6 +1178,26 @@ mod tests {
     }
 
     use super::*;
+
+    /// The line between sessions says what happens next in plain words,
+    /// not the move's code word.
+    #[test]
+    fn a_move_between_sessions_reads_as_plain_words() {
+        let line = handoff_line(&json!({
+            "after_session": 2,
+            "focus": ["R1"],
+            "attempts": 2,
+            "move": "stuck",
+            "jev": { "picked": "retry", "probabilities": { "retry": 0.9 } },
+            "verdict": { "call": "fail" },
+            "overridden": "the group had its 2 attempts, so retry became stuck",
+        }));
+        assert_eq!(
+            line,
+            "next step ▸ after session 2: giving up on R1 after 2 tries \
+             (Jev wanted another try, 0.90; the checks say it failed)"
+        );
+    }
 
     #[test]
     fn the_terminal_policy_is_the_lean_opus_arm() {
@@ -1445,7 +1506,7 @@ echo '{"type":"result","subtype":"success","is_error":false,"num_turns":1,"resul
         assert!(answer.briefing.text.starts_with(HEAD));
         assert!(heard.iter().any(|progress| matches!(
             progress,
-            Progress::Line(line) if line.contains("could not resume session gone")
+            Progress::Line(line) if line.contains("couldn't resume session gone")
         )));
     }
 

@@ -564,7 +564,7 @@ pub async fn run_accept(
         .map(|s| s.map_or_else(|| "-".to_string(), |(g, t)| format!("{g}/{t}")))
         .collect();
     println!(
-        "  best of {} ▸ acceptance suite of {} test(s): {}",
+        "  best of {} ▸ tests passed per attempt, of {} written for the task: {}",
         scores.len(),
         suite.tests.len(),
         shown.join(", ")

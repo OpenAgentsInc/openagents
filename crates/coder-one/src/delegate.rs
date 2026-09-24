@@ -454,7 +454,7 @@ impl<J: Explorer> Judge for Watch<'_, J> {
                 .policy
                 .stalled(&self.inner.jev().evidence.outcomes, unchanged_for)
         {
-            crate::say::say!("  host ▸ escalating: {reason}");
+            crate::say::say!("  host ▸ stopping to hand the task on: {reason}");
             return Judgments::Stop(reason);
         }
         judgments
@@ -1997,13 +1997,16 @@ impl Cli {
             return harness(why);
         }
         crate::say::say!(
-            "  delegate ▸ {} ({}) · deadline {}s · briefing {} characters",
+            "  delegate ▸ {} ({}) takes over with a {}-character briefing and {} s to finish",
             self.agent(),
             self.model,
-            deadline.as_secs(),
-            briefing.chars()
+            crate::say::count(briefing.chars() as u64),
+            deadline.as_secs()
         );
-        crate::say::say!("  delegate ▸ stream → {}", stream_path.display());
+        crate::say::say!(
+            "  delegate ▸ writing its output to {}",
+            stream_path.display()
+        );
         // The session runs under the host loop, which reads the stream as
         // it arrives and records each normalized event. The deadline is
         // the host's stop, acknowledged once the process group is empty.
@@ -2585,7 +2588,7 @@ where
         return (explored, None);
     };
     crate::say::say!("\n── delegate ──");
-    crate::say::say!("  host ▸ delegating: {reason}");
+    crate::say::say!("  host ▸ handing the task to another agent: {reason}");
     let inputs = BriefingInputs::gather(
         state,
         &judge.jev().evidence,
@@ -2655,9 +2658,9 @@ where
     );
     if !briefing.omitted.is_empty() {
         crate::say::say!(
-            "  host ▸ briefing left out {} items for the {}-character cap",
+            "  host ▸ left {} items out of the briefing to keep it under {} characters",
             briefing.omitted.len(),
-            plan.cap
+            crate::say::count(plan.cap as u64)
         );
     }
     // An executor that rebuilds its own context per session reads what the
@@ -2748,7 +2751,7 @@ where
         .cost(cost),
     );
     crate::say::say!(
-        "  delegate ▸ {} in {:.1}s · {} turns · {} · {}",
+        "  delegate ▸ {} in {:.1} s: {} turns, {}. {}",
         report.status,
         report.milliseconds as f64 / 1000.0,
         report
@@ -2758,7 +2761,7 @@ where
         report
             .summary
             .total_cost_usd
-            .map_or("cost unknown".to_string(), |usd| format!("${usd:.4}")),
+            .map_or("cost not reported".to_string(), |usd| format!("${usd:.4}")),
         report
             .summary
             .result
@@ -2813,7 +2816,20 @@ where
             p.map_or("not judged".to_string(), |p| format!("p={p:.2}"))
         ));
     }
-    crate::say::say!("  jev ▸ {}", note.replace('\n', "\n        "));
+    let mut shown = match close.done {
+        Some(p) => format!("closing check: chance the task is done {p:.2}"),
+        None => format!(
+            "closing check: Jev didn't answer ({})",
+            close.unavailable.as_deref().unwrap_or("no reason given")
+        ),
+    };
+    for (requirement, p) in &close.criteria {
+        shown.push_str(&format!(
+            "\n- {requirement}: {}",
+            p.map_or("not rated".to_string(), |p| format!("{p:.2}"))
+        ));
+    }
+    crate::say::say!("  jev ▸ {}", shown.replace('\n', "\n        "));
     recorder.push(Step::said(Source::System, &note));
     let ended = ending(&explored, &report, state.history.len(), &state.issue.title);
     (

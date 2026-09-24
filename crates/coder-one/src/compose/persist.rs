@@ -837,7 +837,7 @@ pub(super) async fn run<F: Factory>(
             context.fallback,
             policy.share,
         );
-        println!("  persist ▸ round {n} · {} · asks {sec}s", tier.label());
+        println!("  persist ▸ round {n}: {} with {sec} s", tier.label());
         let round = recorder.enter(
             Start::new(
                 COMPONENT,
@@ -1180,8 +1180,8 @@ pub(super) async fn run<F: Factory>(
             .output(entry.clone()),
         );
         println!(
-            "  persist ▸ round {n} {} · {} files changed · {} failed after · own tests +{} −{}",
-            if kept { "kept" } else { "put back" },
+            "  persist ▸ round {n} {}: {} files changed, {} checks fail now, the task's own tests {} fixed and {} broken",
+            if kept { "kept" } else { "undone" },
             entry["files_changed"].as_array().map_or(0, Vec::len),
             after.failed,
             delta.tests_fixed,

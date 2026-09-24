@@ -412,7 +412,7 @@ pub async fn run(options: Options, progress: &Progress) -> Result<(Value, i32), 
             )
         })?;
         progress.line(&format!(
-            "record ▸ {} isn't writable here ({error}), so the ask records under {}",
+            "record ▸ can't write to {} ({error}), so this ask is recorded under {}",
             root.display(),
             fallback.display()
         ));
@@ -563,7 +563,7 @@ pub async fn run(options: Options, progress: &Progress) -> Result<(Value, i32), 
             .cost(Cost::none()),
     );
     progress.line(&format!(
-        "brief ▸ {} characters, {} runs opened of {} candidates",
+        "brief ▸ the briefing is {} characters, from {} of {} candidate runs",
         briefing.chars().count(),
         gathered.inputs.opened.len(),
         gathered.candidates
@@ -609,7 +609,7 @@ pub async fn run(options: Options, progress: &Progress) -> Result<(Value, i32), 
             "replayed".to_string(),
         )
     } else if remaining <= 0.0 {
-        progress.line("executor ▸ skipped: Jev spent the budget");
+        progress.line("executor ▸ skipped: Jev used up the budget");
         (
             None,
             json!({ "skipped": "Jev spent the budget" }),
@@ -1157,14 +1157,14 @@ async fn gather_gym(
             picked.truncate(gather::MAX_OPENED);
         }
         progress.line(&format!(
-            "jev ▸ {} of {} candidate runs bear on the question{}",
+            "jev ▸ {} of {} candidate runs are relevant to the question{}",
             relevance.values().filter(|p| **p >= gather::YES).count(),
             candidates.len(),
             if asked.answered() {
                 String::new()
             } else {
                 format!(
-                    "; Jev didn't answer ({}), so code's order picks",
+                    "; Jev didn't answer ({}), so a fixed order picks the runs",
                     asked.error.as_deref().unwrap_or("off")
                 )
             }
@@ -1267,7 +1267,7 @@ async fn gather_gym(
                     .collect();
             }
             progress.line(&format!(
-                "jev ▸ {} of {} transcript steps bear on the question",
+                "jev ▸ {} of {} transcript steps are relevant to the question",
                 probabilities
                     .values()
                     .filter(|p| **p >= gather::YES)
@@ -1356,7 +1356,7 @@ async fn gather_repo(
     let mut gathered = Gathered::default();
     let words = gather::keywords(&options.question);
     let Some(rg) = allow::which("rg") else {
-        progress.line("probe ▸ rg is not on PATH; the briefing has no files");
+        progress.line("probe ▸ rg isn't installed, so the briefing has no files");
         return gathered;
     };
     if words.is_empty() {
@@ -1426,7 +1426,7 @@ async fn gather_repo(
         progress,
     );
     progress.line(&format!(
-        "jev ▸ {} of {} files bear on the question",
+        "jev ▸ {} of {} files are relevant to the question",
         picked.len(),
         files.len()
     ));
@@ -1482,7 +1482,7 @@ fn record_proposals(
     match crate::proposal::record_all(answer, &context, &root) {
         Ok(records) => {
             progress.line(&format!(
-                "proposals ▸ {} of {} validate; each waits for a person's approval under {}",
+                "proposals ▸ {} of {} are valid; each waits under {} for a person to approve it",
                 records.iter().filter(|r| r["valid"] == true).count(),
                 records.len(),
                 root.display()

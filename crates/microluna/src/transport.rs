@@ -158,12 +158,14 @@ impl fmt::Display for TransportError {
         match self {
             TransportError::Login(error) => write!(f, "the Codex login can't be used: {error}"),
             TransportError::Http { status, body } => {
-                write!(f, "the provider answered {status}: {body}")
+                write!(f, "the provider returned HTTP {status}: {body}")
             }
-            TransportError::Stream(why) => write!(f, "the stream broke: {why}"),
+            TransportError::Stream(why) => write!(f, "the response stream stopped early: {why}"),
             TransportError::Failed(why) => write!(f, "the response failed: {why}"),
             TransportError::Incomplete(why) => write!(f, "the response is incomplete: {why}"),
-            TransportError::Exhausted => write!(f, "the fake transport's script ran out"),
+            TransportError::Exhausted => {
+                write!(f, "the test transport has no scripted replies left")
+            }
         }
     }
 }
