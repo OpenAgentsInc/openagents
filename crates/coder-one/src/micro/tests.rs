@@ -246,6 +246,8 @@ fn a_contradicting_check_keeps_the_loop_on_its_group() {
         changed: vec!["src/lib.rs".to_string()],
         edited: true,
         ran_after_edit: true,
+        changed_workspace: true,
+        ran_command: true,
         read_only: false,
     };
     let at = |contradicted, verdict_fail, last, attempts| Signals {

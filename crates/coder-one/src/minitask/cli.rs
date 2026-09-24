@@ -33,7 +33,9 @@ gpt-6-luna is the Luna arm. microluna runs Microluna in this process on the
 Codex login, with each command inside a coder-boundary boundary: --microluna
 requirements (the default) runs short sessions one requirement group at a
 time, with the checks and a Jev move between them, and --microluna single
-runs one session on the briefing. --controls names a JSON file of session
+runs one session on the briefing. --read-first (with --microluna
+requirements) runs a read-only reconnaissance session on each group before
+its edit sessions. --controls names a JSON file of session
 controls (deadline_ms, tick_ms, steer, stop_when, resume) for the scripted
 executor. verify.checks observes the workspace before the grader runs
 unless --no-checks is given. --monitor watches the session with
@@ -76,6 +78,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
     let mut repair_brief = "packet".to_string();
     let mut repair_trigger = "detected".to_string();
     let mut microluna_mode = "requirements".to_string();
+    let mut read_first = false;
     let mut iter = rest.iter();
     while let Some(arg) = iter.next() {
         let mut value = |name: &str| {
@@ -107,6 +110,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
             "--repair-brief" => repair_brief = value("--repair-brief")?,
             "--repair-trigger" => repair_trigger = value("--repair-trigger")?,
             "--microluna" => microluna_mode = value("--microluna")?,
+            "--read-first" => read_first = true,
             other if other.starts_with("--") => return Err(format!("unknown option {other}")),
             other => positional.push(other.to_string()),
         }
@@ -194,6 +198,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
                             }
                         },
                         session_sec: deadline.min(600),
+                        read_first,
                         ..crate::micro::Policy::default()
                     },
                 },

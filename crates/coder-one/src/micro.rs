@@ -336,12 +336,30 @@ struct Ran {
     trace: String,
     commands: Vec<(String, Option<i64>)>,
     changed: Vec<String>,
-    /// The session made at least one edit.
+    /// The session made at least one edit with a file tool.
     edited: bool,
-    /// A command ran after the session's last edit: the edit was exercised.
+    /// A command ran after the session's last file-tool edit: the edit was
+    /// exercised.
     ran_after_edit: bool,
+    /// The workspace changed during the session: a file-tool edit, or, in a
+    /// Git work tree, a moved HEAD or a changed status. A task done through
+    /// commands alone (a git recovery, an `mv`, a `sed -i`) changes it
+    /// without a file-tool edit.
+    changed_workspace: bool,
+    /// A real command ran, not just a file read.
+    ran_command: bool,
     /// The session ran read-only, so it was never meant to edit.
     read_only: bool,
+}
+
+impl Ran {
+    /// Whether the session did work worth ending or advancing on: it
+    /// changed the workspace and ran a command that could exercise the
+    /// change. A file-tool edit needs a command after it; a change made
+    /// through commands already ran one.
+    fn evidence(&self) -> bool {
+        (self.edited && self.ran_after_edit) || (self.changed_workspace && self.ran_command)
+    }
 }
 
 impl Ran {
@@ -389,6 +407,8 @@ impl Ran {
             "changed": self.changed,
             "edited": self.edited,
             "ran_after_edit": self.ran_after_edit,
+            "changed_workspace": self.changed_workspace,
+            "ran_command": self.ran_command,
             "read_only": self.read_only,
         })
     }
@@ -699,6 +719,28 @@ fn sha256(text: &str) -> String {
         .collect()
 }
 
+/// A signature of the Git work tree at `dir`: the HEAD commit and the
+/// porcelain status, so a session that moves HEAD or changes a file is
+/// seen even when it edits through commands. `None` when `dir` isn't a Git
+/// work tree, where a file-tool edit is the only change worth counting.
+fn git_signature(dir: &Path) -> Option<String> {
+    let run = |args: &[&str]| {
+        std::process::Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .output()
+            .ok()
+            .filter(|out| out.status.success())
+            .map(|out| String::from_utf8_lossy(&out.stdout).into_owned())
+    };
+    if run(&["rev-parse", "--is-inside-work-tree"])?.trim() != "true" {
+        return None;
+    }
+    let head = run(&["rev-parse", "HEAD"]).unwrap_or_default();
+    let status = run(&["status", "--porcelain"]).unwrap_or_default();
+    Some(format!("{head}\n{status}"))
+}
+
 fn millis(since: Instant) -> u64 {
     u64::try_from(since.elapsed().as_millis()).unwrap_or(u64::MAX)
 }
@@ -860,6 +902,9 @@ impl Micro {
         // it: at the end it says whether the last edit went untested.
         let untested_edit = Rc::new(Cell::new(false));
         let ran_after_edit = Rc::new(Cell::new(false));
+        // Set when any command that isn't a file read runs.
+        let ran_command = Rc::new(Cell::new(false));
+        let before = git_signature(&self.workdir);
         let sink = {
             let recorder = self.recorder.clone();
             let session_id = session_id.clone();
@@ -869,6 +914,7 @@ impl Micro {
             let changed = changed.clone();
             let untested_edit = untested_edit.clone();
             let ran_after_edit = ran_after_edit.clone();
+            let ran_command = ran_command.clone();
             move |step: &Step| {
                 if step.call.is_some() || step.source == atif::Source::Agent {
                     crate::say::line(&format!("  {}", microluna::session::line(step)));
@@ -880,9 +926,12 @@ impl Micro {
                         } => {
                             commands.borrow_mut().push((command.clone(), *exit_code));
                             // A read_file's synthetic command doesn't test an edit.
-                            if !command.starts_with("read_file ") && untested_edit.get() {
-                                untested_edit.set(false);
-                                ran_after_edit.set(true);
+                            if !command.starts_with("read_file ") {
+                                ran_command.set(true);
+                                if untested_edit.get() {
+                                    untested_edit.set(false);
+                                    ran_after_edit.set(true);
+                                }
                             }
                         }
                         EventKind::ArtifactChanged { path, .. } => {
@@ -941,8 +990,14 @@ impl Micro {
             ),
             deadline: Some(Duration::from_secs(self.policy.session_sec).min(left)),
         };
-        let workspace = microluna::Workspace::new(&self.workdir)
-            .map(|workspace| workspace.isolated_by(self.isolation));
+        let workspace = microluna::Workspace::new(&self.workdir).map(|workspace| {
+            let workspace = workspace.isolated_by(self.isolation);
+            if read_only {
+                workspace.reading_only()
+            } else {
+                workspace
+            }
+        });
         let report = match (&self.wire, workspace) {
             (Ok(wire), Ok(workspace)) => {
                 microluna::run(wire, &workspace, brief, &config, &mut recorder).await
@@ -989,6 +1044,10 @@ impl Micro {
             changed: changed.borrow().clone(),
             edited: !changed.borrow().is_empty(),
             ran_after_edit: ran_after_edit.get(),
+            changed_workspace: !changed.borrow().is_empty()
+                || git_signature(&self.workdir)
+                    .is_some_and(|after| Some(&after) != before.as_ref()),
+            ran_command: ran_command.get(),
             read_only,
         };
         // The dispatch's exec.session carries the sessions' cost, as it
@@ -1154,7 +1213,7 @@ impl Micro {
                 verdict_fail: verdict.call == "fail",
                 last: later.is_empty(),
                 read_only: ran.read_only,
-                evidence: ran.edited && ran.ran_after_edit,
+                evidence: ran.evidence(),
                 require_evidence: self.policy.require_evidence,
                 attempts,
                 max_attempts: self.policy.max_attempts,
