@@ -1,0 +1,30 @@
+{
+  "trial": "embedding-drift-monitor__uU3ZNb9",
+  "source": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v12--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__uU3ZNb9/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+  "stream_sha256": "1a6917a4a8fd3edddc3e69e648129f17173a03781f77778e92eaba9ce2f1562a",
+  "read_call_id": "call_az5ou4LL4Z9LmYxoYODEnsM6",
+  "method": "Final collected artifacts with every production module replaced by its complete pre-edit source dump in the review trace. This is a reconstruction, not an original snapshot.",
+  "source_files": {
+    "drift_monitor/__init__.py": "c4499b0559af0a8857a647c5fcc8102ca632e00597754850fdec197fcf8abdaf",
+    "drift_monitor/__main__.py": "bc27d8196cc0035bf9bc1c252d9de219e75023ad87314ce954c1106cb23af387",
+    "drift_monitor/alert.py": "9a0340fadc74add6d6c6c18a49f42e9e9a4eed16633220cc1dda5033b4e97131",
+    "drift_monitor/calibration.py": "43c959729efa3bffd6c995a1d4e31c5ac36a4f982b00e71c68d229caccd0c3a7",
+    "drift_monitor/distance.py": "8ea1b0d2a05a867ae45f0c53a1daddb4a8943510f51e7c3874e72d491a2d776b",
+    "drift_monitor/monitor.py": "368e351f53ce40ed84a9e5d66779401ce7b381caf19a65963035a11ed3dd84ea",
+    "drift_monitor/normalize.py": "d66c939e5a9d29b09654629b26bc75930df71bd7110bab5237902a773fdc4ceb",
+    "drift_monitor/statistical_tests.py": "0801871567a7a42620e3287142bfc55dddb9506ee18cb5c0a054a511ae9bbf3e",
+    "drift_monitor/windowing.py": "3ae13bc5fcc02e3fdaccd0e498caca874622f7163e573aa244270e4e700dfba8"
+  },
+  "grade": {
+    "reward": 0.0,
+    "rewards": {
+      "reward": 0.0
+    },
+    "exit": 0,
+    "exception": null,
+    "message": null,
+    "image_cache": "warm",
+    "trial_dir": "/home/christopherdavid/.openagents/terminal-bench/experiments/candidate-evidence-9607/reconstructed-v12-embedding-r1-before-review/verification/verify__e015270",
+    "stdout_tail": null
+  }
+}

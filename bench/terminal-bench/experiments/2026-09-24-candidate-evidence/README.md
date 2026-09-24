@@ -13,7 +13,7 @@ binary, task revision, policy digests, and planned attempts. Both arms use
 Microluna's native tools, and identical session and spending bounds.
 `microluna-evidence-v1` adds retained candidate selection and an observational
 review to v12. Common score-validation fixes are present in both arms.
-The later v13 merge does not change this binary or either arm.
+The later v13/v14 merges do not change this binary or either arm.
 
 There are three attempts per arm on each task, 12 planned attempts total.
 Two trials can run at once. The planned total model-spend ceiling is $3;
@@ -50,12 +50,24 @@ candidate snapshots, final selection, and official verifier result. The
 retention manifest records file digests, missing references, bounds, and the
 credential scan. A scalar local score does not substitute for that evidence.
 
+The v12 control preserves its original policy behavior, which deletes its
+temporary evaluator and intermediate candidate copies. Its full native
+traces, usage, final artifacts, and official result are retained, but its
+intermediate candidate oracle is unavailable. The post-run candidate grades
+therefore measure oracle headroom for the treatment only. A retention record
+with no missing referenced files does not establish that v12 recorded those
+unreferenced temporary directories.
+
 ## Startup incidents
 
-The first launch at 21:08 UTC on September 24 failed during Harbor's Docker
-network-capability check. The required allowlist was not relaxed. The
+The first launch at 21:08 UTC on September 24 encountered Harbor's Docker
+network-capability failure. The required allowlist was not relaxed. The
 experiment was stopped, the actual kernel probe was rerun successfully, and
 the unchanged experiment resumed at 21:16 UTC with the egress-control sidecar
-running. Startup failures and interrupted setup attempts are infrastructure
-incidents, not verifier failures. The scheduler log is retained with the
-final measurement records.
+running. Four archived startup directories contain only a lock, network
+record, and trial log. Two other archived attempts reached the agent before
+cancellation and record $0.001733508 of Jev usage in total. Cancelled
+in-flight Luna requests might not return usage, so that recorded interrupted
+cost is a lower bound. These interruptions are not completed verifier trials
+and are reported separately, with their traces and scheduler logs, rather
+than silently counted as free retries.

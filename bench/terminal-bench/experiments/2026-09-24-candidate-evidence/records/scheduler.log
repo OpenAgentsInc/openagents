@@ -1,0 +1,53 @@
+[2026-09-24T21:08:32+00:00] started tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1 (run, 2 CPUs, 4 GiB, pid 2241225)
+[2026-09-24T21:08:32+00:00] started tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1 (run, 2 CPUs, 4 GiB, pid 2241276)
+[2026-09-24T21:10:05+00:00] tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1: exited without a finished result (incomplete); resuming
+[2026-09-24T21:10:06+00:00] tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1: exited without a finished result (incomplete); resuming
+[2026-09-24T21:10:06+00:00] started tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1 (resume, 2 CPUs, 4 GiB, pid 2271935)
+[2026-09-24T21:10:06+00:00] started tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1 (resume, 2 CPUs, 4 GiB, pid 2272050)
+[2026-09-24T21:13:40+00:00] stopping: interrupting running trials; a restart resumes them
+[2026-09-24T21:14:55+00:00] suite stopped
+experiment candidate-evidence-9607 (tb4): coder-one-microluna-v12, coder-one-microluna-evidence-v1 × 2 tasks × 3 attempts
+  credentials none needed · Claude quota $0.00 (no budget)
+  early stopping off (alpha 0.05)
+  pending 12 · passes 0/0 graded
+  in use: 0 trials, 0/8.0 CPUs, 0/32.0 GiB · free disk 159.7 GiB (floor 60.0)
+  order listed · GPUs 0/1 · oversize skipped
+  providers none · Claude slots 3 · usage-limited 0
+  pending  tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1: interrupted by a scheduler stop; resumes on the next start
+  pending  tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1: interrupted by a scheduler stop; resumes on the next start
+[2026-09-24T21:16:15+00:00] started tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1 (resume, 2 CPUs, 4 GiB, pid 2426263)
+[2026-09-24T21:16:15+00:00] started tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1 (resume, 2 CPUs, 4 GiB, pid 2426286)
+[2026-09-24T21:22:31+00:00] finished tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1: reward 0.0
+[2026-09-24T21:22:32+00:00] started tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r1 (run, 2 CPUs, 4 GiB, pid 2560521)
+[2026-09-24T21:23:19+00:00] tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r1: exited without a finished result (incomplete); resuming
+[2026-09-24T21:23:20+00:00] started tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r1 (resume, 2 CPUs, 4 GiB, pid 2569652)
+[2026-09-24T21:25:50+00:00] finished tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1: reward 0.0
+[2026-09-24T21:25:50+00:00] started tb4--coder-one-microluna-v12--embedding-drift-monitor--candidate-evidence-9607-r1 (run, 2 CPUs, 4 GiB, pid 2635719)
+[2026-09-24T21:30:23+00:00] finished tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r1: reward 0.0
+[2026-09-24T21:30:23+00:00] started tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r2 (run, 2 CPUs, 4 GiB, pid 2738313)
+[2026-09-24T21:31:09+00:00] tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r2: exited without a finished result (incomplete); resuming
+[2026-09-24T21:31:09+00:00] started tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r2 (resume, 2 CPUs, 4 GiB, pid 2745526)
+[2026-09-24T21:35:40+00:00] finished tb4--coder-one-microluna-v12--embedding-drift-monitor--candidate-evidence-9607-r1: reward 1.0
+[2026-09-24T21:35:40+00:00] started tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r2 (run, 2 CPUs, 4 GiB, pid 2863441)
+[2026-09-24T21:38:25+00:00] finished tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r2: reward 0.0
+[2026-09-24T21:38:25+00:00] started tb4--coder-one-microluna-v12--embedding-drift-monitor--candidate-evidence-9607-r2 (run, 2 CPUs, 4 GiB, pid 2924619)
+[2026-09-24T21:41:57+00:00] finished tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r2: reward 0.0
+[2026-09-24T21:41:57+00:00] started tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r2 (run, 2 CPUs, 4 GiB, pid 3024535)
+[2026-09-24T21:49:42+00:00] finished tb4--coder-one-microluna-v12--embedding-drift-monitor--candidate-evidence-9607-r2: reward 0.0
+[2026-09-24T21:49:42+00:00] finished tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r2: reward 0.0
+[2026-09-24T21:49:42+00:00] started tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r3 (run, 2 CPUs, 4 GiB, pid 3206686)
+[2026-09-24T21:49:57+00:00] started tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r3 (run, 2 CPUs, 4 GiB, pid 3213781)
+[2026-09-24T21:54:57+00:00] finished tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r3: reward 0.0
+[2026-09-24T21:54:57+00:00] finished tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r3: reward 0.0
+[2026-09-24T21:54:57+00:00] started tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r3 (run, 2 CPUs, 4 GiB, pid 3356183)
+[2026-09-24T21:54:58+00:00] started tb4--coder-one-microluna-v12--embedding-drift-monitor--candidate-evidence-9607-r3 (run, 2 CPUs, 4 GiB, pid 3356210)
+[2026-09-24T22:01:29+00:00] finished tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r3: reward 0.0
+[2026-09-24T22:02:45+00:00] finished tb4--coder-one-microluna-v12--embedding-drift-monitor--candidate-evidence-9607-r3: reward 1.0
+[2026-09-24T22:02:45+00:00] suite finished
+experiment candidate-evidence-9607 (tb4): coder-one-microluna-v12, coder-one-microluna-evidence-v1 × 2 tasks × 3 attempts
+  credentials none needed · Claude quota $0.00 (no budget)
+  early stopping off (alpha 0.05)
+  finished 12 · passes 2/12 graded
+  in use: 0 trials, 0/8.0 CPUs, 0/32.0 GiB · free disk 91.6 GiB (floor 60.0)
+  order listed · GPUs 0/1 · oversize skipped
+  providers none · Claude slots 3 · usage-limited 0

@@ -1,0 +1,563 @@
+{
+  "schema": "openagents.tbench.experiment-status.v1",
+  "profile": "tb4",
+  "arm": null,
+  "pin": {
+    "git_url": "https://github.com/harbor-framework/terminal-bench.git",
+    "git_commit_id": "452bf305c6daa62fc59061d22133a7cbc7c1572e",
+    "ref": "v4.0.0",
+    "catalog": "tb4"
+  },
+  "budget": {
+    "max_cpus": 8.0,
+    "max_mem_gb": 32.0,
+    "min_free_disk_gb": 60.0,
+    "prune_margin_gb": 20,
+    "max_concurrent": 2,
+    "max_gpus": 1,
+    "reserve_after_sec": 1800,
+    "order": "listed",
+    "allow_oversize": false,
+    "max_claude_concurrent": 3,
+    "usage_backoff_sec": 1800.0
+  },
+  "scheduler_pid": 2425840,
+  "state": "done",
+  "started_at": "2026-09-24T21:16:15+00:00",
+  "updated_at": "2026-09-24T22:02:45+00:00",
+  "counts": {
+    "finished": 12
+  },
+  "passes": 2,
+  "graded": 12,
+  "in_use": {
+    "cpus": 0,
+    "memory_gb": 0,
+    "gpus": 0,
+    "trials": 0
+  },
+  "free_disk_gb": 91.6,
+  "providers": [],
+  "paused": {},
+  "usage_limited": 0,
+  "credential_failures": 0,
+  "blocked": {},
+  "pruned": [],
+  "trials": [
+    {
+      "task": "session-window-debug",
+      "attempt": 1,
+      "job": "tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1",
+      "state": "finished",
+      "reason": null,
+      "retries": 0,
+      "resumes": 0,
+      "pid": null,
+      "started_at": "2026-09-24T21:16:15+00:00",
+      "finished_at": "2026-09-24T21:25:50+00:00",
+      "reward": 0.0,
+      "exception": null,
+      "cpus": 2,
+      "memory_mb": 4096,
+      "gpus": 0,
+      "failed_moves": [],
+      "usage_limits": 0,
+      "credential_failures": 0,
+      "arm": "coder-one-microluna-v12",
+      "order": 0,
+      "claude_usage": {
+        "sessions": 0,
+        "usd": 0.0,
+        "output_tokens": 0,
+        "unpriced": 0
+      },
+      "losses": []
+    },
+    {
+      "task": "session-window-debug",
+      "attempt": 1,
+      "job": "tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r1",
+      "state": "finished",
+      "reason": null,
+      "retries": 0,
+      "resumes": 1,
+      "pid": null,
+      "started_at": "2026-09-24T21:23:20+00:00",
+      "finished_at": "2026-09-24T21:30:23+00:00",
+      "reward": 0.0,
+      "exception": null,
+      "cpus": 2,
+      "memory_mb": 4096,
+      "gpus": 0,
+      "failed_moves": [],
+      "usage_limits": 0,
+      "credential_failures": 0,
+      "arm": "coder-one-microluna-evidence-v1",
+      "order": 1,
+      "claude_usage": {
+        "sessions": 0,
+        "usd": 0.0,
+        "output_tokens": 0,
+        "unpriced": 0
+      },
+      "losses": []
+    },
+    {
+      "task": "embedding-drift-monitor",
+      "attempt": 1,
+      "job": "tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1",
+      "state": "finished",
+      "reason": null,
+      "retries": 0,
+      "resumes": 0,
+      "pid": null,
+      "started_at": "2026-09-24T21:16:15+00:00",
+      "finished_at": "2026-09-24T21:22:31+00:00",
+      "reward": 0.0,
+      "exception": null,
+      "cpus": 2,
+      "memory_mb": 4096,
+      "gpus": 0,
+      "failed_moves": [],
+      "usage_limits": 0,
+      "credential_failures": 0,
+      "arm": "coder-one-microluna-evidence-v1",
+      "order": 2,
+      "claude_usage": {
+        "sessions": 0,
+        "usd": 0.0,
+        "output_tokens": 0,
+        "unpriced": 0
+      },
+      "losses": []
+    },
+    {
+      "task": "embedding-drift-monitor",
+      "attempt": 1,
+      "job": "tb4--coder-one-microluna-v12--embedding-drift-monitor--candidate-evidence-9607-r1",
+      "state": "finished",
+      "reason": null,
+      "retries": 0,
+      "resumes": 0,
+      "pid": null,
+      "started_at": "2026-09-24T21:25:50+00:00",
+      "finished_at": "2026-09-24T21:35:40+00:00",
+      "reward": 1.0,
+      "exception": null,
+      "cpus": 2,
+      "memory_mb": 4096,
+      "gpus": 0,
+      "failed_moves": [],
+      "usage_limits": 0,
+      "credential_failures": 0,
+      "arm": "coder-one-microluna-v12",
+      "order": 3,
+      "claude_usage": {
+        "sessions": 0,
+        "usd": 0.0,
+        "output_tokens": 0,
+        "unpriced": 0
+      },
+      "losses": []
+    },
+    {
+      "task": "session-window-debug",
+      "attempt": 2,
+      "job": "tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r2",
+      "state": "finished",
+      "reason": null,
+      "retries": 0,
+      "resumes": 1,
+      "pid": null,
+      "started_at": "2026-09-24T21:31:09+00:00",
+      "finished_at": "2026-09-24T21:38:25+00:00",
+      "reward": 0.0,
+      "exception": null,
+      "cpus": 2,
+      "memory_mb": 4096,
+      "gpus": 0,
+      "failed_moves": [],
+      "usage_limits": 0,
+      "credential_failures": 0,
+      "arm": "coder-one-microluna-evidence-v1",
+      "order": 4,
+      "claude_usage": {
+        "sessions": 0,
+        "usd": 0.0,
+        "output_tokens": 0,
+        "unpriced": 0
+      },
+      "losses": []
+    },
+    {
+      "task": "session-window-debug",
+      "attempt": 2,
+      "job": "tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r2",
+      "state": "finished",
+      "reason": null,
+      "retries": 0,
+      "resumes": 0,
+      "pid": null,
+      "started_at": "2026-09-24T21:35:40+00:00",
+      "finished_at": "2026-09-24T21:41:57+00:00",
+      "reward": 0.0,
+      "exception": null,
+      "cpus": 2,
+      "memory_mb": 4096,
+      "gpus": 0,
+      "failed_moves": [],
+      "usage_limits": 0,
+      "credential_failures": 0,
+      "arm": "coder-one-microluna-v12",
+      "order": 5,
+      "claude_usage": {
+        "sessions": 0,
+        "usd": 0.0,
+        "output_tokens": 0,
+        "unpriced": 0
+      },
+      "losses": []
+    },
+    {
+      "task": "embedding-drift-monitor",
+      "attempt": 2,
+      "job": "tb4--coder-one-microluna-v12--embedding-drift-monitor--candidate-evidence-9607-r2",
+      "state": "finished",
+      "reason": null,
+      "retries": 0,
+      "resumes": 0,
+      "pid": null,
+      "started_at": "2026-09-24T21:38:25+00:00",
+      "finished_at": "2026-09-24T21:49:42+00:00",
+      "reward": 0.0,
+      "exception": null,
+      "cpus": 2,
+      "memory_mb": 4096,
+      "gpus": 0,
+      "failed_moves": [],
+      "usage_limits": 0,
+      "credential_failures": 0,
+      "arm": "coder-one-microluna-v12",
+      "order": 6,
+      "claude_usage": {
+        "sessions": 0,
+        "usd": 0.0,
+        "output_tokens": 0,
+        "unpriced": 0
+      },
+      "losses": []
+    },
+    {
+      "task": "embedding-drift-monitor",
+      "attempt": 2,
+      "job": "tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r2",
+      "state": "finished",
+      "reason": null,
+      "retries": 0,
+      "resumes": 0,
+      "pid": null,
+      "started_at": "2026-09-24T21:41:57+00:00",
+      "finished_at": "2026-09-24T21:49:42+00:00",
+      "reward": 0.0,
+      "exception": null,
+      "cpus": 2,
+      "memory_mb": 4096,
+      "gpus": 0,
+      "failed_moves": [],
+      "usage_limits": 0,
+      "credential_failures": 0,
+      "arm": "coder-one-microluna-evidence-v1",
+      "order": 7,
+      "claude_usage": {
+        "sessions": 0,
+        "usd": 0.0,
+        "output_tokens": 0,
+        "unpriced": 0
+      },
+      "losses": []
+    },
+    {
+      "task": "session-window-debug",
+      "attempt": 3,
+      "job": "tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r3",
+      "state": "finished",
+      "reason": null,
+      "retries": 0,
+      "resumes": 0,
+      "pid": null,
+      "started_at": "2026-09-24T21:49:42+00:00",
+      "finished_at": "2026-09-24T21:54:57+00:00",
+      "reward": 0.0,
+      "exception": null,
+      "cpus": 2,
+      "memory_mb": 4096,
+      "gpus": 0,
+      "failed_moves": [],
+      "usage_limits": 0,
+      "credential_failures": 0,
+      "arm": "coder-one-microluna-v12",
+      "order": 8,
+      "claude_usage": {
+        "sessions": 0,
+        "usd": 0.0,
+        "output_tokens": 0,
+        "unpriced": 0
+      },
+      "losses": []
+    },
+    {
+      "task": "session-window-debug",
+      "attempt": 3,
+      "job": "tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r3",
+      "state": "finished",
+      "reason": null,
+      "retries": 0,
+      "resumes": 0,
+      "pid": null,
+      "started_at": "2026-09-24T21:49:57+00:00",
+      "finished_at": "2026-09-24T21:54:57+00:00",
+      "reward": 0.0,
+      "exception": null,
+      "cpus": 2,
+      "memory_mb": 4096,
+      "gpus": 0,
+      "failed_moves": [],
+      "usage_limits": 0,
+      "credential_failures": 0,
+      "arm": "coder-one-microluna-evidence-v1",
+      "order": 9,
+      "claude_usage": {
+        "sessions": 0,
+        "usd": 0.0,
+        "output_tokens": 0,
+        "unpriced": 0
+      },
+      "losses": []
+    },
+    {
+      "task": "embedding-drift-monitor",
+      "attempt": 3,
+      "job": "tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r3",
+      "state": "finished",
+      "reason": null,
+      "retries": 0,
+      "resumes": 0,
+      "pid": null,
+      "started_at": "2026-09-24T21:54:57+00:00",
+      "finished_at": "2026-09-24T22:01:29+00:00",
+      "reward": 0.0,
+      "exception": null,
+      "cpus": 2,
+      "memory_mb": 4096,
+      "gpus": 0,
+      "failed_moves": [],
+      "usage_limits": 0,
+      "credential_failures": 0,
+      "arm": "coder-one-microluna-evidence-v1",
+      "order": 10,
+      "claude_usage": {
+        "sessions": 0,
+        "usd": 0.0,
+        "output_tokens": 0,
+        "unpriced": 0
+      },
+      "losses": []
+    },
+    {
+      "task": "embedding-drift-monitor",
+      "attempt": 3,
+      "job": "tb4--coder-one-microluna-v12--embedding-drift-monitor--candidate-evidence-9607-r3",
+      "state": "finished",
+      "reason": null,
+      "retries": 0,
+      "resumes": 0,
+      "pid": null,
+      "started_at": "2026-09-24T21:54:58+00:00",
+      "finished_at": "2026-09-24T22:02:45+00:00",
+      "reward": 1.0,
+      "exception": null,
+      "cpus": 2,
+      "memory_mb": 4096,
+      "gpus": 0,
+      "failed_moves": [],
+      "usage_limits": 0,
+      "credential_failures": 0,
+      "arm": "coder-one-microluna-v12",
+      "order": 11,
+      "claude_usage": {
+        "sessions": 0,
+        "usd": 0.0,
+        "output_tokens": 0,
+        "unpriced": 0
+      },
+      "losses": []
+    }
+  ],
+  "events": [
+    {
+      "at": "2026-09-24T21:16:15+00:00",
+      "message": "started tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1 (resume, 2 CPUs, 4 GiB, pid 2426263)"
+    },
+    {
+      "at": "2026-09-24T21:16:15+00:00",
+      "message": "started tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1 (resume, 2 CPUs, 4 GiB, pid 2426286)"
+    },
+    {
+      "at": "2026-09-24T21:22:31+00:00",
+      "message": "finished tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1: reward 0.0"
+    },
+    {
+      "at": "2026-09-24T21:22:32+00:00",
+      "message": "started tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r1 (run, 2 CPUs, 4 GiB, pid 2560521)"
+    },
+    {
+      "at": "2026-09-24T21:23:19+00:00",
+      "message": "tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r1: exited without a finished result (incomplete); resuming"
+    },
+    {
+      "at": "2026-09-24T21:23:20+00:00",
+      "message": "started tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r1 (resume, 2 CPUs, 4 GiB, pid 2569652)"
+    },
+    {
+      "at": "2026-09-24T21:25:50+00:00",
+      "message": "finished tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1: reward 0.0"
+    },
+    {
+      "at": "2026-09-24T21:25:50+00:00",
+      "message": "started tb4--coder-one-microluna-v12--embedding-drift-monitor--candidate-evidence-9607-r1 (run, 2 CPUs, 4 GiB, pid 2635719)"
+    },
+    {
+      "at": "2026-09-24T21:30:23+00:00",
+      "message": "finished tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r1: reward 0.0"
+    },
+    {
+      "at": "2026-09-24T21:30:23+00:00",
+      "message": "started tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r2 (run, 2 CPUs, 4 GiB, pid 2738313)"
+    },
+    {
+      "at": "2026-09-24T21:31:09+00:00",
+      "message": "tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r2: exited without a finished result (incomplete); resuming"
+    },
+    {
+      "at": "2026-09-24T21:31:09+00:00",
+      "message": "started tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r2 (resume, 2 CPUs, 4 GiB, pid 2745526)"
+    },
+    {
+      "at": "2026-09-24T21:35:40+00:00",
+      "message": "finished tb4--coder-one-microluna-v12--embedding-drift-monitor--candidate-evidence-9607-r1: reward 1.0"
+    },
+    {
+      "at": "2026-09-24T21:35:40+00:00",
+      "message": "started tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r2 (run, 2 CPUs, 4 GiB, pid 2863441)"
+    },
+    {
+      "at": "2026-09-24T21:38:25+00:00",
+      "message": "finished tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r2: reward 0.0"
+    },
+    {
+      "at": "2026-09-24T21:38:25+00:00",
+      "message": "started tb4--coder-one-microluna-v12--embedding-drift-monitor--candidate-evidence-9607-r2 (run, 2 CPUs, 4 GiB, pid 2924619)"
+    },
+    {
+      "at": "2026-09-24T21:41:57+00:00",
+      "message": "finished tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r2: reward 0.0"
+    },
+    {
+      "at": "2026-09-24T21:41:57+00:00",
+      "message": "started tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r2 (run, 2 CPUs, 4 GiB, pid 3024535)"
+    },
+    {
+      "at": "2026-09-24T21:49:42+00:00",
+      "message": "finished tb4--coder-one-microluna-v12--embedding-drift-monitor--candidate-evidence-9607-r2: reward 0.0"
+    },
+    {
+      "at": "2026-09-24T21:49:42+00:00",
+      "message": "finished tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r2: reward 0.0"
+    },
+    {
+      "at": "2026-09-24T21:49:42+00:00",
+      "message": "started tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r3 (run, 2 CPUs, 4 GiB, pid 3206686)"
+    },
+    {
+      "at": "2026-09-24T21:49:57+00:00",
+      "message": "started tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r3 (run, 2 CPUs, 4 GiB, pid 3213781)"
+    },
+    {
+      "at": "2026-09-24T21:54:57+00:00",
+      "message": "finished tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r3: reward 0.0"
+    },
+    {
+      "at": "2026-09-24T21:54:57+00:00",
+      "message": "finished tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r3: reward 0.0"
+    },
+    {
+      "at": "2026-09-24T21:54:57+00:00",
+      "message": "started tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r3 (run, 2 CPUs, 4 GiB, pid 3356183)"
+    },
+    {
+      "at": "2026-09-24T21:54:58+00:00",
+      "message": "started tb4--coder-one-microluna-v12--embedding-drift-monitor--candidate-evidence-9607-r3 (run, 2 CPUs, 4 GiB, pid 3356210)"
+    },
+    {
+      "at": "2026-09-24T22:01:29+00:00",
+      "message": "finished tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r3: reward 0.0"
+    },
+    {
+      "at": "2026-09-24T22:02:45+00:00",
+      "message": "finished tb4--coder-one-microluna-v12--embedding-drift-monitor--candidate-evidence-9607-r3: reward 1.0"
+    },
+    {
+      "at": "2026-09-24T22:02:45+00:00",
+      "message": "suite finished"
+    }
+  ],
+  "experiment": "candidate-evidence-9607",
+  "arms": [
+    {
+      "id": "coder-one-microluna-v12",
+      "providers": []
+    },
+    {
+      "id": "coder-one-microluna-evidence-v1",
+      "providers": []
+    }
+  ],
+  "tasks": [
+    "session-window-debug",
+    "embedding-drift-monitor"
+  ],
+  "attempts": 3,
+  "credential_source": null,
+  "quota": {
+    "budget_usd": null,
+    "used": {
+      "sessions": 0,
+      "usd": 0.0,
+      "output_tokens": 0,
+      "unpriced": 0
+    },
+    "by_arm": {
+      "coder-one-microluna-v12": {
+        "sessions": 0,
+        "usd": 0.0,
+        "output_tokens": 0,
+        "unpriced": 0
+      },
+      "coder-one-microluna-evidence-v1": {
+        "sessions": 0,
+        "usd": 0.0,
+        "output_tokens": 0,
+        "unpriced": 0
+      }
+    },
+    "measure": "Claude Code total_cost_usd: list-price value, not a cash charge"
+  },
+  "stop_early": {
+    "enabled": false,
+    "alpha": 0.05,
+    "accept_pass_rate": null,
+    "stopped_arms": {},
+    "ended": null,
+    "verdict": null
+  }
+}

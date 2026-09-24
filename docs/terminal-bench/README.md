@@ -1,23 +1,24 @@
 # Terminal-Bench status
 
-Updated on 2026-09-24 with Microluna iterations and the two-target
-measurement plan. This page summarizes retained
+Updated on 2026-09-24 with the completed Microluna candidate experiment. This page summarizes retained
 evidence; it does not report the execution host's live queue.
 
 ## Latest status
 
-**Microluna: v13 is implemented; repeatable TB4 wins remain unproven.**
-Solo and v9 passed 0/3 development tasks; v10 and v11 exposed further
-generation and evaluation failures. v13 adds Jev-ranked source comments
-as suspects; the candidate-preservation experiment keeps its previously
-pinned v12 baseline. See the
-[iteration record](2026-09-24-microluna-iterations.md). The
-[two-target assessment](2026-09-24-microluna-two-targets.md) explains the
-withdrawn episode 288 announcement and the next experiment: preserve
-candidates, prevent an editing review from losing them, and compare on
-`session-window-debug` (Fable 0/25) and `embedding-drift-monitor` (Fable
-25/25). Implementation is tracked in #9606 and #9608; measured outcomes
-remain open in [#9607](https://github.com/OpenAgentsInc/openagents/issues/9607).
+**Microluna v12: 2/3 embedding passes at $0.02512 per accepted result;
+experimental protected policy: 0/3.** The completed 12-attempt comparison
+includes the failed attempts and Jev cost. Fable low passed 5/5 on embedding
+at $0.8691 per accepted result and was faster. Both Microluna policies
+failed all three `session-window-debug` attempts, where Fable passed 0/25. The full [results and trace analysis](2026-09-24-microluna-candidate-evidence.md)
+show that editing review caused one v12 pass; preserving every earlier tie
+would have rejected its repair. The treatment remains experimental.
+
+The [two-target assessment](2026-09-24-microluna-two-targets.md) explains the
+withdrawn episode 288 announcement and the delivered retention, strict-score,
+and review-outcome fixes. The [iteration record](2026-09-24-microluna-iterations.md)
+tracks concurrent v13–v15 changes; those do not alter the frozen v12 comparison.
+The broader two-target result remains open in
+[#9607](https://github.com/OpenAgentsInc/openagents/issues/9607).
 
 The v6–v8 results below are historical evidence, not the latest policy.
 

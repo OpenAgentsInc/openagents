@@ -196,13 +196,17 @@ noninteractive view. The plain `gym-terminal` command without
 
 ## Coder One benchmark evidence
 
-Microluna now runs TB4 with Luna and Jev, but repeatable wins remain
-unproven. The [iteration record](docs/terminal-bench/2026-09-24-microluna-iterations.md)
-covers v9 through v12. The
+Microluna v12 passed **2/3 embedding-drift-monitor attempts for $0.02512 per
+accepted result**, including the failed attempt and Jev, against Fable low's
+$0.8691 and 5/5 passes. It was slower. The experimental protected policy
+passed 0/3; both policies failed all three session-window-debug attempts.
+The [12-attempt report and full traces](docs/terminal-bench/2026-09-24-microluna-candidate-evidence.md)
+explain the limits and why an editing review made one successful run pass.
+The [iteration record](docs/terminal-bench/2026-09-24-microluna-iterations.md)
+covers the concurrent v9–v15 work. The
 [two-target assessment](docs/terminal-bench/2026-09-24-microluna-two-targets.md)
-explains why the v7 announcement was withdrawn and defines the next
-comparison: preserve good candidates, then measure passes where Fable
-failed and cheaper accepted work where Fable passed.
+explains why the v7 announcement was withdrawn, the delivered evidence
+and review fixes, and the still-open goal of passing where Fable failed.
 
 The September 24 follow-ups found two limits in the current controller:
 

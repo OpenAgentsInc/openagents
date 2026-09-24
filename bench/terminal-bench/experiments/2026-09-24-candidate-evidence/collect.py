@@ -34,10 +34,22 @@ def collect(root):
         agent = result.get("agent_result") or {}
         cost = (usage.get("cost") or {}).get("amount_usd")
         selections = []
+        loops = []
         if trial:
             for path in sorted(trial.glob("agent/episode/artifacts/lean-*/selection.json")):
                 moves = read(path)
                 selections.append({"path": str(path.relative_to(trial)), "moves": moves})
+            for path in sorted(trial.glob("agent/episode/artifacts/microluna-*.json")):
+                loop = read(path)
+                if not isinstance(loop, dict) or "sessions" not in loop:
+                    continue
+                loops.append({"path": str(path.relative_to(trial)), "stopped": loop.get("stopped"),
+                              "moves": loop.get("moves"),
+                              "sessions": [{key: session.get(key) for key in
+                                            ("number", "status", "finish", "turns", "calls", "cost_usd",
+                                             "milliseconds", "trace", "changed", "read_only")}
+                                           for session in loop["sessions"]]})
+        ctrf = read(trial / "verifier/ctrf.json") if trial else {}
         rows.append({
             "job": job, "task": item["task"], "arm": item["arm"],
             "attempt": item["attempt"], "state": item["state"],
@@ -50,7 +62,24 @@ def collect(root):
             "trial_seconds": span_seconds(result),
             "network": read(trial / "network-policy.json") if trial else {},
             "selection": selections,
+            "loops": loops,
+            "verifier_summary": (ctrf.get("results") or {}).get("summary"),
+            "verifier_failures": [test.get("name") for test in (ctrf.get("results") or {}).get("tests", [])
+                                  if test.get("status") == "failed"],
         })
+    interruptions = []
+    for item in status.get("trials", []):
+        job_dir = root / "jobs" / item["job"]
+        for path in sorted(job_dir.glob("tbench/interrupted/*/result.json")):
+            result = read(path)
+            usage = read(path.parent / "agent/episode/evaluation/usage.json")
+            interruptions.append({"job": item["job"], "arm": item["arm"],
+                                  "task": item["task"], "trial": path.parent.name,
+                                  "exception": result.get("exception_info"),
+                                  "recorded_cost_usd": (usage.get("cost") or {}).get("amount_usd"),
+                                  "usage": usage,
+                                  "agent_seconds": span_seconds(result.get("agent_execution")),
+                                  "trial_seconds": span_seconds(result)})
     summary = []
     for task in read(experiment / "pins.json").get("tasks", []):
         for arm in read(experiment / "experiment.json").get("arms", []):
@@ -59,14 +88,22 @@ def collect(root):
             passes = sum(r["reward"] == 1 for r in completed)
             known = [r["cost_usd"] for r in group if r["cost_usd"] is not None]
             total = sum(known) if len(known) == len(group) else None
+            interrupted = [r for r in interruptions if r["task"] == task and r["arm"] == arm]
+            interrupted_known = [r["recorded_cost_usd"] for r in interrupted
+                                 if r["recorded_cost_usd"] is not None]
+            with_interrupted = (total + sum(interrupted_known)
+                                if total is not None and len(interrupted_known) == len(interrupted) else None)
             summary.append({"task": task, "arm": arm, "planned": len(group),
                             "graded": len(completed), "passes": passes,
                             "known_cost_usd": sum(known), "total_cost_usd": total,
-                            "cost_per_pass_usd": total / passes if total is not None and passes else None})
+                            "cost_per_pass_usd": total / passes if total is not None and passes else None,
+                            "recorded_interrupted_cost_usd": sum(interrupted_known),
+                            "recorded_cost_including_interruptions_usd": with_interrupted})
     return {"schema": "openagents.microluna.candidate-evidence.v1",
             "collected_at": datetime.now(timezone.utc).isoformat(),
             "pins": read(experiment / "pins.json"), "state": status.get("state"),
-            "summary": summary, "trials": rows}
+            "summary": summary, "trials": rows, "interruptions": interruptions,
+            "cost_limitations": "Usage valuations, not invoices. Cancelled in-flight calls may have no usage response; recorded interrupted cost is a lower bound."}
 
 
 if __name__ == "__main__":

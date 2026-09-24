@@ -6,6 +6,7 @@ Results stay outside the agent's workspace and never enter its briefing.
 
 import argparse
 import json
+import subprocess
 import tempfile
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from tbench import replay
 
 
 def grade(root, output):
+    pins = json.loads((root / "experiments/candidate-evidence-9607/pins.json").read_text())
     output.mkdir(parents=True, exist_ok=True)
     for job in sorted((root / "jobs").glob("tb4*--candidate-evidence-9607-r*")):
         for result_path in sorted(job.glob("*/result.json")):
@@ -20,6 +22,11 @@ def grade(root, output):
             if not result.get("finished_at") or result.get("verifier_result") is None:
                 continue
             trial = result_path.parent
+            task = replay.task_dir(trial)
+            revision = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=task, text=True).strip()
+            dirty = subprocess.check_output(["git", "status", "--porcelain", "--", "."], cwd=task, text=True)
+            if revision != pins["task_commit"] or dirty:
+                raise ValueError(f"Task no longer matches the clean pinned revision: {task}")
             for selection in sorted(trial.glob("agent/episode/artifacts/lean-*/selection.json")):
                 moves = json.loads(selection.read_text())
                 for move in moves:
@@ -34,7 +41,7 @@ def grade(root, output):
                         continue
                     with tempfile.TemporaryDirectory(prefix="candidate-9607-grade-") as scratch:
                         workspace = replay.candidate_workspace(candidate, replay.workdir_of(trial), Path(scratch))
-                        graded = replay.run_verifier(replay.task_dir(trial), workspace, dest)
+                        graded = replay.run_verifier(task, workspace, dest)
                     record = {"job": job.name, "trial": trial.name,
                               "candidate": str(candidate.relative_to(trial)),
                               "workspace_files": move.get("workspace_files"),

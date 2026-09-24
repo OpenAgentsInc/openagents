@@ -1,0 +1,523 @@
+{
+  "schema": "openagents.microluna.interruptions.v1",
+  "credential_values_checked": 8,
+  "matches": [],
+  "records": [
+    {
+      "job": "tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1",
+      "trial": "embedding-drift-monitor__tMVtd5b",
+      "files": [
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__tMVtd5b/lock.json",
+          "bytes": 1731,
+          "sha256": "a68bbb8af9bcf4b9784674ad394c33ba5d75b49be258993e338dcc61dfa517c6"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__tMVtd5b/network-policy.json",
+          "bytes": 533,
+          "sha256": "8f7223eb3c1b7568880a5d241599f1d79aa7b87de0b19a8b08c8477b49c35f32"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__tMVtd5b/trial.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      ]
+    },
+    {
+      "job": "tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1",
+      "trial": "embedding-drift-monitor__XhEFWEe",
+      "files": [
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__XhEFWEe/agent/contamination-run.json",
+          "bytes": 486,
+          "sha256": "a5e70482b49873da8bc879ea789f48dbd322e0a997ec0b8e49d48bc312f91d9e"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__XhEFWEe/agent/contamination-static.json",
+          "bytes": 277,
+          "sha256": "c6cea159de477d79748c13912fd6a3bb0d72591276e42cd3edfe8e603084f380"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__XhEFWEe/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "bytes": 64007,
+          "sha256": "fb80fbc97a1f89cdd90287cb6f7e738d1f39306c7f9469692315be70217e2583"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__XhEFWEe/agent/episode/artifacts/requirements.json",
+          "bytes": 6028,
+          "sha256": "4b789e45cfb838bbd6c347df7d2b5b536cc1befd4f579fbf4f7cb6b5a6312f05"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__XhEFWEe/agent/episode/artifacts/state.json",
+          "bytes": 13679,
+          "sha256": "db919d09a0924f91a32ba96f7c8e301728a5f9db4340c50fcef493162437cb3d"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__XhEFWEe/agent/episode/episode.atif.jsonl",
+          "bytes": 184355,
+          "sha256": "f5d99b5d563a24e9abefeaaaca4b83ab60d04e4119319f3f68b6565dcbe3784b"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__XhEFWEe/agent/episode/evaluation/usage.json",
+          "bytes": 6681,
+          "sha256": "cae71362c2bc8ee178e035dac3e591dc4c9df377d2debca4f81fd0489da662cc"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__XhEFWEe/agent/episode/manifest.json",
+          "bytes": 7087,
+          "sha256": "7c30d20bc6bd3d761ac2266d3effdc206b094decfae327e42706876cbfedb55d"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__XhEFWEe/agent/episode/trajectory.atif.json",
+          "bytes": 186934,
+          "sha256": "51c6ac9999e603813e9a91043038c2bda18d108e2f3e299c540f6a3bd732eb4d"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__XhEFWEe/agent/episode-doctor.txt",
+          "bytes": 603,
+          "sha256": "42cdcb56db017c1ee095edafc44889d641d48845119f1c61a498d1b1e014d926"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__XhEFWEe/agent/live/artifacts/microluna-1-1.atif.jsonl",
+          "bytes": 64007,
+          "sha256": "fb80fbc97a1f89cdd90287cb6f7e738d1f39306c7f9469692315be70217e2583"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__XhEFWEe/agent/live/episode.atif.jsonl",
+          "bytes": 184355,
+          "sha256": "f5d99b5d563a24e9abefeaaaca4b83ab60d04e4119319f3f68b6565dcbe3784b"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__XhEFWEe/agent/live/status.json",
+          "bytes": 473,
+          "sha256": "830a0a37d1bd137690a5158fabbfc02e8309df73db8e5c6e95e19f38285462af"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__XhEFWEe/agent/trajectory.json",
+          "bytes": 186923,
+          "sha256": "028fecfeafb893505b65b55f3d818737dd556eda39e5a9ca364f1442f5ac5904"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__XhEFWEe/analysis.json",
+          "bytes": 8138,
+          "sha256": "91d6db1c4e654d82178297dd2cb92d69c0de2f5115020b071e0ec4a4b8762c56"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__XhEFWEe/analysis.md",
+          "bytes": 5987,
+          "sha256": "118d120b3848437ca14f3c13c93c61e9d4c88d8a9987be3f2b756ea23e67b644"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__XhEFWEe/artifacts/app/data/.canary",
+          "bytes": 58,
+          "sha256": "63b800abbf1b909111eb7bd75d9c117c981a068f28156699752ad5f896521e0f"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__XhEFWEe/artifacts/app/data/current_clear_drift.npy",
+          "bytes": 102528,
+          "sha256": "d861bafd41f1757408944ff4ea29f20ac345747595ec50298ce0be1f3b281d68"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__XhEFWEe/artifacts/app/data/current_stable.npy",
+          "bytes": 102528,
+          "sha256": "e069a4c0b93d38c3f7e3a3908cd8987e9131aa1b1ad93e6a90c84deeee9aa483"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__XhEFWEe/artifacts/app/data/current_with_zeros.npy",
+          "bytes": 102528,
+          "sha256": "024b9e1ea37ec59e6d837430b245a5eb1fd904d190db5cf86970882b3d9001a8"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__XhEFWEe/artifacts/app/data/reference_embeddings.npy",
+          "bytes": 512128,
+          "sha256": "5a4e51d98be5cf8fbc000fd35851e2ad02b23c1c93e8722dab313f0931b35ef0"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__XhEFWEe/artifacts/app/drift_monitor/__init__.py",
+          "bytes": 154,
+          "sha256": "c4499b0559af0a8857a647c5fcc8102ca632e00597754850fdec197fcf8abdaf"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__XhEFWEe/artifacts/app/drift_monitor/__main__.py",
+          "bytes": 983,
+          "sha256": "bc27d8196cc0035bf9bc1c252d9de219e75023ad87314ce954c1106cb23af387"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__XhEFWEe/artifacts/app/drift_monitor/__pycache__/__init__.cpython-312.pyc",
+          "bytes": 252,
+          "sha256": "7b4c1f8af09179c9a620688f6281cc0b0efbd56adc8c4b07d0204d4ec28aa235"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__XhEFWEe/artifacts/app/drift_monitor/__pycache__/__main__.cpython-312.pyc",
+          "bytes": 1484,
+          "sha256": "a053d3cb64004dce060aebbed36c0ec5dd8cf7e873526a4e096a42371acb9c49"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__XhEFWEe/artifacts/app/drift_monitor/__pycache__/alert.cpython-312.pyc",
+          "bytes": 2241,
+          "sha256": "aab2a676e77250eb145c8f2d6fe13bdfb34d854a40a9c8484d0e799d06d7eead"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__XhEFWEe/artifacts/app/drift_monitor/__pycache__/calibration.cpython-312.pyc",
+          "bytes": 2352,
+          "sha256": "1ff828de1ca6a57d0edde8cb98465b225f03079e1a8300c0b53f4323b1601f5b"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__XhEFWEe/artifacts/app/drift_monitor/__pycache__/distance.cpython-312.pyc",
+          "bytes": 2705,
+          "sha256": "c470708b4dc96e6de4daf3de9f1559accc1066342366a0cbba7be0e8e37d4743"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__XhEFWEe/artifacts/app/drift_monitor/__pycache__/monitor.cpython-312.pyc",
+          "bytes": 3862,
+          "sha256": "1d72a9e95c4b7e9d154f0f4b87bf5d92cd4353f65cb5171c158fdf42d3054391"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__XhEFWEe/artifacts/app/drift_monitor/__pycache__/normalize.cpython-312.pyc",
+          "bytes": 1443,
+          "sha256": "9f6a490081cb6948f9494e62133ae3f08d6e09694e6321554d3eeedeb76743d7"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__XhEFWEe/artifacts/app/drift_monitor/__pycache__/statistical_tests.cpython-312.pyc",
+          "bytes": 5702,
+          "sha256": "d464ec060f38b794aa4486bf12a77bc4a403ed20097bd1867080319c7cee49ec"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__XhEFWEe/artifacts/app/drift_monitor/__pycache__/windowing.cpython-312.pyc",
+          "bytes": 2868,
+          "sha256": "21a940f1f2fd759fbbe87ad7bc8d024e5025157e673965259139237457c0e9ee"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__XhEFWEe/artifacts/app/drift_monitor/alert.py",
+          "bytes": 1518,
+          "sha256": "cba8086ed597b4419d4da6589a5cace03d3477f7fdf23803ec96de9f111a468e"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__XhEFWEe/artifacts/app/drift_monitor/calibration.py",
+          "bytes": 1871,
+          "sha256": "7b3a4076c15e69fb50f292ef0375f9d38e1c71a827fc23ef9ed87b520ec7bc05"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__XhEFWEe/artifacts/app/drift_monitor/distance.py",
+          "bytes": 1271,
+          "sha256": "2adefce61ee89fd5ec2a21fd892a805f464aa8f9b463060165b9fa30f251a594"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__XhEFWEe/artifacts/app/drift_monitor/monitor.py",
+          "bytes": 3154,
+          "sha256": "d6fa9a3063df2ab193bc5e999e7b76bc0a29b9cf781368410e9a1788bfad23e3"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__XhEFWEe/artifacts/app/drift_monitor/normalize.py",
+          "bytes": 892,
+          "sha256": "41128f934c0efbcff42c3a74f1131bfe7bfdcd98eb5f66e8983485665f757c1e"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__XhEFWEe/artifacts/app/drift_monitor/statistical_tests.py",
+          "bytes": 2983,
+          "sha256": "605a561ac7a93e076bdfdd12a621a651585cde3d388b34019a48dfb02e10c81e"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__XhEFWEe/artifacts/app/drift_monitor/windowing.py",
+          "bytes": 1798,
+          "sha256": "2947c6c9df5b7f9861b6c1fa0bc510234796a01b1e7d82fe6aca253568595ada"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__XhEFWEe/artifacts/manifest.json",
+          "bytes": 461,
+          "sha256": "4149343a6f86655efafd943749258ab1bafac51e5dce11e0a535f59fdcce0168"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__XhEFWEe/config.json",
+          "bytes": 1309,
+          "sha256": "f0d7509f5ddf49d148bb6e71e7b9027562b73b363826baf0e761f2bf9193e09d"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__XhEFWEe/exception.txt",
+          "bytes": 4274,
+          "sha256": "7387497eadd05df956bdc75784dd462e1f3e8ec6229469838e06c237aa1bd245"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__XhEFWEe/lock.json",
+          "bytes": 1731,
+          "sha256": "a68bbb8af9bcf4b9784674ad394c33ba5d75b49be258993e338dcc61dfa517c6"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__XhEFWEe/network-policy.json",
+          "bytes": 533,
+          "sha256": "8f7223eb3c1b7568880a5d241599f1d79aa7b87de0b19a8b08c8477b49c35f32"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__XhEFWEe/result.json",
+          "bytes": 9400,
+          "sha256": "657c06709bd7e75ae547d8a17d9c29aede51e990848914ce236e7cf88a930fe3"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__XhEFWEe/trial.log",
+          "bytes": 868,
+          "sha256": "2b1be72788963c502a95e0c5feeef2031cc15c7dfe86d1c549aa973084282a8b"
+        }
+      ]
+    },
+    {
+      "job": "tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r2",
+      "trial": "session-window-debug__9bGR79s",
+      "files": [
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r2/session-window-debug__9bGR79s/lock.json",
+          "bytes": 1725,
+          "sha256": "ecaaa0ee5ae4a1ef5bd0d48e904031268428450845c088c7e61b54b484043000"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r2/session-window-debug__9bGR79s/network-policy.json",
+          "bytes": 533,
+          "sha256": "8f7223eb3c1b7568880a5d241599f1d79aa7b87de0b19a8b08c8477b49c35f32"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r2/session-window-debug__9bGR79s/trial.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      ]
+    },
+    {
+      "job": "tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r1",
+      "trial": "session-window-debug__LzN4ckd",
+      "files": [
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r1/session-window-debug__LzN4ckd/lock.json",
+          "bytes": 1725,
+          "sha256": "ecaaa0ee5ae4a1ef5bd0d48e904031268428450845c088c7e61b54b484043000"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r1/session-window-debug__LzN4ckd/network-policy.json",
+          "bytes": 533,
+          "sha256": "8f7223eb3c1b7568880a5d241599f1d79aa7b87de0b19a8b08c8477b49c35f32"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r1/session-window-debug__LzN4ckd/trial.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      ]
+    },
+    {
+      "job": "tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1",
+      "trial": "session-window-debug__XrKoUSB",
+      "files": [
+        {
+          "path": "interruptions/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1/session-window-debug__XrKoUSB/agent/contamination-run.json",
+          "bytes": 472,
+          "sha256": "d640a8530f9b1ef41bbac74052831558c25a463e26df499c5ba1015f8d0bf3c2"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1/session-window-debug__XrKoUSB/agent/contamination-static.json",
+          "bytes": 277,
+          "sha256": "c6cea159de477d79748c13912fd6a3bb0d72591276e42cd3edfe8e603084f380"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1/session-window-debug__XrKoUSB/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "bytes": 63604,
+          "sha256": "f3f231c8d285369ded79442b54c7b3f1fbfeb53fe9944cc3a36f4e403e1ccc8f"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1/session-window-debug__XrKoUSB/agent/episode/artifacts/requirements.json",
+          "bytes": 7496,
+          "sha256": "bbbfb13c6094402ae7e38c65498b6fe5e28386223db132ea5941d0a4a4a540c4"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1/session-window-debug__XrKoUSB/agent/episode/artifacts/state.json",
+          "bytes": 15057,
+          "sha256": "79921d7565fcf20e514960a151b763468f4290d0cdad1887648d5bcaef8c2e63"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1/session-window-debug__XrKoUSB/agent/episode/episode.atif.jsonl",
+          "bytes": 209291,
+          "sha256": "338b75c212679780cd246a80a142e0d8b1a76227a9209ad776289a77fb52819d"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1/session-window-debug__XrKoUSB/agent/episode/evaluation/usage.json",
+          "bytes": 7098,
+          "sha256": "5e0faa4a8e2328958c4bf1bd0b65b17c8876e1af0175198aa27afdbc1ff8bc35"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1/session-window-debug__XrKoUSB/agent/episode/manifest.json",
+          "bytes": 7050,
+          "sha256": "68969093245003c0d52b72723f279e09e13cfbd82191ea9f1703db602c53c231"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1/session-window-debug__XrKoUSB/agent/episode/trajectory.atif.json",
+          "bytes": 217183,
+          "sha256": "455611c5298328bfe90ee53551295ee4d1e118a8a5c3ca54b5984b8e0fe66b23"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1/session-window-debug__XrKoUSB/agent/episode-doctor.txt",
+          "bytes": 595,
+          "sha256": "d927c57c9dd55a26c46ae8e9fea58c4c082bb5b573a8648cec582a75c1e8de8a"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1/session-window-debug__XrKoUSB/agent/live/artifacts/microluna-1-1.atif.jsonl",
+          "bytes": 63604,
+          "sha256": "f3f231c8d285369ded79442b54c7b3f1fbfeb53fe9944cc3a36f4e403e1ccc8f"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1/session-window-debug__XrKoUSB/agent/live/episode.atif.jsonl",
+          "bytes": 209291,
+          "sha256": "338b75c212679780cd246a80a142e0d8b1a76227a9209ad776289a77fb52819d"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1/session-window-debug__XrKoUSB/agent/live/status.json",
+          "bytes": 473,
+          "sha256": "35e7bf7d3625b7ed7266ca334d5e563b9e1f79a082be8551712434b6104863d7"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1/session-window-debug__XrKoUSB/agent/trajectory.json",
+          "bytes": 217171,
+          "sha256": "b14b5d65c2999a1c83351417870a8013a093e94a125b0cd4c9665ef2b3e1b94e"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1/session-window-debug__XrKoUSB/analysis.json",
+          "bytes": 7701,
+          "sha256": "284dfce68b4a9fbd48fca394574024e5575639b118631f381e2647bff7c5089a"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1/session-window-debug__XrKoUSB/analysis.md",
+          "bytes": 5740,
+          "sha256": "580afb8d16c26f010f48026627cd4803a4d09da5656b38bb1e841aeab7b3ecfe"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1/session-window-debug__XrKoUSB/artifacts/app/app/DESIGN.md",
+          "bytes": 451,
+          "sha256": "b6568e4d497b4cc80abb21f4dc079c28402869d799117c39ff41a1999dff0b2a"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1/session-window-debug__XrKoUSB/artifacts/app/app/__init__.py",
+          "bytes": 58,
+          "sha256": "63b800abbf1b909111eb7bd75d9c117c981a068f28156699752ad5f896521e0f"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1/session-window-debug__XrKoUSB/artifacts/app/app/__pycache__/__init__.cpython-312.pyc",
+          "bytes": 117,
+          "sha256": "8adad73f2cc842ca6cba7c5e8cbff240acbbc9a08c74803eb68d9aa47974cf65"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1/session-window-debug__XrKoUSB/artifacts/app/app/__pycache__/emitter.cpython-312.pyc",
+          "bytes": 1816,
+          "sha256": "20211720621f9ea04971f3666da36555d297fb53b4c4cbb809b4afff55808f4f"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1/session-window-debug__XrKoUSB/artifacts/app/app/__pycache__/events.cpython-312.pyc",
+          "bytes": 3087,
+          "sha256": "e71f5816182144cfff9aa17833cf6e8f54794b78c44d7d4457802b0805627077"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1/session-window-debug__XrKoUSB/artifacts/app/app/__pycache__/gc.cpython-312.pyc",
+          "bytes": 2655,
+          "sha256": "cac5d839991ffb9bb34dde2728c42399f7b7ca4c3716086995d39fe300141603"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1/session-window-debug__XrKoUSB/artifacts/app/app/__pycache__/merger.cpython-312.pyc",
+          "bytes": 1827,
+          "sha256": "bf2a90235c6e418decb25d2bdc75e7006bbd63ea2b28b4385b9c3677828ba33b"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1/session-window-debug__XrKoUSB/artifacts/app/app/__pycache__/sessions.cpython-312.pyc",
+          "bytes": 7113,
+          "sha256": "4e2c9789e71f8ee96b5c9be078a272dca576dd8f35f0c6b04cfa25a4df921401"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1/session-window-debug__XrKoUSB/artifacts/app/app/__pycache__/types.cpython-312.pyc",
+          "bytes": 3967,
+          "sha256": "9a92e94c72cf730cebd7523b8ada9d37d62626a9ec2a74c36f6f49209b3387ae"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1/session-window-debug__XrKoUSB/artifacts/app/app/emitter.py",
+          "bytes": 1318,
+          "sha256": "d47c4b1220de623dd1df798e9a4a47c498096ea45a795f08a5e8d8ac94dcc644"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1/session-window-debug__XrKoUSB/artifacts/app/app/events.py",
+          "bytes": 2022,
+          "sha256": "8690648640ec42a95794c75a83740d61fed2fb88e46ecf9d8703eafda8690e2e"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1/session-window-debug__XrKoUSB/artifacts/app/app/gc.py",
+          "bytes": 2157,
+          "sha256": "b8ecef46134df8f9a6d3e1e6845ecd030d35f801fb49b34ba2d3d12a2072eafe"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1/session-window-debug__XrKoUSB/artifacts/app/app/merger.py",
+          "bytes": 1297,
+          "sha256": "d70fd199d30979e0b5e0a7bd70af8dfda0a7393b800dffcf6e28d1675fa30756"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1/session-window-debug__XrKoUSB/artifacts/app/app/sessions.py",
+          "bytes": 4728,
+          "sha256": "54beb6f64cb7d444e30457b4c3528fc28bae8b968df98402c40a4267ae4a8042"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1/session-window-debug__XrKoUSB/artifacts/app/app/types.py",
+          "bytes": 1683,
+          "sha256": "650194a651a37c4be79a544b7ecd79b7b319109e2f17b8dc375eb38252542392"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1/session-window-debug__XrKoUSB/artifacts/manifest.json",
+          "bytes": 300,
+          "sha256": "4d46db8cf8434fa0fcf2282a2b4d33ae10d50068fa7ccda5e80b5080d74a4057"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1/session-window-debug__XrKoUSB/config.json",
+          "bytes": 1284,
+          "sha256": "86bb2a37c4b7f31c3c35a8c4ffe943ea77d0f04d76c119d1a833b64e76b233bd"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1/session-window-debug__XrKoUSB/exception.txt",
+          "bytes": 4274,
+          "sha256": "7387497eadd05df956bdc75784dd462e1f3e8ec6229469838e06c237aa1bd245"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1/session-window-debug__XrKoUSB/lock.json",
+          "bytes": 1717,
+          "sha256": "bf01ea4f353eec7ea10a292fa445f2f648b842571083cb1c65a8d17354d2f9b2"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1/session-window-debug__XrKoUSB/network-policy.json",
+          "bytes": 533,
+          "sha256": "8f7223eb3c1b7568880a5d241599f1d79aa7b87de0b19a8b08c8477b49c35f32"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1/session-window-debug__XrKoUSB/result.json",
+          "bytes": 9353,
+          "sha256": "73f9e5f947f4d69d1c9b7257b5a44a4149226607268947b0771e92d55b6498bb"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1/session-window-debug__XrKoUSB/trial.log",
+          "bytes": 865,
+          "sha256": "295178505a1b8842f918c16b3d6eb001611e54490079e0a6586d7c4cab95fc35"
+        }
+      ]
+    },
+    {
+      "job": "tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1",
+      "trial": "session-window-debug__hDVza4i",
+      "files": [
+        {
+          "path": "interruptions/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1/session-window-debug__hDVza4i/lock.json",
+          "bytes": 1717,
+          "sha256": "bf01ea4f353eec7ea10a292fa445f2f648b842571083cb1c65a8d17354d2f9b2"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1/session-window-debug__hDVza4i/network-policy.json",
+          "bytes": 533,
+          "sha256": "8f7223eb3c1b7568880a5d241599f1d79aa7b87de0b19a8b08c8477b49c35f32"
+        },
+        {
+          "path": "interruptions/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1/session-window-debug__hDVza4i/trial.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      ]
+    }
+  ]
+}

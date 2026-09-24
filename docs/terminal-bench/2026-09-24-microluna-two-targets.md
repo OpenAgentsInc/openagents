@@ -1,6 +1,6 @@
 # Microluna: preserve good work, then measure two kinds of win
 
-Status: implementation and measurement in progress, September 24, 2026.
+Status: implementation and the first 12-attempt comparison completed on September 24, 2026.
 Issues [#9606](https://github.com/OpenAgentsInc/openagents/issues/9606),
 [#9607](https://github.com/OpenAgentsInc/openagents/issues/9607), and
 [#9608](https://github.com/OpenAgentsInc/openagents/issues/9608).
@@ -10,11 +10,23 @@ counted. There are two distinct targets: a task whose retained Fable attempts
 all fail, and a task Fable solves where Microluna delivers accepted work more
 cheaply or quickly. Neither is established by an internal green score.
 
-My chosen first change is to preserve candidates and make the final review
-observational. The traces already show the agent finding correct code and
-the harness losing it. This is a concrete loss to remove before adding
-another acceptance writer or more parallel candidates. It will not supply
-reasoning that Luna lacks or make a weak test complete.
+The completed comparison gives **v12 2/3 embedding passes at $0.02512 per
+accepted result**, including the failed attempt, but slower than Fable low.
+The treatment passes 0/3 and both policies fail all three session-window
+attempts. Read the [full results and traces](2026-09-24-microluna-candidate-evidence.md)
+before interpreting the plan below: the proposed observational review did
+not improve this sample and remains experimental.
+
+The first experiment preserves candidates and makes the final review
+observational. The [new trace analysis](2026-09-24-microluna-candidate-evidence.md)
+already gives a counterexample: an editing review produces a real pass
+without increasing the self-score. The observational policy remains
+experimental; retaining evidence is useful independently of that rule.
+Earlier traces show the agent finding correct code and the harness losing
+it. The new trace shows the opposite transition: a review repairs a defect
+that the score misses. Selection needs evidence that distinguishes those
+transitions. Retention alone will not supply reasoning that Luna lacks or
+make a weak test complete.
 
 ## What episode 288 actually supports
 
@@ -84,10 +96,12 @@ their checkout. The comparison baseline advances from the initially proposed
 v11 to v12 **before any trial in this experiment**, so the two arms share the
 same current guidance. Historical v11 results retain their identities.
 
-The other agent subsequently added v13's Jev-ranked source-comment
-suspects. That change is merged alongside this implementation, but it does
-not change either experimental arm or the pinned binary. Comparing that
-generation change with candidate preservation needs its own experiment.
+The other agent subsequently added v13's Jev-ranked source-comment suspects
+and v14's parallel first attempts. Those changes are merged alongside this
+implementation, but do not change either experimental arm or the pinned
+binary. Comparing those generation changes with candidate preservation
+needs its own experiment. The protected policy currently refuses parallel
+first attempts because their snapshots do not yet have its retention contract.
 
 Three problems should remain separate:
 
@@ -118,7 +132,8 @@ bound. Its changes are explicit:
   valid counts. Missing scores, malformed counts, a changed denominator,
   timeouts, and failed commands leave evidence unknown. Retries remain
   bounded; an unknown runner result is not an instruction to change code.
-- The first evaluator is frozen and its file digests are checked around
+- The evaluator is frozen after the first work session ends, and its file
+  digests are checked around
   execution. A later change invalidates its evidence.
 - Candidate snapshots, evaluator files, selection records, and submitted
   file digests remain in the run's artifacts. A workspace above the existing
@@ -173,6 +188,13 @@ and selection reason. Grade intermediate candidates only after execution;
 never feed those hidden results back into the agent. Report every attempt,
 including failed or invalid attempts and their costs. Compare oracle headroom
 (any retained candidate passes) with the selected candidate's result.
+
+In this first comparison, that intermediate oracle is available only for
+the treatment. The unchanged v12 policy deletes its temporary candidates
+and evaluator; its native traces and final artifacts remain. Do not infer
+that v12 never found a passing candidate merely from its failed final result.
+Both arms use the same native executor tools; the treatment deliberately
+restricts the final review to reads and `finish` as part of the intervention.
 
 A lane earns a preliminary repeatability claim only with at least two fresh
 passes in its three treatment attempts. That is still a small selected
