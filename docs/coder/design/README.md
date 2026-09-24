@@ -23,6 +23,7 @@ discovery, and package distribution.
 | [coder-as-decision-router-consumer](coder-as-decision-router-consumer.md) | Coder as a Decision Router consumer |
 | [coder-terminal-v05-algorithm-and-goldens](coder-terminal-v05-algorithm-and-goldens.md) | Proposed v0.5 algorithm, Terminal-Bench panel, golden evidence, and NIP mapping |
 | [decision-function-inventory](decision-function-inventory.md) | Coder decision-function inventory |
+| [luna-pivot](luna-pivot.md) | The Luna pivot: Jev structure around GPT-6 Luna, and the Microluna harness |
 | [rebuild-plan](rebuild-plan.md) | Coder agent and terminal rebuild plan |
 | [relay-backend-plan](relay-backend-plan.md) | Relay backend plan: coder on `relay.openagents.com` |
 | [service-spec](service-spec.md) | Coder service: Nostr auth, free usage, and deployment |
