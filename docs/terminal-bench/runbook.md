@@ -723,6 +723,49 @@ Start trials in the background and wait for them to exit. Don't write a
 command line, so it never ends. Wait on the job's process instead, or
 check for the trial's `result.json`.
 
+### Keep the harness under a memory cap
+
+Twice, one Python analysis process grew to 118 to 124 GB of the host's
+125 GB, and the out-of-memory killer took the desktop session with it
+([#9596](https://github.com/OpenAgentsInc/openagents/issues/9596)). The
+harness now caps its own processes; `tbench/memcap.py` holds the defaults.
+
+| Process | Cap | How | Override |
+| --- | --- | --- | --- |
+| A detached scheduler (`suite run --detach`, `experiment run --detach`) | 8 GiB | Its own systemd scope | `TBENCH_SCHEDULER_MEMORY_MAX` |
+| Each trial the scheduler starts (`tbench run` or `resume`, Harbor, and what Harbor starts on the host) | 16 GiB | Its own systemd scope | `TBENCH_TRIAL_MEMORY_MAX` |
+| An analysis command (`inspect`, `compare`, `reference`, `looptime`, `profiles`) and `tools/trial_metrics.py` and `tools/tb4_scoreboard.py` | 16 GiB | `RLIMIT_DATA` on itself | `TBENCH_ANALYSIS_MEMORY_MAX` |
+
+An override takes a byte count with an optional `K`, `M`, `G`, or `T`
+suffix, or `none`. A scope is `systemd-run --user --scope` with
+`MemoryMax`, `MemorySwapMax=0`, and `OOMPolicy=kill`, under the slice the
+caller runs in, so a scheduler started inside `agents.slice` keeps its
+trials there. The kernel kills a runaway trial's tree and nothing else, and
+`journalctl --user -u 'run-*.scope'` records the kill.
+`TBENCH_MEMORY_SCOPE=off` starts children without a scope. Task containers
+belong to Docker's cgroup, so these caps don't touch a task's own `memory`
+budget.
+
+A scheduler in the foreground, and any one-off script, gets no scope of its
+own. On the operator's host, `agent-run` in `~/.local/bin` starts a command
+inside `agents.slice`, which caps everything in it at 96 GB:
+
+```sh
+agent-run uv run tbench suite run --profile tb4 --agent <arm>
+agent-run python3 my_analysis.py
+```
+
+Or give it a scope with a tighter cap:
+
+```sh
+systemd-run --user --scope -p MemoryMax=16G -p MemorySwapMax=0 -- python3 my_analysis.py
+```
+
+An analysis script reads large inputs a line or a record at a time rather
+than whole: a `trial.log`, an events file, or a corpus of trajectories. The
+trial-log and environment-log readers in `tbench/results.py` and
+`tbench/replay.py` stream theirs.
+
 Harbor warns that an arm's `extra_allowed_hosts` are ignored because the
 effective network policy is public. That is expected for these tasks; the
 list only matters under a restricted policy.

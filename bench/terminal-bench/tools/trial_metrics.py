@@ -21,6 +21,10 @@ import json
 import os
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from tbench import memcap  # noqa: E402
+
 JOBS = os.path.expanduser("~/.openagents/terminal-bench/jobs")
 
 # Jev's published rate, dollars per million input tokens; output is free.
@@ -131,4 +135,5 @@ def main(jobs: list[str]) -> None:
 
 
 if __name__ == "__main__":
+    memcap.limit_self(memcap.cap(memcap.ANALYSIS_ENV, memcap.ANALYSIS_MAX))
     main(sys.argv[1:])

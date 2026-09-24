@@ -62,7 +62,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from . import credentials, host, paths, usage_limit
+from . import credentials, host, memcap, paths, usage_limit
 from .panel import Task
 from .results import TrialPaths
 
@@ -622,8 +622,13 @@ class Launcher:
         log.flush()
         # A session of its own: the trial outlives a scheduler restart, and
         # a Ctrl-C at the scheduler's terminal doesn't reach it twice.
+        # A scope of its own under a memory cap, so a runaway trial is
+        # killed alone rather than taking the host (#9596).
         process = subprocess.Popen(
-            self.command(trial, verb),
+            memcap.scoped(
+                self.command(trial, verb),
+                memcap.cap(memcap.TRIAL_ENV, memcap.TRIAL_MAX),
+            ),
             stdout=log,
             stderr=subprocess.STDOUT,
             stdin=subprocess.DEVNULL,

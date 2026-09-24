@@ -237,19 +237,21 @@ def image_state(
         state["image_state_method"] = "the task's declared image is unreadable"
         return state
 
+    # Streamed rather than read whole: a trial log can be large, and only
+    # the first matching line matters.
     try:
-        lines = (trial_dir / "trial.log").read_text(errors="replace").splitlines()
+        with (trial_dir / "trial.log").open(errors="replace") as lines:
+            skip = next(
+                (
+                    line.rstrip("\r\n")
+                    for line in lines
+                    if line.startswith(f"{IMAGE_SKIP_PREFIX}{image}:")
+                ),
+                None,
+            )
     except OSError:
         state["image_state_method"] = "no trial.log to read"
         return state
-    skip = next(
-        (
-            line
-            for line in lines
-            if line.startswith(f"{IMAGE_SKIP_PREFIX}{image}:")
-        ),
-        None,
-    )
     if skip is not None:
         if "docker inspect returned" in skip:
             state["image_state"] = "cold"

@@ -15,7 +15,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from . import UPSTREAM_GIT_URL, paths
+from . import UPSTREAM_GIT_URL, memcap, paths
 from .agents import load_agents
 from .compare import SMALL_SAMPLE_LABEL, compare, render_table
 from .doctor import run_doctor
@@ -541,7 +541,10 @@ def cmd_suite(args: argparse.Namespace) -> int:
         argv = [a for a in sys.argv[1:] if a != "--detach"]
         log = (directory / "scheduler.log").open("ab")
         process = subprocess.Popen(
-            [sys.executable, "-m", "tbench", *argv],
+            memcap.scoped(
+                [sys.executable, "-m", "tbench", *argv],
+                memcap.cap(memcap.SCHEDULER_ENV, memcap.SCHEDULER_MAX),
+            ),
             stdout=log,
             stderr=subprocess.STDOUT,
             stdin=subprocess.DEVNULL,
@@ -861,7 +864,10 @@ def cmd_experiment(args: argparse.Namespace) -> int:
         argv = [a for a in sys.argv[1:] if a != "--detach"]
         log = (directory / "scheduler.log").open("ab")
         process = subprocess.Popen(
-            [sys.executable, "-m", "tbench", *argv],
+            memcap.scoped(
+                [sys.executable, "-m", "tbench", *argv],
+                memcap.cap(memcap.SCHEDULER_ENV, memcap.SCHEDULER_MAX),
+            ),
             stdout=log,
             stderr=subprocess.STDOUT,
             stdin=subprocess.DEVNULL,
@@ -1535,8 +1541,17 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+# Commands that read results and start nothing. Each caps its own memory,
+# so an input too large to hold raises MemoryError instead of taking the
+# host (#9596). Commands that start trials or containers don't: children
+# would inherit the cap.
+ANALYSIS_COMMANDS = frozenset({"inspect", "compare", "reference", "looptime", "profiles"})
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.command in ANALYSIS_COMMANDS:
+        memcap.limit_self(memcap.cap(memcap.ANALYSIS_ENV, memcap.ANALYSIS_MAX))
     return int(args.func(args) or 0)
 
 

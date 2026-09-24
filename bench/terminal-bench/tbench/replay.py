@@ -521,10 +521,8 @@ def run_verifier(
     rewards = (result.get("verifier_result") or {}).get("rewards") or {}
     starts = []
     try:
-        starts = [
-            json.loads(line)
-            for line in (out / name / "tbench-environment.jsonl").read_text().splitlines()
-        ]
+        with (out / name / "tbench-environment.jsonl").open() as lines:
+            starts = [json.loads(line) for line in lines if line.strip()]
     except (OSError, json.JSONDecodeError):
         pass
     exception = result.get("exception_info") or {}

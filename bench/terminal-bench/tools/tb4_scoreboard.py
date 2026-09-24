@@ -23,6 +23,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(HERE))
 
+from tbench import memcap  # noqa: E402
 from tbench.usage_limit import trial_usage_limit  # noqa: E402
 REFERENCE = HERE / "reference" / "tb4-leaderboard.json"
 DEFAULT_ARMS = [
@@ -76,6 +77,7 @@ def graded(
 
 
 def main() -> None:
+    memcap.limit_self(memcap.cap(memcap.ANALYSIS_ENV, memcap.ANALYSIS_MAX))
     parser = argparse.ArgumentParser()
     parser.add_argument("--arms", default=",".join(DEFAULT_ARMS))
     parser.add_argument(
