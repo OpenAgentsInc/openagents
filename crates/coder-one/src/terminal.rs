@@ -99,6 +99,26 @@ pub const NO_CONNECTORS: (&str, &str) = ("ENABLE_CLAUDEAI_MCP_SERVERS", "false")
 const CONCLUSION: &str = "No explorer ran for this request. The evidence \
 below comes from the host's read-only probes and Jev's file survey.";
 
+/// The directions for a question, which runs with no survey: the other
+/// directions promise gathered evidence, and with none there, "how many
+/// open issues are there" once ended on "no issue data was supplied"
+/// without running a command.
+pub const QUESTION_DIRECTIONS: &str = "Answer the request from the current \
+working directory, the repository the user is working in. The host gathered \
+no evidence for this request: find the answer yourself by running commands \
+and reading files before you answer. Never answer that the information \
+isn't available until a command you ran shows it isn't. Do not commit, push, \
+or change anything outside this directory. End with the answer itself, \
+written for a terminal: plain prose, real paths, and no headers.";
+
+/// A read-only question's addition to [`QUESTION_DIRECTIONS`].
+const QUESTION_READ_ONLY: &str = " This turn is read-only: the filesystem \
+refuses writes, so do not try to change any file.";
+
+/// The briefing's account of what came before a question.
+const QUESTION_CONCLUSION: &str = "No explorer or survey ran for this \
+request, and the host gathered no evidence: use your tools.";
+
 /// The reference policy a terminal turn runs.
 ///
 /// # Panics
@@ -386,10 +406,12 @@ pub async fn answer(request: &Request, on: Rc<dyn Fn(Progress)>) -> Answer {
     // clarify: "one of the open issues" has a sensible reading, and asking
     // back cost a round trip for nothing.
     let directions = if question {
-        format!(
-            "{} {MICROLUNA_QUESTIONS} {DECISIVE}",
-            directions(request.read_only, false)
-        )
+        let read_only = if request.read_only {
+            QUESTION_READ_ONLY
+        } else {
+            ""
+        };
+        format!("{QUESTION_DIRECTIONS}{read_only} {MICROLUNA_QUESTIONS} {DECISIVE}")
     } else {
         directions(request.read_only, request.clarify)
     };
@@ -400,7 +422,12 @@ pub async fn answer(request: &Request, on: Rc<dyn Fn(Progress)>) -> Answer {
         &words,
         &directions,
     );
-    inputs.conclusion = CONCLUSION.to_string();
+    inputs.conclusion = if question {
+        QUESTION_CONCLUSION
+    } else {
+        CONCLUSION
+    }
+    .to_string();
 
     let _ = std::fs::create_dir_all(&request.artifacts);
     if request.agent == Agent::Microluna {
