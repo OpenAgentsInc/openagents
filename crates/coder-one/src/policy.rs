@@ -1512,6 +1512,10 @@ pub const REFERENCE: &[(&str, &str)] = &[
         "microluna-best-of-3.json",
         include_str!("../policies/microluna-best-of-3.json"),
     ),
+    (
+        "microluna-best-of-3-suite.json",
+        include_str!("../policies/microluna-best-of-3-suite.json"),
+    ),
 ];
 
 /// Where the reference manifests live in the checkout.

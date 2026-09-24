@@ -2382,6 +2382,14 @@ fn the_best_of_manifests_differ_from_their_single_arm_only_in_n() {
     let mut many = manifest("microluna-best-of-3.json");
     assert_eq!(many.policy.control.best_of.take().unwrap().n, 3);
     assert_eq!(many.policy, micro.policy);
+    // The suite arm differs from best-of-3 only in its selection key.
+    let mut suite = manifest("microluna-best-of-3-suite.json");
+    let best_of = suite.policy.control.best_of.take().unwrap();
+    assert_eq!(
+        (best_of.n, best_of.select),
+        (3, super::best_of::Select::Suite)
+    );
+    assert_eq!(suite.policy, micro.policy);
     assert_eq!(
         micro.policy.executor.agent,
         crate::policy::AgentName::Microluna

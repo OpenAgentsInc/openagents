@@ -31,12 +31,23 @@
 //! ran, and the kept candidate's copy replaces it either way. A task whose
 //! state lives outside the workspace, such as a service container, is not
 //! isolated at all.
+//!
+//! With `select: "suite"`, an executable suite ranks first ([`suite`]):
+//! the task's test commands, run on every candidate's code under every
+//! candidate's test files, and the candidate with the most passing runs
+//! is kept. Then the verdict's call and its failure probability, then the
+//! checks, then cost.
 
+pub mod suite;
+
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
+
+pub use suite::Select;
 
 use super::{Exec, Factory, Setup, Standing, VerifyPolicy, claimed, replace_contents, row};
 use crate::checks::{self, Subject, generic};
@@ -57,6 +68,9 @@ pub const MAX_N: usize = 8;
 
 /// The order candidates are ranked in, as the record states it.
 pub const ORDER: [&str; 4] = ["verdict", "scorecard", "cost", "number"];
+
+/// The order with `select: "suite"`.
+pub const ORDER_SUITE: [&str; 6] = ["suite", "verdict", "p_fail", "scorecard", "cost", "number"];
 
 fn max_copy_mb() -> u64 {
     256
@@ -79,6 +93,15 @@ pub struct BestOfPolicy {
     /// the verifier can grade every candidate afterwards.
     #[serde(default = "yes")]
     pub archive: bool,
+    /// What ranks first: the verdict (the default) or the executable suite.
+    #[serde(default, skip_serializing_if = "Select::is_verdict")]
+    pub select: Select,
+    /// With `select: "suite"`, the whole suite's time bound in seconds.
+    #[serde(
+        default = "suite::suite_sec",
+        skip_serializing_if = "suite::is_default_sec"
+    )]
+    pub suite_sec: u64,
 }
 
 impl BestOfPolicy {
@@ -94,6 +117,9 @@ impl BestOfPolicy {
         }
         if self.max_copy_mb == 0 {
             problems.push("control.best_of.max_copy_mb must be at least 1".to_string());
+        }
+        if self.suite_sec == 0 {
+            problems.push("control.best_of.suite_sec must be at least 1".to_string());
         }
         problems
     }
@@ -216,6 +242,11 @@ pub struct Fan {
     pub before: Option<String>,
     /// Whether the workspace changed while they ran.
     pub leaked: Option<bool>,
+    /// Each file's digest as the candidates started, which the suite
+    /// compares copies with to find the test files each wrote.
+    pub base: BTreeMap<String, String>,
+    /// Whether the selection runs the suite, so the base is worth taking.
+    pub suite: bool,
 }
 
 /// Why a workspace can't be copied `n` times, or `None` when it can.
@@ -277,6 +308,8 @@ impl Fan {
             runs_before: runs,
             before: None,
             leaked: None,
+            base: BTreeMap::new(),
+            suite: policy.select == Select::Suite,
         }))
     }
 
@@ -344,6 +377,9 @@ impl Executor for Fan {
     }
     async fn execute(&mut self, briefing: &Briefing) -> Report {
         self.before = delegate::fingerprint(&self.workdir);
+        if self.suite {
+            self.base = suite::digests(&self.workdir);
+        }
         for candidate in &mut self.candidates {
             if let Err(error) = crate::handoff::copy_tree(&self.workdir, &candidate.dir) {
                 candidate.refused = Some(format!("cannot copy the workspace: {error}"));
@@ -433,7 +469,34 @@ pub struct Score {
     pub confirmed: usize,
     /// The dispatch's priced cost, when known.
     pub cost_usd: Option<f64>,
+    /// The verdict's failure probability, when it had evidence.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub p_fail: Option<f64>,
+    /// With `select: "suite"`, the suite's passing runs and all its runs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub suite: Option<(usize, usize)>,
 }
+
+/// A ranking key: lower ranks first.
+type Key = (
+    std::cmp::Reverse<usize>,
+    u8,
+    u64,
+    usize,
+    std::cmp::Reverse<usize>,
+    u64,
+    usize,
+);
+
+/// The key parts' names, in the key's order.
+const KEY_PARTS: [&str; 6] = [
+    "it passes the most suite runs",
+    "its verdict is the best",
+    "its verdict's failure probability is the lowest",
+    "its checks are the best",
+    "it cost the least",
+    "it has the lowest number",
+];
 
 impl Score {
     /// The verdict's rank: pass 0, unknown or none 1, fail 2, and 3 for a
@@ -450,11 +513,23 @@ impl Score {
         }
     }
 
-    fn key(&self) -> (u8, usize, std::cmp::Reverse<usize>, u64, usize) {
+    /// The ranking key under `select`. The verdict mode leaves the suite
+    /// and the failure probability out, so it ranks as it always has.
+    fn key(&self, select: Select) -> Key {
         // An unknown cost ranks after every known one.
         let cost = self.cost_usd.map_or(u64::MAX, |usd| (usd * 1e9) as u64);
+        let (passed, p_fail) = match select {
+            Select::Verdict => (0, 0),
+            Select::Suite => (
+                self.suite.map_or(0, |(passed, _)| passed),
+                // No probability ranks after every known one.
+                self.p_fail.map_or(u64::MAX, |p| (p * 1e9) as u64),
+            ),
+        };
         (
+            std::cmp::Reverse(passed),
             self.verdict_rank(),
+            p_fail,
             self.failures,
             std::cmp::Reverse(self.confirmed),
             cost,
@@ -463,35 +538,49 @@ impl Score {
     }
 }
 
-/// The kept candidate's index in `scores`, and why, in a sentence. The
-/// verdict first, then the scorecard, then cost, then the lowest number.
+/// Which key part first separates `own` from `next`.
+fn decided_by(own: &Key, next: &Key) -> &'static str {
+    if own.0 != next.0 {
+        KEY_PARTS[0]
+    } else if own.1 != next.1 {
+        KEY_PARTS[1]
+    } else if own.2 != next.2 {
+        KEY_PARTS[2]
+    } else if (own.3, own.4) != (next.3, next.4) {
+        KEY_PARTS[3]
+    } else if own.5 != next.5 {
+        KEY_PARTS[4]
+    } else {
+        KEY_PARTS[5]
+    }
+}
+
+/// The kept candidate's index in `scores`, and why, in a sentence. With
+/// the verdict selection: the verdict first, then the scorecard, then
+/// cost, then the lowest number. With the suite selection: the most
+/// passing suite runs, then the verdict's call and failure probability,
+/// then the rest.
 ///
 /// # Panics
 ///
 /// Panics when `scores` is empty.
 #[must_use]
-pub fn pick(scores: &[Score]) -> (usize, String) {
+pub fn pick(scores: &[Score], select: Select) -> (usize, String) {
     let mut order: Vec<usize> = (0..scores.len()).collect();
-    order.sort_by_key(|&i| scores[i].key());
+    order.sort_by_key(|&i| scores[i].key(select));
     let best = *order.first().expect("at least one candidate");
     let kept = &scores[best];
-    let decided_by = match order.get(1).map(|&j| scores[j].key()) {
+    let decided_by = match order.get(1).map(|&j| scores[j].key(select)) {
         None => "it is the only candidate",
-        Some(next) => {
-            let own = kept.key();
-            if own.0 != next.0 {
-                "its verdict is the best"
-            } else if (own.1, own.2) != (next.1, next.2) {
-                "its verdict ties and its checks are the best"
-            } else if own.3 != next.3 {
-                "its verdict and checks tie and it cost the least"
-            } else {
-                "it ties on every key and has the lowest number"
-            }
-        }
+        Some(next) => decided_by(&kept.key(select), &next),
+    };
+    let suite = match (select, kept.suite) {
+        (Select::Suite, Some((passed, total))) => format!("suite {passed} of {total}, "),
+        (Select::Suite, None) => "no suite, ".to_string(),
+        (Select::Verdict, _) => String::new(),
     };
     let why = format!(
-        "candidate {} kept: {decided_by} (verdict {}, {} failure(s), {} confirmed, {})",
+        "candidate {} kept: {decided_by} ({suite}verdict {}, {} failure(s), {} confirmed, {})",
         kept.number,
         if kept.answered {
             kept.verdict.as_deref().unwrap_or("not asked")
@@ -559,6 +648,60 @@ fn archive(dir: &Path, copy: &Path, number: usize) -> Value {
     }
 }
 
+/// Runs the executable suite over every candidate, in the real workspace,
+/// within the policy's bound and what the episode has left.
+async fn run_suite(
+    setup: &Setup<'_>,
+    subject: &Subject,
+    policy: &BestOfPolicy,
+    fan: &Fan,
+) -> suite::Matrix {
+    let commands = suite::commands(subject, setup.instruction, setup.workdir);
+    let copies: Vec<PathBuf> = fan.candidates.iter().map(|c| c.dir.clone()).collect();
+    let tests: Vec<Vec<String>> = fan
+        .candidates
+        .iter()
+        .map(|c| {
+            if c.refused.is_some() {
+                Vec::new()
+            } else {
+                suite::changed_tests(&fan.base, &c.dir)
+            }
+        })
+        .collect();
+    let command_sec = subject
+        .live
+        .as_ref()
+        .map_or(300, |live| live.command_sec.max(1));
+    let mut total = Duration::from_secs(policy.suite_sec);
+    if let Some(left) = setup.deadline.allowance() {
+        // Leave the checks and the verdict half of what remains.
+        total = total.min(left / 2);
+    }
+    let bench = suite::Bench {
+        workdir: setup.workdir,
+        scratch: setup.dir,
+        command: Duration::from_secs(command_sec),
+        total,
+    };
+    let matrix = suite::run(&bench, commands, &copies, tests).await;
+    let scores: Vec<String> = (0..copies.len())
+        .map(|i| {
+            matrix
+                .score(i)
+                .map_or_else(|| "-".to_string(), |(p, t)| format!("{p}/{t}"))
+        })
+        .collect();
+    println!(
+        "  best of {} ▸ suite of {} command(s): {}",
+        copies.len(),
+        matrix.commands.len(),
+        scores.join(", ")
+    );
+    super::record_decision(setup.recorder, COMPONENT, "suite", &matrix.record());
+    matrix
+}
+
 /// Checks each candidate in the real workspace, asks the verdict about
 /// each, keeps one, and leaves its copy as the workspace.
 #[allow(clippy::too_many_lines)]
@@ -572,6 +715,10 @@ pub async fn select(
     granted: u64,
 ) -> Selected {
     let workdir = setup.workdir;
+    let matrix = match policy.select {
+        Select::Verdict => None,
+        Select::Suite => Some(run_suite(setup, subject, policy, fan).await),
+    };
     let mut scores = Vec::new();
     let mut checked_all = Vec::new();
     let mut verdicts = Vec::new();
@@ -645,6 +792,8 @@ pub async fn select(
             cost_usd: (charge == "priced")
                 .then_some(report.summary.total_cost_usd)
                 .flatten(),
+            p_fail: verdict.as_ref().and_then(|(v, _)| v.p_fail),
+            suite: matrix.as_ref().and_then(|m| m.score(i)),
         };
         entries.push(json!({
             "number": number,
@@ -668,7 +817,7 @@ pub async fn select(
         checked_all.push(checked);
         verdicts.push(verdict);
     }
-    let (best, why) = pick(&scores);
+    let (best, why) = pick(&scores, policy.select);
     let kept = &fan.candidates[best];
     let restored = if kept.refused.is_none() {
         replace_contents(workdir, &kept.dir).err()
@@ -699,7 +848,11 @@ pub async fn select(
         .collect();
     let mut record = json!({
         "n": fan.candidates.len(),
-        "order": ORDER,
+        "select": policy.select,
+        "order": match policy.select {
+            Select::Verdict => ORDER.to_vec(),
+            Select::Suite => ORDER_SUITE.to_vec(),
+        },
         "kept": best + 1,
         "why": why,
         "verdicts": oracle_verdicts,
@@ -709,6 +862,9 @@ pub async fn select(
     });
     if let Some(error) = &restored {
         record["restore_error"] = json!(error);
+    }
+    if let Some(matrix) = &matrix {
+        record["suite"] = matrix.record();
     }
     super::record_decision(setup.recorder, COMPONENT, "kept", &record);
     println!("  best of {} ▸ {why}", fan.candidates.len());
@@ -741,6 +897,8 @@ mod tests {
             failures,
             confirmed,
             cost_usd: Some(usd),
+            p_fail: None,
+            suite: None,
         }
     }
 
@@ -752,7 +910,7 @@ mod tests {
             score(2, "pass", 2, 1, 0.09),
             score(3, "fail", 0, 9, 0.001),
         ];
-        let (kept, why) = pick(&scores);
+        let (kept, why) = pick(&scores, Select::Verdict);
         assert_eq!(kept, 1, "{why}");
         assert!(why.contains("its verdict is the best"), "{why}");
         // With the verdicts tied, fewer failures win, then more confirmed.
@@ -761,19 +919,55 @@ mod tests {
             score(2, "unknown", 0, 1, 0.05),
             score(3, "unknown", 0, 2, 0.09),
         ];
-        let (kept, why) = pick(&scores);
+        let (kept, why) = pick(&scores, Select::Verdict);
         assert_eq!(kept, 2, "{why}");
         assert!(why.contains("checks are the best"), "{why}");
         // With the verdicts and checks tied, the cheapest wins.
         let scores = [score(1, "pass", 0, 2, 0.05), score(2, "pass", 0, 2, 0.02)];
-        let (kept, why) = pick(&scores);
+        let (kept, why) = pick(&scores, Select::Verdict);
         assert_eq!(kept, 1, "{why}");
         assert!(why.contains("cost the least"), "{why}");
         // A full tie keeps the lowest number.
         let scores = [score(1, "pass", 0, 2, 0.02), score(2, "pass", 0, 2, 0.02)];
-        let (kept, why) = pick(&scores);
+        let (kept, why) = pick(&scores, Select::Verdict);
         assert_eq!(kept, 0, "{why}");
         assert!(why.contains("lowest number"), "{why}");
+    }
+
+    #[test]
+    fn the_suite_decides_before_the_verdict_and_p_fail_before_cost() {
+        let with = |mut s: Score, passed: usize, p_fail: f64| {
+            s.suite = Some((passed, 6));
+            s.p_fail = Some(p_fail);
+            s
+        };
+        // The mvcc-lsm-compaction trial: every verdict unknown, every
+        // check tied. Cost kept candidate 2; the suite drops it.
+        let scores = [
+            with(score(1, "unknown", 0, 2, 0.0060), 5, 0.36),
+            with(score(2, "unknown", 0, 2, 0.0043), 4, 0.40),
+            with(score(3, "unknown", 0, 2, 0.0043), 5, 0.37),
+        ];
+        let (kept, why) = pick(&scores, Select::Verdict);
+        assert_eq!(kept, 1, "{why}");
+        let (kept, why) = pick(&scores, Select::Suite);
+        assert_eq!(kept, 0, "{why}");
+        assert!(why.contains("failure probability is the lowest"), "{why}");
+        assert!(why.contains("suite 5 of 6"), "{why}");
+        // More passing runs beat a passing verdict.
+        let scores = [
+            with(score(1, "pass", 0, 9, 0.001), 2, 0.1),
+            with(score(2, "fail", 3, 0, 0.5), 6, 0.9),
+        ];
+        let (kept, why) = pick(&scores, Select::Suite);
+        assert_eq!(kept, 1, "{why}");
+        assert!(why.contains("the most suite runs"), "{why}");
+        // Without a suite, the suite selection falls to the verdict.
+        let mut a = score(1, "unknown", 0, 2, 0.01);
+        a.p_fail = Some(0.2);
+        let (kept, why) = pick(&[score(2, "unknown", 0, 2, 0.001), a], Select::Suite);
+        assert_eq!(kept, 1, "{why}");
+        assert!(why.contains("no suite"), "{why}");
     }
 
     #[test]
@@ -781,17 +975,17 @@ mod tests {
         let mut silent = score(1, "pass", 0, 9, 0.0);
         silent.answered = false;
         let scores = [silent, score(2, "fail", 3, 0, 0.5)];
-        let (kept, why) = pick(&scores);
+        let (kept, why) = pick(&scores, Select::Verdict);
         assert_eq!(kept, 1, "{why}");
         // No verdict asked ranks with unknown, ahead of fail.
         let mut unasked = score(1, "", 1, 0, 0.1);
         unasked.verdict = None;
-        let (kept, _) = pick(&[score(2, "fail", 0, 3, 0.0), unasked]);
+        let (kept, _) = pick(&[score(2, "fail", 0, 3, 0.0), unasked], Select::Verdict);
         assert_eq!(kept, 1);
         // An unknown cost ranks after a known one.
         let mut unpriced = score(1, "pass", 0, 2, 0.0);
         unpriced.cost_usd = None;
-        let (kept, _) = pick(&[unpriced, score(2, "pass", 0, 2, 0.4)]);
+        let (kept, _) = pick(&[unpriced, score(2, "pass", 0, 2, 0.4)], Select::Verdict);
         assert_eq!(kept, 1);
     }
 
@@ -846,6 +1040,8 @@ mod tests {
             n,
             max_copy_mb: 256,
             archive: true,
+            select: Select::Verdict,
+            suite_sec: 900,
         };
         assert!(policy(1).validate()[0].contains("from 2 to 8"));
         assert!(policy(9).validate()[0].contains("from 2 to 8"));
@@ -856,8 +1052,21 @@ mod tests {
             BestOfPolicy {
                 n: 5,
                 max_copy_mb: 256,
-                archive: true
+                archive: true,
+                select: Select::Verdict,
+                suite_sec: 900,
             }
+        );
+        let parsed: BestOfPolicy =
+            serde_json::from_value(json!({ "n": 3, "select": "suite", "suite_sec": 600 })).unwrap();
+        assert_eq!(parsed.select, Select::Suite);
+        assert_eq!(parsed.suite_sec, 600);
+        // The verdict selection serializes as it always has.
+        assert!(
+            serde_json::to_value(policy(3))
+                .unwrap()
+                .get("select")
+                .is_none()
         );
         assert!(serde_json::from_value::<BestOfPolicy>(json!({ "n": 5, "mode": "x" })).is_err());
     }

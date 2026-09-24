@@ -313,7 +313,8 @@ fn outputs(requirement: &Requirement, options: Options) -> Vec<String> {
 
 /// A command with its harmless tail removed: `2>&1`, and a pipe into
 /// `tail`, `head`, or `cat`.
-fn core(command: &str) -> String {
+#[must_use]
+pub fn core(command: &str) -> String {
     let mut text = command.trim().to_string();
     if let Some(at) = text.find('|') {
         let rest = text[at + 1..].trim_start();
