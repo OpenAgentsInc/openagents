@@ -7,11 +7,20 @@ use serde_json::{Value, json};
 
 use crate::transport::{Reply, Request, TokenUsage, Transport, TransportError};
 
+/// Replies in the order they answer.
+type Script = VecDeque<Result<Reply, TransportError>>;
+
 /// Answers each request with the next scripted reply, and keeps every
 /// request it was sent so a test can inspect what the session built.
+///
+/// Sessions that run at the same time share one transport, so their
+/// requests interleave. A lane ([`FakeTransport::lane`]) keeps a script of
+/// its own for the requests whose input mentions its marker, so each
+/// concurrent session follows its own script whatever the interleaving.
 #[derive(Debug, Default)]
 pub struct FakeTransport {
-    script: RefCell<VecDeque<Result<Reply, TransportError>>>,
+    script: RefCell<Script>,
+    lanes: RefCell<Vec<(String, Script)>>,
     requests: RefCell<Vec<Request>>,
 }
 
@@ -21,6 +30,7 @@ impl FakeTransport {
     pub fn new(replies: Vec<Reply>) -> Self {
         FakeTransport {
             script: RefCell::new(replies.into_iter().map(Ok).collect()),
+            lanes: RefCell::default(),
             requests: RefCell::default(),
         }
     }
@@ -40,11 +50,28 @@ impl FakeTransport {
     pub fn requests(&self) -> Vec<Request> {
         self.requests.borrow().clone()
     }
+
+    /// Answers the requests whose input text contains `marker` with
+    /// `replies`, in order, before the main script. Lanes are tried in the
+    /// order they were added; a lane that ran out falls through.
+    pub fn lane(&self, marker: &str, replies: Vec<Reply>) {
+        self.lanes
+            .borrow_mut()
+            .push((marker.to_string(), replies.into_iter().map(Ok).collect()));
+    }
 }
 
 impl Transport for FakeTransport {
     async fn respond(&self, request: &Request) -> Result<Reply, TransportError> {
         self.requests.borrow_mut().push(request.clone());
+        let text = serde_json::to_string(&request.input).unwrap_or_default();
+        for (marker, script) in self.lanes.borrow_mut().iter_mut() {
+            if text.contains(marker.as_str())
+                && let Some(reply) = script.pop_front()
+            {
+                return reply;
+            }
+        }
         self.script
             .borrow_mut()
             .pop_front()

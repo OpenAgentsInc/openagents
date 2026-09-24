@@ -107,7 +107,17 @@ pub fn local_run_sh(workspace: &Path, test_sec: u64) -> String {
 ACCEPT_DIR=$(cd "$(dirname "$0")" && pwd)
 WORKSPACE=${{WORKSPACE:-{workspace}}}
 export ACCEPT_DIR WORKSPACE
-if command -v timeout >/dev/null 2>&1; then bound="timeout {test_sec}"; else bound=""; fi
+{tests}"#,
+        workspace = sh_quote(&workspace.display().to_string()),
+        tests = tests_sh(test_sec),
+    )
+}
+
+/// The part of a `run.sh` that runs `$ACCEPT_DIR/tests/*.sh` from
+/// `$WORKSPACE`, with a line per test and the tail of a red test's output.
+fn tests_sh(test_sec: u64) -> String {
+    format!(
+        r#"if command -v timeout >/dev/null 2>&1; then bound="timeout {test_sec}"; else bound=""; fi
 green=0
 red=0
 for test in "$ACCEPT_DIR"/tests/*.sh; do
@@ -131,11 +141,167 @@ for test in "$ACCEPT_DIR"/tests/*.sh; do
   fi
 done
 echo "$green green, $red red"
-"#,
-        workspace = sh_quote(&workspace.display().to_string()),
+"#
     )
 }
 
+/// `text` escaped for a basic regular expression between `|` delimiters
+/// in `sed`, or for its replacement.
+fn sed_escape(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        if matches!(c, '.' | '[' | ']' | '*' | '^' | '$' | '\\' | '|' | '&') {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out
+}
+
+/// The writing session's `run.sh` when the proof runs on a snapshot: it
+/// copies the suite to a scratch directory, reads every mention of `real`
+/// in the copy as `snapshot`, and runs the copy against the snapshot, the
+/// way [`Rebased`] proves the tests.
+#[must_use]
+pub fn rebasing_run_sh(real: &Path, snapshot: &Path, test_sec: u64) -> String {
+    format!(
+        r#"#!/bin/sh
+# Runs the acceptance tests against the snapshot of the workspace, the way
+# the host proves them: every mention of {real} in the suite reads as
+# {snapshot}. Usage: sh run.sh [TEST_ID ...]
+here=$(cd "$(dirname "$0")" && pwd)
+here_re=$(printf '%s' "$here" | sed 's/[].[*^$\|&]/\\&/g')
+ACCEPT_DIR=$(mktemp -d)
+cp -R "$here"/. "$ACCEPT_DIR"/
+find "$ACCEPT_DIR" -type f ! -name run.sh | while IFS= read -r file; do
+  sed -e "s|$here_re|$ACCEPT_DIR|g" -e {rule} "$file" > "$file.rebased" &&
+    cat "$file.rebased" > "$file"
+  rm -f "$file.rebased"
+done
+WORKSPACE={workspace}
+export ACCEPT_DIR WORKSPACE
+{tests}rm -rf "$ACCEPT_DIR"
+"#,
+        real = real.display(),
+        snapshot = snapshot.display(),
+        rule = sh_quote(&format!(
+            "s|{}|{}|g",
+            sed_escape(&real.display().to_string()),
+            sed_escape(&snapshot.display().to_string())
+        )),
+        workspace = sh_quote(&snapshot.display().to_string()),
+        tests = tests_sh(test_sec),
+    )
+}
+
+/// Copies the directory `from` to `to`, replacing what `to` held, with
+/// every whole-path mention of each pair's first path in a text file
+/// rewritten to its second ([`crate::compose::best_of::rebase`]). A file
+/// that isn't UTF-8 is copied as it is.
+///
+/// # Errors
+///
+/// A message when a file can't be read or written.
+pub fn rebase_tree(from: &Path, to: &Path, pairs: &[(&Path, &Path)]) -> Result<(), String> {
+    crate::handoff::copy_tree(from, to)?;
+    let mut stack = vec![to.to_path_buf()];
+    while let Some(at) = stack.pop() {
+        for entry in std::fs::read_dir(&at)
+            .map_err(|error| format!("{}: {error}", at.display()))?
+            .flatten()
+        {
+            let path = entry.path();
+            let Ok(kind) = entry.file_type() else {
+                continue;
+            };
+            if kind.is_dir() {
+                stack.push(path);
+            } else if kind.is_file()
+                && let Ok(text) = std::fs::read_to_string(&path)
+            {
+                let mut rebased = text.clone();
+                for (old, new) in pairs {
+                    rebased = crate::compose::best_of::rebase(&rebased, old, new);
+                }
+                if rebased != text {
+                    std::fs::write(&path, rebased)
+                        .map_err(|error| format!("{}: {error}", path.display()))?;
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Runs tests written for the workspace `real` against `snapshot`, a copy
+/// of it taken before anything edited it. Each run copies the suite to a
+/// scratch directory with every mention of `real` (and of the suite
+/// directory) rewritten, so a test that names the task's own paths reads
+/// the snapshot, not the workspace another session is editing.
+pub struct Rebased<'a, R: Runner> {
+    pub inner: &'a R,
+    pub real: PathBuf,
+    pub snapshot: PathBuf,
+    /// One test's wall-time bound, for the writing session's `run.sh`.
+    pub test_sec: u64,
+}
+
+impl<R: Runner> Runner for Rebased<'_, R> {
+    fn describe(&self) -> Value {
+        let mut out = self.inner.describe();
+        out["rebased"] = json!({ "real": self.real, "snapshot": self.snapshot });
+        out
+    }
+
+    fn harness(&self, _suite_dir: &Path, _workspace: &Path) -> Vec<(&'static str, String)> {
+        vec![
+            (
+                "run.sh",
+                rebasing_run_sh(&self.real, &self.snapshot, self.test_sec),
+            ),
+            ("env.sh", local_env_sh(&self.snapshot)),
+        ]
+    }
+
+    async fn run_all(&self, tests: &[Test], suite_dir: &Path, workspace: &Path) -> Vec<TestRun> {
+        static MADE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let scratch = std::env::temp_dir().join(format!(
+            "accept-rebased-{}-{}-{}",
+            std::process::id(),
+            atif::now_ms(),
+            MADE.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
+        if let Err(error) = rebase_tree(
+            suite_dir,
+            &scratch,
+            &[(suite_dir, &scratch), (&self.real, &self.snapshot)],
+        ) {
+            let _ = std::fs::remove_dir_all(&scratch);
+            return tests
+                .iter()
+                .map(|test| TestRun {
+                    id: test.id.clone(),
+                    requirements: test.requirements.clone(),
+                    green: false,
+                    exit: None,
+                    killed: false,
+                    milliseconds: 0,
+                    output: format!("[runner] the suite could not be rebased: {error}"),
+                    flaky: false,
+                })
+                .collect();
+        }
+        let mut runs = self.inner.run_all(tests, &scratch, workspace).await;
+        for run in &mut runs {
+            run.output = crate::compose::best_of::rebase(&run.output, &scratch, suite_dir);
+        }
+        let _ = std::fs::remove_dir_all(&scratch);
+        runs
+    }
+}
+
+/// The frozen suite's `env.sh`: runs one command in the workspace root.
+#[must_use]
 pub fn local_env_sh(workspace: &Path) -> String {
     format!(
         "#!/bin/sh\n# Runs one command in the workspace root: sh env.sh 'COMMAND'\ncd {} && exec sh -c \"$1\"\n",

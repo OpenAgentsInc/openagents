@@ -62,7 +62,7 @@ use crate::component::jev::JevMode;
 use crate::record::{Finish, Implementation, Outcome, Recorder, Start};
 use crate::requirements::{Kind, RequirementMap};
 
-pub use runner::{Confine, Docker, Local, Runner};
+pub use runner::{Confine, Docker, Local, Rebased, Runner};
 pub use writer::{MicrolunaWriter, Writer, Written};
 
 /// The schema of a frozen suite's record.
@@ -124,6 +124,13 @@ pub struct Inputs<'a> {
     /// as "the directory /app, readable with `sh env.sh`". Empty for the
     /// default wording.
     pub workspace_note: String,
+    /// The workspace the frozen suite runs on, when it isn't `workspace`.
+    /// Set, `workspace` is a snapshot of it taken before anything edited
+    /// it: the red-first proof runs on the snapshot, with every mention of
+    /// this path in the suite read as the snapshot's ([`Rebased`]), while
+    /// another session edits this one; the freeze then points the suite
+    /// here.
+    pub target: Option<&'a Path>,
 }
 
 /// The bounds and thresholds of `accept.define`.
@@ -156,7 +163,78 @@ pub struct Options {
     pub exact_min: f64,
     /// Jev requests sent at once.
     pub jev_parallel: usize,
+    /// Writing sessions in the first round, each on its own share of the
+    /// requirements and at the same time. More than one splits the
+    /// decidable requirements into that many consecutive groups, merges
+    /// the suites they write into one (tests renumbered, facts kept), and
+    /// verifies the merged suite once. Later rounds fix it with one
+    /// session, as before.
+    #[serde(default = "one_writer")]
+    pub writers: usize,
+    /// What sends a suite back to a writer after a round.
+    #[serde(default)]
+    pub rewrite: Rewrite,
+    /// With `rewrite: "hard"`, a later round's model requests: a short,
+    /// targeted session on the flagged tests. `None` for the writer's own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repair_turns: Option<usize>,
+    /// Tell the writer to write every test in one pass and then run the
+    /// suite once ([`ONE_PASS`]), instead of patching test by test with
+    /// `run.sh` in between.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub one_pass: bool,
+    /// Tell the writer to find the deciding facts by reading the code's
+    /// documentation and running property probes on the untouched code
+    /// ([`DISCOVER`]).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub discover: bool,
 }
+
+fn one_writer() -> usize {
+    1
+}
+
+/// What sends a suite back to a writer after a round.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Rewrite {
+    /// Every problem: code's and Jev's. Jev's faithfulness, hardcoding,
+    /// triviality, and coverage judgments reject tests and name gaps, and
+    /// each rejection goes back to a fresh round.
+    #[default]
+    Any,
+    /// Only hard failures code checks: a test that doesn't fail on the
+    /// untouched workspace, one that doesn't run or fails in the harness,
+    /// one that can't fail, and a suite with no tests. Jev's judgments
+    /// become notes on the tests, which the edit sessions read, and a
+    /// later round is a short session on the flagged tests that keeps the
+    /// first round's prefix and findings.
+    Hard,
+}
+
+/// What a writer is told with [`Options::discover`]: find the deciding
+/// facts by reading the code's own documentation and by running small
+/// probes on the untouched code, instead of guessing them.
+pub const DISCOVER: &str = "Find the deciding facts by reading and running, not by guessing.
+- Read every module the task touches in full: its docstrings, comments, parameter names, and \
+defaults. Each property they state, such as a function being symmetric, ignoring scale, keeping \
+order, mapping a zero input to zeros, or using an inclusive threshold, is a candidate fact. Where \
+the task and a docstring disagree, the task wins; where the documentation names a formula or \
+estimator, check it against the task's words.
+- Before you write a test, run small property probes on the untouched code with env.sh: a sample \
+against itself, two samples drawn from one distribution, scaled inputs, zero vectors, empty \
+inputs, and extreme values. Note what the code does now, then decide what the task and the \
+documentation say it should do. Encode the property they imply, never the current behavior just \
+because the code does it.
+- For every statistic, estimator, distance, or formula the task names, write a null test: on \
+inputs whose true answer is known, such as two samples from one distribution, check the property \
+a correct implementation must have.
+List each fact in facts.md with where you found it: the task, a docstring, or a probe.";
+
+/// What a writer is told with [`Options::one_pass`].
+pub const ONE_PASS: &str = "Work in one pass: read what you need, write every test file, then \
+run the whole suite once with `sh run.sh` and fix only what that run shows is broken. Don't run \
+the suite after each test you write.";
 
 impl Default for Options {
     fn default() -> Self {
@@ -174,6 +252,11 @@ impl Default for Options {
             decides_min: 0.3,
             exact_min: 0.3,
             jev_parallel: 6,
+            writers: 1,
+            rewrite: Rewrite::Any,
+            repair_turns: None,
+            one_pass: false,
+            discover: false,
         }
     }
 }
@@ -195,6 +278,10 @@ pub struct Test {
     /// Its source, for Jev; not recorded, since the digest covers it.
     #[serde(skip)]
     pub source: String,
+    /// Jev's doubts about it that didn't reject it, with
+    /// [`Rewrite::Hard`]: an edit session reads them beside the test.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub notes: Vec<String>,
 }
 
 /// One test's run.
@@ -382,6 +469,24 @@ pub struct Round {
     pub gaps: Vec<Gap>,
     pub jev_requests: usize,
     pub jev_usd: f64,
+    /// The writing sessions that ran at the same time in this round, when
+    /// there were several; `writer` then sums them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub parts: Vec<Part>,
+}
+
+/// One of several writing sessions in a round, and how its tests joined
+/// the suite.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Part {
+    pub writer: Written,
+    /// The requirements it wrote tests for.
+    pub requirements: Vec<String>,
+    /// Its tests' IDs and the IDs they have in the merged suite.
+    pub renumbered: Vec<(String, String)>,
+    /// Its helper files renamed so they don't overwrite another part's.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub renamed: Vec<(String, String)>,
 }
 
 /// A suite's state: `accepted` when every requirement is decided, and
@@ -546,6 +651,9 @@ impl AcceptanceSuite {
                 self.dir.display(),
                 test.path
             ));
+            for note in &test.notes {
+                text.push_str(&format!("\n  Note: {note}"));
+            }
         }
         microluna::Evidence {
             label: "The acceptance tests".to_string(),
@@ -712,6 +820,7 @@ pub fn read_tests(dir: &Path, known: &[String]) -> (Vec<Test>, Vec<(String, Stri
             ));
         }
         tests.push(Test {
+            notes: Vec::new(),
             id,
             requirements: requirements
                 .into_iter()
@@ -855,8 +964,367 @@ pub fn brief(inputs: &Inputs<'_>, problems: &[String]) -> microluna::Brief {
 /// invocation, the Jev decisions, and a step carrying the suite are
 /// recorded in `recorder`; the record is also written beside the suite
 /// directory ([`AcceptanceSuite::record_path`]).
-#[allow(clippy::too_many_lines)]
+///
+/// With [`Inputs::target`] set, the proof runs on the snapshot in
+/// [`Inputs::workspace`] through [`Rebased`], and the frozen suite runs on
+/// the target.
 pub async fn define<W: Writer, R: Runner>(
+    inputs: &Inputs<'_>,
+    writer: &W,
+    runner: &R,
+    jev: &JevMode,
+    recorder: &Recorder,
+    options: &Options,
+) -> AcceptanceSuite {
+    match inputs.target.filter(|target| *target != inputs.workspace) {
+        Some(target) => {
+            let rebased = Rebased {
+                inner: runner,
+                real: target.to_path_buf(),
+                snapshot: inputs.workspace.to_path_buf(),
+                test_sec: options.test_sec,
+            };
+            define_on(inputs, writer, &rebased, jev, recorder, options).await
+        }
+        None => define_on(inputs, writer, runner, jev, recorder, options).await,
+    }
+}
+
+/// The requirement IDs split into at most `parts` consecutive groups of
+/// near-equal size.
+#[must_use]
+pub fn split(ids: &[String], parts: usize) -> Vec<Vec<String>> {
+    if ids.is_empty() {
+        return Vec::new();
+    }
+    let parts = parts.clamp(1, ids.len());
+    let size = ids.len().div_ceil(parts);
+    ids.chunks(size).map(<[String]>::to_vec).collect()
+}
+
+/// [`brief`] with the guidance `options` add: [`DISCOVER`] and
+/// [`ONE_PASS`].
+#[must_use]
+pub fn briefed(inputs: &Inputs<'_>, problems: &[String], options: &Options) -> microluna::Brief {
+    let mut out = brief(inputs, problems);
+    if options.discover {
+        out.guidance.push_str("\n\n");
+        out.guidance.push_str(DISCOVER);
+    }
+    if options.one_pass {
+        out.guidance.push_str("\n\n");
+        out.guidance.push_str(ONE_PASS);
+    }
+    out
+}
+
+/// The brief for a targeted repair round with [`Rewrite::Hard`]: the
+/// first round's task, guidance, and evidence unchanged, so the provider
+/// serves that prefix from its cache, then what the first round found
+/// (its facts and its tests) and only the flagged tests' problems, so the
+/// session fixes those without rereading the workspace.
+#[must_use]
+pub fn repair_brief(
+    inputs: &Inputs<'_>,
+    problems: &[String],
+    dir: &Path,
+    known: &[String],
+    options: &Options,
+) -> microluna::Brief {
+    let mut out = briefed(inputs, &[], options);
+    let facts = std::fs::read_to_string(dir.join(FACTS)).unwrap_or_default();
+    let (tests, _) = read_tests(dir, known);
+    out.state = vec![
+        "The host ran and reviewed the suite you wrote, and most of it stands. Fix only the \
+         tests the problems below name, by editing, rewriting, or deleting them. Leave every \
+         other test and facts.md as they are, and read the workspace only as far as these \
+         tests need. Then run `sh run.sh` on the tests you changed, once, and call finish."
+            .to_string(),
+        format!(
+            "Your facts so far, from facts.md:\n{}",
+            crate::judge::clip(facts.trim(), 3_000)
+        ),
+        format!(
+            "Your tests so far:\n{}",
+            tests
+                .iter()
+                .map(|t| format!("{} ({}): {}", t.id, t.requirements.join(", "), t.what))
+                .collect::<Vec<_>>()
+                .join("\n")
+        ),
+    ];
+    out.state.extend(problems.iter().cloned());
+    out
+}
+
+/// The brief for one of several writers in the first round: the usual
+/// brief with only its share of the requirements, and a line that says
+/// who writes the rest.
+#[must_use]
+pub fn part_brief(
+    inputs: &Inputs<'_>,
+    mine: &[String],
+    others: &[String],
+    parts: usize,
+    options: &Options,
+) -> microluna::Brief {
+    let mut out = briefed(inputs, &[], options);
+    if let Some(first) = out.evidence.first_mut() {
+        first.label = "The requirements your part of the suite must decide".to_string();
+        first.text = decidable(inputs.requirements)
+            .iter()
+            .filter(|r| mine.contains(&r.id))
+            .map(|r| {
+                format!(
+                    "- {} ({}): {}",
+                    r.id,
+                    r.kind.word(),
+                    r.text.split_whitespace().collect::<Vec<_>>().join(" ")
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+    }
+    out.state.push(format!(
+        "You are one of {parts} writers working at the same time, each in a suite directory of \
+         its own. You write the tests for {} only; the others write the tests for {}. Name your \
+         tests tests/T1.sh, tests/T2.sh, and so on: the host renumbers them when it merges the \
+         suites, and puts your facts.md lines with the others'.",
+        mine.join(", "),
+        if others.is_empty() {
+            "nothing else".to_string()
+        } else {
+            others.join(", ")
+        }
+    ));
+    out
+}
+
+/// A file's name with `prefix` before it, in the same directory:
+/// `lib/check.py` becomes `lib/w2-check.py`.
+fn prefixed(path: &str, prefix: &str) -> String {
+    match path.rsplit_once('/') {
+        Some((dir, name)) => format!("{dir}/{prefix}{name}"),
+        None => format!("{prefix}{name}", name = path),
+    }
+}
+
+/// Pairs of an old name and the new one.
+pub type Renames = Vec<(String, String)>;
+
+/// Merges the suites the parts wrote into `dir`, in part order: tests
+/// renumbered `T1`, `T2`, and so on; helper files copied, renamed when
+/// another part already wrote a different file at the same path, with
+/// every mention in that part's files rewritten; and the facts joined.
+/// Each part's directory becomes `dir` in what is copied.
+///
+/// # Errors
+///
+/// A message when a file can't be written.
+pub fn merge_parts(
+    dir: &Path,
+    parts: &[PathBuf],
+    known: &[String],
+) -> Result<Vec<(Renames, Renames)>, String> {
+    let write = |path: &Path, bytes: &[u8]| -> Result<(), String> {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|error| format!("{}: {error}", parent.display()))?;
+        }
+        std::fs::write(path, bytes).map_err(|error| format!("{}: {error}", path.display()))
+    };
+    let mut next = 1usize;
+    let mut facts: Vec<String> = Vec::new();
+    let mut out = Vec::new();
+    for (index, part) in parts.iter().enumerate() {
+        let prefix = format!("w{}-", index + 1);
+        // Helper files first, so the renames are known before the tests
+        // are rewritten.
+        let mut renamed: Vec<(String, String)> = Vec::new();
+        let mut helpers: Vec<(String, String)> = Vec::new();
+        for (path, sha) in digest_files(part) {
+            if path.starts_with(TESTS_DIR)
+                || path.starts_with(REJECTED_DIR)
+                || HARNESS.contains(&path.as_str())
+                || path == FACTS
+            {
+                continue;
+            }
+            let there = dir.join(&path);
+            let target = if !there.exists() {
+                path.clone()
+            } else if std::fs::read(&there).map(|b| sha256(&b)).ok().as_deref() == Some(&sha) {
+                continue;
+            } else {
+                let renamed_to = prefixed(&path, &prefix);
+                renamed.push((path.clone(), renamed_to.clone()));
+                renamed_to
+            };
+            helpers.push((path, target));
+        }
+        let rewrite = |text: &str| {
+            let mut text = crate::compose::best_of::rebase(text, part, dir);
+            for (from, to) in &renamed {
+                text = text.replace(from.as_str(), to.as_str());
+            }
+            text
+        };
+        let copy = |from: &Path, to: &Path| -> Result<(), String> {
+            let bytes =
+                std::fs::read(from).map_err(|error| format!("{}: {error}", from.display()))?;
+            match String::from_utf8(bytes) {
+                Ok(text) => write(to, rewrite(&text).as_bytes()),
+                Err(error) => write(to, error.as_bytes()),
+            }
+        };
+        for (from, to) in &helpers {
+            copy(&part.join(from), &dir.join(to))?;
+        }
+        let (tests, _) = read_tests(part, known);
+        let mut renumbered = Vec::new();
+        for test in tests {
+            let id = format!("T{next}");
+            next += 1;
+            copy(
+                &part.join(TESTS_DIR).join(format!("{}.sh", test.id)),
+                &dir.join(TESTS_DIR).join(format!("{id}.sh")),
+            )?;
+            renumbered.push((test.id, id));
+        }
+        for line in std::fs::read_to_string(part.join(FACTS))
+            .unwrap_or_default()
+            .lines()
+        {
+            let line = line.trim_end();
+            if !line.trim().is_empty() && !facts.iter().any(|held| held == line) {
+                facts.push(line.to_string());
+            }
+        }
+        out.push((renumbered, renamed));
+    }
+    if !facts.is_empty() {
+        write(
+            &dir.join(FACTS),
+            format!("{}\n", facts.join("\n")).as_bytes(),
+        )?;
+    }
+    Ok(out)
+}
+
+/// The first round with several writers at once: each writes its share of
+/// the requirements in a directory of its own beside `dir`, then their
+/// suites merge into `dir`. Returns the round's summed writer and each
+/// part.
+async fn write_parts<W: Writer, R: Runner>(
+    inputs: &Inputs<'_>,
+    writer: &W,
+    runner: &R,
+    dir: &Path,
+    known: &[String],
+    options: &Options,
+) -> (Written, Vec<Part>) {
+    let groups = split(known, options.writers);
+    let name = dir
+        .file_name()
+        .map_or("suite".to_string(), |n| n.to_string_lossy().into_owned());
+    let dirs: Vec<PathBuf> = (1..=groups.len())
+        .map(|k| dir.with_file_name(format!("{name}-w{k}")))
+        .collect();
+    for part in &dirs {
+        let _ = std::fs::remove_dir_all(part);
+        let _ = std::fs::create_dir_all(part.join(TESTS_DIR));
+        for (file, text) in runner.harness(part, inputs.workspace) {
+            let _ = std::fs::write(part.join(file), text);
+        }
+    }
+    let n = groups.len();
+    let briefs: Vec<(microluna::Brief, String)> = groups
+        .iter()
+        .enumerate()
+        .map(|(k, mine)| {
+            let others: Vec<String> = known
+                .iter()
+                .filter(|id| !mine.contains(id))
+                .cloned()
+                .collect();
+            let with: Vec<String> = (1..=n)
+                .filter(|j| *j != k + 1)
+                .map(|j| j.to_string())
+                .collect();
+            (
+                part_brief(inputs, mine, &others, n, options),
+                format!(
+                    "writer {} of {n} writes the tests for {}, in parallel with writer{} {}",
+                    k + 1,
+                    mine.join(", "),
+                    if with.len() == 1 { "" } else { "s" },
+                    with.join(" and ")
+                ),
+            )
+        })
+        .collect();
+    let names: Vec<String> = (1..=n).map(|k| format!("accept-writer-1-{k}")).collect();
+    let written: Vec<Written> =
+        futures_util::future::join_all(briefs.iter().zip(&dirs).zip(&names).map(
+            |(((brief, directive), part), name)| writer.write_as(brief, part, 1, name, directive),
+        ))
+        .await;
+    let merged = match merge_parts(dir, &dirs, known) {
+        Ok(merged) => merged,
+        Err(error) => {
+            crate::say::line(&format!(
+                "  accept ▸ merging the writers' suites failed: {error}"
+            ));
+            vec![(Vec::new(), Vec::new()); dirs.len()]
+        }
+    };
+    let started = written.iter().filter_map(|w| w.started_at_ms).min();
+    let ended = written
+        .iter()
+        .filter_map(|w| w.started_at_ms.map(|s| s + w.milliseconds))
+        .max();
+    let sum = Written {
+        ending: if written.iter().all(|w| w.ending == "finished") {
+            "finished".to_string()
+        } else {
+            written
+                .iter()
+                .find(|w| w.ending != "finished")
+                .map_or("finished".to_string(), |w| w.ending.clone())
+        },
+        summary: written
+            .iter()
+            .enumerate()
+            .map(|(k, w)| format!("Writer {}: {}", k + 1, w.summary))
+            .collect::<Vec<_>>()
+            .join("\n"),
+        turns: written.iter().map(|w| w.turns).sum(),
+        calls: written.iter().map(|w| w.calls).sum(),
+        usd: written.iter().map(|w| w.usd).sum(),
+        milliseconds: match (started, ended) {
+            (Some(s), Some(e)) => e.saturating_sub(s),
+            _ => written.iter().map(|w| w.milliseconds).max().unwrap_or(0),
+        },
+        trace: None,
+        started_at_ms: started,
+        name: Some("accept-writer-1".to_string()),
+    };
+    let parts = written
+        .into_iter()
+        .zip(groups)
+        .zip(merged)
+        .map(|((writer, requirements), (renumbered, renamed))| Part {
+            writer,
+            requirements,
+            renumbered,
+            renamed,
+        })
+        .collect();
+    (sum, parts)
+}
+
+#[allow(clippy::too_many_lines)]
+async fn define_on<W: Writer, R: Runner>(
     inputs: &Inputs<'_>,
     writer: &W,
     runner: &R,
@@ -915,7 +1383,28 @@ pub async fn define<W: Writer, R: Runner>(
             ));
             break;
         }
-        let written = writer.write(&brief(inputs, &problems), &dir, number).await;
+        let (written, parts) = if number == 1 && options.writers > 1 && known.len() > 1 {
+            write_parts(inputs, writer, runner, &dir, &known, options).await
+        } else if number > 1 && options.rewrite == Rewrite::Hard {
+            (
+                writer
+                    .repair(
+                        &repair_brief(inputs, &problems, &dir, &known, options),
+                        &dir,
+                        number,
+                        options.repair_turns,
+                    )
+                    .await,
+                Vec::new(),
+            )
+        } else {
+            (
+                writer
+                    .write(&briefed(inputs, &problems, options), &dir, number)
+                    .await,
+                Vec::new(),
+            )
+        };
         writer_usd += written.usd;
         let verified = verify::verify(
             inputs, &dir, &known, runner, jev, recorder, options, &mut cache, number,
@@ -932,6 +1421,7 @@ pub async fn define<W: Writer, R: Runner>(
             gaps: verified.gaps.clone(),
             jev_requests: verified.jev_requests,
             jev_usd: verified.jev_usd,
+            parts,
         });
         let done = problems.is_empty();
         last = Some(verified);
@@ -955,18 +1445,38 @@ pub async fn define<W: Writer, R: Runner>(
     for name in HARNESS {
         let _ = std::fs::remove_file(dir.join(name));
     }
+    // A suite proven on a snapshot runs on its target from now on: a test
+    // that named the snapshot's path names the target's instead.
+    let frozen_on = inputs.target.unwrap_or(inputs.workspace);
+    if frozen_on != inputs.workspace {
+        for path in digest_files(&dir).keys() {
+            let at = dir.join(path);
+            if let Ok(text) = std::fs::read_to_string(&at) {
+                let rebased = crate::compose::best_of::rebase(&text, inputs.workspace, frozen_on);
+                if rebased != text {
+                    let _ = std::fs::write(&at, rebased);
+                }
+            }
+        }
+    }
     let _ = std::fs::write(
         dir.join("run.sh"),
-        runner::local_run_sh(inputs.workspace, options.test_sec),
+        runner::local_run_sh(frozen_on, options.test_sec),
     );
-    let _ = std::fs::write(dir.join("env.sh"), runner::local_env_sh(inputs.workspace));
+    let _ = std::fs::write(dir.join("env.sh"), runner::local_env_sh(frozen_on));
     let kept: Vec<Test> = verified
         .tests
         .iter()
         .filter(|t| !verified.rejected.iter().any(|r| r.id == t.id))
-        .map(|t| Test {
-            path: format!("{TESTS_DIR}/{}.sh", t.id),
-            ..t.clone()
+        .map(|t| {
+            let path = format!("{TESTS_DIR}/{}.sh", t.id);
+            Test {
+                source: std::fs::read_to_string(dir.join(&path))
+                    .unwrap_or_else(|_| t.source.clone()),
+                notes: verified.notes.get(&t.id).cloned().unwrap_or_default(),
+                path,
+                ..t.clone()
+            }
         })
         .collect();
     let files = digest_files(&dir);

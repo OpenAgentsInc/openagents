@@ -200,6 +200,7 @@ pub async fn run_minitask(
         workspace: &workdir,
         suite_dir: &suite_dir,
         workspace_note: String::new(),
+        target: None,
     };
     crate::say::line(&format!("accept ▸ {id}: writing the suite"));
     let suite = define(&inputs, &writer, &runner, jev, &recorder, &options.define).await;

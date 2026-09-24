@@ -159,7 +159,7 @@ pub struct Policy {
     /// of constraints spends sessions that make no edit and get downgraded
     /// to retry then stuck. Off keeps every non-context requirement in a
     /// group, as v1 through v4 do.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub focus_actionable: bool,
     /// Drive the loop by an acceptance suite (`accept.define`, issue
     /// #9588): before any fix, a Microluna session writes executable tests
@@ -169,8 +169,71 @@ pub struct Policy {
     /// the suite is green or a bound is hit. Done is the suite green, not a
     /// session's report. When the suite comes out with no tests, the
     /// dispatch falls back to the requirements loop.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub suite: bool,
+    /// How the suite loop's `accept.define` writes the suite; absent, as
+    /// v6 does: one writer, rewrites on any problem, three rounds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub suite_writer: Option<SuiteWriter>,
+}
+
+/// `executor.microluna.suite_writer`: how the suite is written, for a
+/// suite that is on the critical path in seconds rather than minutes.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SuiteWriter {
+    /// Writers in the first round, each on a consecutive share of the
+    /// decidable requirements, at the same time; their suites merge into
+    /// one that is verified once (`accept::Options::writers`).
+    pub writers: u32,
+    /// What sends the suite back to a writer: `any` problem, or only
+    /// `hard` ones code checks, with Jev's doubts kept as notes on the
+    /// tests (`accept::Rewrite`).
+    pub rewrite: crate::accept::Rewrite,
+    /// The most writing rounds, the first included.
+    pub rounds: u32,
+    /// A writer's model requests in the first round.
+    pub turns: usize,
+    /// A targeted repair round's model requests.
+    pub repair_turns: usize,
+    /// The writers' reasoning effort, or `null` for the provider's default.
+    pub effort: Option<String>,
+    /// Tell the writer to write every test, then run the suite once.
+    pub one_pass: bool,
+    /// Tell the writer to find the deciding facts by reading the code's
+    /// documentation and running property probes on the untouched code.
+    pub discover: bool,
+}
+
+impl SuiteWriter {
+    fn validate(&self) -> Vec<String> {
+        let mut problems = Vec::new();
+        if !(1..=4).contains(&self.writers) {
+            problems
+                .push("executor.microluna.suite_writer.writers must be from 1 to 4".to_string());
+        }
+        if self.rounds == 0 || self.turns == 0 || self.repair_turns == 0 {
+            problems.push(
+                "executor.microluna.suite_writer's rounds, turns, and repair_turns must be at least 1"
+                    .to_string(),
+            );
+        }
+        problems
+    }
+
+    /// The `accept.define` options this writer policy sets.
+    #[must_use]
+    pub fn options(&self) -> crate::accept::Options {
+        crate::accept::Options {
+            max_rounds: self.rounds,
+            writers: self.writers as usize,
+            rewrite: self.rewrite,
+            repair_turns: Some(self.repair_turns),
+            one_pass: self.one_pass,
+            discover: self.discover,
+            ..crate::accept::Options::default()
+        }
+    }
 }
 
 fn yes() -> bool {
@@ -194,6 +257,7 @@ impl Default for Policy {
             accept: false,
             focus_actionable: false,
             suite: false,
+            suite_writer: None,
         }
     }
 }
@@ -225,6 +289,12 @@ impl Policy {
         }
         if self.spend_usd.is_nan() || self.spend_usd <= 0.0 {
             problems.push("executor.microluna.spend_usd must be above 0".to_string());
+        }
+        if let Some(writer) = &self.suite_writer {
+            problems.extend(writer.validate());
+            if !self.suite {
+                problems.push("executor.microluna.suite_writer needs suite".to_string());
+            }
         }
         problems
     }
@@ -1584,12 +1654,15 @@ impl Micro {
         };
         let evidence = evidence_for(prepared, &everything, self.policy.evidence_chars);
         let key = format!("microluna-{}", &sha256(&prepared.instruction)[..16]);
+        let written_by = self.policy.suite_writer.as_ref();
         let writer = crate::accept::MicrolunaWriter {
             transport: wire,
             config: Config {
                 model: self.model.clone(),
-                effort: self.effort.clone(),
-                max_turns: self.policy.session_turns.max(40),
+                effort: written_by
+                    .and_then(|w| w.effort.clone())
+                    .or_else(|| self.effort.clone()),
+                max_turns: written_by.map_or(self.policy.session_turns.max(40), |w| w.turns),
                 cache_key: format!("{key}-writer"),
                 deadline: Some(Duration::from_secs(self.policy.session_sec).min(time_left())),
             },
@@ -1616,6 +1689,7 @@ impl Micro {
                 "the task's workspace, {}, which your commands can read but you must not change",
                 self.workdir.display()
             ),
+            target: None,
         };
         crate::say::line("  microluna ▸ writing the acceptance suite before any fix");
         let suite = crate::accept::define(
@@ -1624,7 +1698,7 @@ impl Micro {
             &runner,
             &prepared.jev,
             &self.recorder,
-            &crate::accept::Options::default(),
+            &written_by.map_or_else(crate::accept::Options::default, SuiteWriter::options),
         )
         .await;
         crate::say::line(&format!("  microluna ▸ {}", suite.headline()));

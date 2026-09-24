@@ -22,6 +22,13 @@ pub struct Written {
     pub milliseconds: u64,
     /// The session's own ATIF trace, when one was written.
     pub trace: Option<PathBuf>,
+    /// When the session started, in milliseconds since the Unix epoch, so
+    /// a reader can line sessions up and see which overlapped.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub started_at_ms: Option<u64>,
+    /// The session's name, such as `accept-writer-1-2`, when it has one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
 }
 
 /// Writes tests into a suite directory.
@@ -32,6 +39,34 @@ pub trait Writer {
     /// Runs one writing session on `brief` in `suite_dir`; `round` counts
     /// from 1.
     fn write(&self, brief: &Brief, suite_dir: &Path, round: u32) -> impl Future<Output = Written>;
+
+    /// Runs one of several writing sessions that work at the same time:
+    /// `name` names its trace, and `directive` says what it works on. By
+    /// default, [`Writer::write`].
+    fn write_as(
+        &self,
+        brief: &Brief,
+        suite_dir: &Path,
+        round: u32,
+        name: &str,
+        directive: &str,
+    ) -> impl Future<Output = Written> {
+        let _ = (name, directive);
+        self.write(brief, suite_dir, round)
+    }
+
+    /// Runs a short, targeted repair session on `brief`, within `turns`
+    /// model requests when set. By default, [`Writer::write`].
+    fn repair(
+        &self,
+        brief: &Brief,
+        suite_dir: &Path,
+        round: u32,
+        turns: Option<usize>,
+    ) -> impl Future<Output = Written> {
+        let _ = turns;
+        self.write(brief, suite_dir, round)
+    }
 }
 
 /// A Microluna session whose workspace is the suite directory: its file
@@ -64,20 +99,75 @@ impl<T: Transport> Writer for MicrolunaWriter<'_, T> {
     }
 
     async fn write(&self, brief: &Brief, suite_dir: &Path, round: u32) -> Written {
+        self.session(
+            &self.config,
+            brief,
+            suite_dir,
+            &format!("accept-writer-{round}"),
+            "",
+        )
+        .await
+    }
+
+    async fn write_as(
+        &self,
+        brief: &Brief,
+        suite_dir: &Path,
+        _round: u32,
+        name: &str,
+        directive: &str,
+    ) -> Written {
+        self.session(&self.config, brief, suite_dir, name, directive)
+            .await
+    }
+
+    async fn repair(
+        &self,
+        brief: &Brief,
+        suite_dir: &Path,
+        round: u32,
+        turns: Option<usize>,
+    ) -> Written {
+        let mut config = self.config.clone();
+        if let Some(turns) = turns {
+            config.max_turns = turns.max(1);
+        }
+        self.session(
+            &config,
+            brief,
+            suite_dir,
+            &format!("accept-writer-{round}"),
+            "a targeted repair of the flagged tests",
+        )
+        .await
+    }
+}
+
+impl<T: Transport> MicrolunaWriter<'_, T> {
+    async fn session(
+        &self,
+        config: &Config,
+        brief: &Brief,
+        suite_dir: &Path,
+        name: &str,
+        directive: &str,
+    ) -> Written {
+        let started_at_ms = atif::now_ms();
         let mut recorder = microluna::Recorder::new();
         if self.echo {
             recorder = recorder.echoing();
         }
         let mut trace = None;
         if let Some(dir) = &self.traces {
-            let path = dir.join(format!("accept-writer-{round}.atif.jsonl"));
-            let session = atif::Session::opening(
-                &format!("accept-writer-{round}"),
-                &self.config.model,
+            let path = dir.join(format!("{name}.atif.jsonl"));
+            let mut session = atif::Session::opening(
+                name,
+                &config.model,
                 "codex-login",
                 &suite_dir.display().to_string(),
                 &crate::episode::version(),
             );
+            session.directive = directive.to_string();
             if let Ok(log) = atif::Log::create_at(&path, &session) {
                 recorder = recorder.logging(log);
                 trace = Some(path);
@@ -89,18 +179,13 @@ impl<T: Transport> Writer for MicrolunaWriter<'_, T> {
                 return Written {
                     ending: "transport".to_string(),
                     summary: format!("the suite directory can't be used: {error}"),
+                    started_at_ms: Some(started_at_ms),
+                    name: Some(name.to_string()),
                     ..Written::default()
                 };
             }
         };
-        let report = microluna::run(
-            self.transport,
-            &workspace,
-            brief,
-            &self.config,
-            &mut recorder,
-        )
-        .await;
+        let report = microluna::run(self.transport, &workspace, brief, config, &mut recorder).await;
         recorder.close(match report.ending {
             Ending::Finished => atif::log::ENDED,
             _ => atif::log::INTERRUPTED,
@@ -124,6 +209,8 @@ impl<T: Transport> Writer for MicrolunaWriter<'_, T> {
             usd: report.cost_usd.unwrap_or_default(),
             milliseconds: report.milliseconds,
             trace,
+            started_at_ms: Some(started_at_ms),
+            name: Some(name.to_string()),
         }
     }
 }

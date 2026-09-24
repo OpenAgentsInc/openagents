@@ -136,6 +136,9 @@ pub struct Verified {
     pub messages: Vec<String>,
     pub jev_requests: usize,
     pub jev_usd: f64,
+    /// Per test, Jev's doubts that didn't reject it, with
+    /// `rewrite: "hard"`.
+    pub notes: BTreeMap<String, Vec<String>>,
 }
 
 impl Verified {
@@ -371,8 +374,13 @@ pub async fn verify<R: Runner>(
     // Reasons per test.
     let mut judged = serde_json::Map::new();
     let mut messages = Vec::new();
-    for (id, why) in &headers {
-        messages.push(format!("{id}: {why}. Name the requirement IDs it decides."));
+    // With `rewrite: "hard"`, only what code checks sends the suite back:
+    // Jev's doubts become notes on the test, which the edit sessions read.
+    let hard = options.rewrite == super::Rewrite::Hard;
+    if !hard {
+        for (id, why) in &headers {
+            messages.push(format!("{id}: {why}. Name the requirement IDs it decides."));
+        }
     }
     for (index, test) in tests.iter().enumerate() {
         let run = start.iter().find(|r| r.id == test.id);
@@ -381,15 +389,18 @@ pub async fn verify<R: Runner>(
         let (faithful, hardcoded, trivial, keeps) =
             (p("faithful"), p("hardcoded"), p("trivial"), p("keeps"));
         let mut reasons: Vec<String> = Vec::new();
+        let mut notes: Vec<String> = Vec::new();
         if test.requirements.is_empty() {
             reasons.push("no_requirement".to_string());
         }
         if index >= options.max_tests {
             reasons.push("over_bound".to_string());
-            messages.push(format!(
-                "{} is over the bound of {} tests: fold it into another test or delete it.",
-                test.id, options.max_tests
-            ));
+            if !hard {
+                messages.push(format!(
+                    "{} is over the bound of {} tests: fold it into another test or delete it.",
+                    test.id, options.max_tests
+                ));
+            }
         }
         let green_at_start = run.is_some_and(|r| r.green);
         if green_at_start && keeps.is_none_or(|k| k < options.keeps_min) {
@@ -411,26 +422,50 @@ pub async fn verify<R: Runner>(
             ));
         }
         if faithful.is_some_and(|f| f < options.faithful_min) {
-            reasons.push("unfaithful".to_string());
-            messages.push(format!(
-                "{} may assert something the task doesn't state (Jev: {:.2} that it asserts only \
-                 what the task states): keep only assertions the task's words, examples, or rules \
-                 support.",
-                test.id,
-                faithful.unwrap_or_default()
-            ));
+            if hard {
+                notes.push(format!(
+                    "Jev reads it as possibly asserting something the task doesn't state ({:.2} \
+                     that it asserts only what the task states); where it disagrees with the task, \
+                     follow the task.",
+                    faithful.unwrap_or_default()
+                ));
+            } else {
+                reasons.push("unfaithful".to_string());
+                messages.push(format!(
+                    "{} may assert something the task doesn't state (Jev: {:.2} that it asserts \
+                     only what the task states): keep only assertions the task's words, \
+                     examples, or rules support.",
+                    test.id,
+                    faithful.unwrap_or_default()
+                ));
+            }
         }
         if hardcoded.is_some_and(|h| h >= options.hardcoded_max) {
-            reasons.push("hardcoded".to_string());
-            messages.push(format!(
-                "{} may hardcode an answer the task doesn't give (Jev: {:.2}): compute the \
-                 expected value from the task's rules, or check a property any correct answer has.",
-                test.id,
-                hardcoded.unwrap_or_default()
-            ));
+            if hard {
+                notes.push(format!(
+                    "Jev reads it as possibly expecting a value the task doesn't give ({:.2}).",
+                    hardcoded.unwrap_or_default()
+                ));
+            } else {
+                reasons.push("hardcoded".to_string());
+                messages.push(format!(
+                    "{} may hardcode an answer the task doesn't give (Jev: {:.2}): compute the \
+                     expected value from the task's rules, or check a property any correct \
+                     answer has.",
+                    test.id,
+                    hardcoded.unwrap_or_default()
+                ));
+            }
         }
         let static_trivial = statically_trivial(&test.source);
-        if static_trivial || trivial.is_some_and(|t| t >= options.trivial_max) {
+        let jev_trivial = trivial.is_some_and(|t| t >= options.trivial_max);
+        if hard && jev_trivial && !static_trivial {
+            notes.push(format!(
+                "Jev reads it as possibly passing without its requirements met ({:.2}).",
+                trivial.unwrap_or_default()
+            ));
+        }
+        if static_trivial || (jev_trivial && !hard) {
             reasons.push("trivial".to_string());
             messages.push(format!(
                 "{} could pass without its requirements met{}: make it check the behavior itself.",
@@ -441,6 +476,9 @@ pub async fn verify<R: Runner>(
                     format!(" (Jev: {:.2})", trivial.unwrap_or_default())
                 }
             ));
+        }
+        if !notes.is_empty() {
+            out.notes.insert(test.id.clone(), notes.clone());
         }
         judged.insert(
             test.id.clone(),
@@ -456,6 +494,7 @@ pub async fn verify<R: Runner>(
                 "jev": asked.map(|a| a.how),
                 "key": asked.map(|a| a.key.clone()),
                 "reasons": reasons,
+                "notes": notes,
             }),
         );
         if !reasons.is_empty() {
@@ -474,7 +513,7 @@ pub async fn verify<R: Runner>(
         .collect();
     let decidable = super::decidable(inputs.requirements);
     let facts = std::fs::read_to_string(dir.join(super::FACTS)).unwrap_or_default();
-    if facts.trim().is_empty() && !tests.is_empty() {
+    if facts.trim().is_empty() && !tests.is_empty() && !hard {
         messages.push(format!(
             "{} is missing or empty: list the decisive facts there first, one per line as \
              `R3: fact`, and encode each as a test.",
@@ -562,14 +601,27 @@ pub async fn verify<R: Runner>(
                     exact.unwrap_or_default()
                 ),
             });
-            messages.push(format!(
-                "{}'s tests ({}) may check a simplified version of its rule (Jev: {:.2} that \
-                 they check it exactly): add a test that fails for the simpler reading, using the \
-                 exact format, edge case, unit, or rule the task states.",
+            let note = format!(
+                "Jev reads {}'s tests as possibly checking a simpler rule than the task states \
+                 ({:.2} that they check it exactly): hold the code to the task's exact rule, not \
+                 to a simpler reading of this test.",
                 requirement.id,
-                mine.join(", "),
                 exact.unwrap_or_default()
-            ));
+            );
+            if hard {
+                for id in &mine {
+                    out.notes.entry(id.clone()).or_default().push(note.clone());
+                }
+            } else {
+                messages.push(format!(
+                    "{}'s tests ({}) may check a simplified version of its rule (Jev: {:.2} that \
+                     they check it exactly): add a test that fails for the simpler reading, using \
+                     the exact format, edge case, unit, or rule the task states.",
+                    requirement.id,
+                    mine.join(", "),
+                    exact.unwrap_or_default()
+                ));
+            }
         } else if !covered {
             out.gaps.push(super::Gap {
                 requirement: requirement.id.clone(),
@@ -578,14 +630,16 @@ pub async fn verify<R: Runner>(
                     decides.unwrap_or_default()
                 ),
             });
-            messages.push(format!(
-                "{}'s tests ({}) may not decide it (Jev: {:.2} that a solution missing it fails \
-                 one): add a test that fails exactly when {} is not met.",
-                requirement.id,
-                mine.join(", "),
-                decides.unwrap_or_default(),
-                requirement.id
-            ));
+            if !hard {
+                messages.push(format!(
+                    "{}'s tests ({}) may not decide it (Jev: {:.2} that a solution missing it \
+                     fails one): add a test that fails exactly when {} is not met.",
+                    requirement.id,
+                    mine.join(", "),
+                    decides.unwrap_or_default(),
+                    requirement.id
+                ));
+            }
         }
         coverage_judged.insert(
             requirement.id.clone(),
@@ -605,7 +659,7 @@ pub async fn verify<R: Runner>(
             covered,
         });
     }
-    if !untested.is_empty() {
+    if !untested.is_empty() && !hard {
         messages.push(format!(
             "No accepted test decides {}: write tests that fail until each is met, or fix the \
              rejected tests above that name them.",

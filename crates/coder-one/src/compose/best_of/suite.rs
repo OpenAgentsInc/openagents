@@ -472,6 +472,7 @@ pub async fn define_accept(
         workspace: workdir,
         suite_dir: &suite_dir,
         workspace_note: String::new(),
+        target: None,
     };
     let suite = accept::define(
         &inputs,

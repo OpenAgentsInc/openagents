@@ -159,6 +159,7 @@ impl Fixture {
             workspace: &self.workspace,
             suite_dir: &self.suite,
             workspace_note: String::new(),
+            target: None,
         }
     }
 
@@ -602,6 +603,418 @@ async fn the_microluna_writer_writes_into_the_suite_directory() {
         "context isn't a requirement to test"
     );
     assert!(text.contains("sh env.sh"));
+}
+
+/// A writer that writes fixed files, relative to the suite directory; a
+/// part writer ([`Writer::write_as`]) writes the files of the part whose
+/// requirement its brief lists.
+struct Files {
+    rounds: Vec<Vec<(String, String)>>,
+    parts: Vec<(String, Vec<(String, String)>)>,
+    briefs: RefCell<Vec<(String, microluna::Brief)>>,
+}
+
+impl Files {
+    fn put(dir: &Path, files: &[(String, String)]) {
+        for (path, text) in files {
+            let at = dir.join(path);
+            std::fs::create_dir_all(at.parent().unwrap()).unwrap();
+            std::fs::write(&at, text).unwrap();
+        }
+    }
+}
+
+impl Writer for Files {
+    fn describe(&self) -> Value {
+        json!({ "writer": "files" })
+    }
+
+    async fn write(&self, brief: &microluna::Brief, suite_dir: &Path, round: u32) -> Written {
+        self.briefs
+            .borrow_mut()
+            .push((format!("round {round}"), brief.clone()));
+        let index = (round as usize - 1).min(self.rounds.len().saturating_sub(1));
+        Files::put(
+            suite_dir,
+            &self.rounds.get(index).cloned().unwrap_or_default(),
+        );
+        Written {
+            ending: "finished".to_string(),
+            usd: 0.01,
+            ..Written::default()
+        }
+    }
+
+    async fn write_as(
+        &self,
+        brief: &microluna::Brief,
+        suite_dir: &Path,
+        _round: u32,
+        name: &str,
+        _directive: &str,
+    ) -> Written {
+        self.briefs
+            .borrow_mut()
+            .push((name.to_string(), brief.clone()));
+        let listed = &brief.evidence[0].text;
+        for (requirement, files) in &self.parts {
+            if listed.contains(&format!("- {requirement} ")) {
+                Files::put(suite_dir, files);
+            }
+        }
+        Written {
+            ending: "finished".to_string(),
+            usd: 0.01,
+            name: Some(name.to_string()),
+            started_at_ms: Some(atif::now_ms()),
+            ..Written::default()
+        }
+    }
+}
+
+fn file(path: &str, text: &str) -> (String, String) {
+    (path.to_string(), text.to_string())
+}
+
+/// Two writers at once, one per requirement: their suites merge into one
+/// with the tests renumbered, a helper that both wrote at the same path
+/// renamed in the second part and in its tests, and the facts joined.
+/// The merged suite is verified once and runs to green.
+#[tokio::test(flavor = "current_thread")]
+async fn parallel_writers_merge_into_one_renumbered_suite() {
+    let fx = fixture();
+    let check_file = "#!/bin/sh\ngrep -qx \"$2\" \"$1\"\n";
+    let check_greet = "#!/bin/sh\n[ \"$(sh greet.sh \"$1\")\" = \"hello, $1\" ]\n";
+    let writer = Files {
+        rounds: vec![],
+        parts: vec![
+            (
+                "R1".to_string(),
+                vec![
+                    file(
+                        "tests/T1.sh",
+                        "#!/bin/sh\n# requirement: R1\n# kind: example\n# what: greeting.txt holds hello\nsh \"$ACCEPT_DIR/lib/check.sh\" greeting.txt hello\n",
+                    ),
+                    file("lib/check.sh", check_file),
+                    file("facts.md", "R1: the file holds exactly hello\n"),
+                ],
+            ),
+            (
+                "R2".to_string(),
+                vec![
+                    file(
+                        "tests/T1.sh",
+                        "#!/bin/sh\n# requirement: R2\n# kind: example\n# what: greet.sh ada prints hello, ada\nsh \"$ACCEPT_DIR/lib/check.sh\" ada\n",
+                    ),
+                    file("lib/check.sh", check_greet),
+                    file(
+                        "facts.md",
+                        "R2: hello, NAME\nR1: the file holds exactly hello\n",
+                    ),
+                ],
+            ),
+        ],
+        briefs: RefCell::default(),
+    };
+    let options = Options {
+        writers: 2,
+        ..Options::default()
+    };
+    let suite = define(
+        &fx.inputs(),
+        &writer,
+        &runner(),
+        &JevMode::Off,
+        &Recorder::default(),
+        &options,
+    )
+    .await;
+    assert_eq!(suite.status, Status::Accepted, "{:#?}", suite.rounds);
+    assert_eq!(suite.rounds.len(), 1, "one round, verified once");
+    let ids: Vec<(&str, Vec<String>)> = suite
+        .tests
+        .iter()
+        .map(|t| (t.id.as_str(), t.requirements.clone()))
+        .collect();
+    assert_eq!(
+        ids,
+        [
+            ("T1", vec!["R1".to_string()]),
+            ("T2", vec!["R2".to_string()])
+        ]
+    );
+    let parts = &suite.rounds[0].parts;
+    assert_eq!(parts.len(), 2);
+    assert_eq!(parts[0].requirements, ["R1"]);
+    assert_eq!(parts[1].renumbered, [("T1".to_string(), "T2".to_string())]);
+    assert_eq!(
+        parts[1].renamed,
+        [("lib/check.sh".to_string(), "lib/w2-check.sh".to_string())]
+    );
+    assert_eq!(
+        std::fs::read_to_string(fx.suite.join("lib/w2-check.sh")).unwrap(),
+        check_greet
+    );
+    assert!(suite.tests[1].source.contains("lib/w2-check.sh"));
+    let facts = std::fs::read_to_string(fx.suite.join(FACTS)).unwrap();
+    assert_eq!(
+        facts, "R1: the file holds exactly hello\nR2: hello, NAME\n",
+        "facts joined without repeats"
+    );
+    // Each writer read only its share of the requirements.
+    {
+        let briefs = writer.briefs.borrow();
+        assert_eq!(briefs.len(), 2);
+        assert_eq!(briefs[0].0, "accept-writer-1-1");
+        assert!(briefs[0].1.evidence[0].text.contains("- R1 "));
+        assert!(!briefs[0].1.evidence[0].text.contains("- R2 "));
+        assert!(briefs[1].1.state[0].contains("the others write the tests for R1"));
+    }
+
+    fx.solve();
+    let green = run(&suite, &fx.workspace, &runner(), None, "after")
+        .await
+        .unwrap();
+    assert!(green.green, "{green:#?}");
+}
+
+/// The proof runs on a snapshot while another session has already
+/// changed the real workspace: a test that names the real path is proven
+/// red on the snapshot, a test that names the snapshot's path is pointed
+/// at the real workspace at the freeze, and the frozen suite runs there.
+#[tokio::test(flavor = "current_thread")]
+async fn a_suite_proven_on_a_snapshot_runs_on_the_real_workspace() {
+    let fx = fixture();
+    let snapshot = fx._root.path().join("snapshot");
+    crate::handoff::copy_tree(&fx.workspace, &snapshot).unwrap();
+    // The first edit session got there first.
+    fx.solve();
+    let real = fx.workspace.display().to_string();
+    let snap = snapshot.display().to_string();
+    let writer = Files {
+        rounds: vec![vec![
+            file(
+                "tests/T1.sh",
+                &format!(
+                    "#!/bin/sh\n# requirement: R1\n# kind: example\n# what: greeting.txt holds hello\ngrep -qx hello {real}/greeting.txt\n"
+                ),
+            ),
+            file(
+                "tests/T2.sh",
+                &format!(
+                    "#!/bin/sh\n# requirement: R2\n# kind: example\n# what: greet.sh ada prints hello, ada\n[ \"$(sh {snap}/greet.sh ada)\" = \"hello, ada\" ]\n"
+                ),
+            ),
+        ]],
+        parts: vec![],
+        briefs: RefCell::default(),
+    };
+    let inputs = Inputs {
+        workspace: &snapshot,
+        target: Some(&fx.workspace),
+        ..fx.inputs()
+    };
+    let suite = define(
+        &inputs,
+        &writer,
+        &runner(),
+        &JevMode::Off,
+        &Recorder::default(),
+        &Options::default(),
+    )
+    .await;
+    assert_eq!(suite.status, Status::Accepted, "{:#?}", suite.rounds);
+    assert!(suite.rejected.is_empty(), "{:#?}", suite.rejected);
+    let start = suite.start.as_ref().unwrap();
+    assert_eq!((start.passed, start.total), (0, 2), "red on the snapshot");
+    // Frozen for the real workspace: no test names the snapshot.
+    for test in &suite.tests {
+        assert!(!test.source.contains(&snap), "{}", test.source);
+    }
+    assert!(suite.tests[1].source.contains(&real));
+    let run_sh = std::fs::read_to_string(fx.suite.join("run.sh")).unwrap();
+    assert!(run_sh.contains(&real) && !run_sh.contains(&snap));
+    assert!(suite.detail["runner"]["rebased"]["snapshot"].is_string());
+    let green = run(&suite, &fx.workspace, &runner(), None, "real")
+        .await
+        .unwrap();
+    assert!(green.green, "{green:#?}");
+    // The rebased runner reproduces the proof on the snapshot.
+    let local = runner();
+    let rebased = Rebased {
+        inner: &local,
+        real: fx.workspace.clone(),
+        snapshot: snapshot.clone(),
+        test_sec: 20,
+    };
+    let again = run(&suite, &snapshot, &rebased, None, "snapshot")
+        .await
+        .unwrap();
+    assert_eq!(again.passed, 0, "{again:#?}");
+}
+
+/// The writer's rebasing `run.sh` runs a test that names the real
+/// workspace against the snapshot.
+#[test]
+fn the_rebasing_run_sh_reads_the_snapshot() {
+    let root = tempfile::tempdir().unwrap();
+    let (real, snapshot, suite) = (
+        root.path().join("real.ws"),
+        root.path().join("snap"),
+        root.path().join("suite"),
+    );
+    for dir in [&real, &snapshot, &suite.join("tests")] {
+        std::fs::create_dir_all(dir).unwrap();
+    }
+    std::fs::write(real.join("x.txt"), "fixed\n").unwrap();
+    std::fs::write(snapshot.join("x.txt"), "broken\n").unwrap();
+    std::fs::write(
+        suite.join("tests/T1.sh"),
+        format!("grep -qx fixed {}/x.txt\n", real.display()),
+    )
+    .unwrap();
+    std::fs::write(
+        suite.join("run.sh"),
+        runner::rebasing_run_sh(&real, &snapshot, 20),
+    )
+    .unwrap();
+    let out = std::process::Command::new("sh")
+        .arg(suite.join("run.sh"))
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(text.contains("RED   T1"), "{text}");
+    assert!(text.contains("0 green, 1 red"), "{text}");
+}
+
+/// With `rewrite: "hard"`, Jev's doubts don't send the suite back or
+/// reject a test: they become notes the edit sessions read.
+#[tokio::test(flavor = "current_thread")]
+async fn hard_rewrites_keep_jev_doubts_as_notes() {
+    let fx = fixture();
+    let writer = Scripted::new(vec![vec![
+        ("tests/T1.sh", Some(T1)),
+        ("tests/T2.sh", Some(T2)),
+    ]]);
+    let options = Options {
+        max_rounds: 1,
+        ..Options::default()
+    };
+    let first = define_with(
+        &fx,
+        &writer,
+        &JevMode::Recorded(Recorded::empty()),
+        &options,
+    )
+    .await;
+    let judged = &first.detail["judged"];
+    let key = |at: &str| {
+        judged
+            .pointer(at)
+            .and_then(Value::as_str)
+            .unwrap()
+            .to_string()
+    };
+    let answer = |answers: Value| RecordedAnswer {
+        name: "test".to_string(),
+        model: "jev-test".to_string(),
+        answers,
+        input_tokens: Some(1_000),
+        output_tokens: Some(4),
+        milliseconds: Some(1),
+        source: "unit test".to_string(),
+    };
+    let mut recorded = Recorded::empty();
+    for id in ["T1", "T2"] {
+        recorded.entries.insert(
+            key(&format!("/tests/{id}/key")),
+            answer(json!({
+                "faithful": {"noul": 0.1}, "hardcoded": {"noul": 0.8},
+                "trivial": {"noul": 0.1}, "keeps": {"noul": 0.1}
+            })),
+        );
+    }
+    recorded.entries.insert(
+        key("/coverage/R1/key"),
+        answer(json!({ "decides": {"noul": 0.9}, "exact": {"noul": 0.2} })),
+    );
+    let fx2 = fixture();
+    let writer = Scripted::new(vec![vec![
+        ("tests/T1.sh", Some(T1)),
+        ("tests/T2.sh", Some(T2)),
+    ]]);
+    let inputs = Inputs {
+        suite_dir: &fx.suite,
+        workspace: &fx.workspace,
+        ..fx2.inputs()
+    };
+    let suite = define(
+        &inputs,
+        &writer,
+        &runner(),
+        &JevMode::Recorded(recorded),
+        &Recorder::default(),
+        &Options {
+            rewrite: Rewrite::Hard,
+            ..Options::default()
+        },
+    )
+    .await;
+    assert_eq!(suite.rounds.len(), 1, "no rewrite for Jev's doubts");
+    assert!(suite.rejected.is_empty(), "{:#?}", suite.rejected);
+    assert_eq!(suite.tests.len(), 2);
+    let notes = &suite.tests[0].notes;
+    assert!(
+        notes.iter().any(|n| n.contains("doesn't state")),
+        "{notes:#?}"
+    );
+    assert!(
+        notes.iter().any(|n| n.contains("simpler rule")),
+        "{notes:#?}"
+    );
+    assert!(suite.evidence().text.contains("Note: Jev reads"));
+}
+
+/// With `rewrite: "hard"`, a test green on the untouched workspace sends
+/// the suite to a targeted repair: the first round's prefix, its facts and
+/// tests, and only the flagged test's problem.
+#[tokio::test(flavor = "current_thread")]
+async fn a_hard_failure_gets_a_targeted_repair() {
+    let fx = fixture();
+    let writer = Scripted::new(vec![
+        vec![("tests/T1.sh", Some(T1)), ("tests/T2.sh", Some(T2_GREEN))],
+        vec![("tests/T2.sh", Some(T2))],
+    ]);
+    let suite = define_with(
+        &fx,
+        &writer,
+        &JevMode::Off,
+        &Options {
+            rewrite: Rewrite::Hard,
+            ..Options::default()
+        },
+    )
+    .await;
+    assert_eq!(suite.rounds.len(), 2, "{:#?}", suite.rounds);
+    assert!(suite.rejected.is_empty());
+    let briefs = writer.briefs.borrow();
+    let (first, repair) = (&briefs[0], &briefs[1]);
+    assert_eq!(
+        first.input()[0],
+        repair.input()[0],
+        "the cached prefix is kept"
+    );
+    let state = repair.state.join("\n");
+    assert!(state.contains("Fix only the tests"), "{state}");
+    assert!(
+        state.contains("T1 (R1): greeting.txt holds hello"),
+        "{state}"
+    );
+    assert!(
+        state.contains("T2 passes on the untouched workspace"),
+        "{state}"
+    );
+    assert!(!state.contains("T1 passes"), "{state}");
 }
 
 async fn define_with_writer<W: Writer>(fx: &Fixture, writer: &W) -> AcceptanceSuite {

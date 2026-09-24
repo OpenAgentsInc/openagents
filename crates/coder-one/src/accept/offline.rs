@@ -326,6 +326,7 @@ pub async fn task(name: &str, jev: &JevMode, options: &TaskOptions) -> Result<Va
             workspace: &workspace,
             suite_dir: &suite_dir,
             workspace_note: CONTAINER_NOTE.replace("WORKDIR", &workdir),
+            target: None,
         };
         crate::say::line(&format!("accept ▸ {name}: writing the suite in {image}"));
         let suite = define(&inputs, &writer, &runner, jev, &recorder, &options.define).await;
