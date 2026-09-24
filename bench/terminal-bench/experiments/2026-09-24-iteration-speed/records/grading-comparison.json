@@ -1,0 +1,27 @@
+{
+  "serial_seconds": 354.6807927879854,
+  "parallel_seconds": 285.8264333260013,
+  "speed_ratio": 1.2408957025449492,
+  "wall_reduction_fraction": 0.194130499485893,
+  "same_input_digests": true,
+  "all_grades_equal": true,
+  "executions": {
+    "serial": 12,
+    "parallel": 12
+  },
+  "reused": 0,
+  "image_cache": {
+    "serial": [
+      "warm"
+    ],
+    "parallel": [
+      "warm"
+    ]
+  },
+  "limitations": [
+    "one fixed-order pair",
+    "shared coderos host with concurrent benchmark and Rust verification work",
+    "all 12 full candidate identities differ due to bytecode; no live deduplication benefit claimed",
+    "synthetic source copies omitted from publication; original retained candidate bytes and input manifests identify their source"
+  ]
+}

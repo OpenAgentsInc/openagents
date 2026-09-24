@@ -1,0 +1,41 @@
+{
+    "schema_version": 2,
+    "task": {
+        "name": "embedding-drift-monitor",
+        "type": "local",
+        "digest": "sha256:aab130057ec337cfbaf6e6349a2f1d8fb87cf4597a5a5ad38fbf6d3e903c54d8",
+        "path": "/tmp/tbench-candidate-flg1hi1_/tasks/embedding-drift-monitor"
+    },
+    "install_only": false,
+    "timeout_multiplier": 1.0,
+    "agent": {
+        "name": "nop",
+        "skills": [],
+        "resume_trajectory": false,
+        "extra_allowed_hosts": [],
+        "kwargs": {},
+        "mcp_servers": []
+    },
+    "bridge_inputs": {},
+    "skills": [],
+    "environment": {
+        "import_path": "tbench.warm_docker:WarmDockerEnvironment",
+        "force_build": false,
+        "delete": true,
+        "cpu_enforcement_policy": "auto",
+        "memory_enforcement_policy": "auto",
+        "extra_docker_compose": [],
+        "kwargs": {},
+        "extra_allowed_hosts": []
+    },
+    "verifier": {
+        "disable": false,
+        "environment_mode": "separate"
+    },
+    "source_trial": {
+        "action": "regrade",
+        "type": "local",
+        "trial_id": "bfefd8a2-e024-42d4-9114-ffd830553412",
+        "path": "/home/christopherdavid/.openagents/terminal-bench/experiments/iteration-speed-9618/grading-parallel/candidate-0004/source/candidate"
+    }
+}

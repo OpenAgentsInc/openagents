@@ -1,0 +1,1 @@
+{"schema": "openagents.tbench.environment-start.v1", "role": "tests", "session": "verify__ec01f0a__verifier__trial", "image": "tbench-warm/session-window-debug:tests-8dc49e9ca41ad127bd4c", "cache": "warm", "kept": [], "start_ms": 1178, "at": "2026-09-24T22:44:01+00:00"}

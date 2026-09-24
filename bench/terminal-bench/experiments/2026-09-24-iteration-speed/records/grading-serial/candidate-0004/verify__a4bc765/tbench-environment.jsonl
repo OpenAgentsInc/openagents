@@ -1,0 +1,1 @@
+{"schema": "openagents.tbench.environment-start.v1", "role": "tests", "session": "verify__a4bc765__verifier__trial", "image": "tbench-warm/embedding-drift-monitor:tests-bfff2941a5b41a24f748", "cache": "warm", "kept": [], "start_ms": 1173, "at": "2026-09-24T22:38:00+00:00"}

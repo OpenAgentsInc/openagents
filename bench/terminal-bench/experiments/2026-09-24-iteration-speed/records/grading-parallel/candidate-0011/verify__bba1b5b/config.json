@@ -1,0 +1,19 @@
+{
+    "task": {
+        "path": "/tmp/tbench-candidate-w73oc5c9/tasks/session-window-debug"
+    },
+    "trial_name": "verify__bba1b5b",
+    "trials_dir": "/home/christopherdavid/.openagents/terminal-bench/experiments/iteration-speed-9618/grading-parallel/candidate-0011",
+    "agent": {
+        "name": "nop"
+    },
+    "environment": {
+        "import_path": "tbench.warm_docker:WarmDockerEnvironment"
+    },
+    "source_trial": {
+        "action": "regrade",
+        "type": "local",
+        "trial_id": "5ca0c8e5-5c7a-4e2e-86ea-55ce07d4076a",
+        "path": "/home/christopherdavid/.openagents/terminal-bench/experiments/iteration-speed-9618/grading-parallel/candidate-0011/source/candidate"
+    }
+}

@@ -75,6 +75,59 @@ a task or trial, and refuses any task whose current checksum differs from the
 completed trial. These refusals make incomplete evidence visible rather than
 silently grading a different input.
 
+The iteration loop separates live execution from diagnosis:
+
+```mermaid
+flowchart TD
+    A[Freeze source, policy, artifact, and task] --> B[Run bounded Microluna attempts]
+    B --> C[Retain each candidate, score, trace, and usage]
+    C --> D[Complete the official final verifier]
+    D --> E[Grade retained candidates in bounded parallel workers]
+    E --> F{Did any candidate pass?}
+    F -->|No| G[Improve generation or the evidence in its brief]
+    F -->|Yes, but final failed| H[Investigate selection and later edits]
+    F -->|Yes, and final passed| I[Measure cost and time including failed attempts]
+    G --> J[Predeclare the next experiment]
+    H --> J
+    I --> J
+```
+
+Grades from this diagnostic phase do not enter the completed agent sessions.
+A later experiment is development work informed by previous results, not an
+independent held-out evaluation of those same tasks.
+
+## Measured grading throughput
+
+The same 12 candidates from the six completed `evidence-v1` trials were graded
+serially, then with two workers and explicit deduplication enabled:
+
+| Mode | Verifier executions | Reused grades | Wall time | Invalid grades |
+| --- | ---: | ---: | ---: | ---: |
+| One worker, no reuse | 12 | 0 | 354.68 s | 0 |
+| Two workers, exact-input reuse enabled | 12 | 0 | 285.83 s | 0 |
+
+The two-worker batch used **19.4% less wall time**, a **1.24× throughput ratio**.
+All 24 executions used warm verifier images and produced matching reward-zero
+results. This confirms the earlier conclusion that those protected runs had no
+passing retained candidate. No new model calls were made.
+
+There was no live deduplication saving in this sample. The source files in each
+before/after pair matched, but six to eight Python bytecode files differed.
+Bytecode can affect imports, so the complete-input key correctly treats these
+as different candidates. Unit tests separately prove that genuinely identical
+inputs reuse a validated grade and retain both source records, and that failed
+executions never become reusable grades.
+
+This is one fixed-order comparison on a shared host. Other benchmark work and
+Rust verification ran concurrently; no CPU isolation was imposed. It measures
+the observed workflow, not an uncontended maximum or a universal speedup. See
+the [comparison](../../bench/terminal-bench/experiments/2026-09-24-iteration-speed/records/grading-comparison.json),
+[serial records](../../bench/terminal-bench/experiments/2026-09-24-iteration-speed/records/grading-serial/batch.json),
+and [parallel records](../../bench/terminal-bench/experiments/2026-09-24-iteration-speed/records/grading-parallel/batch.json).
+The repeated synthetic source copies are omitted from publication; original
+candidate bytes remain in the previous experiment's full retained traces, and
+each grade includes the input manifest and source path.
+
 ## Readable reasoning summaries
 
 The live endpoint accepted `auto`, `concise`, and `detailed`. `auto` resolved to
@@ -95,7 +148,10 @@ request costs, not isolated summary overhead:
 There is no demonstrated gain from replacing `auto` with `detailed`. Three
 stochastic attempts cannot establish a latency penalty; response content,
 reasoning work, and service variability differ. A summary called `detailed`
-can still be short. The setting does not expose encrypted internal reasoning.
+can still be short: the retained responses contain lists of bold headings,
+including “Checking LRU cache defects,” rather than a full reasoning transcript.
+This confirms that those headings come from the provider; Gym did not truncate
+a longer hidden text. The setting does not expose encrypted internal reasoning.
 
 A further three requests omitted effort. The provider chose `medium`, accepted
 all settings, and returned readable summaries. The `auto` request took 19.78

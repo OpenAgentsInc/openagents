@@ -36,3 +36,21 @@ summaries and exact usage, never login headers or encrypted reasoning. The
 initial parser missed streamed output items; preserve that invalid measurement
 and its spend separately. Do not interpret its zero-character counts as missing
 provider summaries.
+
+## Retained measurements
+
+- [Assessment and implementation](../../../../docs/terminal-bench/2026-09-24-microluna-iteration-speed.md).
+- [Summary-setting ledger](records/summary-comparison.json), including invalid
+  probe costs and the corrected streamed-output parser.
+- [Grading throughput comparison](records/grading-comparison.json): 12 official
+  grades per condition, identical outcomes, 19.4% less wall time with two workers.
+- [Binary and policy pins](records/pins.json). The six fresh trials run through
+  the single-arm suite `tb4--coder-one-microluna-v13-retained`. The initial
+  experiment command refused one arm before launching any trial; its
+  [refusal record](records/initial-scheduler-refusal.log) remains retained.
+
+Use `collect.py --output /tmp/results.json` with the pinned tbench environment
+on coderos to collect all planned attempts, including pending rows and unknown
+costs. `run.py` records credentials only in process memory and pins the original
+artifact before invoking the suite. Run it from the named frozen checkout;
+a later source revision requires a new experiment and artifact identity.
