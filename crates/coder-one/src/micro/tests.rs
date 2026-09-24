@@ -1434,6 +1434,9 @@ fn lean_shape() -> lean::Lean {
         session_spend: false,
         records: false,
         command_sec: 0,
+        symptoms: false,
+        example_first: false,
+        standard_forms: false,
     }
 }
 

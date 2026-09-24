@@ -88,6 +88,16 @@ pub struct Lean {
     /// 600. 0 keeps the tool's.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub command_sec: u64,
+    /// Add the symptom practice alone ([`SYMPTOMS`]), without the search
+    /// practice `practices` also carries.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub symptoms: bool,
+    /// Add the worked-example practice ([`EXAMPLE_FIRST`]).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub example_first: bool,
+    /// Add the standard-form practice ([`STANDARD_FORMS`]).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub standard_forms: bool,
 }
 
 #[allow(clippy::trivially_copy_pass_by_ref)]
@@ -156,6 +166,30 @@ When the task describes symptoms, reproduce each one on the untouched code with 
 before you change anything, trace it to the component responsible, and confirm your change \
 removes it. Check each component on its own against what it should compute, not only the \
 end-to-end result.";
+
+/// Added with `symptoms`: the second half of [`PRACTICES`].
+pub const SYMPTOMS: &str = "When the task describes symptoms, reproduce each one on the \
+untouched code with a small script before you change anything, trace it to the component \
+responsible, and confirm your change removes it. Check each component on its own against what \
+it should compute, not only the end-to-end result.";
+
+/// Added with `example_first`. Every Luna run on one dev task guessed the
+/// mechanism behind a provided input and output pair and never compared
+/// the two; Fable's passing runs compared them first and read the
+/// mechanism off the difference.
+pub const EXAMPLE_FIRST: &str = "When the task provides an input together with its expected \
+output, work out the exact transformation from that pair before you design anything: compute \
+what turns each part of the input into the output, and look for the structure in that mapping, \
+such as what repeats, what depends on what came before, and what differs between positions. Test \
+each hypothesis against the pair, and drop the ones it contradicts.";
+
+/// Added with `standard_forms`. A session kept a well-known statistic in a
+/// variant its docstring defended, and the verifier required the
+/// standard form.
+pub const STANDARD_FORMS: &str = "The standard definition of a well-known method the code \
+implements, such as a statistic, an algorithm, a protocol, or a format, is part of what the task \
+asks. Where the code or a comment chooses a variant of it, treat the choice as a suspect, and use \
+the standard form unless the task says otherwise.";
 
 /// Added with `holdout`: examples are a sample of a rule, not the answer.
 pub const HOLDOUT_GUIDANCE: &str = "When the task provides examples, training data, or a sample \
@@ -571,6 +605,16 @@ impl Micro {
         if lean.practices {
             general.push_str("\n\n");
             general.push_str(PRACTICES);
+        }
+        for (on, text) in [
+            (lean.symptoms, SYMPTOMS),
+            (lean.example_first, EXAMPLE_FIRST),
+            (lean.standard_forms, STANDARD_FORMS),
+        ] {
+            if on {
+                general.push_str("\n\n");
+                general.push_str(text);
+            }
         }
         if lean.holdout {
             general.push_str("\n\n");
