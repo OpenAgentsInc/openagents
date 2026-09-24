@@ -65,6 +65,12 @@ use crate::shell::Checkout;
 use crate::state::{Environment, Issue, State};
 use crate::{Bounds, Ended, run};
 
+/// The episode's first system step when the Coder One loop sends no
+/// prompt: the policy delegates with no explore steps.
+pub const NO_LOOP_PROMPT: &str = "No Coder One loop step runs under this policy \
+(control.explore_steps is 0), so the loop sends no system prompt. Each executor \
+session carries its own instructions, recorded with that session.";
+
 /// The contract this binary implements.
 pub const CONTRACT: &str = "openagents.coder.episode.v1";
 
@@ -433,7 +439,19 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
         .reading(&json!({ "instruction": instruction }))
         .with_effects(),
     );
-    recorder.push(Step::said(Source::System, EPISODE_INSTRUCTIONS));
+    // The loop's system prompt is recorded only when the loop sends it.
+    // Under a delegating policy with no explore steps, as every reference
+    // policy is, no loop step runs, and the transcript said otherwise
+    // before issue #9591.
+    let loop_runs = policy.mode() == Mode::Off || policy.policy.control.explore_steps > 0;
+    recorder.push(Step::said(
+        Source::System,
+        if loop_runs {
+            EPISODE_INSTRUCTIONS
+        } else {
+            NO_LOOP_PROMPT
+        },
+    ));
     recorder.push(Step::said(Source::User, &instruction));
 
     let first_line = instruction.lines().find(|line| !line.trim().is_empty());
