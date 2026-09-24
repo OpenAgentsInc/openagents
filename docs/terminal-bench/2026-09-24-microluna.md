@@ -17,9 +17,10 @@ the Codex CLI, on mini-tasks and on a few Terminal-Bench 4.0 tasks.
   session, Jev chose `retry`, and the second session fixed the seven-day
   range; the counts were right by session two, and only the CRLF ending kept
   the grader from passing it.
-- **On three TB4 tasks, Microluna scored 0 of 3, the same as Luna-in-Codex
-  and Luna direct.** These are hard tasks the whole leaderboard's weaker rows
-  fail. The value here is the loop's behavior, not a pass: Microluna ran
+- **On three TB4 tasks, Microluna scored 0 of 3.** Only `coq-block-bound`
+  has a graded baseline pair, also a failure. The other tasks lack completed
+  baseline pairs and do not establish equal outcomes across all three.
+  Microluna ran
   bounded sessions, checked each one, and stopped rather than wandering.
 - **Two failure modes the runs exposed are now fixed** (commit
   `76c04cfa00`): a session that made no edit could still end the loop as
@@ -64,10 +65,15 @@ and mean sessions per attempt.
 The difference is one task, `cancel-cleanup`, where Luna-in-Codex failed one
 attempt (0 of 2 started tasks cleaned up before the call returned) and both
 Microluna arms passed all three. The sample is small; this isn't a
-significant pass difference. The clear differences are cost and time:
+significant pass difference. The observed differences are cost and time:
 Microluna spent 73% of Luna-in-Codex's Luna list price and 85% of its time,
 because its sessions are short and cache the shared prefix, where the Codex
 CLI runs one long session and resends a growing context.
+
+Including Jev, the totals are $0.0404 against $0.0523, about **23% less
+estimated total cost**, rather than the 27% reduction in Luna charges alone.
+The traces suggest that shorter sessions and caching contribute, but this
+comparison does not isolate their individual effects.
 
 ### The `log-severity` failures are all CRLF
 
@@ -112,12 +118,14 @@ one attempt each, matched to the baseline's tasks. The artifact is
 | Task | Microluna (`microluna-v1`) | Luna-in-Codex (#9583 baseline, attempt 1) | Luna + Jev (#9583, attempt 1) |
 | --- | --- | --- | --- |
 | `coq-block-bound` | 0 · 347 s · Luna $0.0078 + Jev $0.0008 · 6 sessions | 0 · 447 s · — | 0 · 94 s · $0.0049 |
-| `shadow-relay` | 0 · 826 s · Luna $0.0334 + Jev $0.0012 · 6 sessions | pending | pending |
-| `uefi-bootkit` | 0 · 1340 s · Luna $0.0524 + Jev $0.0012 · 6 sessions | running | running |
+| `shadow-relay` | 0 · 826 s · Luna $0.0334 + Jev $0.0012 · 6 sessions | Not run | Not run |
+| `uefi-bootkit` | 0 · 1340 s · Luna $0.0524 + Jev $0.0012 · 6 sessions | Unfinished when the baseline stopped | Infrastructure loss: disk full |
 
-Every trial scored 0. Luna direct is 0 of 20 on TB4 so far in #9583, so these
-are tasks the model doesn't solve; the comparison is about behavior, not
-passes. Microluna's loop ran its sessions, checked each, chose retry on
+Every Microluna trial in this table scored 0. The completed
+[#9583 baseline report](2026-09-24-luna-tb4-baseline.md) records 0/23 graded
+attempts across both arms; the original 0/20 count was an interim subset.
+That result does not establish that the model cannot solve these tasks.
+Microluna's loop ran its sessions, checked each, chose retry on
 contradicted requirements, and stopped at its bounds. The baseline's cost on
 `coq-block-bound` is a dash because that trial reported no cost; the
 Luna-plus-Jev arm's cost is its `usage.json` figure.

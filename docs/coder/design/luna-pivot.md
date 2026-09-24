@@ -64,10 +64,14 @@ intelligence gap with better Jev algorithms, measured one at a time.
 
 ## What we don't know yet
 
-- **Luna has never run on TB4.** No retained or local job runs Luna on the
-  66-task Terminal-Bench 4.0 suite. Every Luna result above is on the
-  eight-task development panel, which is much easier. The first job of the
-  pivot is to measure Luna on TB4 tasks, directly and with Jev structure.
+- **Reliable Luna completion on TB4 is not established.** This was an
+  unmeasured question when the pivot was proposed. The completed
+  [initial baseline](../../terminal-bench/2026-09-24-luna-tb4-baseline.md)
+  subsequently scored 0/23, and
+  [Microluna iterations](../../terminal-bench/2026-09-24-microluna-iterations.md)
+  now run on TB4. The
+  [two-target assessment](../../terminal-bench/2026-09-24-microluna-two-targets.md)
+  defines the next repeatability and efficiency measurements.
 - **Our checks don't tell the truth yet.** Across 80 graded trials in the
   current experiments, Coder One's final checks didn't discriminate:
   "all passed" was 19 passes and 19 fails, and "a check failed" was 3 and

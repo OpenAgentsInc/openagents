@@ -196,6 +196,14 @@ noninteractive view. The plain `gym-terminal` command without
 
 ## Coder One benchmark evidence
 
+Microluna now runs TB4 with Luna and Jev, but repeatable wins remain
+unproven. The [iteration record](docs/terminal-bench/2026-09-24-microluna-iterations.md)
+covers v9 through v12. The
+[two-target assessment](docs/terminal-bench/2026-09-24-microluna-two-targets.md)
+explains why the v7 announcement was withdrawn and defines the next
+comparison: preserve good candidates, then measure passes where Fable
+failed and cheaper accepted work where Fable passed.
+
 The September 24 follow-ups found two limits in the current controller:
 
 - [Escalation after a failed check](docs/terminal-bench/2026-09-24-escalation-on-failed-check.md)
@@ -205,9 +213,8 @@ The September 24 follow-ups found two limits in the current controller:
   fixed xhigh using its recorded cost lower bound. One xhigh call is
   unpriced, so the exact ratio is unknown; the 60% cost target is unproven.
 
-The [Luna pivot proposal](docs/coder/design/luna-pivot.md) sets the next
-design focus. These experiments do not establish a controller efficiency
-gain and do not evaluate that proposed design.
+The [Luna pivot](docs/coder/design/luna-pivot.md) sets the current design
+focus. The older controller experiments below do not evaluate Microluna.
 
 The latest retained matched-controller experiment, published September 23,
 holds Claude Code, Opus 5.5, medium effort, tools, system prompt, and outer

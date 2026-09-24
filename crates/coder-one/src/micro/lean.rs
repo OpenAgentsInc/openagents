@@ -1107,7 +1107,10 @@ impl Micro {
             if score.is_some_and(|(_, total)| score_total != Some(total)) {
                 score = None;
             }
-            let selection_available = best.is_some();
+            let submitted_files = parallel::tree(&self.workdir);
+            let selection_available = best
+                .as_ref()
+                .is_some_and(|b| submitted_files == parallel::tree(&b.dir));
             let result = if !selection_available || score.is_none() {
                 "unknown"
             } else if score.is_some_and(|(p, t)| p == t) {
@@ -1120,12 +1123,13 @@ impl Micro {
             ));
             moves.push(json!({
                 "kind": "lean.submitted",
-                "selected_session": best.as_ref().map(|b| b.session),
+                "selected_session": best.as_ref().filter(|_| selection_available).map(|b| b.session),
+                "selection_matches_workspace": selection_available,
                 "result": result,
                 "score": score.map(|(p, t)| json!({"passed": p, "total": t})),
                 "output": output,
                 "review_status": sessions.last().filter(|r| r.read_only).map(Ran::status),
-                "workspace_files": parallel::tree(&self.workdir),
+                "workspace_files": submitted_files,
                 "benchmark_outcome": Value::Null,
             }));
             if let Ok(bytes) = serde_json::to_vec_pretty(&moves)
