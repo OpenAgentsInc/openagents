@@ -37,6 +37,7 @@ pub mod effort;
 pub mod episode;
 pub mod generate;
 pub mod handoff;
+pub mod issue_turn;
 pub mod judge;
 pub mod limit;
 pub mod micro;

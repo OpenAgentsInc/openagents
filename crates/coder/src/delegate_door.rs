@@ -630,6 +630,11 @@ impl DelegateDoor {
             jev: self.jev.clone(),
             artifacts: self.artifacts(turn),
             script: self.script.clone(),
+            // The issue flow works in a clone of its own and opens a draft
+            // pull request, so the operator's permit governs it, not this
+            // turn's route.
+            issues: crate::permit::Permit::operator().executes(),
+            issue: false,
         };
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<FromThread>();
         // Coder One's judge and recorder are not `Send`, so the turn runs

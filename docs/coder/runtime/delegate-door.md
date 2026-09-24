@@ -129,6 +129,27 @@ may rerun a test command, which writes. A workspace-writable turn runs
 commands in a boundary that may write only the working directory, and
 runs the checks between sessions.
 
+## A turn that works an issue
+
+When a request names a GitHub issue to work, such as "work on #9597", or
+"do it" after a reply that proposed one, the turn runs the issue flow in
+`coder_one::issue_turn` instead of editing your checkout:
+
+1. Code collects the issue references in the request and the
+   conversation, and Jev chooses the one the request asks to work, or
+   `none`. A request that names no issue asks Jev nothing, and a question
+   about an issue, such as "summarize #9597", gets `none`.
+1. The host reads the issue with `gh`, clones its repository fresh under
+   `~/.openagents/coder-one/runs/`, and creates a `coder/issue-N-…` branch.
+1. The same Microluna loop a change request runs works the issue in the
+   clone, with larger bounds: up to 10 sessions, $1.00, and 40 minutes.
+1. When the loop finishes with changes, the host commits them, pushes the
+   branch, and opens a draft pull request that closes the issue. A run
+   that doesn't finish leaves its changes staged in the clone.
+
+Every step streams into the terminal as it runs. The flow runs only when
+the operator's permit runs commands.
+
 ## What the terminal shows
 
 The executor's events become the turn's own events, so a delegated turn

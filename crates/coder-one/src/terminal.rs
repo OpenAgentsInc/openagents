@@ -99,6 +99,15 @@ pub const NO_CONNECTORS: (&str, &str) = ("ENABLE_CLAUDEAI_MCP_SERVERS", "false")
 const CONCLUSION: &str = "No explorer ran for this request. The evidence \
 below comes from the host's read-only probes and Jev's file survey.";
 
+/// The directions for the issue flow's turn, in a fresh clone on a new
+/// branch.
+pub const ISSUE_DIRECTIONS: &str = "Resolve the issue in the current working \
+directory, a fresh clone on a new branch. Make the change the issue asks \
+for, add the tests it asks for, and run the tests that cover what you \
+changed. Do not commit, push, or create branches: the host does that when \
+you finish. End with a short summary of what you changed and how you \
+checked it.";
+
 /// The directions for a question, which runs with no survey: the other
 /// directions promise gathered evidence, and with none there, "how many
 /// open issues are there" once ended on "no issue data was supplied"
@@ -169,6 +178,13 @@ pub struct Request {
     /// Scripted replies Microluna answers from in place of the Codex
     /// login, for a test. `None` on every real turn.
     pub script: Option<Vec<microluna::Reply>>,
+    /// Whether a request to work a GitHub issue may start the issue flow
+    /// in [`crate::issue_turn`]: a fresh clone, a branch, the loop, and a
+    /// draft pull request. The host sets it from the operator's permit.
+    pub issues: bool,
+    /// Whether this turn is the issue flow's own, working an issue in its
+    /// clone: it runs under [`ISSUE_DIRECTIONS`] and [`issue_policy`].
+    pub issue: bool,
 }
 
 /// What the turn reports while it runs.
@@ -357,6 +373,14 @@ pub async fn answer(request: &Request, on: Rc<dyn Fn(Progress)>) -> Answer {
         heard(Progress::Line(line.to_string()));
     }));
     let recorder = Recorder::default();
+    if request.issues
+        && !request.issue
+        && request.agent == Agent::Microluna
+        && let Some(reference) = crate::issue_turn::asked(request, &recorder).await
+    {
+        crate::say::say!("route ▸ work issue #{}: the issue flow", reference.number);
+        return crate::issue_turn::run(request, reference, on, &recorder).await;
+    }
     let policy = policy();
     let words = instruction(&request.request, &request.earlier);
 
@@ -412,6 +436,8 @@ pub async fn answer(request: &Request, on: Rc<dyn Fn(Progress)>) -> Answer {
             ""
         };
         format!("{QUESTION_DIRECTIONS}{read_only} {MICROLUNA_QUESTIONS} {DECISIVE}")
+    } else if request.issue {
+        ISSUE_DIRECTIONS.to_string()
     } else {
         directions(request.read_only, request.clarify)
     };
@@ -636,6 +662,23 @@ pub fn microluna_policy(read_only: bool) -> crate::micro::Policy {
     }
 }
 
+/// Microluna's bounds for the issue flow's turn: an issue is a larger
+/// change than a terminal request, so it gets more groups, sessions, time,
+/// and spend.
+#[must_use]
+pub fn issue_policy() -> crate::micro::Policy {
+    crate::micro::Policy {
+        max_sessions: 10,
+        max_groups: 5,
+        session_sec: 480,
+        spend_usd: 1.0,
+        ..microluna_policy(false)
+    }
+}
+
+/// The issue flow's deadline for the whole loop, in seconds.
+const ISSUE_DEADLINE_SEC: u64 = 2_400;
+
 /// What a Microluna turn's task adds to the directions. The loop's session
 /// guidance is written for tasks that change files, and asks for an edit
 /// and a check before `done`; a terminal request is often a question, and
@@ -731,7 +774,11 @@ async fn microluna_turn(turn: Turn<'_>) -> Answer {
     let mut micro = crate::micro::Micro::new(
         &model,
         None,
-        std::time::Duration::from_secs(policy.policy.executor.deadline_sec),
+        std::time::Duration::from_secs(if request.issue {
+            ISSUE_DEADLINE_SEC
+        } else {
+            policy.policy.executor.deadline_sec
+        }),
         &request.workdir,
         &artifacts,
         recorder.clone(),
@@ -741,6 +788,8 @@ async fn microluna_turn(turn: Turn<'_>) -> Answer {
                 mode: crate::micro::Mode::Single,
                 ..microluna_policy(read_only)
             }
+        } else if request.issue {
+            issue_policy()
         } else {
             microluna_policy(read_only)
         },
@@ -1063,6 +1112,8 @@ mod tests {
             jev: None,
             artifacts,
             script: None,
+            issues: false,
+            issue: false,
         })
     }
 
