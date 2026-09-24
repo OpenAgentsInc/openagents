@@ -293,3 +293,26 @@ tasks stalled on its first approach from v9 to v13.
   three lanes and a scorer where one session sufficed. v14 is slower than
   Fable's all-effort mean there, so lanes stay off.
 - Spend: $0.171.
+
+## Iteration 7: `microluna-v15`, default effort, more time, the failures
+
+**Change.** `microluna-v13` without lanes, at the provider's default
+effort, with `wall_sec: 1500` and `failures`: the frozen score's last
+output goes in each later brief, beside a practice to fix the largest
+group of failures first. Provenance: v9, at default effort, went furthest
+on `sound-change-cascade`; high-effort sessions there made 8 to 20
+requests in 450 to 900 seconds.
+
+**Dev results.** Artifact `coder-one 0.1.0 (83b48ccc08c8)`.
+
+| Task | Verifier | Agent time | Cost | Sessions and scores |
+| --- | --- | ---: | ---: | --- |
+| `embedding-drift-monitor` | **Pass, 11 of 11** | 5 min 54 s | $0.0152 | Session 1 done (293 s); self-check done |
+| `sound-change-cascade` | Fail, 5 of 7 | 24 min 31 s | $0.0299 | Score 419, then 443 of 780 |
+| `interleaved-vigenere` | Fail, 5 of 6 | 25 min 18 s | $0.0552 | Score 2 of 3 throughout |
+
+- The suspects mechanism passes `embedding-drift-monitor` at default
+  effort too: three passes in three attempts across v13 and v15.
+- Neither search task moves: 443 of 780 is below v9's 520, and no run has
+  yet found the structure of the `interleaved-vigenere` cipher.
+- Spend: $0.100.
