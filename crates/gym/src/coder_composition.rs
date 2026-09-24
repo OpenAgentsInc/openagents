@@ -342,6 +342,7 @@ pub fn detail_lines(record: &Value) -> Vec<String> {
                 .as_str()
                 .map_or(String::new(), |by| format!(" · stopped by {by}"))
         ));
+        lines.extend(parallel_lines(&branch["parallel"]));
     }
     for handoff in record["handoffs"].as_array().into_iter().flatten() {
         lines.push(format!(
@@ -458,6 +459,72 @@ pub fn detail_lines(record: &Value) -> Vec<String> {
 /// `control.best_of`: each candidate's status, cost, time, checks, and
 /// verdict, the verifier's grade when the candidates were graded, and
 /// which one was kept and why.
+/// A Microluna suite loop's timeline under its dispatch: the summary, then
+/// one line per session or writer with when it ran and what beside it.
+#[must_use]
+pub fn parallel_lines(parallel: &Value) -> Vec<String> {
+    if !parallel.is_object() {
+        return Vec::new();
+    }
+    let secs = |ms: &Value| {
+        ms.as_u64().map_or_else(
+            || "?".to_owned(),
+            |ms| format!("{:.1}s", ms as f64 / 1000.0),
+        )
+    };
+    let mut lines = vec![format!(
+        "    parallel: {} sessions · wall {} · session time {} · concurrency {} · peak {} · critical path {} · saved {} · suite {} ({} on the critical path) · {} merges, {} conflicts",
+        parallel["sessions"].as_u64().unwrap_or(0),
+        secs(&parallel["wall_ms"]),
+        secs(&parallel["session_ms"]),
+        parallel["concurrency"]
+            .as_f64()
+            .map_or("?".to_owned(), |c| format!("{c:.2}×")),
+        parallel["peak"].as_u64().unwrap_or(0),
+        secs(&parallel["critical_path_ms"]),
+        secs(&parallel["saved_ms"]),
+        secs(&parallel["suite_ms"]),
+        secs(&parallel["suite_on_critical_path_ms"]),
+        parallel["merges"].as_u64().unwrap_or(0),
+        parallel["conflicts"].as_u64().unwrap_or(0),
+    )];
+    let tracks = parallel["tracks"].as_array().cloned().unwrap_or_default();
+    for track in &tracks {
+        let label = track["label"].as_str().unwrap_or("?");
+        let (start, end) = (
+            track["start_ms"].as_u64().unwrap_or(0),
+            track["end_ms"].as_u64().unwrap_or(0),
+        );
+        let beside: Vec<&str> = tracks
+            .iter()
+            .filter(|other| other["label"] != track["label"])
+            .filter(|other| {
+                let nested = (track["kind"] == "define" && other["kind"] == "writer")
+                    || (track["kind"] == "writer" && other["kind"] == "define");
+                !nested
+                    && other["start_ms"].as_u64().unwrap_or(0) < end
+                    && other["end_ms"].as_u64().unwrap_or(0) > start
+            })
+            .filter_map(|other| other["label"].as_str())
+            .collect();
+        lines.push(format!(
+            "      {label:<22} {:>7} → {:<7} {}{}{}",
+            secs(&track["start_ms"]),
+            secs(&track["end_ms"]),
+            track["batch"].as_str().unwrap_or(""),
+            track["group"]
+                .as_str()
+                .map_or(String::new(), |g| format!(" · {g}")),
+            if beside.is_empty() {
+                String::new()
+            } else {
+                format!(" · ∥ {}", beside.join(", "))
+            }
+        ));
+    }
+    lines
+}
+
 fn best_of_lines(best: &Value) -> Vec<String> {
     if best.is_null() {
         return Vec::new();
@@ -1735,6 +1802,38 @@ mod tests {
             best_of_lines(&skipped),
             ["  best of 5: one candidate ran: the workspace is over 256 MiB"]
         );
+    }
+
+    #[test]
+    fn a_parallel_loop_lists_which_sessions_overlapped() {
+        let parallel = json!({
+            "sessions": 3, "wall_ms": 10_000, "session_ms": 16_000, "concurrency": 1.6,
+            "peak": 2, "critical_path_ms": 9_000, "saved_ms": 6_000, "suite_ms": 5_000,
+            "suite_on_critical_path_ms": 1_000, "merges": 1, "conflicts": 0,
+            "tracks": [
+                { "label": "accept.define", "kind": "define", "batch": "suite", "start_ms": 0, "end_ms": 5_000 },
+                { "label": "accept-writer-1", "kind": "writer", "batch": "writer round 1", "start_ms": 0, "end_ms": 4_000 },
+                { "label": "session 1", "kind": "edit", "batch": "suite", "start_ms": 0, "end_ms": 4_000 },
+                { "label": "session 2", "kind": "edit", "batch": "round 1", "group": "group 1 of 2: T1", "start_ms": 5_000, "end_ms": 9_000 },
+                { "label": "session 3", "kind": "edit", "batch": "round 1", "group": "group 2 of 2: T2", "start_ms": 5_000, "end_ms": 8_000 },
+            ],
+        });
+        let lines = parallel_lines(&parallel);
+        assert!(lines[0].contains("concurrency 1.60×"), "{lines:#?}");
+        let line = |label: &str| {
+            lines
+                .iter()
+                .find(|l| l.trim_start().starts_with(label))
+                .unwrap()
+                .clone()
+        };
+        assert!(line("session 2").ends_with("· ∥ session 3"), "{lines:#?}");
+        assert!(line("accept.define").ends_with("∥ session 1"), "{lines:#?}");
+        assert!(
+            line("accept-writer-1").ends_with("∥ session 1"),
+            "{lines:#?}"
+        );
+        assert!(parallel_lines(&Value::Null).is_empty());
     }
 
     #[test]

@@ -1101,7 +1101,7 @@ pub(crate) fn limited(recorder: &Recorder) -> Option<Value> {
 /// One dispatch's ledger row.
 fn row(role: &str, tier: &Tier, report: &Report, last: &Value, granted: u64) -> Value {
     let (charge, _) = delegate::charge(report);
-    json!({
+    let mut row = json!({
         "role": role,
         "tier": tier,
         "status": report.status.word(),
@@ -1112,7 +1112,13 @@ fn row(role: &str, tier: &Tier, report: &Report, last: &Value, granted: u64) -> 
         "turns": report.summary.num_turns,
         "stopped_by": last["stopped_by"],
         "session_id": report.summary.session_id,
-    })
+    });
+    // A Microluna suite loop's timeline: which sessions overlapped.
+    if last["parallel"].is_object() {
+        row["parallel"] = last["parallel"].clone();
+        row["loop"] = json!({ "mode": last["mode"], "stopped": last["stopped"] });
+    }
+    row
 }
 
 /// What `generic.self-report` found in a check: `null` when it didn't

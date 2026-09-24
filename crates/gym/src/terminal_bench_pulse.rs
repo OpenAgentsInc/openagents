@@ -1159,6 +1159,11 @@ impl Pulse {
                 "at": s.at, "arm": s.arm, "state": s.state, "reason": s.reason, "skipped": s.skipped,
             })).collect::<Vec<_>>(),
             "notable": self.notable.iter().map(|n| json!({"job": n.job, "why": n.why})).collect::<Vec<_>>(),
+            "parallel": self.trials.iter().filter_map(|t| {
+                let branches = t.composition.as_ref()?["branches"].as_array()?.clone();
+                let parallel: Vec<Value> = branches.iter().filter(|b| b["parallel"].is_object()).map(|b| b["parallel"].clone()).collect();
+                (!parallel.is_empty()).then(|| json!({ "job": t.job, "parallel": parallel }))
+            }).collect::<Vec<_>>(),
             "model_calls": 0,
         })
     }
@@ -1289,8 +1294,61 @@ impl Pulse {
             &self.components,
             &self.notable,
         ));
+        let parallel = parallel_lines(&self.trials);
+        if !parallel.is_empty() {
+            lines.push(String::new());
+            lines.extend(parallel);
+        }
         lines
     }
+}
+
+/// One line per trial whose Microluna suite loop recorded a timeline: the
+/// wall time against the summed session time, the suite's share of the
+/// critical path, and what running sessions at once saved.
+#[must_use]
+pub fn parallel_lines(trials: &[TrialFacts]) -> Vec<String> {
+    let mut lines = Vec::new();
+    for trial in trials {
+        let Some(composition) = &trial.composition else {
+            continue;
+        };
+        for branch in composition["branches"].as_array().into_iter().flatten() {
+            let parallel = &branch["parallel"];
+            if !parallel.is_object() {
+                continue;
+            }
+            let secs = |key: &str| {
+                parallel[key].as_u64().map_or_else(
+                    || "?".to_owned(),
+                    |ms| format!("{:.0}s", ms as f64 / 1000.0),
+                )
+            };
+            lines.push(format!(
+                "  {}: {} sessions, wall {}, session time {}, concurrency {}, peak {}; suite {} ({} on the critical path); saved {}; {} merges, {} conflicts; cached {}",
+                trial.job,
+                parallel["sessions"].as_u64().unwrap_or(0),
+                secs("wall_ms"),
+                secs("session_ms"),
+                parallel["concurrency"]
+                    .as_f64()
+                    .map_or("?".to_owned(), |c| format!("{c:.2}×")),
+                parallel["peak"].as_u64().unwrap_or(0),
+                secs("suite_ms"),
+                secs("suite_on_critical_path_ms"),
+                secs("saved_ms"),
+                parallel["merges"].as_u64().unwrap_or(0),
+                parallel["conflicts"].as_u64().unwrap_or(0),
+                parallel["cached_share"]
+                    .as_f64()
+                    .map_or("?".to_owned(), |c| format!("{:.0}%", c * 100.0)),
+            ));
+        }
+    }
+    if !lines.is_empty() {
+        lines.insert(0, "Parallel sessions".to_owned());
+    }
+    lines
 }
 
 /// Component health and notable trials as terminal text.

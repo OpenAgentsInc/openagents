@@ -788,8 +788,9 @@ impl Place {
         !self.parallel_with.is_empty() || self.alongside.is_some()
     }
 
-    fn record(&self, number: u32, workdir: &Path) -> Value {
+    fn record(&self, id: &str, number: u32, workdir: &Path) -> Value {
         json!({
+            "id": id,
             "session": number,
             "group": self.group,
             "batch": if self.batch.is_empty() { format!("session {number}") } else { self.batch.clone() },
@@ -1459,7 +1460,7 @@ impl Micro {
                 )
                 .noting(
                     parallel::LANE_EXTENSION,
-                    place.record(number, &self.workdir),
+                    place.record(&session_id, number, &self.workdir),
                 ),
             );
         }
@@ -2405,6 +2406,7 @@ impl Micro {
             moves.push(json!({
                 "kind": "run",
                 "after_session": number,
+                "milliseconds": result.milliseconds,
                 "passed": result.passed,
                 "total": result.total,
                 "green": result.green,
@@ -2957,7 +2959,13 @@ impl Micro {
         tracks.extend(sessions.iter().map(|r| r.track(started_at)));
         tracks.sort_by_key(|t| (t.start_ms, t.end_ms));
         let wall = millis(started);
-        let summary = parallel::summary(&tracks, wall, &merges);
+        let mut summary = parallel::summary(&tracks, wall, &merges);
+        let runs: Vec<&Value> = moves.iter().filter(|m| m["kind"] == "run").collect();
+        summary["suite_runs"] = json!({
+            "count": runs.len(),
+            "milliseconds": runs.iter().filter_map(|m| m["milliseconds"].as_u64()).sum::<u64>(),
+        });
+        summary["cost_usd"] = json!(spent);
         crate::say::line(&format!(
             "  microluna ▸ parallel: {}",
             parallel::headline(&summary)

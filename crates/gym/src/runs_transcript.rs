@@ -1205,6 +1205,116 @@ fn microluna_stream(path: &Path) -> (Vec<Block>, Option<f64>, Option<String>) {
     (blocks, cost, report)
 }
 
+/// `: session 4, group 2 of 3: T3, T5, in parallel with sessions 3 and 5`
+/// for a Microluna session's lane record; empty for a session that ran on
+/// its own.
+#[must_use]
+pub fn lane_phrase(lane: &Value) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    if let Some(n) = lane.get("session").and_then(Value::as_u64) {
+        parts.push(format!("session {n}"));
+    }
+    if let Some(group) = text(lane, "group") {
+        parts.push(group);
+    }
+    let with: Vec<String> = lane
+        .get("parallel_with")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_u64)
+        .map(|n| n.to_string())
+        .collect();
+    match (with.len(), text(lane, "alongside")) {
+        (0, Some(beside)) => parts.push(format!("in parallel with {beside}")),
+        (0, None) => {}
+        (1, _) => parts.push(format!("in parallel with session {}", with[0])),
+        _ => parts.push(format!("in parallel with sessions {}", with.join(" and "))),
+    }
+    if parts.is_empty() {
+        String::new()
+    } else {
+        format!(": {}", parts.join(", "))
+    }
+}
+
+fn seconds_of(value: &Value) -> String {
+    value.as_u64().map_or_else(
+        || "?".to_owned(),
+        |ms| format!("{:.1}s", ms as f64 / 1000.0),
+    )
+}
+
+/// The block for a suite loop's parallel summary: the wall time against the
+/// summed session time, the critical path, the suite's share, and each
+/// batch of sessions that ran together.
+#[must_use]
+pub fn parallel_block(summary: &Value) -> Kind {
+    let concurrency = summary["concurrency"].as_f64().unwrap_or(0.0);
+    let mut lines = vec![
+        format!(
+            "{} sessions in {} of wall time and {} of session time: concurrency {concurrency:.2}×, peak {} at once.",
+            summary["sessions"].as_u64().unwrap_or(0),
+            seconds_of(&summary["wall_ms"]),
+            seconds_of(&summary["session_ms"]),
+            summary["peak"].as_u64().unwrap_or(0),
+        ),
+        format!(
+            "Critical path {}; run one after another, the same sessions would take about {}, {} more.",
+            seconds_of(&summary["critical_path_ms"]),
+            seconds_of(&summary["serial_estimate_ms"]),
+            seconds_of(&summary["saved_ms"]),
+        ),
+    ];
+    if summary["suite_ms"].is_u64() {
+        lines.push(format!(
+            "Suite writing took {}, {} of it on the critical path; the suite ran {} times in {}.",
+            seconds_of(&summary["suite_ms"]),
+            seconds_of(&summary["suite_on_critical_path_ms"]),
+            summary["suite_runs"]["count"].as_u64().unwrap_or(0),
+            seconds_of(&summary["suite_runs"]["milliseconds"]),
+        ));
+    }
+    lines.push(format!(
+        "Cached input {}, read-only turns {}, {} merges, {} conflicts.",
+        summary["cached_share"]
+            .as_f64()
+            .map_or("?".to_owned(), |c| format!("{:.0}%", c * 100.0)),
+        summary["read_turn_share"]
+            .as_f64()
+            .map_or("?".to_owned(), |c| format!("{:.0}%", c * 100.0)),
+        summary["merges"].as_u64().unwrap_or(0),
+        summary["conflicts"].as_u64().unwrap_or(0),
+    ));
+    for batch in summary["batches"].as_array().into_iter().flatten() {
+        let members: Vec<&str> = batch["members"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .collect();
+        if members.len() < 2 {
+            continue;
+        }
+        lines.push(format!(
+            "{}: {} at once, longest {} of {} summed.",
+            batch["batch"].as_str().unwrap_or("batch"),
+            members.join(" ∥ "),
+            seconds_of(&batch["longest_ms"]),
+            seconds_of(&batch["sum_ms"]),
+        ));
+    }
+    Kind::Check {
+        title: "Parallel sessions".to_owned(),
+        verdict: format!(
+            "concurrency {concurrency:.2}×, saved about {}",
+            seconds_of(&summary["saved_ms"])
+        ),
+        lines,
+        good: None,
+    }
+}
+
 /// The name a Microluna session's header block carries; expanding the
 /// block shows the whole briefing rather than a preview.
 const BRIEFING: &str = "Briefing for";
@@ -1214,8 +1324,11 @@ const BRIEFING: &str = "Briefing for";
 fn splice_microluna(transcript: &mut Transcript, path: &Path) {
     let (blocks, cost, report) = microluna_stream(path);
     count_into(transcript.sessions.last_mut(), &blocks);
+    // A suite writer's summary describes its tests, not the executor's
+    // work, so it never stands as the executor's report.
+    let writer = microluna_session_id(path).is_some_and(|(_, id)| id.starts_with("accept-"));
     if let Some(current) = transcript.sessions.last_mut() {
-        if report.is_some() {
+        if report.is_some() && !writer {
             current.report = report;
         }
         if let Some(cost) = cost {
@@ -1274,10 +1387,14 @@ pub fn coder_one(episode: Option<&Path>, log: &Path) -> Transcript {
             }
         }
     }
+    // `microluna-1-10` after `microluna-1-9`, and `accept-writer-1-2`
+    // after `accept-writer-1-1`: every numeric part counts.
     micro.sort_by_key(|(dispatch, id, _)| {
         (
             *dispatch,
-            id.rsplit('-').next().and_then(|n| n.parse::<u64>().ok()),
+            id.split('-')
+                .filter_map(|n| n.parse::<u64>().ok())
+                .collect::<Vec<_>>(),
         )
     });
     let mut dispatch = 0u64;
@@ -1312,16 +1429,32 @@ pub fn coder_one(episode: Option<&Path>, log: &Path) -> Transcript {
                 why: note.clone(),
                 ..Session::default()
             });
+            // A Microluna session's lane: what it worked on, and what ran
+            // beside it.
+            let lane = step.pointer("/extensions/microluna.lane");
             transcript.blocks.push(Block::new(
                 at,
                 Kind::Section {
-                    title: format!("{who} takes over"),
+                    title: match lane {
+                        Some(lane) => format!("{who} takes over{}", lane_phrase(lane)),
+                        None => format!("{who} takes over"),
+                    },
                     note,
                     milliseconds: None,
                     cost_usd: None,
                 },
             ));
             section = Some(transcript.blocks.len() - 1);
+            // Sessions that ran at the same time interleave in the log, so
+            // each session's own log follows its header at once.
+            if let Some(id) = lane.and_then(|l| text(l, "id"))
+                && let Some((_, _, path)) = micro.iter().find(|(_, held, _)| *held == id)
+                && !spliced.contains(&id)
+            {
+                spliced.push(id);
+                let path = path.clone();
+                splice_microluna(&mut transcript, &path);
+            }
             // The briefing the host gave the executor, when the log keeps
             // it. Microluna's sessions carry their own, per session.
             if !who.to_lowercase().contains("microluna")
@@ -1447,6 +1580,12 @@ pub fn coder_one(episode: Option<&Path>, log: &Path) -> Transcript {
             if flagged {
                 transcript.monitor.1 += 1;
             }
+            continue;
+        }
+        if let Some(summary) = step.pointer("/extensions/microluna.parallel.v1") {
+            transcript
+                .blocks
+                .push(Block::new(at, parallel_block(summary)));
             continue;
         }
         if let Some(handoff) = step.pointer("/extensions/handoff") {
@@ -2348,6 +2487,59 @@ mod tests {
         let body = block.body(true);
         assert_eq!(body.len(), OUTPUT_LINES + 1);
         assert_eq!(body.last().unwrap(), "… 140 more lines");
+    }
+
+    #[test]
+    fn a_lane_says_its_group_and_what_ran_beside_it() {
+        let lane = serde_json::json!({
+            "id": "microluna-1-4", "session": 4, "group": "group 2 of 3: T3, T5",
+            "parallel_with": [3, 5], "alongside": null,
+        });
+        assert_eq!(
+            lane_phrase(&lane),
+            ": session 4, group 2 of 3: T3, T5, in parallel with sessions 3 and 5"
+        );
+        let early = serde_json::json!({
+            "session": 1, "group": "the whole task, while the suite is written",
+            "parallel_with": [], "alongside": "accept.define",
+        });
+        assert!(lane_phrase(&early).ends_with("in parallel with accept.define"));
+        assert_eq!(lane_phrase(&serde_json::json!({})), "");
+        let summary = serde_json::json!({
+            "sessions": 3, "wall_ms": 60_000, "session_ms": 90_000, "concurrency": 1.5,
+            "peak": 2, "critical_path_ms": 50_000, "serial_estimate_ms": 90_000,
+            "saved_ms": 30_000, "suite_ms": 20_000, "suite_on_critical_path_ms": 5_000,
+            "suite_runs": { "count": 3, "milliseconds": 4_000 },
+            "cached_share": 0.8, "read_turn_share": 0.1, "merges": 1, "conflicts": 0,
+            "batches": [
+                { "batch": "round 1", "members": ["session 2", "session 3"],
+                  "longest_ms": 30_000, "sum_ms": 55_000 },
+                { "batch": "session 4", "members": ["session 4"],
+                  "longest_ms": 1_000, "sum_ms": 1_000 },
+            ],
+        });
+        let Kind::Check {
+            title,
+            verdict,
+            lines,
+            ..
+        } = parallel_block(&summary)
+        else {
+            panic!("a check block");
+        };
+        assert_eq!(title, "Parallel sessions");
+        assert_eq!(verdict, "concurrency 1.50×, saved about 30.0s");
+        assert!(
+            lines
+                .iter()
+                .any(|l| l
+                    == "round 1: session 2 ∥ session 3 at once, longest 30.0s of 55.0s summed.")
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.starts_with("Suite writing took 20.0s, 5.0s of it"))
+        );
     }
 
     #[test]

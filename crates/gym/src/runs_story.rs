@@ -215,10 +215,35 @@ pub fn summary(detail: &Detail, now: i64) -> Vec<Paragraph> {
         verifier(detail),
         reason(detail, now),
         cost_and_time(detail, now),
+        parallel(detail),
     ]
     .into_iter()
     .flatten()
     .collect()
+}
+
+/// A Microluna suite loop's timeline, when the run has one: its wall time
+/// against its summed session time, the critical path, the suite's share,
+/// and which sessions ran together.
+fn parallel(detail: &Detail) -> Option<Paragraph> {
+    let (verdict, lines) =
+        detail
+            .transcript
+            .blocks
+            .iter()
+            .rev()
+            .find_map(|block| match &block.kind {
+                crate::runs_transcript::Kind::Check {
+                    title,
+                    verdict,
+                    lines,
+                    ..
+                } if title == "Parallel sessions" => Some((verdict.clone(), lines.clone())),
+                _ => None,
+            })?;
+    let mut sentences = vec![format!("{}.", capitalize_first(&verdict))];
+    sentences.extend(lines);
+    paragraph("Parallel sessions", sentences)
 }
 
 /// The run's headline: the task and how it came out.
