@@ -532,3 +532,33 @@ async fn a_blocked_finish_goes_back_until_the_returns_run_out() {
     assert_eq!(report.turns, 3);
     assert_eq!(report.finish.unwrap().status, FinishStatus::Blocked);
 }
+
+#[tokio::test]
+async fn a_session_ends_at_its_spend_bound() {
+    let dir = tempfile::tempdir().unwrap();
+    let workspace = Workspace::new(dir.path()).unwrap();
+    let read = |id: &str| {
+        call(
+            id,
+            "read_file",
+            &json!({"path": "x", "start_line": null, "max_lines": null}),
+            usage(100_000, 0, 1_000),
+        )
+    };
+    let transport = FakeTransport::new(vec![read("c1"), read("c2"), read("c3")]);
+    let config = Config {
+        max_turns: 10,
+        spend_usd: Some(0.000_001),
+        ..Config::luna("t")
+    };
+    let report = run(
+        &transport,
+        &workspace,
+        &Brief::task("Spend."),
+        &config,
+        &mut Recorder::new(),
+    )
+    .await;
+    assert_eq!(report.turns, 1);
+    assert_eq!(report.ending, Ending::TurnLimit);
+}

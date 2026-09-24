@@ -130,7 +130,7 @@ fn user(text: &str) -> Value {
 }
 
 /// How a session is run.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Config {
     /// The model slug.
     pub model: String,
@@ -156,6 +156,10 @@ pub struct Config {
     /// When the host turns a `finish` back and the session keeps working,
     /// or `None` to let every finish stand.
     pub persist: Option<Persist>,
+    /// The session's spend bound in dollars, at list price: the session
+    /// ends before a request once it has spent this much. `None` for no
+    /// bound.
+    pub spend_usd: Option<f64>,
 }
 
 /// When the host turns a session's `finish` back. The model decides when
@@ -205,6 +209,7 @@ impl Config {
             orient_effort: None,
             parallel_tools: false,
             persist: None,
+            spend_usd: None,
         }
     }
 }
@@ -417,6 +422,16 @@ pub async fn run<T: Transport>(
     let mut edited = false;
     let mut returned = 0u32;
     'turns: while report.turns < config.max_turns {
+        if let (Some(bound), Some(spent)) = (config.spend_usd, report.cost_usd)
+            && spent >= bound
+        {
+            recorder.record(atif::Step::said(
+                atif::Source::System,
+                &format!("The session's spend bound (${bound:.4}) was reached."),
+            ));
+            report.ending = Ending::TurnLimit;
+            break;
+        }
         let left = config
             .deadline
             .map(|deadline| deadline.saturating_sub(started.elapsed()));

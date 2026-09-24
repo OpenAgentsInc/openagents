@@ -1414,6 +1414,10 @@ fn lean_shape() -> lean::Lean {
         keep_best: false,
         score_sec: 20,
         persist: None,
+        wall_sec: 0,
+        practices: false,
+        defended: false,
+        session_spend: false,
     }
 }
 
@@ -1544,4 +1548,22 @@ fn a_score_is_the_last_score_line() {
     assert_eq!(lean::parse_score("x\nSCORE 3 9\nSCORE 5 9\n"), Some((5, 9)));
     assert_eq!(lean::parse_score("SCORE 12 9"), Some((9, 9)));
     assert_eq!(lean::parse_score("SCORE 1 0\nnothing"), None);
+}
+
+#[tokio::test]
+async fn the_lean_loop_starts_no_session_in_its_last_minute() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut executor = micro(
+        dir.path(),
+        vec![finish("c1", "done", "Never sent.")],
+        lean_policy(lean::Lean {
+            wall_sec: 30,
+            ..lean_shape()
+        }),
+    );
+    executor.prepared = Some(prepared());
+    executor.execute(&briefing(TASK)).await;
+    let record = executor.last.clone().unwrap();
+    assert!(record["sessions"].as_array().unwrap().is_empty());
+    assert!(record["stopped"].as_str().unwrap().contains("time ran out"));
 }

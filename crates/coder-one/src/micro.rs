@@ -1027,6 +1027,10 @@ struct Place {
     alongside: Option<String>,
     /// When the host turns the session's finish back.
     persist: Option<microluna::Persist>,
+    /// A tighter wall-time bound than the policy's `session_sec`.
+    deadline: Option<Duration>,
+    /// The session's spend bound in dollars.
+    spend_usd: Option<f64>,
 }
 
 impl Place {
@@ -1858,10 +1862,15 @@ impl Micro {
                         .map_or(String::new(), |p| p.instruction.clone())
                 )[..16]
             ),
-            deadline: Some(Duration::from_secs(self.policy.session_sec).min(left)),
+            deadline: Some(
+                Duration::from_secs(self.policy.session_sec)
+                    .min(left)
+                    .min(place.deadline.unwrap_or(Duration::MAX)),
+            ),
             orient_effort: self.policy.orient_effort.clone(),
             parallel_tools: self.policy.parallel_tools,
             persist: place.persist.clone(),
+            spend_usd: place.spend_usd,
         };
         let workspace = microluna::Workspace::new(&workdir).map(|workspace| {
             let workspace = workspace.isolated_by(self.isolation);
@@ -2389,6 +2398,7 @@ impl Micro {
                 orient_effort: None,
                 parallel_tools: self.policy.parallel_tools,
                 persist: None,
+                spend_usd: None,
             },
             isolation: self.isolation,
             traces: Some(self.artifacts.clone()),
@@ -4201,6 +4211,8 @@ impl Micro {
                 parallel_with,
                 alongside: None,
                 persist: None,
+                deadline: None,
+                spend_usd: None,
             };
             let focus = lane.requirements.clone();
             let number = numbers[i];

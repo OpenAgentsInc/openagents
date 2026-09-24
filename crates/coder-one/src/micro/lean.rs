@@ -64,6 +64,26 @@ pub struct Lean {
     /// every finish stand.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub persist: Option<LeanPersist>,
+    /// The loop's wall-time bound in seconds, the self-check included: no
+    /// session starts in its last minute, and each session ends by it. 0
+    /// leaves only the dispatch's deadline.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub wall_sec: u64,
+    /// Add the working practices ([`PRACTICES`]) to the guidance.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub practices: bool,
+    /// Put the comments that defend a design choice in the evidence, as
+    /// suspects (`accept::defended_choices_general`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub defended: bool,
+    /// Bound each session's spend by what is left of the dispatch's.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub session_spend: bool,
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_zero(n: &u64) -> bool {
+    *n == 0
 }
 
 /// `executor.microluna.lean.persist`: when a work session's finish is
@@ -114,6 +134,19 @@ a simplification or a shortcut may describe the defect itself: check it against 
 `blocked` only when a tool or a piece of information is missing, not because the task is hard. \
 Call finish with status `done` only when your check shows the task met, and say in the summary \
 what your check measured, with numbers.";
+
+/// Added with `practices`: two working practices the dev-set traces
+/// lacked. v9 spent 176 turns on one task adjusting rules by hand, a few
+/// pairs per session; and two runs on another fixed five defects each
+/// without reproducing the task's symptoms per component, and missed the
+/// two the verifier checks.
+pub const PRACTICES: &str = "When the task asks you to find rules, parameters, a key, or any \
+model that fits data, write a program that searches for them automatically and scores each \
+candidate, and improve the search, rather than adjusting the answer by hand one piece at a time.\n\n\
+When the task describes symptoms, reproduce each one on the untouched code with a small script \
+before you change anything, trace it to the component responsible, and confirm your change \
+removes it. Check each component on its own against what it should compute, not only the \
+end-to-end result.";
 
 /// Added with `holdout`: examples are a sample of a rule, not the answer.
 pub const HOLDOUT_GUIDANCE: &str = "When the task provides examples, training data, or a sample \
@@ -484,14 +517,15 @@ impl Micro {
             lines: Vec::new(),
         };
         let evidence = evidence_for(prepared, &everything, self.policy.evidence_chars);
-        let general = format!(
-            "{LEAN_GUIDANCE}{}",
-            if lean.holdout {
-                format!("\n\n{HOLDOUT_GUIDANCE}")
-            } else {
-                String::new()
-            }
-        );
+        let mut general = LEAN_GUIDANCE.to_string();
+        if lean.practices {
+            general.push_str("\n\n");
+            general.push_str(PRACTICES);
+        }
+        if lean.holdout {
+            general.push_str("\n\n");
+            general.push_str(HOLDOUT_GUIDANCE);
+        }
         let facts = constraints(&prepared.requirements);
         let rules = if facts.is_empty() {
             String::new()
@@ -503,7 +537,15 @@ impl Micro {
         };
         let files = parallel::workspace_files(&self.workdir);
         let named = parallel::files_named(&prepared.instruction, &files);
-        let samples = data_samples(&self.workdir, lean.sample_chars);
+        let mut samples = data_samples(&self.workdir, lean.sample_chars);
+        if lean.defended {
+            let defended = crate::accept::defended_choices_general(&self.workdir);
+            if !defended.is_empty() {
+                samples.insert(0, crate::accept::defended_evidence(&defended, true));
+            }
+        }
+        let wall = (lean.wall_sec > 0).then(|| Duration::from_secs(lean.wall_sec));
+        let wall_left = || wall.map(|w| w.saturating_sub(started.elapsed()));
         let fields = if lean.hardcode_check {
             data_fields(&self.workdir)
         } else {
@@ -548,7 +590,9 @@ impl Micro {
                 stopped = format!("the spend bound ${:.2} was reached", self.policy.spend_usd);
                 break;
             }
-            if time_left() < Duration::from_secs(60) {
+            if time_left() < Duration::from_secs(60)
+                || wall_left().is_some_and(|w| w < Duration::from_secs(60))
+            {
                 stopped = "the dispatch's time ran out".to_string();
                 break;
             }
@@ -631,6 +675,10 @@ impl Micro {
                     false,
                     Place {
                         persist: persist(lean, checking, have_score, &eval, &frozen),
+                        deadline: wall_left(),
+                        spend_usd: lean
+                            .session_spend
+                            .then(|| (self.policy.spend_usd - spent).max(0.0)),
                         group: Some(if checking {
                             "the self-check".to_string()
                         } else {
