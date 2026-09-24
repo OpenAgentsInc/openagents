@@ -143,6 +143,14 @@ pub struct Policy {
     /// is Fable's move of reading longer before the first edit.
     #[serde(default)]
     pub read_first: bool,
+    /// Gate a loop-ending move on the checks: the loop ends, or advances
+    /// past the last group, only when the checks positively confirm the
+    /// focus (every covered requirement observed, none contradicted). The
+    /// thesis's "done is a program state, not a model's opinion"
+    /// (`docs/coder/design/thesis.md`). A minimal acceptance gate until
+    /// #9588's accept.define lands.
+    #[serde(default)]
+    pub accept: bool,
 }
 
 fn yes() -> bool {
@@ -163,6 +171,7 @@ impl Default for Policy {
             checks: true,
             require_evidence: true,
             read_first: false,
+            accept: false,
         }
     }
 }
@@ -600,6 +609,28 @@ impl Checked {
                 .any(|(id, state)| group.ids.contains(id) && state == "contradicted")
     }
 
+    /// Whether the checks positively confirm the group: every focus
+    /// requirement the checks cover is observed, none contradicted, and at
+    /// least one is observed. `None` when the checks didn't run or cover the
+    /// group, so the caller can't gate on them. This is the thesis's "done
+    /// is a program state": the loop ends on green checks, not the model's
+    /// opinion.
+    fn accepts(&self, group: &Group) -> Option<bool> {
+        if self.contradicted(group) {
+            return Some(false);
+        }
+        let covered: Vec<&str> = self
+            .states
+            .iter()
+            .filter(|(id, _)| group.ids.contains(id))
+            .map(|(_, state)| state.as_str())
+            .collect();
+        if covered.is_empty() {
+            return None;
+        }
+        Some(covered.contains(&"observed"))
+    }
+
     fn lines(&self) -> Vec<String> {
         let mut out = Vec::new();
         if !self.states.is_empty() {
@@ -631,6 +662,10 @@ struct Signals {
     evidence: bool,
     /// Whether a move that ends the loop needs that evidence.
     require_evidence: bool,
+    /// Whether the checks confirm the focus, when the accept gate is on:
+    /// `Some(false)` blocks an ending move, `None` leaves it to the other
+    /// rules (the gate is off, or the checks don't cover the group).
+    accepts: Option<bool>,
     attempts: u32,
     max_attempts: u32,
 }
@@ -647,6 +682,7 @@ fn settle(picked: Option<Move>, ran: &Ran, signals: Signals) -> (Move, Option<St
         read_only,
         evidence,
         require_evidence,
+        accepts,
         attempts,
         max_attempts,
     } = signals;
@@ -685,6 +721,15 @@ fn settle(picked: Option<Move>, ran: &Ran, signals: Signals) -> (Move, Option<St
     if require_evidence && ends && !evidence {
         why = Some(format!(
             "{}the session made no edit it then tested, so {} became retry",
+            why.map(|w| format!("{w}; ")).unwrap_or_default(),
+            chosen.word()
+        ));
+        chosen = Move::Retry;
+    }
+    let ends = chosen == Move::Done || (last && chosen == Move::Next);
+    if accepts == Some(false) && ends {
+        why = Some(format!(
+            "{}the checks don't confirm the focus yet, so {} became retry",
             why.map(|w| format!("{w}; ")).unwrap_or_default(),
             chosen.word()
         ));
@@ -1215,6 +1260,11 @@ impl Micro {
                 read_only: ran.read_only,
                 evidence: ran.evidence(),
                 require_evidence: self.policy.require_evidence,
+                accepts: if self.policy.accept {
+                    checked.accepts(group)
+                } else {
+                    None
+                },
                 attempts,
                 max_attempts: self.policy.max_attempts,
             },
@@ -1467,12 +1517,22 @@ impl Micro {
                  call finish with a summary of what you found and what the edit session should \
                  change.",
             );
+        } else if self.policy.require_evidence {
+            guidance.push_str(
+                "Make the change the focus needs, then run something that exercises it: the \
+                 task's test, its example, or a command that shows the new behavior. Call \
+                 finish with status done only once the workspace shows the change and you've \
+                 seen it work; if the focus asks only a question, answer it in finish and say \
+                 what you ran to be sure. If you can't meet the focus, call finish with blocked \
+                 or failed and say why.",
+            );
         } else {
             guidance.push_str(
-                "Make the edit the focus needs, then run something that exercises it: the \
-                 task's test, its example, or a command that shows the new behavior. Only call \
-                 finish with status done once you've made an edit and seen it work. If you \
-                 can't meet the focus, call finish with blocked or failed and say why.",
+                "Do what the focus needs: change a file if it asks for a change, or answer in \
+                 finish if it asks a question. Check your work by running something when you \
+                 can, then call finish with status done. If the focus needs no change, say so \
+                 and finish. If you can't meet it, call finish with blocked or failed and say \
+                 why.",
             );
         }
         let mut state = vec![format!(

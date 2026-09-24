@@ -1489,6 +1489,10 @@ pub const REFERENCE: &[(&str, &str)] = &[
         include_str!("../policies/microluna-v2.json"),
     ),
     (
+        "microluna-v3.json",
+        include_str!("../policies/microluna-v3.json"),
+    ),
+    (
         "luna-best-of-1.json",
         include_str!("../policies/luna-best-of-1.json"),
     ),

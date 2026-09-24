@@ -54,7 +54,8 @@
         "evidence_chars": 14000,
         "checks": true,
         "read_first": true,
-        "require_evidence": true
+        "require_evidence": true,
+        "accept": false
       }
     },
     "verify": {

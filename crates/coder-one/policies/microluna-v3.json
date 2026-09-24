@@ -1,7 +1,7 @@
 {
   "schema": "openagents.coder-one.policy.v1",
-  "name": "coder-one-microluna-v1",
-  "note": "tunable-luna-pack-solo with Microluna as the executor: GPT-6 Luna in this process on the Codex login, with five native tools and no CLI. The dispatch runs the mini-handoff loop (executor.microluna): the requirement map split into at most four groups, short sessions per group with the context rebuilt from scratch (task first, then the group and only its evidence, then the state), the checks and a Jev move (next, retry, stuck, or done) between sessions, and bounds of 8 sessions, 2 attempts per group, 10 minutes per session, and $0.50 per dispatch. Nothing escalates to Claude Code on Opus 5.5. The deep Jev briefing, the coverage packer, verify.checks, and the one verify.repair are unchanged; the repair runs on Microluna. control.monitor is removed: Microluna's own bounds end its sessions. Written for issue #9585.",
+  "name": "coder-one-microluna-v3",
+  "note": "microluna-v2 (read_first) plus a minimal acceptance gate: a loop-ending move waits until verify.checks positively confirm the focus, the thesis's done-is-a-program-state (docs/coder/design/thesis.md). A stand-in until #9588's accept.define lands. Written for issue #9585's overnight run.",
   "policy": {
     "jev": {
       "mode": "deep",
@@ -53,9 +53,9 @@
         "spend_usd": 0.5,
         "evidence_chars": 14000,
         "checks": true,
+        "read_first": true,
         "require_evidence": true,
-        "read_first": false,
-        "accept": false
+        "accept": true
       }
     },
     "verify": {

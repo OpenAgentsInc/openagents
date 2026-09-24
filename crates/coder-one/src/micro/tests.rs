@@ -257,6 +257,7 @@ fn a_contradicting_check_keeps_the_loop_on_its_group() {
         read_only: false,
         evidence: true,
         require_evidence: true,
+        accepts: None,
         attempts,
         max_attempts: 2,
     };
@@ -303,9 +304,40 @@ fn a_contradicting_check_keeps_the_loop_on_its_group() {
         read_only: false,
         evidence: false,
         require_evidence: true,
+        accepts: None,
         attempts: 1,
         max_attempts: 2,
     };
+    // The accept gate: an ending move waits for the checks to confirm.
+    let ev_last = Signals {
+        evidence: true,
+        last: true,
+        ..no_ev(true)
+    };
+    assert_eq!(
+        settle(
+            Some(Move::Next),
+            &ran,
+            Signals {
+                accepts: Some(false),
+                ..ev_last
+            }
+        )
+        .0,
+        Move::Retry
+    );
+    assert_eq!(
+        settle(
+            Some(Move::Next),
+            &ran,
+            Signals {
+                accepts: Some(true),
+                ..ev_last
+            }
+        )
+        .0,
+        Move::Next
+    );
     assert_eq!(settle(Some(Move::Done), &ran, no_ev(false)).0, Move::Retry);
     assert_eq!(settle(Some(Move::Next), &ran, no_ev(true)).0, Move::Retry);
     assert_eq!(settle(Some(Move::Next), &ran, no_ev(false)).0, Move::Next);
