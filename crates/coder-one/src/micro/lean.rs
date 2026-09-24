@@ -79,6 +79,15 @@ pub struct Lean {
     /// Bound each session's spend by what is left of the dispatch's.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub session_spend: bool,
+    /// Count whole records, an input with its answer, in the literal scan
+    /// ([`data_records`]) instead of single fields, so a provided word list
+    /// a solution may use isn't read as hard-coded examples.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub records: bool,
+    /// Every command's wall-time bound in seconds, below the tool's own
+    /// 600. 0 keeps the tool's.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub command_sec: u64,
 }
 
 #[allow(clippy::trivially_copy_pass_by_ref)]
@@ -239,8 +248,54 @@ pub fn data_fields(workdir: &Path) -> BTreeMap<String, BTreeSet<String>> {
     out
 }
 
-/// For each file changed since `start`, the most distinct fields of one
-/// data file it repeats literally, when that is at least [`LITERAL_MIN`].
+/// Separates a record's fields in [`data_records`]' entries.
+const UNIT: char = '\u{1f}';
+
+/// The provided data's distinct records, by data file: each line split on
+/// tabs, commas, semicolons, and bars into two or more fields of 2 to 200
+/// characters, one of them with a letter. An input with its answer is a
+/// record; a word list isn't, since its lines have one field each. A
+/// changed file matches a record when it repeats every one of its fields.
+#[must_use]
+pub fn data_records(workdir: &Path) -> BTreeMap<String, BTreeSet<String>> {
+    let mut out = BTreeMap::new();
+    for path in parallel::workspace_files(workdir) {
+        if !is_data(&path) {
+            continue;
+        }
+        let full = workdir.join(&path);
+        if std::fs::metadata(&full).map_or(true, |m| m.len() > 4 * 1024 * 1024) {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(&full) else {
+            continue;
+        };
+        let mut records = BTreeSet::new();
+        for line in text.lines() {
+            let fields: Vec<&str> = line
+                .split(['\t', ',', ';', '|'])
+                .map(|f| f.trim().trim_matches('"'))
+                .filter(|f| (2..=200).contains(&f.chars().count()))
+                .collect();
+            if fields.len() >= 2 && fields.iter().any(|f| f.chars().any(char::is_alphabetic)) {
+                records.insert(fields.join(&UNIT.to_string()));
+            }
+        }
+        if records.len() >= LITERAL_MIN {
+            out.insert(path, records);
+        }
+    }
+    out
+}
+
+/// Whether `text` repeats `entry`: a field, or every field of a record.
+fn repeats(text: &str, entry: &str) -> bool {
+    entry.split(UNIT).all(|part| text.contains(part))
+}
+
+/// For each file changed since `start`, the most distinct fields or
+/// records of one data file it repeats literally, when that is at least
+/// [`LITERAL_MIN`].
 #[must_use]
 pub fn literal_examples(
     workdir: &Path,
@@ -265,12 +320,7 @@ pub fn literal_examples(
         };
         let best = fields
             .iter()
-            .map(|(data, set)| {
-                (
-                    data,
-                    set.iter().filter(|f| text.contains(f.as_str())).count(),
-                )
-            })
+            .map(|(data, set)| (data, set.iter().filter(|f| repeats(&text, f)).count()))
             .max_by_key(|(_, n)| *n);
         if let Some((data, n)) = best
             && n >= LITERAL_MIN
@@ -526,6 +576,13 @@ impl Micro {
             general.push_str("\n\n");
             general.push_str(HOLDOUT_GUIDANCE);
         }
+        if lean.command_sec > 0 {
+            general.push_str(&format!(
+                "\n\nEvery command ends after {} seconds, whatever bound you ask for, so bound \
+                 each search or long run by time and have it print its best result so far.",
+                lean.command_sec
+            ));
+        }
         let facts = constraints(&prepared.requirements);
         let rules = if facts.is_empty() {
             String::new()
@@ -546,7 +603,9 @@ impl Micro {
         }
         let wall = (lean.wall_sec > 0).then(|| Duration::from_secs(lean.wall_sec));
         let wall_left = || wall.map(|w| w.saturating_sub(started.elapsed()));
-        let fields = if lean.hardcode_check {
+        let fields = if lean.hardcode_check && lean.records {
+            data_records(&self.workdir)
+        } else if lean.hardcode_check {
             data_fields(&self.workdir)
         } else {
             BTreeMap::new()
@@ -676,6 +735,8 @@ impl Micro {
                     Place {
                         persist: persist(lean, checking, have_score, &eval, &frozen),
                         deadline: wall_left(),
+                        command_max: (lean.command_sec > 0)
+                            .then(|| Duration::from_secs(lean.command_sec)),
                         spend_usd: lean
                             .session_spend
                             .then(|| (self.policy.spend_usd - spent).max(0.0)),

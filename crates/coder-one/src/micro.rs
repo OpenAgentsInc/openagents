@@ -1031,6 +1031,8 @@ struct Place {
     deadline: Option<Duration>,
     /// The session's spend bound in dollars.
     spend_usd: Option<f64>,
+    /// Every command's wall-time bound, below the tool's own.
+    command_max: Option<Duration>,
 }
 
 impl Place {
@@ -1874,6 +1876,10 @@ impl Micro {
         };
         let workspace = microluna::Workspace::new(&workdir).map(|workspace| {
             let workspace = workspace.isolated_by(self.isolation);
+            let workspace = match place.command_max {
+                Some(max) => workspace.commands_within(max),
+                None => workspace,
+            };
             if read_only {
                 workspace.reading_only()
             } else {
@@ -4213,6 +4219,7 @@ impl Micro {
                 persist: None,
                 deadline: None,
                 spend_usd: None,
+                command_max: None,
             };
             let focus = lane.requirements.clone();
             let number = numbers[i];

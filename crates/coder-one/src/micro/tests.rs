@@ -1418,6 +1418,8 @@ fn lean_shape() -> lean::Lean {
         practices: false,
         defended: false,
         session_spend: false,
+        records: false,
+        command_sec: 0,
     }
 }
 
@@ -1566,4 +1568,31 @@ async fn the_lean_loop_starts_no_session_in_its_last_minute() {
     let record = executor.last.clone().unwrap();
     assert!(record["sessions"].as_array().unwrap().is_empty());
     assert!(record["stopped"].as_str().unwrap().contains("time ran out"));
+}
+
+#[test]
+fn a_word_list_isnt_hard_coded_examples_but_a_table_of_answers_is() {
+    let dir = tempfile::tempdir().unwrap();
+    let work = dir.path();
+    std::fs::create_dir_all(work.join("data")).unwrap();
+    let words: String = (0..60).map(|i| format!("word{i}x\n")).collect();
+    std::fs::write(work.join("data/words.txt"), &words).unwrap();
+    let pairs: String = (0..40).map(|i| format!("in{i}put\tout{i}put\n")).collect();
+    std::fs::write(work.join("data/train.tsv"), &pairs).unwrap();
+    let records = lean::data_records(work);
+    assert!(!records.contains_key("data/words.txt"), "{records:?}");
+    let start = parallel::tree(work);
+    std::fs::write(
+        work.join("solve.py"),
+        format!("WORDS = \"\"\"{words}\"\"\"\n"),
+    )
+    .unwrap();
+    assert!(lean::literal_examples(work, &start, &records).is_empty());
+    let table: String = (0..40)
+        .map(|i| format!("'in{i}put': 'out{i}put',\n"))
+        .collect();
+    std::fs::write(work.join("solve.py"), table).unwrap();
+    let flagged = lean::literal_examples(work, &start, &records);
+    assert_eq!(flagged.len(), 1, "{flagged:?}");
+    assert_eq!(flagged[0].2, 40);
 }

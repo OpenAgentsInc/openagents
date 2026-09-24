@@ -317,6 +317,8 @@ pub struct Workspace {
     root: PathBuf,
     isolation: Isolation,
     read_only: bool,
+    /// The longest a command may run, below [`COMMAND_WALL_MAX`].
+    command_max: Duration,
 }
 
 impl Workspace {
@@ -330,7 +332,17 @@ impl Workspace {
             root: root.canonicalize()?,
             isolation: Isolation::Boundary,
             read_only: false,
+            command_max: COMMAND_WALL_MAX,
         })
+    }
+
+    /// The same workspace, with every command bounded by `max` (at most
+    /// [`COMMAND_WALL_MAX`]), whatever bound the model asks for. The
+    /// command's output says when the bound ended it.
+    #[must_use]
+    pub fn commands_within(mut self, max: Duration) -> Self {
+        self.command_max = max.clamp(Duration::from_secs(1), COMMAND_WALL_MAX);
+        self
     }
 
     /// The same workspace, with `apply_patch` and `write_file` refused, for
@@ -462,7 +474,7 @@ impl Workspace {
         let wall = args
             .timeout_seconds
             .map_or(COMMAND_WALL, |seconds| Duration::from_secs(seconds.max(1)))
-            .min(COMMAND_WALL_MAX);
+            .min(self.command_max);
         let ended = match self.isolation {
             Isolation::Boundary | Isolation::ReadOnly => {
                 let spec = if self.isolation == Isolation::ReadOnly {
