@@ -242,13 +242,47 @@ pub async fn run(
         reference.number,
         workdir.display()
     );
-    let mut answer = Box::pin(crate::terminal::answer(&inner, on)).await;
+    let mut answer = Box::pin(crate::terminal::answer(&inner, on.clone())).await;
     let mut before = recorder.steps();
     before.append(&mut answer.steps);
     answer.steps = before;
 
-    let reply = answer.report.summary.result.clone().unwrap_or_default();
+    // One more session reviews the change against the code that relies on
+    // it before it lands: #9602 added two lines above a list's rows, and
+    // the view that highlights row `2 + cursor` went two rows off with
+    // every test green.
     let finished = matches!(answer.report.status, crate::delegate::Status::Answered);
+    if finished && let Some(text) = review_request(&workdir, reference.number) {
+        say!("issue ▸ reviewing the change against its callers");
+        let review = Request {
+            request: text,
+            review: true,
+            artifacts: inner.artifacts.with_file_name("review"),
+            ..inner.clone()
+        };
+        let mut reviewed = Box::pin(crate::terminal::answer(&review, on)).await;
+        answer.steps.append(&mut reviewed.steps);
+        for summary in reviewed.summaries {
+            if !answer.summaries.contains(&summary) {
+                answer.summaries.push(format!("Review: {summary}"));
+            }
+        }
+        if let (Some(before), Some(added)) = (
+            answer
+                .usage
+                .pointer("/cost/amount_usd")
+                .and_then(serde_json::Value::as_f64),
+            reviewed
+                .usage
+                .pointer("/cost/amount_usd")
+                .and_then(serde_json::Value::as_f64),
+        ) && let Some(cost) = answer.usage.pointer_mut("/cost/amount_usd")
+        {
+            *cost = json!(before + added);
+        }
+    }
+
+    let reply = answer.report.summary.result.clone().unwrap_or_default();
     // The pull request says what every session did: the last reply alone
     // once read "R3 is already addressed", about a run that changed three
     // files.
@@ -262,7 +296,7 @@ pub async fn run(
             .collect::<Vec<_>>()
             .join("\n")
     };
-    let outcome = land(&workdir, &branch, &issue, &what, finished);
+    let outcome = land(&workdir, &branch, &issue, &what, finished, answer.stuck);
     if outcome
         .as_ref()
         .is_ok_and(|line| line.starts_with("Opened"))
@@ -449,6 +483,7 @@ fn land(
     issue: &Fetched,
     reply: &str,
     finished: bool,
+    stuck: bool,
 ) -> Result<String, String> {
     command(workdir, "git", &["add", "-A"])?;
     let changed = !Command::new("git")
@@ -484,8 +519,15 @@ fn land(
     )?;
     say!("issue ▸ pushing {branch}");
     command(workdir, "git", &["push", "-q", "-u", "origin", branch])?;
+    // A loop that gave up on a requirement says so first, so nobody
+    // reads the pull request as finished work.
+    let warning = if stuck {
+        "**The loop gave up on a requirement before this opened: review it as unfinished.**\n\n"
+    } else {
+        ""
+    };
     let body = format!(
-        "{summary}\n\n{stat}\n\nCloses {}\n\n---\nOpened by Coder.",
+        "{warning}{summary}\n\n{stat}\n\nCloses {}\n\n---\nOpened by Coder.",
         issue.url
     );
     let pr = command(
@@ -504,6 +546,162 @@ fn land(
         ],
     )?;
     Ok(format!("Opened draft pull request {}.", pr.trim()))
+}
+
+/// The most changed names whose callers the review reads.
+const REVIEW_NAMES: usize = 8;
+/// The most caller excerpts the review reads.
+const REVIEW_CALLERS: usize = 16;
+/// Lines of a caller shown before and after its call.
+const CALLER_BEFORE: usize = 20;
+const CALLER_AFTER: usize = 10;
+
+/// The review session's request: the staged diff and, for each Rust
+/// function or constant the diff changed, excerpts of the code that uses
+/// it. `None` when nothing changed.
+fn review_request(workdir: &Path, number: u64) -> Option<String> {
+    command(workdir, "git", &["add", "-A"]).ok()?;
+    let diff = command(workdir, "git", &["diff", "--cached", "-U3"]).ok()?;
+    if diff.trim().is_empty() {
+        return None;
+    }
+    let bare = command(workdir, "git", &["diff", "--cached", "-U0"]).ok()?;
+    let names = changed_names(workdir, &bare);
+    let mut callers = String::new();
+    let mut shown = 0;
+    for (path, name) in &names {
+        for (file, line) in uses(workdir, path, name) {
+            if shown >= REVIEW_CALLERS {
+                break;
+            }
+            let Ok(text) = std::fs::read_to_string(workdir.join(&file)) else {
+                continue;
+            };
+            let lines: Vec<&str> = text.lines().collect();
+            let from = line.saturating_sub(CALLER_BEFORE + 1);
+            let to = (line + CALLER_AFTER).min(lines.len());
+            let excerpt: Vec<String> = (from..to)
+                .map(|i| format!("{:>5} {}", i + 1, lines[i]))
+                .collect();
+            callers.push_str(&format!(
+                "### {file}:{line} uses `{name}`\n\n```\n{}\n```\n\n",
+                excerpt.join("\n")
+            ));
+            shown += 1;
+        }
+    }
+    if callers.is_empty() {
+        callers = "No caller outside the change was found.\n".to_string();
+    }
+    Some(format!(
+        "# Review the change for issue #{number} before it lands\n\n## The diff\n\n```diff\n{}\n```\n\n## Code that uses what changed\n\n{callers}",
+        crate::judge::clip(&diff, 14_000)
+    ))
+}
+
+/// The Rust functions and constants whose bodies or definitions the
+/// zero-context diff `bare` touches, with their files: the nearest
+/// `fn`, `const`, or `static` at or above each hunk's first new line.
+fn changed_names(workdir: &Path, bare: &str) -> Vec<(String, String)> {
+    let mut names: Vec<(String, String)> = Vec::new();
+    let mut path = String::new();
+    for line in bare.lines() {
+        if let Some(file) = line.strip_prefix("+++ b/") {
+            path = file.to_string();
+            continue;
+        }
+        let Some(hunk) = line.strip_prefix("@@ ") else {
+            continue;
+        };
+        if !path.ends_with(".rs") {
+            continue;
+        }
+        let Some(start) = hunk
+            .split_whitespace()
+            .find_map(|part| part.strip_prefix('+'))
+            .and_then(|part| part.split(',').next())
+            .and_then(|n| n.parse::<usize>().ok())
+        else {
+            continue;
+        };
+        let Ok(text) = std::fs::read_to_string(workdir.join(&path)) else {
+            continue;
+        };
+        let lines: Vec<&str> = text.lines().collect();
+        let found = (0..start.min(lines.len()))
+            .rev()
+            .find_map(|i| defined_name(lines[i]));
+        if let Some(name) = found
+            && !names.iter().any(|(p, n)| *p == path && *n == name)
+        {
+            names.push((path.clone(), name));
+        }
+        if names.len() >= REVIEW_NAMES {
+            break;
+        }
+    }
+    names
+}
+
+/// The name a Rust line defines, when it defines a function, a constant,
+/// or a static.
+fn defined_name(line: &str) -> Option<String> {
+    let words: Vec<&str> = line
+        .split(|c: char| !(c.is_alphanumeric() || c == '_'))
+        .filter(|w| !w.is_empty())
+        .collect();
+    let at = words
+        .iter()
+        .position(|w| matches!(*w, "fn" | "const" | "static"))?;
+    let name = words.get(at + 1)?;
+    // `const fn name` names the function, not a constant called `fn`.
+    let name = if *name == "fn" {
+        words.get(at + 2)?
+    } else {
+        name
+    };
+    (!line.trim_start().starts_with("//")).then(|| (*name).to_string())
+}
+
+/// Where `name`, defined in `path`, is used: `stem::name` anywhere, and
+/// the bare name when it is rare enough to mean this definition. Other
+/// files come first; the definition itself is left out.
+fn uses(workdir: &Path, path: &str, name: &str) -> Vec<(String, usize)> {
+    let stem = Path::new(path)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or_default();
+    let grep = |pattern: &str, fixed: bool| -> Vec<(String, usize)> {
+        let mut args = vec!["grep", "-n", "-w"];
+        if fixed {
+            args.push("-F");
+        }
+        args.extend([pattern, "--", "*.rs"]);
+        command(workdir, "git", &args)
+            .unwrap_or_default()
+            .lines()
+            .filter(|hit| {
+                defined_name(hit.splitn(3, ':').nth(2).unwrap_or_default()).as_deref() != Some(name)
+            })
+            .filter_map(|hit| {
+                let mut parts = hit.splitn(3, ':');
+                let file = parts.next()?.to_string();
+                let line = parts.next()?.parse().ok()?;
+                Some((file, line))
+            })
+            .collect()
+    };
+    let mut found = grep(&format!("{stem}::{name}"), true);
+    let bare = grep(name, true);
+    if bare.len() <= 15 {
+        for hit in bare {
+            if !found.contains(&hit) {
+                found.push(hit);
+            }
+        }
+    }
+    found.sort_by_key(|(file, _)| file == path);
+    found
 }
 
 /// Runs a command to completion and returns its standard output, or its
@@ -551,6 +749,56 @@ mod tests {
         assert_eq!(numbers("work on issue 9597"), [9597]);
         assert_eq!(numbers("Issues 12 and #13"), [12, 13]);
         assert!(numbers("issue9597, issue 12a, tissue 5").is_empty());
+    }
+
+    #[test]
+    fn defined_names_read_functions_constants_and_statics() {
+        assert_eq!(
+            defined_name("pub fn lines(runs: &[Run])").as_deref(),
+            Some("lines")
+        );
+        assert_eq!(
+            defined_name("pub const HEADER: &str = \"x\";").as_deref(),
+            Some("HEADER")
+        );
+        assert_eq!(
+            defined_name("    pub const fn executes(self) -> bool {").as_deref(),
+            Some("executes")
+        );
+        assert_eq!(defined_name("    let x = 1;"), None);
+        assert_eq!(defined_name("// fn commented()"), None);
+    }
+
+    #[test]
+    fn the_review_finds_a_changed_function_and_its_callers() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let git = |args: &[&str]| command(root, "git", args).unwrap();
+        git(&["init", "-q"]);
+        git(&["config", "user.email", "t@example.com"]);
+        git(&["config", "user.name", "t"]);
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        std::fs::write(
+            root.join("src/view.rs"),
+            "pub fn lines() -> Vec<String> {\n    vec![\"head\".into()]\n}\n",
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("src/app.rs"),
+            "fn selected(cursor: usize) -> usize {\n    1 + cursor\n}\nfn draw() {\n    let rows = crate::view::lines();\n}\n",
+        )
+        .unwrap();
+        git(&["add", "-A"]);
+        git(&["commit", "-q", "-m", "base"]);
+        std::fs::write(
+            root.join("src/view.rs"),
+            "pub fn lines() -> Vec<String> {\n    vec![\"head\".into(), \"note\".into()]\n}\n",
+        )
+        .unwrap();
+        let text = review_request(root, 7).unwrap();
+        assert!(text.contains("# Review the change for issue #7"), "{text}");
+        assert!(text.contains("src/app.rs:5 uses `lines`"), "{text}");
+        assert!(text.contains("1 + cursor"), "{text}");
     }
 
     #[test]

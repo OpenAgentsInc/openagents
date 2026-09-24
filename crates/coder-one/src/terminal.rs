@@ -112,6 +112,19 @@ summary is its claim, not a fact: check it against the files before you \
 rely on it. End with a short summary of what you changed and how you \
 checked it.";
 
+/// What a review session adds to [`ISSUE_DIRECTIONS`].
+pub const REVIEW_DIRECTIONS: &str = "This session reviews the change before \
+it becomes a pull request. For each caller in the request, check that what \
+it assumes about a changed function or constant still holds: positions, \
+indexes, counts, order, widths, and formats. Read more of a caller's file \
+when its assumption isn't visible in the excerpt. Fix every bug you find \
+and add a test that fails without the fix. If nothing is wrong, change \
+nothing and say so.";
+
+/// The briefing's account of what came before a review.
+const REVIEW_CONCLUSION: &str = "The host gathered the change's diff and the \
+callers of what it changed into the request; no survey ran.";
+
 /// The directions for a question, which runs with no survey: the other
 /// directions promise gathered evidence, and with none there, "how many
 /// open issues are there" once ended on "no issue data was supplied"
@@ -189,6 +202,10 @@ pub struct Request {
     /// Whether this turn is the issue flow's own, working an issue in its
     /// clone: it runs under [`ISSUE_DIRECTIONS`] and [`issue_policy`].
     pub issue: bool,
+    /// Whether this turn reviews the issue flow's change before it lands:
+    /// one session over the diff and the changed functions' callers, which
+    /// the request carries, with no survey.
+    pub review: bool,
 }
 
 /// What the turn reports while it runs.
@@ -227,6 +244,9 @@ pub struct Answer {
     /// Each Microluna session's closing summary, in order and without
     /// repeats: what a pull request says the run did. Empty for a CLI.
     pub summaries: Vec<String>,
+    /// The Microluna loop gave up on a requirement group: a move after a
+    /// session was `stuck`.
+    pub stuck: bool,
 }
 
 impl Answer {
@@ -426,8 +446,13 @@ pub async fn answer(request: &Request, on: Rc<dyn Fn(Progress)>) -> Answer {
     // A question goes straight to one session: no requirement map, probe
     // battery, file survey, or checks, which are for changing files. With no
     // requirements, a Microluna turn runs its single mode.
-    let question = request.agent == Agent::Microluna && asks_only(request, &recorder).await;
-    if question {
+    let asked =
+        request.agent == Agent::Microluna && !request.review && asks_only(request, &recorder).await;
+    // A review is one session too: the host already gathered its evidence.
+    let question = asked || request.review;
+    if request.review {
+        crate::say::say!("review ▸ one session over the diff and its callers");
+    } else if question {
         crate::say::say!("route ▸ a question: one session, no survey");
     } else {
         judge.survey(&mut state).await;
@@ -436,7 +461,9 @@ pub async fn answer(request: &Request, on: Rc<dyn Fn(Progress)>) -> Answer {
     // A question answers decisively, even when the router asked to
     // clarify: "one of the open issues" has a sensible reading, and asking
     // back cost a round trip for nothing.
-    let directions = if question {
+    let directions = if request.review {
+        format!("{ISSUE_DIRECTIONS} {REVIEW_DIRECTIONS}")
+    } else if question {
         let read_only = if request.read_only {
             QUESTION_READ_ONLY
         } else {
@@ -455,7 +482,9 @@ pub async fn answer(request: &Request, on: Rc<dyn Fn(Progress)>) -> Answer {
         &words,
         &directions,
     );
-    inputs.conclusion = if question {
+    inputs.conclusion = if request.review {
+        REVIEW_CONCLUSION
+    } else if question {
         QUESTION_CONCLUSION
     } else {
         CONCLUSION
@@ -595,6 +624,7 @@ pub async fn answer(request: &Request, on: Rc<dyn Fn(Progress)>) -> Answer {
         model: cli.model.clone(),
         boundary: boundary_words.to_string(),
         summaries: Vec::new(),
+        stuck: false,
     }
 }
 
@@ -862,6 +892,11 @@ async fn microluna_turn(turn: Turn<'_>) -> Answer {
         model,
         boundary: boundary_words.to_string(),
         summaries: session_summaries(&record),
+        stuck: record["moves"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .any(|step| step["move"].as_str() == Some("stuck")),
     }
 }
 
@@ -1156,6 +1191,7 @@ mod tests {
             script: None,
             issues: false,
             issue: false,
+            review: false,
         })
     }
 
