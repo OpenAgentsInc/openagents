@@ -29,5 +29,5 @@ pub mod tools;
 pub mod transport;
 
 pub use session::{Brief, Config, Ending, Evidence, Recorder, Report, run};
-pub use tools::{Finish, FinishStatus, Workspace};
+pub use tools::{Finish, FinishStatus, Isolation, Workspace};
 pub use transport::{Reply, Request, TokenUsage, Transport, TransportError};

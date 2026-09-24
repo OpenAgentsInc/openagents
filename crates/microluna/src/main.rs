@@ -149,6 +149,7 @@ async fn main() -> ExitCode {
         Ending::Finished => "finished".to_string(),
         Ending::Stopped => "stopped".to_string(),
         Ending::TurnLimit => "turn_limit".to_string(),
+        Ending::Deadline => "deadline".to_string(),
         Ending::Transport(why) => format!("transport: {why}"),
     };
     let summary = json!({

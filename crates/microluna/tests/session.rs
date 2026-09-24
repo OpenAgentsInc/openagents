@@ -203,3 +203,76 @@ async fn the_turn_limit_ends_a_session_that_never_finishes() {
     assert_eq!(report.ending, Ending::TurnLimit);
     assert_eq!(report.turns, 2);
 }
+
+#[tokio::test]
+async fn a_passed_time_bound_ends_the_session_before_any_request() {
+    let dir = tempfile::tempdir().unwrap();
+    let workspace = Workspace::new(dir.path()).unwrap();
+    let transport = FakeTransport::new(vec![say("never sent", usage(1, 0, 1))]);
+    let config = Config {
+        deadline: Some(std::time::Duration::ZERO),
+        ..Config::luna("t")
+    };
+    let report = run(
+        &transport,
+        &workspace,
+        &Brief::task("Anything."),
+        &config,
+        &mut Recorder::new(),
+    )
+    .await;
+    assert_eq!(report.ending, Ending::Deadline);
+    assert_eq!(report.turns, 0);
+    assert!(transport.requests().is_empty());
+}
+
+#[tokio::test]
+async fn a_task_container_runs_commands_directly_and_says_so() {
+    let dir = tempfile::tempdir().unwrap();
+    let workspace = Workspace::new(dir.path())
+        .unwrap()
+        .isolated_by(microluna::Isolation::TaskContainer);
+    let outcome = workspace
+        .call(
+            "run_command",
+            &json!({"command": "echo hi > out.txt", "timeout_seconds": null}).to_string(),
+        )
+        .await;
+    assert_eq!(
+        outcome.status,
+        atif::Outcome::Completed,
+        "{}",
+        outcome.output
+    );
+    assert_eq!(outcome.extra["boundary"], json!("task-container"));
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("out.txt")).unwrap(),
+        "hi\n"
+    );
+}
+
+#[tokio::test]
+async fn a_forwarding_recorder_hands_every_step_to_the_host() {
+    let dir = tempfile::tempdir().unwrap();
+    let workspace = Workspace::new(dir.path()).unwrap();
+    let transport = FakeTransport::new(vec![call(
+        "f",
+        "finish",
+        &json!({"status": "done", "summary": "Nothing to do.", "answer": ""}),
+        usage(10, 0, 5),
+    )]);
+    let seen = std::rc::Rc::new(std::cell::Cell::new(0usize));
+    let counter = seen.clone();
+    let mut recorder = Recorder::new().forwarding(move |_| counter.set(counter.get() + 1));
+    let report = run(
+        &transport,
+        &workspace,
+        &Brief::task("Finish."),
+        &Config::luna("t"),
+        &mut recorder,
+    )
+    .await;
+    assert_eq!(report.ending, Ending::Finished);
+    assert_eq!(seen.get(), recorder.steps().len());
+    assert!(seen.get() >= 3);
+}

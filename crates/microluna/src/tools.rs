@@ -196,10 +196,35 @@ impl Outcome {
     }
 }
 
+/// How a command is confined.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Isolation {
+    /// Inside a `coder-boundary` writing boundary whose only writable
+    /// checkout is the workspace root. A host that can't enforce one
+    /// refuses the command.
+    Boundary,
+    /// Directly, because the whole process already runs in a disposable
+    /// task container that is the boundary, as a Terminal-Bench trial
+    /// does. The caller asserts this; Microluna never assumes it.
+    TaskContainer,
+}
+
+impl Isolation {
+    /// The word a command's record carries.
+    #[must_use]
+    pub fn word(self) -> &'static str {
+        match self {
+            Isolation::Boundary => "writing",
+            Isolation::TaskContainer => "task-container",
+        }
+    }
+}
+
 /// The directory a session works in.
 #[derive(Clone, Debug)]
 pub struct Workspace {
     root: PathBuf,
+    isolation: Isolation,
 }
 
 impl Workspace {
@@ -211,7 +236,21 @@ impl Workspace {
     pub fn new(root: &Path) -> std::io::Result<Self> {
         Ok(Workspace {
             root: root.canonicalize()?,
+            isolation: Isolation::Boundary,
         })
+    }
+
+    /// The same workspace, with commands confined by `isolation`.
+    #[must_use]
+    pub fn isolated_by(mut self, isolation: Isolation) -> Self {
+        self.isolation = isolation;
+        self
+    }
+
+    /// How commands are confined.
+    #[must_use]
+    pub fn isolation(&self) -> Isolation {
+        self.isolation
     }
 
     /// The resolved root.
@@ -312,30 +351,45 @@ impl Workspace {
             .timeout_seconds
             .map_or(COMMAND_WALL, |seconds| Duration::from_secs(seconds.max(1)))
             .min(COMMAND_WALL_MAX);
-        let boundary = match coder_boundary::Boundary::writing(&self.root)
-            .owned_scratch_under(std::env::temp_dir())
-            .build()
-        {
-            Ok(boundary) => boundary,
-            Err(error) => {
-                return Outcome::refused(format!(
-                    "The command did not run: this host can't enforce the write boundary \
-                     ({error})."
-                ));
+        let ended = match self.isolation {
+            Isolation::Boundary => {
+                let boundary = match coder_boundary::Boundary::writing(&self.root)
+                    .owned_scratch_under(std::env::temp_dir())
+                    .build()
+                {
+                    Ok(boundary) => boundary,
+                    Err(error) => {
+                        return Outcome::refused(format!(
+                            "The command did not run: this host can't enforce the write \
+                             boundary ({error})."
+                        ));
+                    }
+                };
+                let mut command = match boundary.command("/bin/sh", ["-c", args.command.as_str()]) {
+                    Ok(command) => command,
+                    Err(error) => {
+                        return Outcome::refused(format!("The command did not run: {error}."));
+                    }
+                };
+                command.current_dir(&self.root);
+                if let Some(scratch) = boundary.scratch() {
+                    command.env("TMPDIR", scratch);
+                }
+                supervise::Job::from_command(command)
+                    .bounded(supervise::Limits::within(wall).keeping(COMMAND_KEEP))
+                    .run_holding(boundary.hold())
+                    .await
+            }
+            Isolation::TaskContainer => {
+                let mut command = std::process::Command::new("/bin/sh");
+                command.args(["-c", args.command.as_str()]);
+                command.current_dir(&self.root);
+                supervise::Job::from_command(command)
+                    .bounded(supervise::Limits::within(wall).keeping(COMMAND_KEEP))
+                    .run()
+                    .await
             }
         };
-        let mut command = match boundary.command("/bin/sh", ["-c", args.command.as_str()]) {
-            Ok(command) => command,
-            Err(error) => return Outcome::refused(format!("The command did not run: {error}.")),
-        };
-        command.current_dir(&self.root);
-        if let Some(scratch) = boundary.scratch() {
-            command.env("TMPDIR", scratch);
-        }
-        let ended = supervise::Job::from_command(command)
-            .bounded(supervise::Limits::within(wall).keeping(COMMAND_KEEP))
-            .run_holding(boundary.hold())
-            .await;
         let mut output = match &ended.ending {
             supervise::Ending::TimedOut => {
                 format!("[timed out after {} s]\n", wall.as_secs())
@@ -370,7 +424,7 @@ impl Workspace {
         .noting("exit", json!(ended.ending.code()))
         .noting("bytes", json!(ended.bytes()))
         .noting("truncated", json!(ended.truncated()))
-        .noting("boundary", json!("writing"))
+        .noting("boundary", json!(self.isolation.word()))
     }
 
     fn read_file(&self, args: &ReadFile) -> Outcome {

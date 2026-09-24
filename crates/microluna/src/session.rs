@@ -23,7 +23,7 @@
 //! A reply's step carries its tokens and, under [`USAGE_EXTENSION`], the
 //! cached and reasoning tokens and the list-price cost.
 
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
 
@@ -128,10 +128,15 @@ pub struct Config {
     pub max_turns: usize,
     /// The prompt-cache key the task's sessions share.
     pub cache_key: String,
+    /// The session's wall-time bound, or `None` for no bound. It is
+    /// checked before each request, and a request waits no longer than
+    /// what is left of it.
+    pub deadline: Option<Duration>,
 }
 
 impl Config {
-    /// Luna, the provider's default effort, 24 turns, and `cache_key`.
+    /// Luna, the provider's default effort, 24 turns, `cache_key`, and no
+    /// wall-time bound.
     #[must_use]
     pub fn luna(cache_key: &str) -> Self {
         Config {
@@ -139,6 +144,7 @@ impl Config {
             effort: None,
             max_turns: 24,
             cache_key: cache_key.to_string(),
+            deadline: None,
         }
     }
 }
@@ -152,6 +158,9 @@ pub enum Ending {
     Stopped,
     /// The session used every turn it had.
     TurnLimit,
+    /// The wall-time bound passed before the session finished. A request
+    /// the bound cut off may have been billed without reporting usage.
+    Deadline,
     /// A request got no reply; the text says why.
     Transport(String),
 }
@@ -175,14 +184,30 @@ pub struct Report {
     pub milliseconds: u64,
 }
 
+/// A host's own handler for each step, such as its trajectory.
+pub type Sink = Box<dyn FnMut(&atif::Step)>;
+
 /// Where a session's steps go: kept in memory, appended to an ATIF log
 /// when one is open, and echoed to standard error when asked.
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct Recorder {
     steps: Vec<atif::Step>,
     log: Option<atif::Log>,
     echo: bool,
     faults: Vec<String>,
+    sink: Option<Sink>,
+}
+
+impl std::fmt::Debug for Recorder {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Recorder")
+            .field("steps", &self.steps.len())
+            .field("log", &self.log.as_ref().map(atif::Log::path))
+            .field("echo", &self.echo)
+            .field("faults", &self.faults)
+            .field("sink", &self.sink.is_some())
+            .finish()
+    }
 }
 
 impl Recorder {
@@ -206,10 +231,21 @@ impl Recorder {
         self
     }
 
+    /// Also hands every step to `sink` as it is recorded, such as a
+    /// host's own trajectory.
+    #[must_use]
+    pub fn forwarding(mut self, sink: impl FnMut(&atif::Step) + 'static) -> Self {
+        self.sink = Some(Box::new(sink));
+        self
+    }
+
     /// Records one step.
     pub fn record(&mut self, step: atif::Step) {
         if self.echo {
             eprintln!("{}", line(&step));
+        }
+        if let Some(sink) = &mut self.sink {
+            sink(&step);
         }
         if let Some(log) = &mut self.log
             && let Err(error) = log.append(&step)
@@ -249,7 +285,9 @@ impl Recorder {
     }
 }
 
-fn line(step: &atif::Step) -> String {
+/// One step as a line of text, as `echoing` prints it.
+#[must_use]
+pub fn line(step: &atif::Step) -> String {
     if let Some(call) = &step.call {
         let arguments = call.arguments.to_string();
         return format!(
@@ -317,6 +355,17 @@ pub async fn run<T: Transport>(
     };
     let mut nudged = false;
     'turns: while report.turns < config.max_turns {
+        let left = config
+            .deadline
+            .map(|deadline| deadline.saturating_sub(started.elapsed()));
+        if left.is_some_and(|left| left.is_zero()) {
+            recorder.record(atif::Step::said(
+                atif::Source::System,
+                "The session's time bound passed.",
+            ));
+            report.ending = Ending::Deadline;
+            break;
+        }
         let request = Request {
             model: config.model.clone(),
             instructions: INSTRUCTIONS.to_string(),
@@ -326,7 +375,22 @@ pub async fn run<T: Transport>(
             cache_key: config.cache_key.clone(),
         };
         let asked = Instant::now();
-        let reply = match transport.respond(&request).await {
+        let answered = match left {
+            Some(left) => match tokio::time::timeout(left, transport.respond(&request)).await {
+                Ok(answered) => answered,
+                Err(_) => {
+                    recorder.record(atif::Step::said(
+                        atif::Source::System,
+                        "The session's time bound passed while a request was open; its usage \
+                         is unknown.",
+                    ));
+                    report.ending = Ending::Deadline;
+                    break;
+                }
+            },
+            None => transport.respond(&request).await,
+        };
+        let reply = match answered {
             Ok(reply) => reply,
             Err(error) => {
                 recorder.record(atif::Step::said(
