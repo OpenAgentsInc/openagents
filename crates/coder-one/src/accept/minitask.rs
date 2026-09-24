@@ -23,10 +23,11 @@ pub const SCHEMA: &str = "openagents.coder-one.acceptance-minitask.v1";
 
 /// What an edit session is told about the frozen suite.
 pub const EDIT_GUIDANCE: &str = "A frozen acceptance suite defines done for this task. Change \
-the workspace until every test in it passes; you can't change the tests. Run the suite with the \
-command the evidence gives before your first edit and after every edit. When every test passes, \
-call finish with status done. If a test seems to contradict the task, follow the task and say so \
-in your summary.";
+the workspace until every test in it passes; you can't change the tests. The current state shows \
+the red tests' output from the host's run just before this session. Rerun the suite with the \
+command the evidence gives after every edit. When every test passes, call finish with status \
+done: the host reruns the suite after the session, and that run decides done. If a test seems to \
+contradict the task, follow the task and say so in your summary.";
 
 /// How the loop runs.
 #[derive(Clone, Debug)]

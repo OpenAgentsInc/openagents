@@ -382,11 +382,13 @@ impl Default for Policy {
 /// What an edit session in the suite loop is told.
 pub const SUITE_GUIDANCE: &str = "A frozen acceptance suite defines done for this task: it was \
 written from the task before any fix and fails on the untouched workspace. Change the workspace \
-until every test in it passes. You can't change the tests or anything in their directory. Run the \
-red tests with the command the evidence gives before your first edit and after every edit, and \
-read their output: each red test names the fact it checks. Use the exact rule, value, and format \
-the task states, not a simpler one. When every test passes, call finish with status done. If a \
-test seems to contradict the task, follow the task and say so in your summary.";
+until every test in it passes. You can't change the tests or anything in their directory. The \
+current state shows each red test's output from the host's run just before this session: each red \
+test names the fact it checks. Rerun the red tests with the command the evidence gives after every \
+edit. Use the exact rule, value, and format the task states, not a simpler one. When every test \
+passes, call finish with status done: the host reruns the whole suite after the session, and that \
+run decides done. If a test seems to contradict the task, follow the task and say so in your \
+summary.";
 
 /// What the first edit session is told when it runs while the suite is
 /// written.

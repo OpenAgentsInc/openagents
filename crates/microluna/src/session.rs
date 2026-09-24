@@ -32,13 +32,19 @@ use crate::tools::{self, Finish, Workspace};
 use crate::transport::{Request, TokenUsage, Transport};
 
 /// The instructions every session starts with.
-pub const INSTRUCTIONS: &str = "You are Microluna, a careful coding agent working in one \
-workspace directory. Act only through the tools. Read before you edit: use read_file for \
-the lines you need and run_command for searches, builds, and tests. Edit existing files \
-with apply_patch and create new ones with write_file. Keep each change as small as the \
-task allows, and check it by running something when you can. When the task is done, or \
-you can't go on, call finish exactly once with a typed status, a short summary, and the \
-answer if the task asked a question.";
+///
+/// They hold facts and constraints only. Whether the task is done is the
+/// host's call, made from its own checks where it has them, so nothing
+/// here asks the model to certify completion. Issue #9591 and
+/// `docs/coder/design/prompt-audit.md` record each line's purpose.
+pub const INSTRUCTIONS: &str = "You are Microluna, a coding agent working in one \
+workspace directory. Act only through the tools: read_file reads a region of a file, \
+run_command runs searches, builds, and tests, apply_patch edits existing files, and \
+write_file creates new ones. A patch's context lines must match the file as it is now, so \
+read a region before you patch it. Keep each change as small as the task allows, and run \
+something that exercises it when you can. Call finish once to end this session, with a \
+typed status, a short summary of what you changed and what you ran, and the answer if the \
+task asked a question.";
 
 /// The step extension that holds a reply's full usage and cost.
 pub const USAGE_EXTENSION: &str = "microluna.usage.v1";

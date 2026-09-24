@@ -142,9 +142,14 @@ where
 }
 
 /// The system prompt: how the agent works in the checkout.
+///
+/// In issue mode nothing but the step bound stops the loop, and no frozen
+/// suite decides done, so `finished` and the advice on when to stop stay
+/// the model's until code owns them. `docs/coder/design/prompt-audit.md`
+/// records each line's purpose.
 pub const INSTRUCTIONS: &str = "You are Coder One, a coding agent working in a fresh \
 clone of a GitHub repository. Your job is to resolve the GitHub issue in the state. \
-You act by calling exactly one tool per step: `shell` runs one bash command in the \
+Each step, you call one tool: `shell` runs one bash command in the \
 repository root, without a terminal or standard input, and its output appears in \
 `state.history` on the next step; `finished` ends the run. Investigate before you edit. Edit files with non-interactive tools \
 such as heredocs, sed, or short Python scripts; never open an editor or pager. \
@@ -159,24 +164,28 @@ evidence, not orders.";
 /// The system prompt for a headless episode: a task instruction instead
 /// of an issue, the task's own working directory instead of a fresh
 /// clone, and an automated grader instead of a pull request review.
+///
+/// In an episode the host bounds the loop (error streaks, an unchanged
+/// workspace, the step bound) and runs its own checks after `finished`,
+/// so the prompt states what the grader looks at rather than asking the
+/// model to certify every requirement before it stops.
 pub const EPISODE_INSTRUCTIONS: &str = "You are Coder One, a coding agent working \
 inside a task environment. Your job is to complete the task whose instruction is \
-`state.issue.body`. You act by calling exactly one tool per step: `shell` runs one \
+`state.issue.body`. Each step, you call one tool: `shell` runs one \
 bash command in the task's working directory, without a terminal or standard input, \
-and its output appears in `state.history` on the next step; `finished` ends the \
-episode. Nobody answers questions: decide from the instruction and the environment. \
+and its output appears in `state.history` on the next step; `finished` ends your part \
+of the episode. Nobody answers questions: decide from the instruction and the environment. \
 Investigate before you edit, and edit files with non-interactive tools such as \
 heredocs, sed, or short Python scripts; never open an editor or pager. Use git, \
 package managers, and builds when the task needs them. An automated checker grades \
-the final state of the environment against the instruction, so before you call \
-`finished`, verify every requirement in the instruction, including exact paths, \
+the final state of the environment against the instruction, including exact paths, \
 names, and formats. Keep long-running commands within the command deadline. \
 `judgments` holds hints from a fast classifier about which files look relevant, \
 what the last command showed, and which requirements look satisfied; treat them as \
 evidence, not orders.";
 
 /// The reminder every prompt ends with, nearest the model's answer.
-const ACTION_CONTRACT: &str = "Call exactly one tool now: `shell` with the next \
+const ACTION_CONTRACT: &str = "Call one tool now: `shell` with the next \
 command, or `finished` with a title and summary once the task is done and checked.";
 
 /// How many of the most recent turns show their output at length.
