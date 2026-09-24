@@ -692,6 +692,37 @@ pub async fn verify<R: Runner>(
             covered,
         });
     }
+    // Each output the task names, and the untouched workspace lacks, needs
+    // a test that checks it where the task names it: a suite that only
+    // writes to its scratch never sees the deliverable.
+    let outputs = super::named_outputs(&inputs.task.instruction, inputs.workspace, None);
+    let unchecked: Vec<&String> = outputs
+        .iter()
+        .filter(|output| {
+            !surviving
+                .iter()
+                .any(|t| with_helpers(dir, &t.source).contains(output.as_str()))
+        })
+        .collect();
+    if !unchecked.is_empty() && !tests.is_empty() {
+        messages.push(format!(
+            "No test checks {}, the output{} the task names, where the task names {}: add a test \
+             that runs the program the way the task says and checks what it wrote there.",
+            unchecked
+                .iter()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>()
+                .join(", "),
+            if unchecked.len() == 1 { "" } else { "s" },
+            if unchecked.len() == 1 { "it" } else { "them" }
+        ));
+        for output in &unchecked {
+            out.gaps.push(super::Gap {
+                requirement: (*output).clone(),
+                why: "no test checks this output where the task names it".to_string(),
+            });
+        }
+    }
     // The inventory: each module needs a test that names it, or a waiver.
     let waived = super::waived(&facts, modules);
     let mut unnamed: Vec<String> = Vec::new();

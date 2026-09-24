@@ -885,6 +885,7 @@ fn the_rebasing_run_sh_reads_the_snapshot() {
     let text = String::from_utf8_lossy(&out.stdout);
     assert!(text.contains("RED   T1"), "{text}");
     assert!(text.contains("0 green, 1 red"), "{text}");
+    assert_ne!(out.status.code(), Some(0), "a red suite exits nonzero");
 }
 
 /// With `rewrite: "hard"`, Jev's doubts don't send the suite back or

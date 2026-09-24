@@ -181,7 +181,9 @@ find "$ACCEPT_DIR" -type f ! -name run.sh | while IFS= read -r file; do
 done
 WORKSPACE={workspace}
 export ACCEPT_DIR WORKSPACE
-{tests}rm -rf "$ACCEPT_DIR"
+{tests}status=$?
+rm -rf "$ACCEPT_DIR"
+exit $status
 "#,
         real = real.display(),
         snapshot = snapshot.display(),

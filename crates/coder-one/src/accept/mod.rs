@@ -366,6 +366,46 @@ pub fn defended_choices(workspace: &Path) -> Vec<String> {
     out
 }
 
+/// Files the task names as outputs that the workspace doesn't have: a
+/// name with a data or document extension that isn't in the workspace now
+/// and wasn't in its snapshot at the start, so it isn't an input.
+#[must_use]
+pub fn named_outputs(instruction: &str, workdir: &Path, base: Option<&Path>) -> Vec<String> {
+    const EXTENSIONS: [&str; 13] = [
+        "csv", "tsv", "json", "jsonl", "txt", "html", "md", "yaml", "yml", "xml", "png", "svg",
+        "pdf",
+    ];
+    let mut out: Vec<String> = Vec::new();
+    for word in instruction
+        .split(|c: char| c.is_whitespace() || matches!(c, '`' | '"' | '\'' | ',' | '(' | ')'))
+    {
+        let word = word.trim_end_matches(['.', ':', ';']);
+        let Some((stem, ext)) = word.rsplit_once('.') else {
+            continue;
+        };
+        if stem.is_empty()
+            || !EXTENSIONS.contains(&ext)
+            || word.contains(['<', '*', '{', '$'])
+            || word.contains("YYYY")
+            || out.iter().any(|w| w == word)
+        {
+            continue;
+        }
+        let at = |dir: &Path| {
+            let path = Path::new(word);
+            if path.is_absolute() {
+                path.exists()
+            } else {
+                dir.join(path).exists()
+            }
+        };
+        if !at(workdir) && !base.is_some_and(at) {
+            out.push(word.to_string());
+        }
+    }
+    out
+}
+
 /// The inventory modules `facts` waives: lines `WAIVE path: why`.
 #[must_use]
 pub fn waived(facts: &str, modules: &[String]) -> Vec<String> {

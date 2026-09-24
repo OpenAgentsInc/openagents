@@ -433,6 +433,24 @@ fn scratch(name: &str) -> PathBuf {
     ))
 }
 
+/// Files the task names as outputs that the workspace doesn't have
+/// ([`crate::accept::named_outputs`]).
+fn missing_outputs(instruction: &str, workdir: &Path, base: Option<&Path>) -> Vec<String> {
+    crate::accept::named_outputs(instruction, workdir, base)
+}
+
+fn missing_note(missing: &[String]) -> String {
+    if missing.is_empty() {
+        String::new()
+    } else {
+        format!(
+            " The task names outputs the workspace doesn't have yet: {}. Produce them where and \
+             how the task says.",
+            missing.join(", ")
+        )
+    }
+}
+
 /// Removes its directory when it goes out of scope.
 struct Cleanup(Option<PathBuf>);
 
@@ -2333,6 +2351,7 @@ impl Micro {
         let mut guard_failure: Option<String> = None;
         let mut audited = false;
         let mut audit: Option<String> = None;
+        let mut latest: Option<crate::accept::RunResult> = None;
         let mut first_run = true;
         let mut gaps_left = self.policy.gap_rounds;
         let mut gap_number = 0u32;
@@ -2383,6 +2402,7 @@ impl Micro {
             if let Some(tree) = tree {
                 last_run = Some((tree, suite.digest.clone(), result.clone()));
             }
+            latest = Some(result.clone());
             crate::say::line(&format!(
                 "  microluna ▸ suite {label}: {} of {} green",
                 result.passed, result.total
@@ -2524,7 +2544,9 @@ impl Micro {
                         )
                     })
                     .collect();
-                let doubtful = partial || done.is_none_or(|p| p < CLOSE_MIN);
+                let missing =
+                    missing_outputs(&prepared.instruction, &self.workdir, base_copy.as_deref());
+                let doubtful = partial || !missing.is_empty() || done.is_none_or(|p| p < CLOSE_MIN);
                 crate::say::line(&format!(
                     "  microluna ▸ joined close: done {}{}",
                     done.map_or("unanswered".to_string(), |p| format!("p={p:.2}")),
@@ -2546,13 +2568,14 @@ impl Micro {
                          code that implements it and check it against the task's exact rule and \
                          the standard definition of any method the task names, and against the \
                          choices the code defends in its comments. Fix what's wrong without \
-                         turning an acceptance test red, run the suite, and call finish.{}",
+                         turning an acceptance test red, run the suite, and call finish.{}{}",
                         done.map_or("unanswered".to_string(), |p| format!("{p:.2}")),
                         if weak.is_empty() {
                             String::new()
                         } else {
                             format!(" The weakest requirements: {}.", weak.join("; "))
-                        }
+                        },
+                        missing_note(&missing)
                     ));
                 }
             }
@@ -2954,6 +2977,116 @@ impl Micro {
                     crate::judge::clip(&sessions[sessions.len() - 1].summary(), 300)
                 );
                 break;
+            }
+        }
+        // A loop that stops red on a suite its sessions dispute, or with an
+        // output the task names still missing, gets one audit session on
+        // the task itself before it ends.
+        let mut stopped = stopped;
+        let missing = missing_outputs(&prepared.instruction, &self.workdir, base_copy.as_deref());
+        let disputed = sessions
+            .iter()
+            .rev()
+            .take(2)
+            .any(|r| r.cause() == microluna::Cause::TestContradictsTask);
+        if let Some(red) = latest.as_ref().filter(|r| !r.green)
+            && self.policy.close_audit
+            && !audited
+            && (disputed || !missing.is_empty())
+            && number < self.policy.max_sessions
+            && spent < self.policy.spend_usd
+            && time_left() >= Duration::from_secs(60)
+        {
+            let (done, record, usd) = self
+                .joined_close(prepared, &suite, red, &sessions, base_copy.as_deref())
+                .await;
+            spent += usd;
+            moves.push(record);
+            number += 1;
+            let mut brief = self.suite_brief(
+                prepared,
+                &suite,
+                red,
+                &edit_evidence,
+                &sessions,
+                &notes,
+                number,
+                red.passed,
+                0,
+            );
+            brief.state.insert(
+                1,
+                format!(
+                    "The loop stopped with the suite red: {stopped}.{} Jev reads the task as done \
+                     with p={}. Audit the work against the task itself: where a red test \
+                     contradicts the task's words, follow the task, not the test; meet every \
+                     requirement the task states, and produce every output it names, the way it \
+                     names them. Then run the suite and the task's own example, and call finish, \
+                     naming any test you believe is wrong.{}",
+                    if disputed {
+                        " The last sessions reported that a test contradicts the task."
+                    } else {
+                        ""
+                    },
+                    done.map_or("unanswered".to_string(), |p| format!("{p:.2}")),
+                    missing_note(&missing)
+                ),
+            );
+            crate::say::line(&format!(
+                "  microluna ▸ the loop stopped red{}, so session {number} audits the task",
+                if missing.is_empty() {
+                    String::new()
+                } else {
+                    format!(" with {} missing", missing.join(", "))
+                }
+            ));
+            let ran = self
+                .session_at(
+                    number,
+                    &["an audit of the whole task".to_string()],
+                    &format!(
+                        "session {number} audits the task after the loop stopped with the suite red"
+                    ),
+                    &brief,
+                    false,
+                    Place {
+                        batch: "audit".to_string(),
+                        ..Place::default()
+                    },
+                )
+                .await;
+            sessions.push(ran);
+            if let Ok(after) = crate::accept::run(
+                &suite,
+                &self.workdir,
+                &runner,
+                Some(&self.recorder),
+                &format!("after session {number}"),
+            )
+            .await
+            {
+                moves.push(json!({
+                    "kind": "run",
+                    "after_session": number,
+                    "milliseconds": after.milliseconds,
+                    "passed": after.passed,
+                    "total": after.total,
+                    "green": after.green,
+                    "complete": after.complete,
+                    "red": after.red_requirements(),
+                }));
+                let left =
+                    missing_outputs(&prepared.instruction, &self.workdir, base_copy.as_deref());
+                stopped = format!(
+                    "{stopped}; then audit session {number} left the suite {} of {}{}",
+                    after.passed,
+                    after.total,
+                    if left.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" with {} still missing", left.join(", "))
+                    }
+                );
             }
         }
         tracks.extend(sessions.iter().map(|r| r.track(started_at)));

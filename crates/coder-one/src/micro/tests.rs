@@ -1070,3 +1070,21 @@ async fn a_partial_green_runs_a_gap_round_then_resumes() {
             .any(|b| b["batch"] == "gap round 1")
     );
 }
+
+#[test]
+fn outputs_the_task_names_but_nobody_wrote_are_missing() {
+    let dir = tempfile::tempdir().unwrap();
+    let (work, base) = (dir.path().join("work"), dir.path().join("base"));
+    std::fs::create_dir_all(work.join("logs")).unwrap();
+    std::fs::create_dir_all(&base).unwrap();
+    std::fs::write(work.join("summarize.py"), "x").unwrap();
+    std::fs::write(base.join("input.json"), "{}").unwrap();
+    let task = "Read input.json and logs/YYYY-MM-DD_web.log, then write a CSV file \
+                summary.csv and `report.md`. Keep summarize.py.";
+    assert_eq!(
+        missing_outputs(task, &work, Some(&base)),
+        ["summary.csv", "report.md"]
+    );
+    std::fs::write(work.join("summary.csv"), "a").unwrap();
+    assert_eq!(missing_outputs(task, &work, Some(&base)), ["report.md"]);
+}
