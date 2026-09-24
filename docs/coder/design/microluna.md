@@ -208,14 +208,36 @@ a change on OpenAI's side is one implementation to fix, and tests run on
 a fake transport. Option A stays the fallback transport if the direct
 endpoint ever closes to non-Codex clients.
 
+## The first slice
+
+`crates/microluna` implements the decision. `microluna TASK` runs one
+session in a workspace on the Codex login, prints each step to standard
+error and a JSON summary to standard output, and writes the ATIF trace to
+`~/.openagents/traces/`.
+
+Two sessions on 2026-09-24, `gpt-6-luna`:
+
+| Session | Turns | Input (cached) | Output | Cost | Wall time |
+| --- | --- | --- | --- | --- | --- |
+| Change a port in a scratch `config.toml`, check it, and name the service | 4 | 2,973 (0) | 163 | $0.00038 | 7.4 s |
+| Answer a question about `src/patch.rs`, with the file as evidence | 4 | 16,151 (6,656) | 315 | $0.00117 | 10.8 s |
+
+- The first session read the file, patched one line with `apply_patch`,
+  checked it with `grep`, and finished with a typed answer. Its prompts
+  were under the provider's minimum cacheable length, so nothing was
+  cached.
+- In the second, from the third request on, the provider served most of
+  the prefix from its cache: 2,816 and then 3,840 of about 4,100 input
+  tokens. The boundary denied the model's `cargo test`, which tried to
+  write a build directory outside the workspace; the model searched the
+  source instead and said so in its answer.
+
 ## Next steps
 
-1. The `crates/microluna` skeleton: the transport trait, the Codex-login
-   transport, a fake transport, the five tools under the boundary and the
-   supervisor, sessions with the stable prefix first, and ATIF steps with
-   usage and cost.
-2. Refresh the login the way Codex does, with a file lock and a re-read
+1. Refresh the login the way Codex does, with a file lock and a re-read
    before writing, only once the refusal above shows up in practice.
-3. A `microluna` executor profile in `crates/coder-one` beside
-   `claude-code` and `codex`.
+2. A `microluna` executor profile in `crates/coder-one` beside
+   `claude-code` and `codex`, behind a policy option.
+3. Several sessions per task: the brief's state rebuilt from Jev's
+   judgments and the checks between sessions.
 4. The matched comparison against Luna-in-Codex on the pivot's TB4 subset.

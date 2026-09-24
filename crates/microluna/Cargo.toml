@@ -1,0 +1,23 @@
+[package]
+name = "microluna"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Microluna: short GPT-6 Luna sessions on a logged-in Codex session, with native tools under the write boundary and ATIF steps."
+publish.workspace = true
+
+[dependencies]
+atif = { path = "../atif" }
+base64 = "0.22"
+coder-boundary = { path = "../coder-boundary" }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+supervise = { path = "../supervise" }
+tokio = { version = "1", features = ["macros", "rt", "time"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

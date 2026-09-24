@@ -2684,6 +2684,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "microluna"
+version = "0.1.0"
+dependencies = [
+ "atif",
+ "base64 0.22.1",
+ "coder-boundary",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "supervise",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "mime"
 version = "0.3.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"

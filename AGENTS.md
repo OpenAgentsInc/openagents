@@ -212,6 +212,14 @@ uses, and marks which are implemented and which are only specified.
   job requests from a relay through an Open Responses door.
   `docs/coder/measurements/relay-transport.md` is the measured proof that the two ends
   meet, and it holds the per-transport latency and the refusal causes.
+- `crates/microluna` — Microluna, the minimal Luna harness of the Luna
+  pivot: short GPT-6 Luna sessions on the operator's logged-in Codex
+  session, calling the ChatGPT Codex Responses endpoint directly with
+  five native function tools (run a command, read a file region, apply a
+  patch, write a file, and finish). Commands run under `coder-boundary`
+  and `supervise`; every reply and call is an ATIF step with usage and
+  list-price cost. It only reads `~/.codex/auth.json` and never refreshes
+  it. Read `docs/coder/design/microluna.md` before changing the transport.
 - `crates/coder-one` — Coder One, a minimal standalone agent that turns a
   GitHub issue into a pull request. Each step asks Jev for typed
   judgments over the state, puts them in the prompt, generates one

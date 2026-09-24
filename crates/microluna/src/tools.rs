@@ -1,0 +1,681 @@
+//! The five native function tools, and the workspace they act in.
+//!
+//! The model sees exactly these tools, declared as Responses API function
+//! tools with strict JSON schemas, and never writes an action as JSON in
+//! text:
+//!
+//! - `run_command` runs a shell command in the workspace.
+//! - `read_file` returns a numbered region of a file.
+//! - `apply_patch` applies a patch in the [`crate::patch`] format.
+//! - `write_file` replaces a file's whole contents.
+//! - `finish` ends the session with a typed [`Finish`].
+//!
+//! # The boundary
+//!
+//! A command runs through `/bin/sh` inside a `coder-boundary` writing
+//! boundary whose only writable checkout is the workspace root, plus a
+//! scratch directory the boundary owns and removes. `supervise` owns its
+//! process group, its deadline, and its output caps, and holds the
+//! boundary until the child is reaped. A host with no enforced backend
+//! refuses the command; it never runs unbounded.
+//!
+//! The three file tools run in this process, and apply the same policy by
+//! path: every path resolves inside the workspace root, `..` can't climb
+//! out of it, and a symbolic link that leads out is refused.
+
+use std::path::{Component, Path, PathBuf};
+use std::time::{Duration, Instant};
+
+use serde::Deserialize;
+use serde_json::{Map, Value, json};
+
+use crate::patch::{self, Hunk};
+
+/// The default wall-time bound on one command.
+pub const COMMAND_WALL: Duration = Duration::from_secs(120);
+
+/// The longest bound the model may ask for.
+pub const COMMAND_WALL_MAX: Duration = Duration::from_secs(600);
+
+/// Bytes kept per stream of one command.
+pub const COMMAND_KEEP: usize = 16 * 1024;
+
+/// Lines `read_file` returns when the model doesn't say.
+pub const READ_LINES: usize = 200;
+
+/// The most lines one `read_file` returns.
+pub const READ_LINES_MAX: usize = 2_000;
+
+/// The most bytes one `read_file` returns.
+pub const READ_BYTES_MAX: usize = 48 * 1024;
+
+/// How a session ended, in the model's own typed words.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FinishStatus {
+    /// The task is done.
+    Done,
+    /// The task can't continue without something the session lacks.
+    Blocked,
+    /// The model tried and failed.
+    Failed,
+}
+
+/// What `finish` carries.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, serde::Serialize)]
+pub struct Finish {
+    /// How the session ended.
+    pub status: FinishStatus,
+    /// What was done, in a sentence or two.
+    pub summary: String,
+    /// The answer to a question, or an empty string.
+    pub answer: String,
+}
+
+/// The tool declarations the model is sent, in a fixed order so they stay
+/// part of the cached prefix.
+#[must_use]
+pub fn declarations() -> Vec<Value> {
+    vec![
+        function(
+            "run_command",
+            "Run a shell command with /bin/sh in the workspace root. Returns the exit \
+             code, standard output, and standard error, each capped. Writes outside the \
+             workspace are denied.",
+            json!({
+                "command": { "type": "string", "description": "The shell command." },
+                "timeout_seconds": {
+                    "type": ["integer", "null"],
+                    "description": "Wall-time bound in seconds; null for 120, at most 600."
+                }
+            }),
+        ),
+        function(
+            "read_file",
+            "Read a region of a text file, with 1-based line numbers. Line numbers are \
+             not part of the file.",
+            json!({
+                "path": { "type": "string", "description": "Path relative to the workspace root." },
+                "start_line": { "type": ["integer", "null"], "description": "First line, 1-based; null for 1." },
+                "max_lines": { "type": ["integer", "null"], "description": "Lines to return; null for 200, at most 2000." }
+            }),
+        ),
+        function(
+            "apply_patch",
+            "Edit files with a patch: '*** Begin Patch', then '*** Add File: <path>' with \
+             '+' lines, '*** Delete File: <path>', or '*** Update File: <path>' with \
+             optional '@@ <context line>' markers and ' ', '-', '+' lines, then \
+             '*** End Patch'. Paths are relative to the workspace root.",
+            json!({
+                "patch": { "type": "string", "description": "The whole patch." }
+            }),
+        ),
+        function(
+            "write_file",
+            "Create or replace a file with the given contents. Prefer apply_patch for \
+             edits to existing files.",
+            json!({
+                "path": { "type": "string", "description": "Path relative to the workspace root." },
+                "contents": { "type": "string", "description": "The whole new file." }
+            }),
+        ),
+        function(
+            "finish",
+            "End the session. Call it once, when the task is done, blocked, or failed.",
+            json!({
+                "status": { "type": "string", "enum": ["done", "blocked", "failed"] },
+                "summary": { "type": "string", "description": "What was done, briefly." },
+                "answer": { "type": "string", "description": "The answer to a question, or an empty string." }
+            }),
+        ),
+    ]
+}
+
+fn function(name: &str, description: &str, properties: Value) -> Value {
+    let required: Vec<&String> = properties
+        .as_object()
+        .map(|map| map.keys().collect())
+        .unwrap_or_default();
+    json!({
+        "type": "function",
+        "name": name,
+        "description": description,
+        "strict": true,
+        "parameters": {
+            "type": "object",
+            "properties": properties,
+            "required": required,
+            "additionalProperties": false,
+        },
+    })
+}
+
+/// What one tool call did.
+#[derive(Clone, Debug)]
+pub struct Outcome {
+    /// The text the model reads back.
+    pub output: String,
+    /// Whether the call did its work, for the ATIF record.
+    pub status: atif::Outcome,
+    /// The finish, when the call was `finish`.
+    pub finish: Option<Finish>,
+    /// Host evidence for the record: exit codes, bytes, files touched.
+    pub extra: Map<String, Value>,
+    /// Wall time the call took.
+    pub milliseconds: u64,
+}
+
+impl Outcome {
+    fn done(output: String) -> Self {
+        Outcome {
+            output,
+            status: atif::Outcome::Completed,
+            finish: None,
+            extra: Map::new(),
+            milliseconds: 0,
+        }
+    }
+
+    fn failed(output: String) -> Self {
+        Outcome {
+            status: atif::Outcome::Failed,
+            ..Outcome::done(output)
+        }
+    }
+
+    fn refused(output: String) -> Self {
+        Outcome {
+            status: atif::Outcome::Cancelled,
+            ..Outcome::done(output)
+        }
+    }
+
+    fn noting(mut self, key: &str, value: Value) -> Self {
+        self.extra.insert(key.to_string(), value);
+        self
+    }
+}
+
+/// The directory a session works in.
+#[derive(Clone, Debug)]
+pub struct Workspace {
+    root: PathBuf,
+}
+
+impl Workspace {
+    /// A workspace at `root`, which must exist.
+    ///
+    /// # Errors
+    ///
+    /// The I/O error when `root` can't be resolved.
+    pub fn new(root: &Path) -> std::io::Result<Self> {
+        Ok(Workspace {
+            root: root.canonicalize()?,
+        })
+    }
+
+    /// The resolved root.
+    #[must_use]
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
+    /// Runs one tool call by name, with the arguments as the model wrote
+    /// them. An unknown tool or malformed arguments is a refused call the
+    /// model reads about, not an error that ends the session.
+    pub async fn call(&self, name: &str, arguments: &str) -> Outcome {
+        let started = Instant::now();
+        let mut outcome = match name {
+            "run_command" => match parse::<RunCommand>(arguments) {
+                Ok(args) => self.run_command(args).await,
+                Err(refusal) => *refusal,
+            },
+            "read_file" => match parse::<ReadFile>(arguments) {
+                Ok(args) => self.read_file(&args),
+                Err(refusal) => *refusal,
+            },
+            "apply_patch" => match parse::<ApplyPatch>(arguments) {
+                Ok(args) => self.apply_patch(&args.patch),
+                Err(refusal) => *refusal,
+            },
+            "write_file" => match parse::<WriteFile>(arguments) {
+                Ok(args) => self.write_file(&args),
+                Err(refusal) => *refusal,
+            },
+            "finish" => match parse::<Finish>(arguments) {
+                Ok(finish) => Outcome {
+                    finish: Some(finish),
+                    ..Outcome::done("Session finished.".to_string())
+                },
+                Err(refusal) => *refusal,
+            },
+            other => Outcome::refused(format!(
+                "There is no tool named '{other}'. The tools are run_command, read_file, \
+                 apply_patch, write_file, and finish."
+            )),
+        };
+        outcome.milliseconds = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+        outcome
+    }
+
+    /// Resolves a path the model named to one inside the root.
+    ///
+    /// # Errors
+    ///
+    /// A sentence for the model when the path leaves the workspace.
+    pub fn resolve(&self, path: &str) -> Result<PathBuf, String> {
+        let named = Path::new(path.trim());
+        let relative = if named.is_absolute() {
+            named
+                .strip_prefix(&self.root)
+                .map_err(|_| format!("{path} is outside the workspace"))?
+                .to_path_buf()
+        } else {
+            named.to_path_buf()
+        };
+        let mut resolved = self.root.clone();
+        for component in relative.components() {
+            match component {
+                Component::Normal(part) => resolved.push(part),
+                Component::CurDir => {}
+                Component::ParentDir => {
+                    if !resolved.pop() || !resolved.starts_with(&self.root) {
+                        return Err(format!("{path} climbs out of the workspace"));
+                    }
+                }
+                Component::RootDir | Component::Prefix(_) => {
+                    return Err(format!("{path} is not a workspace path"));
+                }
+            }
+        }
+        if !resolved.starts_with(&self.root) {
+            return Err(format!("{path} climbs out of the workspace"));
+        }
+        // A symbolic link on the way may still lead out: resolve the
+        // deepest part that exists and check where it really is.
+        let mut existing = resolved.as_path();
+        while !existing.exists() {
+            match existing.parent() {
+                Some(parent) => existing = parent,
+                None => break,
+            }
+        }
+        match existing.canonicalize() {
+            Ok(real) if real.starts_with(&self.root) => Ok(resolved),
+            Ok(_) => Err(format!("{path} leads out of the workspace through a link")),
+            Err(error) => Err(format!("can't resolve {path}: {error}")),
+        }
+    }
+
+    async fn run_command(&self, args: RunCommand) -> Outcome {
+        let wall = args
+            .timeout_seconds
+            .map_or(COMMAND_WALL, |seconds| Duration::from_secs(seconds.max(1)))
+            .min(COMMAND_WALL_MAX);
+        let boundary = match coder_boundary::Boundary::writing(&self.root)
+            .owned_scratch_under(std::env::temp_dir())
+            .build()
+        {
+            Ok(boundary) => boundary,
+            Err(error) => {
+                return Outcome::refused(format!(
+                    "The command did not run: this host can't enforce the write boundary \
+                     ({error})."
+                ));
+            }
+        };
+        let mut command = match boundary.command("/bin/sh", ["-c", args.command.as_str()]) {
+            Ok(command) => command,
+            Err(error) => return Outcome::refused(format!("The command did not run: {error}.")),
+        };
+        command.current_dir(&self.root);
+        if let Some(scratch) = boundary.scratch() {
+            command.env("TMPDIR", scratch);
+        }
+        let ended = supervise::Job::from_command(command)
+            .bounded(supervise::Limits::within(wall).keeping(COMMAND_KEEP))
+            .run_holding(boundary.hold())
+            .await;
+        let mut output = match &ended.ending {
+            supervise::Ending::TimedOut => {
+                format!("[timed out after {} s]\n", wall.as_secs())
+            }
+            supervise::Ending::Failed(why) => format!("[could not run: {why}]\n"),
+            ending => format!(
+                "[exit {}]\n",
+                ending
+                    .code()
+                    .map_or("signal".to_string(), |c| c.to_string())
+            ),
+        };
+        if !ended.stdout.is_empty() {
+            output.push_str(&ended.stdout.marked());
+        }
+        if !ended.stderr.is_empty() {
+            if !output.ends_with('\n') {
+                output.push('\n');
+            }
+            output.push_str("[stderr]\n");
+            output.push_str(&ended.stderr.marked());
+        }
+        let status = if ended.ending.success() {
+            atif::Outcome::Completed
+        } else {
+            atif::Outcome::Failed
+        };
+        Outcome {
+            status,
+            ..Outcome::done(output.trim_end().to_string())
+        }
+        .noting("exit", json!(ended.ending.code()))
+        .noting("bytes", json!(ended.bytes()))
+        .noting("truncated", json!(ended.truncated()))
+        .noting("boundary", json!("writing"))
+    }
+
+    fn read_file(&self, args: &ReadFile) -> Outcome {
+        let path = match self.resolve(&args.path) {
+            Ok(path) => path,
+            Err(why) => return Outcome::refused(why),
+        };
+        let text = match std::fs::read(&path) {
+            Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
+            Err(error) => return Outcome::failed(format!("can't read {}: {error}", args.path)),
+        };
+        let start = args.start_line.unwrap_or(1).max(1);
+        let max = args
+            .max_lines
+            .unwrap_or(READ_LINES)
+            .clamp(1, READ_LINES_MAX);
+        let total = text.lines().count();
+        let mut out = String::new();
+        let mut shown = 0;
+        for (index, line) in text.lines().enumerate().skip(start - 1).take(max) {
+            let numbered = format!("{:>6}\t{line}\n", index + 1);
+            if out.len() + numbered.len() > READ_BYTES_MAX {
+                break;
+            }
+            out.push_str(&numbered);
+            shown += 1;
+        }
+        let last = start + shown - 1;
+        if shown == 0 {
+            out = format!("[{} has {total} lines; none from line {start}]", args.path);
+        } else if last < total {
+            out.push_str(&format!("[lines {start}-{last} of {total}]"));
+        } else {
+            out.push_str(&format!("[end of file, {total} lines]"));
+        }
+        Outcome::done(out)
+            .noting("lines", json!(total))
+            .noting("shown", json!(shown))
+    }
+
+    fn write_file(&self, args: &WriteFile) -> Outcome {
+        let path = match self.resolve(&args.path) {
+            Ok(path) => path,
+            Err(why) => return Outcome::refused(why),
+        };
+        match write(&path, &args.contents) {
+            Ok(()) => Outcome::done(format!(
+                "Wrote {} ({} bytes).",
+                args.path,
+                args.contents.len()
+            ))
+            .noting("files", json!([args.path])),
+            Err(error) => Outcome::failed(format!("can't write {}: {error}", args.path)),
+        }
+    }
+
+    fn apply_patch(&self, text: &str) -> Outcome {
+        let hunks = match patch::parse(text) {
+            Ok(hunks) => hunks,
+            Err(error) => return Outcome::failed(format!("The patch doesn't parse: {error}")),
+        };
+        // Compute every new file before writing any, so a patch that fails
+        // halfway leaves the workspace as it was.
+        let mut writes: Vec<(PathBuf, Option<String>)> = Vec::new();
+        let mut touched = Vec::new();
+        for hunk in &hunks {
+            let planned = match hunk {
+                Hunk::Add { path, contents } => self
+                    .resolve(path)
+                    .map(|target| vec![(target, Some(contents.clone()))]),
+                Hunk::Delete { path } => self.resolve(path).and_then(|target| {
+                    if target.is_file() {
+                        Ok(vec![(target, None)])
+                    } else {
+                        Err(format!("{path} is not a file"))
+                    }
+                }),
+                Hunk::Update {
+                    path,
+                    move_to,
+                    chunks,
+                } => self.resolve(path).and_then(|source| {
+                    let original = std::fs::read_to_string(&source)
+                        .map_err(|error| format!("can't read {path}: {error}"))?;
+                    let updated = patch::apply(&original, chunks)
+                        .map_err(|error| format!("{path}: {error}"))?;
+                    match move_to {
+                        Some(to) => {
+                            let target = self.resolve(to)?;
+                            Ok(vec![(target, Some(updated)), (source, None)])
+                        }
+                        None => Ok(vec![(source, Some(updated))]),
+                    }
+                }),
+            };
+            match planned {
+                Ok(planned) => writes.extend(planned),
+                Err(why) => {
+                    return Outcome::failed(format!(
+                        "The patch was not applied, and nothing changed: {why}"
+                    ));
+                }
+            }
+            touched.push(match hunk {
+                Hunk::Add { path, .. } => format!("A {path}"),
+                Hunk::Delete { path } => format!("D {path}"),
+                Hunk::Update {
+                    path,
+                    move_to: Some(to),
+                    ..
+                } => format!("M {path} -> {to}"),
+                Hunk::Update { path, .. } => format!("M {path}"),
+            });
+        }
+        for (path, contents) in &writes {
+            let result = match contents {
+                Some(contents) => write(path, contents),
+                None => std::fs::remove_file(path),
+            };
+            if let Err(error) = result {
+                return Outcome::failed(format!(
+                    "The patch stopped partway at {}: {error}",
+                    path.display()
+                ));
+            }
+        }
+        Outcome::done(format!("Applied:\n{}", touched.join("\n"))).noting("files", json!(touched))
+    }
+}
+
+fn write(path: &Path, contents: &str) -> std::io::Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(path, contents)
+}
+
+fn parse<T: for<'de> Deserialize<'de>>(arguments: &str) -> Result<T, Box<Outcome>> {
+    serde_json::from_str(arguments).map_err(|error| {
+        Box::new(Outcome::refused(format!(
+            "The arguments don't fit the tool: {error}"
+        )))
+    })
+}
+
+#[derive(Deserialize)]
+struct RunCommand {
+    command: String,
+    timeout_seconds: Option<u64>,
+}
+
+#[derive(Deserialize)]
+struct ReadFile {
+    path: String,
+    start_line: Option<usize>,
+    max_lines: Option<usize>,
+}
+
+#[derive(Deserialize)]
+struct ApplyPatch {
+    patch: String,
+}
+
+#[derive(Deserialize)]
+struct WriteFile {
+    path: String,
+    contents: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn workspace() -> (tempfile::TempDir, Workspace) {
+        let dir = tempfile::tempdir().unwrap();
+        let workspace = Workspace::new(dir.path()).unwrap();
+        (dir, workspace)
+    }
+
+    #[test]
+    fn every_declaration_is_a_strict_function() {
+        let tools = declarations();
+        let names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
+        assert_eq!(
+            names,
+            [
+                "run_command",
+                "read_file",
+                "apply_patch",
+                "write_file",
+                "finish"
+            ]
+        );
+        for tool in &tools {
+            assert_eq!(tool["type"], "function");
+            assert_eq!(tool["strict"], true);
+            let properties = tool["parameters"]["properties"].as_object().unwrap();
+            assert_eq!(
+                tool["parameters"]["required"].as_array().unwrap().len(),
+                properties.len()
+            );
+        }
+    }
+
+    #[test]
+    fn paths_stay_inside_the_workspace() {
+        let (dir, workspace) = workspace();
+        assert!(workspace.resolve("a/b.txt").is_ok());
+        assert!(workspace.resolve("a/../b.txt").is_ok());
+        assert!(workspace.resolve("../escape").is_err());
+        assert!(workspace.resolve("/etc/passwd").is_err());
+        let inside = workspace.root().join("x.txt");
+        assert!(workspace.resolve(inside.to_str().unwrap()).is_ok());
+        std::os::unix::fs::symlink("/etc", dir.path().join("out")).unwrap();
+        assert!(workspace.resolve("out/passwd").is_err());
+    }
+
+    #[tokio::test]
+    async fn file_tools_read_write_and_patch() {
+        let (_dir, workspace) = workspace();
+        let wrote = workspace
+            .call(
+                "write_file",
+                r#"{"path":"src/a.txt","contents":"one\ntwo\nthree\n"}"#,
+            )
+            .await;
+        assert_eq!(wrote.status, atif::Outcome::Completed);
+        let read = workspace
+            .call(
+                "read_file",
+                r#"{"path":"src/a.txt","start_line":2,"max_lines":1}"#,
+            )
+            .await;
+        assert!(read.output.starts_with("     2\ttwo\n"));
+        assert!(read.output.contains("[lines 2-2 of 3]"));
+        let patch =
+            "*** Begin Patch\n*** Update File: src/a.txt\n two\n-three\n+THREE\n*** End Patch";
+        let patched = workspace
+            .call("apply_patch", &json!({ "patch": patch }).to_string())
+            .await;
+        assert_eq!(
+            patched.status,
+            atif::Outcome::Completed,
+            "{}",
+            patched.output
+        );
+        assert_eq!(
+            std::fs::read_to_string(workspace.root().join("src/a.txt")).unwrap(),
+            "one\ntwo\nTHREE\n"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_failing_patch_changes_nothing() {
+        let (_dir, workspace) = workspace();
+        std::fs::write(workspace.root().join("a.txt"), "keep\n").unwrap();
+        let patch = "*** Begin Patch\n*** Add File: new.txt\n+x\n\
+                     *** Update File: a.txt\n-absent\n+y\n*** End Patch";
+        let outcome = workspace
+            .call("apply_patch", &json!({ "patch": patch }).to_string())
+            .await;
+        assert_eq!(outcome.status, atif::Outcome::Failed);
+        assert!(!workspace.root().join("new.txt").exists());
+    }
+
+    #[tokio::test]
+    async fn malformed_calls_are_refused_not_fatal() {
+        let (_dir, workspace) = workspace();
+        let unknown = workspace.call("delete_everything", "{}").await;
+        assert_eq!(unknown.status, atif::Outcome::Cancelled);
+        let bad = workspace.call("read_file", "{\"nope\":1}").await;
+        assert_eq!(bad.status, atif::Outcome::Cancelled);
+        let finish = workspace
+            .call("finish", r#"{"status":"done","summary":"s","answer":"42"}"#)
+            .await;
+        assert_eq!(finish.finish.unwrap().answer, "42");
+    }
+
+    #[tokio::test]
+    async fn a_command_runs_in_the_root_and_cannot_write_outside_it() {
+        let (_dir, workspace) = workspace();
+        let outside = tempfile::tempdir().unwrap();
+        let probe = coder_boundary::Boundary::writing(workspace.root()).build();
+        if let Err(error) = probe {
+            eprintln!("skipped: no enforced boundary on this host ({error})");
+            return;
+        }
+        let ran = workspace
+            .call(
+                "run_command",
+                r#"{"command":"pwd && echo hi > made.txt","timeout_seconds":null}"#,
+            )
+            .await;
+        assert_eq!(ran.status, atif::Outcome::Completed, "{}", ran.output);
+        assert!(ran.output.contains(workspace.root().to_str().unwrap()));
+        assert!(workspace.root().join("made.txt").exists());
+        let target = outside.path().join("escaped.txt");
+        let command = format!("echo x > {}", target.display());
+        let denied = workspace
+            .call(
+                "run_command",
+                &json!({ "command": command, "timeout_seconds": 10 }).to_string(),
+            )
+            .await;
+        assert_eq!(denied.status, atif::Outcome::Failed, "{}", denied.output);
+        assert!(!target.exists());
+    }
+}
