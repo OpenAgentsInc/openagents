@@ -73,12 +73,42 @@ pub fn profile_from_env() -> Result<Option<Profile>, String> {
         Err(std::env::VarError::NotUnicode(_)) => true,
     });
     if !configured {
-        return Ok(None);
+        // The Jev key Coder One, the Gym, and the harness read. Without
+        // this, a machine whose key lives only in `~/.openagents/jev.json`
+        // ran every Coder Terminal turn unrouted.
+        let Some(key) = jev_file_key() else {
+            return Ok(None);
+        };
+        return Profiles::new()
+            .resolve(|name| {
+                if name == jev::env::API_KEY {
+                    Some(key.clone())
+                } else {
+                    std::env::var(name).ok()
+                }
+            })
+            .map(Some)
+            .map_err(|refusal| refusal.to_string());
     }
     Profiles::new()
         .resolve_env()
         .map(Some)
         .map_err(|refusal| refusal.to_string())
+}
+
+/// The TypeSafe key in `~/.openagents/jev.json` (`{"api_key": "…"}`), when
+/// the file exists and holds one.
+fn jev_file_key() -> Option<String> {
+    let home = std::env::var_os("HOME")?;
+    let path = std::path::Path::new(&home).join(".openagents/jev.json");
+    let text = std::fs::read_to_string(path).ok()?;
+    let value: serde_json::Value = serde_json::from_str(&text).ok()?;
+    value
+        .get("api_key")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|key| !key.is_empty())
+        .map(str::to_string)
 }
 
 /// `read` decides what the environment says, so a test fixes it.
