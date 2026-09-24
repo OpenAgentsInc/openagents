@@ -70,7 +70,15 @@ Codex login with no Claude. Artifact `coder-one 0.1.0 (168ebb5339)`. Read it
 with `gym experiment pulse` or
 `~/.openagents/terminal-bench/experiments/microluna-overnight-9585/status.json`.
 
-Results pending. The three earlier single trials on the Codex-only
+First data point: `microluna-v1` on `gsea-proteomics` scored 0 in 608 s for
+$0.027 of Luna, over 6 sessions. The loop and its evidence gate behaved as
+designed: sessions 5 and 6 made no edit (the deliverables already existed
+from an earlier session), so their `next` move was downgraded to `retry`,
+then `stuck` once the group's attempts ran out — the loop refused to end on
+a session that changed nothing. gsea-proteomics is a genuine Luna miss, not
+a loop failure. The rest of the matched round is running.
+
+The three earlier single trials on the Codex-only
 `microluna-v1` arm, from the [first comparison](2026-09-24-microluna.md),
 all scored 0, as did Luna-in-Codex and Luna direct (0 of 20 on TB4 so far in
 [#9583](https://github.com/OpenAgentsInc/openagents/issues/9583)):
