@@ -1,0 +1,4245 @@
+{
+  "schema": "openagents.tbench.candidates.v1",
+  "jobs": 2,
+  "deduplicate": true,
+  "deduplication_scope": "this batch only; assumes deterministic verifier and unchanged Docker environment",
+  "wall_seconds": 185.14674099499825,
+  "errors": [],
+  "candidates": [
+    {
+      "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--session-window-debug/session-window-debug__PacT86C",
+      "task": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/session-window-debug",
+      "candidate": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--session-window-debug/session-window-debug__PacT86C/agent/episode/artifacts/lean-1/session-1",
+      "session": 1,
+      "dispatch": "lean-1",
+      "original_reward": 0.0,
+      "self_score": {
+        "passed": 3,
+        "total": 3
+      },
+      "kept": true,
+      "input_digest": "5f4be27dbfb87234f6853bbf518cb5efefd3d1aaecc536119777c3761dfc3b52",
+      "inputs": {
+        "task": {
+          ".": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "README.md": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "fc1a70db1de7578edd06fed1e4b857da1cdb024c7a7e09e4606bab4f1a025dc0"
+          },
+          "cheat": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "environment": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "instruction.md": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "65b05c866323a7b7195a5ab72ac9c4844d1d4e5f179ff24c15baf86a5a50e193"
+          },
+          "solution": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "task.toml": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "6906eb9b22f63e59346ba720dd7ff46ae7937e9485ffa63ca832ac16c023ad82"
+          },
+          "tests": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "tests/Dockerfile": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "dfbb75dc74eada02d4f1551ec7c2072d02a8556acda7f1dc23c288f1a7f5144e"
+          },
+          "tests/__pycache__": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "tests/baseline": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "tests/conftest.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "ce7687cc1e8eed0fe93acff9c4106c982d275d51a87827a6c927e42f20fd00fe"
+          },
+          "tests/test.sh": {
+            "kind": "file",
+            "mode": 493,
+            "sha256": "c0ccc313669814c573d05e9f16aa06cdcc8551f0e06e4741bdab8c09179a8610"
+          },
+          "tests/test_outputs.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "20bc89feb94e8ab2f5ac1164490cfa886bb7a8adb2ef34fa1720d6dc091b4020"
+          },
+          "tests/baseline/DESIGN.md": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "b6568e4d497b4cc80abb21f4dc079c28402869d799117c39ff41a1999dff0b2a"
+          },
+          "tests/baseline/__init__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "63b800abbf1b909111eb7bd75d9c117c981a068f28156699752ad5f896521e0f"
+          },
+          "tests/baseline/types.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "650194a651a37c4be79a544b7ecd79b7b319109e2f17b8dc375eb38252542392"
+          },
+          "tests/__pycache__/test_outputs.cpython-313.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "bb689f286ecbdfecfb44d5ce94da2152b3cebacc7fdf451b9a477267bba657cd"
+          },
+          "solution/files": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "solution/solve.sh": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "65bd595888facb9b283e795d028869e5f63adabb413310dbc61764e16f407f60"
+          },
+          "solution/files/events.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "6dbeeed948e4516198d681a160b05181f8ff601e165104548c221695d5fbb991"
+          },
+          "solution/files/gc.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "659f74439ddbd0d14264f17b444ab053cb62ad7036edcb4b3bccd8c178626e97"
+          },
+          "solution/files/merger.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "c4031c998e7ce91800d4c4445ec63e03466edbe5eb0da04d738875317cb42e55"
+          },
+          "environment/Dockerfile": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "9add640cf09a431f6e684aa75058ce2c2db87b80edb3482d0f6f0c90a69a24bb"
+          },
+          "environment/app": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "environment/app/DESIGN.md": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "b6568e4d497b4cc80abb21f4dc079c28402869d799117c39ff41a1999dff0b2a"
+          },
+          "environment/app/__init__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "63b800abbf1b909111eb7bd75d9c117c981a068f28156699752ad5f896521e0f"
+          },
+          "environment/app/emitter.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "d47c4b1220de623dd1df798e9a4a47c498096ea45a795f08a5e8d8ac94dcc644"
+          },
+          "environment/app/events.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "0615e207bc9793fbdf4205a371aba1fc90148ea6e086b14bd10df2382aea868d"
+          },
+          "environment/app/gc.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "90500dac814cb3a1f19683a1fe395692944858eb3661d66984cf937b64d595ab"
+          },
+          "environment/app/merger.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "d70fd199d30979e0b5e0a7bd70af8dfda0a7393b800dffcf6e28d1675fa30756"
+          },
+          "environment/app/sessions.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "731e769ad72fc142877bf28c48f1f500f50d465db3266991474668b76592259b"
+          },
+          "environment/app/types.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "650194a651a37c4be79a544b7ecd79b7b319109e2f17b8dc375eb38252542392"
+          },
+          "cheat/files": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "cheat/solve.sh": {
+            "kind": "file",
+            "mode": 493,
+            "sha256": "c5b9267faedc34caa89ad36e43e808e25bb43dcd4764339082da7f517c9d67b5"
+          },
+          "cheat/files/merger.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "f02eeb65bacd6684a0fd2665986dbf65a6d140d064f434572dece0a5eaac2718"
+          }
+        },
+        "candidate": {
+          ".": {
+            "kind": "directory",
+            "mode": 511
+          },
+          "app": {
+            "kind": "directory",
+            "mode": 511
+          },
+          "app/DESIGN.md": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "b6568e4d497b4cc80abb21f4dc079c28402869d799117c39ff41a1999dff0b2a"
+          },
+          "app/__init__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "63b800abbf1b909111eb7bd75d9c117c981a068f28156699752ad5f896521e0f"
+          },
+          "app/__pycache__": {
+            "kind": "directory",
+            "mode": 511
+          },
+          "app/emitter.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "d47c4b1220de623dd1df798e9a4a47c498096ea45a795f08a5e8d8ac94dcc644"
+          },
+          "app/events.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "48d824554e092423b0f76a0dad8f9c128e612c43273b01b7722d846b2b4bcd73"
+          },
+          "app/gc.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "94725e27c0d188b76392d5128a871462d1aedb2f533ef8529c7a893b84c2071b"
+          },
+          "app/merger.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "5c8c82eff9757f6a304baac21db79302dba82fd993173482da54d1ca2eb0999f"
+          },
+          "app/sessions.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "5b76c2b17df421afe9f48673bac26be55ef0503e25635806fcb6876ddb199b9f"
+          },
+          "app/types.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "650194a651a37c4be79a544b7ecd79b7b319109e2f17b8dc375eb38252542392"
+          },
+          "app/__pycache__/__init__.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "8adad73f2cc842ca6cba7c5e8cbff240acbbc9a08c74803eb68d9aa47974cf65"
+          },
+          "app/__pycache__/emitter.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "20211720621f9ea04971f3666da36555d297fb53b4c4cbb809b4afff55808f4f"
+          },
+          "app/__pycache__/events.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "c222c8bc5a610c3a8446c365030b93cce675204bcabd5a93b698ca7bb9f45bf7"
+          },
+          "app/__pycache__/gc.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "1205f10988a430ccf783ebe40a0dcc735269045fb58d1dfdb6ae566ea4cd709e"
+          },
+          "app/__pycache__/merger.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "31f1833473834b160df4ff10bf8a18b58ca7a3c6f72a8e32269c744d3c2d9f6e"
+          },
+          "app/__pycache__/sessions.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "a65af5a62796bd4e7fd82c2842b827e8dbffce35ff4744745a19bdfa945ebb4f"
+          },
+          "app/__pycache__/types.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "9a92e94c72cf730cebd7523b8ada9d37d62626a9ec2a74c36f6f49209b3387ae"
+          }
+        },
+        "mount": "/app"
+      },
+      "id": "candidate-0001",
+      "reused_from": null,
+      "verifier_executed": true,
+      "grade": {
+        "reward": 0.0,
+        "rewards": {
+          "reward": 0.0
+        },
+        "exit": 0,
+        "exception": null,
+        "message": null,
+        "image_cache": "warm",
+        "trial_dir": "/home/christopherdavid/.openagents/terminal-bench/experiments/iteration-speed-9618/grading-fresh/candidate-0001/verify__fa1b7d3",
+        "stdout_tail": null
+      },
+      "seconds": 15.184064560977276
+    },
+    {
+      "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--session-window-debug/session-window-debug__PacT86C",
+      "task": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/session-window-debug",
+      "candidate": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--session-window-debug/session-window-debug__PacT86C/agent/episode/artifacts/lean-1/session-2",
+      "session": 2,
+      "dispatch": "lean-1",
+      "original_reward": 0.0,
+      "self_score": {
+        "passed": 3,
+        "total": 3
+      },
+      "kept": true,
+      "input_digest": "5f4be27dbfb87234f6853bbf518cb5efefd3d1aaecc536119777c3761dfc3b52",
+      "inputs": {
+        "task": {
+          ".": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "README.md": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "fc1a70db1de7578edd06fed1e4b857da1cdb024c7a7e09e4606bab4f1a025dc0"
+          },
+          "cheat": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "environment": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "instruction.md": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "65b05c866323a7b7195a5ab72ac9c4844d1d4e5f179ff24c15baf86a5a50e193"
+          },
+          "solution": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "task.toml": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "6906eb9b22f63e59346ba720dd7ff46ae7937e9485ffa63ca832ac16c023ad82"
+          },
+          "tests": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "tests/Dockerfile": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "dfbb75dc74eada02d4f1551ec7c2072d02a8556acda7f1dc23c288f1a7f5144e"
+          },
+          "tests/__pycache__": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "tests/baseline": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "tests/conftest.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "ce7687cc1e8eed0fe93acff9c4106c982d275d51a87827a6c927e42f20fd00fe"
+          },
+          "tests/test.sh": {
+            "kind": "file",
+            "mode": 493,
+            "sha256": "c0ccc313669814c573d05e9f16aa06cdcc8551f0e06e4741bdab8c09179a8610"
+          },
+          "tests/test_outputs.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "20bc89feb94e8ab2f5ac1164490cfa886bb7a8adb2ef34fa1720d6dc091b4020"
+          },
+          "tests/baseline/DESIGN.md": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "b6568e4d497b4cc80abb21f4dc079c28402869d799117c39ff41a1999dff0b2a"
+          },
+          "tests/baseline/__init__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "63b800abbf1b909111eb7bd75d9c117c981a068f28156699752ad5f896521e0f"
+          },
+          "tests/baseline/types.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "650194a651a37c4be79a544b7ecd79b7b319109e2f17b8dc375eb38252542392"
+          },
+          "tests/__pycache__/test_outputs.cpython-313.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "bb689f286ecbdfecfb44d5ce94da2152b3cebacc7fdf451b9a477267bba657cd"
+          },
+          "solution/files": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "solution/solve.sh": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "65bd595888facb9b283e795d028869e5f63adabb413310dbc61764e16f407f60"
+          },
+          "solution/files/events.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "6dbeeed948e4516198d681a160b05181f8ff601e165104548c221695d5fbb991"
+          },
+          "solution/files/gc.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "659f74439ddbd0d14264f17b444ab053cb62ad7036edcb4b3bccd8c178626e97"
+          },
+          "solution/files/merger.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "c4031c998e7ce91800d4c4445ec63e03466edbe5eb0da04d738875317cb42e55"
+          },
+          "environment/Dockerfile": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "9add640cf09a431f6e684aa75058ce2c2db87b80edb3482d0f6f0c90a69a24bb"
+          },
+          "environment/app": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "environment/app/DESIGN.md": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "b6568e4d497b4cc80abb21f4dc079c28402869d799117c39ff41a1999dff0b2a"
+          },
+          "environment/app/__init__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "63b800abbf1b909111eb7bd75d9c117c981a068f28156699752ad5f896521e0f"
+          },
+          "environment/app/emitter.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "d47c4b1220de623dd1df798e9a4a47c498096ea45a795f08a5e8d8ac94dcc644"
+          },
+          "environment/app/events.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "0615e207bc9793fbdf4205a371aba1fc90148ea6e086b14bd10df2382aea868d"
+          },
+          "environment/app/gc.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "90500dac814cb3a1f19683a1fe395692944858eb3661d66984cf937b64d595ab"
+          },
+          "environment/app/merger.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "d70fd199d30979e0b5e0a7bd70af8dfda0a7393b800dffcf6e28d1675fa30756"
+          },
+          "environment/app/sessions.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "731e769ad72fc142877bf28c48f1f500f50d465db3266991474668b76592259b"
+          },
+          "environment/app/types.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "650194a651a37c4be79a544b7ecd79b7b319109e2f17b8dc375eb38252542392"
+          },
+          "cheat/files": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "cheat/solve.sh": {
+            "kind": "file",
+            "mode": 493,
+            "sha256": "c5b9267faedc34caa89ad36e43e808e25bb43dcd4764339082da7f517c9d67b5"
+          },
+          "cheat/files/merger.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "f02eeb65bacd6684a0fd2665986dbf65a6d140d064f434572dece0a5eaac2718"
+          }
+        },
+        "candidate": {
+          ".": {
+            "kind": "directory",
+            "mode": 511
+          },
+          "app": {
+            "kind": "directory",
+            "mode": 511
+          },
+          "app/DESIGN.md": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "b6568e4d497b4cc80abb21f4dc079c28402869d799117c39ff41a1999dff0b2a"
+          },
+          "app/__init__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "63b800abbf1b909111eb7bd75d9c117c981a068f28156699752ad5f896521e0f"
+          },
+          "app/__pycache__": {
+            "kind": "directory",
+            "mode": 511
+          },
+          "app/emitter.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "d47c4b1220de623dd1df798e9a4a47c498096ea45a795f08a5e8d8ac94dcc644"
+          },
+          "app/events.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "48d824554e092423b0f76a0dad8f9c128e612c43273b01b7722d846b2b4bcd73"
+          },
+          "app/gc.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "94725e27c0d188b76392d5128a871462d1aedb2f533ef8529c7a893b84c2071b"
+          },
+          "app/merger.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "5c8c82eff9757f6a304baac21db79302dba82fd993173482da54d1ca2eb0999f"
+          },
+          "app/sessions.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "5b76c2b17df421afe9f48673bac26be55ef0503e25635806fcb6876ddb199b9f"
+          },
+          "app/types.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "650194a651a37c4be79a544b7ecd79b7b319109e2f17b8dc375eb38252542392"
+          },
+          "app/__pycache__/__init__.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "8adad73f2cc842ca6cba7c5e8cbff240acbbc9a08c74803eb68d9aa47974cf65"
+          },
+          "app/__pycache__/emitter.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "20211720621f9ea04971f3666da36555d297fb53b4c4cbb809b4afff55808f4f"
+          },
+          "app/__pycache__/events.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "c222c8bc5a610c3a8446c365030b93cce675204bcabd5a93b698ca7bb9f45bf7"
+          },
+          "app/__pycache__/gc.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "1205f10988a430ccf783ebe40a0dcc735269045fb58d1dfdb6ae566ea4cd709e"
+          },
+          "app/__pycache__/merger.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "31f1833473834b160df4ff10bf8a18b58ca7a3c6f72a8e32269c744d3c2d9f6e"
+          },
+          "app/__pycache__/sessions.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "a65af5a62796bd4e7fd82c2842b827e8dbffce35ff4744745a19bdfa945ebb4f"
+          },
+          "app/__pycache__/types.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "9a92e94c72cf730cebd7523b8ada9d37d62626a9ec2a74c36f6f49209b3387ae"
+          }
+        },
+        "mount": "/app"
+      },
+      "id": "candidate-0002",
+      "reused_from": "candidate-0001",
+      "verifier_executed": false,
+      "grade": {
+        "reward": 0.0,
+        "rewards": {
+          "reward": 0.0
+        },
+        "exit": 0,
+        "exception": null,
+        "message": null,
+        "image_cache": "warm",
+        "trial_dir": "/home/christopherdavid/.openagents/terminal-bench/experiments/iteration-speed-9618/grading-fresh/candidate-0001/verify__fa1b7d3",
+        "stdout_tail": null
+      },
+      "seconds": 0.004214804037474096
+    },
+    {
+      "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--session-window-debug-2/session-window-debug__3v9FKP5",
+      "task": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/session-window-debug",
+      "candidate": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--session-window-debug-2/session-window-debug__3v9FKP5/agent/episode/artifacts/lean-1/session-1",
+      "session": 1,
+      "dispatch": "lean-1",
+      "original_reward": 0.0,
+      "self_score": {
+        "passed": 3,
+        "total": 3
+      },
+      "kept": true,
+      "input_digest": "96c088c6cd0f8c29226670915b7eaa31b1f193ca283eb3fb9e20ed0a7f85a9e4",
+      "inputs": {
+        "task": {
+          ".": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "README.md": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "fc1a70db1de7578edd06fed1e4b857da1cdb024c7a7e09e4606bab4f1a025dc0"
+          },
+          "cheat": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "environment": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "instruction.md": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "65b05c866323a7b7195a5ab72ac9c4844d1d4e5f179ff24c15baf86a5a50e193"
+          },
+          "solution": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "task.toml": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "6906eb9b22f63e59346ba720dd7ff46ae7937e9485ffa63ca832ac16c023ad82"
+          },
+          "tests": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "tests/Dockerfile": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "dfbb75dc74eada02d4f1551ec7c2072d02a8556acda7f1dc23c288f1a7f5144e"
+          },
+          "tests/__pycache__": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "tests/baseline": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "tests/conftest.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "ce7687cc1e8eed0fe93acff9c4106c982d275d51a87827a6c927e42f20fd00fe"
+          },
+          "tests/test.sh": {
+            "kind": "file",
+            "mode": 493,
+            "sha256": "c0ccc313669814c573d05e9f16aa06cdcc8551f0e06e4741bdab8c09179a8610"
+          },
+          "tests/test_outputs.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "20bc89feb94e8ab2f5ac1164490cfa886bb7a8adb2ef34fa1720d6dc091b4020"
+          },
+          "tests/baseline/DESIGN.md": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "b6568e4d497b4cc80abb21f4dc079c28402869d799117c39ff41a1999dff0b2a"
+          },
+          "tests/baseline/__init__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "63b800abbf1b909111eb7bd75d9c117c981a068f28156699752ad5f896521e0f"
+          },
+          "tests/baseline/types.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "650194a651a37c4be79a544b7ecd79b7b319109e2f17b8dc375eb38252542392"
+          },
+          "tests/__pycache__/test_outputs.cpython-313.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "bb689f286ecbdfecfb44d5ce94da2152b3cebacc7fdf451b9a477267bba657cd"
+          },
+          "solution/files": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "solution/solve.sh": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "65bd595888facb9b283e795d028869e5f63adabb413310dbc61764e16f407f60"
+          },
+          "solution/files/events.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "6dbeeed948e4516198d681a160b05181f8ff601e165104548c221695d5fbb991"
+          },
+          "solution/files/gc.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "659f74439ddbd0d14264f17b444ab053cb62ad7036edcb4b3bccd8c178626e97"
+          },
+          "solution/files/merger.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "c4031c998e7ce91800d4c4445ec63e03466edbe5eb0da04d738875317cb42e55"
+          },
+          "environment/Dockerfile": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "9add640cf09a431f6e684aa75058ce2c2db87b80edb3482d0f6f0c90a69a24bb"
+          },
+          "environment/app": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "environment/app/DESIGN.md": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "b6568e4d497b4cc80abb21f4dc079c28402869d799117c39ff41a1999dff0b2a"
+          },
+          "environment/app/__init__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "63b800abbf1b909111eb7bd75d9c117c981a068f28156699752ad5f896521e0f"
+          },
+          "environment/app/emitter.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "d47c4b1220de623dd1df798e9a4a47c498096ea45a795f08a5e8d8ac94dcc644"
+          },
+          "environment/app/events.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "0615e207bc9793fbdf4205a371aba1fc90148ea6e086b14bd10df2382aea868d"
+          },
+          "environment/app/gc.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "90500dac814cb3a1f19683a1fe395692944858eb3661d66984cf937b64d595ab"
+          },
+          "environment/app/merger.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "d70fd199d30979e0b5e0a7bd70af8dfda0a7393b800dffcf6e28d1675fa30756"
+          },
+          "environment/app/sessions.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "731e769ad72fc142877bf28c48f1f500f50d465db3266991474668b76592259b"
+          },
+          "environment/app/types.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "650194a651a37c4be79a544b7ecd79b7b319109e2f17b8dc375eb38252542392"
+          },
+          "cheat/files": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "cheat/solve.sh": {
+            "kind": "file",
+            "mode": 493,
+            "sha256": "c5b9267faedc34caa89ad36e43e808e25bb43dcd4764339082da7f517c9d67b5"
+          },
+          "cheat/files/merger.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "f02eeb65bacd6684a0fd2665986dbf65a6d140d064f434572dece0a5eaac2718"
+          }
+        },
+        "candidate": {
+          ".": {
+            "kind": "directory",
+            "mode": 511
+          },
+          "app": {
+            "kind": "directory",
+            "mode": 511
+          },
+          "app/DESIGN.md": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "b6568e4d497b4cc80abb21f4dc079c28402869d799117c39ff41a1999dff0b2a"
+          },
+          "app/__init__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "63b800abbf1b909111eb7bd75d9c117c981a068f28156699752ad5f896521e0f"
+          },
+          "app/__pycache__": {
+            "kind": "directory",
+            "mode": 511
+          },
+          "app/emitter.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "d47c4b1220de623dd1df798e9a4a47c498096ea45a795f08a5e8d8ac94dcc644"
+          },
+          "app/events.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "e38c09dbdf2c5c94392ca00c3bd21a8f9382442e615e1230eb28ac211199edb8"
+          },
+          "app/gc.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "131262db8325be5707bc5c82978abac18fa162de0912c11916396f49410a8a51"
+          },
+          "app/merger.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "a989d08d21ce7b8daab5f4d17a34974f6a5eed518063428d821bb4fdb12762c4"
+          },
+          "app/sessions.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "ed2c9334757a7be3ee9d5e8de2d3f8aec4f12d2903fa2c036a8396f4e82102cf"
+          },
+          "app/types.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "650194a651a37c4be79a544b7ecd79b7b319109e2f17b8dc375eb38252542392"
+          },
+          "app/__pycache__/__init__.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "8adad73f2cc842ca6cba7c5e8cbff240acbbc9a08c74803eb68d9aa47974cf65"
+          },
+          "app/__pycache__/emitter.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "693db1cd9cd1da2ecc6acc396e8c64a5e93cc4d1533cd3409172c81d93196663"
+          },
+          "app/__pycache__/events.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "cf6d968fc0b681a06a8c58d22ff839106bc6479bc4acbed43d52b643926fa617"
+          },
+          "app/__pycache__/gc.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "f47251bcef58ba7cfb71c641355c5bd4582aa081e9e34c0bdaec0d42cab09804"
+          },
+          "app/__pycache__/merger.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "3d8ca08d2b6cb390a59c28c93aa3b2f3462cc44d069649d6e5b7e6179cecb7b1"
+          },
+          "app/__pycache__/sessions.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "914c95824e72511d77fc00f8cdec67ce0a72b8455b94f42b570fc16e499ee347"
+          },
+          "app/__pycache__/types.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "9a92e94c72cf730cebd7523b8ada9d37d62626a9ec2a74c36f6f49209b3387ae"
+          }
+        },
+        "mount": "/app"
+      },
+      "id": "candidate-0003",
+      "reused_from": null,
+      "verifier_executed": true,
+      "grade": {
+        "reward": 0.0,
+        "rewards": {
+          "reward": 0.0
+        },
+        "exit": 0,
+        "exception": null,
+        "message": null,
+        "image_cache": "warm",
+        "trial_dir": "/home/christopherdavid/.openagents/terminal-bench/experiments/iteration-speed-9618/grading-fresh/candidate-0003/verify__b4c4f88",
+        "stdout_tail": null
+      },
+      "seconds": 15.029522600991186
+    },
+    {
+      "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--session-window-debug-2/session-window-debug__3v9FKP5",
+      "task": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/session-window-debug",
+      "candidate": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--session-window-debug-2/session-window-debug__3v9FKP5/agent/episode/artifacts/lean-1/session-2",
+      "session": 2,
+      "dispatch": "lean-1",
+      "original_reward": 0.0,
+      "self_score": {
+        "passed": 3,
+        "total": 3
+      },
+      "kept": true,
+      "input_digest": "96c088c6cd0f8c29226670915b7eaa31b1f193ca283eb3fb9e20ed0a7f85a9e4",
+      "inputs": {
+        "task": {
+          ".": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "README.md": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "fc1a70db1de7578edd06fed1e4b857da1cdb024c7a7e09e4606bab4f1a025dc0"
+          },
+          "cheat": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "environment": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "instruction.md": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "65b05c866323a7b7195a5ab72ac9c4844d1d4e5f179ff24c15baf86a5a50e193"
+          },
+          "solution": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "task.toml": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "6906eb9b22f63e59346ba720dd7ff46ae7937e9485ffa63ca832ac16c023ad82"
+          },
+          "tests": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "tests/Dockerfile": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "dfbb75dc74eada02d4f1551ec7c2072d02a8556acda7f1dc23c288f1a7f5144e"
+          },
+          "tests/__pycache__": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "tests/baseline": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "tests/conftest.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "ce7687cc1e8eed0fe93acff9c4106c982d275d51a87827a6c927e42f20fd00fe"
+          },
+          "tests/test.sh": {
+            "kind": "file",
+            "mode": 493,
+            "sha256": "c0ccc313669814c573d05e9f16aa06cdcc8551f0e06e4741bdab8c09179a8610"
+          },
+          "tests/test_outputs.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "20bc89feb94e8ab2f5ac1164490cfa886bb7a8adb2ef34fa1720d6dc091b4020"
+          },
+          "tests/baseline/DESIGN.md": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "b6568e4d497b4cc80abb21f4dc079c28402869d799117c39ff41a1999dff0b2a"
+          },
+          "tests/baseline/__init__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "63b800abbf1b909111eb7bd75d9c117c981a068f28156699752ad5f896521e0f"
+          },
+          "tests/baseline/types.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "650194a651a37c4be79a544b7ecd79b7b319109e2f17b8dc375eb38252542392"
+          },
+          "tests/__pycache__/test_outputs.cpython-313.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "bb689f286ecbdfecfb44d5ce94da2152b3cebacc7fdf451b9a477267bba657cd"
+          },
+          "solution/files": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "solution/solve.sh": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "65bd595888facb9b283e795d028869e5f63adabb413310dbc61764e16f407f60"
+          },
+          "solution/files/events.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "6dbeeed948e4516198d681a160b05181f8ff601e165104548c221695d5fbb991"
+          },
+          "solution/files/gc.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "659f74439ddbd0d14264f17b444ab053cb62ad7036edcb4b3bccd8c178626e97"
+          },
+          "solution/files/merger.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "c4031c998e7ce91800d4c4445ec63e03466edbe5eb0da04d738875317cb42e55"
+          },
+          "environment/Dockerfile": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "9add640cf09a431f6e684aa75058ce2c2db87b80edb3482d0f6f0c90a69a24bb"
+          },
+          "environment/app": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "environment/app/DESIGN.md": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "b6568e4d497b4cc80abb21f4dc079c28402869d799117c39ff41a1999dff0b2a"
+          },
+          "environment/app/__init__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "63b800abbf1b909111eb7bd75d9c117c981a068f28156699752ad5f896521e0f"
+          },
+          "environment/app/emitter.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "d47c4b1220de623dd1df798e9a4a47c498096ea45a795f08a5e8d8ac94dcc644"
+          },
+          "environment/app/events.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "0615e207bc9793fbdf4205a371aba1fc90148ea6e086b14bd10df2382aea868d"
+          },
+          "environment/app/gc.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "90500dac814cb3a1f19683a1fe395692944858eb3661d66984cf937b64d595ab"
+          },
+          "environment/app/merger.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "d70fd199d30979e0b5e0a7bd70af8dfda0a7393b800dffcf6e28d1675fa30756"
+          },
+          "environment/app/sessions.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "731e769ad72fc142877bf28c48f1f500f50d465db3266991474668b76592259b"
+          },
+          "environment/app/types.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "650194a651a37c4be79a544b7ecd79b7b319109e2f17b8dc375eb38252542392"
+          },
+          "cheat/files": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "cheat/solve.sh": {
+            "kind": "file",
+            "mode": 493,
+            "sha256": "c5b9267faedc34caa89ad36e43e808e25bb43dcd4764339082da7f517c9d67b5"
+          },
+          "cheat/files/merger.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "f02eeb65bacd6684a0fd2665986dbf65a6d140d064f434572dece0a5eaac2718"
+          }
+        },
+        "candidate": {
+          ".": {
+            "kind": "directory",
+            "mode": 511
+          },
+          "app": {
+            "kind": "directory",
+            "mode": 511
+          },
+          "app/DESIGN.md": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "b6568e4d497b4cc80abb21f4dc079c28402869d799117c39ff41a1999dff0b2a"
+          },
+          "app/__init__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "63b800abbf1b909111eb7bd75d9c117c981a068f28156699752ad5f896521e0f"
+          },
+          "app/__pycache__": {
+            "kind": "directory",
+            "mode": 511
+          },
+          "app/emitter.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "d47c4b1220de623dd1df798e9a4a47c498096ea45a795f08a5e8d8ac94dcc644"
+          },
+          "app/events.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "e38c09dbdf2c5c94392ca00c3bd21a8f9382442e615e1230eb28ac211199edb8"
+          },
+          "app/gc.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "131262db8325be5707bc5c82978abac18fa162de0912c11916396f49410a8a51"
+          },
+          "app/merger.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "a989d08d21ce7b8daab5f4d17a34974f6a5eed518063428d821bb4fdb12762c4"
+          },
+          "app/sessions.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "ed2c9334757a7be3ee9d5e8de2d3f8aec4f12d2903fa2c036a8396f4e82102cf"
+          },
+          "app/types.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "650194a651a37c4be79a544b7ecd79b7b319109e2f17b8dc375eb38252542392"
+          },
+          "app/__pycache__/__init__.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "8adad73f2cc842ca6cba7c5e8cbff240acbbc9a08c74803eb68d9aa47974cf65"
+          },
+          "app/__pycache__/emitter.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "693db1cd9cd1da2ecc6acc396e8c64a5e93cc4d1533cd3409172c81d93196663"
+          },
+          "app/__pycache__/events.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "cf6d968fc0b681a06a8c58d22ff839106bc6479bc4acbed43d52b643926fa617"
+          },
+          "app/__pycache__/gc.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "f47251bcef58ba7cfb71c641355c5bd4582aa081e9e34c0bdaec0d42cab09804"
+          },
+          "app/__pycache__/merger.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "3d8ca08d2b6cb390a59c28c93aa3b2f3462cc44d069649d6e5b7e6179cecb7b1"
+          },
+          "app/__pycache__/sessions.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "914c95824e72511d77fc00f8cdec67ce0a72b8455b94f42b570fc16e499ee347"
+          },
+          "app/__pycache__/types.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "9a92e94c72cf730cebd7523b8ada9d37d62626a9ec2a74c36f6f49209b3387ae"
+          }
+        },
+        "mount": "/app"
+      },
+      "id": "candidate-0004",
+      "reused_from": "candidate-0003",
+      "verifier_executed": false,
+      "grade": {
+        "reward": 0.0,
+        "rewards": {
+          "reward": 0.0
+        },
+        "exit": 0,
+        "exception": null,
+        "message": null,
+        "image_cache": "warm",
+        "trial_dir": "/home/christopherdavid/.openagents/terminal-bench/experiments/iteration-speed-9618/grading-fresh/candidate-0003/verify__b4c4f88",
+        "stdout_tail": null
+      },
+      "seconds": 0.003463876957539469
+    },
+    {
+      "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--session-window-debug-3/session-window-debug__3KVqBUz",
+      "task": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/session-window-debug",
+      "candidate": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--session-window-debug-3/session-window-debug__3KVqBUz/agent/episode/artifacts/lean-1/session-1",
+      "session": 1,
+      "dispatch": "lean-1",
+      "original_reward": 0.0,
+      "self_score": {
+        "passed": 4,
+        "total": 4
+      },
+      "kept": true,
+      "input_digest": "d93eb11be81fbf5e7fa40817b4b2bc7cc5a65e7807d8e81019af742e0a5841cb",
+      "inputs": {
+        "task": {
+          ".": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "README.md": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "fc1a70db1de7578edd06fed1e4b857da1cdb024c7a7e09e4606bab4f1a025dc0"
+          },
+          "cheat": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "environment": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "instruction.md": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "65b05c866323a7b7195a5ab72ac9c4844d1d4e5f179ff24c15baf86a5a50e193"
+          },
+          "solution": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "task.toml": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "6906eb9b22f63e59346ba720dd7ff46ae7937e9485ffa63ca832ac16c023ad82"
+          },
+          "tests": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "tests/Dockerfile": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "dfbb75dc74eada02d4f1551ec7c2072d02a8556acda7f1dc23c288f1a7f5144e"
+          },
+          "tests/__pycache__": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "tests/baseline": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "tests/conftest.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "ce7687cc1e8eed0fe93acff9c4106c982d275d51a87827a6c927e42f20fd00fe"
+          },
+          "tests/test.sh": {
+            "kind": "file",
+            "mode": 493,
+            "sha256": "c0ccc313669814c573d05e9f16aa06cdcc8551f0e06e4741bdab8c09179a8610"
+          },
+          "tests/test_outputs.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "20bc89feb94e8ab2f5ac1164490cfa886bb7a8adb2ef34fa1720d6dc091b4020"
+          },
+          "tests/baseline/DESIGN.md": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "b6568e4d497b4cc80abb21f4dc079c28402869d799117c39ff41a1999dff0b2a"
+          },
+          "tests/baseline/__init__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "63b800abbf1b909111eb7bd75d9c117c981a068f28156699752ad5f896521e0f"
+          },
+          "tests/baseline/types.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "650194a651a37c4be79a544b7ecd79b7b319109e2f17b8dc375eb38252542392"
+          },
+          "tests/__pycache__/test_outputs.cpython-313.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "bb689f286ecbdfecfb44d5ce94da2152b3cebacc7fdf451b9a477267bba657cd"
+          },
+          "solution/files": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "solution/solve.sh": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "65bd595888facb9b283e795d028869e5f63adabb413310dbc61764e16f407f60"
+          },
+          "solution/files/events.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "6dbeeed948e4516198d681a160b05181f8ff601e165104548c221695d5fbb991"
+          },
+          "solution/files/gc.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "659f74439ddbd0d14264f17b444ab053cb62ad7036edcb4b3bccd8c178626e97"
+          },
+          "solution/files/merger.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "c4031c998e7ce91800d4c4445ec63e03466edbe5eb0da04d738875317cb42e55"
+          },
+          "environment/Dockerfile": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "9add640cf09a431f6e684aa75058ce2c2db87b80edb3482d0f6f0c90a69a24bb"
+          },
+          "environment/app": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "environment/app/DESIGN.md": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "b6568e4d497b4cc80abb21f4dc079c28402869d799117c39ff41a1999dff0b2a"
+          },
+          "environment/app/__init__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "63b800abbf1b909111eb7bd75d9c117c981a068f28156699752ad5f896521e0f"
+          },
+          "environment/app/emitter.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "d47c4b1220de623dd1df798e9a4a47c498096ea45a795f08a5e8d8ac94dcc644"
+          },
+          "environment/app/events.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "0615e207bc9793fbdf4205a371aba1fc90148ea6e086b14bd10df2382aea868d"
+          },
+          "environment/app/gc.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "90500dac814cb3a1f19683a1fe395692944858eb3661d66984cf937b64d595ab"
+          },
+          "environment/app/merger.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "d70fd199d30979e0b5e0a7bd70af8dfda0a7393b800dffcf6e28d1675fa30756"
+          },
+          "environment/app/sessions.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "731e769ad72fc142877bf28c48f1f500f50d465db3266991474668b76592259b"
+          },
+          "environment/app/types.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "650194a651a37c4be79a544b7ecd79b7b319109e2f17b8dc375eb38252542392"
+          },
+          "cheat/files": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "cheat/solve.sh": {
+            "kind": "file",
+            "mode": 493,
+            "sha256": "c5b9267faedc34caa89ad36e43e808e25bb43dcd4764339082da7f517c9d67b5"
+          },
+          "cheat/files/merger.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "f02eeb65bacd6684a0fd2665986dbf65a6d140d064f434572dece0a5eaac2718"
+          }
+        },
+        "candidate": {
+          ".": {
+            "kind": "directory",
+            "mode": 511
+          },
+          "app": {
+            "kind": "directory",
+            "mode": 511
+          },
+          "app/DESIGN.md": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "b6568e4d497b4cc80abb21f4dc079c28402869d799117c39ff41a1999dff0b2a"
+          },
+          "app/__init__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "63b800abbf1b909111eb7bd75d9c117c981a068f28156699752ad5f896521e0f"
+          },
+          "app/__pycache__": {
+            "kind": "directory",
+            "mode": 511
+          },
+          "app/emitter.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "d47c4b1220de623dd1df798e9a4a47c498096ea45a795f08a5e8d8ac94dcc644"
+          },
+          "app/events.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "096562ebcca6735882889cc3325ec33f19c50a811c2bc2272371015a4cdbda37"
+          },
+          "app/gc.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "d46af3165d70f4128f599f976dc49ff1123003203bec75492002c645690ed771"
+          },
+          "app/merger.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "47164b1baec714716241c1ca44f65a8ea22892a1ec6b897b1c2f7078c11abc9a"
+          },
+          "app/sessions.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "d05a2366970541df20e01f58c08f1583618a5c8a2b0db18191a623d32a10756a"
+          },
+          "app/types.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "650194a651a37c4be79a544b7ecd79b7b319109e2f17b8dc375eb38252542392"
+          },
+          "app/__pycache__/__init__.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "8adad73f2cc842ca6cba7c5e8cbff240acbbc9a08c74803eb68d9aa47974cf65"
+          },
+          "app/__pycache__/emitter.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "20211720621f9ea04971f3666da36555d297fb53b4c4cbb809b4afff55808f4f"
+          },
+          "app/__pycache__/events.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "7e46d7a29b15a9005b018f61cd4ed58c48ab6c1630f078076eaef8c44a086c84"
+          },
+          "app/__pycache__/gc.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "ce0b3c889d5c34747165e3d601b4b840176e95be2f89965f38ff0f37ec8d9c97"
+          },
+          "app/__pycache__/merger.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "8351164dcd68cd73d73a146b49f9f785538f6a932b62018381bccef3ea450fe5"
+          },
+          "app/__pycache__/sessions.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "22968aec25aff2f264f9c6028b4610625320480b8ef0fe4a61648fe6994bcff2"
+          },
+          "app/__pycache__/types.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "9a92e94c72cf730cebd7523b8ada9d37d62626a9ec2a74c36f6f49209b3387ae"
+          }
+        },
+        "mount": "/app"
+      },
+      "id": "candidate-0005",
+      "reused_from": null,
+      "verifier_executed": true,
+      "grade": {
+        "reward": 0.0,
+        "rewards": {
+          "reward": 0.0
+        },
+        "exit": 0,
+        "exception": null,
+        "message": null,
+        "image_cache": "warm",
+        "trial_dir": "/home/christopherdavid/.openagents/terminal-bench/experiments/iteration-speed-9618/grading-fresh/candidate-0005/verify__7c101b7",
+        "stdout_tail": null
+      },
+      "seconds": 13.642216337029822
+    },
+    {
+      "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--session-window-debug-3/session-window-debug__3KVqBUz",
+      "task": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/session-window-debug",
+      "candidate": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--session-window-debug-3/session-window-debug__3KVqBUz/agent/episode/artifacts/lean-1/session-2",
+      "session": 2,
+      "dispatch": "lean-1",
+      "original_reward": 0.0,
+      "self_score": {
+        "passed": 4,
+        "total": 4
+      },
+      "kept": true,
+      "input_digest": "eaac89890d51dd6c16840566ef770e941de5b9b60dc92cebf9fc65bc419e882e",
+      "inputs": {
+        "task": {
+          ".": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "README.md": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "fc1a70db1de7578edd06fed1e4b857da1cdb024c7a7e09e4606bab4f1a025dc0"
+          },
+          "cheat": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "environment": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "instruction.md": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "65b05c866323a7b7195a5ab72ac9c4844d1d4e5f179ff24c15baf86a5a50e193"
+          },
+          "solution": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "task.toml": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "6906eb9b22f63e59346ba720dd7ff46ae7937e9485ffa63ca832ac16c023ad82"
+          },
+          "tests": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "tests/Dockerfile": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "dfbb75dc74eada02d4f1551ec7c2072d02a8556acda7f1dc23c288f1a7f5144e"
+          },
+          "tests/__pycache__": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "tests/baseline": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "tests/conftest.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "ce7687cc1e8eed0fe93acff9c4106c982d275d51a87827a6c927e42f20fd00fe"
+          },
+          "tests/test.sh": {
+            "kind": "file",
+            "mode": 493,
+            "sha256": "c0ccc313669814c573d05e9f16aa06cdcc8551f0e06e4741bdab8c09179a8610"
+          },
+          "tests/test_outputs.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "20bc89feb94e8ab2f5ac1164490cfa886bb7a8adb2ef34fa1720d6dc091b4020"
+          },
+          "tests/baseline/DESIGN.md": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "b6568e4d497b4cc80abb21f4dc079c28402869d799117c39ff41a1999dff0b2a"
+          },
+          "tests/baseline/__init__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "63b800abbf1b909111eb7bd75d9c117c981a068f28156699752ad5f896521e0f"
+          },
+          "tests/baseline/types.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "650194a651a37c4be79a544b7ecd79b7b319109e2f17b8dc375eb38252542392"
+          },
+          "tests/__pycache__/test_outputs.cpython-313.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "bb689f286ecbdfecfb44d5ce94da2152b3cebacc7fdf451b9a477267bba657cd"
+          },
+          "solution/files": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "solution/solve.sh": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "65bd595888facb9b283e795d028869e5f63adabb413310dbc61764e16f407f60"
+          },
+          "solution/files/events.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "6dbeeed948e4516198d681a160b05181f8ff601e165104548c221695d5fbb991"
+          },
+          "solution/files/gc.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "659f74439ddbd0d14264f17b444ab053cb62ad7036edcb4b3bccd8c178626e97"
+          },
+          "solution/files/merger.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "c4031c998e7ce91800d4c4445ec63e03466edbe5eb0da04d738875317cb42e55"
+          },
+          "environment/Dockerfile": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "9add640cf09a431f6e684aa75058ce2c2db87b80edb3482d0f6f0c90a69a24bb"
+          },
+          "environment/app": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "environment/app/DESIGN.md": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "b6568e4d497b4cc80abb21f4dc079c28402869d799117c39ff41a1999dff0b2a"
+          },
+          "environment/app/__init__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "63b800abbf1b909111eb7bd75d9c117c981a068f28156699752ad5f896521e0f"
+          },
+          "environment/app/emitter.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "d47c4b1220de623dd1df798e9a4a47c498096ea45a795f08a5e8d8ac94dcc644"
+          },
+          "environment/app/events.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "0615e207bc9793fbdf4205a371aba1fc90148ea6e086b14bd10df2382aea868d"
+          },
+          "environment/app/gc.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "90500dac814cb3a1f19683a1fe395692944858eb3661d66984cf937b64d595ab"
+          },
+          "environment/app/merger.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "d70fd199d30979e0b5e0a7bd70af8dfda0a7393b800dffcf6e28d1675fa30756"
+          },
+          "environment/app/sessions.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "731e769ad72fc142877bf28c48f1f500f50d465db3266991474668b76592259b"
+          },
+          "environment/app/types.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "650194a651a37c4be79a544b7ecd79b7b319109e2f17b8dc375eb38252542392"
+          },
+          "cheat/files": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "cheat/solve.sh": {
+            "kind": "file",
+            "mode": 493,
+            "sha256": "c5b9267faedc34caa89ad36e43e808e25bb43dcd4764339082da7f517c9d67b5"
+          },
+          "cheat/files/merger.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "f02eeb65bacd6684a0fd2665986dbf65a6d140d064f434572dece0a5eaac2718"
+          }
+        },
+        "candidate": {
+          ".": {
+            "kind": "directory",
+            "mode": 511
+          },
+          "app": {
+            "kind": "directory",
+            "mode": 511
+          },
+          "app/DESIGN.md": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "b6568e4d497b4cc80abb21f4dc079c28402869d799117c39ff41a1999dff0b2a"
+          },
+          "app/__init__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "63b800abbf1b909111eb7bd75d9c117c981a068f28156699752ad5f896521e0f"
+          },
+          "app/__pycache__": {
+            "kind": "directory",
+            "mode": 511
+          },
+          "app/emitter.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "d47c4b1220de623dd1df798e9a4a47c498096ea45a795f08a5e8d8ac94dcc644"
+          },
+          "app/events.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "096562ebcca6735882889cc3325ec33f19c50a811c2bc2272371015a4cdbda37"
+          },
+          "app/gc.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "d46af3165d70f4128f599f976dc49ff1123003203bec75492002c645690ed771"
+          },
+          "app/merger.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "47164b1baec714716241c1ca44f65a8ea22892a1ec6b897b1c2f7078c11abc9a"
+          },
+          "app/sessions.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "b64c867e76b3586b752ee02f2329150eb43b3675c8473465fb027135539aab87"
+          },
+          "app/types.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "650194a651a37c4be79a544b7ecd79b7b319109e2f17b8dc375eb38252542392"
+          },
+          "app/__pycache__/__init__.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "8adad73f2cc842ca6cba7c5e8cbff240acbbc9a08c74803eb68d9aa47974cf65"
+          },
+          "app/__pycache__/emitter.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "20211720621f9ea04971f3666da36555d297fb53b4c4cbb809b4afff55808f4f"
+          },
+          "app/__pycache__/events.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "7e46d7a29b15a9005b018f61cd4ed58c48ab6c1630f078076eaef8c44a086c84"
+          },
+          "app/__pycache__/gc.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "ce0b3c889d5c34747165e3d601b4b840176e95be2f89965f38ff0f37ec8d9c97"
+          },
+          "app/__pycache__/merger.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "8351164dcd68cd73d73a146b49f9f785538f6a932b62018381bccef3ea450fe5"
+          },
+          "app/__pycache__/sessions.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "b5de9ddf5b78105740b4eaf0608ef9e12a36602f8de3ecf422304d5a978cfd5d"
+          },
+          "app/__pycache__/types.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "9a92e94c72cf730cebd7523b8ada9d37d62626a9ec2a74c36f6f49209b3387ae"
+          }
+        },
+        "mount": "/app"
+      },
+      "id": "candidate-0006",
+      "reused_from": null,
+      "verifier_executed": true,
+      "grade": {
+        "reward": 0.0,
+        "rewards": {
+          "reward": 0.0
+        },
+        "exit": 0,
+        "exception": null,
+        "message": null,
+        "image_cache": "warm",
+        "trial_dir": "/home/christopherdavid/.openagents/terminal-bench/experiments/iteration-speed-9618/grading-fresh/candidate-0006/verify__7dce749",
+        "stdout_tail": null
+      },
+      "seconds": 13.595557863998692
+    },
+    {
+      "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--embedding-drift-monitor/embedding-drift-monitor__6zRjd9n",
+      "task": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/embedding-drift-monitor",
+      "candidate": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--embedding-drift-monitor/embedding-drift-monitor__6zRjd9n/agent/episode/artifacts/lean-1/session-1",
+      "session": 1,
+      "dispatch": "lean-1",
+      "original_reward": 1.0,
+      "self_score": {
+        "passed": 8,
+        "total": 8
+      },
+      "kept": true,
+      "input_digest": "77316f0902b08da7f75ce36bd3ce9af64bbdd69dd4e51ff657ce3be67b34d38e",
+      "inputs": {
+        "task": {
+          ".": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "README.md": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "e49ae6cacb49767e188b1775ac660fcac025749eb1ec7417d6b17183107dac75"
+          },
+          "cheat": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "environment": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "instruction.md": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "948fec73b3457300d42d258c2c17ece57052bde4d343063604dff3cb5bf5c5a9"
+          },
+          "solution": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "task.toml": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "ac799e963328258b3301d52e5c58f2dfb10cf575850dd997ceef89cce463da3d"
+          },
+          "tests": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "tests/Dockerfile": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "d6085518885601e33cacbdf676a8194daf4008b5fb122960c52d41d595ed1249"
+          },
+          "tests/conftest.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "5ed0a2a6171bf0360fa9e7060397f7feb9eeaa692991a9bf0e2d83d0cc030cd9"
+          },
+          "tests/test.sh": {
+            "kind": "file",
+            "mode": 493,
+            "sha256": "f2aec2402e87a55fe8ad9d8b98533ef3f71ddd6784a9f480c5f76e8d797017e3"
+          },
+          "tests/test_outputs.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "abd41572c6ffb90b0a55d1ffec529c1cdd9286b08b64dae246fcbdab4c6836f1"
+          },
+          "solution/drift_monitor": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "solution/solve.sh": {
+            "kind": "file",
+            "mode": 493,
+            "sha256": "d1a6f715d5a4273d3ab4e06e0cd4b4cd06b3640f86314591b65d7a80ec0bd35f"
+          },
+          "solution/drift_monitor/alert.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "5b971f319c59d16224183eec7f3ff13e40459ce464a526a6ae1c9beff1d8972a"
+          },
+          "solution/drift_monitor/calibration.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "dcce331d38bea5b35f50c26a1ee6ed8541c51ca8d9f339856faa3971b54265e7"
+          },
+          "solution/drift_monitor/distance.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "44151bf8480c1789babe3ce03f2c7935e14ec135fb97d0263c304a4533cfc850"
+          },
+          "solution/drift_monitor/normalize.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "723cb7e88bff4233942d62edd5f9b111cd594dfd09667804e7a43949cafc311a"
+          },
+          "solution/drift_monitor/statistical_tests.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "077102585a9257d5960a6b331da602c10a3782863261e7e3b68a134ca5fac3e6"
+          },
+          "solution/drift_monitor/windowing.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "9122dfe693b015e54b068e70a4cceb016a5f037943cd5cbca266a73483157923"
+          },
+          "environment/Dockerfile": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "f5e17839c2613f903de51c91cf09a161877537dca3a32d1881fc5447cbc21e65"
+          },
+          "environment/data": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "environment/drift_monitor": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "environment/drift_monitor/__init__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "c4499b0559af0a8857a647c5fcc8102ca632e00597754850fdec197fcf8abdaf"
+          },
+          "environment/drift_monitor/__main__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "bc27d8196cc0035bf9bc1c252d9de219e75023ad87314ce954c1106cb23af387"
+          },
+          "environment/drift_monitor/alert.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "22452d53db3c34ea66c90fb8fdd548114cb62dcb4e9e9f66239e354ea13c1893"
+          },
+          "environment/drift_monitor/calibration.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "2c6e055797b5d552c387479111f1c98d98e670cbc8a2667b2e45a02a60a553c8"
+          },
+          "environment/drift_monitor/distance.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "3eee027191192d762e21bf143236ac3a3497dafde1165aeba0afa1ccf10e412d"
+          },
+          "environment/drift_monitor/monitor.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "007b90d9d136729dd9479eb25c45f7340329039d1c0f106109d1c4d609cc2648"
+          },
+          "environment/drift_monitor/normalize.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "87187cc4f7e72e7699c328e926b2c312c26cb435697f079ae7675b79cab49a88"
+          },
+          "environment/drift_monitor/statistical_tests.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "e0ee0a82e563e57cc9104f3e15468ff09a6a97edd864126675ae7eda8042a47d"
+          },
+          "environment/drift_monitor/windowing.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "7be4906e778e44ef0d238552f0a30a72405624122b55a8c94b96154e2138da1b"
+          },
+          "environment/data/.canary": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "63b800abbf1b909111eb7bd75d9c117c981a068f28156699752ad5f896521e0f"
+          },
+          "environment/data/current_clear_drift.npy": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "d861bafd41f1757408944ff4ea29f20ac345747595ec50298ce0be1f3b281d68"
+          },
+          "environment/data/current_stable.npy": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "e069a4c0b93d38c3f7e3a3908cd8987e9131aa1b1ad93e6a90c84deeee9aa483"
+          },
+          "environment/data/current_with_zeros.npy": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "024b9e1ea37ec59e6d837430b245a5eb1fd904d190db5cf86970882b3d9001a8"
+          },
+          "environment/data/reference_embeddings.npy": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "5a4e51d98be5cf8fbc000fd35851e2ad02b23c1c93e8722dab313f0931b35ef0"
+          },
+          "cheat/drift_monitor": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "cheat/solve.sh": {
+            "kind": "file",
+            "mode": 493,
+            "sha256": "aa4657b56ed8f820dc5fba90b2bfe1364809fa583f3484407fd94c30efd60790"
+          },
+          "cheat/drift_monitor/__init__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "eb8e52a670bb722909e46c944de307c5a757d17770e8f65f9865b78a70be5d72"
+          },
+          "cheat/drift_monitor/__main__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "99d2f723820ad85d6c7c9021caeb272870dddc58887e732e42afd1ed43b4a238"
+          },
+          "cheat/drift_monitor/alert.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "50df7d69de3df5ab98e4cedeef8cf0e928de599194070ec5f7847fa3ac462be2"
+          },
+          "cheat/drift_monitor/calibration.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "78ceb9d6a784064411730af72328156d83fc2b16114cefb9d5240c3ee5d3be02"
+          },
+          "cheat/drift_monitor/distance.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "2716dc8909eb2f56dc5412161a6031e72bf74dd40a34a3e6c2b74cbafb40e2f1"
+          },
+          "cheat/drift_monitor/monitor.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "70ba74e3d625e8e05a8e1a29f6a72bb5aada88050952b62fa3d0424d825fd1aa"
+          },
+          "cheat/drift_monitor/normalize.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "1d168761b22b746c3a688d488c3edd00d5fee661ad4a53b5ba44a7045a54bb67"
+          },
+          "cheat/drift_monitor/statistical_tests.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "11596c7ce47320a066effb54821f73142d30a87a97b6749383d9da973f653f58"
+          },
+          "cheat/drift_monitor/windowing.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "c84705afe7c7a02abe2e8a6755fc2118fc73e39be36ecee09c845af4a110bbde"
+          }
+        },
+        "candidate": {
+          ".": {
+            "kind": "directory",
+            "mode": 511
+          },
+          "Dockerfile": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "f5e17839c2613f903de51c91cf09a161877537dca3a32d1881fc5447cbc21e65"
+          },
+          "data": {
+            "kind": "directory",
+            "mode": 511
+          },
+          "drift_monitor": {
+            "kind": "directory",
+            "mode": 511
+          },
+          "drift_monitor/__init__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "c4499b0559af0a8857a647c5fcc8102ca632e00597754850fdec197fcf8abdaf"
+          },
+          "drift_monitor/__main__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "bc27d8196cc0035bf9bc1c252d9de219e75023ad87314ce954c1106cb23af387"
+          },
+          "drift_monitor/__pycache__": {
+            "kind": "directory",
+            "mode": 511
+          },
+          "drift_monitor/alert.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "53189133371dc7008019888da2b5f1dfc14ed2af61deeae5bb757445fa0e72c1"
+          },
+          "drift_monitor/calibration.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "2c1aa05c057bf0d482b27836a6a7b27e0247881d8a15462dc03914190029f434"
+          },
+          "drift_monitor/distance.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "f6f815687b5764601f85763593e6a88ce15984c0cb42fd5e6159ca476d9db690"
+          },
+          "drift_monitor/monitor.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "72dc04f9d0dc032b35946ef247065715b6ed2f1f8f2d573c2ba9ec2f38b48cee"
+          },
+          "drift_monitor/normalize.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "afb8b33099066c4cebc480df92e95e69a2d94fc9618428dc3d4a0f6864ccae72"
+          },
+          "drift_monitor/statistical_tests.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "0b19daf768ff427ef0fff5f75e4ddb97676d692556170bcb2f7ee66acab06a65"
+          },
+          "drift_monitor/windowing.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "6c20d16ebef52479ad3ea2dfcc57ca4c38325b9b071d8b2851a7084a4b879b4f"
+          },
+          "drift_monitor/__pycache__/__init__.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "7b4c1f8af09179c9a620688f6281cc0b0efbd56adc8c4b07d0204d4ec28aa235"
+          },
+          "drift_monitor/__pycache__/__main__.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "a053d3cb64004dce060aebbed36c0ec5dd8cf7e873526a4e096a42371acb9c49"
+          },
+          "drift_monitor/__pycache__/alert.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "b5feba76ba1a1a8fde357ada73b299300211ff0b07e7b1d84de45c08e4b49140"
+          },
+          "drift_monitor/__pycache__/calibration.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "013693f7ccb4ebfab80115fac602ed20bb97ec8e01dc883f7c29aeb0e6c01078"
+          },
+          "drift_monitor/__pycache__/distance.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "ea99d77da4629de3a89d0febfc6005caa14d650e45a4183d37c78e8f0670fdcd"
+          },
+          "drift_monitor/__pycache__/monitor.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "de1669be106811d0c4c3c8abc0393c89f0b4275f3c618048e3a93f8040f78860"
+          },
+          "drift_monitor/__pycache__/normalize.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "136bdd0491c53d3abf547ab835010d665d354bbce139c584813702248a91e22f"
+          },
+          "drift_monitor/__pycache__/statistical_tests.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "5feacfbb1e5767dab9f67a824ac9c103cf7952faf9f0db5196666aa272fc0565"
+          },
+          "drift_monitor/__pycache__/windowing.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "2eae9b1b5b5922c34363613fd23425f99fecf6703f5577074039a308eb2a168d"
+          },
+          "data/.canary": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "63b800abbf1b909111eb7bd75d9c117c981a068f28156699752ad5f896521e0f"
+          },
+          "data/current_clear_drift.npy": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "d861bafd41f1757408944ff4ea29f20ac345747595ec50298ce0be1f3b281d68"
+          },
+          "data/current_stable.npy": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "e069a4c0b93d38c3f7e3a3908cd8987e9131aa1b1ad93e6a90c84deeee9aa483"
+          },
+          "data/current_with_zeros.npy": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "024b9e1ea37ec59e6d837430b245a5eb1fd904d190db5cf86970882b3d9001a8"
+          },
+          "data/reference_embeddings.npy": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "5a4e51d98be5cf8fbc000fd35851e2ad02b23c1c93e8722dab313f0931b35ef0"
+          }
+        },
+        "mount": "/app"
+      },
+      "id": "candidate-0007",
+      "reused_from": null,
+      "verifier_executed": true,
+      "grade": {
+        "reward": 1.0,
+        "rewards": {
+          "reward": 1.0
+        },
+        "exit": 0,
+        "exception": null,
+        "message": null,
+        "image_cache": "warm",
+        "trial_dir": "/home/christopherdavid/.openagents/terminal-bench/experiments/iteration-speed-9618/grading-fresh/candidate-0007/verify__22e2a4a",
+        "stdout_tail": null
+      },
+      "seconds": 156.34651391895022
+    },
+    {
+      "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--embedding-drift-monitor/embedding-drift-monitor__6zRjd9n",
+      "task": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/embedding-drift-monitor",
+      "candidate": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--embedding-drift-monitor/embedding-drift-monitor__6zRjd9n/agent/episode/artifacts/lean-1/session-2",
+      "session": 2,
+      "dispatch": "lean-1",
+      "original_reward": 1.0,
+      "self_score": {
+        "passed": 8,
+        "total": 8
+      },
+      "kept": true,
+      "input_digest": "77316f0902b08da7f75ce36bd3ce9af64bbdd69dd4e51ff657ce3be67b34d38e",
+      "inputs": {
+        "task": {
+          ".": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "README.md": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "e49ae6cacb49767e188b1775ac660fcac025749eb1ec7417d6b17183107dac75"
+          },
+          "cheat": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "environment": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "instruction.md": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "948fec73b3457300d42d258c2c17ece57052bde4d343063604dff3cb5bf5c5a9"
+          },
+          "solution": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "task.toml": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "ac799e963328258b3301d52e5c58f2dfb10cf575850dd997ceef89cce463da3d"
+          },
+          "tests": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "tests/Dockerfile": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "d6085518885601e33cacbdf676a8194daf4008b5fb122960c52d41d595ed1249"
+          },
+          "tests/conftest.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "5ed0a2a6171bf0360fa9e7060397f7feb9eeaa692991a9bf0e2d83d0cc030cd9"
+          },
+          "tests/test.sh": {
+            "kind": "file",
+            "mode": 493,
+            "sha256": "f2aec2402e87a55fe8ad9d8b98533ef3f71ddd6784a9f480c5f76e8d797017e3"
+          },
+          "tests/test_outputs.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "abd41572c6ffb90b0a55d1ffec529c1cdd9286b08b64dae246fcbdab4c6836f1"
+          },
+          "solution/drift_monitor": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "solution/solve.sh": {
+            "kind": "file",
+            "mode": 493,
+            "sha256": "d1a6f715d5a4273d3ab4e06e0cd4b4cd06b3640f86314591b65d7a80ec0bd35f"
+          },
+          "solution/drift_monitor/alert.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "5b971f319c59d16224183eec7f3ff13e40459ce464a526a6ae1c9beff1d8972a"
+          },
+          "solution/drift_monitor/calibration.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "dcce331d38bea5b35f50c26a1ee6ed8541c51ca8d9f339856faa3971b54265e7"
+          },
+          "solution/drift_monitor/distance.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "44151bf8480c1789babe3ce03f2c7935e14ec135fb97d0263c304a4533cfc850"
+          },
+          "solution/drift_monitor/normalize.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "723cb7e88bff4233942d62edd5f9b111cd594dfd09667804e7a43949cafc311a"
+          },
+          "solution/drift_monitor/statistical_tests.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "077102585a9257d5960a6b331da602c10a3782863261e7e3b68a134ca5fac3e6"
+          },
+          "solution/drift_monitor/windowing.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "9122dfe693b015e54b068e70a4cceb016a5f037943cd5cbca266a73483157923"
+          },
+          "environment/Dockerfile": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "f5e17839c2613f903de51c91cf09a161877537dca3a32d1881fc5447cbc21e65"
+          },
+          "environment/data": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "environment/drift_monitor": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "environment/drift_monitor/__init__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "c4499b0559af0a8857a647c5fcc8102ca632e00597754850fdec197fcf8abdaf"
+          },
+          "environment/drift_monitor/__main__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "bc27d8196cc0035bf9bc1c252d9de219e75023ad87314ce954c1106cb23af387"
+          },
+          "environment/drift_monitor/alert.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "22452d53db3c34ea66c90fb8fdd548114cb62dcb4e9e9f66239e354ea13c1893"
+          },
+          "environment/drift_monitor/calibration.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "2c6e055797b5d552c387479111f1c98d98e670cbc8a2667b2e45a02a60a553c8"
+          },
+          "environment/drift_monitor/distance.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "3eee027191192d762e21bf143236ac3a3497dafde1165aeba0afa1ccf10e412d"
+          },
+          "environment/drift_monitor/monitor.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "007b90d9d136729dd9479eb25c45f7340329039d1c0f106109d1c4d609cc2648"
+          },
+          "environment/drift_monitor/normalize.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "87187cc4f7e72e7699c328e926b2c312c26cb435697f079ae7675b79cab49a88"
+          },
+          "environment/drift_monitor/statistical_tests.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "e0ee0a82e563e57cc9104f3e15468ff09a6a97edd864126675ae7eda8042a47d"
+          },
+          "environment/drift_monitor/windowing.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "7be4906e778e44ef0d238552f0a30a72405624122b55a8c94b96154e2138da1b"
+          },
+          "environment/data/.canary": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "63b800abbf1b909111eb7bd75d9c117c981a068f28156699752ad5f896521e0f"
+          },
+          "environment/data/current_clear_drift.npy": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "d861bafd41f1757408944ff4ea29f20ac345747595ec50298ce0be1f3b281d68"
+          },
+          "environment/data/current_stable.npy": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "e069a4c0b93d38c3f7e3a3908cd8987e9131aa1b1ad93e6a90c84deeee9aa483"
+          },
+          "environment/data/current_with_zeros.npy": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "024b9e1ea37ec59e6d837430b245a5eb1fd904d190db5cf86970882b3d9001a8"
+          },
+          "environment/data/reference_embeddings.npy": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "5a4e51d98be5cf8fbc000fd35851e2ad02b23c1c93e8722dab313f0931b35ef0"
+          },
+          "cheat/drift_monitor": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "cheat/solve.sh": {
+            "kind": "file",
+            "mode": 493,
+            "sha256": "aa4657b56ed8f820dc5fba90b2bfe1364809fa583f3484407fd94c30efd60790"
+          },
+          "cheat/drift_monitor/__init__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "eb8e52a670bb722909e46c944de307c5a757d17770e8f65f9865b78a70be5d72"
+          },
+          "cheat/drift_monitor/__main__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "99d2f723820ad85d6c7c9021caeb272870dddc58887e732e42afd1ed43b4a238"
+          },
+          "cheat/drift_monitor/alert.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "50df7d69de3df5ab98e4cedeef8cf0e928de599194070ec5f7847fa3ac462be2"
+          },
+          "cheat/drift_monitor/calibration.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "78ceb9d6a784064411730af72328156d83fc2b16114cefb9d5240c3ee5d3be02"
+          },
+          "cheat/drift_monitor/distance.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "2716dc8909eb2f56dc5412161a6031e72bf74dd40a34a3e6c2b74cbafb40e2f1"
+          },
+          "cheat/drift_monitor/monitor.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "70ba74e3d625e8e05a8e1a29f6a72bb5aada88050952b62fa3d0424d825fd1aa"
+          },
+          "cheat/drift_monitor/normalize.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "1d168761b22b746c3a688d488c3edd00d5fee661ad4a53b5ba44a7045a54bb67"
+          },
+          "cheat/drift_monitor/statistical_tests.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "11596c7ce47320a066effb54821f73142d30a87a97b6749383d9da973f653f58"
+          },
+          "cheat/drift_monitor/windowing.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "c84705afe7c7a02abe2e8a6755fc2118fc73e39be36ecee09c845af4a110bbde"
+          }
+        },
+        "candidate": {
+          ".": {
+            "kind": "directory",
+            "mode": 511
+          },
+          "Dockerfile": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "f5e17839c2613f903de51c91cf09a161877537dca3a32d1881fc5447cbc21e65"
+          },
+          "data": {
+            "kind": "directory",
+            "mode": 511
+          },
+          "drift_monitor": {
+            "kind": "directory",
+            "mode": 511
+          },
+          "drift_monitor/__init__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "c4499b0559af0a8857a647c5fcc8102ca632e00597754850fdec197fcf8abdaf"
+          },
+          "drift_monitor/__main__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "bc27d8196cc0035bf9bc1c252d9de219e75023ad87314ce954c1106cb23af387"
+          },
+          "drift_monitor/__pycache__": {
+            "kind": "directory",
+            "mode": 511
+          },
+          "drift_monitor/alert.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "53189133371dc7008019888da2b5f1dfc14ed2af61deeae5bb757445fa0e72c1"
+          },
+          "drift_monitor/calibration.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "2c1aa05c057bf0d482b27836a6a7b27e0247881d8a15462dc03914190029f434"
+          },
+          "drift_monitor/distance.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "f6f815687b5764601f85763593e6a88ce15984c0cb42fd5e6159ca476d9db690"
+          },
+          "drift_monitor/monitor.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "72dc04f9d0dc032b35946ef247065715b6ed2f1f8f2d573c2ba9ec2f38b48cee"
+          },
+          "drift_monitor/normalize.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "afb8b33099066c4cebc480df92e95e69a2d94fc9618428dc3d4a0f6864ccae72"
+          },
+          "drift_monitor/statistical_tests.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "0b19daf768ff427ef0fff5f75e4ddb97676d692556170bcb2f7ee66acab06a65"
+          },
+          "drift_monitor/windowing.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "6c20d16ebef52479ad3ea2dfcc57ca4c38325b9b071d8b2851a7084a4b879b4f"
+          },
+          "drift_monitor/__pycache__/__init__.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "7b4c1f8af09179c9a620688f6281cc0b0efbd56adc8c4b07d0204d4ec28aa235"
+          },
+          "drift_monitor/__pycache__/__main__.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "a053d3cb64004dce060aebbed36c0ec5dd8cf7e873526a4e096a42371acb9c49"
+          },
+          "drift_monitor/__pycache__/alert.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "b5feba76ba1a1a8fde357ada73b299300211ff0b07e7b1d84de45c08e4b49140"
+          },
+          "drift_monitor/__pycache__/calibration.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "013693f7ccb4ebfab80115fac602ed20bb97ec8e01dc883f7c29aeb0e6c01078"
+          },
+          "drift_monitor/__pycache__/distance.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "ea99d77da4629de3a89d0febfc6005caa14d650e45a4183d37c78e8f0670fdcd"
+          },
+          "drift_monitor/__pycache__/monitor.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "de1669be106811d0c4c3c8abc0393c89f0b4275f3c618048e3a93f8040f78860"
+          },
+          "drift_monitor/__pycache__/normalize.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "136bdd0491c53d3abf547ab835010d665d354bbce139c584813702248a91e22f"
+          },
+          "drift_monitor/__pycache__/statistical_tests.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "5feacfbb1e5767dab9f67a824ac9c103cf7952faf9f0db5196666aa272fc0565"
+          },
+          "drift_monitor/__pycache__/windowing.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "2eae9b1b5b5922c34363613fd23425f99fecf6703f5577074039a308eb2a168d"
+          },
+          "data/.canary": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "63b800abbf1b909111eb7bd75d9c117c981a068f28156699752ad5f896521e0f"
+          },
+          "data/current_clear_drift.npy": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "d861bafd41f1757408944ff4ea29f20ac345747595ec50298ce0be1f3b281d68"
+          },
+          "data/current_stable.npy": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "e069a4c0b93d38c3f7e3a3908cd8987e9131aa1b1ad93e6a90c84deeee9aa483"
+          },
+          "data/current_with_zeros.npy": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "024b9e1ea37ec59e6d837430b245a5eb1fd904d190db5cf86970882b3d9001a8"
+          },
+          "data/reference_embeddings.npy": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "5a4e51d98be5cf8fbc000fd35851e2ad02b23c1c93e8722dab313f0931b35ef0"
+          }
+        },
+        "mount": "/app"
+      },
+      "id": "candidate-0008",
+      "reused_from": "candidate-0007",
+      "verifier_executed": false,
+      "grade": {
+        "reward": 1.0,
+        "rewards": {
+          "reward": 1.0
+        },
+        "exit": 0,
+        "exception": null,
+        "message": null,
+        "image_cache": "warm",
+        "trial_dir": "/home/christopherdavid/.openagents/terminal-bench/experiments/iteration-speed-9618/grading-fresh/candidate-0007/verify__22e2a4a",
+        "stdout_tail": null
+      },
+      "seconds": 0.0029322620248422027
+    },
+    {
+      "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-2/embedding-drift-monitor__y2bahob",
+      "task": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/embedding-drift-monitor",
+      "candidate": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-2/embedding-drift-monitor__y2bahob/agent/episode/artifacts/lean-1/session-1",
+      "session": 1,
+      "dispatch": "lean-1",
+      "original_reward": 1.0,
+      "self_score": {
+        "passed": 10,
+        "total": 10
+      },
+      "kept": true,
+      "input_digest": "16526f8ccf0bd76e98ee9489d28e5b7328948d169c4d68b8170d9fa6c707d666",
+      "inputs": {
+        "task": {
+          ".": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "README.md": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "e49ae6cacb49767e188b1775ac660fcac025749eb1ec7417d6b17183107dac75"
+          },
+          "cheat": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "environment": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "instruction.md": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "948fec73b3457300d42d258c2c17ece57052bde4d343063604dff3cb5bf5c5a9"
+          },
+          "solution": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "task.toml": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "ac799e963328258b3301d52e5c58f2dfb10cf575850dd997ceef89cce463da3d"
+          },
+          "tests": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "tests/Dockerfile": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "d6085518885601e33cacbdf676a8194daf4008b5fb122960c52d41d595ed1249"
+          },
+          "tests/conftest.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "5ed0a2a6171bf0360fa9e7060397f7feb9eeaa692991a9bf0e2d83d0cc030cd9"
+          },
+          "tests/test.sh": {
+            "kind": "file",
+            "mode": 493,
+            "sha256": "f2aec2402e87a55fe8ad9d8b98533ef3f71ddd6784a9f480c5f76e8d797017e3"
+          },
+          "tests/test_outputs.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "abd41572c6ffb90b0a55d1ffec529c1cdd9286b08b64dae246fcbdab4c6836f1"
+          },
+          "solution/drift_monitor": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "solution/solve.sh": {
+            "kind": "file",
+            "mode": 493,
+            "sha256": "d1a6f715d5a4273d3ab4e06e0cd4b4cd06b3640f86314591b65d7a80ec0bd35f"
+          },
+          "solution/drift_monitor/alert.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "5b971f319c59d16224183eec7f3ff13e40459ce464a526a6ae1c9beff1d8972a"
+          },
+          "solution/drift_monitor/calibration.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "dcce331d38bea5b35f50c26a1ee6ed8541c51ca8d9f339856faa3971b54265e7"
+          },
+          "solution/drift_monitor/distance.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "44151bf8480c1789babe3ce03f2c7935e14ec135fb97d0263c304a4533cfc850"
+          },
+          "solution/drift_monitor/normalize.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "723cb7e88bff4233942d62edd5f9b111cd594dfd09667804e7a43949cafc311a"
+          },
+          "solution/drift_monitor/statistical_tests.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "077102585a9257d5960a6b331da602c10a3782863261e7e3b68a134ca5fac3e6"
+          },
+          "solution/drift_monitor/windowing.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "9122dfe693b015e54b068e70a4cceb016a5f037943cd5cbca266a73483157923"
+          },
+          "environment/Dockerfile": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "f5e17839c2613f903de51c91cf09a161877537dca3a32d1881fc5447cbc21e65"
+          },
+          "environment/data": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "environment/drift_monitor": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "environment/drift_monitor/__init__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "c4499b0559af0a8857a647c5fcc8102ca632e00597754850fdec197fcf8abdaf"
+          },
+          "environment/drift_monitor/__main__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "bc27d8196cc0035bf9bc1c252d9de219e75023ad87314ce954c1106cb23af387"
+          },
+          "environment/drift_monitor/alert.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "22452d53db3c34ea66c90fb8fdd548114cb62dcb4e9e9f66239e354ea13c1893"
+          },
+          "environment/drift_monitor/calibration.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "2c6e055797b5d552c387479111f1c98d98e670cbc8a2667b2e45a02a60a553c8"
+          },
+          "environment/drift_monitor/distance.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "3eee027191192d762e21bf143236ac3a3497dafde1165aeba0afa1ccf10e412d"
+          },
+          "environment/drift_monitor/monitor.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "007b90d9d136729dd9479eb25c45f7340329039d1c0f106109d1c4d609cc2648"
+          },
+          "environment/drift_monitor/normalize.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "87187cc4f7e72e7699c328e926b2c312c26cb435697f079ae7675b79cab49a88"
+          },
+          "environment/drift_monitor/statistical_tests.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "e0ee0a82e563e57cc9104f3e15468ff09a6a97edd864126675ae7eda8042a47d"
+          },
+          "environment/drift_monitor/windowing.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "7be4906e778e44ef0d238552f0a30a72405624122b55a8c94b96154e2138da1b"
+          },
+          "environment/data/.canary": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "63b800abbf1b909111eb7bd75d9c117c981a068f28156699752ad5f896521e0f"
+          },
+          "environment/data/current_clear_drift.npy": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "d861bafd41f1757408944ff4ea29f20ac345747595ec50298ce0be1f3b281d68"
+          },
+          "environment/data/current_stable.npy": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "e069a4c0b93d38c3f7e3a3908cd8987e9131aa1b1ad93e6a90c84deeee9aa483"
+          },
+          "environment/data/current_with_zeros.npy": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "024b9e1ea37ec59e6d837430b245a5eb1fd904d190db5cf86970882b3d9001a8"
+          },
+          "environment/data/reference_embeddings.npy": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "5a4e51d98be5cf8fbc000fd35851e2ad02b23c1c93e8722dab313f0931b35ef0"
+          },
+          "cheat/drift_monitor": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "cheat/solve.sh": {
+            "kind": "file",
+            "mode": 493,
+            "sha256": "aa4657b56ed8f820dc5fba90b2bfe1364809fa583f3484407fd94c30efd60790"
+          },
+          "cheat/drift_monitor/__init__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "eb8e52a670bb722909e46c944de307c5a757d17770e8f65f9865b78a70be5d72"
+          },
+          "cheat/drift_monitor/__main__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "99d2f723820ad85d6c7c9021caeb272870dddc58887e732e42afd1ed43b4a238"
+          },
+          "cheat/drift_monitor/alert.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "50df7d69de3df5ab98e4cedeef8cf0e928de599194070ec5f7847fa3ac462be2"
+          },
+          "cheat/drift_monitor/calibration.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "78ceb9d6a784064411730af72328156d83fc2b16114cefb9d5240c3ee5d3be02"
+          },
+          "cheat/drift_monitor/distance.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "2716dc8909eb2f56dc5412161a6031e72bf74dd40a34a3e6c2b74cbafb40e2f1"
+          },
+          "cheat/drift_monitor/monitor.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "70ba74e3d625e8e05a8e1a29f6a72bb5aada88050952b62fa3d0424d825fd1aa"
+          },
+          "cheat/drift_monitor/normalize.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "1d168761b22b746c3a688d488c3edd00d5fee661ad4a53b5ba44a7045a54bb67"
+          },
+          "cheat/drift_monitor/statistical_tests.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "11596c7ce47320a066effb54821f73142d30a87a97b6749383d9da973f653f58"
+          },
+          "cheat/drift_monitor/windowing.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "c84705afe7c7a02abe2e8a6755fc2118fc73e39be36ecee09c845af4a110bbde"
+          }
+        },
+        "candidate": {
+          ".": {
+            "kind": "directory",
+            "mode": 511
+          },
+          "Dockerfile": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "f5e17839c2613f903de51c91cf09a161877537dca3a32d1881fc5447cbc21e65"
+          },
+          "data": {
+            "kind": "directory",
+            "mode": 511
+          },
+          "drift_monitor": {
+            "kind": "directory",
+            "mode": 511
+          },
+          "drift_monitor/__init__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "c4499b0559af0a8857a647c5fcc8102ca632e00597754850fdec197fcf8abdaf"
+          },
+          "drift_monitor/__main__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "bc27d8196cc0035bf9bc1c252d9de219e75023ad87314ce954c1106cb23af387"
+          },
+          "drift_monitor/__pycache__": {
+            "kind": "directory",
+            "mode": 511
+          },
+          "drift_monitor/alert.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "006b81e588e8d889da93b7b6ac6cb70d819b4f2fc5ff70ceb06d5b305b776ddf"
+          },
+          "drift_monitor/calibration.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "9f5829a9081908a7db1583e8d31564f2b684728ed21832f0b56a8abba00d83a2"
+          },
+          "drift_monitor/distance.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "f0bb9729ac33200cda439cd1c5e8ed638302518f9d47069d244e9a0047487cf2"
+          },
+          "drift_monitor/monitor.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "2f772fd2c4e3a78d56cf3e99483cc6e814e0a179794dbdb5ee7db59f2d788d06"
+          },
+          "drift_monitor/normalize.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "ed99e52602563047f25208f6712270df60b13abcfb139be34d0b215cbd2b9621"
+          },
+          "drift_monitor/statistical_tests.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "fe7e29892ca938bdc4214c4e0f290961dbd087beb1e4655f9226bf392815998e"
+          },
+          "drift_monitor/windowing.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "41245b19d4d7055ee38c52275fca9bab159211266a878bcf3812235e643206bb"
+          },
+          "drift_monitor/__pycache__/__init__.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "7b4c1f8af09179c9a620688f6281cc0b0efbd56adc8c4b07d0204d4ec28aa235"
+          },
+          "drift_monitor/__pycache__/__main__.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "a053d3cb64004dce060aebbed36c0ec5dd8cf7e873526a4e096a42371acb9c49"
+          },
+          "drift_monitor/__pycache__/alert.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "a3930939d7c76a0aca9ceca01524ef5d3d2f9187382872a355256d253e852021"
+          },
+          "drift_monitor/__pycache__/calibration.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "54fe29924e9a885f43c0f2bf7bb35c331621e6f17713ae3d3facd1a3099a0348"
+          },
+          "drift_monitor/__pycache__/distance.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "d4d69dd5c10484c5bc044f023d7c230e3075ce4719d65741aa8c4eac98b8d79a"
+          },
+          "drift_monitor/__pycache__/monitor.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "97559c1a3d2f9556dfd89615df0812162a81743504009c9a0ae055f871cc4119"
+          },
+          "drift_monitor/__pycache__/normalize.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "ea295859134a827127a5815df073833e55c2125800f6bf509950f27f884c7e4c"
+          },
+          "drift_monitor/__pycache__/statistical_tests.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "688841075b25f796d8912168a3d28d555f279a339cf24e27caaf0590050fe699"
+          },
+          "drift_monitor/__pycache__/windowing.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "fed53138a8e0b442f67383af91819ed947abd8da5f4682b391109b42d7f6ef83"
+          },
+          "data/.canary": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "63b800abbf1b909111eb7bd75d9c117c981a068f28156699752ad5f896521e0f"
+          },
+          "data/current_clear_drift.npy": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "d861bafd41f1757408944ff4ea29f20ac345747595ec50298ce0be1f3b281d68"
+          },
+          "data/current_stable.npy": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "e069a4c0b93d38c3f7e3a3908cd8987e9131aa1b1ad93e6a90c84deeee9aa483"
+          },
+          "data/current_with_zeros.npy": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "024b9e1ea37ec59e6d837430b245a5eb1fd904d190db5cf86970882b3d9001a8"
+          },
+          "data/reference_embeddings.npy": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "5a4e51d98be5cf8fbc000fd35851e2ad02b23c1c93e8722dab313f0931b35ef0"
+          }
+        },
+        "mount": "/app"
+      },
+      "id": "candidate-0009",
+      "reused_from": null,
+      "verifier_executed": true,
+      "grade": {
+        "reward": 1.0,
+        "rewards": {
+          "reward": 1.0
+        },
+        "exit": 0,
+        "exception": null,
+        "message": null,
+        "image_cache": "warm",
+        "trial_dir": "/home/christopherdavid/.openagents/terminal-bench/experiments/iteration-speed-9618/grading-fresh/candidate-0009/verify__1e4a4a0",
+        "stdout_tail": null
+      },
+      "seconds": 45.54713258694392
+    },
+    {
+      "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-2/embedding-drift-monitor__y2bahob",
+      "task": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/embedding-drift-monitor",
+      "candidate": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-2/embedding-drift-monitor__y2bahob/agent/episode/artifacts/lean-1/session-2",
+      "session": 2,
+      "dispatch": "lean-1",
+      "original_reward": 1.0,
+      "self_score": {
+        "passed": 10,
+        "total": 10
+      },
+      "kept": true,
+      "input_digest": "16526f8ccf0bd76e98ee9489d28e5b7328948d169c4d68b8170d9fa6c707d666",
+      "inputs": {
+        "task": {
+          ".": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "README.md": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "e49ae6cacb49767e188b1775ac660fcac025749eb1ec7417d6b17183107dac75"
+          },
+          "cheat": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "environment": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "instruction.md": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "948fec73b3457300d42d258c2c17ece57052bde4d343063604dff3cb5bf5c5a9"
+          },
+          "solution": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "task.toml": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "ac799e963328258b3301d52e5c58f2dfb10cf575850dd997ceef89cce463da3d"
+          },
+          "tests": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "tests/Dockerfile": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "d6085518885601e33cacbdf676a8194daf4008b5fb122960c52d41d595ed1249"
+          },
+          "tests/conftest.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "5ed0a2a6171bf0360fa9e7060397f7feb9eeaa692991a9bf0e2d83d0cc030cd9"
+          },
+          "tests/test.sh": {
+            "kind": "file",
+            "mode": 493,
+            "sha256": "f2aec2402e87a55fe8ad9d8b98533ef3f71ddd6784a9f480c5f76e8d797017e3"
+          },
+          "tests/test_outputs.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "abd41572c6ffb90b0a55d1ffec529c1cdd9286b08b64dae246fcbdab4c6836f1"
+          },
+          "solution/drift_monitor": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "solution/solve.sh": {
+            "kind": "file",
+            "mode": 493,
+            "sha256": "d1a6f715d5a4273d3ab4e06e0cd4b4cd06b3640f86314591b65d7a80ec0bd35f"
+          },
+          "solution/drift_monitor/alert.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "5b971f319c59d16224183eec7f3ff13e40459ce464a526a6ae1c9beff1d8972a"
+          },
+          "solution/drift_monitor/calibration.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "dcce331d38bea5b35f50c26a1ee6ed8541c51ca8d9f339856faa3971b54265e7"
+          },
+          "solution/drift_monitor/distance.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "44151bf8480c1789babe3ce03f2c7935e14ec135fb97d0263c304a4533cfc850"
+          },
+          "solution/drift_monitor/normalize.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "723cb7e88bff4233942d62edd5f9b111cd594dfd09667804e7a43949cafc311a"
+          },
+          "solution/drift_monitor/statistical_tests.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "077102585a9257d5960a6b331da602c10a3782863261e7e3b68a134ca5fac3e6"
+          },
+          "solution/drift_monitor/windowing.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "9122dfe693b015e54b068e70a4cceb016a5f037943cd5cbca266a73483157923"
+          },
+          "environment/Dockerfile": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "f5e17839c2613f903de51c91cf09a161877537dca3a32d1881fc5447cbc21e65"
+          },
+          "environment/data": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "environment/drift_monitor": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "environment/drift_monitor/__init__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "c4499b0559af0a8857a647c5fcc8102ca632e00597754850fdec197fcf8abdaf"
+          },
+          "environment/drift_monitor/__main__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "bc27d8196cc0035bf9bc1c252d9de219e75023ad87314ce954c1106cb23af387"
+          },
+          "environment/drift_monitor/alert.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "22452d53db3c34ea66c90fb8fdd548114cb62dcb4e9e9f66239e354ea13c1893"
+          },
+          "environment/drift_monitor/calibration.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "2c6e055797b5d552c387479111f1c98d98e670cbc8a2667b2e45a02a60a553c8"
+          },
+          "environment/drift_monitor/distance.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "3eee027191192d762e21bf143236ac3a3497dafde1165aeba0afa1ccf10e412d"
+          },
+          "environment/drift_monitor/monitor.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "007b90d9d136729dd9479eb25c45f7340329039d1c0f106109d1c4d609cc2648"
+          },
+          "environment/drift_monitor/normalize.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "87187cc4f7e72e7699c328e926b2c312c26cb435697f079ae7675b79cab49a88"
+          },
+          "environment/drift_monitor/statistical_tests.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "e0ee0a82e563e57cc9104f3e15468ff09a6a97edd864126675ae7eda8042a47d"
+          },
+          "environment/drift_monitor/windowing.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "7be4906e778e44ef0d238552f0a30a72405624122b55a8c94b96154e2138da1b"
+          },
+          "environment/data/.canary": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "63b800abbf1b909111eb7bd75d9c117c981a068f28156699752ad5f896521e0f"
+          },
+          "environment/data/current_clear_drift.npy": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "d861bafd41f1757408944ff4ea29f20ac345747595ec50298ce0be1f3b281d68"
+          },
+          "environment/data/current_stable.npy": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "e069a4c0b93d38c3f7e3a3908cd8987e9131aa1b1ad93e6a90c84deeee9aa483"
+          },
+          "environment/data/current_with_zeros.npy": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "024b9e1ea37ec59e6d837430b245a5eb1fd904d190db5cf86970882b3d9001a8"
+          },
+          "environment/data/reference_embeddings.npy": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "5a4e51d98be5cf8fbc000fd35851e2ad02b23c1c93e8722dab313f0931b35ef0"
+          },
+          "cheat/drift_monitor": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "cheat/solve.sh": {
+            "kind": "file",
+            "mode": 493,
+            "sha256": "aa4657b56ed8f820dc5fba90b2bfe1364809fa583f3484407fd94c30efd60790"
+          },
+          "cheat/drift_monitor/__init__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "eb8e52a670bb722909e46c944de307c5a757d17770e8f65f9865b78a70be5d72"
+          },
+          "cheat/drift_monitor/__main__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "99d2f723820ad85d6c7c9021caeb272870dddc58887e732e42afd1ed43b4a238"
+          },
+          "cheat/drift_monitor/alert.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "50df7d69de3df5ab98e4cedeef8cf0e928de599194070ec5f7847fa3ac462be2"
+          },
+          "cheat/drift_monitor/calibration.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "78ceb9d6a784064411730af72328156d83fc2b16114cefb9d5240c3ee5d3be02"
+          },
+          "cheat/drift_monitor/distance.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "2716dc8909eb2f56dc5412161a6031e72bf74dd40a34a3e6c2b74cbafb40e2f1"
+          },
+          "cheat/drift_monitor/monitor.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "70ba74e3d625e8e05a8e1a29f6a72bb5aada88050952b62fa3d0424d825fd1aa"
+          },
+          "cheat/drift_monitor/normalize.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "1d168761b22b746c3a688d488c3edd00d5fee661ad4a53b5ba44a7045a54bb67"
+          },
+          "cheat/drift_monitor/statistical_tests.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "11596c7ce47320a066effb54821f73142d30a87a97b6749383d9da973f653f58"
+          },
+          "cheat/drift_monitor/windowing.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "c84705afe7c7a02abe2e8a6755fc2118fc73e39be36ecee09c845af4a110bbde"
+          }
+        },
+        "candidate": {
+          ".": {
+            "kind": "directory",
+            "mode": 511
+          },
+          "Dockerfile": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "f5e17839c2613f903de51c91cf09a161877537dca3a32d1881fc5447cbc21e65"
+          },
+          "data": {
+            "kind": "directory",
+            "mode": 511
+          },
+          "drift_monitor": {
+            "kind": "directory",
+            "mode": 511
+          },
+          "drift_monitor/__init__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "c4499b0559af0a8857a647c5fcc8102ca632e00597754850fdec197fcf8abdaf"
+          },
+          "drift_monitor/__main__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "bc27d8196cc0035bf9bc1c252d9de219e75023ad87314ce954c1106cb23af387"
+          },
+          "drift_monitor/__pycache__": {
+            "kind": "directory",
+            "mode": 511
+          },
+          "drift_monitor/alert.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "006b81e588e8d889da93b7b6ac6cb70d819b4f2fc5ff70ceb06d5b305b776ddf"
+          },
+          "drift_monitor/calibration.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "9f5829a9081908a7db1583e8d31564f2b684728ed21832f0b56a8abba00d83a2"
+          },
+          "drift_monitor/distance.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "f0bb9729ac33200cda439cd1c5e8ed638302518f9d47069d244e9a0047487cf2"
+          },
+          "drift_monitor/monitor.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "2f772fd2c4e3a78d56cf3e99483cc6e814e0a179794dbdb5ee7db59f2d788d06"
+          },
+          "drift_monitor/normalize.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "ed99e52602563047f25208f6712270df60b13abcfb139be34d0b215cbd2b9621"
+          },
+          "drift_monitor/statistical_tests.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "fe7e29892ca938bdc4214c4e0f290961dbd087beb1e4655f9226bf392815998e"
+          },
+          "drift_monitor/windowing.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "41245b19d4d7055ee38c52275fca9bab159211266a878bcf3812235e643206bb"
+          },
+          "drift_monitor/__pycache__/__init__.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "7b4c1f8af09179c9a620688f6281cc0b0efbd56adc8c4b07d0204d4ec28aa235"
+          },
+          "drift_monitor/__pycache__/__main__.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "a053d3cb64004dce060aebbed36c0ec5dd8cf7e873526a4e096a42371acb9c49"
+          },
+          "drift_monitor/__pycache__/alert.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "a3930939d7c76a0aca9ceca01524ef5d3d2f9187382872a355256d253e852021"
+          },
+          "drift_monitor/__pycache__/calibration.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "54fe29924e9a885f43c0f2bf7bb35c331621e6f17713ae3d3facd1a3099a0348"
+          },
+          "drift_monitor/__pycache__/distance.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "d4d69dd5c10484c5bc044f023d7c230e3075ce4719d65741aa8c4eac98b8d79a"
+          },
+          "drift_monitor/__pycache__/monitor.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "97559c1a3d2f9556dfd89615df0812162a81743504009c9a0ae055f871cc4119"
+          },
+          "drift_monitor/__pycache__/normalize.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "ea295859134a827127a5815df073833e55c2125800f6bf509950f27f884c7e4c"
+          },
+          "drift_monitor/__pycache__/statistical_tests.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "688841075b25f796d8912168a3d28d555f279a339cf24e27caaf0590050fe699"
+          },
+          "drift_monitor/__pycache__/windowing.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "fed53138a8e0b442f67383af91819ed947abd8da5f4682b391109b42d7f6ef83"
+          },
+          "data/.canary": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "63b800abbf1b909111eb7bd75d9c117c981a068f28156699752ad5f896521e0f"
+          },
+          "data/current_clear_drift.npy": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "d861bafd41f1757408944ff4ea29f20ac345747595ec50298ce0be1f3b281d68"
+          },
+          "data/current_stable.npy": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "e069a4c0b93d38c3f7e3a3908cd8987e9131aa1b1ad93e6a90c84deeee9aa483"
+          },
+          "data/current_with_zeros.npy": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "024b9e1ea37ec59e6d837430b245a5eb1fd904d190db5cf86970882b3d9001a8"
+          },
+          "data/reference_embeddings.npy": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "5a4e51d98be5cf8fbc000fd35851e2ad02b23c1c93e8722dab313f0931b35ef0"
+          }
+        },
+        "mount": "/app"
+      },
+      "id": "candidate-0010",
+      "reused_from": "candidate-0009",
+      "verifier_executed": false,
+      "grade": {
+        "reward": 1.0,
+        "rewards": {
+          "reward": 1.0
+        },
+        "exit": 0,
+        "exception": null,
+        "message": null,
+        "image_cache": "warm",
+        "trial_dir": "/home/christopherdavid/.openagents/terminal-bench/experiments/iteration-speed-9618/grading-fresh/candidate-0009/verify__1e4a4a0",
+        "stdout_tail": null
+      },
+      "seconds": 0.002817528962623328
+    },
+    {
+      "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-3/embedding-drift-monitor__QAHE7De",
+      "task": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/embedding-drift-monitor",
+      "candidate": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-3/embedding-drift-monitor__QAHE7De/agent/episode/artifacts/lean-1/session-1",
+      "session": 1,
+      "dispatch": "lean-1",
+      "original_reward": 1.0,
+      "self_score": {
+        "passed": 6,
+        "total": 6
+      },
+      "kept": true,
+      "input_digest": "25ae0645d737c26cb7baf11ee3cd76c6fd9d1dcd5166b37d91dc5a171f5a7c1f",
+      "inputs": {
+        "task": {
+          ".": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "README.md": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "e49ae6cacb49767e188b1775ac660fcac025749eb1ec7417d6b17183107dac75"
+          },
+          "cheat": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "environment": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "instruction.md": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "948fec73b3457300d42d258c2c17ece57052bde4d343063604dff3cb5bf5c5a9"
+          },
+          "solution": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "task.toml": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "ac799e963328258b3301d52e5c58f2dfb10cf575850dd997ceef89cce463da3d"
+          },
+          "tests": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "tests/Dockerfile": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "d6085518885601e33cacbdf676a8194daf4008b5fb122960c52d41d595ed1249"
+          },
+          "tests/conftest.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "5ed0a2a6171bf0360fa9e7060397f7feb9eeaa692991a9bf0e2d83d0cc030cd9"
+          },
+          "tests/test.sh": {
+            "kind": "file",
+            "mode": 493,
+            "sha256": "f2aec2402e87a55fe8ad9d8b98533ef3f71ddd6784a9f480c5f76e8d797017e3"
+          },
+          "tests/test_outputs.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "abd41572c6ffb90b0a55d1ffec529c1cdd9286b08b64dae246fcbdab4c6836f1"
+          },
+          "solution/drift_monitor": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "solution/solve.sh": {
+            "kind": "file",
+            "mode": 493,
+            "sha256": "d1a6f715d5a4273d3ab4e06e0cd4b4cd06b3640f86314591b65d7a80ec0bd35f"
+          },
+          "solution/drift_monitor/alert.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "5b971f319c59d16224183eec7f3ff13e40459ce464a526a6ae1c9beff1d8972a"
+          },
+          "solution/drift_monitor/calibration.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "dcce331d38bea5b35f50c26a1ee6ed8541c51ca8d9f339856faa3971b54265e7"
+          },
+          "solution/drift_monitor/distance.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "44151bf8480c1789babe3ce03f2c7935e14ec135fb97d0263c304a4533cfc850"
+          },
+          "solution/drift_monitor/normalize.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "723cb7e88bff4233942d62edd5f9b111cd594dfd09667804e7a43949cafc311a"
+          },
+          "solution/drift_monitor/statistical_tests.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "077102585a9257d5960a6b331da602c10a3782863261e7e3b68a134ca5fac3e6"
+          },
+          "solution/drift_monitor/windowing.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "9122dfe693b015e54b068e70a4cceb016a5f037943cd5cbca266a73483157923"
+          },
+          "environment/Dockerfile": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "f5e17839c2613f903de51c91cf09a161877537dca3a32d1881fc5447cbc21e65"
+          },
+          "environment/data": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "environment/drift_monitor": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "environment/drift_monitor/__init__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "c4499b0559af0a8857a647c5fcc8102ca632e00597754850fdec197fcf8abdaf"
+          },
+          "environment/drift_monitor/__main__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "bc27d8196cc0035bf9bc1c252d9de219e75023ad87314ce954c1106cb23af387"
+          },
+          "environment/drift_monitor/alert.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "22452d53db3c34ea66c90fb8fdd548114cb62dcb4e9e9f66239e354ea13c1893"
+          },
+          "environment/drift_monitor/calibration.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "2c6e055797b5d552c387479111f1c98d98e670cbc8a2667b2e45a02a60a553c8"
+          },
+          "environment/drift_monitor/distance.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "3eee027191192d762e21bf143236ac3a3497dafde1165aeba0afa1ccf10e412d"
+          },
+          "environment/drift_monitor/monitor.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "007b90d9d136729dd9479eb25c45f7340329039d1c0f106109d1c4d609cc2648"
+          },
+          "environment/drift_monitor/normalize.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "87187cc4f7e72e7699c328e926b2c312c26cb435697f079ae7675b79cab49a88"
+          },
+          "environment/drift_monitor/statistical_tests.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "e0ee0a82e563e57cc9104f3e15468ff09a6a97edd864126675ae7eda8042a47d"
+          },
+          "environment/drift_monitor/windowing.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "7be4906e778e44ef0d238552f0a30a72405624122b55a8c94b96154e2138da1b"
+          },
+          "environment/data/.canary": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "63b800abbf1b909111eb7bd75d9c117c981a068f28156699752ad5f896521e0f"
+          },
+          "environment/data/current_clear_drift.npy": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "d861bafd41f1757408944ff4ea29f20ac345747595ec50298ce0be1f3b281d68"
+          },
+          "environment/data/current_stable.npy": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "e069a4c0b93d38c3f7e3a3908cd8987e9131aa1b1ad93e6a90c84deeee9aa483"
+          },
+          "environment/data/current_with_zeros.npy": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "024b9e1ea37ec59e6d837430b245a5eb1fd904d190db5cf86970882b3d9001a8"
+          },
+          "environment/data/reference_embeddings.npy": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "5a4e51d98be5cf8fbc000fd35851e2ad02b23c1c93e8722dab313f0931b35ef0"
+          },
+          "cheat/drift_monitor": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "cheat/solve.sh": {
+            "kind": "file",
+            "mode": 493,
+            "sha256": "aa4657b56ed8f820dc5fba90b2bfe1364809fa583f3484407fd94c30efd60790"
+          },
+          "cheat/drift_monitor/__init__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "eb8e52a670bb722909e46c944de307c5a757d17770e8f65f9865b78a70be5d72"
+          },
+          "cheat/drift_monitor/__main__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "99d2f723820ad85d6c7c9021caeb272870dddc58887e732e42afd1ed43b4a238"
+          },
+          "cheat/drift_monitor/alert.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "50df7d69de3df5ab98e4cedeef8cf0e928de599194070ec5f7847fa3ac462be2"
+          },
+          "cheat/drift_monitor/calibration.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "78ceb9d6a784064411730af72328156d83fc2b16114cefb9d5240c3ee5d3be02"
+          },
+          "cheat/drift_monitor/distance.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "2716dc8909eb2f56dc5412161a6031e72bf74dd40a34a3e6c2b74cbafb40e2f1"
+          },
+          "cheat/drift_monitor/monitor.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "70ba74e3d625e8e05a8e1a29f6a72bb5aada88050952b62fa3d0424d825fd1aa"
+          },
+          "cheat/drift_monitor/normalize.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "1d168761b22b746c3a688d488c3edd00d5fee661ad4a53b5ba44a7045a54bb67"
+          },
+          "cheat/drift_monitor/statistical_tests.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "11596c7ce47320a066effb54821f73142d30a87a97b6749383d9da973f653f58"
+          },
+          "cheat/drift_monitor/windowing.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "c84705afe7c7a02abe2e8a6755fc2118fc73e39be36ecee09c845af4a110bbde"
+          }
+        },
+        "candidate": {
+          ".": {
+            "kind": "directory",
+            "mode": 511
+          },
+          "Dockerfile": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "f5e17839c2613f903de51c91cf09a161877537dca3a32d1881fc5447cbc21e65"
+          },
+          "data": {
+            "kind": "directory",
+            "mode": 511
+          },
+          "drift_monitor": {
+            "kind": "directory",
+            "mode": 511
+          },
+          "drift_monitor/__init__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "c4499b0559af0a8857a647c5fcc8102ca632e00597754850fdec197fcf8abdaf"
+          },
+          "drift_monitor/__main__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "bc27d8196cc0035bf9bc1c252d9de219e75023ad87314ce954c1106cb23af387"
+          },
+          "drift_monitor/__pycache__": {
+            "kind": "directory",
+            "mode": 511
+          },
+          "drift_monitor/alert.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "8b13700655f3f3e154b48c1ce4f69c1d72822dbf36a490f3363232214e0873bb"
+          },
+          "drift_monitor/calibration.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "41efe7fd3619226f00ccb88366c5962e4e3cecdf43bb9c4798a0894c88085e08"
+          },
+          "drift_monitor/distance.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "1c9b7ee68809a4da9a9043b4aec51a5d8c956f7f19829c0f709dc2308dfac919"
+          },
+          "drift_monitor/monitor.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "e97fbc93d2ef2d6c5d6e3eeedd3fb6d10978e62b1885a986dc4bc3b5f918f8c2"
+          },
+          "drift_monitor/normalize.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "bf888e2d085297e14559e704fecc330efc432681c7425646a0b75d83f795aa1c"
+          },
+          "drift_monitor/statistical_tests.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "b932b7c6c21840823892d79acb4ec4fd475c41e9b38c9f94fd7386a84a5bf25a"
+          },
+          "drift_monitor/windowing.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "d4bafe0c729dcf0eff6f199913aede38b7043d6c3082264f2ed562c654e096fa"
+          },
+          "drift_monitor/__pycache__/__init__.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "7b4c1f8af09179c9a620688f6281cc0b0efbd56adc8c4b07d0204d4ec28aa235"
+          },
+          "drift_monitor/__pycache__/__main__.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "a053d3cb64004dce060aebbed36c0ec5dd8cf7e873526a4e096a42371acb9c49"
+          },
+          "drift_monitor/__pycache__/alert.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "0aa25f4613cad6d956d4670dc06e14c389707265c3a5ced04457d772444d76cb"
+          },
+          "drift_monitor/__pycache__/calibration.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "f73b66ff11b2ff8e4d0cef5fb6792519dab159b1e6e470fe3dfd3c31e3899455"
+          },
+          "drift_monitor/__pycache__/distance.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "f21cddc3965d1a9bca8ba4ded5b2f4323d2cadb7fc37153eaff02e2d59aad8a0"
+          },
+          "drift_monitor/__pycache__/monitor.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "68c7825b746d10c64b5fcb1cff1bcdd6ae86dcd04680c1bc2826047bdc769204"
+          },
+          "drift_monitor/__pycache__/normalize.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "ba598d148cd5a3538eb82312a885f6de9210457bacaeb48cc93a3d3078a2a705"
+          },
+          "drift_monitor/__pycache__/statistical_tests.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "8c3f9221060a50c9e86c1bec4180a1e7c8767b4c5b2e1710896cb6c355d74b0b"
+          },
+          "drift_monitor/__pycache__/windowing.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "d2de845b12189fa7bda7a1b1f8afaf92341c636f6b4dbfb9d8bee63ee196db41"
+          },
+          "data/.canary": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "63b800abbf1b909111eb7bd75d9c117c981a068f28156699752ad5f896521e0f"
+          },
+          "data/current_clear_drift.npy": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "d861bafd41f1757408944ff4ea29f20ac345747595ec50298ce0be1f3b281d68"
+          },
+          "data/current_stable.npy": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "e069a4c0b93d38c3f7e3a3908cd8987e9131aa1b1ad93e6a90c84deeee9aa483"
+          },
+          "data/current_with_zeros.npy": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "024b9e1ea37ec59e6d837430b245a5eb1fd904d190db5cf86970882b3d9001a8"
+          },
+          "data/reference_embeddings.npy": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "5a4e51d98be5cf8fbc000fd35851e2ad02b23c1c93e8722dab313f0931b35ef0"
+          }
+        },
+        "mount": "/app"
+      },
+      "id": "candidate-0011",
+      "reused_from": null,
+      "verifier_executed": true,
+      "grade": {
+        "reward": 1.0,
+        "rewards": {
+          "reward": 1.0
+        },
+        "exit": 0,
+        "exception": null,
+        "message": null,
+        "image_cache": "warm",
+        "trial_dir": "/home/christopherdavid/.openagents/terminal-bench/experiments/iteration-speed-9618/grading-fresh/candidate-0011/verify__651aeb7",
+        "stdout_tail": null
+      },
+      "seconds": 43.439517789985985
+    },
+    {
+      "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-3/embedding-drift-monitor__QAHE7De",
+      "task": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/embedding-drift-monitor",
+      "candidate": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-3/embedding-drift-monitor__QAHE7De/agent/episode/artifacts/lean-1/session-2",
+      "session": 2,
+      "dispatch": "lean-1",
+      "original_reward": 1.0,
+      "self_score": {
+        "passed": 6,
+        "total": 6
+      },
+      "kept": true,
+      "input_digest": "aba7a054e25e5bcaf74f56450e859bb4dc58214f16c47bbdd8ec7312995fb141",
+      "inputs": {
+        "task": {
+          ".": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "README.md": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "e49ae6cacb49767e188b1775ac660fcac025749eb1ec7417d6b17183107dac75"
+          },
+          "cheat": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "environment": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "instruction.md": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "948fec73b3457300d42d258c2c17ece57052bde4d343063604dff3cb5bf5c5a9"
+          },
+          "solution": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "task.toml": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "ac799e963328258b3301d52e5c58f2dfb10cf575850dd997ceef89cce463da3d"
+          },
+          "tests": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "tests/Dockerfile": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "d6085518885601e33cacbdf676a8194daf4008b5fb122960c52d41d595ed1249"
+          },
+          "tests/conftest.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "5ed0a2a6171bf0360fa9e7060397f7feb9eeaa692991a9bf0e2d83d0cc030cd9"
+          },
+          "tests/test.sh": {
+            "kind": "file",
+            "mode": 493,
+            "sha256": "f2aec2402e87a55fe8ad9d8b98533ef3f71ddd6784a9f480c5f76e8d797017e3"
+          },
+          "tests/test_outputs.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "abd41572c6ffb90b0a55d1ffec529c1cdd9286b08b64dae246fcbdab4c6836f1"
+          },
+          "solution/drift_monitor": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "solution/solve.sh": {
+            "kind": "file",
+            "mode": 493,
+            "sha256": "d1a6f715d5a4273d3ab4e06e0cd4b4cd06b3640f86314591b65d7a80ec0bd35f"
+          },
+          "solution/drift_monitor/alert.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "5b971f319c59d16224183eec7f3ff13e40459ce464a526a6ae1c9beff1d8972a"
+          },
+          "solution/drift_monitor/calibration.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "dcce331d38bea5b35f50c26a1ee6ed8541c51ca8d9f339856faa3971b54265e7"
+          },
+          "solution/drift_monitor/distance.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "44151bf8480c1789babe3ce03f2c7935e14ec135fb97d0263c304a4533cfc850"
+          },
+          "solution/drift_monitor/normalize.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "723cb7e88bff4233942d62edd5f9b111cd594dfd09667804e7a43949cafc311a"
+          },
+          "solution/drift_monitor/statistical_tests.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "077102585a9257d5960a6b331da602c10a3782863261e7e3b68a134ca5fac3e6"
+          },
+          "solution/drift_monitor/windowing.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "9122dfe693b015e54b068e70a4cceb016a5f037943cd5cbca266a73483157923"
+          },
+          "environment/Dockerfile": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "f5e17839c2613f903de51c91cf09a161877537dca3a32d1881fc5447cbc21e65"
+          },
+          "environment/data": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "environment/drift_monitor": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "environment/drift_monitor/__init__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "c4499b0559af0a8857a647c5fcc8102ca632e00597754850fdec197fcf8abdaf"
+          },
+          "environment/drift_monitor/__main__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "bc27d8196cc0035bf9bc1c252d9de219e75023ad87314ce954c1106cb23af387"
+          },
+          "environment/drift_monitor/alert.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "22452d53db3c34ea66c90fb8fdd548114cb62dcb4e9e9f66239e354ea13c1893"
+          },
+          "environment/drift_monitor/calibration.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "2c6e055797b5d552c387479111f1c98d98e670cbc8a2667b2e45a02a60a553c8"
+          },
+          "environment/drift_monitor/distance.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "3eee027191192d762e21bf143236ac3a3497dafde1165aeba0afa1ccf10e412d"
+          },
+          "environment/drift_monitor/monitor.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "007b90d9d136729dd9479eb25c45f7340329039d1c0f106109d1c4d609cc2648"
+          },
+          "environment/drift_monitor/normalize.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "87187cc4f7e72e7699c328e926b2c312c26cb435697f079ae7675b79cab49a88"
+          },
+          "environment/drift_monitor/statistical_tests.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "e0ee0a82e563e57cc9104f3e15468ff09a6a97edd864126675ae7eda8042a47d"
+          },
+          "environment/drift_monitor/windowing.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "7be4906e778e44ef0d238552f0a30a72405624122b55a8c94b96154e2138da1b"
+          },
+          "environment/data/.canary": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "63b800abbf1b909111eb7bd75d9c117c981a068f28156699752ad5f896521e0f"
+          },
+          "environment/data/current_clear_drift.npy": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "d861bafd41f1757408944ff4ea29f20ac345747595ec50298ce0be1f3b281d68"
+          },
+          "environment/data/current_stable.npy": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "e069a4c0b93d38c3f7e3a3908cd8987e9131aa1b1ad93e6a90c84deeee9aa483"
+          },
+          "environment/data/current_with_zeros.npy": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "024b9e1ea37ec59e6d837430b245a5eb1fd904d190db5cf86970882b3d9001a8"
+          },
+          "environment/data/reference_embeddings.npy": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "5a4e51d98be5cf8fbc000fd35851e2ad02b23c1c93e8722dab313f0931b35ef0"
+          },
+          "cheat/drift_monitor": {
+            "kind": "directory",
+            "mode": 493
+          },
+          "cheat/solve.sh": {
+            "kind": "file",
+            "mode": 493,
+            "sha256": "aa4657b56ed8f820dc5fba90b2bfe1364809fa583f3484407fd94c30efd60790"
+          },
+          "cheat/drift_monitor/__init__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "eb8e52a670bb722909e46c944de307c5a757d17770e8f65f9865b78a70be5d72"
+          },
+          "cheat/drift_monitor/__main__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "99d2f723820ad85d6c7c9021caeb272870dddc58887e732e42afd1ed43b4a238"
+          },
+          "cheat/drift_monitor/alert.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "50df7d69de3df5ab98e4cedeef8cf0e928de599194070ec5f7847fa3ac462be2"
+          },
+          "cheat/drift_monitor/calibration.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "78ceb9d6a784064411730af72328156d83fc2b16114cefb9d5240c3ee5d3be02"
+          },
+          "cheat/drift_monitor/distance.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "2716dc8909eb2f56dc5412161a6031e72bf74dd40a34a3e6c2b74cbafb40e2f1"
+          },
+          "cheat/drift_monitor/monitor.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "70ba74e3d625e8e05a8e1a29f6a72bb5aada88050952b62fa3d0424d825fd1aa"
+          },
+          "cheat/drift_monitor/normalize.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "1d168761b22b746c3a688d488c3edd00d5fee661ad4a53b5ba44a7045a54bb67"
+          },
+          "cheat/drift_monitor/statistical_tests.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "11596c7ce47320a066effb54821f73142d30a87a97b6749383d9da973f653f58"
+          },
+          "cheat/drift_monitor/windowing.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "c84705afe7c7a02abe2e8a6755fc2118fc73e39be36ecee09c845af4a110bbde"
+          }
+        },
+        "candidate": {
+          ".": {
+            "kind": "directory",
+            "mode": 511
+          },
+          "Dockerfile": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "f5e17839c2613f903de51c91cf09a161877537dca3a32d1881fc5447cbc21e65"
+          },
+          "data": {
+            "kind": "directory",
+            "mode": 511
+          },
+          "drift_monitor": {
+            "kind": "directory",
+            "mode": 511
+          },
+          "drift_monitor/__init__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "c4499b0559af0a8857a647c5fcc8102ca632e00597754850fdec197fcf8abdaf"
+          },
+          "drift_monitor/__main__.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "bc27d8196cc0035bf9bc1c252d9de219e75023ad87314ce954c1106cb23af387"
+          },
+          "drift_monitor/__pycache__": {
+            "kind": "directory",
+            "mode": 511
+          },
+          "drift_monitor/alert.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "8b13700655f3f3e154b48c1ce4f69c1d72822dbf36a490f3363232214e0873bb"
+          },
+          "drift_monitor/calibration.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "41efe7fd3619226f00ccb88366c5962e4e3cecdf43bb9c4798a0894c88085e08"
+          },
+          "drift_monitor/distance.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "2011cd81d6583b5a697f19c86d9715659aa132975523c2752575a0e804255eb9"
+          },
+          "drift_monitor/monitor.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "e97fbc93d2ef2d6c5d6e3eeedd3fb6d10978e62b1885a986dc4bc3b5f918f8c2"
+          },
+          "drift_monitor/normalize.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "bf888e2d085297e14559e704fecc330efc432681c7425646a0b75d83f795aa1c"
+          },
+          "drift_monitor/statistical_tests.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "b932b7c6c21840823892d79acb4ec4fd475c41e9b38c9f94fd7386a84a5bf25a"
+          },
+          "drift_monitor/windowing.py": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "d4bafe0c729dcf0eff6f199913aede38b7043d6c3082264f2ed562c654e096fa"
+          },
+          "drift_monitor/__pycache__/__init__.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "7b4c1f8af09179c9a620688f6281cc0b0efbd56adc8c4b07d0204d4ec28aa235"
+          },
+          "drift_monitor/__pycache__/__main__.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "a053d3cb64004dce060aebbed36c0ec5dd8cf7e873526a4e096a42371acb9c49"
+          },
+          "drift_monitor/__pycache__/alert.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "0aa25f4613cad6d956d4670dc06e14c389707265c3a5ced04457d772444d76cb"
+          },
+          "drift_monitor/__pycache__/calibration.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "f73b66ff11b2ff8e4d0cef5fb6792519dab159b1e6e470fe3dfd3c31e3899455"
+          },
+          "drift_monitor/__pycache__/distance.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "11e647be331bc3b8f6dccfc994dc1fb4c1343fcb7c5720778fbbd8650bab1686"
+          },
+          "drift_monitor/__pycache__/monitor.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "68c7825b746d10c64b5fcb1cff1bcdd6ae86dcd04680c1bc2826047bdc769204"
+          },
+          "drift_monitor/__pycache__/normalize.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "ba598d148cd5a3538eb82312a885f6de9210457bacaeb48cc93a3d3078a2a705"
+          },
+          "drift_monitor/__pycache__/statistical_tests.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "8c3f9221060a50c9e86c1bec4180a1e7c8767b4c5b2e1710896cb6c355d74b0b"
+          },
+          "drift_monitor/__pycache__/windowing.cpython-312.pyc": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "d2de845b12189fa7bda7a1b1f8afaf92341c636f6b4dbfb9d8bee63ee196db41"
+          },
+          "data/.canary": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "63b800abbf1b909111eb7bd75d9c117c981a068f28156699752ad5f896521e0f"
+          },
+          "data/current_clear_drift.npy": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "d861bafd41f1757408944ff4ea29f20ac345747595ec50298ce0be1f3b281d68"
+          },
+          "data/current_stable.npy": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "e069a4c0b93d38c3f7e3a3908cd8987e9131aa1b1ad93e6a90c84deeee9aa483"
+          },
+          "data/current_with_zeros.npy": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "024b9e1ea37ec59e6d837430b245a5eb1fd904d190db5cf86970882b3d9001a8"
+          },
+          "data/reference_embeddings.npy": {
+            "kind": "file",
+            "mode": 420,
+            "sha256": "5a4e51d98be5cf8fbc000fd35851e2ad02b23c1c93e8722dab313f0931b35ef0"
+          }
+        },
+        "mount": "/app"
+      },
+      "id": "candidate-0012",
+      "reused_from": null,
+      "verifier_executed": true,
+      "grade": {
+        "reward": 1.0,
+        "rewards": {
+          "reward": 1.0
+        },
+        "exit": 0,
+        "exception": null,
+        "message": null,
+        "image_cache": "warm",
+        "trial_dir": "/home/christopherdavid/.openagents/terminal-bench/experiments/iteration-speed-9618/grading-fresh/candidate-0012/verify__ede14b8",
+        "stdout_tail": null
+      },
+      "seconds": 43.775531949009746
+    }
+  ],
+  "oracle": [
+    {
+      "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--session-window-debug/session-window-debug__PacT86C",
+      "original_reward": 0.0,
+      "candidates": 2,
+      "complete": true,
+      "any_candidate_passes": false
+    },
+    {
+      "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--session-window-debug-2/session-window-debug__3v9FKP5",
+      "original_reward": 0.0,
+      "candidates": 2,
+      "complete": true,
+      "any_candidate_passes": false
+    },
+    {
+      "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--session-window-debug-3/session-window-debug__3KVqBUz",
+      "original_reward": 0.0,
+      "candidates": 2,
+      "complete": true,
+      "any_candidate_passes": false
+    },
+    {
+      "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--embedding-drift-monitor/embedding-drift-monitor__6zRjd9n",
+      "original_reward": 1.0,
+      "candidates": 2,
+      "complete": true,
+      "any_candidate_passes": true
+    },
+    {
+      "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-2/embedding-drift-monitor__y2bahob",
+      "original_reward": 1.0,
+      "candidates": 2,
+      "complete": true,
+      "any_candidate_passes": true
+    },
+    {
+      "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-3/embedding-drift-monitor__QAHE7De",
+      "original_reward": 1.0,
+      "candidates": 2,
+      "complete": true,
+      "any_candidate_passes": true
+    }
+  ],
+  "verifier_executions": 8,
+  "reused_grades": 4,
+  "invalid_candidates": 0
+}

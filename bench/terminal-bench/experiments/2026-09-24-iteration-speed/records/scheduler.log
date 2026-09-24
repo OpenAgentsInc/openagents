@@ -1,0 +1,22 @@
+[2026-09-24T22:37:43+00:00] started tb4--coder-one-microluna-v13-retained--embedding-drift-monitor (run, 2 CPUs, 4 GiB, pid 3932931)
+[2026-09-24T22:37:43+00:00] started tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-2 (run, 2 CPUs, 4 GiB, pid 3933002)
+[2026-09-24T22:48:05+00:00] finished tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-2: reward 1.0
+[2026-09-24T22:48:05+00:00] started tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-3 (run, 2 CPUs, 4 GiB, pid 4185643)
+[2026-09-24T22:49:51+00:00] finished tb4--coder-one-microluna-v13-retained--embedding-drift-monitor: reward 1.0
+[2026-09-24T22:49:51+00:00] started tb4--coder-one-microluna-v13-retained--session-window-debug (run, 2 CPUs, 4 GiB, pid 22685)
+[2026-09-24T22:58:11+00:00] finished tb4--coder-one-microluna-v13-retained--session-window-debug: reward 0.0
+[2026-09-24T22:58:11+00:00] started tb4--coder-one-microluna-v13-retained--session-window-debug-2 (run, 2 CPUs, 4 GiB, pid 163456)
+[2026-09-24T22:58:41+00:00] finished tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-3: reward 1.0
+[2026-09-24T22:58:44+00:00] pruned embedding-drift-monitor: 3 images, 72.4 GiB free
+[2026-09-24T22:58:45+00:00] started tb4--coder-one-microluna-v13-retained--session-window-debug-3 (run, 2 CPUs, 4 GiB, pid 184453)
+[2026-09-24T23:07:03+00:00] finished tb4--coder-one-microluna-v13-retained--session-window-debug-3: reward 0.0
+[2026-09-24T23:08:18+00:00] finished tb4--coder-one-microluna-v13-retained--session-window-debug-2: reward 0.0
+[2026-09-24T23:08:18+00:00] pruned session-window-debug: 0 images, 72.9 GiB free
+[2026-09-24T23:08:18+00:00] suite finished
+tb4 / coder-one-microluna-v13-retained: done (pid 3932768, updated 2026-09-24T23:08:18+00:00)
+  finished 6 · passes 3/6 graded
+  in use: 0 trials, 0/8.0 CPUs, 0/32.0 GiB · free disk 72.4 GiB (floor 60.0)
+  order largest · GPUs 0/1 · oversize skipped
+  providers none · Claude slots 2 · usage-limited 0
+  pruned embedding-drift-monitor: 3 images, 72.4 GiB free after
+  pruned session-window-debug: 0 images, 72.9 GiB free after

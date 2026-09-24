@@ -1,0 +1,19 @@
+{
+    "task": {
+        "path": "/tmp/tbench-candidate-g9cy6bx9/tasks/embedding-drift-monitor"
+    },
+    "trial_name": "verify__ede14b8",
+    "trials_dir": "/home/christopherdavid/.openagents/terminal-bench/experiments/iteration-speed-9618/grading-fresh/candidate-0012",
+    "agent": {
+        "name": "nop"
+    },
+    "environment": {
+        "import_path": "tbench.warm_docker:WarmDockerEnvironment"
+    },
+    "source_trial": {
+        "action": "regrade",
+        "type": "local",
+        "trial_id": "c167af20-db64-45b9-88d0-a3fd12d70983",
+        "path": "/home/christopherdavid/.openagents/terminal-bench/experiments/iteration-speed-9618/grading-fresh/candidate-0012/source/candidate"
+    }
+}

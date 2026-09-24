@@ -1,0 +1,91 @@
+{
+  "schema": "openagents.coder-one.microluna-loop.v1",
+  "mode": "single",
+  "policy": {
+    "mode": "single",
+    "max_sessions": 6,
+    "max_attempts": 2,
+    "max_groups": 3,
+    "session_turns": 24,
+    "session_sec": 240,
+    "spend_usd": 0.25,
+    "evidence_chars": 14000,
+    "checks": true,
+    "require_evidence": false,
+    "read_first": false,
+    "accept": false
+  },
+  "model": "gpt-6-luna",
+  "stopped": "the one session ended",
+  "sessions": [
+    {
+      "number": 1,
+      "focus": [
+        "the briefing"
+      ],
+      "status": "done",
+      "finish": {
+        "status": "done",
+        "summary": "Reworded the mini-task view copy to remove slash phrasing, abbreviations, and cramped strings; expanded timing and per-run cost units. Updated the guide’s rate wording. Ran the focused gym test successfully.",
+        "answer": "The view now states that the grader checks resulting state or behavior, distinguishes this local screen from benchmark results, and reports scripted and modeled Opus time and cost in plain words. `cargo test -p gym coder_minitasks::tests::a_run_reads_with_its_timeline_grade_and_coverage` passed.",
+        "cause": "none"
+      },
+      "turns": 6,
+      "calls": 6,
+      "usage": {
+        "input": 40051,
+        "cached": 28416,
+        "output": 920,
+        "reasoning": 67
+      },
+      "cost_usd": 0.0019076600000000003,
+      "milliseconds": 56098,
+      "session_id": "microluna-1-1",
+      "trace": "artifacts/microluna-1-1.atif.jsonl",
+      "commands": [
+        {
+          "command": "git status --short; sed -n '300,355p' crates/gym/src/coder_minitasks.rs; sed -n '470,515p' crates/gym/src/coder_minitasks.rs; sed -n '1,60p' docs/coder/guides/coder-one-minitasks.md; grep -R \"0.00244\\|0.054\\|22 seconds\\|22s\" -n docs/coder/guides/coder-one-minitasks.md crates/gym/src/coder_minitasks.rs; ",
+          "exit": 0
+        },
+        {
+          "command": "sed -n '250,280p' docs/coder/guides/coder-one-minitasks.md; sed -n '640,730p' crates/gym/src/terminal_bench_tui.rs; cat crates/gym/Cargo.toml | head -20;",
+          "exit": 0
+        },
+        {
+          "command": "cargo test -p gym coder_minitasks::tests::a_run_reads_with_its_timeline_grade_and_coverage",
+          "exit": 0
+        }
+      ],
+      "changed": [
+        "crates/gym/src/coder_minitasks.rs",
+        "docs/coder/guides/coder-one-minitasks.md"
+      ],
+      "edited": true,
+      "ran_after_edit": true,
+      "changed_workspace": true,
+      "ran_command": true,
+      "read_only": false,
+      "cause": "none",
+      "started_at_ms": 1790290543602,
+      "ended_at_ms": 1790290605505,
+      "read_turns": 1,
+      "group": null,
+      "batch": "",
+      "parallel_with": [],
+      "alongside": null,
+      "workspace": null
+    }
+  ],
+  "moves": [],
+  "usage": {
+    "input": 40051,
+    "cached": 28416,
+    "output": 920,
+    "reasoning": 67
+  },
+  "cost_usd": 0.0019076600000000003,
+  "writer_usd": 0.0,
+  "parallel": null,
+  "stopped_by": null,
+  "session_id": "microluna-1-1"
+}

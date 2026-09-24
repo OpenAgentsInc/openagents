@@ -1,0 +1,6 @@
+ok: file descriptor limit 8192
+ok: cargo present
+ok: python3 present
+ok: git present
+ok: rustup present
+ok: 71 GiB free

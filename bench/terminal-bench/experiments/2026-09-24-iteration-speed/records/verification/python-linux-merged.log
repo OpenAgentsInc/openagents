@@ -1,0 +1,18 @@
+........................................................................ [ 24%]
+...................s.................................................... [ 49%]
+........................................................................ [ 74%]
+........................................................................ [ 98%]
+...                                                                      [100%]
+=============================== warnings summary ===============================
+tests/test_candidates.py: 10 warnings
+  /home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/bench/terminal-bench/tests/test_candidates.py:17: DeprecationWarning: Task.checksum will be deprecated soon. Use TrialLock.task.digest from the trial lock when you need the task content hash.
+    result["task_checksum"] = Task(task).checksum
+
+tests/test_candidates.py: 10 warnings
+  /home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/bench/terminal-bench/tbench/candidates.py:76: DeprecationWarning: Task.checksum will be deprecated soon. Use TrialLock.task.digest from the trial lock when you need the task content hash.
+    if not result.get("task_checksum") or Task(task).checksum != result["task_checksum"]:
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+SKIPPED [1] bench/terminal-bench/tests/test_contamination.py:120: set TBENCH_CONTAMINATION_LIVE=1 to run the real checker on the checkout
+290 passed, 1 skipped, 20 warnings in 2.19s

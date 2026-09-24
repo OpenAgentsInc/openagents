@@ -1,0 +1,47 @@
+    Checking mio v1.2.3
+    Checking hashbrown v0.17.1
+   Compiling rustix v1.1.5
+    Checking tracing v0.1.44
+   Compiling darling_core v0.24.1
+    Checking tokio v1.53.1
+    Checking indexmap v2.14.2
+    Checking serde_json v1.0.151
+    Checking atif v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/atif)
+    Checking tempfile v3.27.0
+    Checking either v1.18.0
+    Checking hashbrown v0.16.1
+    Checking itertools v0.14.0
+    Checking compact_str v0.9.1
+    Checking kasuari v0.4.12
+   Compiling darling_macro v0.24.1
+    Checking hyper v1.11.1
+    Checking tower v0.5.3
+    Checking tokio-rustls v0.26.5
+    Checking supervise v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/supervise)
+   Compiling darling v0.24.1
+    Checking tower-http v0.6.11
+    Checking unicode-truncate v2.0.1
+    Checking lru v0.18.4
+    Checking hyper-util v0.1.20
+    Checking ratatui-core v0.1.2
+    Checking lock_api v0.4.14
+   Compiling instability v0.3.13
+    Checking parking_lot_core v0.9.12
+    Checking signal-hook-mio v0.2.5
+    Checking parking_lot v0.12.5
+    Checking crossterm v0.29.0
+    Checking pulldown-cmark v0.13.4
+    Checking ratatui-widgets v0.3.2
+    Checking hyper-rustls v0.27.9
+    Checking reqwest v0.12.28
+    Checking ratatui-crossterm v0.1.2
+    Checking coder-boundary v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/coder-boundary)
+    Checking jev v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/jev)
+    Checking ratatui-macros v0.7.2
+    Checking microluna v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/microluna)
+    Checking ratatui v0.30.2
+    Checking coder-terminal v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/coder-terminal)
+    Checking gym v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/gym)
+    Checking coder-one v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/coder-one)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 20.35s
+PHASE END: Feature workspace Clippy; elapsed 20.5s; exit 0

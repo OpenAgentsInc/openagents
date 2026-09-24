@@ -1,23 +1,26 @@
 # Terminal-Bench status
 
-Updated on 2026-09-24 with the completed Microluna candidate experiment. This page summarizes retained
-evidence; it does not report the execution host's live queue.
+Updated on 2026-09-24 with the completed v13 retention batch and iteration-loop
+measurements. This page summarizes retained evidence, not the host's live queue.
 
 ## Latest status
 
-**Microluna v12: 2/3 embedding passes at $0.02512 per accepted result;
-experimental protected policy: 0/3.** The completed 12-attempt comparison
-includes the failed attempts and Jev cost. Fable low passed 5/5 on embedding
-at $0.8691 per accepted result and was faster. Both Microluna policies
-failed all three `session-window-debug` attempts, where Fable passed 0/25. The full [results and trace analysis](2026-09-24-microluna-candidate-evidence.md)
-show that editing review caused one v12 pass; preserving every earlier tie
-would have rejected its repair. The treatment remains experimental.
+**Microluna v13: 3/3 embedding passes at $0.01599 per accepted output**, including
+Jev, against Fable low's 5/5 at $0.8691. Microluna was slower. It passed **0/3
+session-window-debug** attempts, where Fable passed 0/25. These are selected
+development tasks. The [full assessment and traces](2026-09-24-microluna-iteration-speed.md)
+cover candidate retention, official candidate grades, summary-rendering fixes,
+and the measured 19.4% reduction in grading wall time with two workers.
+The [runbook](runbook.md) covers the new `tbench candidates` command.
+
+The [previous v12 comparison](2026-09-24-microluna-candidate-evidence.md) passed
+embedding 2/3; its experimental protected policy passed 0/3. Editing review
+caused one v12 pass, so recording candidates is now separate from policies that
+keep earlier ties or restrict reviews.
 
 The [two-target assessment](2026-09-24-microluna-two-targets.md) explains the
-withdrawn episode 288 announcement and the delivered retention, strict-score,
-and review-outcome fixes. The [iteration record](2026-09-24-microluna-iterations.md)
-tracks concurrent v13–v15 changes; those do not alter the frozen v12 comparison.
-The broader two-target result remains open in
+withdrawn episode 288 announcement. The [iteration record](2026-09-24-microluna-iterations.md)
+tracks the separate v13–v17 work. The broader two-target result remains open in
 [#9607](https://github.com/OpenAgentsInc/openagents/issues/9607).
 
 The v6–v8 results below are historical evidence, not the latest policy.

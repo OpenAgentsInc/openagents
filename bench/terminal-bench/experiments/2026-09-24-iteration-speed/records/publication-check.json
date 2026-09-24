@@ -1,0 +1,100 @@
+{
+  "schema": "openagents.experiment.publication-check.v1",
+  "source": "git index",
+  "manifests": 18,
+  "files": 1193,
+  "bytes": 44229358,
+  "errors": [],
+  "groups": [
+    {
+      "manifest": "bench/terminal-bench/traces/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__UfYFodd.episode/retention.json",
+      "files": 93,
+      "retention_missing": []
+    },
+    {
+      "manifest": "bench/terminal-bench/traces/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r2/embedding-drift-monitor__mVNMcMn.episode/retention.json",
+      "files": 92,
+      "retention_missing": []
+    },
+    {
+      "manifest": "bench/terminal-bench/traces/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r3/embedding-drift-monitor__KDeY8Bf.episode/retention.json",
+      "files": 93,
+      "retention_missing": []
+    },
+    {
+      "manifest": "bench/terminal-bench/traces/tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r1/session-window-debug__arofNZN.episode/retention.json",
+      "files": 67,
+      "retention_missing": []
+    },
+    {
+      "manifest": "bench/terminal-bench/traces/tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r2/session-window-debug__vbWCjBZ.episode/retention.json",
+      "files": 67,
+      "retention_missing": []
+    },
+    {
+      "manifest": "bench/terminal-bench/traces/tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r3/session-window-debug__a7stmvT.episode/retention.json",
+      "files": 67,
+      "retention_missing": []
+    },
+    {
+      "manifest": "bench/terminal-bench/traces/tb4--coder-one-microluna-v12--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__uU3ZNb9.episode/retention.json",
+      "files": 43,
+      "retention_missing": []
+    },
+    {
+      "manifest": "bench/terminal-bench/traces/tb4--coder-one-microluna-v12--embedding-drift-monitor--candidate-evidence-9607-r2/embedding-drift-monitor__REGuz3v.episode/retention.json",
+      "files": 43,
+      "retention_missing": []
+    },
+    {
+      "manifest": "bench/terminal-bench/traces/tb4--coder-one-microluna-v12--embedding-drift-monitor--candidate-evidence-9607-r3/embedding-drift-monitor__NG9vQg5.episode/retention.json",
+      "files": 43,
+      "retention_missing": []
+    },
+    {
+      "manifest": "bench/terminal-bench/traces/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1/session-window-debug__FDQKEwD.episode/retention.json",
+      "files": 35,
+      "retention_missing": []
+    },
+    {
+      "manifest": "bench/terminal-bench/traces/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r2/session-window-debug__mAK56Nn.episode/retention.json",
+      "files": 35,
+      "retention_missing": []
+    },
+    {
+      "manifest": "bench/terminal-bench/traces/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r3/session-window-debug__az9j93b.episode/retention.json",
+      "files": 35,
+      "retention_missing": []
+    },
+    {
+      "manifest": "bench/terminal-bench/traces/tb4--coder-one-microluna-v13-retained--embedding-drift-monitor/embedding-drift-monitor__6zRjd9n.episode/retention.json",
+      "files": 93,
+      "retention_missing": []
+    },
+    {
+      "manifest": "bench/terminal-bench/traces/tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-2/embedding-drift-monitor__y2bahob.episode/retention.json",
+      "files": 93,
+      "retention_missing": []
+    },
+    {
+      "manifest": "bench/terminal-bench/traces/tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-3/embedding-drift-monitor__QAHE7De.episode/retention.json",
+      "files": 93,
+      "retention_missing": []
+    },
+    {
+      "manifest": "bench/terminal-bench/traces/tb4--coder-one-microluna-v13-retained--session-window-debug/session-window-debug__PacT86C.episode/retention.json",
+      "files": 67,
+      "retention_missing": []
+    },
+    {
+      "manifest": "bench/terminal-bench/traces/tb4--coder-one-microluna-v13-retained--session-window-debug-2/session-window-debug__3v9FKP5.episode/retention.json",
+      "files": 67,
+      "retention_missing": []
+    },
+    {
+      "manifest": "bench/terminal-bench/traces/tb4--coder-one-microluna-v13-retained--session-window-debug-3/session-window-debug__3KVqBUz.episode/retention.json",
+      "files": 67,
+      "retention_missing": []
+    }
+  ]
+}

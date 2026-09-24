@@ -196,17 +196,23 @@ noninteractive view. The plain `gym-terminal` command without
 
 ## Coder One benchmark evidence
 
-Microluna v12 passed **2/3 embedding-drift-monitor attempts for $0.02512 per
-accepted result**, including the failed attempt and Jev, against Fable low's
-$0.8691 and 5/5 passes. It was slower. The experimental protected policy
-passed 0/3; both policies failed all three session-window-debug attempts.
-The [12-attempt report and full traces](docs/terminal-bench/2026-09-24-microluna-candidate-evidence.md)
-explain the limits and why an editing review made one successful run pass.
+Fresh Microluna v13 runs passed **3/3 embedding-drift-monitor attempts for
+$0.01599 per accepted result**, including Jev—about 1/54 of Fable low's
+recorded cost. They were slower, and passed **0/3 session-window-debug**
+attempts, where Fable passed 0/25. These are selected development tasks,
+not a full-suite result or a matched test of adding Coder.
+The [iteration assessment and full traces](docs/terminal-bench/2026-09-24-microluna-iteration-speed.md)
+cover the results, independent candidate retention, the new `tbench candidates`
+grader (19.4% less wall time with two workers in the measured comparison),
+and readable-summary fixes for Microluna and Gym head-to-head replay.
+
+The [previous 12-attempt experiment](docs/terminal-bench/2026-09-24-microluna-candidate-evidence.md)
+explains why preserving every earlier tie rejected a useful review repair.
 The [iteration record](docs/terminal-bench/2026-09-24-microluna-iterations.md)
-covers the concurrent v9–v15 work. The
+tracks the separate v9–v17 work. The
 [two-target assessment](docs/terminal-bench/2026-09-24-microluna-two-targets.md)
-explains why the v7 announcement was withdrawn, the delivered evidence
-and review fixes, and the still-open goal of passing where Fable failed.
+explains the withdrawn v7 announcement and the still-open goal of passing
+where Fable failed.
 
 The September 24 follow-ups found two limits in the current controller:
 

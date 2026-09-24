@@ -1,0 +1,60 @@
+From https://github.com/OpenAgentsInc/openagents
+ * branch                  codex/microluna-iteration-speed -> FETCH_HEAD
+ * [new branch]            codex/microluna-iteration-speed -> origin/codex/microluna-iteration-speed
+Preparing worktree (detached HEAD 942288a934)
+Updating files:  82% (13807/16832)Updating files:  83% (13971/16832)Updating files:  84% (14139/16832)Updating files:  85% (14308/16832)Updating files:  86% (14476/16832)Updating files:  87% (14644/16832)Updating files:  88% (14813/16832)Updating files:  89% (14981/16832)Updating files:  90% (15149/16832)Updating files:  91% (15318/16832)Updating files:  92% (15486/16832)Updating files:  93% (15654/16832)Updating files:  94% (15823/16832)Updating files:  95% (15991/16832)Updating files:  96% (16159/16832)Updating files:  97% (16328/16832)Updating files:  98% (16496/16832)Updating files:  99% (16664/16832)Updating files: 100% (16832/16832)Updating files: 100% (16832/16832), done.
+HEAD is now at 942288a934 coder-one: retain sequential candidates independently of selection policy
+   Compiling coder-boundary v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/microluna-iteration-speed/crates/coder-boundary)
+   Compiling atif v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/microluna-iteration-speed/crates/atif)
+   Compiling supervise v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/microluna-iteration-speed/crates/supervise)
+   Compiling jev v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/microluna-iteration-speed/crates/jev)
+   Compiling microluna v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/microluna-iteration-speed/crates/microluna)
+   Compiling coder-one v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/microluna-iteration-speed/crates/coder-one)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 32.62s
+     Running unittests src/lib.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed/debug/deps/coder_one-7bbe5f3ea011f3be)
+
+running 1 test
+test micro::tests::retention_keeps_an_editing_reviews_tied_improvement_without_an_extra_evaluation ...   agent:  [in 100 (cached 0), out 10, $0.000015]
+    run_command {"command":"mkdir -p /tmp/microluna-eval-751430aa5ddb && printf 'printf x >> /tmp/.tmptSuaNu/score-calls\\necho SCORE 1 1\\n' > /tmp/microluna-eval-751430aa5ddb… (53 ms, completed) -> [exit 0]
+  agent:  [in 100 (cached 0), out 10, $0.000015]
+    write_file {"path":"hello.txt","contents":"incomplete\n"} (0 ms, completed) -> Wrote hello.txt (11 bytes).
+  agent:  [in 1000 (cached 800), out 40, $0.000048]
+    finish {"status":"done","summary":"The weak check passes.","answer":""} (0 ms, completed) -> Session finished.
+  microluna ▸ session 1 on the whole task: done in 0.1 s, 3 turns (0 only reading), 3 tool calls, 1,200 tokens in (800 cached), 60 out, $0.00008
+  microluna ▸ session 1 done; 1 of 1 tests pass; the answer doesn't look hard-coded; kept as the best so far
+  agent:  [in 100 (cached 0), out 10, $0.000015]
+    write_file {"path":"hello.txt","contents":"corrected\n"} (0 ms, completed) -> Wrote hello.txt (10 bytes).
+  agent:  [in 1000 (cached 800), out 40, $0.000048]
+    finish {"status":"done","summary":"The review fixed a missed requirement.","answer":""} (0 ms, completed) -> Session finished.
+  microluna ▸ session 2 on the self-check: done in 0.0 s, 2 turns (0 only reading), 2 tool calls, 1,100 tokens in (800 cached), 50 out, $0.00006
+  microluna ▸ session 2 done; 1 of 1 tests pass; the answer doesn't look hard-coded; kept as the best so far
+  agent:  [in 100 (cached 0), out 10, $0.000015]
+    run_command {"command":"mkdir -p /tmp/microluna-eval-a736c16b105f && printf 'printf x >> /tmp/.tmpnNGm5j/score-calls\\necho SCORE 1 1\\n' > /tmp/microluna-eval-a736c16b105f… (37 ms, completed) -> [exit 0]
+  agent:  [in 100 (cached 0), out 10, $0.000015]
+    write_file {"path":"hello.txt","contents":"incomplete\n"} (0 ms, completed) -> Wrote hello.txt (11 bytes).
+  agent:  [in 1000 (cached 800), out 40, $0.000048]
+    finish {"status":"done","summary":"The weak check passes.","answer":""} (0 ms, completed) -> Session finished.
+  microluna ▸ session 1 on the whole task: done in 0.1 s, 3 turns (0 only reading), 3 tool calls, 1,200 tokens in (800 cached), 60 out, $0.00008
+  microluna ▸ session 1 done; 1 of 1 tests pass; the answer doesn't look hard-coded; kept as the best so far
+  agent:  [in 100 (cached 0), out 10, $0.000015]
+    write_file {"path":"hello.txt","contents":"corrected\n"} (0 ms, completed) -> Wrote hello.txt (10 bytes).
+  agent:  [in 1000 (cached 800), out 40, $0.000048]
+    finish {"status":"done","summary":"The review fixed a missed requirement.","answer":""} (0 ms, completed) -> Session finished.
+  microluna ▸ session 2 on the self-check: done in 0.0 s, 2 turns (0 only reading), 2 tool calls, 1,100 tokens in (800 cached), 50 out, $0.00006
+  microluna ▸ session 2 done; 1 of 1 tests pass; the answer doesn't look hard-coded; kept as the best so far
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 527 filtered out; finished in 0.52s
+
+     Running unittests src/main.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed/debug/deps/coder_one-73812874d56e8aad)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/codex_login.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed/debug/deps/codex_login-d3b1770b932f3e72)

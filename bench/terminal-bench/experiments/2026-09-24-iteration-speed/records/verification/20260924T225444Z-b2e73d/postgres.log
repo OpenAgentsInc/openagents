@@ -1,0 +1,105 @@
+   Compiling nostr v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/nostr)
+   Compiling nostr-relay v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/nostr-relay)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 8.58s
+     Running tests/store_postgres.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/store_postgres-76836ce923a19007)
+
+running 1 test
+test m2_store_contract_against_postgres ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.86s
+
+   Compiling nostr-relay v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/nostr-relay)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.56s
+     Running tests/gateway_postgres.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/gateway_postgres-f384e1c0303a315a)
+
+running 3 tests
+test http_response_complete_accepts_full_responses ... ok
+test http_response_complete_rejects_truncated_and_malformed ... ok
+test m3_gateway_contract_against_postgres ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.22s
+
+   Compiling nostr-relay v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/nostr-relay)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.79s
+     Running tests/multiprocess_postgres.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/multiprocess_postgres-b3c064d13e6a2a7d)
+
+running 1 test
+{"level":"error","message":"internal relay error: the relay lost its Postgres notification listener or a database worker failed"}
+test m4_two_process_gap_and_chaos_contract ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.29s
+
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.10s
+   Compiling atif v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/atif)
+   Compiling supervise v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/supervise)
+   Compiling nostr v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/nostr)
+   Compiling jev v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/jev)
+   Compiling coder-boundary v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/coder-boundary)
+   Compiling coder-terminal v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/coder-terminal)
+   Compiling microluna v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/microluna)
+   Compiling receipts v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/receipts)
+   Compiling gym v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/gym)
+   Compiling coder-one v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/coder-one)
+   Compiling capability v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/capability)
+   Compiling plugin v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/plugin)
+   Compiling coderbench v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/coderbench)
+   Compiling coder v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/coder)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 28.07s
+     Running tests/interop_processes.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/interop_processes-07149bdc878a2617)
+
+running 4 tests
+test a_lost_job_recovers_by_journal_and_never_replays_unknown ... ok
+test a_package_publishes_discovers_installs_and_runs_over_the_wire ... ok
+test advertised_roles_match_configuration_and_turns_record ... ok
+test filters_privacy_retention_and_forks_hold_on_the_wire ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.31s
+
+   Compiling nostr-relay v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/nostr-relay)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.47s
+     Running tests/block_lane_postgres.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/block_lane_postgres-dd78e818b00d14f1)
+
+running 1 test
+test block_lane_contract_against_postgres ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.50s
+
+   Compiling nostr-relay v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/nostr-relay)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.13s
+     Running tests/bulk_import_postgres.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/bulk_import_postgres-b4510a869407ba44)
+
+running 1 test
+test signed_event_jsonl_import_is_ordered_and_idempotent ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+   Compiling nostr-relay v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/nostr-relay)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.14s
+     Running tests/backup_postgres.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/backup_postgres-1df32c8a31005052)
+
+running 1 test
+churn rounds: 7
+unit	nostr-relay-2026-09-24T231354Z
+created_at	2026-09-24T231354Z
+database	nostr-relay-2026-09-24T231354Z.dump	98e8e7a175e153799502ac0425b32423227088499b83dab3217db92e887cbe3f	44702
+media	nostr-relay-2026-09-24T231354Z-media.tar	16f8a8d58ea24fc64bd94ae996193b163111a2e87fdbbcefe48d803738851631	20480
+referenced_blobs	5
+
+test backup_unit_restores_whole_under_concurrent_mutation ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.67s
+
+   Compiling nostr v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/nostr)
+   Compiling nostr-relay v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/nostr-relay)
+    Finished `release` profile [optimized] target(s) in 34.05s
+     Running tests/load_postgres.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/release/deps/load_postgres-98ca5c6bf748c2ce)
+
+running 1 test
+test m4_release_load_proof has been running for over 60 seconds
+M4_BENCHMARK_JSON={"connect_p99_ms_median":0.19,"connect_p99_ms_range":[0.1,0.51],"connect_samples_per_run":250,"events_per_run":2000,"events_per_second_median":306.75,"events_per_second_range":[268.7,374.01],"publishers":4,"req_history_events":10,"req_samples_per_run":100,"req_to_eose_p99_ms_median":48.08,"req_to_eose_p99_ms_range":[46.03,48.97],"runs":5,"total_events":10000}
+test m4_release_load_proof ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 60.44s
+
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.10s
+PHASE END: PostgreSQL acceptance; elapsed 158.1s; exit 0

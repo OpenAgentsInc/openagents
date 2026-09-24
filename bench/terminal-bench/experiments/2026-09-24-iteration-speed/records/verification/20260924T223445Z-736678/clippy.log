@@ -1,0 +1,8 @@
+    Checking coder-boundary v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/microluna-iteration-speed/crates/coder-boundary)
+    Checking atif v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/microluna-iteration-speed/crates/atif)
+    Checking supervise v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/microluna-iteration-speed/crates/supervise)
+    Checking jev v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/microluna-iteration-speed/crates/jev)
+    Checking microluna v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/microluna-iteration-speed/crates/microluna)
+    Checking coder-one v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/microluna-iteration-speed/crates/coder-one)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 17.25s
+PHASE END: Default workspace Clippy; elapsed 17.3s; exit 0

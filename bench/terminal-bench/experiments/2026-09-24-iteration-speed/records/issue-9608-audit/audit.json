@@ -1,0 +1,152 @@
+{
+  "schema": "openagents.issue-review-acceptance.v1",
+  "observed_at": "2026-09-24T23:18:32.285606+00:00",
+  "source_issue": 9597,
+  "audit_issue": 9608,
+  "pull_request": "https://github.com/OpenAgentsInc/openagents/pull/9623",
+  "pr_head": "975bc810e3e1e0c86ad1265b7ddc4a8f717d3d9a",
+  "run_path": "/home/christopherdavid/.openagents/coder-one/runs/OpenAgentsInc-openagents-9597-1790290391",
+  "observed_binary": "/home/christopherdavid/.openagents/versions/coder-openagents-d71d51d5e8",
+  "observed_binary_version": "coder 0.1.0 (OpenAgentsInc/openagents d71d51d5e8 clean)",
+  "observed_binary_sha256": "ab5275dc6dc5bec63650642c14764558449644f40757a2353b0fc2097b486835",
+  "source_contains_review_fix": true,
+  "loops": [
+    {
+      "file": "run/artifacts/artifacts/microluna-1.json",
+      "stopped": "every requirement group had its turn",
+      "cost_usd": 0.008320000000000001,
+      "sessions": [
+        {
+          "number": 1,
+          "status": "done",
+          "finish": {
+            "status": "done",
+            "summary": "Documented mini-task purpose, grading, TB4 distinction, and time/cost estimates; added the same explanation to the Gym mini-task view and tested its rendered content. `cargo test -p gym coder_minitasks::tests::a_run_reads_with_its_timeline_grade_and_coverage` passed.",
+            "answer": "",
+            "cause": "none"
+          }
+        },
+        {
+          "number": 2,
+          "status": "done",
+          "finish": {
+            "status": "done",
+            "summary": "Clarified task-specific grading in the guide and Gym mini-task view, retaining time/cost estimates and the TB4 distinction. The targeted Gym rendering test passed.",
+            "answer": "",
+            "cause": "none"
+          }
+        }
+      ]
+    },
+    {
+      "file": "run/review-0/artifacts/microluna-1.json",
+      "stopped": "the one session ended",
+      "cost_usd": 0.0019076600000000003,
+      "sessions": [
+        {
+          "number": 1,
+          "status": "done",
+          "finish": {
+            "status": "done",
+            "summary": "Reworded the mini-task view copy to remove slash phrasing, abbreviations, and cramped strings; expanded timing and per-run cost units. Updated the guide\u2019s rate wording. Ran the focused gym test successfully.",
+            "answer": "The view now states that the grader checks resulting state or behavior, distinguishes this local screen from benchmark results, and reports scripted and modeled Opus time and cost in plain words. `cargo test -p gym coder_minitasks::tests::a_run_reads_with_its_timeline_grade_and_coverage` passed.",
+            "cause": "none"
+          }
+        }
+      ]
+    },
+    {
+      "file": "run/review-1/artifacts/microluna-1.json",
+      "stopped": "the one session ended",
+      "cost_usd": 0.0012821199999999999,
+      "sessions": [
+        {
+          "number": 1,
+          "status": "done",
+          "finish": {
+            "status": "done",
+            "summary": "Reworded the mini-task view copy in complete, plain language, expanded Terminal-Bench 4.0, and separated measured-comparison documentation pointer. Updated assertions and ran the targeted test successfully.",
+            "answer": "",
+            "cause": "none"
+          }
+        }
+      ]
+    }
+  ],
+  "credential_scan": {
+    "checked": [
+      "~/.claude/.credentials.json accessToken",
+      "~/.claude/.credentials.json refreshToken",
+      "~/.codex/auth.json tokens.access_token",
+      "~/.codex/auth.json tokens.account_id",
+      "~/.codex/auth.json tokens.id_token",
+      "~/.codex/auth.json tokens.refresh_token",
+      "~/.openagents/bearer",
+      "~/.openagents/jev.json api_key"
+    ],
+    "matches": []
+  },
+  "evidence_files": [
+    {
+      "path": "host.atif.jsonl",
+      "sha256": "775cec3129612b27fb9bbb6106a9b3ba72e6fd4acebfdecdb04e0ae6519b0a27",
+      "bytes": 349242
+    },
+    {
+      "path": "retry14.log",
+      "sha256": "d605b28561bc82de4128d96a55505927a03ade3fe312f691be4e004da5e1c1f3",
+      "bytes": 8853
+    },
+    {
+      "path": "run/artifacts/artifacts/microluna-1-1.atif.jsonl",
+      "sha256": "a6805b023e40a5160f11e785c65e229731102e0f9f07e37819e8f633edf897ff",
+      "bytes": 89757
+    },
+    {
+      "path": "run/artifacts/artifacts/microluna-1-2.atif.jsonl",
+      "sha256": "34c46ba11aa2d224cde6ea682041a5144ff6b3bd03411fde18174b72cd464582",
+      "bytes": 37245
+    },
+    {
+      "path": "run/artifacts/artifacts/microluna-1.json",
+      "sha256": "2bfbcfc3664e9aa9cb60e8269491f178fcc5edae06fd2249051e6d8858704f72",
+      "bytes": 7404
+    },
+    {
+      "path": "run/artifacts/verification/checks-microluna-1-1.json",
+      "sha256": "4988f5e0cfaa299df2a80e64f9a4830d4115170f38e237628b151de49c95b269",
+      "bytes": 11931
+    },
+    {
+      "path": "run/artifacts/verification/checks-microluna-1-2.json",
+      "sha256": "f36be876ab84712ae0322830e7d131461090154e3252357b340645d37275e17a",
+      "bytes": 12467
+    },
+    {
+      "path": "run/review-0/artifacts/microluna-1-1.atif.jsonl",
+      "sha256": "aa7db92a37d9802419b21826a52127701a86515f0a2677f6014379755a291630",
+      "bytes": 36979
+    },
+    {
+      "path": "run/review-0/artifacts/microluna-1.json",
+      "sha256": "85595aa41608b3a09cdcbf0c35f7c6a20cbd1759aea216e0dd1e15bb93be2b96",
+      "bytes": 3036
+    },
+    {
+      "path": "run/review-1/artifacts/microluna-1-1.atif.jsonl",
+      "sha256": "d8b7bad1c05bbb1ea486dc1cfbfda9bc1b7660884c2ea9f1e5695e7119552a2a",
+      "bytes": 23222
+    },
+    {
+      "path": "run/review-1/artifacts/microluna-1.json",
+      "sha256": "2463177884d3b6acdf5fc4a699d130b4c32b8876320e019720245a8c0f0a55cc",
+      "bytes": 2486
+    }
+  ],
+  "limits": [
+    "Read-only audit of another agent\u2019s completed run; no competing retry launched.",
+    "Observed installed binary identity at audit time; host trace and launch provenance must be read with it, not treated as remote attestation.",
+    "Positive publication path; failed-review non-publication is covered by retained regression tests.",
+    "Draft PR remains open; this audit does not merge it or close source issue 9597."
+  ]
+}

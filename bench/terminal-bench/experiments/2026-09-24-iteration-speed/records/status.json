@@ -1,0 +1,249 @@
+{
+  "schema": "openagents.tbench.suite-status.v1",
+  "profile": "tb4",
+  "arm": "coder-one-microluna-v13-retained",
+  "pin": {
+    "git_url": "https://github.com/harbor-framework/terminal-bench.git",
+    "git_commit_id": "452bf305c6daa62fc59061d22133a7cbc7c1572e",
+    "ref": "v4.0.0",
+    "catalog": "tb4"
+  },
+  "budget": {
+    "max_cpus": 8.0,
+    "max_mem_gb": 32.0,
+    "min_free_disk_gb": 60.0,
+    "prune_margin_gb": 20,
+    "max_concurrent": 2,
+    "max_gpus": 1,
+    "reserve_after_sec": 1800,
+    "order": "largest",
+    "allow_oversize": false,
+    "max_claude_concurrent": 2,
+    "usage_backoff_sec": 1800.0
+  },
+  "scheduler_pid": 3932768,
+  "state": "done",
+  "started_at": "2026-09-24T22:37:43+00:00",
+  "updated_at": "2026-09-24T23:08:18+00:00",
+  "counts": {
+    "finished": 6
+  },
+  "passes": 3,
+  "graded": 6,
+  "in_use": {
+    "cpus": 0,
+    "memory_gb": 0,
+    "gpus": 0,
+    "trials": 0
+  },
+  "free_disk_gb": 72.4,
+  "providers": [],
+  "paused": {},
+  "usage_limited": 0,
+  "credential_failures": 0,
+  "blocked": {},
+  "pruned": [
+    {
+      "task": "embedding-drift-monitor",
+      "images": [
+        "embedding-drift-monitor__r7mx9uj__verifier__trial-main:latest",
+        "embedding-drift-monitor__va37gej__env-main:latest",
+        "embedding-drift-monitor__z8rexx5__env-main:latest"
+      ],
+      "at": "2026-09-24T22:58:44+00:00",
+      "free_before_gb": 72.4,
+      "free_after_gb": 72.4
+    },
+    {
+      "task": "session-window-debug",
+      "images": [],
+      "at": "2026-09-24T23:08:18+00:00",
+      "free_before_gb": 72.9,
+      "free_after_gb": 72.9
+    }
+  ],
+  "trials": [
+    {
+      "task": "session-window-debug",
+      "attempt": 1,
+      "job": "tb4--coder-one-microluna-v13-retained--session-window-debug",
+      "state": "finished",
+      "reason": null,
+      "retries": 0,
+      "resumes": 0,
+      "pid": null,
+      "started_at": "2026-09-24T22:49:51+00:00",
+      "finished_at": "2026-09-24T22:58:11+00:00",
+      "reward": 0.0,
+      "exception": null,
+      "cpus": 2,
+      "memory_mb": 4096,
+      "gpus": 0,
+      "failed_moves": [],
+      "usage_limits": 0,
+      "credential_failures": 0
+    },
+    {
+      "task": "session-window-debug",
+      "attempt": 2,
+      "job": "tb4--coder-one-microluna-v13-retained--session-window-debug-2",
+      "state": "finished",
+      "reason": null,
+      "retries": 0,
+      "resumes": 0,
+      "pid": null,
+      "started_at": "2026-09-24T22:58:11+00:00",
+      "finished_at": "2026-09-24T23:08:18+00:00",
+      "reward": 0.0,
+      "exception": null,
+      "cpus": 2,
+      "memory_mb": 4096,
+      "gpus": 0,
+      "failed_moves": [],
+      "usage_limits": 0,
+      "credential_failures": 0
+    },
+    {
+      "task": "session-window-debug",
+      "attempt": 3,
+      "job": "tb4--coder-one-microluna-v13-retained--session-window-debug-3",
+      "state": "finished",
+      "reason": null,
+      "retries": 0,
+      "resumes": 0,
+      "pid": null,
+      "started_at": "2026-09-24T22:58:45+00:00",
+      "finished_at": "2026-09-24T23:07:03+00:00",
+      "reward": 0.0,
+      "exception": null,
+      "cpus": 2,
+      "memory_mb": 4096,
+      "gpus": 0,
+      "failed_moves": [],
+      "usage_limits": 0,
+      "credential_failures": 0
+    },
+    {
+      "task": "embedding-drift-monitor",
+      "attempt": 1,
+      "job": "tb4--coder-one-microluna-v13-retained--embedding-drift-monitor",
+      "state": "finished",
+      "reason": null,
+      "retries": 0,
+      "resumes": 0,
+      "pid": null,
+      "started_at": "2026-09-24T22:37:43+00:00",
+      "finished_at": "2026-09-24T22:49:51+00:00",
+      "reward": 1.0,
+      "exception": null,
+      "cpus": 2,
+      "memory_mb": 4096,
+      "gpus": 0,
+      "failed_moves": [],
+      "usage_limits": 0,
+      "credential_failures": 0
+    },
+    {
+      "task": "embedding-drift-monitor",
+      "attempt": 2,
+      "job": "tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-2",
+      "state": "finished",
+      "reason": null,
+      "retries": 0,
+      "resumes": 0,
+      "pid": null,
+      "started_at": "2026-09-24T22:37:43+00:00",
+      "finished_at": "2026-09-24T22:48:05+00:00",
+      "reward": 1.0,
+      "exception": null,
+      "cpus": 2,
+      "memory_mb": 4096,
+      "gpus": 0,
+      "failed_moves": [],
+      "usage_limits": 0,
+      "credential_failures": 0
+    },
+    {
+      "task": "embedding-drift-monitor",
+      "attempt": 3,
+      "job": "tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-3",
+      "state": "finished",
+      "reason": null,
+      "retries": 0,
+      "resumes": 0,
+      "pid": null,
+      "started_at": "2026-09-24T22:48:05+00:00",
+      "finished_at": "2026-09-24T22:58:41+00:00",
+      "reward": 1.0,
+      "exception": null,
+      "cpus": 2,
+      "memory_mb": 4096,
+      "gpus": 0,
+      "failed_moves": [],
+      "usage_limits": 0,
+      "credential_failures": 0
+    }
+  ],
+  "events": [
+    {
+      "at": "2026-09-24T22:37:43+00:00",
+      "message": "started tb4--coder-one-microluna-v13-retained--embedding-drift-monitor (run, 2 CPUs, 4 GiB, pid 3932931)"
+    },
+    {
+      "at": "2026-09-24T22:37:43+00:00",
+      "message": "started tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-2 (run, 2 CPUs, 4 GiB, pid 3933002)"
+    },
+    {
+      "at": "2026-09-24T22:48:05+00:00",
+      "message": "finished tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-2: reward 1.0"
+    },
+    {
+      "at": "2026-09-24T22:48:05+00:00",
+      "message": "started tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-3 (run, 2 CPUs, 4 GiB, pid 4185643)"
+    },
+    {
+      "at": "2026-09-24T22:49:51+00:00",
+      "message": "finished tb4--coder-one-microluna-v13-retained--embedding-drift-monitor: reward 1.0"
+    },
+    {
+      "at": "2026-09-24T22:49:51+00:00",
+      "message": "started tb4--coder-one-microluna-v13-retained--session-window-debug (run, 2 CPUs, 4 GiB, pid 22685)"
+    },
+    {
+      "at": "2026-09-24T22:58:11+00:00",
+      "message": "finished tb4--coder-one-microluna-v13-retained--session-window-debug: reward 0.0"
+    },
+    {
+      "at": "2026-09-24T22:58:11+00:00",
+      "message": "started tb4--coder-one-microluna-v13-retained--session-window-debug-2 (run, 2 CPUs, 4 GiB, pid 163456)"
+    },
+    {
+      "at": "2026-09-24T22:58:41+00:00",
+      "message": "finished tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-3: reward 1.0"
+    },
+    {
+      "at": "2026-09-24T22:58:44+00:00",
+      "message": "pruned embedding-drift-monitor: 3 images, 72.4 GiB free"
+    },
+    {
+      "at": "2026-09-24T22:58:45+00:00",
+      "message": "started tb4--coder-one-microluna-v13-retained--session-window-debug-3 (run, 2 CPUs, 4 GiB, pid 184453)"
+    },
+    {
+      "at": "2026-09-24T23:07:03+00:00",
+      "message": "finished tb4--coder-one-microluna-v13-retained--session-window-debug-3: reward 0.0"
+    },
+    {
+      "at": "2026-09-24T23:08:18+00:00",
+      "message": "finished tb4--coder-one-microluna-v13-retained--session-window-debug-2: reward 0.0"
+    },
+    {
+      "at": "2026-09-24T23:08:18+00:00",
+      "message": "pruned session-window-debug: 0 images, 72.9 GiB free"
+    },
+    {
+      "at": "2026-09-24T23:08:18+00:00",
+      "message": "suite finished"
+    }
+  ]
+}

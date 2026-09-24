@@ -1,0 +1,47 @@
+{
+  "errors": [],
+  "trials": [
+    {
+      "job": "tb4--coder-one-microluna-v13-retained--session-window-debug",
+      "trial": "session-window-debug__PacT86C",
+      "missing": [],
+      "bytes": 1579891,
+      "destination": "/home/christopherdavid/.openagents/terminal-bench/experiments/iteration-speed-9618/retained/tb4--coder-one-microluna-v13-retained--session-window-debug"
+    },
+    {
+      "job": "tb4--coder-one-microluna-v13-retained--session-window-debug-2",
+      "trial": "session-window-debug__3v9FKP5",
+      "missing": [],
+      "bytes": 1503480,
+      "destination": "/home/christopherdavid/.openagents/terminal-bench/experiments/iteration-speed-9618/retained/tb4--coder-one-microluna-v13-retained--session-window-debug-2"
+    },
+    {
+      "job": "tb4--coder-one-microluna-v13-retained--session-window-debug-3",
+      "trial": "session-window-debug__3KVqBUz",
+      "missing": [],
+      "bytes": 1412228,
+      "destination": "/home/christopherdavid/.openagents/terminal-bench/experiments/iteration-speed-9618/retained/tb4--coder-one-microluna-v13-retained--session-window-debug-3"
+    },
+    {
+      "job": "tb4--coder-one-microluna-v13-retained--embedding-drift-monitor",
+      "trial": "embedding-drift-monitor__6zRjd9n",
+      "missing": [],
+      "bytes": 4029251,
+      "destination": "/home/christopherdavid/.openagents/terminal-bench/experiments/iteration-speed-9618/retained/tb4--coder-one-microluna-v13-retained--embedding-drift-monitor"
+    },
+    {
+      "job": "tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-2",
+      "trial": "embedding-drift-monitor__y2bahob",
+      "missing": [],
+      "bytes": 4046432,
+      "destination": "/home/christopherdavid/.openagents/terminal-bench/experiments/iteration-speed-9618/retained/tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-2"
+    },
+    {
+      "job": "tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-3",
+      "trial": "embedding-drift-monitor__QAHE7De",
+      "missing": [],
+      "bytes": 4011352,
+      "destination": "/home/christopherdavid/.openagents/terminal-bench/experiments/iteration-speed-9618/retained/tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-3"
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+    Checking jev v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/jev)
+    Checking microluna v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/microluna)
+    Checking kev v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/kev)
+    Checking laya v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/laya)
+    Checking gym v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/gym)
+    Checking coder-one v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/coder-one)
+    Checking oak v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/oak)
+    Checking voyager v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/voyager)
+    Checking tenancy v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/tenancy)
+    Checking coderbench v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/coderbench)
+    Checking gateway v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/gateway)
+    Checking lev v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/lev)
+    Checking coder v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/coder)
+    Checking coder-project v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/coder-project)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 49.87s
+PHASE END: Feature workspace Clippy; elapsed 50.1s; exit 0

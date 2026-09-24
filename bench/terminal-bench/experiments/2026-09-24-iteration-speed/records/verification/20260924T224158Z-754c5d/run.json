@@ -1,0 +1,176 @@
+{
+  "schema": "openagents.gate-run.v1",
+  "run_id": "20260924T224158Z-754c5d",
+  "started_utc": "2026-09-24T22:41:58Z",
+  "finished_utc": "2026-09-24T22:52:18Z",
+  "elapsed_s": 620.7,
+  "tree": {
+    "head": "61f07356c2152f653120e03ef4bda96da7dbb462",
+    "dirty": false,
+    "diff_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "requested": {
+    "phases": "all",
+    "crates": "all",
+    "workspace_scope": false,
+    "changed_ref": null,
+    "uncovered": "",
+    "keep_going": false,
+    "retry": true,
+    "postgres": true,
+    "metal": false,
+    "soak": false
+  },
+  "phases": [
+    {
+      "slug": "preflight",
+      "name": "Environment preflight",
+      "command": [
+        "environment preflight"
+      ],
+      "status": "passed",
+      "attempts": 1,
+      "exit": 0,
+      "elapsed_s": 0.0,
+      "log": ".coder/verification/20260924T224158Z-754c5d/preflight.log"
+    },
+    {
+      "slug": "gate-tooling",
+      "name": "Gate tooling tests",
+      "command": [
+        "bash",
+        "-c",
+        "python3 -B -m unittest discover -s scripts/tests -p \"test_gate_*.py\" \\\n    && python3 -B -m unittest discover -s scripts -p \"test_verification_phase.py\""
+      ],
+      "status": "passed",
+      "attempts": 1,
+      "exit": 0,
+      "elapsed_s": 0.9,
+      "log": ".coder/verification/20260924T224158Z-754c5d/gate-tooling.log"
+    },
+    {
+      "slug": "artifacts",
+      "name": "Artifact acquisition tests",
+      "command": [
+        "python3",
+        "scripts/test_fetch_kev_artifacts.py"
+      ],
+      "status": "passed",
+      "attempts": 1,
+      "exit": 0,
+      "elapsed_s": 0.2,
+      "log": ".coder/verification/20260924T224158Z-754c5d/artifacts.log"
+    },
+    {
+      "slug": "delegation",
+      "name": "Delegation evidence checks",
+      "command": [
+        "python3",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "scripts/tests",
+        "-p",
+        "test_check_coder_delegation_run.py"
+      ],
+      "status": "passed",
+      "attempts": 1,
+      "exit": 0,
+      "elapsed_s": 0.8,
+      "log": ".coder/verification/20260924T224158Z-754c5d/delegation.log"
+    },
+    {
+      "slug": "backup",
+      "name": "Backup collection tests",
+      "command": [
+        "python3",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "scripts/tests",
+        "-p",
+        "test_backup_media.py"
+      ],
+      "status": "passed",
+      "attempts": 1,
+      "exit": 0,
+      "elapsed_s": 0.3,
+      "log": ".coder/verification/20260924T224158Z-754c5d/backup.log"
+    },
+    {
+      "slug": "fmt",
+      "name": "Workspace formatting",
+      "command": [
+        "cargo",
+        "fmt",
+        "--all",
+        "--check"
+      ],
+      "status": "passed",
+      "attempts": 1,
+      "exit": 0,
+      "elapsed_s": 3.1,
+      "log": ".coder/verification/20260924T224158Z-754c5d/fmt.log"
+    },
+    {
+      "slug": "clippy",
+      "name": "Default workspace Clippy",
+      "command": [
+        "cargo",
+        "clippy",
+        "--locked",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "status": "passed",
+      "attempts": 1,
+      "exit": 0,
+      "elapsed_s": 42.2,
+      "log": ".coder/verification/20260924T224158Z-754c5d/clippy.log"
+    },
+    {
+      "slug": "clippy-features",
+      "name": "Feature workspace Clippy",
+      "command": [
+        "cargo",
+        "clippy",
+        "--locked",
+        "--all-targets",
+        "--features",
+        "kev/serve,lev/serve,gym/tui,jev/blocking,oak/mcp-http",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "status": "passed",
+      "attempts": 1,
+      "exit": 0,
+      "elapsed_s": 50.1,
+      "log": ".coder/verification/20260924T224158Z-754c5d/clippy-features.log"
+    },
+    {
+      "slug": "tests",
+      "name": "Default workspace tests",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--",
+        "--nocapture"
+      ],
+      "status": "failed",
+      "attempts": 1,
+      "exit": 101,
+      "elapsed_s": 518.8,
+      "log": ".coder/verification/20260924T224158Z-754c5d/tests.log"
+    }
+  ],
+  "skipped": [],
+  "result": "failed"
+}

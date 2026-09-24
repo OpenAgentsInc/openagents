@@ -1,0 +1,11 @@
+    Checking gym v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/gym)
+   Compiling coder v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/coder)
+    Checking tenancy v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/tenancy)
+    Checking coderbench v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/coderbench)
+    Checking lev v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/lev)
+    Checking coder-project v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/coder-project)
+    Checking gateway v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/gateway)
+    Checking oak v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/oak)
+    Checking kev v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/kev)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 15.75s
+PHASE END: Default workspace Clippy; elapsed 15.9s; exit 0

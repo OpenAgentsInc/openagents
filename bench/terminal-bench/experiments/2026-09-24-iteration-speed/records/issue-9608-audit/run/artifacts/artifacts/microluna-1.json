@@ -1,0 +1,262 @@
+{
+  "schema": "openagents.coder-one.microluna-loop.v1",
+  "mode": "requirements",
+  "policy": {
+    "mode": "requirements",
+    "max_sessions": 10,
+    "max_attempts": 3,
+    "max_groups": 5,
+    "session_turns": 24,
+    "session_sec": 480,
+    "spend_usd": 1.0,
+    "evidence_chars": 14000,
+    "checks": true,
+    "require_evidence": false,
+    "read_first": false,
+    "accept": false,
+    "parts_check": true
+  },
+  "model": "gpt-6-luna",
+  "stopped": "every requirement group had its turn",
+  "sessions": [
+    {
+      "number": 1,
+      "focus": [
+        "R1"
+      ],
+      "status": "done",
+      "finish": {
+        "status": "done",
+        "summary": "Documented mini-task purpose, grading, TB4 distinction, and time/cost estimates; added the same explanation to the Gym mini-task view and tested its rendered content. `cargo test -p gym coder_minitasks::tests::a_run_reads_with_its_timeline_grade_and_coverage` passed.",
+        "answer": "",
+        "cause": "none"
+      },
+      "turns": 16,
+      "calls": 16,
+      "usage": {
+        "input": 257345,
+        "cached": 223488,
+        "output": 1570,
+        "reasoning": 143
+      },
+      "cost_usd": 0.00640558,
+      "milliseconds": 98554,
+      "session_id": "microluna-1-1",
+      "trace": "artifacts/microluna-1-1.atif.jsonl",
+      "commands": [
+        {
+          "command": "ls -la; rg -n -i \"mini.?task|coder one|Terminal-Bench 4|TB4\" . --glob '!target'",
+          "exit": 0
+        },
+        {
+          "command": "ls crates; rg -n \"coder minitasks|mini-task|Mini-task\" crates docs/coder/guides/coder-one-minitasks.md",
+          "exit": 0
+        },
+        {
+          "command": "read_file docs/coder/guides/coder-one-minitasks.md (from line 1)",
+          "exit": 0
+        },
+        {
+          "command": "read_file crates/gym/src (from line 1)",
+          "exit": 1
+        },
+        {
+          "command": "rg -n \"mini-task|Mini-task\" crates/gym/src --glob '*.rs'; rg -n 'duration|cost|mini-task' docs/coder/guides/coder-one-minitasks.md | head -30; ls crates/gym/src/coder*",
+          "exit": 0
+        },
+        {
+          "command": "read_file crates/gym/src/coder_minitasks.rs (from line 300)",
+          "exit": 0
+        },
+        {
+          "command": "read_file docs/coder/guides/coder-one-minitasks.md (from line 245)",
+          "exit": 0
+        },
+        {
+          "command": "read_file docs/coder/guides/coder-one-minitasks.md (from line 320)",
+          "exit": 0
+        },
+        {
+          "command": "rg -n 'about .*seconds|\\$0\\.0|cost.*mini-task|mini-task.*cost' docs/coder docs/terminal-bench | head -40; sed -n '180,220p' crates/gym/src/coder_minitasks.rs; sed -n '500,511p' crates/gym/src/coder_minitasks.rs",
+          "exit": 0
+        },
+        {
+          "command": "read_file crates/gym/src/coder_minitasks.rs (from line 475)",
+          "exit": 0
+        },
+        {
+          "command": "cargo test -p gym coder_minitasks::tests::a_run_reads_with_its_timeline_grade_and_coverage",
+          "exit": 0
+        }
+      ],
+      "changed": [
+        "docs/coder/guides/coder-one-minitasks.md",
+        "crates/gym/src/coder_minitasks.rs"
+      ],
+      "edited": true,
+      "ran_after_edit": true,
+      "changed_workspace": true,
+      "ran_command": true,
+      "read_only": false,
+      "cause": "none",
+      "started_at_ms": 1790290396340,
+      "ended_at_ms": 1790290495232,
+      "read_turns": 6,
+      "group": null,
+      "batch": "",
+      "parallel_with": [],
+      "alongside": null,
+      "workspace": null
+    },
+    {
+      "number": 2,
+      "focus": [
+        "R1"
+      ],
+      "status": "done",
+      "finish": {
+        "status": "done",
+        "summary": "Clarified task-specific grading in the guide and Gym mini-task view, retaining time/cost estimates and the TB4 distinction. The targeted Gym rendering test passed.",
+        "answer": "",
+        "cause": "none"
+      },
+      "turns": 7,
+      "calls": 7,
+      "usage": {
+        "input": 50332,
+        "cached": 40192,
+        "output": 997,
+        "reasoning": 166
+      },
+      "cost_usd": 0.00191442,
+      "milliseconds": 39559,
+      "session_id": "microluna-1-2",
+      "trace": "artifacts/microluna-1-2.atif.jsonl",
+      "commands": [
+        {
+          "command": "read_file docs/coder/guides/coder-one-minitasks.md (from line 1)",
+          "exit": 0
+        },
+        {
+          "command": "read_file crates/gym/src/coder_minitasks.rs (from line 280)",
+          "exit": 0
+        },
+        {
+          "command": "cargo test -p gym coder_minitasks::tests::a_run_reads_with_its_timeline_grade_and_coverage",
+          "exit": 0
+        }
+      ],
+      "changed": [
+        "docs/coder/guides/coder-one-minitasks.md",
+        "crates/gym/src/coder_minitasks.rs"
+      ],
+      "edited": true,
+      "ran_after_edit": true,
+      "changed_workspace": true,
+      "ran_command": true,
+      "read_only": false,
+      "cause": "none",
+      "started_at_ms": 1790290496315,
+      "ended_at_ms": 1790290535952,
+      "read_turns": 2,
+      "group": null,
+      "batch": "",
+      "parallel_with": [],
+      "alongside": null,
+      "workspace": null
+    }
+  ],
+  "moves": [
+    {
+      "after_session": 1,
+      "focus": [
+        "R1"
+      ],
+      "jev": {
+        "how": "live",
+        "picked": "retry",
+        "probabilities": {
+          "retry": 0.96,
+          "next": 0.04,
+          "stuck": 0.0,
+          "done": 0.0
+        },
+        "error": null
+      },
+      "contradicted": false,
+      "checks": {
+        "candidate": "71654779c92e8c178cfce1cf90c2a06f11914288a5dad1e49bf404cc32bc162c",
+        "scenarios": 0,
+        "verdicts": {},
+        "requirements": {
+          "unobserved": 1
+        },
+        "packets": 0
+      },
+      "verdict": {
+        "call": "unknown",
+        "p_fail": 0.3371923618337444,
+        "precision": null,
+        "why": "failure probability 0.34 is between 0.30 and 0.55"
+      },
+      "edited": true,
+      "ran_after_edit": true,
+      "read_only": false,
+      "attempts": 1,
+      "move": "retry",
+      "overridden": null,
+      "jev_usd": 0.000142296
+    },
+    {
+      "after_session": 2,
+      "focus": [
+        "R1"
+      ],
+      "jev": {
+        "how": "live",
+        "picked": "retry",
+        "probabilities": {
+          "stuck": 0.01,
+          "done": 0.12,
+          "retry": 0.65,
+          "next": 0.22
+        },
+        "error": null
+      },
+      "contradicted": false,
+      "checks": {
+        "candidate": "9a8e9b49aee32515958cd5b1efaa5d8932878b425b3519570b133536c3a875e1",
+        "scenarios": 0,
+        "verdicts": {},
+        "requirements": {
+          "unobserved": 1
+        },
+        "packets": 0
+      },
+      "verdict": {
+        "call": "unknown",
+        "p_fail": 0.36001257235497314,
+        "precision": null,
+        "why": "failure probability 0.36 is between 0.30 and 0.55"
+      },
+      "edited": true,
+      "ran_after_edit": true,
+      "read_only": false,
+      "attempts": 2,
+      "move": "next",
+      "overridden": "Jev found every part of the focus met, so retry became next",
+      "jev_usd": 0.000127848
+    }
+  ],
+  "usage": {
+    "input": 307677,
+    "cached": 263680,
+    "output": 2567,
+    "reasoning": 309
+  },
+  "cost_usd": 0.008320000000000001,
+  "writer_usd": 0.0,
+  "parallel": null,
+  "stopped_by": null,
+  "session_id": "microluna-1-2"
+}

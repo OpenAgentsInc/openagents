@@ -1,0 +1,86 @@
+{
+  "schema": "openagents.coder-one.microluna-loop.v1",
+  "mode": "single",
+  "policy": {
+    "mode": "single",
+    "max_sessions": 6,
+    "max_attempts": 2,
+    "max_groups": 3,
+    "session_turns": 24,
+    "session_sec": 240,
+    "spend_usd": 0.25,
+    "evidence_chars": 14000,
+    "checks": true,
+    "require_evidence": false,
+    "read_first": false,
+    "accept": false
+  },
+  "model": "gpt-6-luna",
+  "stopped": "the one session ended",
+  "sessions": [
+    {
+      "number": 1,
+      "focus": [
+        "the briefing"
+      ],
+      "status": "done",
+      "finish": {
+        "status": "done",
+        "summary": "Reworded the mini-task view copy in complete, plain language, expanded Terminal-Bench 4.0, and separated measured-comparison documentation pointer. Updated assertions and ran the targeted test successfully.",
+        "answer": "",
+        "cause": "none"
+      },
+      "turns": 4,
+      "calls": 4,
+      "usage": {
+        "input": 17406,
+        "cached": 9472,
+        "output": 788,
+        "reasoning": 59
+      },
+      "cost_usd": 0.0012821199999999999,
+      "milliseconds": 25624,
+      "session_id": "microluna-1-1",
+      "trace": "artifacts/microluna-1-1.atif.jsonl",
+      "commands": [
+        {
+          "command": "sed -n '300,360p' crates/gym/src/coder_minitasks.rs; sed -n '475,515p' crates/gym/src/coder_minitasks.rs; grep -R \"about 22 seconds\\|0.054\\|one-minitasks\" -n docs/coder/guides/coder-one-minitasks.md crates/gym/src/coder_minitasks.rs; git status --short; grep -n \"coder_minitasks\" crates/gym/Cargo.toml Cargo.toml | head -n 30",
+          "exit": 0
+        },
+        {
+          "command": "cargo test -p gym coder_minitasks::tests::a_run_reads_with_its_timeline_grade_and_coverage",
+          "exit": 0
+        }
+      ],
+      "changed": [
+        "crates/gym/src/coder_minitasks.rs"
+      ],
+      "edited": true,
+      "ran_after_edit": true,
+      "changed_workspace": true,
+      "ran_command": true,
+      "read_only": false,
+      "cause": "none",
+      "started_at_ms": 1790290688163,
+      "ended_at_ms": 1790290713871,
+      "read_turns": 0,
+      "group": null,
+      "batch": "",
+      "parallel_with": [],
+      "alongside": null,
+      "workspace": null
+    }
+  ],
+  "moves": [],
+  "usage": {
+    "input": 17406,
+    "cached": 9472,
+    "output": 788,
+    "reasoning": 59
+  },
+  "cost_usd": 0.0012821199999999999,
+  "writer_usd": 0.0,
+  "parallel": null,
+  "stopped_by": null,
+  "session_id": "microluna-1-1"
+}

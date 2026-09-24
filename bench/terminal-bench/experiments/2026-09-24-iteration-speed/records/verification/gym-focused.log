@@ -1,0 +1,111 @@
+From https://github.com/OpenAgentsInc/openagents
+ * branch                  codex/microluna-iteration-speed -> FETCH_HEAD
+   61f07356c2..150d71d0b1  codex/microluna-iteration-speed -> origin/codex/microluna-iteration-speed
+Previous HEAD position was 61f07356c2 docs: retain live summary measurements and the iteration protocol
+HEAD is now at 150d71d0b1 gym: render reasoning summaries from native ATIF steps
+   Compiling tokio v1.53.1
+   Compiling futures-task v0.3.34
+   Compiling slab v0.4.12
+   Compiling atif v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/atif)
+   Compiling futures-util v0.3.34
+   Compiling hyper v1.11.1
+   Compiling tokio-rustls v0.26.5
+   Compiling tower v0.5.3
+   Compiling tower-http v0.6.11
+   Compiling hyper-util v0.1.20
+   Compiling hyper-rustls v0.27.9
+   Compiling reqwest v0.12.28
+   Compiling jev v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/jev)
+   Compiling gym v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/gym)
+
+running 1 test
+test runs_replay::tests::microluna_session_logs_replace_the_host_s_executor_events ... ok
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 23.57s
+     Running unittests src/lib.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/gym-356ec0bd8498f575)
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 480 filtered out; finished in 0.00s
+
+
+running 0 tests
+     Running unittests src/bin/gym.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/gym-c5a6506302a0df60)
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 39 filtered out; finished in 0.00s
+
+     Running tests/caller_suite_v1.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/caller_suite_v1-212bcdadb5fce478)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 28 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 10 filtered out; finished in 0.00s
+
+     Running tests/external_jevbench_v1.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/external_jevbench_v1-8fad8e2a24efff1f)
+     Running tests/gate_digest.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/gate_digest-e919c2f9e2204cae)
+     Running tests/kev_variant_rows.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/kev_variant_rows-c29787d50b13886b)
+     Running tests/locked_ledger.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/locked_ledger-a736e08eb363dc8e)
+     Running tests/program_selection_v2.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/program_selection_v2-545b1d35a2d5c168)
+     Running tests/program_selection_v3.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/program_selection_v3-ec520e36aebe04ba)
+     Running tests/recipes.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/recipes-cf9d8cbcb4f87740)
+     Running tests/rederived_floors.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/rederived_floors-8427b5707487e76e)
+     Running tests/replay_acceptance.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/replay_acceptance-83285eb0467f64db)
+     Running tests/selected_rows.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/selected_rows-78185b19d607b021)
+     Running tests/voyager_v1.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/voyager_v1-3e15e8996c9a59dd)
+     Running tests/winner_inversion.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/winner_inversion-81f1a5024aa23180)

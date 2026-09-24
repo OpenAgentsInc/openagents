@@ -1,0 +1,9 @@
+    Checking atif v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/atif)
+    Checking jev v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/jev)
+    Checking coder-boundary v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/coder-boundary)
+    Checking supervise v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/supervise)
+    Checking microluna v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/microluna)
+    Checking gym v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/gym)
+    Checking coder-one v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/coder-one)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 17.12s
+PHASE END: Default workspace Clippy; elapsed 17.2s; exit 0

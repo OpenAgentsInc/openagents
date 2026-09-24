@@ -54,3 +54,22 @@ on coderos to collect all planned attempts, including pending rows and unknown
 costs. `run.py` records credentials only in process memory and pins the original
 artifact before invoking the suite. Run it from the named frozen checkout;
 a later source revision requires a new experiment and artifact identity.
+
+The six attempts are complete: [results](records/results.json),
+[analysis](records/analysis.json), [final scheduler status](records/status.json),
+and [retention inventory](records/retention-summary.json). The
+[fresh candidate batch](records/grading-fresh/batch.json) covers all 12 snapshots
+with eight verifier executions and four attributed reuses. Its credential scan
+and each trial's retention scan report no known credential matches.
+
+`finish.py` waits for this exact six-attempt suite, retains every trial, and
+starts post-run grading only after all attempts finish. `analyze.py RECORDS`
+checks the complete grades and produces `analysis.json`. Neither script starts
+new model sessions. The full trial bundles live under `../../traces/` by
+job and trial name; each result table links its retention manifest.
+
+The [publication check](records/publication-check.json) validates the staged Git
+blobs against the retention manifests for this batch and the prior candidate
+evidence batch. It includes retained Python bytecode, which Git normally ignores.
+The [verification records](records/verification/README.md) retain failed and
+corrected gates, the final merged integration gate, and the Python test output.

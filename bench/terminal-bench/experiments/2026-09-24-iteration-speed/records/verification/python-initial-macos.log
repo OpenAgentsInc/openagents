@@ -1,0 +1,131 @@
+F....................................................................... [ 24%]
+..................s..............................................sF..... [ 49%]
+........................................................................ [ 74%]
+....................................s................................... [ 99%]
+..                                                                       [100%]
+=================================== FAILURES ===================================
+_______________________________ test_known_arms ________________________________
+
+agents = {'claude-code': AgentProfile(id='claude-code', role='external-baseline', harbor_name='claude-code', harbor_import_path... cost follows the serving side's receipts; mark unavailable usage unknown, never zero."), agent_network='harbor'), ...}
+
+    def test_known_arms(agents):
+>       assert set(agents) == {
+            "claude-code",
+            "claude-code-opus",
+            "codex",
+            "codex-gpt-6-astra",
+            "codex-gpt-6-sol",
+            "codex-gpt-6-luna",
+            "devin",
+            "coder-v05",
+            "coder-one",
+            "coder-one-no-jev",
+            "coder-one-delegate-opus",
+            "coder-one-delegate-auto",
+            "coder-one-delegate-luna",
+            "coder-one-delegate-luna-auto",
+            "coder-one-deep",
+            "coder-one-jevbrief-luna",
+            "coder-one-jevbrief-opus",
+            "coder-one-jevbrief-opus-lean",
+            "coder-one-jevprobe-opus-lean",
+            "coder-one-jevprobe-luna",
+            "coder-one-jevprobe2-luna",
+            "coder-one-jevprobe3-luna",
+            "coder-one-pack-luna",
+            "coder-one-jevprobe2-opus-lean-low-5m",
+            "coder-one-jevprobe3-opus-lean-low",
+            "coder-one-jevprobe2-opus-lean-low",
+            "coder-one-jevprobe-luna-low",
+            "coder-one-jevprobe-opus-lean-low",
+            "coder-one-jevprobe-sonnet-lean-low",
+            "coder-one-jevprobe-haiku-lean",
+            "coder-one-tunable",
+            "coder-one-tunable-opus",
+            "coder-one-tunable-luna",
+            "coder-one-tunable-luna-pack",
+            "coder-one-microluna-v1",
+            "coder-one-microluna-v2",
+            "coder-one-microluna-v3",
+            "coder-one-microluna-v4",
+            "coder-one-microluna-v5",
+            "coder-one-microluna-v6",
+            "coder-one-microluna-v7",
+            "coder-one-microluna-v8",
+            "coder-one-microluna-v15",
+            "coder-one-microluna-v14",
+            "coder-one-microluna-v13",
+            "coder-one-microluna-v12",
+            "coder-one-microluna-evidence-v1",
+            "coder-one-microluna-v11",
+            "coder-one-microluna-v10",
+            "coder-one-microluna-v9",
+            "coder-one-microluna-solo",
+            "netprobe",
+            "coder-one-tunable-v2",
+            "coder-one-tunable-luna-v2",
+            "coder-one-tunable-luna-snapshot",
+            "coder-one-tunable-v3",
+            "coder-one-tunable-v4",
+            "coder-one-tunable-v5",
+            "coder-one-tunable-v6",
+            "coder-one-tunable-v7",
+            "coder-one-tunable-v8",
+            "coder-one-tunable-v9",
+            "coder-one-tunable-v9-escalate",
+            "coder-one-tunable-v10",
+            "coder-one-matched-v8",
+            "claude-code-opus-matched",
+            "oracle",
+            "nop",
+        }
+E       AssertionError: assert {'claude-code...te-auto', ...} == {'claude-code...te-auto', ...}
+E         
+E         Extra items in the left set:
+E         'coder-one-microluna-v13-retained'
+E         Use -v to get more diff
+
+bench/terminal-bench/tests/test_agents.py:14: AssertionError
+__________________ test_limit_self_only_lowers_the_data_limit __________________
+
+    def test_limit_self_only_lowers_the_data_limit():
+        script = (
+            "import resource\n"
+            "from tbench import memcap\n"
+            "memcap.limit_self(256 << 20)\n"
+            "memcap.limit_self(1 << 40)\n"
+            "print(resource.getrlimit(resource.RLIMIT_DATA)[0])\n"
+            "try:\n"
+            "    b = bytearray(1 << 30)\n"
+            "    print('held')\n"
+            "except MemoryError:\n"
+            "    print('refused')\n"
+        )
+        done = subprocess.run(
+            [sys.executable, "-c", script],
+            capture_output=True,
+            text=True,
+            cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        )
+>       assert done.stdout.split() == [str(256 << 20), "refused"], done.stderr
+E       AssertionError: 
+E       assert ['1099511627776', 'held'] == ['268435456', 'refused']
+E         
+E         At index 0 diff: '1099511627776' != '268435456'
+E         Use -v to get more diff
+
+bench/terminal-bench/tests/test_memcap.py:102: AssertionError
+=============================== warnings summary ===============================
+tests/test_candidates.py: 10 warnings
+  /Users/christopherdavid/.codex/worktrees/microluna-iteration-speed/openagents/bench/terminal-bench/tests/test_candidates.py:17: DeprecationWarning: Task.checksum will be deprecated soon. Use TrialLock.task.digest from the trial lock when you need the task content hash.
+    result["task_checksum"] = Task(task).checksum
+
+tests/test_candidates.py: 10 warnings
+  /Users/christopherdavid/.codex/worktrees/microluna-iteration-speed/openagents/bench/terminal-bench/tbench/candidates.py:76: DeprecationWarning: Task.checksum will be deprecated soon. Use TrialLock.task.digest from the trial lock when you need the task content hash.
+    if not result.get("task_checksum") or Task(task).checksum != result["task_checksum"]:
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED bench/terminal-bench/tests/test_agents.py::test_known_arms - Assertion...
+FAILED bench/terminal-bench/tests/test_memcap.py::test_limit_self_only_lowers_the_data_limit
+2 failed, 285 passed, 3 skipped, 20 warnings in 3.49s
