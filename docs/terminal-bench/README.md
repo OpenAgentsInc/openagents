@@ -28,6 +28,13 @@ attempts once no winner was possible. See the
 [results](2026-09-24-effort-routing.md) (issue
 [#9569](https://github.com/OpenAgentsInc/openagents/issues/9569)).
 
+**Version arc through v10: configuration pays, the controller doesn't yet.**
+The Jev briefing, the lean executor, and effort produced every measured
+saving. Across 81 graded trials in the running experiments, final checks
+that all passed preceded 19 passes and 19 failures, and escalation fired 12
+times without recovering a failure. See the
+[version arc and ranked next experiments](2026-09-24-version-arc.md).
+
 **Tunable v8 persistence on three near-miss tasks: cheaper rounds, no
 credited pass.** Over three attempts per task, `production-planning` passed 2
 of 3 and `bun-sourcemap-leak` 1 of 3, and `cargo-flight-dispatch` passed 0
@@ -138,6 +145,7 @@ still need the quota audit. See [harness validation](tb4-results.md#harness-vali
 | Document | Contents |
 | --- | --- |
 | [Per-task effort on six TB4 tasks](2026-09-24-effort-routing.md) | Tunable v9's effort routing against fixed medium (v2) and fixed xhigh (v3): the pool fit, Wilson intervals, the exact McNemar test, cost and time per arm and task, why `gsea-proteomics` was routed to medium, and every attempt. |
+| [Coder One's version arc](2026-09-24-version-arc.md) | Every version from the Gemini loop to tunable v10: what each changed, its hypothesis, tasks, passes, cost, and verdict; the strategies over time; what improves and what's stuck; measurement lessons; and the ranked next experiments. |
 | [Matched controller test on 10 TB4 tasks](2026-09-23-matched-controller-targeted.md) | Plain Claude Code against Coder One's v8 controller on the same Opus executor, three interleaved attempts on each of 10 tasks: Wilson intervals, the exact McNemar test, cost and time per arm and task, every attempt, and each controller component's share. |
 | [Matched Opus controller experiment](2026-09-23-matched-opus-controller.md) | Twelve fresh attempts with executor controls held fixed: cost, time, steps, failure analysis, sensitivity, retained traces, and explicit retention gaps. |
 | [Escalation to GPT-6 Astra on a failed check](2026-09-24-escalation-on-failed-check.md) | Twelve escalations on a failed check or a self-reported failure rescued none (0 of 12, 0–24%), for $20.40 of Astra. Why each trigger failed, the failures the gate missed, and what it should key on instead. |
