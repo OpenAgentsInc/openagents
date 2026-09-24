@@ -186,13 +186,14 @@ pub struct Persist {
 /// The last `SCORE <passed> <total>` line in `output`, with `total` above 0.
 #[must_use]
 pub fn parse_score(output: &str) -> Option<(u64, u64)> {
-    output.lines().rev().find_map(|line| {
-        let mut words = line.split_whitespace();
-        (words.next()? == "SCORE").then_some(())?;
-        let passed: u64 = words.next()?.parse().ok()?;
-        let total: u64 = words.next()?.parse().ok()?;
-        (total > 0).then_some((passed.min(total), total))
-    })
+    let line = output
+        .lines()
+        .rev()
+        .find(|line| line.split_whitespace().next() == Some("SCORE"))?;
+    let mut words = line.split_whitespace().skip(1);
+    let passed: u64 = words.next()?.parse().ok()?;
+    let total: u64 = words.next()?.parse().ok()?;
+    (total > 0 && passed <= total && words.next().is_none()).then_some((passed, total))
 }
 
 impl Config {
@@ -678,12 +679,14 @@ async fn turn_back(
                 &json!({ "command": command, "timeout_seconds": 120 }).to_string(),
             )
             .await;
-        if let Some((passed, total)) = parse_score(&ran.output)
-            && passed < total
-        {
-            reasons.push(format!(
+        match (ran.status, parse_score(&ran.output)) {
+            (atif::Outcome::Completed, Some((passed, total))) if passed == total => {}
+            (atif::Outcome::Completed, Some((passed, total))) => reasons.push(format!(
                 "the evaluation script scores the workspace {passed} of {total}"
-            ));
+            )),
+            _ => reasons.push(
+                "the evaluation did not finish successfully with a valid SCORE line; its result is unknown. Check the runner and its output before changing the solution".to_string(),
+            ),
         }
     }
     if reasons.is_empty() {

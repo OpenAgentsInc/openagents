@@ -98,6 +98,14 @@ pub struct Lean {
     /// Add the standard-form practice ([`STANDARD_FORMS`]).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub standard_forms: bool,
+    /// Keep candidate snapshots and the evaluator in the artifacts, prefer
+    /// an earlier tie, and validate the submitted workspace again.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub protect_candidates: bool,
+    /// The final review reads files and host-recorded evidence only. It
+    /// cannot run commands or modify the candidate.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub observe_review: bool,
 }
 
 #[allow(clippy::trivially_copy_pass_by_ref)]
@@ -133,6 +141,9 @@ impl Lean {
         }
         if self.score_sec == 0 {
             problems.push("executor.microluna.lean.score_sec must be at least 1".to_string());
+        }
+        if self.protect_candidates && !self.keep_best {
+            problems.push("protect_candidates requires keep_best".to_string());
         }
         problems
     }
@@ -226,6 +237,14 @@ running it: every file, format, command, and stated rule. Fix what the task's wo
 wrong or missing. Don't undo a change unless the task's words show it wrong, and never restore \
 behavior only because an old comment, docstring, or test expects it. If everything holds, change \
 nothing and call finish with status `done`.";
+
+/// The host enforces this review with file reads and finish only.
+pub const OBSERVE_GUIDANCE: &str = "Review the candidate against every requirement in the task. \
+You can read files and finish; commands and edits are disabled. The host's score is a limited \
+self-test, not evidence that every requirement is met. Identify missing requirements, unsupported \
+assumptions, and checks whose expected values merely repeat current behavior. Cite the task text \
+and source file for each finding. If the evidence is incomplete, finish as blocked and say what \
+would need to be tested. Do not call the task verified from a green self-test alone.";
 
 /// Jev's question on hard-coding.
 pub const HARDCODE_QUESTION: &str = "Does the change in `diff` hard-code the task's provided \
@@ -481,16 +500,28 @@ impl Micro {
     }
 
     /// Runs the frozen score script against the workspace.
-    async fn lean_score(&self, frozen: &Path, lean: &Lean) -> (Option<(u64, u64)>, String) {
+    pub(super) async fn lean_score(
+        &self,
+        frozen: &Path,
+        lean: &Lean,
+        remaining: Duration,
+    ) -> (Option<(u64, u64)>, String) {
         let script = frozen.join("score.sh");
         if !script.is_file() {
             return (None, "no score script".to_string());
         }
-        let wall = Duration::from_secs(lean.score_sec);
+        let wall = Duration::from_secs(lean.score_sec).min(remaining);
+        if wall.is_zero() {
+            return (
+                None,
+                "No time remains to evaluate the workspace.".to_string(),
+            );
+        }
         let ended = match self.isolation {
             Isolation::TaskContainer => {
                 let mut command = std::process::Command::new("/bin/sh");
                 command.arg(&script).current_dir(&self.workdir);
+                microluna::tools::withhold_credentials(&mut command);
                 supervise::Job::from_command(command)
                     .bounded(supervise::Limits::within(wall).keeping(64 * 1024))
                     .run()
@@ -511,6 +542,7 @@ impl Micro {
                     Err(error) => return (None, error.to_string()),
                 };
                 command.current_dir(&self.workdir);
+                microluna::tools::withhold_credentials(&mut command);
                 supervise::Job::from_command(command)
                     .bounded(supervise::Limits::within(wall).keeping(64 * 1024))
                     .run_holding(boundary.hold())
@@ -523,7 +555,15 @@ impl Micro {
             &format!("{}\n{}", stdout.trim_end(), stderr.trim_end()),
             1_200,
         );
-        (parse_score(&stdout), tail)
+        let score = ended
+            .ending
+            .success()
+            .then(|| parse_score(&stdout))
+            .flatten();
+        (
+            score,
+            format!("exit {:?}; {:?}\n{tail}", ended.ending.code(), ended.ending),
+        )
     }
 
     /// Whether the workspace hard-codes the examples: the literal scan, and
@@ -660,8 +700,13 @@ impl Micro {
         let base = base.filter(|dir| crate::handoff::copy_tree(&self.workdir, dir).is_ok());
         let _base_cleanup = Cleanup(base.clone());
         let eval = eval_dir(&self.workdir, self.isolation);
-        let frozen = scratch("microluna-eval-frozen");
-        let _frozen_cleanup = Cleanup(Some(frozen.clone()));
+        let retained = self.artifacts.join(format!("lean-{}", self.dispatch()));
+        let frozen = if lean.protect_candidates {
+            retained.join("evaluator")
+        } else {
+            scratch("microluna-eval-frozen")
+        };
+        let _frozen_cleanup = Cleanup((!lean.protect_candidates).then(|| frozen.clone()));
         let _eval_cleanup = Cleanup(
             (self.isolation != Isolation::TaskContainer || lean.keep_best).then(|| eval.clone()),
         );
@@ -669,6 +714,8 @@ impl Micro {
             let _ = std::fs::create_dir_all(&eval);
         }
         let mut have_score = false;
+        let mut evaluator_digest = None;
+        let mut score_total = None;
         let mut best: Option<Best> = None;
         let mut best_cleanup: Vec<PathBuf> = Vec::new();
         let mut sessions: Vec<Ran> = Vec::new();
@@ -699,7 +746,21 @@ impl Micro {
                 stopped = "the dispatch's time ran out".to_string();
                 break;
             }
-            let mut guidance = if checking {
+            if checking
+                && lean.protect_candidates
+                && let Some(candidate) = &best
+            {
+                if let Err(error) = crate::compose::replace_contents(&self.workdir, &candidate.dir)
+                {
+                    stopped =
+                        format!("could not prepare the selected candidate for review: {error}");
+                    break;
+                }
+                history.push(format!("The host selected session {} for review; equal scores preserve the earlier candidate.", candidate.session));
+            }
+            let mut guidance = if checking && lean.observe_review {
+                OBSERVE_GUIDANCE.to_string()
+            } else if checking {
                 CHECK_GUIDANCE.to_string()
             } else if number == 1 {
                 general.clone()
@@ -775,8 +836,9 @@ impl Micro {
                     }],
                     &why,
                     &brief,
-                    false,
+                    checking && lean.observe_review,
                     Place {
+                        observe_only: checking && lean.observe_review,
                         persist: persist(lean, checking, have_score, &eval, &frozen),
                         deadline: wall_left(),
                         command_max: (lean.command_sec > 0)
@@ -804,12 +866,43 @@ impl Micro {
             // Freeze the score script the first time it exists.
             if lean.keep_best && !have_score && eval.join("score.sh").is_file() {
                 have_score = crate::handoff::copy_tree(&eval, &frozen).is_ok();
+                if have_score {
+                    evaluator_digest = Some(parallel::tree(&frozen));
+                }
             }
-            let (score, score_tail) = if have_score {
-                self.lean_score(&frozen, lean).await
+            let intact = evaluator_digest
+                .as_ref()
+                .is_none_or(|d| *d == parallel::tree(&frozen));
+            let (mut score, mut score_tail) = if have_score && intact {
+                self.lean_score(
+                    &frozen,
+                    lean,
+                    time_left().min(wall_left().unwrap_or(Duration::MAX)),
+                )
+                .await
             } else {
-                (None, String::new())
+                (
+                    None,
+                    "The evaluator is missing or changed; its result is unknown.".to_string(),
+                )
             };
+            if evaluator_digest
+                .as_ref()
+                .is_some_and(|d| *d != parallel::tree(&frozen))
+            {
+                score = None;
+                score_tail =
+                    "The evaluator changed after freezing; its result is unknown.".to_string();
+            }
+            if let Some((_, total)) = score {
+                if score_total.is_some_and(|expected| expected != total) {
+                    score = None;
+                    score_tail
+                        .push_str("\nThe score total changed; candidates are not comparable.");
+                } else {
+                    score_total = Some(total);
+                }
+            }
             let (flagged, flag_record, jev_usd) = if lean.hardcode_check {
                 let literal = literal_examples(&self.workdir, &start_tree, &fields);
                 self.hardcoded(prepared, base.as_deref(), &literal, number)
@@ -851,23 +944,45 @@ impl Micro {
                         ""
                     }
                 ));
-            } else if have_score {
+            } else if lean.keep_best {
                 history.push(format!(
-                    "After session {number} the host's score script printed no SCORE line:\n{}",
+                    "After session {number} evaluation was missing or invalid; completion is unknown:\n{}",
                     crate::judge::clip(&score_tail, 600)
                 ));
             }
-            // Keep the best: a flagged workspace never counts, and a tie
-            // goes to the later session.
+            let candidate = retained.join(format!("session-{number}"));
+            let snapshot = if lean.protect_candidates {
+                if !parallel::copyable(&self.workdir) {
+                    Err("workspace exceeds the snapshot bound".to_string())
+                } else {
+                    crate::handoff::copy_tree(&self.workdir, &candidate).map_err(|e| e.to_string())
+                }
+            } else {
+                Ok(())
+            };
+            // Protected selection keeps the earliest tied candidate. The
+            // scalar score cannot establish that a later edit is better.
             let mut kept = false;
-            if lean.keep_best && !flagged {
-                let better = best
-                    .as_ref()
-                    .is_none_or(|b| fraction(score) >= fraction(b.score));
+            if lean.keep_best && !flagged && snapshot.is_ok() {
+                let better = best.as_ref().is_none_or(|b| {
+                    if lean.protect_candidates {
+                        fraction(score) > fraction(b.score)
+                    } else {
+                        fraction(score) >= fraction(b.score)
+                    }
+                });
                 if better && parallel::copyable(&self.workdir) {
-                    let dir = scratch("lean-best");
-                    if crate::handoff::copy_tree(&self.workdir, &dir).is_ok() {
-                        best_cleanup.push(dir.clone());
+                    let dir = if lean.protect_candidates {
+                        candidate.clone()
+                    } else {
+                        scratch("lean-best")
+                    };
+                    if lean.protect_candidates
+                        || crate::handoff::copy_tree(&self.workdir, &dir).is_ok()
+                    {
+                        if !lean.protect_candidates {
+                            best_cleanup.push(dir.clone());
+                        }
                         best = Some(Best {
                             session: number,
                             score,
@@ -903,7 +1018,20 @@ impl Micro {
                 "hardcoded": flag_record,
                 "kept": kept,
                 "spent_usd": spent,
+                "candidate": lean.protect_candidates.then(|| candidate.display().to_string()),
+                "snapshot_error": snapshot.err(),
+                "workspace_files": lean.protect_candidates.then(|| parallel::tree(&self.workdir)),
+                "evaluator_files": evaluator_digest,
             }));
+            if lean.protect_candidates {
+                let evidence = serde_json::to_vec_pretty(&moves).unwrap_or_default();
+                if let Err(error) =
+                    crate::record::write_atomic(&retained.join("selection.json"), &evidence)
+                {
+                    stopped = format!("could not retain candidate evidence: {error}");
+                    break;
+                }
+            }
             if checking {
                 stopped.push_str(&format!(
                     "{}the self-check ended {status}",
@@ -912,7 +1040,7 @@ impl Micro {
                 break;
             }
             let full = score.is_some_and(|(p, t)| p >= t);
-            let settled = status == "done" && !flagged && (!lean.keep_best || !have_score || full);
+            let settled = status == "done" && !flagged && (!lean.keep_best || full);
             if settled {
                 stopped = format!("session {number} ended done");
                 if !lean.self_check {
@@ -933,7 +1061,9 @@ impl Micro {
                 ))
             });
             if b.session != sessions.len() as u32
-                && (last_flagged || fraction(b.score) > fraction(last_score))
+                && (lean.protect_candidates
+                    || last_flagged
+                    || fraction(b.score) > fraction(last_score))
             {
                 match crate::compose::replace_contents(&self.workdir, &b.dir) {
                     Ok(()) => {
@@ -952,6 +1082,61 @@ impl Micro {
         }
         for dir in best_cleanup {
             let _ = std::fs::remove_dir_all(dir);
+        }
+        if lean.protect_candidates {
+            let intact = evaluator_digest
+                .as_ref()
+                .is_some_and(|d| *d == parallel::tree(&frozen));
+            let (mut score, output) = if have_score && intact {
+                self.lean_score(
+                    &frozen,
+                    lean,
+                    time_left().min(wall_left().unwrap_or(Duration::MAX)),
+                )
+                .await
+            } else {
+                (
+                    None,
+                    "The frozen evaluator is missing or changed.".to_string(),
+                )
+            };
+            if evaluator_digest
+                .as_ref()
+                .is_some_and(|d| *d != parallel::tree(&frozen))
+            {
+                score = None;
+            }
+            if score.is_some_and(|(_, total)| score_total != Some(total)) {
+                score = None;
+            }
+            let selection_available = best.is_some();
+            let result = if !selection_available || score.is_none() {
+                "unknown"
+            } else if score.is_some_and(|(p, t)| p == t) {
+                "local_checks_passed"
+            } else {
+                "local_checks_failed"
+            };
+            stopped.push_str(&format!(
+                "; submitted evidence: {result} (benchmark outcome not known)"
+            ));
+            moves.push(json!({
+                "kind": "lean.submitted",
+                "selected_session": best.as_ref().map(|b| b.session),
+                "result": result,
+                "score": score.map(|(p, t)| json!({"passed": p, "total": t})),
+                "output": output,
+                "review_status": sessions.last().filter(|r| r.read_only).map(Ran::status),
+                "workspace_files": parallel::tree(&self.workdir),
+                "benchmark_outcome": Value::Null,
+            }));
+            if let Ok(bytes) = serde_json::to_vec_pretty(&moves) {
+                if let Err(error) =
+                    crate::record::write_atomic(&retained.join("selection.json"), &bytes)
+                {
+                    stopped.push_str(&format!("; could not retain submitted evidence: {error}"));
+                }
+            }
         }
         (sessions, moves, stopped)
     }

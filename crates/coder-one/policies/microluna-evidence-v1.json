@@ -1,0 +1,104 @@
+{
+  "schema": "openagents.coder-one.policy.v1",
+  "name": "coder-one-microluna-evidence-v1",
+  "note": "Microluna v12 with retained candidate evidence, earlier ties, strict final score validation, and an observational review that can read files but cannot run commands or edit the solution. Experimental; local checks do not establish benchmark success.",
+  "policy": {
+    "jev": {
+      "mode": "deep",
+      "model": "jev-1.13.0",
+      "question_sets": "builtin-v1"
+    },
+    "evidence": {
+      "probes": "v2",
+      "survey_files": 40
+    },
+    "control": {
+      "delegate": "always",
+      "explore_steps": 0,
+      "max_steps": 50,
+      "command_timeout_sec": 300,
+      "lane": "free",
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "horizon": {
+        "first_share": 0.55,
+        "later_share": 0.75,
+        "min_dispatch_sec": 300,
+        "check_share": 0.05,
+        "long_after_sec": 3600,
+        "long_effort": "high",
+        "long_command_sec": 3600
+      }
+    },
+    "brief": {
+      "cap": 12000,
+      "directions": "batch-checked",
+      "packer": "coverage-jev"
+    },
+    "executor": {
+      "agent": "microluna",
+      "version": null,
+      "model": "gpt-6-luna",
+      "effort": "high",
+      "tools": null,
+      "prompt_cache_ttl": null,
+      "deadline_sec": 1500,
+      "microluna": {
+        "mode": "requirements",
+        "max_sessions": 8,
+        "max_attempts": 4,
+        "max_groups": 4,
+        "session_turns": 60,
+        "session_sec": 900,
+        "spend_usd": 0.09,
+        "evidence_chars": 12000,
+        "checks": false,
+        "require_evidence": true,
+        "read_first": false,
+        "accept": false,
+        "parallel_tools": true,
+        "lean": {
+          "sessions": 4,
+          "source_chars": 40000,
+          "sample_chars": 6000,
+          "self_check": true,
+          "holdout": true,
+          "hardcode_check": true,
+          "keep_best": true,
+          "score_sec": 120,
+          "persist": {
+            "max_returns": 3,
+            "not_done": true,
+            "reserve_turns": 8,
+            "reserve_sec": 90
+          },
+          "wall_sec": 1200,
+          "defended": true,
+          "session_spend": true,
+          "records": true,
+          "command_sec": 180,
+          "symptoms": true,
+          "example_first": true,
+          "standard_forms": true,
+          "protect_candidates": true,
+          "observe_review": true
+        }
+      }
+    },
+    "verify": {
+      "checks": false,
+      "support": false
+    }
+  },
+  "protected": {
+    "isolation": "task-container",
+    "effect_policy": "executor-bypasses-its-own-sandbox",
+    "acceptance": "task-verifier",
+    "ceilings": {
+      "episode_deadline_sec": null,
+      "reserve_sec": 30,
+      "spend_soft_usd": null,
+      "spend_hard_usd": null
+    }
+  }
+}

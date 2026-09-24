@@ -1434,6 +1434,8 @@ fn lean_shape() -> lean::Lean {
         session_spend: false,
         records: false,
         command_sec: 0,
+        protect_candidates: false,
+        observe_review: false,
         symptoms: false,
         example_first: false,
         standard_forms: false,
@@ -1565,7 +1567,9 @@ fn a_lookup_table_of_the_examples_is_flagged_and_a_rule_is_not() {
 #[test]
 fn a_score_is_the_last_score_line() {
     assert_eq!(lean::parse_score("x\nSCORE 3 9\nSCORE 5 9\n"), Some((5, 9)));
-    assert_eq!(lean::parse_score("SCORE 12 9"), Some((9, 9)));
+    assert_eq!(lean::parse_score("SCORE 12 9"), None);
+    assert_eq!(lean::parse_score("SCORE 1 1\nSCORE broken"), None);
+    assert_eq!(lean::parse_score("SCORE 1 1 trailing"), None);
     assert_eq!(lean::parse_score("SCORE 1 0\nnothing"), None);
 }
 
@@ -1612,4 +1616,136 @@ fn a_word_list_isnt_hard_coded_examples_but_a_table_of_answers_is() {
     let flagged = lean::literal_examples(work, &start, &records);
     assert_eq!(flagged.len(), 1, "{flagged:?}");
     assert_eq!(flagged[0].2, 40);
+}
+
+#[tokio::test]
+async fn protected_candidates_keep_the_first_tie_and_an_observer_cannot_edit_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let work = dir.path().join("work");
+    let eval = lean::eval_dir(&work, Isolation::TaskContainer);
+    let script = format!(
+        "mkdir -p {} && printf 'echo SCORE 1 1\\n' > {}/score.sh",
+        eval.display(),
+        eval.display()
+    );
+    let mut executor = micro(
+        dir.path(),
+        vec![
+            call(
+                "a1",
+                "run_command",
+                &json!({"command": script}),
+                usage(100, 0, 10),
+            ),
+            call(
+                "a2",
+                "write_file",
+                &json!({"path":"hello.txt","contents":"correct\n"}),
+                usage(100, 0, 10),
+            ),
+            finish("a3", "blocked", "Another requirement is unknown."),
+            call(
+                "b1",
+                "write_file",
+                &json!({"path":"hello.txt","contents":"regression\n"}),
+                usage(100, 0, 10),
+            ),
+            finish("b2", "blocked", "The weak score still passes."),
+            call(
+                "c1",
+                "write_file",
+                &json!({"path":"hello.txt","contents":"review edit\n"}),
+                usage(100, 0, 10),
+            ),
+            call(
+                "c2",
+                "run_command",
+                &json!({"command":"printf 'shell edit' > hello.txt"}),
+                usage(100, 0, 10),
+            ),
+            finish("c3", "blocked", "The self-test does not cover the task."),
+        ],
+        lean_policy(lean::Lean {
+            sessions: 2,
+            keep_best: true,
+            protect_candidates: true,
+            observe_review: true,
+            ..lean_shape()
+        }),
+    );
+    executor.prepared = Some(prepared());
+    executor.execute(&briefing(TASK)).await;
+    assert_eq!(
+        std::fs::read_to_string(work.join("hello.txt")).unwrap(),
+        "correct\n"
+    );
+    let record = executor.last.as_ref().unwrap();
+    let moves = record["moves"].as_array().unwrap();
+    assert_eq!(moves[0]["kept"], true);
+    assert_eq!(moves[1]["kept"], false);
+    let candidate = PathBuf::from(moves[1]["candidate"].as_str().unwrap());
+    assert_eq!(
+        std::fs::read_to_string(candidate.join("hello.txt")).unwrap(),
+        "regression\n"
+    );
+    let reviewed = PathBuf::from(moves[2]["candidate"].as_str().unwrap());
+    assert_eq!(
+        std::fs::read_to_string(reviewed.join("hello.txt")).unwrap(),
+        "correct\n"
+    );
+    let submitted = moves.last().unwrap();
+    assert_eq!(submitted["kind"], "lean.submitted");
+    assert_eq!(submitted["selected_session"], 1);
+    assert_eq!(submitted["review_status"], "blocked");
+    assert!(submitted["benchmark_outcome"].is_null());
+    assert!(candidate.parent().unwrap().join("selection.json").is_file());
+    assert!(
+        candidate
+            .parent()
+            .unwrap()
+            .join("evaluator/score.sh")
+            .is_file()
+    );
+}
+
+#[tokio::test]
+async fn missing_scores_remain_unknown_and_retries_stay_bounded() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut executor = micro(
+        dir.path(),
+        vec![
+            finish("a", "done", "No evidence."),
+            finish("b", "done", "Still no evidence."),
+        ],
+        lean_policy(lean::Lean {
+            sessions: 2,
+            self_check: false,
+            keep_best: true,
+            protect_candidates: true,
+            ..lean_shape()
+        }),
+    );
+    executor.prepared = Some(prepared());
+    executor.execute(&briefing(TASK)).await;
+    let record = executor.last.as_ref().unwrap();
+    assert_eq!(record["sessions"].as_array().unwrap().len(), 2);
+    let submitted = record["moves"].as_array().unwrap().last().unwrap();
+    assert_eq!(submitted["result"], "unknown");
+    assert!(submitted["score"].is_null());
+}
+
+#[tokio::test]
+async fn failed_or_timed_out_evaluation_cannot_supply_a_green_score() {
+    for script in ["echo SCORE 1 1; exit 7", "echo SCORE 1 1; sleep 2"] {
+        let dir = tempfile::tempdir().unwrap();
+        let executor = micro(dir.path(), vec![], lean_policy(lean_shape()));
+        let frozen = dir.path().join("evaluation");
+        std::fs::create_dir_all(&frozen).unwrap();
+        std::fs::write(frozen.join("score.sh"), script).unwrap();
+        let (score, output) = executor
+            .lean_score(&frozen, &lean_shape(), Duration::from_secs(1))
+            .await;
+        assert!(score.is_none(), "{script}: {output}");
+        assert!(output.contains("SCORE 1 1"));
+    }
 }

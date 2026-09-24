@@ -263,6 +263,17 @@ pub async fn run(
             ..inner.clone()
         };
         let mut reviewed = Box::pin(crate::terminal::answer(&review, on)).await;
+        let (status, stuck) = reviewed_outcome(
+            &answer.report.status,
+            answer.stuck,
+            Some((&reviewed.report.status, reviewed.stuck)),
+        );
+        answer.report.status = status;
+        answer.stuck = stuck;
+        answer.report.summary.is_error = Some(!matches!(
+            answer.report.status,
+            crate::delegate::Status::Answered
+        ));
         answer.steps.append(&mut reviewed.steps);
         for summary in reviewed.summaries {
             if !answer.summaries.contains(&summary) {
@@ -298,6 +309,7 @@ pub async fn run(
             .collect::<Vec<_>>()
             .join("\n")
     };
+    let finished = matches!(answer.report.status, crate::delegate::Status::Answered);
     let outcome = land(&workdir, &branch, &issue, &what, finished, answer.stuck);
     if outcome
         .as_ref()
@@ -554,6 +566,24 @@ fn land(
         ],
     )?;
     Ok(format!("Opened draft pull request {}.", pr.trim()))
+}
+
+/// Preserve the executor's failure, or carry the review's failure forward.
+/// An unfinished requirement remains unfinished even when the reviewer answers.
+fn reviewed_outcome(
+    execution: &crate::delegate::Status,
+    stuck: bool,
+    review: Option<(&crate::delegate::Status, bool)>,
+) -> (crate::delegate::Status, bool) {
+    let Some((review, review_stuck)) = review else {
+        return (execution.clone(), stuck);
+    };
+    let status = if matches!(execution, crate::delegate::Status::Answered) {
+        review.clone()
+    } else {
+        execution.clone()
+    };
+    (status, stuck || review_stuck)
 }
 
 /// The most changed names whose callers the review reads.
@@ -890,6 +920,79 @@ fn command(dir: &Path, program: &str, args: &[&str]) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn review_outcomes_reach_the_publication_decision() {
+        use crate::delegate::Status;
+        for failed in [
+            Status::Failed(1),
+            Status::TimedOut,
+            Status::Refused("no".into()),
+            Status::Harness("missing".into()),
+        ] {
+            assert_eq!(
+                reviewed_outcome(&Status::Answered, false, Some((&failed, false))),
+                (failed, false)
+            );
+        }
+        assert_eq!(
+            reviewed_outcome(&Status::Answered, false, Some((&Status::Answered, true))),
+            (Status::Answered, true)
+        );
+        assert_eq!(
+            reviewed_outcome(&Status::Answered, true, Some((&Status::Answered, false))),
+            (Status::Answered, true)
+        );
+        assert_eq!(
+            reviewed_outcome(&Status::Answered, false, Some((&Status::Answered, false))),
+            (Status::Answered, false)
+        );
+        assert_eq!(
+            reviewed_outcome(&Status::Answered, false, None),
+            (Status::Answered, false)
+        );
+    }
+
+    #[test]
+    fn a_failed_review_leaves_changes_staged_without_committing_or_publishing() {
+        use crate::delegate::Status;
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        command(root, "git", &["init", "-q"]).unwrap();
+        command(root, "git", &["config", "user.email", "test@example.com"]).unwrap();
+        command(root, "git", &["config", "user.name", "test"]).unwrap();
+        command(root, "git", &["commit", "--allow-empty", "-qm", "base"]).unwrap();
+        let before = command(root, "git", &["rev-parse", "HEAD"]).unwrap();
+        std::fs::write(root.join("change.txt"), "pending review").unwrap();
+        let (status, stuck) =
+            reviewed_outcome(&Status::Answered, false, Some((&Status::Failed(1), false)));
+        let issue = Fetched {
+            url: "https://github.com/example/example/issues/1".into(),
+            title: "Example".into(),
+            body: String::new(),
+        };
+        let result = land(
+            root,
+            "codex/review-test",
+            &issue,
+            "Worked.",
+            status == Status::Answered,
+            stuck,
+        )
+        .unwrap();
+        assert!(result.contains("not committed"), "{result}");
+        assert_eq!(
+            command(root, "git", &["rev-parse", "HEAD"]).unwrap(),
+            before
+        );
+        assert_eq!(
+            command(root, "git", &["diff", "--cached", "--name-only"])
+                .unwrap()
+                .trim(),
+            "change.txt"
+        );
+        // No remote or gh setup: reaching either publication operation fails this test.
+    }
 
     fn numbers(text: &str) -> Vec<u64> {
         references(text).into_iter().map(|r| r.number).collect()

@@ -317,6 +317,8 @@ pub struct Workspace {
     root: PathBuf,
     isolation: Isolation,
     read_only: bool,
+    /// An observational review may read files and finish, but run no commands.
+    observe_only: bool,
     /// The longest a command may run, below [`COMMAND_WALL_MAX`].
     command_max: Duration,
 }
@@ -332,6 +334,7 @@ impl Workspace {
             root: root.canonicalize()?,
             isolation: Isolation::Boundary,
             read_only: false,
+            observe_only: false,
             command_max: COMMAND_WALL_MAX,
         })
     }
@@ -350,6 +353,15 @@ impl Workspace {
     #[must_use]
     pub fn reading_only(mut self) -> Self {
         self.read_only = true;
+        self
+    }
+
+    /// Refuse commands and edits, including inside task containers. The
+    /// review reads source and host-recorded test evidence without changing it.
+    #[must_use]
+    pub fn observing_only(mut self) -> Self {
+        self.read_only = true;
+        self.observe_only = true;
         self
     }
 
@@ -378,6 +390,9 @@ impl Workspace {
     pub async fn call(&self, name: &str, arguments: &str) -> Outcome {
         let started = Instant::now();
         let mut outcome = match name {
+            "run_command" if self.observe_only => Outcome::refused(
+                "This review reads files and the host's test results. Commands cannot run; report any missing evidence with finish.".to_string(),
+            ),
             "apply_patch" | "write_file" if self.isolation == Isolation::ReadOnly => {
                 Outcome::refused(format!(
                     "{name} did not run: this session is read-only, and the host permits no \
@@ -725,7 +740,7 @@ struct WriteFile {
 /// Removes from a model command's environment every credential and the
 /// host's policy manifest, so a model that runs `env` sees neither. Coder
 /// One's own shell does the same (`coder_one::shell::is_credential`).
-fn withhold_credentials(command: &mut std::process::Command) {
+pub fn withhold_credentials(command: &mut std::process::Command) {
     for (name, _) in std::env::vars_os() {
         if name.to_str().is_some_and(is_withheld) {
             command.env_remove(&name);

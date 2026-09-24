@@ -1099,6 +1099,8 @@ struct Place {
     spend_usd: Option<f64>,
     /// Every command's wall-time bound, below the tool's own.
     command_max: Option<Duration>,
+    /// An observational review can read files and finish, but cannot run commands.
+    observe_only: bool,
 }
 
 impl Place {
@@ -1957,7 +1959,9 @@ impl Micro {
                 Some(max) => workspace.commands_within(max),
                 None => workspace,
             };
-            if read_only {
+            if place.observe_only {
+                workspace.observing_only()
+            } else if read_only {
                 workspace.reading_only()
             } else {
                 workspace
