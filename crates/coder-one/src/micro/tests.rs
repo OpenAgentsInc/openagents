@@ -1807,6 +1807,22 @@ fn candidate_identity_refuses_an_incomplete_inventory() {
 }
 
 #[test]
+fn protected_candidates_refuse_parallel_lanes_without_retained_lane_evidence() {
+    let shape = lean::Lean {
+        keep_best: true,
+        protect_candidates: true,
+        lanes: 3,
+        ..lean_shape()
+    };
+    assert!(
+        shape
+            .validate()
+            .iter()
+            .any(|problem| problem.contains("one first-attempt lane"))
+    );
+}
+
+#[test]
 fn a_comment_that_gives_a_reason_is_a_suspect() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(
