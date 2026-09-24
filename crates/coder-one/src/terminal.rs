@@ -118,7 +118,11 @@ place carries all of it; when it doesn't fit in plain words, add lines \
 rather than abbreviate, because plain words beat a cramped line. In a \
 view, keep the explanation to about three short lines that still state \
 each point, such as one measured figure for time and one for cost, and put \
-the rest in the docs, with a pointer to them. A view \
+the rest in the docs, with a pointer to them. Add lines where they don't \
+move rows that other code selects by position, such as after a list's \
+rows rather than above them; when rows must move, update the code that \
+selects them and assert that the selected line holds a data row's content, \
+not only its index. A view \
 is what the screen draws, and a command's help text is a separate place. Keep what a rewrite \
 would drop, such as a fact, an example, or a comparison, unless the issue \
 asks to remove it. End with a short summary of what you changed and how you checked it.";

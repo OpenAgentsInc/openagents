@@ -792,7 +792,8 @@ async fn stale_dependents(
                 format!(
                     "{}:{} depends on the number or positions of what `{}` produces, and the \
                      change alters them ({why}); update that code to match and add an assertion \
-                     that calls it, such as which row a view selects",
+                     that calls it and checks the selected line holds a data row's content, not \
+                     only its index",
                     excerpt.file, excerpt.line, excerpt.name
                 )
             })
