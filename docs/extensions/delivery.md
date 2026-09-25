@@ -14,7 +14,10 @@ the unfiled work for full AI programming and optimization integration.
 3. Run typed programs and supported operations under shared reservations,
    durable outcomes, and explicit verification.
 4. Add Wasm packet execution with pure and snapshot-read profiles, bounded
-   memory/imports, and retained original evidence.
+   memory/imports, and retained original evidence. The packet execution,
+   both profiles, and the limits landed in #9519 as `crates/plugin` and the
+   program `module` step; retained original evidence isn't built. See
+   [What is built](plugins.md#what-is-built).
 5. Implement inert package installation, atomic locks, revocation, and scoped
    update/adoption policy.
 6. Connect bounded DSPy/GEPA authoring to complete implementation artifacts,

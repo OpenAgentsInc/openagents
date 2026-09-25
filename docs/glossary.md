@@ -10,6 +10,8 @@ code or a document in this repository defines it.
   remaining boundary.
 - **Designed**: a document or a NIP in this repository specifies it, and no
   code implements it yet.
+- **Retired**: the term names something from an earlier codebase that this
+  repository no longer contains. The entry says what replaced it.
 
 Terms defined only in other repositories are out of scope. Designs adapted
 from reference material enter this glossary when an OpenAgents specification
@@ -140,7 +142,7 @@ implement this shared context system.
 | `mc-bridge` | Implemented | The nightly-built helper in `mc-bridge/` that plays the game through azalea and speaks one JSON object per line on stdin and stdout. A supervised child process, never a dependency — the `swift/lev-bridge` precedent. |
 | Episode | Implemented | One bounded run of a world: server up, bot in, tasks attempted, every exchange and event in an ATIF trace under the run directory. `voyager evidence <run-dir>` renders one into `coverage.json`, `metrics.json`, and `evidence.md`. |
 | Curriculum | Implemented | What proposes the next task: the manifest's `curriculum.tasks` list first, then an Open Responses door the `generate` section names, behind a warm-up schedule; a world with no section runs the built-in starter tasks. |
-| Skill library | Implemented | Reusable behavior banked between episodes: digested, versioned Lua programs under `~/.openagents/voyager/skills/` (`VOYAGER_SKILL_DIR` overrides; the repository's `skills/` is the promoted half). Retrieval is a `choice` over the banked descriptions through the decision door, with `none` always admitted. |
+| Skill library | Implemented | Reusable behavior banked between episodes: digested, versioned Lua programs under `~/.openagents/voyager/skills/` (`VOYAGER_SKILL_DIR` overrides; the repository's `skills/` is the promoted half). Retrieval is a `choice` over the banked descriptions through the decision door, with `none` always admitted. Each program in it is a [Voyager skill](#plugins-and-skills), not a `SKILL.md` guide. |
 | Interpreter | Implemented | The bounded Lua engine a task's program runs in (`crates/voyager` `interpret`): the bridge's ops as script calls — `say`, `walk`, `explore`, `mine`, `mine_at`, `players`, `state`, `block_at`, `wait`, `feedback` — with every engine bound set. A program's source is the task's script, a banked skill, a retrieval, or the `act` door's proposal; a fault feeds back for repair across a four-round loop. |
 | Scenario | Implemented | Which ensemble arms a world runs: `quest` (the default) is the mining-economy and coding-quest chain with no combat; `war` adds the skirmish the manifest's `combat` section declares. The manifest's `scenario` field or `--scenario` on the command line picks one. |
 | Guild | Implemented | A named team in a multi-agent world. Every enrolled agent belongs to one; deposits may be owned by a guild and the ledger keeps balances per guild. |
@@ -179,11 +181,11 @@ implement this shared context system.
 | Capability | Designed | A granted ability. A capability that no grant declares is offered to no run. |
 | Executor | Designed | The implementation that performs an agent session, whether the built-in runner or an external agent reached through an adapter. |
 | Delegation | Implemented | One bounded task handed to one executor and recorded as an ATIF `Call` named `delegate`, in `crates/coder` (`delegate.rs`). A fan-out runs them concurrently under a stated bound. A refusal the executor declares, a bound that expired, a non-zero exit, and a process that never spawned are four outcomes rather than one. See [`coder/delegate.md`](coder/runtime/delegate.md). |
-| Program | Partial | A reusable workflow of named steps with per-step bounds, specified by [NIP-PRG](../nips/openagents/NIP-PRG.md). It references host sources, question sets, and execution bindings rather than supplying arbitrary executable code. Coder implements four step kinds; typed child composition and module execution remain proposed. The target binding contract is explained in [Programs and decisions](extensions/programs.md). |
+| Program | Partial | A reusable workflow of named steps with per-step bounds, specified by [NIP-PRG](../nips/openagents/NIP-PRG.md). It references host sources, question sets, and execution bindings rather than supplying arbitrary executable code. Coder runs six step kinds, including `program`, which nests a child program under narrowed bounds, and `module`, which runs a Wasm guest through `crates/plugin`. `coder` reads programs from `programs/` on disk and doesn't fetch them from a relay, and the `invoke` step kind isn't built. The target binding contract is explained in [Programs and decisions](extensions/programs.md). |
 | Program selection | Implemented | The `openagents.program.v1` decision proposes which admissible workflow a request asks for, or `none`. Selection does not install a plugin or grant execution authority. See [the target entry path](extensions/programs.md#what-the-program-decision-decides). |
-| Step kind | Partial | What one step does: `query`, `check`, `decide`, `delegate`, `program`, `module`, or `invoke`. The baseline runtime implements the first four; the revised NIP-PRG adds native/adapted `invoke` and specifies the remaining kinds. Unsupported semantics refuse rather than being skipped. |
+| Step kind | Partial | What one step does: `query`, `check`, `decide`, `delegate`, `program`, `module`, or `invoke`. The runtime in `crates/coder/src/runtime.rs` runs the first six. It parses `invoke`, which the revised NIP-PRG adds for native and adapted operations, and refuses it as `not_admitted` because no host operation is admitted. Unsupported semantics refuse rather than being skipped. |
 | Bounds | Designed | The limits a program's step states and an executor promises to keep. A host refuses a step whose bounds it cannot enforce rather than running it unbounded. Under composition, bounds narrow and never widen. |
-| Module | Designed | A WebAssembly module a program's `module` step runs, named by content hash. The hash is required and the sources are hints, so the place bytes come from cannot decide what runs. |
+| Module | Partial | A WebAssembly guest a program's `module` step runs through `plugin::invoke`, under the `pure` or `snapshot-read` profile and the step's `fuel` and `memory_bytes` bounds. The runtime runs guest bytes that the step carries inline as `bytes_base64` and refuses a step without them. NIP-PRG names a module by a required content hash with sources as hints, so the place bytes come from cannot decide what runs; resolving a module by hash and fetching it from a source aren't built, and no program in `programs/` uses a `module` step yet. |
 | Module announcement | Designed | An optional `30183` event saying where a module's bytes can be found and what it requires. A locator, not an authority: it cannot change what a program runs, because the program names a hash. |
 | Capability manifest | Implemented | A document that says how to drive an executor: transport, detection, bounds it enforces, bounds it ignores, whether it sees the repository, and who pays. Read from `capabilities/` today and published as Nostr `kind:30180` later. |
 | Capability probe | Implemented | Running a manifest's `detect` through `crates/capability` under a recorded approval that pins the manifest and executable identity. The probe is bounded; reading a registry does not execute it. |
@@ -195,6 +197,23 @@ implement this shared context system.
 | `cannot_enforce` | Designed | The bounds an executor accepts and silently ignores. A host refuses a delegation whose requirements intersect this list, because an executor that drops a bound is more dangerous than one that refuses it. |
 | Operator policy | Designed | A signed document that says which capabilities an operator prefers, how wide a fan-out may go, and what to never use. Published as Nostr `kind:30181`. |
 
+## Plugins and skills
+
+Both words have more than one meaning here. Unless a document says
+otherwise, *plugin* means a Wasm plugin and *skill* means a `SKILL.md`
+skill. Voyager documents are the exception: there, *skill* means a Voyager
+skill.
+
+| Term | Status | Definition |
+| --- | --- | --- |
+| Wasm plugin | Partial | The default meaning of *plugin*: an OpenAgents WebAssembly guest that `crates/plugin` runs, with typed operations and bounded host imports. It can implement a program's `module` step or, once host roles exist, a supported host role; it is not an executor or a workflow. The host core and the `module` step are built; the manifest, host roles, authoring commands, packaging, and a catalog are specified in [Wasm plugins](extensions/plugins.md) and not built. |
+| Plugin host | Partial | `crates/plugin`, the trusted Rust boundary that runs a Wasm plugin. Each call gets a fresh Wasmtime instance under the `Pure` or `SnapshotRead` profile, with fuel, memory, output, read, and module-size limits, and a call that doesn't return a value fails with a typed `HostError`. `plugin::build_receipt` digests the PDK source and the guest bytes. Manifest admission, host roles, and invocation receipts remain designed. See [what is built](extensions/plugins.md#what-is-built). |
+| Plugin packet | Implemented | The `openagents.plugin-packet.v1` request and response a host and a guest exchange, defined in `crates/plugin-pdk`. `crates/plugin-outline` is a diagnostic guest built against it. |
+| Client plugin package | Implemented | A declarative package that teaches Claude Code or Codex to call the decision API: a client manifest (`.claude-plugin/plugin.json` or `.codex-plugin/plugin.json`), an `.mcp.json` that starts `oak-mcp`, and a `SKILL.md` skill. The packages live under [`plugins/`](../plugins/README.md), and `crates/discovery` serves their manifests. They run no Wasm and are not Wasm plugins. |
+| Extism plugin | Retired | A WebAssembly module run by Extism in the 2024 plugin marketplace, with a plugin registry and an agent store (episodes 48 to 107 in [`transcripts/`](transcripts/048.md)). That codebase is gone; the Wasm plugin and `crates/plugin` replace its runtime. The [roadmap's legacy map](roadmap.md#the-legacy-map) records its disposition. |
+| `SKILL.md` skill | Implemented | The default meaning of *skill*: a Markdown guide in the Agent Skills format, with `name` and `description` frontmatter, that an agent reads before a task. It grants no authority and runs no code. Skills live in three places: [`.agents/skills/`](../.agents/skills/) holds the guides for agents working in this repository; [`plugins/skills/`](../plugins/skills/) and each client plugin package's `skills/` directory ship the decision API guide to clients; and the gateway's [skill directory](decision-models/service/skill-directory.md), `tenancy::skills`, publishes reviewed, versioned submissions. |
+| Voyager skill | Implemented | A digested, versioned Lua program that `crates/voyager` banks after a critic passes it, and retrieves for later tasks. It is code the bounded Lua interpreter runs, not a `SKILL.md` guide. See the [skill library](#voyager) and [Voyager](voyager/README.md#the-critic-and-the-skill-library). |
+
 ## Extensions
 
 The [program and extension specification](extensions/README.md) defines these
@@ -202,12 +221,10 @@ target contracts. A design entry does not claim implementation.
 
 | Term | Status | Definition |
 | --- | --- | --- |
-| Wasm plugin | Designed | A content-addressed WebAssembly guest with a manifest, typed operations, and bounded host imports. It can implement a program's module operation or a supported host role; it is not an executor or workflow. |
-| Plugin host | Designed | The trusted Rust boundary that validates guest content and packets, admits invocations, exposes granted imports, enforces limits, and records outcomes. |
 | Operation descriptor | Designed | A digested discovery interface containing identity, purpose, typed schemas, execution binding, preconditions, effects, resources, and evidence references. It describes a component without replacing its execution contract. |
 | Progressive discovery | Designed | Bounded retrieval and eligibility filtering followed, when useful, by semantic selection and loading of only the selected schemas or guidance. Discovery is inert and grants no authority. |
 | Decision function | Partial | A typed semantic input/question/output contract with a consuming policy, limits, and admitted model scope. Coder has existing decision sites and question sets; the unified extensible function registry remains proposed. |
-| Scoped skill | Designed | Digested guidance activated for a bounded operation, task, or explicit session. It may reference supported hooks and narrow allowed operations; it cannot grant authority or remove mandatory instructions. |
+| Scoped skill | Designed | A [`SKILL.md` skill](#plugins-and-skills) activated for a bounded operation, task, or explicit session: digested guidance. It may reference supported hooks and narrow allowed operations; it cannot grant authority or remove mandatory instructions. |
 | Host role | Designed | An approved activation path for a plugin, such as evidence preparation or output processing. Installing a plugin does not activate its roles. |
 | Extension package | Designed | An immutable distribution bundle of components, schemas, documentation, dependencies, and evidence references. Its components retain separate execution and permission contracts. |
 | Package listing | Designed | Mutable catalog presentation, discovery state, and release pointers for a publisher-qualified package. It cannot rewrite a release's bytes. |
@@ -240,7 +257,7 @@ and the [AI programming architecture](optimization/README.md).
 | --- | --- | --- |
 | Relay | Implemented | The Nostr relay in `crates/nostr-relay`: one binary and one Postgres database, serving `relay.openagents.com`. |
 | NIP-CJ | Partial | Agent jobs. Conversation, decision, and execution families carry requests, results, and feedback with NIP-44 payloads and NIP-42 socket authentication. Decision/execution contracts are domain-independent. Conversation transport is implemented; the other network families need implementation. See [NIP-CJ](../nips/openagents/NIP-CJ.md). |
-| NIP-PRG | Partial | Programs. Addressable `30182` events discover typed workflows with pinned dependencies and per-step bounds. The local runtime implements an earlier subset; revised v1 also defines composition, native invocation, and the plugin ABI. Unsupported semantics refuse the whole program. |
+| NIP-PRG | Partial | Programs. Addressable `30182` events discover typed workflows with pinned dependencies and per-step bounds. The local runtime runs `program` composition and `module` steps on the plugin packet ABI; it doesn't yet run revised v1's native `invoke` step, and `coder` doesn't read programs from a relay. Unsupported semantics refuse the whole program. |
 | NIP-CAP | Partial | Capabilities. Addressable `30180` and `30181` events carry portable execution definitions and operator preferences. Revised v1 separates definitions, host bindings, and grants; the earlier local readers require migration. |
 | NIP-EXT | Designed | Extension distribution: releases, listings, descriptors, revocation checkpoints, and namespace migration. See [NIP-EXT](../nips/openagents/NIP-EXT.md). |
 | NIP-RUN | Designed | Encrypted durable records, evidence, controller fencing, recovery, and retention. See [NIP-RUN](../nips/openagents/NIP-RUN.md); the local run-state store alone does not implement it. |

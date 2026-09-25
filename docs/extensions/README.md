@@ -1,7 +1,10 @@
 # OpenAgents programs and extensions
 
-Status: target specification. OpenAgents defines general agent infrastructure;
-Coder is its first specialization. Programs compose typed work. Extensions
+Status: target specification, partly implemented. The Wasm plugin host
+core and the program `program` and `module` steps are built;
+[What is built](plugins.md#what-is-built) lists the plugin parts.
+OpenAgents defines general agent infrastructure; Coder is its first
+specialization. Programs compose typed work. Extensions
 distribute programs, operations, Wasm plugins, skills, semantic AI signatures,
 and immutable AI implementations. Every component has an explicit identity,
 interface, effect boundary, and lifecycle.
