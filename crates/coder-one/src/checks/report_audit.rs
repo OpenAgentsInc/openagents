@@ -42,6 +42,37 @@ pub fn score(answers: &Value) -> Option<f64> {
     Some(result)
 }
 
+/// Ask about one selected report without loading any benchmark labels.
+pub async fn assess(
+    task: &str,
+    report: &str,
+    mode: &JevMode,
+    recorder: &Recorder,
+    id: &str,
+) -> Value {
+    let state = super::verdict::report_state(task, report);
+    let digest = crate::component::jev::key(&state, &json!(questions()));
+    let asked = ask(
+        mode,
+        recorder,
+        Ask {
+            component: "verify.report-audit",
+            name: "jev_concrete_report_failure",
+            id: id.to_string(),
+            state: state.clone(),
+            questions: questions(),
+            parent: None,
+            deadline: None,
+        },
+    )
+    .await;
+    json!({"schema":"openagents.coder-one.report-audit.v1","digest":digest,
+        "state":state,"questions":questions(),"answers":asked.answers,
+        "score":asked.answers.as_ref().and_then(score),"error":asked.error,
+        "input_tokens":asked.input_tokens,"milliseconds":asked.milliseconds,
+        "steps":recorder.steps()})
+}
+
 /// Measure only the explicitly selected partition of a retained row manifest.
 ///
 /// # Errors
@@ -49,6 +80,7 @@ pub fn score(answers: &Value) -> Option<f64> {
 pub async fn command(args: &[String]) -> Result<i32, String> {
     let mut args = args.iter();
     let (mut jobs, mut rows, mut out) = (None, None, None);
+    let (mut trial_dir, mut input) = (None, None);
     let mut partition = "calibration".to_string();
     while let Some(arg) = args.next() {
         let value = args.next().ok_or("report-audit needs paired options")?;
@@ -57,19 +89,70 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
             "--rows" => rows = Some(PathBuf::from(value)),
             "--out" => out = Some(PathBuf::from(value)),
             "--partition" => partition.clone_from(value),
+            "--trial-dir" => trial_dir = Some(PathBuf::from(value)),
+            "--input" => input = Some(PathBuf::from(value)),
             _ => return Err(format!("Unknown report-audit option {arg}")),
         }
     }
     if !["calibration", "held-out", "all"].contains(&partition.as_str()) {
         return Err("report-audit partition must be calibration, held-out, or all".to_string());
     }
-    let rows = super::truth::read_rows(&rows.ok_or("report-audit needs --rows")?)?;
-    let jobs = jobs.ok_or("report-audit needs --jobs")?;
     let out = out.ok_or("report-audit needs --out")?;
     std::fs::create_dir_all(&out).map_err(|e| e.to_string())?;
     let dir = crate::credentials::openagents_dir().ok_or("HOME is not set")?;
     let key = crate::credentials::jev_key(|name| std::env::var(name).ok(), &dir)?;
     let mode = JevMode::Live(crate::credentials::jev_client(&key.secret)?);
+    if let Some(trial) = trial_dir {
+        if rows.is_some() || jobs.is_some() {
+            return Err("Use either --trial-dir or --rows and --jobs".to_string());
+        }
+        let input: super::review::Input = serde_json::from_str(
+            &std::fs::read_to_string(input.ok_or("--trial-dir needs --input")?)
+                .map_err(|e| e.to_string())?,
+        )
+        .map_err(|e| e.to_string())?;
+        let episode = trial.join("agent/episode");
+        let composition: Value = serde_json::from_str(
+            &std::fs::read_to_string(episode.join("artifacts/composition.json"))
+                .map_err(|e| e.to_string())?,
+        )
+        .map_err(|e| e.to_string())?;
+        let selected = super::truth::final_report(&episode, &composition);
+        let id = trial
+            .file_name()
+            .and_then(|s| s.to_str())
+            .ok_or("Trial directory has no name")?;
+        let path = out.join(format!("{id}.json"));
+        if path.exists() {
+            return Err(
+                "Report audit already exists; preserve it and choose another output".to_string(),
+            );
+        }
+        let mut record = if let Some(report) = selected.report {
+            assess(&input.task, &report, &mode, &Recorder::default(), id).await
+        } else {
+            json!({"schema":"openagents.coder-one.report-audit.v1","score":null,"error":selected.unavailable})
+        };
+        record["trial"] = json!(id);
+        record["job"] = json!(
+            trial
+                .parent()
+                .and_then(|p| p.file_name())
+                .and_then(|s| s.to_str())
+        );
+        record["report_source"] = json!(selected.source);
+        crate::record::write_atomic(
+            &path,
+            &serde_json::to_vec_pretty(&record).map_err(|e| e.to_string())?,
+        )?;
+        println!("Wrote report audit to {}", path.display());
+        return Ok(0);
+    }
+    if input.is_some() {
+        return Err("--input needs --trial-dir".to_string());
+    }
+    let rows = super::truth::read_rows(&rows.ok_or("report-audit needs --rows")?)?;
+    let jobs = jobs.ok_or("report-audit needs --jobs")?;
     for row in rows {
         let split = serde_json::to_value(row.split).map_err(|e| e.to_string())?;
         if partition != "all" && split != partition {
@@ -95,23 +178,9 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
             continue;
         }
         let recorder = Recorder::default();
-        let asked = ask(
-            &mode,
-            &recorder,
-            Ask {
-                component: "verify.report-audit",
-                name: "jev_concrete_report_failure",
-                id: row.trial.clone(),
-                state: state.clone(),
-                questions: questions(),
-                parent: None,
-                deadline: None,
-            },
-        )
-        .await;
-        let record = json!({"schema":"openagents.coder-one.report-audit.v1","job":row.job,"trial":row.trial,"digest":digest,
-            "state":state,"questions":questions(),"answers":asked.answers,"score":asked.answers.as_ref().and_then(score),
-            "error":asked.error,"input_tokens":asked.input_tokens,"milliseconds":asked.milliseconds,"steps":recorder.steps()});
+        let mut record = assess(&task, &report, &mode, &recorder, &row.trial).await;
+        record["job"] = json!(row.job);
+        record["trial"] = json!(row.trial);
         crate::record::write_atomic(
             &path,
             &serde_json::to_vec_pretty(&record).map_err(|e| e.to_string())?,

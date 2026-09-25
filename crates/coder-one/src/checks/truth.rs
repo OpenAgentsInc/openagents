@@ -202,7 +202,7 @@ fn name(path: &Path) -> String {
 /// The final report of the session that produced the kept candidate: the
 /// last session's, or the first's when a second executor ran and its
 /// candidate was set aside.
-fn final_report(episode: &Path, composition: &Value) -> super::truth_micro::Selected {
+pub(crate) fn final_report(episode: &Path, composition: &Value) -> super::truth_micro::Selected {
     let mut records: Vec<(usize, PathBuf, bool)> = children(&episode.join("artifacts"))
         .into_iter()
         .filter_map(|p| {
