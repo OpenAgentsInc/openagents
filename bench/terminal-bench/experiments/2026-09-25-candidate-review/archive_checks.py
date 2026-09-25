@@ -35,13 +35,14 @@ def narrow(plan):
     return result
 
 
-def container(image, binary, app=None):
+def container(image, binary, runtime, app=None):
     command = ['docker', 'run', '-d', '--rm', '--network', 'none', '--read-only',
                '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges', '--pids-limit', '128',
                '--memory', '2g', '--memory-swap', '2g', '--cpus', '2',
                '--tmpfs', '/tmp:rw,size=256m', '--workdir', '/app', '--env', 'HOME=/tmp',
                '--env', 'PYTHONDONTWRITEBYTECODE=1',
-               '--mount', f'type=bind,src={binary},dst=/opt/contract-check,readonly']
+               '--mount', f'type=bind,src={binary},dst=/opt/contract-check,readonly',
+               '--mount', f'type=bind,src={runtime},dst=/opt/contract-runtime,readonly']
     if app:
         command += ['--mount', f'type=bind,src={app},dst=/app,readonly']
     return subprocess.check_output(command + ['--entrypoint', 'sleep', image, '180'],
@@ -49,7 +50,8 @@ def container(image, binary, app=None):
 
 
 def cli(container_id, args, dest):
-    done = subprocess.run(['docker', 'exec', container_id, '/opt/contract-check', 'checks', 'contract', *args],
+    done = subprocess.run(['docker', 'exec', container_id, '/opt/contract-runtime/ld-linux-x86-64.so.2',
+                           '--library-path', '/opt/contract-runtime', '/opt/contract-check', 'checks', 'contract', *args],
                           capture_output=True, text=True, timeout=90)
     write(dest, {'exit': done.returncode, 'stdout': done.stdout, 'stderr': done.stderr})
     if done.returncode:
@@ -79,7 +81,7 @@ def make_plan(task, image, a):
     out.mkdir(parents=True, exist_ok=True)
     cid = None
     try:
-        cid = container(image, a.binary)
+        cid = container(image, a.binary, a.runtime)
         instruction = a.cohort / 'tasks/archive' / task / 'instruction.md'
         copy_file(instruction, cid, '/tmp/instruction.md')
         plan = cli(cid, ['plan', '--instruction', '/tmp/instruction.md', '--workdir', '/app',
@@ -117,7 +119,7 @@ def check(row, image, a, env):
             # The cheap arm needs only the complete retained /app view.
             plan_path = a.out / 'plans' / row['task'] / 'plan.json'
             if plan_path.exists():
-                cid = container(image, a.binary, root / 'app')
+                cid = container(image, a.binary, a.runtime, root / 'app')
                 copy_file(plan_path, cid, '/tmp/plan.json')
                 report = cli(cid, ['run', '--plan', '/tmp/plan.json'], out / 'contract-process.json')
                 write(out / 'contract.json', report)
@@ -145,10 +147,13 @@ def check(row, image, a, env):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    for name in ['cohort', 'preflight', 'jobs', 'out', 'binary']:
+    for name in ['cohort', 'preflight', 'jobs', 'out', 'binary', 'runtime']:
         p.add_argument('--' + name, type=Path, required=True)
     p.add_argument('--plans-only', action='store_true')
     a = p.parse_args()
+    runtime = json.loads((a.runtime / 'manifest.json').read_text())
+    if any(sha(a.runtime / f['name']) != f['sha256'] for f in runtime):
+        raise ValueError('Contract runtime differs from its manifest')
     a.out.mkdir(parents=True, exist_ok=True)
     images = {r['task']: r['image'] for r in json.loads((a.preflight / 'preflight.json').read_text())}
     for task in TASKS:
