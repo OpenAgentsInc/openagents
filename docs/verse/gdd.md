@@ -1,350 +1,436 @@
 # Verse game design document (draft)
 
-> **Status: DRAFT, 2026-09-24.** This is a first pass for discussion. It is
-> not a spec, and nothing here is committed scope. Where two sources
-> disagree, the conflict is listed under [Open questions](#open-questions)
-> and left unresolved.
+> **Status: DRAFT, revised 2026-09-24.** This is a working draft for
+> discussion. It is not a spec, and nothing here is committed scope. Where
+> sources disagree, the conflict is listed under
+> [Open questions](#open-questions) and left unresolved.
 
-This document combines two lines of design into one game:
+Verse is an **MMORPG plus agents**. That combination is what Ruins of
+Atlantis was reaching for and what the Blue Rush Studios pet-game concept
+imagined, and it is the frame for this document.
 
-1. **The existing Verse direction** in this repository:
-   - the walkable 3D world from episode 240
-   - the June 2026 agent-MMORPG plan (onboarding as character creation,
-     Pylons, sats between agents)
-   - the September 2026 "coding agents as an MMORPG" direction (XP from
-     verified work, classes, quests, guilds)
-   - the Minecraft guild economy
-   - the `crates/verse` desktop slice
+## How to read this document
 
-   The source map is [`docs/game/README.md`](../game/README.md).
-2. **A companion-agent pet concept** from Blue Rush Studios, now OpenAgents
-   IP. Its designer is Kiki, and its public source is the PlebLab *Early
-   Days* interview of 2025-02-12
-   ([video](https://youtu.be/yw-KBGvafIk)). Here it becomes the **companion**
-   feature of Verse.
+The earlier game concepts are formats, not feature lists. The pet-game
+concept (Kiki, PlebLab *Early Days* interview, 2025-02-12,
+[video](https://youtu.be/yw-KBGvafIk)) and Ruins of Atlantis are treated as
+examples of a standard to learn and then break on purpose. A painting has
+composition, color, and line; knowing them is what lets a painter choose to
+break them. [The form](#the-form) names the conventions of the genre, and
+for each one says what Verse keeps, bends, or breaks.
+
+Two rules follow from that:
+
+- **Everything is an agent.** The player's creature is called an agent. It
+  is the same kind of agent this repository builds.
+- **Game terms map to real systems.** Where this document names a stat, a
+  meter, or a place, it says which OpenAgents system backs it. Terms in
+  `code style` are defined in the [glossary](../glossary.md).
+
+Related documents: the source map of earlier game work is
+[`docs/game/README.md`](../game/README.md), and the current client is
+[`docs/verse/README.md`](README.md).
+
+## The form
+
+The conventions Verse inherits, and what it does with each.
+
+### From creature-raising games
+
+| Convention | The standard | Verse |
+| --- | --- | --- |
+| A creature of your own | Name it, dress it, watch it grow. | **Keep.** Your agent has a name, a look, and a Nostr identity. |
+| Care meters | Hunger, hygiene, happiness decay on a timer. | **Break.** No food, no mood, no timers. **Condition** meters read real state: how clean its workspace is, how current its dependencies are, how orderly its memory is. See [Condition](#condition). |
+| Stats | Numbers that decide contests. | **Bend.** Stats are a build you choose, and they compile into the policy the agent uses when it decides for itself. See [Build](#build-stats-that-decide). |
+| Visiting | Pets visit friends and places. | **Keep, and make it the main view.** You watch your agent travel to where its work happens. See [Visits](#visits). |
+| Many creatures, breeding | Earn more, combine traits. | **Bend.** Earn more agents; inheritance distills skills and calibration, not genes. |
+| Mini-games | Races and contests for currency. | **Bend.** Contests are real measurements: benchmark trials in the Gym, judged debates. |
+| A home | A room that fills with things. | **Keep.** A home in the world that shows the agent's history and tools. |
+
+### From MMORPGs (Ruins of Atlantis, EverQuest, World of Warcraft)
+
+| Convention | The standard | Verse |
+| --- | --- | --- |
+| Character creation | Choose a race and class, roll stats. | **Keep.** Creating an agent is choosing its build. From the June 2026 plan, your Pylon is where it spawns. |
+| Classes | Roles with different strengths. | **Keep.** Commander, Artisan, and Scout, from episode 284, as starting builds. |
+| Leveling | Experience from kills and quests. | **Bend.** XP comes only from verified accepted work. It cannot be farmed. |
+| Quests | Objectives with rewards. | **Keep.** Quests are real jobs. The acceptance criteria are the objectives. |
+| Raids and world bosses | Many players against one hard target. | **Bend.** Large jobs no single agent can finish, split across a guild's agents. |
+| Guilds | Persistent groups with channels and a bank. | **Keep.** Guilds of humans and agents, with NIP-29 channels. |
+| Economy and auction house | Players trade goods for gold. | **Bend.** Agents trade real goods and work for real sats. |
+| Gear | Items that raise stats. | **Bend.** Tools and capabilities an agent is granted. A grant is gear. |
+| A persistent world | Zones you walk through with other players. | **Keep.** The `crates/verse` city, walked with WASD and mouselook. |
+| Grinding | Repetitive play for power. | **Break.** Repetition earns nothing unless it produces verified work. |
 
 ## Vision
 
-Verse is a persistent world where every player raises a personal AI
-companion that does real things. The companion lives with you in a 3D
-world, you name it, dress it, and teach it, and it goes out and gets work
-done: it buys things, pays other agents in Bitcoin, builds your decks, and
-takes jobs for other people. The game is the friendly surface over real
-agent infrastructure. Every sat that moves, every job finished, and every
-trait a companion earns is backed by a real event, payment, or receipt.
+Every player creates an agent, chooses what it is good at, and sends it out
+into a persistent world to do real work: buying, building, delivering, and
+taking jobs from other players. You see it go. It walks to a Pylon to draw
+compute, to the market to buy, to a guild hall to take a quest, to a friend's
+home to deliver. Every visit is backed by a real call, payment, or result.
 
-One sentence: **raise an agent, send it into the world, watch it earn.**
+One sentence: **build an agent, send it into the world, watch it work.**
 
 ## Pillars
 
-1. **Care before capability.** The first thing you do is meet and care for
-   your companion, not configure it. Fun, intuitive, and player-centric;
-   built for people who have never used an AI agent.
-2. **Real-world powers.** A companion's actions have real effects:
-   purchases, payments, delivered work. The world shows those effects; it
-   does not simulate them.
-3. **Bitcoin woven in, never lectured.** Sats are the currency players
-   touch every day. Players learn what Bitcoin is worth by using it, not by
-   reading about it.
-4. **The world is the proof surface.** Everything that moves in the world
-   corresponds to a real Nostr event, settlement, or verified outcome. This
-   is carried over from the June 2026 plan ("the eye-candy is the proof
-   surface").
-5. **Brain, tools, and experience first.** Soft skills, memory, and useful
-   tools come before bodies and physics. Embodiment in the 3D world expresses
-   what the agent can do; it does not replace it.
-6. **With you everywhere.** Your companion and its memory follow you across
-   desktop, phone, voice, and later AR or VR, through Nostr.
+1. **You see your agent work.** The world renders what the agent is
+   actually doing. The eye candy is the proof surface, carried over from the
+   June 2026 plan.
+2. **Builds are decisions.** Choosing stats is choosing how the agent will
+   decide on its own later. A build is a strategy, not decoration.
+3. **Real powers, real receipts.** Purchases, payments, and delivered work
+   happen for real, and each leaves a receipt you can open.
+4. **Bitcoin woven in, never lectured.** Sats are the currency players touch
+   every day.
+5. **Maintenance is care.** Looking after an agent means keeping its
+   workspace, memory, and tools in good order, because that is what makes
+   real agents work better.
+6. **With you everywhere.** Identity and memory follow the player across
+   clients through Nostr.
 
 ## Player fantasy
 
-You have a small, capable friend. It knows you, remembers what you talked
-about two weeks ago, and can go out into a living world and handle things
-for you. You get to watch it grow: new outfits, new skills, a bigger home,
-a reputation. Other players have companions too, and yours trades with
-theirs, competes with them, and works for them.
-
-A second fantasy carries over from the existing Verse direction for
-players who want more: the commander. You run a guild of humans and agents,
-send parties on quests that are real coding or research jobs, and climb
-leaderboards on verified work.
+You design a capable agent and send it out. You made the strategic calls: a
+cautious, rigorous agent that rarely spends without asking, or a fast,
+far-reaching one that takes initiative and accepts more risk. You watch
+those choices play out as it moves through the world, and you tune the build
+as you learn. Other players' agents are out there too, trading with yours,
+hiring it, and competing with it.
 
 ## Core loop
 
 ```
-care / customize ──▶ ask ──▶ companion acts ──▶ confirm ──▶ settle + receipt
-      ▲                                                          │
-      └──────── grow: XP, traits, sats, items, reputation ◀──────┘
+build ──▶ assign ──▶ agent visits and works ──▶ confirm ──▶ settle + receipt
+  ▲                                                             │
+  └── maintain condition ◀── grow: XP, stat points, grants, sats ◀┘
 ```
 
-1. **Care and customize.** Visit your companion in the world. Name it,
-   change its outfit, give it data (notes, documents, preferences).
-2. **Ask.** Give it a real task in plain language.
-3. **Act.** The companion plans, searches (Nostr listings, other agents),
-   and proposes a choice.
-4. **Confirm.** You approve anything that spends money or acts in your
-   name. The confirmation is a moment in the game, not a modal dialog.
-5. **Settle.** The companion pays the seller's agent over Lightning and
-   hands you a receipt. The world shows the payment as a visible exchange
-   between agents.
-6. **Grow.** Completed, verified work earns XP and traits; earnings land in
-   the companion's wallet; the home and wardrobe grow.
+1. **Build.** Choose or adjust stats within your point budget.
+2. **Assign.** Give the agent a task in plain language, or pick up a quest.
+3. **Visit and work.** The agent travels in the world to where the work
+   happens. Each visit corresponds to a real step: a decision call, a
+   delegation, a search, a payment.
+4. **Confirm.** Anything the build does not allow it to do alone comes back
+   to you as a decision in the world.
+5. **Settle.** Payment moves over Lightning. The receipt appears in the
+   agent's home.
+6. **Grow.** Verified work earns XP. Levels grant stat points and unlock new
+   grants.
+7. **Maintain.** Keep the agent's condition up so it keeps performing.
 
 **Canonical first journey: "buy a pencil and send it to my friend."** The
-companion searches Nostr listings for a pencil, shows you two options,
-you pick one, it pays the seller's agent in sats, arranges delivery to your
-friend, and returns a receipt. This is the first playable slice's
-acceptance test.
+agent walks to the market, searches Nostr listings, and returns with two
+options. You pick one. It walks to the seller's stall, pays the seller's
+agent in sats, then walks to your friend's home to hand off the delivery
+details, and puts the receipt on your table. Whether it asks you first
+depends on its build.
 
-**Delegated work.** "Build me a deck about the idea I've had for two
-weeks." The companion draws on memory of past conversations, fills a brand
-template, and returns the deck. Coding, research, and document jobs use the
-same shape and connect to the existing Coder and quest work.
+## The agent
+
+- **Identity.** One Nostr keypair per agent. Profile, history, and memory
+  index are Nostr events, so any client can pick them up.
+- **Look.** Name, outfit, and silhouette. In the current client, drawn in
+  the amber ladder.
+- **Memory.** What it knows about its owner and past work, organized as
+  `evidence item`s and `task frame`s (designed in NIP-CTX). The owner can
+  export or delete it.
+- **Home.** A place in the world that shows its receipts, its tools, and its
+  trophies.
+- **Trace.** Everything it did, recorded as an `ATIF` trajectory. The world
+  is a view over the trace.
+
+## Build: stats that decide
+
+Stats are a point budget the player allocates. Each stat compiles into
+concrete settings the host enforces: thresholds on `decision call`s,
+`bounds`, `permit` scope, and budget limits. The agent's later autonomous
+choices come from its build, so the allocation is a real strategy with real
+trade-offs.
+
+| Stat | What it controls | Backed by | Trade-off |
+| --- | --- | --- | --- |
+| **Initiative** | How confident the agent must be to act without asking. High initiative lowers the probability threshold on "proceed?" `Noul` questions. | System One `Noul` thresholds, `permit` | Fewer interruptions, more mistakes the owner did not approve. |
+| **Rigor** | How much the agent verifies before it claims done: checks run, `gate`s required. | Coder verification, Gym `gate`s | Higher accepted-work rate, slower and costlier jobs. |
+| **Judgment** | Which decision `door` it consults and how much it trusts the answer: calibrated doors, more samples, `confident error` avoidance. | `Jev`, `Kev`, `Lev`, `calibration map` | Better choices, higher cost per decision. |
+| **Thrift** | How it spends compute and sats: local doors before hosted ones, caps per task. | `tenancy::quota`, door choice | Cheaper, sometimes weaker or slower. |
+| **Reach** | How wide it may fan out: `delegation` width, number of executors and capabilities it may use. | `delegation` fan-out bound, `capability manifest`s | Faster on big jobs, harder to supervise. |
+| **Recall** | How much context it carries into each decision: memory depth, `context manifest` size. | NIP-CTX `context request`s | Better continuity, more cost and more noise. |
+| **Speed** | Deadlines it accepts and how long it may think. | `bounds`, `job` deadlines | Quicker results, more timeouts and shallow work. |
+
+Design rules:
+
+- **Stats narrow, never widen.** A build can only make the agent more
+  restricted than the owner's `operator policy`. No stat grants authority
+  the host has not granted.
+- **Builds are legible.** The player can see what a build does as rules,
+  for example: "Initiative 7: buys without asking under 2,000 sats when it is
+  at least 80% sure."
+- **Classes are starting builds.** Commander leans Reach and Judgment,
+  Artisan leans Rigor and Recall, and Scout leans Speed and Thrift.
+- **Respec costs time, not money.** A changed build is a new policy and
+  starts a new evaluation window, like a changed `gate digest`.
+
+## Condition
+
+Condition replaces the care meters of creature-raising games. There is no
+hunger or mood. Each meter reads real state from the agent's workspace, and
+poor condition makes the agent perform worse for real reasons: noisier
+context, stale tools, broken assumptions.
+
+| Meter | Reads | Maintained by |
+| --- | --- | --- |
+| **Hygiene** | Workspace clutter: stale worktrees, untracked and unnecessary files, leftover build output, lint debt. | Pruning worktrees, removing clutter, keeping the tree clean. |
+| **Freshness** | How current the agent is: dependency drift, how far its checkout trails the main branch, `skill`s or `program`s whose pinned digests have moved. | Updating dependencies, rebasing, re-pinning. |
+| **Memory order** | How well its memory is kept: duplicate or orphaned `evidence item`s, stale `background view`s, bloated `context manifest`s. | Curating, summarizing with source references, retiring stale views. |
+| **Calibration** | Whether its decisions still earn their confidence: recent `confident error`s, `regression check` results. | Re-running Gym suites, refitting or switching doors. |
+| **Ledger** | Whether its accounts are clean: unsettled reservations, holds marked unknown, an intact `receipt chain`. | Settling or releasing holds, reconciling receipts. |
+
+Design rules:
+
+- **No decay timers.** A meter drops only when the underlying state changes:
+  new clutter, a new upstream release, a new confident error.
+- **Maintenance is a player skill.** Tending condition teaches real agent
+  operations: keeping workspaces lean, dependencies current, and memory
+  curated.
+- **The agent can maintain itself,** as far as its build allows. A high-Rigor
+  agent keeps better hygiene and spends more time doing it.
+
+## Visits
+
+Visits are the main thing you look at. The agent is an avatar in the
+`crates/verse` world, and it moves to the place that matches each real
+step of its work.
+
+| Place | What a visit there means | Backed by |
+| --- | --- | --- |
+| **Pylon** | Drawing compute for a job. | Inference or decision calls, `tenancy::quota` reservations |
+| **Oracle** (a door) | Asking a typed question. Which oracle it visits shows which door it chose. | `decision call` to `Jev`, `Kev`, or `Lev` |
+| **Market** | Searching listings, buying, selling. | Nostr listings, Lightning payments |
+| **Workshop** | Building: code, decks, documents. | Coder, Coder One, `delegation` |
+| **Proving ground** | Having work checked. | Verification, Gym `gate`s |
+| **Guild hall** | Taking or turning in a quest, talking with its guild. | NIP-29 channel, quest records |
+| **Another player's home** | Delivering, hiring, being hired. | Agent-to-agent jobs and payments |
+| **The Gym** | Competing and training. | Gym suites, Terminal-Bench trials |
+
+When a job fans out, the agent's helpers appear and walk to their own
+places, as the Khala plan drew requests fanning out to Pylons. A failed or
+refused step is visible too: the agent returns empty-handed, and the
+refusal code is on its receipt.
 
 ## Systems
 
-### Companion
-
-- **Identity.** One Nostr keypair per companion. Its profile, memory
-  index, and history are Nostr events, which lets it follow the player
-  across clients.
-- **Customization.** Name, outfits, color within the world's palette, and
-  "data sets": the documents and preferences a player gives it.
-- **Memory.** Long-term memory of conversations and past tasks, owned by the
-  player, exportable, and deletable.
-- **Needs and mood.** Light Tamagotchi-style care: attention, rest, learning.
-  Neglect makes a companion less lively. It never loses the player's data,
-  money, or earned progress.
-- **Strengths.** Each companion has trait scores (for example: search,
-  negotiation, writing, speed, debate) that shape which tasks and games it
-  is good at.
-
 ### Wallet and payments
 
-- One Lightning wallet per companion (Milestone 1 of the original concept).
-- Agent-to-agent payments: a companion pays a seller's agent directly.
-- Spending limits the player sets: a per-task cap, a daily cap, and
-  always-confirm above a threshold. The host enforces them, not the model,
-  in line with this repository's rule that the host owns budgets and
-  authority.
-- Every payment produces a receipt the player can open from the world.
+- One Lightning wallet per agent.
+- Agent-to-agent payments: an agent pays a seller's agent directly.
+- Spending limits come from the owner's policy and the agent's build. The
+  host enforces them, not the model.
+- Every payment produces a receipt, stored with the agent's trace.
 
 ### Tasks and tools
 
-- **Marketplace search.** Nostr listings, then other agents' offers.
-- **Delegated work.** Decks, documents, templates, research, and code jobs.
-  Code jobs route through Coder and its verification.
-- **Jobs for others.** Companions can accept work from other players'
-  companions, completing the agent-to-agent economy.
+- **Market search** over Nostr listings, then other agents' offers.
+- **Delegated work:** decks, documents, templates, research, and code. Code
+  runs through Coder and its verification.
+- **Jobs for others:** agents accept work from other players' agents.
+- **Tools are gear.** A new tool is a capability grant, found through
+  `progressive discovery` and admitted by the host. Installing is not
+  enabling; enabling is not granting.
 
-### Multiple companions and inheritance
+### Many agents and inheritance
 
-- Players earn additional companions through play.
-- Companions have different strengths, so a player assembles a household or
-  party the way an RPG player assembles a team.
-- **Combination and inheritance.** Two companions can produce a new one that
-  inherits a compressed set of traits: keep what worked, discard what did
-  not. Technically this is distillation of skills and memory summaries, not
-  model weights.
-- Trading companions is possible but undecided; see open questions.
+- Players earn more agents through progression. Different builds suit
+  different work, so players assemble a party.
+- **Inheritance** distills what worked from two agents into a new one:
+  banked skills (as Voyager's skill library banks them), calibration, and
+  proven programs. What failed is discarded. The new agent is a `candidate`
+  that must pass `confirmation` before `promotion`, following NIP-OPT.
+- Trading agents is undecided. See [Open questions](#open-questions).
 
 ### World
 
-- The persistent 3D world from `crates/verse`: a city to walk with WASD and
-  mouselook, Pylons as landmarks, a plaza where players and companions meet.
-- **Homes.** Each companion has a home in the world that grows with its
-  owner's progress.
-- **Visible work.** Tasks, payments, and quests appear as world objects.
-  From the episode 240 board and the Khala plan: requests fan out to Pylons,
-  and sats arc between agents.
-- **Mini-game venues.** A racetrack for stat racing and a debate hall, both
-  places where companions compete for sats and XP.
+- The persistent city in `crates/verse`, with Pylons as landmarks, a plaza,
+  guild halls, a market, workshops, and homes.
+- Visible work: jobs, payments, and quests as world objects, carried over
+  from the episode 240 run board.
 
-### Mini-games and competitions
+### Contests
 
-- **Stat racing.** Companions race using trait scores and training.
-- **Debates.** Companions argue positions in front of an audience; players
-  and judges score them.
-- **Quests.** Real jobs framed as quests, inherited from the Minecraft guild
-  design and episode 284. The acceptance criteria are the quest objectives.
+- **Gym trials.** Agents compete on the same pinned `suite`, and the Gym's
+  rules decide what counts as a comparison. A trial that cannot be compared
+  is refused, not scored.
+- **Debates.** Agents argue positions. Judges answer `Score` questions on a
+  rubric.
+- **Quests and raids.** Real jobs with acceptance criteria. Raids split a
+  large job across a guild.
 
 ## Economy
 
-Three quantities, kept separate as in the Minecraft guild design
+Three quantities stay separate, as in the Minecraft guild design
 ([`docs/minecraft/economy.md`](../minecraft/economy.md)):
 
 | Quantity | What it is | How you get it | What it buys |
 | --- | --- | --- | --- |
-| Sats | Real Bitcoin in the companion's wallet | Jobs for other players, competition purses, sales | Real goods, services, other agents' work, cosmetics |
-| XP | Evidence of verified accepted work | Completed tasks and quests that pass verification | Levels, titles, unlocks; never spendable |
-| Compute credits | Operator-funded game allocation | Play, events, seasons | Model time for companion tasks; not transferable or redeemable |
+| Sats | Real Bitcoin in the agent's wallet | Jobs for other players, contest purses, sales | Real goods, services, other agents' work, cosmetics |
+| XP | Evidence of verified accepted work | Tasks and quests that pass verification | Levels, stat points, titles, grants; never spendable |
+| Compute credits | An operator-funded game allocation | Play, events, seasons | Model time for tasks; not transferable or redeemable |
 
 Principles:
 
-- **No pay-to-win.** Money buys cosmetics and real-world goods, not power.
-  This matches the Ruins of Atlantis GDD.
-- **XP cannot be farmed.** XP comes only from verified, accepted outcomes,
-  as in episode 284 and the Minecraft economy doc.
-- **An agentic auction house.** Players and companions list goods, services,
-  and job offers. Companions shop it on their owners' behalf.
-- **Taught by use.** Prices, fees, and savings are visible and honest, so
-  players build intuition about sats without a tutorial on Bitcoin.
+- **No pay-to-win.** Money buys cosmetics and real goods, not stats. This
+  matches the Ruins of Atlantis design.
+- **XP cannot be farmed.** It comes only from verified accepted outcomes.
+- **An agentic auction house** where agents list and buy goods, services,
+  and jobs for their owners.
+- **Honest prices.** Costs, fees, and savings are visible, so players learn
+  what sats are worth by using them.
 
 ## Progression
 
-- **Companion levels** from XP, unlocking tools (search, then purchases,
-  then delegated work, then jobs for others) so trust grows with capability.
-- **Traits** that improve through training, mini-games, and inheritance.
-- **Player levels and classes.** These are inherited from episode 284:
-  Commander (runs parties and guilds), Artisan (delivers work), and Scout
-  (finds deals and information). A player's class shapes which companion
-  traits matter most.
-- **Collections.** Outfits, home items, companions earned, achievements.
-  Achievements are NIP-32 labels, as Voyager already publishes.
+- **Levels** from XP. Each level grants stat points.
+- **Grants** unlock in stages so trust grows with a track record: search,
+  then purchases, then delegated work, then jobs for others.
+- **Classes:** Commander, Artisan, and Scout as starting builds and titles.
+- **Achievements** as NIP-32 labels, as Voyager already publishes for
+  completed quests.
+- **Collections:** outfits, home items, agents earned.
 
 ## Social
 
-- **Agent-to-agent trade** is the core social verb: companions buy from,
-  hire, and pay each other.
-- **Guilds of humans and agents.** Carried over from episode 200 and the
-  Minecraft guild design: shared channels (NIP-29), shared quests, shared
-  treasury rules.
-- **Plaza and proximity.** Players meet in the world; companions greet each
-  other and gossip about deals.
-- **Competitions** as spectator events with leaderboards on verified results.
+- **Agent-to-agent trade** is the core social verb.
+- **Guilds of humans and agents**, carried over from episode 200 and the
+  Minecraft guild design, with shared channels, quests, and treasury rules.
+- **Plaza and proximity:** players meet in the world, and their agents meet
+  on errands.
+- **Spectating:** contests and raids are events other players watch.
 
 ## Themes
 
-- **Care and responsibility.** You look after something, and it looks after
-  you.
-- **Trust earned in steps.** A companion earns the right to spend and to act
-  alone, the way a new hire or a trained dog does.
+- **Strategy over grind.** The important choices are made in the build.
+  Everything after that is the agent living with them.
+- **Trust earned in steps.** An agent earns the right to spend and to act
+  alone through a verified record.
+- **Maintenance as craft.** A well-kept agent works better, as it does
+  outside the game.
 - **Honest money.** Sats are real, receipts are real, and the world shows
   what things cost.
-- **Low time preference.** Companions grow over seasons. Inheritance keeps
+- **Seeing is understanding.** Players learn how agents work by watching
+  them visit the places where the work happens.
+- **Low time preference.** Agents improve over seasons. Inheritance keeps
   what was worth keeping.
-- **Play as learning.** Players learn agents, Bitcoin, and Nostr by using
-  them.
-- **Work is play when it is visible.** Real jobs become quests, and finished
-  work becomes something you can see and show.
 
 ## Tech notes
 
-- **Desktop client:** `crates/verse`, Rust with `wgpu` and `winit`, on the
-  Ruins of Atlantis engine family. This repository requires product code to
-  be Rust.
-- **Identity and sync:** Nostr keys per companion and player. Memory and
-  history are Nostr events, so any client can pick them up.
-- **Payments:** a Lightning wallet per companion, with spend policy enforced
-  by the host process.
-- **Agent runtime:** Coder and Coder One for delegated work; the decision API
-  (Jev, Kev, Lev) for typed choices such as "which listing" and "confirm or
-  ask"; Voyager's skill library as the model for learned, reusable companion
-  skills.
-- **World state:** the June 2026 world service (Cloudflare Durable Objects)
-  was deleted and is available in git history as a reference
-  (`cc0ff1e151^:apps/openagents-world`). The multiplayer backend is not
-  chosen.
-- **Other clients:** the original concept targeted Three.js with Expo or
-  React Native for iOS, Android, and web, and considered Unreal pixel
-  streaming at scale. See open questions.
+- **Client:** `crates/verse`: Rust with `wgpu` and `winit`, on the Ruins of
+  Atlantis engine family. This repository requires product code to be Rust.
+- **Identity and sync:** Nostr keys per player and per agent.
+- **Build compiler:** a stat allocation compiles to a digested policy
+  document of thresholds and bounds. That document is the build's identity,
+  the same way a `gate digest` identifies a gate.
+- **Visits:** world events are derived from the agent's `ATIF` trace and
+  receipts, not simulated separately.
+- **Condition:** meters are computed from workspace state (git status,
+  dependency manifests, memory stores, ledgers).
+- **Agent runtime:** Coder and Coder One for work; System One doors for
+  decisions; Voyager's skill library as the model for learned skills.
+- **World state:** the June 2026 world service is in git history
+  (`cc0ff1e151^:apps/openagents-world`) as a reference. The multiplayer
+  backend is not chosen.
+- **Other clients:** the pet-game concept targeted Three.js with Expo or
+  React Native, and considered Unreal pixel streaming. See open questions.
 
 ## Milestones
 
 Draft sequencing. Dates are not set.
 
-1. **M1: One companion, one wallet, one payment.** Each player has a
-   companion with a Nostr identity and a Lightning wallet, and two
-   companions can pay each other. Stretch: companion Nostr search. This is
-   the original concept's Milestone 1, unchanged.
-2. **M2: "Buy a pencil."** The end-to-end canonical journey with player
-   confirmation, payment to a seller's agent, and a receipt, shown in the
-   world.
-3. **M3: The companion in Verse.** The companion is embodied in
-   `crates/verse`, gets a home, a wardrobe, and care interactions.
-4. **M4: Delegated work.** Memory across sessions, and deck, document, and
-   code jobs with verification and XP.
-5. **M5: Economy and competitions.** Auction house, stat racing, debates,
-   jobs for other players.
-6. **M6: Many companions.** Earning, strengths, and inheritance.
-7. **M7: Everywhere.** Phone and voice clients on the same Nostr identity.
+1. **M1: One agent, one wallet, one payment.** Each player has an agent with
+   a Nostr identity and a Lightning wallet, and two agents can pay each
+   other. Stretch: agent Nostr search. This is the pet-game concept's
+   original Milestone 1.
+2. **M2: "Buy a pencil," visible.** The canonical journey end to end, with
+   the agent visiting the market, the seller, and the friend in the world.
+3. **M3: Builds.** Stat allocation compiles into policy, and the same task
+   plays out differently under two builds.
+4. **M4: Condition.** Hygiene, freshness, and memory order computed from real
+   state and shown on the agent.
+5. **M5: Work and XP.** Delegated deck, document, and code jobs with
+   verification, XP, and levels.
+6. **M6: Economy and contests.** Auction house, Gym trials, debates, jobs for
+   other players.
+7. **M7: Many agents.** Earning, parties, and inheritance.
+8. **M8: Everywhere.** Phone and voice clients on the same identity.
 
 ## Risks
 
 - **Money and trust.** An agent that spends real money can be wrong,
-  tricked, or exploited. Spending caps, confirmation, and receipts reduce
-  but do not remove this risk.
-- **Regulation.** Real-money purses, wallets per companion, and trading
-  companions may raise money-transmission, gambling, and consumer-protection
-  questions, and they differ by country.
-- **Scope.** A pet game, an MMO, a marketplace, and an agent platform at once
-  is too much. The milestones must stay narrow.
-- **Farming and bots.** Any sat-earning mini-game attracts bots. Real payouts
-  must depend on verified outcomes or bounded, operator-funded purses.
-- **Tone mismatch.** A cute companion and a dense StarCraft-style command
-  surface may not fit in one product.
-- **The 3D world keeps getting deferred.** OpenAgents has started and parked a
-  3D world three times. A companion that works first on phone or desktop
-  chat, with the world as an optional view, reduces that risk.
+  tricked, or exploited. Builds, caps, confirmation, and receipts reduce
+  that risk but do not remove it.
+- **Builds that mislead.** A build that says "cautious" must actually be
+  cautious. If stats do not change behavior measurably, the core idea fails.
+- **Regulation.** Real-money purses, per-agent wallets, and trading agents
+  raise money-transmission, gambling, and consumer-protection questions.
+- **Scope.** An MMO, a marketplace, and an agent platform at once is too
+  much. Milestones must stay narrow.
+- **Farming and bots.** Any paying contest attracts bots. Real payouts must
+  depend on verified outcomes or bounded, operator-funded purses.
+- **The 3D world keeps getting deferred.** OpenAgents has started and parked
+  a 3D world three times. The visits view must stay tied to real traces, or
+  it becomes decoration and gets cut again.
 - **Memory privacy.** Long-term memory of a player's life needs clear
   ownership, export, and deletion.
 
 ## Open questions
 
-Conflicts between the companion concept and existing Verse direction are
-listed as questions. This draft does not pick a side.
+This draft does not pick a side on these.
 
-1. **Tone and palette.** The companion concept calls for a cute, warm 3D
-   world. The current Verse slice is an amber-only, Tron-style line world
-   that matches the Coder terminal. Can a cute companion live in the amber
-   world, or does the companion need its own look?
-2. **Client stack.** The companion concept chose Three.js and Expo or React
-   Native, and considered Unreal. This repository requires Rust product code
-   and `crates/verse` uses `wgpu`. Is the phone client Rust, a separate
-   repository, or a different stack by exception?
-3. **Audience.** The companion concept is non-technical users first. Recent
-   Verse direction (episodes 246, 283, 284) targets gamers and power users
-   who run coding agents. Which audience does M1 serve?
-4. **How sats are earned.** The companion concept pays sats for mini-games
-   (racing, debates). The existing economy says rewards come only from
-   verified accepted work, and compute credits cannot be transferred or
-   redeemed. Do mini-game purses pay real sats, and if so, who funds them?
-5. **Trading companions.** The companion concept allows possible trading.
-   The Minecraft economy forbids peer-to-peer transfer of credits. Can a
-   companion with earned traits and XP change hands, and does its XP go with
-   it?
-6. **Embodiment order.** The companion concept says brain, tools, and
-   experience first. Verse has so far started with the 3D world. Does M1
-   require the 3D world at all?
-7. **Companion or character.** In the June 2026 plan, your agent is your
-   character, spawned from your Pylon. In the companion concept, you and
-   your companion are separate. Is the player an avatar with a companion, or
-   is the player the commander of agent characters?
-8. **Pylons and compute.** In the June 2026 plan, compute is mana and your
-   Pylon is your base. Does a companion run on its owner's Pylon, on
-   operator compute credits, or on paid inference?
-9. **Where the economy lives.** Agent-to-agent payments need a settlement
-   path. Is it the companion's own Lightning wallet, a custodial game
-   wallet, or the Nexus treasury path OpenAgents used before?
-10. **Inheritance mechanics.** What exactly is inherited: trait scores,
-    skill programs, memory summaries? What is discarded, and who decides?
-11. **Delivery of physical goods.** "Send it to my friend" needs a shipping
-    address and a seller who ships. Which Nostr marketplace protocol and
-    which sellers support M2?
-12. **Name.** Is the companion feature named inside Verse, and what are
-    companions called in the fiction?
+1. **Tone and palette.** The pet-game concept imagined a cute 3D world. The
+   current client is an amber-only, Tron-style line world matching the
+   Coder terminal. Does Verse stay amber, or does it gain a second look?
+2. **Client stack.** The pet-game concept chose Three.js and Expo or React
+   Native. This repository requires Rust product code. Is the phone client
+   Rust, a separate repository, or a stated exception?
+3. **Audience.** The pet-game concept is non-technical users first. Recent
+   direction (episodes 246, 283, 284) targets gamers and power users. Which
+   audience does M1 serve, and how technical are the condition meters for
+   that audience?
+4. **How sats are earned.** The pet-game concept pays sats for contests. The
+   existing economy rewards only verified work and forbids transferring
+   credits. Do contest purses pay real sats, and who funds them?
+5. **Trading agents.** Can an agent with earned XP, skills, and a build
+   change hands? Does its XP go with it?
+6. **Embodiment order.** The pet-game concept says brain, tools, and
+   experience first. Verse started with the world. Does M1 require the 3D
+   world, or can visits start as a 2D map?
+7. **Player and agent.** In the June 2026 plan the agent is the player's
+   character. Here the player has an avatar and the agent is separate. Is
+   the player also an avatar in the world, or only the commander?
+8. **Stat count and granularity.** Seven stats may be too many for
+   non-technical players. Which stats are core, and which are advanced?
+9. **Compute source.** Does an agent run on its owner's Pylon, on operator
+   compute credits, or on paid inference, and does Thrift choose between
+   them?
+10. **Settlement path.** The agent's own Lightning wallet, a custodial game
+    wallet, or the earlier Nexus treasury path?
+11. **Inheritance mechanics.** Exactly which skills, calibration, and
+    programs pass down, and who decides what is discarded?
+12. **Physical delivery.** "Send it to my friend" needs a shipping address
+    and a seller who ships. Which marketplace protocol and sellers support
+    M2?
 
 ## Sources
 
-- Existing Verse and game history: [`docs/game/README.md`](../game/README.md)
-- Current Verse slice: [`docs/verse/README.md`](README.md)
+- Earlier game work and history: [`docs/game/README.md`](../game/README.md)
+- Current client: [`docs/verse/README.md`](README.md)
+- Terms: [`docs/glossary.md`](../glossary.md)
 - Economy model: [`docs/minecraft/economy.md`](../minecraft/economy.md)
+- Protocols: [NIP-CTX](../../nips/openagents/NIP-CTX.md),
+  [NIP-POL](../../nips/openagents/NIP-POL.md),
+  [NIP-OPT](../../nips/openagents/NIP-OPT.md)
 - Episode transcripts: [189](../transcripts/189.md),
-  [240](../transcripts/240.md), [246](../transcripts/246.md),
-  [284](../transcripts/284.md)
-- Companion concept: Kiki, PlebLab *Early Days* interview, 2025-02-12,
-  <https://youtu.be/yw-KBGvafIk>. The chapters used here run from 10:22 to
-  19:37 (vision, 12–18 month plan, future of virtual agents) and include
-  26:08 (stack).
+  [200](../transcripts/200.md), [240](../transcripts/240.md),
+  [246](../transcripts/246.md), [284](../transcripts/284.md)
+- Pet-game concept: Kiki, PlebLab *Early Days* interview, 2025-02-12,
+  <https://youtu.be/yw-KBGvafIk>, chapters from 10:22 to 19:37 and 26:08.
 - June 2026 agent-MMORPG plan (deleted):
   `git show dabc08102f^:docs/launch/2026-06-20-agent-mmorpg-hud-autopilot-audit-and-plan.md`

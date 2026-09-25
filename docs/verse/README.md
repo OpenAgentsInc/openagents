@@ -124,8 +124,9 @@ guard. They do not need a GPU.
 
 ## Game design
 
-The draft game design document is [`gdd.md`](gdd.md). It adds a companion
-agent to Verse: a pet with real-world powers, a wallet, and an economy.
+The draft game design document is [`gdd.md`](gdd.md): an MMORPG plus
+agents. Each player builds an agent whose stats set how it decides, sends
+it on visible visits to do real work, and keeps its condition up.
 
 ## Next
 
