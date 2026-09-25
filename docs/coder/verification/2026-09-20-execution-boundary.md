@@ -63,6 +63,65 @@ widening the grant, and a path that is not UTF-8 or that carries a
 control character has no safe spelling in the profile and is refused
 rather than quoted wrong.
 
+## Confined reads
+
+Added 2026-09-25 for the `checks.oracle` writer
+([#9656](https://github.com/OpenAgentsInc/openagents/issues/9656)), whose
+commands searched the host with `find /` at tier 0.
+
+`Spec::confining_reads` limits what the command can read, and
+`Spec::readable` names a path it can read but not write (naming one also
+confines reads). A read-confined command can read only these paths:
+
+- The system's program directories in `SYSTEM_READS`: on Linux, `/usr`,
+  `/bin`, `/sbin`, the `/lib` directories, `/etc`, `/nix/store`, and
+  `/run/current-system`, when they exist.
+- The paths named with `Spec::readable`.
+- The paths it can write: the checkout, the writable paths, and the
+  owned scratch directory.
+
+Everything else is unreadable, including every protected and sealed path,
+home directories, and other workspaces.
+
+- **On Linux**, `bwrap` starts from an empty root instead of binding `/`
+  read-only. It binds the system directories and the readable paths
+  read-only, then the writable paths writable. It mounts an empty `/tmp`,
+  and `--unshare-pid` gives the command its own process namespace, so
+  `/proc` doesn't show other processes or their working directories.
+  A system directory that is a symbolic link, such as `/bin` on a
+  merged-`/usr` system, is recreated as the same link.
+- **On macOS**, the profile adds `(deny file-read*)` after the write
+  rules, then allows the same paths. File metadata stays readable
+  everywhere because the loader needs it, so a command can test whether a
+  path exists, but it can't list a directory or read a file outside the
+  set. This profile has not yet run on a macOS host.
+- **Elsewhere**, `build` refuses as it does for writes.
+
+`Boundary::search_path` rewrites a `PATH` for the confined command: it
+resolves each directory through its symbolic links and drops the ones the
+command can't read. A Nix profile in the home directory resolves into
+`/nix/store` and stays on the path.
+
+Microluna applies the policy through `Workspace::confining_reads`. A
+session in a task container can't confine reads, so every command there is
+refused.
+
+Tests, Linux (NixOS, `bwrap`), 2026-09-25:
+
+- `a_read_confined_boundary_reads_only_what_it_names`: the command reads
+  a readable file and writes its scratch. It can't read or list a
+  directory beside the readable one, `find /tmp` doesn't find that
+  directory's file, and it can't see the test process in `/proc`.
+- `a_read_confined_boundary_hides_the_home_directory` and
+  `the_profile_denies_reads_first_and_allows_after`.
+- `a_read_confined_spec_with_a_missing_backend_is_refused` and
+  `a_platform_without_a_backend_refuses_to_confine_reads`: no backend
+  means a refusal, never an open command.
+- In `crates/microluna` and `crates/coder-one`, a session and an oracle
+  writer with confined reads read their own files and a granted task
+  directory. They can't copy a candidate's file from a directory beside
+  them, and a session in a task container runs no command.
+
 ## Ownership
 
 `sandbox-exec -f` reads the profile from a file, and a scratch directory
@@ -129,10 +188,11 @@ failures or turn detail into a memory problem.
 
 ## What this does not do
 
-- **It confines writes only.** Nothing here restricts what a sandboxed
-  command reads or who it talks to; a secret it can read it can also
-  send. Read and network confinement would need a wider profile and a
-  different set of tests.
+- **It confines writes unless the caller asks for more.** Reads stay
+  open unless the caller confines them (see
+  [Confined reads](#confined-reads)), and network stays open unless the
+  caller asks for `Spec::offline`. A command that can read a secret and
+  reach the network can send it.
 - **It does not bound time, output, memory, or CPU.** That is
   a separate host concern. `crates/supervise` supplies the wall-clock and
   output limits; it does not supply a general memory or CPU quota.

@@ -297,7 +297,8 @@ checker, and a blind Luna session wrote an oracle for each for under half
 a cent. A `fail` from a usable oracle was right 22 times in 22, and within
 3 mixed tasks it kept 5 of 5 passes green and called 10 of 19 failures
 red, too few passes to meet the bar. Two writers searched the host, so the
-writer needs a read boundary.
+writer now runs with confined reads: its commands can read only its own
+directory, the task files the caller grants, and the system's programs.
 [Report](../../terminal-bench/2026-09-25-oracle.md)
 
 ## Tracking
