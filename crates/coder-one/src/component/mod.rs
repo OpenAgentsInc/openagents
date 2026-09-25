@@ -1382,6 +1382,19 @@ mod tests {
         default_fixtures()
     }
 
+    #[test]
+    fn concurrent_handoff_scratch_directories_do_not_share_a_millisecond() {
+        let handles: Vec<_> = (0..16)
+            .map(|_| std::thread::spawn(|| super::handoff_scratch(123).unwrap()))
+            .collect();
+        let dirs: std::collections::BTreeSet<_> =
+            handles.into_iter().map(|h| h.join().unwrap()).collect();
+        assert_eq!(dirs.len(), 16);
+        for dir in dirs {
+            std::fs::remove_dir(dir).unwrap();
+        }
+    }
+
     #[tokio::test]
     async fn every_component_runs_on_the_checked_in_fixtures_with_recorded_jev() {
         for component in registry() {
@@ -1551,6 +1564,22 @@ struct HandoffExpect {
 }
 
 /// `control.handoff`: one pattern on one mini-task with scripted tiers.
+fn handoff_scratch(at: u64) -> Result<std::path::PathBuf, String> {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    loop {
+        let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let out = std::env::temp_dir().join(format!(
+            "coder-one-component-handoff-{}-{at}-{n}",
+            std::process::id()
+        ));
+        match std::fs::create_dir(&out) {
+            Ok(()) => return Ok(out),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(error) => return Err(format!("Cannot create handoff fixture directory: {error}")),
+        }
+    }
+}
+
 struct HandoffComponent;
 
 impl Component for HandoffComponent {
@@ -1580,11 +1609,7 @@ impl Component for HandoffComponent {
             if let Some(to) = &policy.to {
                 policy.to = Some(crate::handoff::scripted(to));
             }
-            let out = std::env::temp_dir().join(format!(
-                "coder-one-component-handoff-{}-{}",
-                std::process::id(),
-                atif::now_ms()
-            ));
+            let out = handoff_scratch(atif::now_ms())?;
             let ran = crate::handoff::run(crate::handoff::Options {
                 task: crate::minitask::find(&input.task)?,
                 policy,
@@ -1650,6 +1675,7 @@ impl Component for HandoffComponent {
                 output: json!({
                     "pattern": ran.manifest["pattern"],
                     "grade": ran.grade.verdict,
+                    "grade_detail": ran.grade.detail,
                     "actions": actions,
                     "ledger": ran.ledger.record(),
                     "briefs": ran.handoffs.iter().map(|h| h["brief"]["sha256"].clone()).collect::<Vec<_>>(),
