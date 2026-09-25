@@ -87,6 +87,11 @@ class AgentProfile:
     # Harbor's own resolution. Either way the trial records what applied
     # (``tbench.netpolicy``).
     agent_network: str = "harbor"
+    # Harbor's agent setup timeout for this arm, in seconds
+    # (``AgentConfig.override_setup_timeout_sec``); ``None`` keeps Harbor's
+    # default of 360. An arm whose host step writes an oracle before the
+    # agent installs needs more (``tbench.oracle_host``).
+    setup_timeout_sec: float | None = None
 
     @property
     def is_control(self) -> bool:
@@ -129,7 +134,19 @@ def _load_agent(agent_id: str, raw: dict[str, Any]) -> AgentProfile:
         cost_provenance=raw.get("cost_provenance", "unknown"),
         notes=tuple(notes),
         agent_network=_agent_network(agent_id, raw),
+        setup_timeout_sec=_setup_timeout(agent_id, raw),
     )
+
+
+def _setup_timeout(agent_id: str, raw: dict[str, Any]) -> float | None:
+    value = raw.get("setup_timeout_sec")
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+        raise ValueError(
+            f"agent {agent_id!r}: setup_timeout_sec must be a positive number of seconds"
+        )
+    return float(value)
 
 
 def _agent_network(agent_id: str, raw: dict[str, Any]) -> str:

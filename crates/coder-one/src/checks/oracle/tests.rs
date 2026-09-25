@@ -973,3 +973,37 @@ async fn the_host_step_refuses_an_image_that_isnt_on_the_machine() {
     // Only the image was inspected: nothing was created or pulled.
     assert!(docker.calls().iter().all(|c| c[0] == "image"));
 }
+
+/// A registered experiment's protocol is frozen: the file in the checkout
+/// still has the digest the registry names, and each id is its directory.
+#[test]
+fn every_registered_experiment_names_its_frozen_protocol() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let mut ids = std::collections::BTreeSet::new();
+    for experiment in EXPERIMENTS {
+        assert!(
+            ids.insert(experiment.id),
+            "{} is listed twice",
+            experiment.id
+        );
+        assert!(
+            experiment.protocol.starts_with(&format!(
+                "bench/terminal-bench/experiments/{}/",
+                experiment.id
+            )),
+            "{experiment:?}"
+        );
+        let bytes = std::fs::read(root.join(experiment.protocol)).unwrap();
+        assert_eq!(
+            crate::accept::sha256(&bytes),
+            experiment.protocol_sha256,
+            "{} changed after it was registered",
+            experiment.protocol
+        );
+        assert_eq!(
+            preregistered(experiment.id, experiment.protocol_sha256),
+            Some(experiment)
+        );
+    }
+    assert!(preregistered("2026-09-25-oracle-live", "").is_none());
+}

@@ -129,6 +129,15 @@ def validate(spec):
     for row in slots:
         if not NAME.fullmatch(row['id']):
             raise CohortError('invalid slot id')
+        if 'policy_path' in row and not (isinstance(row['policy_path'], str) and row['policy_path']):
+            raise CohortError('a slot policy_path must be a path')
+
+
+def slot_policy(spec, slot):
+    """The manifest a slot runs: its own ``policy_path``, else the spec's.
+    A per-slot manifest lets one cohort interleave matched arms under one
+    budget and one journal."""
+    return slot.get('policy_path') or spec['policy_path']
 
 
 def read_events(path: Path, *, allow_unterminated_tail=False):
@@ -401,23 +410,32 @@ def identity(checkout, spec):
     from .candidate_capture import check_policy
     changed = subprocess.check_output(['git', '-C', str(checkout), 'status', '--porcelain'], text=True)
     artifact = Path(spec['artifact_path']).expanduser()
-    if not artifact.is_absolute() or not Path(spec['policy_path']).expanduser().is_absolute():
+    paths = [spec['policy_path']] + [r['policy_path'] for r in spec['schedule'] if r.get('policy_path')]
+    if not artifact.is_absolute() or not all(Path(p).expanduser().is_absolute() for p in paths):
         raise CohortError('artifact_path and policy_path must be absolute')
     artifact_hash = hashlib.sha256(artifact.read_bytes()).hexdigest()
     if artifact_hash != spec['artifact_sha256']:
         raise CohortError('artifact differs from its pinned digest')
-    policy = Path(spec['policy_path']).expanduser()
-    policy_data = json.loads(policy.read_text())
-    check_policy(policy_data)
-    executor = policy_data['policy']['executor']
-    if executor['agent'] != 'microluna' or money(executor['microluna']['spend_usd']) != money(spec['cost_rule']['luna_bound_usd']):
-        raise CohortError('cost rule must match the pinned Microluna policy budget')
+    digests = {}
+    for path in dict.fromkeys(paths):
+        policy = Path(path).expanduser()
+        policy_data = json.loads(policy.read_text())
+        check_policy(policy_data)
+        executor = policy_data['policy']['executor']
+        if executor['agent'] != 'microluna' or money(executor['microluna']['spend_usd']) != money(spec['cost_rule']['luna_bound_usd']):
+            raise CohortError('cost rule must match the pinned Microluna policy budget')
+        digests[path] = hashlib.sha256(policy.read_bytes()).hexdigest()
     for slot in spec['schedule']:
         slot_request(slot)
-    return {'source_dirty': hashlib.sha256(changed.encode()).hexdigest() if changed.strip() else None,
-            'source_commit': subprocess.check_output(['git', '-C', str(checkout), 'rev-parse', 'HEAD'], text=True).strip(),
-            'artifact_sha256': artifact_hash, 'policy_sha256': hashlib.sha256(policy.read_bytes()).hexdigest(),
-            'tasks': {r['id']: Task(Path(r['task_path']).expanduser()).checksum for r in spec['schedule']}}
+    pinned = {'source_dirty': hashlib.sha256(changed.encode()).hexdigest() if changed.strip() else None,
+              'source_commit': subprocess.check_output(['git', '-C', str(checkout), 'rev-parse', 'HEAD'], text=True).strip(),
+              'artifact_sha256': artifact_hash, 'policy_sha256': digests[spec['policy_path']],
+              'tasks': {r['id']: Task(Path(r['task_path']).expanduser()).checksum for r in spec['schedule']}}
+    # Only a cohort with per-slot manifests records them, so an existing
+    # journal's pinned identity is unchanged.
+    if len(paths) > 1:
+        pinned['slot_policy_sha256'] = {r['id']: digests[slot_policy(spec, r)] for r in spec['schedule']}
+    return pinned
 
 
 def launch(journal, slot, job, checkout):
@@ -425,7 +443,7 @@ def launch(journal, slot, job, checkout):
         '--agent', slot['agent'], '--task', Path(slot['task_path']).name, '--job-name', job,
         '--agent-kwarg', 'artifact_path=' + journal.spec['artifact_path'],
         '--agent-kwarg', 'artifact_sha256=' + journal.spec['artifact_sha256'],
-        '--agent-kwarg', 'policy=' + journal.spec['policy_path'],
+        '--agent-kwarg', 'policy=' + slot_policy(journal.spec, slot),
         '--agent-kwarg', 'candidate_capture=true']
     with (journal.directory / (job + '.log')).open('ab') as log:
         return subprocess.Popen(command, cwd=checkout / 'bench/terminal-bench',

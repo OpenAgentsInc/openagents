@@ -1667,6 +1667,14 @@ pub const REFERENCE: &[(&str, &str)] = &[
         include_str!("../policies/microluna-v18.json"),
     ),
     (
+        "microluna-oracle-live-off.json",
+        include_str!("../policies/microluna-oracle-live-off.json"),
+    ),
+    (
+        "microluna-oracle-live-on.json",
+        include_str!("../policies/microluna-oracle-live-on.json"),
+    ),
+    (
         "luna-best-of-1.json",
         include_str!("../policies/luna-best-of-1.json"),
     ),
@@ -1932,6 +1940,92 @@ mod tests {
         back_lean.baseline = false;
         back_lean.finish_rule = None;
         assert_eq!(back.policy, v13.policy);
+    }
+
+    /// The live oracle run's two arms
+    /// (`bench/terminal-bench/experiments/2026-09-25-oracle-live/`): the
+    /// control is v18 with `checks.metric_target` on, and the oracle arm
+    /// differs from it only in `lean.oracle`, which names the registered
+    /// experiment. No other manifest names an experiment.
+    #[test]
+    fn the_oracle_live_arms_differ_only_in_the_oracle() {
+        let v18 = reference("microluna-v18.json");
+        let off = reference("microluna-oracle-live-off.json");
+        let on = reference("microluna-oracle-live-on.json");
+        off.validate().unwrap();
+        on.validate().unwrap();
+        let lean = |m: &Manifest| m.policy.executor.microluna.clone().unwrap().lean.unwrap();
+
+        let off_lean = lean(&off);
+        assert!(off_lean.oracle.is_none());
+        let rule = off_lean.metric_target.as_deref().unwrap();
+        assert!(rule.write_harness && rule.finish);
+        assert!(rule.harness_usd <= 0.02 && rule.harness_sec == 180);
+        let mut back = off.clone();
+        back.name.clone_from(&v18.name);
+        back.note.clone_from(&v18.note);
+        back.policy
+            .executor
+            .microluna
+            .as_mut()
+            .and_then(|m| m.lean.as_mut())
+            .unwrap()
+            .metric_target = None;
+        assert_eq!(back.policy, v18.policy);
+        assert_eq!(back.protected, v18.protected);
+
+        let oracle = lean(&on).oracle.unwrap();
+        let experiment = oracle.experiment.as_ref().unwrap();
+        assert!(
+            crate::checks::oracle::preregistered(&experiment.id, &experiment.protocol_sha256)
+                .is_some()
+        );
+        assert_eq!(
+            (oracle.writer_turns, oracle.writer_sec, oracle.writer_usd),
+            (30, 600, 0.08)
+        );
+        let mut back = on.clone();
+        back.name.clone_from(&off.name);
+        back.note.clone_from(&off.note);
+        back.policy
+            .executor
+            .microluna
+            .as_mut()
+            .and_then(|m| m.lean.as_mut())
+            .unwrap()
+            .oracle = None;
+        assert_eq!(back.policy, off.policy);
+        assert_ne!(on.digest(), off.digest());
+
+        // Without the experiment, the same manifest is refused.
+        let mut bare = on.clone();
+        bare.policy
+            .executor
+            .microluna
+            .as_mut()
+            .and_then(|m| m.lean.as_mut())
+            .and_then(|l| l.oracle.as_mut())
+            .unwrap()
+            .experiment = None;
+        if !crate::checks::oracle::ADMITTED {
+            assert!(
+                bare.validate()
+                    .unwrap_err()
+                    .contains("oracle isn't admitted")
+            );
+        }
+        for (file, text) in REFERENCE {
+            let manifest = Manifest::parse(text).unwrap();
+            let named = manifest
+                .policy
+                .executor
+                .microluna
+                .as_ref()
+                .and_then(|m| m.lean.as_ref())
+                .and_then(|l| l.oracle.as_ref())
+                .is_some_and(|o| o.experiment.is_some());
+            assert_eq!(named, *file == "microluna-oracle-live-on.json", "{file}");
+        }
     }
 
     #[test]

@@ -59,6 +59,8 @@ def test_known_arms(agents):
         "coder-one-microluna-v8",
         "coder-one-microluna-v15-stall",
         "coder-one-microluna-v18",
+        "coder-one-microluna-oracle-live-on",
+        "coder-one-microluna-oracle-live-off",
         "coder-one-microluna-v17",
         "coder-one-microluna-v16",
         "coder-one-microluna-v15",
@@ -126,6 +128,40 @@ def test_matched_best_of_n_arms_differ_only_in_lanes(agents):
     assert control["protected"] == lanes["protected"]
     assert one.extra_allowed_hosts == three.extra_allowed_hosts
     assert one.agent_network == three.agent_network == "allowlist"
+
+
+def test_oracle_live_arms_differ_only_in_the_oracle(agents):
+    """The live oracle run's arms: same profile but for the manifest, the
+    same 900-second setup time in both, and manifests that differ only in
+    ``lean.oracle``."""
+    root = Path(__file__).resolve().parents[3]
+    on = agents["coder-one-microluna-oracle-live-on"]
+    off = agents["coder-one-microluna-oracle-live-off"]
+    v18 = agents["coder-one-microluna-v18"]
+    assert on.setup_timeout_sec == off.setup_timeout_sec == 900
+    assert v18.setup_timeout_sec is None
+    for field in ("harbor_import_path", "model", "required_kwargs", "env_forward",
+                  "auth_modes", "extra_allowed_hosts", "agent_network", "cost_provenance"):
+        assert getattr(on, field) == getattr(off, field) == getattr(v18, field), field
+    oracle = json.loads((root / on.kwargs["policy"]).read_text())
+    control = json.loads((root / off.kwargs["policy"]).read_text())
+    base = json.loads((root / v18.kwargs["policy"]).read_text())
+    assert oracle["policy"]["executor"]["microluna"]["lean"].pop("oracle")["experiment"]["id"] == (
+        "2026-09-25-oracle-live")
+    assert oracle["policy"] == control["policy"]
+    assert control["policy"]["executor"]["microluna"]["lean"].pop("metric_target")["finish"] is True
+    assert control["policy"] == base["policy"]
+    assert oracle["protected"] == control["protected"] == base["protected"]
+
+
+def test_setup_timeout_must_be_positive():
+    from tbench.agents import _load_agent
+    raw = {"harbor_name": "oracle", "setup_timeout_sec": 900}
+    assert _load_agent("x", raw).setup_timeout_sec == 900.0
+    assert _load_agent("x", {"harbor_name": "oracle"}).setup_timeout_sec is None
+    for bad in (0, -1, True, "900"):
+        with pytest.raises(ValueError, match="setup_timeout_sec"):
+            _load_agent("x", dict(raw, setup_timeout_sec=bad))
 
 
 def test_claude_oauth_needs_token_only(agents):

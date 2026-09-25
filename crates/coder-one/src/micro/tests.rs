@@ -3292,6 +3292,55 @@ fn the_oracle_switch_is_off_by_default_and_refused_until_admitted() {
     );
 }
 
+/// While `checks.oracle` isn't admitted, only a manifest that names a
+/// registered experiment with its protocol's exact digest may turn the
+/// switch on; any other id or digest, or none, is refused.
+#[test]
+fn only_a_registered_experiment_may_run_the_unadmitted_oracle_switch() {
+    let registered = crate::checks::oracle::EXPERIMENTS[0];
+    let with = |experiment: Value| -> Vec<String> {
+        let mut oracle = json!({});
+        if !experiment.is_null() {
+            oracle["experiment"] = experiment;
+        }
+        let lean: lean::Lean = serde_json::from_value(json!({
+            "sessions": 1, "source_chars": 1000, "keep_best": true, "oracle": oracle,
+        }))
+        .unwrap();
+        lean.validate()
+    };
+    let refused =
+        |problems: &[String]| problems.iter().any(|p| p.contains("oracle isn't admitted"));
+    if crate::checks::oracle::ADMITTED {
+        return;
+    }
+    assert!(refused(&with(Value::Null)));
+    let accepted = with(json!({
+        "id": registered.id, "protocol_sha256": registered.protocol_sha256,
+    }));
+    assert!(accepted.is_empty(), "{accepted:?}");
+    let other_digest = with(json!({
+        "id": registered.id, "protocol_sha256": "0".repeat(64),
+    }));
+    assert!(refused(&other_digest), "{other_digest:?}");
+    assert!(
+        other_digest[0].contains("isn't a registered"),
+        "{other_digest:?}"
+    );
+    let other_id = with(json!({
+        "id": "2026-09-25-not-registered", "protocol_sha256": registered.protocol_sha256,
+    }));
+    assert!(refused(&other_id), "{other_id:?}");
+    // The field is exact: an unknown key is a parse error, not a pass.
+    let unknown: Result<lean::Lean, _> = serde_json::from_value(json!({
+        "sessions": 1, "source_chars": 1000, "keep_best": true,
+        "oracle": {"experiment": {
+            "id": registered.id, "protocol_sha256": registered.protocol_sha256, "admit": true,
+        }},
+    }));
+    assert!(unknown.is_err());
+}
+
 const ORACLE_TASK: &str =
     "Write hello.txt containing the word hello.\n\nRun `sh check_hello.sh` to check the result.";
 
@@ -3327,6 +3376,7 @@ async fn a_failing_oracle_refuses_a_done_finish_and_replaces_the_self_score() {
                 writer_turns: 4,
                 writer_sec: 60,
                 writer_usd: 0.01,
+                experiment: None,
             }),
             ..lean_shape()
         }),

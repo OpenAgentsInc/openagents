@@ -204,6 +204,64 @@ def test_abandoned_launch_is_unknown_not_retried(tmp_path, monkeypatch):
         assert not report['accounting_complete']
 
 
+def test_slots_may_run_their_own_manifest_under_one_budget(tmp_path, monkeypatch):
+    """Matched arms interleave in one cohort: a slot's policy_path is the
+    manifest it launches with, every manifest is pinned by digest, and each
+    must keep the cost rule's Luna bound."""
+    import subprocess
+    from types import SimpleNamespace
+    from test_replay import make_task
+    task = make_task(tmp_path)
+    checkout = tmp_path / 'checkout'
+    checkout.mkdir()
+    git = ['git', '-C', str(checkout), '-c', 'user.name=t', '-c', 'user.email=t@example.com']
+    subprocess.run(git[:3] + ['init', '-q'], check=True)
+    subprocess.run(git + ['commit', '-q', '--allow-empty', '-m', 'pin'], check=True)
+    artifact = tmp_path / 'coder-one'
+    artifact.write_bytes(b'binary')
+
+    def manifest(name, spend=0.09, oracle=False):
+        lean = {'retain_candidates': True, **({'oracle': {}} if oracle else {})}
+        path = tmp_path / f'{name}.json'
+        path.write_text(json.dumps({'policy': {'executor': {'agent': 'microluna', 'microluna': {
+            'spend_usd': spend, 'lean': lean}}}}))
+        return str(path)
+
+    off, on = manifest('off'), manifest('on', oracle=True)
+    frozen = spec()
+    frozen.update(artifact_path=str(artifact),
+                  artifact_sha256=cohort.hashlib.sha256(b'binary').hexdigest(), policy_path=off)
+    frozen['schedule'] = [{'id': 'a-on', 'task_path': str(task), 'policy_path': on},
+                          {'id': 'a-off', 'task_path': str(task)}]
+    monkeypatch.setattr(cohort, 'slot_request', lambda slot: None)
+    pinned = cohort.identity(checkout, frozen)
+    digest = lambda path: cohort.hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    assert pinned['policy_sha256'] == digest(off)
+    assert pinned['slot_policy_sha256'] == {'a-on': digest(on), 'a-off': digest(off)}
+    # A cohort without per-slot manifests keeps its earlier identity shape.
+    single = dict(frozen, schedule=[{'id': 'a-off', 'task_path': str(task)}])
+    assert 'slot_policy_sha256' not in cohort.identity(checkout, single)
+
+    refused = json.loads(json.dumps(frozen))
+    refused['schedule'][0]['policy_path'] = manifest('dear', spend=0.2, oracle=True)
+    with pytest.raises(cohort.CohortError, match='Luna bound|budget'):
+        cohort.identity(checkout, refused)
+    refused['schedule'][0]['policy_path'] = 'relative.json'
+    with pytest.raises(cohort.CohortError, match='absolute'):
+        cohort.identity(checkout, refused)
+    refused['schedule'][0]['policy_path'] = ''
+    with pytest.raises(cohort.CohortError, match='slot policy_path'):
+        cohort.validate(refused)
+
+    launched = []
+    monkeypatch.setattr(cohort.subprocess, 'Popen', lambda command, **kw: launched.append(command))
+    journal = SimpleNamespace(spec=frozen, directory=tmp_path)
+    for slot in frozen['schedule']:
+        cohort.launch(journal, dict(slot, profile='tb4', agent='arm'), 'job-' + slot['id'], checkout)
+    policies = [[arg for arg in command if arg.startswith('policy=')] for command in launched]
+    assert policies == [['policy=' + on], ['policy=' + off]]
+
+
 def test_profile_cannot_run_another_task_or_hidden_attempts(tmp_path, monkeypatch):
     from types import SimpleNamespace
     from tbench import cli

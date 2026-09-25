@@ -146,6 +146,8 @@ def build_job_config(
     model = model_for(agent, auth_mode)
     if model:
         agent_config["model_name"] = model
+    if agent.setup_timeout_sec is not None:
+        agent_config["override_setup_timeout_sec"] = agent.setup_timeout_sec
 
     config: dict[str, Any] = {
         "jobs_dir": str(jobs_dir or paths.jobs_dir()),

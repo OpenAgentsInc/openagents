@@ -40,7 +40,9 @@
 //! ([`deliver`]).
 //!
 //! The lean loop's `oracle` switch (`micro::lean::LeanOracle`) is refused
-//! until the offline measurement admits the component ([`ADMITTED`]).
+//! until the offline measurement admits the component ([`ADMITTED`]),
+//! except in a manifest that names a pre-registered experiment
+//! ([`EXPERIMENTS`]).
 
 pub mod cli;
 pub mod contain;
@@ -73,6 +75,40 @@ pub const ORACLE_SCHEMA: &str = "openagents.coder-one.oracle.v1";
 /// Whether the offline measurement admitted `checks.oracle` into a
 /// policy. It didn't: `docs/terminal-bench/2026-09-25-oracle.md`.
 pub const ADMITTED: bool = false;
+
+/// A pre-registered experiment that may turn the lean loop's `oracle`
+/// switch on while [`ADMITTED`] is `false`. A manifest opts in by naming
+/// the experiment's id and its protocol's SHA-256
+/// (`executor.microluna.lean.oracle.experiment`), and validation accepts
+/// only a pair listed in [`EXPERIMENTS`]. Every other manifest stays
+/// refused, and the component stays unadmitted.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Experiment {
+    /// The experiment's name, which its directory under
+    /// `bench/terminal-bench/experiments/` also has.
+    pub id: &'static str,
+    /// The frozen protocol, from the repository root.
+    pub protocol: &'static str,
+    /// The protocol file's SHA-256, taken when it was committed.
+    pub protocol_sha256: &'static str,
+}
+
+/// The experiments that may run the unadmitted `oracle` switch. A test
+/// checks each protocol file against its digest, so an edited protocol
+/// needs a new entry, not a changed one.
+pub const EXPERIMENTS: &[Experiment] = &[Experiment {
+    id: "2026-09-25-oracle-live",
+    protocol: "bench/terminal-bench/experiments/2026-09-25-oracle-live/protocol.md",
+    protocol_sha256: "2c4a5521bd40c7419d1d904f4ea25c52ab0462ad813a4f932afc0cb21b3d1d94",
+}];
+
+/// The registered experiment with this id and protocol digest, if any.
+#[must_use]
+pub fn preregistered(id: &str, protocol_sha256: &str) -> Option<&'static Experiment> {
+    EXPERIMENTS
+        .iter()
+        .find(|e| e.id == id && e.protocol_sha256 == protocol_sha256)
+}
 
 /// One oracle run's wall-time bound, in seconds.
 pub const RUN_SEC: u64 = 300;

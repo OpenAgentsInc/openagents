@@ -51,6 +51,21 @@ def test_materialized_config_pins_git(panel, agents, tmp_path):
     assert agent["model_name"] == "claude-fable-5-1"
 
 
+def test_an_arms_setup_timeout_reaches_harbors_agent_config(panel, agents, tmp_path):
+    """Harbor resolves the agent setup timeout from
+    ``AgentConfig.override_setup_timeout_sec``, which the host oracle step
+    reads back from the trial's lock.json."""
+    profile = load_job_profile("smoke")
+    tasks = panel.select(profile.task_ids)
+    kwargs = {"artifact_path": "/a", "artifact_sha256": "0" * 64}
+    raised = build_job_config(panel, profile, tasks, agents["coder-one-microluna-oracle-live-on"],
+                              agent_kwargs=kwargs, checkout=tmp_path)
+    assert raised["agents"][0]["override_setup_timeout_sec"] == 900.0
+    default = build_job_config(panel, profile, tasks, agents["coder-one-microluna-v18"],
+                               agent_kwargs=kwargs, checkout=tmp_path)
+    assert "override_setup_timeout_sec" not in default["agents"][0]
+
+
 def test_local_checkout_overrides_git_entry(panel, agents, tmp_path):
     profile = load_job_profile("smoke")
     tasks = panel.select(profile.task_ids)

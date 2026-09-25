@@ -298,8 +298,9 @@ pub struct Lean {
     /// the trial, after checking its digest, or runs without one
     /// ([`crate::checks::oracle::deliver`]). Needs `keep_best`. Accepted
     /// only once the offline measurement admits it
-    /// ([`crate::checks::oracle::ADMITTED`]); absent, as in every manifest
-    /// before it, nothing runs.
+    /// ([`crate::checks::oracle::ADMITTED`]), or in a manifest that names a
+    /// pre-registered experiment ([`LeanOracle::experiment`]); absent, as
+    /// in every manifest before it, nothing runs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub oracle: Option<LeanOracle>,
 }
@@ -317,6 +318,22 @@ pub struct LeanOracle {
     /// The writer session's spend bound, in dollars at list price.
     #[serde(default = "oracle_usd")]
     pub writer_usd: f64,
+    /// The pre-registered experiment this manifest runs under. While
+    /// [`crate::checks::oracle::ADMITTED`] is `false`, validation accepts
+    /// the switch only when this names an entry of
+    /// [`crate::checks::oracle::EXPERIMENTS`]. Absent, the switch is
+    /// refused.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub experiment: Option<OracleExperiment>,
+}
+
+/// `executor.microluna.lean.oracle.experiment`: the id of a pre-registered
+/// experiment and its protocol's SHA-256.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OracleExperiment {
+    pub id: String,
+    pub protocol_sha256: String,
 }
 
 fn oracle_turns() -> usize {
@@ -712,13 +729,29 @@ impl Lean {
         if let Some(localize) = &self.localize {
             problems.extend(localize.validate());
         }
-        if self.oracle.is_some() {
+        if let Some(oracle) = &self.oracle {
             if !crate::checks::oracle::ADMITTED {
-                problems.push(
-                    "executor.microluna.lean.oracle isn't admitted: the offline measurement \
-                     didn't admit checks.oracle (docs/terminal-bench/2026-09-25-oracle.md)"
-                        .to_string(),
-                );
+                match &oracle.experiment {
+                    None => problems.push(
+                        "executor.microluna.lean.oracle isn't admitted: the offline measurement \
+                         didn't admit checks.oracle (docs/terminal-bench/2026-09-25-oracle.md). \
+                         Only a manifest that names a pre-registered experiment in \
+                         executor.microluna.lean.oracle.experiment may turn it on"
+                            .to_string(),
+                    ),
+                    Some(e)
+                        if crate::checks::oracle::preregistered(&e.id, &e.protocol_sha256)
+                            .is_none() =>
+                    {
+                        problems.push(format!(
+                            "executor.microluna.lean.oracle isn't admitted, and the experiment \
+                             {} with protocol digest {} isn't a registered pre-registered \
+                             experiment (checks::oracle::EXPERIMENTS)",
+                            e.id, e.protocol_sha256
+                        ));
+                    }
+                    Some(_) => {}
+                }
             }
             if !self.keep_best {
                 problems.push("executor.microluna.lean.oracle requires keep_best".to_string());
