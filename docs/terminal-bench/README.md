@@ -21,6 +21,8 @@ development tasks. The [full assessment and traces](2026-09-24-microluna-iterati
 cover candidate retention, official candidate grades, summary-rendering fixes,
 and the measured 19.4% reduction in grading wall time with two workers.
 The [runbook](runbook.md) covers the new `tbench candidates` command.
+A [step-by-step account of the three embedding trials](2026-09-25-microluna-v13-embedding-trials.md)
+reconstructs every host event, model turn, and command from the retained traces.
 
 The [previous v12 comparison](2026-09-24-microluna-candidate-evidence.md) passed
 embedding 2/3; its experimental protected policy passed 0/3. Editing review
