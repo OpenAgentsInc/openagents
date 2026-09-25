@@ -51,10 +51,12 @@ const PRICES: &[(&str, Rates)] = &[
 ];
 
 /// The rates for `model`, with or without a provider prefix, or `None` for
-/// a model with no known price.
+/// a model with no known price. A `-pro` model costs what its base model
+/// does, as OpenRouter listed them on 2026-09-25 (issue #9665).
 #[must_use]
 pub fn rates(model: &str) -> Option<Rates> {
     let model = model.rsplit('/').next().unwrap_or(model);
+    let model = model.strip_suffix("-pro").unwrap_or(model);
     PRICES
         .iter()
         .find(|(name, _)| *name == model)
@@ -89,5 +91,6 @@ mod tests {
         let cost = cost("openai/gpt-6-luna", usage).unwrap();
         assert!((cost - 0.61).abs() < 1e-9);
         assert_eq!(super::cost("gpt-9-unknown", usage), None);
+        assert_eq!(super::cost("openai/gpt-6-luna-pro", usage), Some(cost));
     }
 }
