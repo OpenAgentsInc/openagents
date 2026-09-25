@@ -117,3 +117,15 @@ an unsupported premise. The score becomes the minimum of all four probabilities.
 Missing answers remain unknown. Measure this separately; choose no threshold or
 model from comparison results. The Astra development arm uses the original
 questions so its model comparison remains interpretable.
+
+## Concrete-report development component
+
+Static-review false alarms also motivate a cheaper signal: distinguish an
+explicit, unresolved failure of a mandatory task requirement from uncertainty
+about whether a grader might accept it. `report_audit` asks those three conditions
+separately over the selected report and public task. Its score is their minimum;
+missing answers are unknown. Evaluate the same five cutoffs and the same 90%
+precision/minimum-five rule on calibration only. It does not ask the model to
+certify success. Keep its results separate from independent source review, and
+freeze any combination before comparison. This is a new question set, not a
+post-hoc relabeling of the original report verdict.

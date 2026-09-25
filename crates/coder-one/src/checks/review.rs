@@ -81,6 +81,11 @@ pub fn request(input: &Input) -> Request {
     }
 }
 
+fn request_value(request: &Request) -> Value {
+    json!({"model":request.model, "effort":request.effort, "instructions":request.instructions,
+        "input":request.input, "tools":request.tools, "cache_key":request.cache_key, "parallel_tools":request.parallel_tools})
+}
+
 fn quoted(source: &str, quote: &str) -> bool {
     let quote = quote.trim().trim_matches(['“', '”', '"']);
     let normalize = |text: &str| text.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -210,8 +215,7 @@ pub async fn run_model<T: Transport>(
     std::fs::create_dir_all(out).map_err(|e| e.to_string())?;
     let mut request = request(input);
     request.model = model.to_string();
-    let request_json = json!({"model":request.model, "effort":request.effort, "instructions":request.instructions,
-        "input":request.input, "tools":request.tools, "cache_key":request.cache_key, "parallel_tools":request.parallel_tools});
+    let request_json = request_value(&request);
     crate::record::write_atomic(
         &out.join("request.json"),
         &serde_json::to_vec_pretty(&request_json).map_err(|e| e.to_string())?,
@@ -354,9 +358,14 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
                 reasoning: usage["reasoning"].as_u64().unwrap_or(0),
             },
         });
+        let mut expected = request(&input);
+        expected.model.clone_from(&transport.0.model);
+        if original["request_digest"] != atif::digest(&request_value(&expected)) {
+            return Err("Recorded review belongs to a different native model request".to_string());
+        }
         let mut result =
             run_model(&input, &transport, &jev, out, &transport.0.model, scope).await?;
-        result["luna_source"] = json!({"mode":"recorded","source":path,"network_calls":0});
+        result["reviewer_source"] = json!({"mode":"recorded","source":path,"network_calls":0});
         crate::record::write_atomic(
             &out.join("review.json"),
             &serde_json::to_vec_pretty(&result).map_err(|e| e.to_string())?,
@@ -438,6 +447,16 @@ mod tests {
         assert!(dir.join("reply.json").is_file());
         assert!(dir.join("review.json").is_file());
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn strict_scoring_requires_all_scope_answers() {
+        let mut answers = json!({"violation":{"noul":0.99},"consequential":{"noul":0.99}});
+        assert_eq!(scoped_score(&answers, true), None);
+        answers["scope"] = json!({"noul":0.2});
+        answers["decisive"] = json!({"noul":0.95});
+        assert_eq!(scoped_score(&answers, true), Some(0.2));
+        assert_eq!(scoped_score(&answers, false), Some(0.99));
     }
 
     #[test]
