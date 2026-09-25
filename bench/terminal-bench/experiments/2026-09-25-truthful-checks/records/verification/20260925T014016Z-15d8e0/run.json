@@ -1,0 +1,86 @@
+{
+  "schema": "openagents.gate-run.v1",
+  "run_id": "20260925T014016Z-15d8e0",
+  "started_utc": "2026-09-25T01:40:16Z",
+  "finished_utc": "2026-09-25T01:40:26Z",
+  "elapsed_s": 10.5,
+  "tree": {
+    "head": "72c47dd17d50138ed6af5774b0de72879e468123",
+    "dirty": true,
+    "diff_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "requested": {
+    "phases": "fmt clippy tests clippy-features tests-features",
+    "crates": "coder-one gym",
+    "workspace_scope": false,
+    "changed_ref": null,
+    "uncovered": "",
+    "keep_going": false,
+    "retry": true,
+    "postgres": true,
+    "metal": false,
+    "soak": false
+  },
+  "phases": [
+    {
+      "slug": "fmt",
+      "name": "Workspace formatting",
+      "command": [
+        "cargo",
+        "fmt",
+        "--all",
+        "--check"
+      ],
+      "status": "passed",
+      "attempts": 1,
+      "exit": 0,
+      "elapsed_s": 3.0,
+      "log": "/tmp/9584-verification-final/20260925T014016Z-15d8e0/fmt.log"
+    },
+    {
+      "slug": "clippy",
+      "name": "Default workspace Clippy",
+      "command": [
+        "cargo",
+        "clippy",
+        "--locked",
+        "-p",
+        "coder-one",
+        "-p",
+        "gym",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "status": "failed",
+      "attempts": 1,
+      "exit": 101,
+      "elapsed_s": 6.5,
+      "log": "/tmp/9584-verification-final/20260925T014016Z-15d8e0/clippy.log"
+    }
+  ],
+  "skipped": [
+    {
+      "slug": "preflight",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "gate-tooling",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "artifacts",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "delegation",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "backup",
+      "reason": "not in --phases"
+    }
+  ],
+  "result": "failed"
+}

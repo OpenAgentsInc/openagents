@@ -1035,7 +1035,7 @@ pub fn lines(summary: &Value, which: &str) -> Vec<String> {
     }
     let params = &summary["verdict"]["params"];
     out.push(format!(
-        "Verdict: fail at p ≥ {:.3} (calibration precision {:.0}%), pass at p ≤ {:.3} ({:.0}%); refit on these rows {}",
+        "Historical verdict: fail at p ≥ {:.3} (original calibration precision {:.0}%), pass at p ≤ {:.3} ({:.0}%); refit on these rows {}",
         params["fail_at"].as_f64().unwrap_or(f64::NAN),
         params["fail_precision"].as_f64().unwrap_or(0.0) * 100.0,
         params["pass_at"].as_f64().unwrap_or(f64::NAN),

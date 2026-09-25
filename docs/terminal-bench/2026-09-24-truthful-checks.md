@@ -1,5 +1,12 @@
 # Truthful checks, calibrated against graded runs
 
+Historical measurement. The [2026-09-25 Microluna audit](2026-09-25-truthful-checks-microluna.md)
+adds selected-candidate reports and attributable read-only reviews, measures a
+frozen corroboration rule, and reports task-cluster uncertainty. The comparison
+partition below was inspected during model development, as the validity section
+records; it is not untouched confirmation. Its precision does not transfer to
+Microluna without a separate measurement.
+
 On 2026-09-24, this offline measurement labeled every graded retained
 Coder One trial with its verifier reward. It measured how well each check
 signal separates passes from failures, and fitted a combined verdict on

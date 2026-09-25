@@ -557,7 +557,9 @@ pub struct VerifyPolicy {
     pub distrust: Vec<String>,
     /// `verify.verdict`: ask Jev the report questions about the first and
     /// the final candidate and record the calibrated verdict
-    /// (`checks::verdict`); `verify.second.on` may then name `verdict`.
+    /// (`checks::verdict`), independently of scenario checks. Recording a
+    /// verdict alone does not repair a candidate; `verify.second.on` may
+    /// name `verdict` when the second-executor policy's checks are enabled.
     #[serde(default, skip_serializing_if = "is_false")]
     pub verdict: bool,
     /// `verify.suite_checks`: cost each frozen acceptance test at its

@@ -1,0 +1,18 @@
+    Checking coder-one v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/coder-one)
+error[E0277]: the trait bound `compose::VerifyPolicy: std::default::Default` is not satisfied
+    --> crates/coder-one/src/compose/tests.rs:2200:11
+     |
+2200 |         ..Default::default()
+     |           ^^^^^^^^^^^^^^^^^^ the trait `std::default::Default` is not implemented for `compose::VerifyPolicy`
+     |
+help: consider annotating `compose::VerifyPolicy` with `#[derive(Default)]`
+    -->  crates/coder-one/src/compose.rs:515:1
+     |
+ 515 + #[derive(Default)]
+ 516 | pub struct VerifyPolicy {
+     |
+
+For more information about this error, try `rustc --explain E0277`.
+error: could not compile `coder-one` (lib test) due to 1 previous error
+warning: build failed, waiting for other jobs to finish...
+PHASE END: Default workspace Clippy; elapsed 6.5s; exit 101

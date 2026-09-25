@@ -1,9 +1,17 @@
 # Terminal-Bench status
 
-Updated on 2026-09-24 with the completed v13 retention batch and iteration-loop
-measurements. This page summarizes retained evidence, not the host's live queue.
+Updated on 2026-09-25 with the truthful-checks evidence repair and measurements. This page summarizes retained evidence, not the host's live queue.
 
 ## Latest status
+
+**Truthful checks now retain read-only reviews of the submitted candidate.**
+On 18 development trials, those observations let the unchanged verdict catch
+6 of 13 failures, versus zero from the selected writer reports alone. All six
+calls were correct, but the sample has only two tasks and no passing candidate
+with a protected read-only review. The stricter corroboration rule is not
+promoted. See the [measurement and implementation](2026-09-25-truthful-checks-microluna.md);
+[#9584](https://github.com/OpenAgentsInc/openagents/issues/9584) still needs
+untouched task-group validation.
 
 **Microluna v13: 3/3 embedding passes at $0.01599 per accepted output**, including
 Jev, against Fable low's 5/5 at $0.8691. Microluna was slower. It passed **0/3
@@ -121,19 +129,12 @@ for Luna, not measured gains, and Luna has 20 graded attempts so far. See
 the [ranked moves](2026-09-24-strategy-fingerprints.md) (issue
 [#9586](https://github.com/OpenAgentsInc/openagents/issues/9586)).
 
-**Truthful checks: a verdict from the final report catches almost four
-times the failures today's checks catch.** Every graded Coder One trial
-with a composition record, 317 on 58 tasks, is labeled with its verifier
-reward and split by task. On the 32 held-out tasks, today's checks
-caught 6 of 60 failures (10%, 5–20%) at 55% precision. A verdict fitted
-on the other half catches 22 of 60 (37%, 26–49%) at 59% precision
-(43–74%), exact McNemar p = 0.0009. It uses three things: Jev's answers
-to two questions over the executor's final report, and the self-report
-detector. No scenario kind, requirement state, or support state separates
-passes from failures on both halves. The precision gain isn't
-significant, and Luna is barely measured. See the
-[results](2026-09-24-truthful-checks.md) (issue
-[#9584](https://github.com/OpenAgentsInc/openagents/issues/9584)).
+**Historical truthful-checks calibration:** the original verdict caught 22/60
+failures at 22/37 precision on the reused comparison partition, versus scenario
+checks' 6/60 at 6/11. The [original study](2026-09-24-truthful-checks.md) and
+[new Microluna audit](2026-09-25-truthful-checks-microluna.md) distinguish fitting,
+reused validation, and development evidence. Neither establishes the issue's
+required improvement on untouched tasks.
 
 **Tunable v10 against v7 on four near-miss tasks: equal passes, at most 23%
 less cost, no pass from persistence.** One call is unpriced. v10 judges persistence rounds against
@@ -295,6 +296,7 @@ still need the quota audit. See [harness validation](tb4-results.md#harness-vali
 | [Microluna against Luna-in-Codex](2026-09-24-microluna.md) | Coder One's in-process Luna executor and its mini-handoff loop against Luna in the Codex CLI: four mini-tasks with passes, cost, time, and sessions per task; three TB4 tasks matched to #9583; the CRLF grader mismatch behind every `log-severity` failure; a worked handoff trace; and the two fixes the runs drove. |
 | [Task anatomy for the Microluna overnight effort](2026-09-24-task-anatomy.md) | 18 TB4 tasks taken apart for acceptance suites: what each verifier tests, the decisive facts with their sources, why Fable 5.1 fails, what our passing runs did differently, candidate tests that are red on the untouched workspace, and a feasibility ranking for Luna plus Microluna, with a [JSON companion](2026-09-24-task-anatomy.json). |
 | [Strategy fingerprints, Fable against Luna and Coder One](2026-09-24-strategy-fingerprints.md) | Every step of 505 trajectories on the Luna baseline subset placed in a phase, per-trajectory fingerprints, a worked Fable-against-Luna example, the candidate moves ranked with task counts, effect sizes, and run and step citations, what didn't separate winners from losers, and the Jev cost. |
+| [Truthful checks: Microluna evidence and corroboration](2026-09-25-truthful-checks-microluna.md) | Selected-candidate and read-only-review attribution, 18 Microluna trials, frozen corroboration comparison, task-cluster uncertainty, and reproducible retained responses. |
 | [Truthful checks, calibrated against graded runs](2026-09-24-truthful-checks.md) | The 317-trial label set split by task, every check signal's fail precision, failure recall, and pass rate with Wilson intervals, the combined verdict's held-out numbers against today's checks, the signals it drops, and what labeled data would close the issue. |
 | [Tunable v10 against v7 on four near-miss tasks](2026-09-24-persist-v10.md) | Persistence judged against what the checks flag, on GPT-6 Sol, against the matched v7 arm: first attempts on four tasks, cost and rounds per attempt, persistence attribution, and why the checks can't key progress. |
 | [Per-task effort on six TB4 tasks](2026-09-24-effort-routing.md) | Tunable v9's effort routing against fixed medium (v2) and fixed xhigh (v3): the pool fit, Wilson intervals, the exact McNemar test, cost and time per arm and task, why `gsea-proteomics` was routed to medium, and every attempt. |

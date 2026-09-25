@@ -1,0 +1,186 @@
+{
+  "source_commit": "8d4075eff6",
+  "partition": "development-only",
+  "trials": [
+    {
+      "job": "tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1",
+      "trial": "embedding-drift-monitor__UfYFodd",
+      "files": {
+        "artifacts/composition.json": "12478292e74f26b8c20d4d5bafeba1a24ec349c05256daaf437e70065acd86f7",
+        "artifacts/microluna-1.json": "a118d5a3353078ed3534f9664ba378f33da741db3e702c56a3e521b07d7590f3",
+        "artifacts/state.json": "7556b4251fe53a7a8e045b8577574a19cb5842cfcefac711a0a837228e91e4cf",
+        "harbor-result.json": "9d890101e8d7d90068d15c38b7a19ef9c086709c2d35cbc6492f006ffbcf131d"
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r2",
+      "trial": "embedding-drift-monitor__mVNMcMn",
+      "files": {
+        "artifacts/composition.json": "ae341703b2c35d0247018ca9d692e94d93159dbd995a93df000e97947c3fe363",
+        "artifacts/microluna-1.json": "9da9243bfae9aed0bd5dee5f1eff9ee3d56cbacece927379b40ad3bc07af6eac",
+        "artifacts/state.json": "0510271c9d0fc9d0a0dfd49e8fbfd81823c618e1cf20f9970ecbfccb6c3ec0f2",
+        "harbor-result.json": "172b5ab018e33134a6baadc6adad1a2011b30f8fd552a711fc81e6763d2e7e86"
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r3",
+      "trial": "embedding-drift-monitor__KDeY8Bf",
+      "files": {
+        "artifacts/composition.json": "23959baff533b475be39df75b0c0eca7302e95749c64673b55677cbfc3768ca7",
+        "artifacts/microluna-1.json": "f7d22d6f7069a50d5609ba670ce3a1f7ad6104d82dd8a6aa512f25094e15e8db",
+        "artifacts/state.json": "689c28b94eb5654ad90c8f480ae5e9b7a85ea46cb5de0e5042d9eaef3e77430b",
+        "harbor-result.json": "5c7a337192aaad791d26b8f9720942158d78feb2c54bcdc2dd2d6f9465e04bf3"
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r1",
+      "trial": "session-window-debug__arofNZN",
+      "files": {
+        "artifacts/composition.json": "9eb4d192955694d645ed67e8b9fa71529390e5a16501dd6b1028a8b2b8e5e7a0",
+        "artifacts/microluna-1.json": "00838ac0133ba07cb1121252e9b355a6ead7c87c70699992bb80c61ee91d1a16",
+        "artifacts/state.json": "6ccfb9bb845c957ee502f12f3155c3390387e644676428ae3ab23ccde3bba34b",
+        "harbor-result.json": "eeb653751ea5691144c6a1c4680468873ec63a416f41cdcdf63affe6815a8f9e"
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r2",
+      "trial": "session-window-debug__vbWCjBZ",
+      "files": {
+        "artifacts/composition.json": "4e046106bf81bb034d3ddb3a0e624d7b7b531e0516e55c4ea61271c3f6a4e5bc",
+        "artifacts/microluna-1.json": "8ba1bc675ab6693873ce63c1088a05d5fbbe83305905862cc12c71ef0ade6f26",
+        "artifacts/state.json": "ce73a34170c75ce27cd90390e4545902671836026f9dde3b97d97d454fae0367",
+        "harbor-result.json": "2cabb3ee1619842fa01ac39bbddb46034784d3e074d3cf346b0f9e138553ce0c"
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r3",
+      "trial": "session-window-debug__a7stmvT",
+      "files": {
+        "artifacts/composition.json": "85af99a586b79285bf25cc98ae8b35d982f51e2767bef8956f5f5b1f63c3b1f2",
+        "artifacts/microluna-1.json": "39f0de39603cc443cb422a95f55a3df2efd6f72a6659e88cf17be980c5d21283",
+        "artifacts/state.json": "fcd535d5007a01f66fba39540b3b42f30848af2342a3d0391c9253e64a818309",
+        "harbor-result.json": "9df136284d2f34dd10eff1d1573840217fe4c03490f675f51af2142e0753ca79"
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-v12--embedding-drift-monitor--candidate-evidence-9607-r1",
+      "trial": "embedding-drift-monitor__uU3ZNb9",
+      "files": {
+        "artifacts/composition.json": "717780392d015471d2604e387c7fbc57b287efc7c561982dc12977f7fdd5cd90",
+        "artifacts/microluna-1.json": "00d3de49ad3e66794ba5e26402180a8c960a29be0fdc245d9f4a9f423c5c6300",
+        "artifacts/state.json": "f50c846d0e4fe3626e08473fb0fb3803d64fac4f4a2037a75a941d5152a1e2f2",
+        "harbor-result.json": "d6c7d337c08ee1787a1b6f99f439312365ae30b56d6c1021a13617b59615a059"
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-v12--embedding-drift-monitor--candidate-evidence-9607-r2",
+      "trial": "embedding-drift-monitor__REGuz3v",
+      "files": {
+        "artifacts/composition.json": "f057cf978bd2a1599c14f20dc794590d44976bb97de2c2ccd1032cd6ebf146d7",
+        "artifacts/microluna-1.json": "cf782c155a736490bb316919b5dffa0b4b48ff173d3f936855935e3226e7318e",
+        "artifacts/state.json": "2f98acfac73cd39eecd5c052e6b1ad98cdab35bab51b8e7628b4069e538ec847",
+        "harbor-result.json": "d159013fb4cc10eab1c1573ceeceef373f81f4505c83dae637f8691930cac959"
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-v12--embedding-drift-monitor--candidate-evidence-9607-r3",
+      "trial": "embedding-drift-monitor__NG9vQg5",
+      "files": {
+        "artifacts/composition.json": "37dcedf2c6bb272ad3040ed6b2ab53a2baa9d7c6550df68a645c91d57f6eed0d",
+        "artifacts/microluna-1.json": "bd3c62e419b4002ab245e7c5b19e37239045e615827ac4166925697a0179ab64",
+        "artifacts/state.json": "b4bb4ac0d174118f1066d3476e020a67e03d1d8d01bbbb0e14a1b4659310a83d",
+        "harbor-result.json": "14fe22f52edebdcbe74a1e4be3516fcd5c6a3e85cbbb35393b096b9e70b30f2b"
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1",
+      "trial": "session-window-debug__FDQKEwD",
+      "files": {
+        "artifacts/composition.json": "5f741002b0f42307c3dfdb01cb5d4af882ac173a84deb645985af4afb0da686c",
+        "artifacts/microluna-1.json": "45319660ce05769cc738a02b6441f09059153ea7083bb053638bf442cacaa185",
+        "artifacts/state.json": "668b90d82880523559422afb1d68360978391602f3eda9941742e60278caac8d",
+        "harbor-result.json": "aa304884f63485790e4c49811136ea01f45c5c53c8ff640dafb97248cffdda8d"
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r2",
+      "trial": "session-window-debug__mAK56Nn",
+      "files": {
+        "artifacts/composition.json": "bca00303273903c436decd0013434a3e75cd4e90a9f329db1241a5fc9a089c19",
+        "artifacts/microluna-1.json": "c7206439213c96da58ba742268b5a54bbf1cc42bcb1f00feab3045b5a89f65a9",
+        "artifacts/state.json": "751e98d963276adf2dd13a09b26a2934289828f3b160a391c18f5ab3d2dc00eb",
+        "harbor-result.json": "59313653516624d2b2cdc118f962619e65803703478b60f62fbf97bb72ac5cc0"
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r3",
+      "trial": "session-window-debug__az9j93b",
+      "files": {
+        "artifacts/composition.json": "97372abfea01dc0eeb6dde3fe199cf950872c26121cfc2f3bde6132296108b64",
+        "artifacts/microluna-1.json": "a42643d7f8af51cfa9cc19f974ab7465d5d771373818513dde44aac0a1cdcb67",
+        "artifacts/state.json": "ccf31a31f1255f5038ad20212bcffcac5e3a50211f5946bb81efb7dc6a54719d",
+        "harbor-result.json": "cd9027ab53abec49c183585f80f9c2ebc0c28add64a4dd6f1257eea33590bdd4"
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-v13-retained--embedding-drift-monitor",
+      "trial": "embedding-drift-monitor__6zRjd9n",
+      "files": {
+        "artifacts/composition.json": "909f6ffdddeb5cfadf3bad5e36e3be5fa615aaa599a06cb72657dad51110a80f",
+        "artifacts/microluna-1.json": "cd14dac47d83343c925b668bf516f1b9817ac1d4a30e576aa8d3c90308a66f1b",
+        "artifacts/state.json": "b6147412a0b8a629ad1d93234b4130da6cafb2ea9162cd8b6022682d3c6903d6",
+        "harbor-result.json": "becd0f6fe535c1eca71a309c647d59c92c58c7f8d06d28aa937aa4fb8ae838a7"
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-2",
+      "trial": "embedding-drift-monitor__y2bahob",
+      "files": {
+        "artifacts/composition.json": "fd47d2ad9cd32bb92ccee1aa8ba10adeea1a258cbbd78b83575e789909b2f06e",
+        "artifacts/microluna-1.json": "6b9c6fc5f98e772aa4a014b148b3af92901b64c537a4d35560af397c8eecdc28",
+        "artifacts/state.json": "e99a5fd6e357469a9c05a3830db2e1d4a7b56cb5f60b793950795ace1e5e9b35",
+        "harbor-result.json": "2e14d7c13bb7c99b2d2f68594ae12b286a4e33ac78d2dcbaee527fd45c128a18"
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-3",
+      "trial": "embedding-drift-monitor__QAHE7De",
+      "files": {
+        "artifacts/composition.json": "2baa352d179a7c5eb1a2dab46b2ed7a60d14219b3b3999ac4d0efc8c0fc13ff7",
+        "artifacts/microluna-1.json": "85329c3292ec077b15f669e8f7bdce35a56fdad1a735a22c723da4a7d7cbc521",
+        "artifacts/state.json": "5cd63f20794fde354d445aea8e61ed6bb5c408d2e24247c594b8bb172683828f",
+        "harbor-result.json": "9795a05b20674b743fcb8911f8f59a02ab20198392c5bd292cfee8a7d91d1a80"
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-v13-retained--session-window-debug",
+      "trial": "session-window-debug__PacT86C",
+      "files": {
+        "artifacts/composition.json": "2a6b70526ac2ba8e079bb39e112dceb65c7e386d61a6673bc6724aae1452e898",
+        "artifacts/microluna-1.json": "b7d88bf8c5ce0f1f099ef9caf06fed996403d09199dac8a01fae8f1c954ce945",
+        "artifacts/state.json": "a42d917e34ae770e81dc58cadb833d72acd5fbf61b7250e9c2ebf2055c3eb16f",
+        "harbor-result.json": "591e71446d5e9eaee5c5f617a741354b40d0fa99838b3e7eb4ab640550e28e6b"
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-v13-retained--session-window-debug-2",
+      "trial": "session-window-debug__3v9FKP5",
+      "files": {
+        "artifacts/composition.json": "bde59d82a0e00326901cdb3a30728dfd166c808baf342cede471bb043208faee",
+        "artifacts/microluna-1.json": "f392c4f0bcffff843ba541b6034fab9a394861148b62543ad65d24bdc009f914",
+        "artifacts/state.json": "97f00db985c0326c9efd86b26de57d27b680577f92615ec5ad00b54d735f53b8",
+        "harbor-result.json": "48db8809d12622b0c20f6aefb11954eed5148ff70e56e00ae46bf2d2f1340410"
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-v13-retained--session-window-debug-3",
+      "trial": "session-window-debug__3KVqBUz",
+      "files": {
+        "artifacts/composition.json": "b698d6b89482e16138278ec58e194aa12bdaee23c3ab01c6f270b4831b678d23",
+        "artifacts/microluna-1.json": "e59d36fbc905f60a18ce37b4610c5f630b6692e1278ef28c4cf5dffd59bbc080",
+        "artifacts/state.json": "5ff7ebaac66ec4f4854547fc5f74eb014270cf92fb1f0ae55ec397a48dce7e7b",
+        "harbor-result.json": "93ad5f9148c7073c1212202b7d9f1cb95164df332f230e7efb8fb75ba5d08cc4"
+      }
+    }
+  ]
+}

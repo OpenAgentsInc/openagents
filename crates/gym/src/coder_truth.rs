@@ -195,7 +195,7 @@ pub fn lines(summary: &Value, set: &str, family: Option<&str>, within: bool) -> 
     let stated = &summary["verdict"]["stated"];
     if !stated.is_null() {
         out.push(format!(
-            "    The verdict states its held-out precision: fail {}/{}, pass {}/{}.",
+            "    Historical reference (185 mostly Opus trials, reused validation): fail {}/{}, pass {}/{}.",
             stated["fail"][0], stated["fail"][1], stated["pass"][0], stated["pass"][1]
         ));
     }

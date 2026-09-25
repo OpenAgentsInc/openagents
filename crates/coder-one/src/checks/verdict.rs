@@ -7,10 +7,9 @@
 //! executor's final report ([`report_questions`]). The parameters in
 //! [`fitted`] were fitted on the calibration half of the label set in
 //! [`super::truth`] and never on its held-out half. Each call carries the
-//! precision the held-out half measured for it, not the calibration
-//! half's, which overstates it on tasks the fit never saw: a caller keys
-//! on "fail, right 59% of the time on new tasks" rather than on a raw
-//! check.
+//! precision measured on the historical comparison half. That half was
+//! inspected during the original study; this is reused validation, not an
+//! untouched estimate or a guarantee for a new executor population.
 
 use std::collections::BTreeMap;
 

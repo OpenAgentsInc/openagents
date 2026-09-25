@@ -1,0 +1,3809 @@
+{
+  "schema": "openagents.coder-one.check-truth.v1",
+  "predictions": [
+    {
+      "job": "tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1",
+      "trial": "embedding-drift-monitor__UfYFodd",
+      "task": "terminal-bench/embedding-drift-monitor",
+      "split": "held-out",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": "pass",
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail"
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r2",
+      "trial": "embedding-drift-monitor__mVNMcMn",
+      "task": "terminal-bench/embedding-drift-monitor",
+      "split": "held-out",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": "pass",
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail"
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r3",
+      "trial": "embedding-drift-monitor__KDeY8Bf",
+      "task": "terminal-bench/embedding-drift-monitor",
+      "split": "held-out",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": "pass",
+        "verdict.combined": "fail",
+        "verdict.corroborated": null
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r1",
+      "trial": "session-window-debug__arofNZN",
+      "task": "terminal-bench/session-window-debug",
+      "split": "calibration",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": "pass",
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail"
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r2",
+      "trial": "session-window-debug__vbWCjBZ",
+      "task": "terminal-bench/session-window-debug",
+      "split": "calibration",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": "pass",
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail"
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r3",
+      "trial": "session-window-debug__a7stmvT",
+      "task": "terminal-bench/session-window-debug",
+      "split": "calibration",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": "pass",
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail"
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-v12--embedding-drift-monitor--candidate-evidence-9607-r1",
+      "trial": "embedding-drift-monitor__uU3ZNb9",
+      "task": "terminal-bench/embedding-drift-monitor",
+      "split": "held-out",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": "pass",
+        "verdict.combined": null,
+        "verdict.corroborated": null
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-v12--embedding-drift-monitor--candidate-evidence-9607-r2",
+      "trial": "embedding-drift-monitor__REGuz3v",
+      "task": "terminal-bench/embedding-drift-monitor",
+      "split": "held-out",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": "pass",
+        "verdict.combined": null,
+        "verdict.corroborated": null
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-v12--embedding-drift-monitor--candidate-evidence-9607-r3",
+      "trial": "embedding-drift-monitor__NG9vQg5",
+      "task": "terminal-bench/embedding-drift-monitor",
+      "split": "held-out",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": "pass",
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass"
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1",
+      "trial": "session-window-debug__FDQKEwD",
+      "task": "terminal-bench/session-window-debug",
+      "split": "calibration",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": "pass",
+        "verdict.combined": null,
+        "verdict.corroborated": null
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r2",
+      "trial": "session-window-debug__mAK56Nn",
+      "task": "terminal-bench/session-window-debug",
+      "split": "calibration",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": "pass",
+        "verdict.combined": null,
+        "verdict.corroborated": null
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r3",
+      "trial": "session-window-debug__az9j93b",
+      "task": "terminal-bench/session-window-debug",
+      "split": "calibration",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": "pass",
+        "verdict.combined": null,
+        "verdict.corroborated": null
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-v13-retained--embedding-drift-monitor",
+      "trial": "embedding-drift-monitor__6zRjd9n",
+      "task": "terminal-bench/embedding-drift-monitor",
+      "split": "held-out",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": "pass",
+        "verdict.combined": null,
+        "verdict.corroborated": null
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-2",
+      "trial": "embedding-drift-monitor__y2bahob",
+      "task": "terminal-bench/embedding-drift-monitor",
+      "split": "held-out",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": "pass",
+        "verdict.combined": null,
+        "verdict.corroborated": null
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-3",
+      "trial": "embedding-drift-monitor__QAHE7De",
+      "task": "terminal-bench/embedding-drift-monitor",
+      "split": "held-out",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": "pass",
+        "verdict.combined": null,
+        "verdict.corroborated": null
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-v13-retained--session-window-debug",
+      "trial": "session-window-debug__PacT86C",
+      "task": "terminal-bench/session-window-debug",
+      "split": "calibration",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": "pass",
+        "verdict.combined": null,
+        "verdict.corroborated": null
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-v13-retained--session-window-debug-2",
+      "trial": "session-window-debug__3v9FKP5",
+      "task": "terminal-bench/session-window-debug",
+      "split": "calibration",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": "pass",
+        "verdict.combined": null,
+        "verdict.corroborated": null
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-v13-retained--session-window-debug-3",
+      "trial": "session-window-debug__3KVqBUz",
+      "task": "terminal-bench/session-window-debug",
+      "split": "calibration",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": "pass",
+        "verdict.combined": null,
+        "verdict.corroborated": null
+      }
+    }
+  ],
+  "label_set": {
+    "trials": 18,
+    "passes": 5,
+    "failures": 13,
+    "tasks": 2,
+    "calibration": {
+      "trials": 9,
+      "passes": 0,
+      "failures": 9,
+      "tasks": 1,
+      "mixed_tasks": 0
+    },
+    "held_out": {
+      "trials": 9,
+      "passes": 5,
+      "failures": 4,
+      "tasks": 1,
+      "mixed_tasks": 1
+    },
+    "arms": {
+      "coder-one-microluna-evidence-v1": 6,
+      "coder-one-microluna-v12": 6,
+      "coder-one-microluna-v13-retained": 6
+    },
+    "models": {
+      "gpt-6-luna": 18
+    },
+    "per_task": [
+      {
+        "task": "terminal-bench/embedding-drift-monitor",
+        "passes": 5,
+        "failures": 4,
+        "split": "held-out"
+      },
+      {
+        "task": "terminal-bench/session-window-debug",
+        "passes": 0,
+        "failures": 9,
+        "split": "calibration"
+      }
+    ]
+  },
+  "report_answers": 18,
+  "evidence_coverage": {
+    "reports": 18,
+    "missing_reports": 0,
+    "microluna_scores": 18,
+    "same_candidate_reviews": 6
+  },
+  "validation_note": "Historical task split; repeatedly studied tasks and reused comparison results are not untouched validation. Wilson intervals treat trials as independent; use task-cluster intervals for repeated tasks.",
+  "verdict": {
+    "features": [
+      "report.strict_grader_accepts",
+      "report.admits_unmet",
+      "self-report.detector"
+    ],
+    "questions": "7a58e10db6c69fbfd5b2e68bbabac9aeab8f2b48b221fe8f3334219a03358318",
+    "targets": {
+      "fail_precision": 0.8,
+      "pass_precision": 0.85,
+      "min_support": 5
+    },
+    "stated": {
+      "fail": [
+        22,
+        37
+      ],
+      "pass": [
+        11,
+        13
+      ]
+    },
+    "params": {
+      "weights": [
+        -1.0982821125400863,
+        2.252439808628326,
+        1.1983071765612536
+      ],
+      "bias": -0.6572181282046469,
+      "fail_at": 0.5529224242284512,
+      "pass_at": 0.2967508049683989,
+      "fail_precision": 0.8095238095238095,
+      "pass_precision": 0.8695652173913043,
+      "fail_support": 42,
+      "pass_support": 23
+    },
+    "corroboration": {
+      "admission_at": 0.8,
+      "stated_fail": [
+        13,
+        20
+      ],
+      "experimental": true
+    }
+  },
+  "refit": {
+    "weights": [
+      0.0009461271555351964,
+      0.002119664891439692,
+      0.0
+    ],
+    "bias": 7.304379593952448,
+    "fail_at": 0.9993270494338375,
+    "pass_at": null,
+    "fail_precision": 1.0,
+    "pass_precision": 0.0,
+    "fail_support": 9,
+    "pass_support": 0
+  },
+  "refit_matches": false,
+  "held_out": {
+    "verdict": {
+      "signal": "verdict.combined",
+      "family": "verdict",
+      "meaning": "the calibrated combined verdict",
+      "trials": 9,
+      "failures": 4,
+      "fail_precision": {
+        "k": 3,
+        "n": 3,
+        "p": 1.0,
+        "low": 0.43849391955098227,
+        "high": 1.0
+      },
+      "failure_recall": {
+        "k": 3,
+        "n": 4,
+        "p": 0.75,
+        "low": 0.3006360524426366,
+        "high": 0.9544139373553637
+      },
+      "pass_when_pass": {
+        "k": 1,
+        "n": 1,
+        "p": 1.0,
+        "low": 0.20654329147389294,
+        "high": 1.0
+      },
+      "pass_when_not_fail": {
+        "k": 5,
+        "n": 6,
+        "p": 0.8333333333333334,
+        "low": 0.43649056343635395,
+        "high": 0.9699474141282697
+      },
+      "within_fail_precision": {
+        "k": 3,
+        "n": 3,
+        "p": 1.0,
+        "low": 0.43849391955098227,
+        "high": 1.0
+      },
+      "within_failure_recall": {
+        "k": 3,
+        "n": 4,
+        "p": 0.75,
+        "low": 0.3006360524426366,
+        "high": 0.9544139373553637
+      },
+      "separates": false
+    },
+    "corroborated": {
+      "signal": "verdict.corroborated",
+      "family": "verdict",
+      "meaning": "the combined failure score corroborated by an admission (experimental)",
+      "trials": 9,
+      "failures": 4,
+      "fail_precision": {
+        "k": 2,
+        "n": 2,
+        "p": 1.0,
+        "low": 0.34237195288961925,
+        "high": 1.0
+      },
+      "failure_recall": {
+        "k": 2,
+        "n": 4,
+        "p": 0.5,
+        "low": 0.15003570882017148,
+        "high": 0.8499642911798285
+      },
+      "pass_when_pass": {
+        "k": 1,
+        "n": 1,
+        "p": 1.0,
+        "low": 0.20654329147389294,
+        "high": 1.0
+      },
+      "pass_when_not_fail": {
+        "k": 5,
+        "n": 7,
+        "p": 0.7142857142857143,
+        "low": 0.35892909014821267,
+        "high": 0.9177828342909844
+      },
+      "within_fail_precision": {
+        "k": 2,
+        "n": 2,
+        "p": 1.0,
+        "low": 0.34237195288961925,
+        "high": 1.0
+      },
+      "within_failure_recall": {
+        "k": 2,
+        "n": 4,
+        "p": 0.5,
+        "low": 0.15003570882017148,
+        "high": 0.8499642911798285
+      },
+      "separates": false
+    },
+    "todays_checks": {
+      "signal": "checks.final",
+      "family": "checks",
+      "meaning": "today's checks on the final candidate: a failed scenario says fail, all passed says pass",
+      "trials": 9,
+      "failures": 4,
+      "fail_precision": {
+        "k": 0,
+        "n": 0,
+        "p": null,
+        "low": null,
+        "high": null
+      },
+      "failure_recall": {
+        "k": 0,
+        "n": 4,
+        "p": 0.0,
+        "low": 0.0,
+        "high": 0.48990002040399916
+      },
+      "pass_when_pass": {
+        "k": 0,
+        "n": 0,
+        "p": null,
+        "low": null,
+        "high": null
+      },
+      "pass_when_not_fail": {
+        "k": 5,
+        "n": 9,
+        "p": 0.5555555555555556,
+        "low": 0.2666473457440297,
+        "high": 0.811224570528086
+      },
+      "within_fail_precision": {
+        "k": 0,
+        "n": 0,
+        "p": null,
+        "low": null,
+        "high": null
+      },
+      "within_failure_recall": {
+        "k": 0,
+        "n": 4,
+        "p": 0.0,
+        "low": 0.0,
+        "high": 0.48990002040399916
+      },
+      "separates": false
+    }
+  },
+  "signals": {
+    "all": [
+      {
+        "signal": "checks.final",
+        "family": "checks",
+        "meaning": "today's checks on the final candidate: a failed scenario says fail, all passed says pass",
+        "trials": 18,
+        "failures": 13,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 13,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.22810184305529166
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 5,
+          "n": 18,
+          "p": 0.2777777777777778,
+          "low": 0.12499569146355474,
+          "high": 0.5087307754619452
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 4,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.48990002040399916
+        },
+        "separates": false
+      },
+      {
+        "signal": "checks.first-flagged",
+        "family": "checks",
+        "meaning": "the first check failed a scenario",
+        "trials": 18,
+        "failures": 13,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 13,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.22810184305529166
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 5,
+          "n": 18,
+          "p": 0.2777777777777778,
+          "low": 0.12499569146355474,
+          "high": 0.5087307754619452
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 4,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.48990002040399916
+        },
+        "separates": false
+      },
+      {
+        "signal": "checks.scenario-failed",
+        "family": "checks",
+        "meaning": "a scenario other than the self-report failed on the final candidate",
+        "trials": 18,
+        "failures": 13,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 13,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.22810184305529166
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 5,
+          "n": 18,
+          "p": 0.2777777777777778,
+          "low": 0.12499569146355474,
+          "high": 0.5087307754619452
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 4,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.48990002040399916
+        },
+        "separates": false
+      },
+      {
+        "signal": "requirements.contradicted",
+        "family": "requirements",
+        "meaning": "a scenario contradicted a requirement",
+        "trials": 18,
+        "failures": 13,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 13,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.22810184305529166
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 5,
+          "n": 18,
+          "p": 0.2777777777777778,
+          "low": 0.12499569146355474,
+          "high": 0.5087307754619452
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 4,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.48990002040399916
+        },
+        "separates": false
+      },
+      {
+        "signal": "requirements.unverifiable",
+        "family": "requirements",
+        "meaning": "a requirement is unverifiable",
+        "trials": 18,
+        "failures": 13,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 13,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.22810184305529166
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 5,
+          "n": 18,
+          "p": 0.2777777777777778,
+          "low": 0.12499569146355474,
+          "high": 0.5087307754619452
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 4,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.48990002040399916
+        },
+        "separates": false
+      },
+      {
+        "signal": "requirements.observed-none-contradicted",
+        "family": "requirements",
+        "meaning": "a requirement was observed and none contradicted says pass",
+        "trials": 18,
+        "failures": 13,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 13,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.22810184305529166
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 5,
+          "n": 18,
+          "p": 0.2777777777777778,
+          "low": 0.12499569146355474,
+          "high": 0.5087307754619452
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 4,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.48990002040399916
+        },
+        "separates": false
+      },
+      {
+        "signal": "support.contradicted",
+        "family": "support",
+        "meaning": "Jev support read a requirement as contradicted",
+        "trials": 18,
+        "failures": 13,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 13,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.22810184305529166
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 5,
+          "n": 18,
+          "p": 0.2777777777777778,
+          "low": 0.12499569146355474,
+          "high": 0.5087307754619452
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 4,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.48990002040399916
+        },
+        "separates": false
+      },
+      {
+        "signal": "support.supported",
+        "family": "support",
+        "meaning": "Jev support read a requirement as supported and none as contradicted",
+        "trials": 18,
+        "failures": 13,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 13,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.22810184305529166
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 5,
+          "n": 18,
+          "p": 0.2777777777777778,
+          "low": 0.12499569146355474,
+          "high": 0.5087307754619452
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 4,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.48990002040399916
+        },
+        "separates": false
+      },
+      {
+        "signal": "support.unresolved",
+        "family": "support",
+        "meaning": "Jev support left every judged requirement unresolved",
+        "trials": 18,
+        "failures": 13,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 13,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.22810184305529166
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 5,
+          "n": 18,
+          "p": 0.2777777777777778,
+          "low": 0.12499569146355474,
+          "high": 0.5087307754619452
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 4,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.48990002040399916
+        },
+        "separates": false
+      },
+      {
+        "signal": "self-report.recorded",
+        "family": "self-report",
+        "meaning": "the episode's self-report on the final candidate failed",
+        "trials": 18,
+        "failures": 13,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 13,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.22810184305529166
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 5,
+          "n": 18,
+          "p": 0.2777777777777778,
+          "low": 0.12499569146355474,
+          "high": 0.5087307754619452
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 4,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.48990002040399916
+        },
+        "separates": false
+      },
+      {
+        "signal": "self-report.first",
+        "family": "self-report",
+        "meaning": "the episode's self-report on the first candidate failed",
+        "trials": 18,
+        "failures": 13,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 13,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.22810184305529166
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 5,
+          "n": 18,
+          "p": 0.2777777777777778,
+          "low": 0.12499569146355474,
+          "high": 0.5087307754619452
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 4,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.48990002040399916
+        },
+        "separates": false
+      },
+      {
+        "signal": "self-report.detector",
+        "family": "self-report",
+        "meaning": "the self-report detector, rerun on the final report of every trial, found an admission",
+        "trials": 18,
+        "failures": 13,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 13,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.22810184305529166
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 5,
+          "n": 18,
+          "p": 0.2777777777777778,
+          "low": 0.12499569146355474,
+          "high": 0.5087307754619452
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 4,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.48990002040399916
+        },
+        "separates": false
+      },
+      {
+        "signal": "control.repaired",
+        "family": "control",
+        "meaning": "the episode ran a repair",
+        "trials": 18,
+        "failures": 13,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 13,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.22810184305529166
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 5,
+          "n": 18,
+          "p": 0.2777777777777778,
+          "low": 0.12499569146355474,
+          "high": 0.5087307754619452
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 4,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.48990002040399916
+        },
+        "separates": false
+      },
+      {
+        "signal": "control.second-fired",
+        "family": "control",
+        "meaning": "a second-executor trigger fired",
+        "trials": 18,
+        "failures": 13,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 13,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.22810184305529166
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 5,
+          "n": 18,
+          "p": 0.2777777777777778,
+          "low": 0.12499569146355474,
+          "high": 0.5087307754619452
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 4,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.48990002040399916
+        },
+        "separates": false
+      },
+      {
+        "signal": "report.admits_unmet",
+        "family": "report",
+        "meaning": "Jev on the final report, at 0.5: the report says part of the task is not done, fails, or does not meet what the task asks",
+        "trials": 18,
+        "failures": 13,
+        "fail_precision": {
+          "k": 6,
+          "n": 6,
+          "p": 1.0,
+          "low": 0.6096569663469354,
+          "high": 0.9999999999999999
+        },
+        "failure_recall": {
+          "k": 6,
+          "n": 13,
+          "p": 0.46153846153846156,
+          "low": 0.2320575430148814,
+          "high": 0.7085656756816796
+        },
+        "pass_when_pass": {
+          "k": 5,
+          "n": 12,
+          "p": 0.4166666666666667,
+          "low": 0.19325746190524656,
+          "high": 0.6804926643446272
+        },
+        "pass_when_not_fail": {
+          "k": 5,
+          "n": 12,
+          "p": 0.4166666666666667,
+          "low": 0.19325746190524656,
+          "high": 0.6804926643446272
+        },
+        "within_fail_precision": {
+          "k": 3,
+          "n": 3,
+          "p": 1.0,
+          "low": 0.43849391955098227,
+          "high": 1.0
+        },
+        "within_failure_recall": {
+          "k": 3,
+          "n": 4,
+          "p": 0.75,
+          "low": 0.3006360524426366,
+          "high": 0.9544139373553637
+        },
+        "separates": false
+      },
+      {
+        "signal": "report.rests_on_reading",
+        "family": "report",
+        "meaning": "Jev on the final report, at 0.5: the report says the result rests on an assumption or a reading of the task a grader could read differently",
+        "trials": 18,
+        "failures": 13,
+        "fail_precision": {
+          "k": 5,
+          "n": 7,
+          "p": 0.7142857142857143,
+          "low": 0.35892909014821267,
+          "high": 0.9177828342909844
+        },
+        "failure_recall": {
+          "k": 5,
+          "n": 13,
+          "p": 0.38461538461538464,
+          "low": 0.17709446581236818,
+          "high": 0.6447751902773146
+        },
+        "pass_when_pass": {
+          "k": 3,
+          "n": 11,
+          "p": 0.2727272727272727,
+          "low": 0.09745880573921467,
+          "high": 0.5656502930102463
+        },
+        "pass_when_not_fail": {
+          "k": 3,
+          "n": 11,
+          "p": 0.2727272727272727,
+          "low": 0.09745880573921467,
+          "high": 0.5656502930102463
+        },
+        "within_fail_precision": {
+          "k": 2,
+          "n": 4,
+          "p": 0.5,
+          "low": 0.15003570882017148,
+          "high": 0.8499642911798285
+        },
+        "within_failure_recall": {
+          "k": 2,
+          "n": 4,
+          "p": 0.5,
+          "low": 0.15003570882017148,
+          "high": 0.8499642911798285
+        },
+        "separates": false
+      },
+      {
+        "signal": "report.left_untested",
+        "family": "report",
+        "meaning": "Jev on the final report, at 0.5: the report says the main behavior the task asks for was not run or not tested",
+        "trials": 18,
+        "failures": 13,
+        "fail_precision": {
+          "k": 6,
+          "n": 6,
+          "p": 1.0,
+          "low": 0.6096569663469354,
+          "high": 0.9999999999999999
+        },
+        "failure_recall": {
+          "k": 6,
+          "n": 13,
+          "p": 0.46153846153846156,
+          "low": 0.2320575430148814,
+          "high": 0.7085656756816796
+        },
+        "pass_when_pass": {
+          "k": 5,
+          "n": 12,
+          "p": 0.4166666666666667,
+          "low": 0.19325746190524656,
+          "high": 0.6804926643446272
+        },
+        "pass_when_not_fail": {
+          "k": 5,
+          "n": 12,
+          "p": 0.4166666666666667,
+          "low": 0.19325746190524656,
+          "high": 0.6804926643446272
+        },
+        "within_fail_precision": {
+          "k": 2,
+          "n": 2,
+          "p": 1.0,
+          "low": 0.34237195288961925,
+          "high": 1.0
+        },
+        "within_failure_recall": {
+          "k": 2,
+          "n": 4,
+          "p": 0.5,
+          "low": 0.15003570882017148,
+          "high": 0.8499642911798285
+        },
+        "separates": false
+      },
+      {
+        "signal": "report.checked_against_task",
+        "family": "report",
+        "meaning": "Jev on the final report, at 0.5: the report shows the result run against the task's own example, tests, thresholds, or exact expected output, and passing",
+        "trials": 18,
+        "failures": 13,
+        "fail_precision": {
+          "k": 13,
+          "n": 18,
+          "p": 0.7222222222222222,
+          "low": 0.49126922453805477,
+          "high": 0.8750043085364452
+        },
+        "failure_recall": {
+          "k": 13,
+          "n": 13,
+          "p": 1.0,
+          "low": 0.7718981569447083,
+          "high": 1.0
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_fail_precision": {
+          "k": 4,
+          "n": 9,
+          "p": 0.4444444444444444,
+          "low": 0.188775429471914,
+          "high": 0.7333526542559703
+        },
+        "within_failure_recall": {
+          "k": 4,
+          "n": 4,
+          "p": 1.0,
+          "low": 0.5100999795960008,
+          "high": 1.0
+        },
+        "separates": false
+      },
+      {
+        "signal": "report.strict_grader_accepts",
+        "family": "report",
+        "meaning": "Jev on the final report, at 0.5: a strict grader of the task would accept the result the report describes",
+        "trials": 18,
+        "failures": 13,
+        "fail_precision": {
+          "k": 13,
+          "n": 18,
+          "p": 0.7222222222222222,
+          "low": 0.49126922453805477,
+          "high": 0.8750043085364452
+        },
+        "failure_recall": {
+          "k": 13,
+          "n": 13,
+          "p": 1.0,
+          "low": 0.7718981569447083,
+          "high": 1.0
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_fail_precision": {
+          "k": 4,
+          "n": 9,
+          "p": 0.4444444444444444,
+          "low": 0.188775429471914,
+          "high": 0.7333526542559703
+        },
+        "within_failure_recall": {
+          "k": 4,
+          "n": 4,
+          "p": 1.0,
+          "low": 0.5100999795960008,
+          "high": 1.0
+        },
+        "separates": false
+      },
+      {
+        "signal": "verdict.combined",
+        "family": "verdict",
+        "meaning": "the calibrated combined verdict",
+        "trials": 18,
+        "failures": 13,
+        "fail_precision": {
+          "k": 6,
+          "n": 6,
+          "p": 1.0,
+          "low": 0.6096569663469354,
+          "high": 0.9999999999999999
+        },
+        "failure_recall": {
+          "k": 6,
+          "n": 13,
+          "p": 0.46153846153846156,
+          "low": 0.2320575430148814,
+          "high": 0.7085656756816796
+        },
+        "pass_when_pass": {
+          "k": 1,
+          "n": 1,
+          "p": 1.0,
+          "low": 0.20654329147389294,
+          "high": 1.0
+        },
+        "pass_when_not_fail": {
+          "k": 5,
+          "n": 12,
+          "p": 0.4166666666666667,
+          "low": 0.19325746190524656,
+          "high": 0.6804926643446272
+        },
+        "within_fail_precision": {
+          "k": 3,
+          "n": 3,
+          "p": 1.0,
+          "low": 0.43849391955098227,
+          "high": 1.0
+        },
+        "within_failure_recall": {
+          "k": 3,
+          "n": 4,
+          "p": 0.75,
+          "low": 0.3006360524426366,
+          "high": 0.9544139373553637
+        },
+        "separates": false
+      },
+      {
+        "signal": "verdict.corroborated",
+        "family": "verdict",
+        "meaning": "the combined failure score corroborated by an admission (experimental)",
+        "trials": 18,
+        "failures": 13,
+        "fail_precision": {
+          "k": 5,
+          "n": 5,
+          "p": 1.0,
+          "low": 0.5655085052479191,
+          "high": 1.0
+        },
+        "failure_recall": {
+          "k": 5,
+          "n": 13,
+          "p": 0.38461538461538464,
+          "low": 0.17709446581236818,
+          "high": 0.6447751902773146
+        },
+        "pass_when_pass": {
+          "k": 1,
+          "n": 1,
+          "p": 1.0,
+          "low": 0.20654329147389294,
+          "high": 1.0
+        },
+        "pass_when_not_fail": {
+          "k": 5,
+          "n": 13,
+          "p": 0.38461538461538464,
+          "low": 0.17709446581236818,
+          "high": 0.6447751902773146
+        },
+        "within_fail_precision": {
+          "k": 2,
+          "n": 2,
+          "p": 1.0,
+          "low": 0.34237195288961925,
+          "high": 1.0
+        },
+        "within_failure_recall": {
+          "k": 2,
+          "n": 4,
+          "p": 0.5,
+          "low": 0.15003570882017148,
+          "high": 0.8499642911798285
+        },
+        "separates": false
+      },
+      {
+        "signal": "microluna.local-score",
+        "family": "microluna",
+        "meaning": "the selected candidate's self-written evaluator; a green score is not official acceptance",
+        "trials": 18,
+        "failures": 13,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 13,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.22810184305529166
+        },
+        "pass_when_pass": {
+          "k": 5,
+          "n": 18,
+          "p": 0.2777777777777778,
+          "low": 0.12499569146355474,
+          "high": 0.5087307754619452
+        },
+        "pass_when_not_fail": {
+          "k": 5,
+          "n": 18,
+          "p": 0.2777777777777778,
+          "low": 0.12499569146355474,
+          "high": 0.5087307754619452
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 4,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.48990002040399916
+        },
+        "separates": false
+      }
+    ],
+    "calibration": [
+      {
+        "signal": "checks.final",
+        "family": "checks",
+        "meaning": "today's checks on the final candidate: a failed scenario says fail, all passed says pass",
+        "trials": 9,
+        "failures": 9,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 9,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.2991527535509594
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 0,
+          "n": 9,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.2991527535509594
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "separates": false
+      },
+      {
+        "signal": "checks.first-flagged",
+        "family": "checks",
+        "meaning": "the first check failed a scenario",
+        "trials": 9,
+        "failures": 9,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 9,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.2991527535509594
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 0,
+          "n": 9,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.2991527535509594
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "separates": false
+      },
+      {
+        "signal": "checks.scenario-failed",
+        "family": "checks",
+        "meaning": "a scenario other than the self-report failed on the final candidate",
+        "trials": 9,
+        "failures": 9,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 9,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.2991527535509594
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 0,
+          "n": 9,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.2991527535509594
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "separates": false
+      },
+      {
+        "signal": "requirements.contradicted",
+        "family": "requirements",
+        "meaning": "a scenario contradicted a requirement",
+        "trials": 9,
+        "failures": 9,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 9,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.2991527535509594
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 0,
+          "n": 9,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.2991527535509594
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "separates": false
+      },
+      {
+        "signal": "requirements.unverifiable",
+        "family": "requirements",
+        "meaning": "a requirement is unverifiable",
+        "trials": 9,
+        "failures": 9,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 9,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.2991527535509594
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 0,
+          "n": 9,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.2991527535509594
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "separates": false
+      },
+      {
+        "signal": "requirements.observed-none-contradicted",
+        "family": "requirements",
+        "meaning": "a requirement was observed and none contradicted says pass",
+        "trials": 9,
+        "failures": 9,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 9,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.2991527535509594
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 0,
+          "n": 9,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.2991527535509594
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "separates": false
+      },
+      {
+        "signal": "support.contradicted",
+        "family": "support",
+        "meaning": "Jev support read a requirement as contradicted",
+        "trials": 9,
+        "failures": 9,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 9,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.2991527535509594
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 0,
+          "n": 9,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.2991527535509594
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "separates": false
+      },
+      {
+        "signal": "support.supported",
+        "family": "support",
+        "meaning": "Jev support read a requirement as supported and none as contradicted",
+        "trials": 9,
+        "failures": 9,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 9,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.2991527535509594
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 0,
+          "n": 9,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.2991527535509594
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "separates": false
+      },
+      {
+        "signal": "support.unresolved",
+        "family": "support",
+        "meaning": "Jev support left every judged requirement unresolved",
+        "trials": 9,
+        "failures": 9,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 9,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.2991527535509594
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 0,
+          "n": 9,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.2991527535509594
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "separates": false
+      },
+      {
+        "signal": "self-report.recorded",
+        "family": "self-report",
+        "meaning": "the episode's self-report on the final candidate failed",
+        "trials": 9,
+        "failures": 9,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 9,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.2991527535509594
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 0,
+          "n": 9,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.2991527535509594
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "separates": false
+      },
+      {
+        "signal": "self-report.first",
+        "family": "self-report",
+        "meaning": "the episode's self-report on the first candidate failed",
+        "trials": 9,
+        "failures": 9,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 9,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.2991527535509594
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 0,
+          "n": 9,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.2991527535509594
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "separates": false
+      },
+      {
+        "signal": "self-report.detector",
+        "family": "self-report",
+        "meaning": "the self-report detector, rerun on the final report of every trial, found an admission",
+        "trials": 9,
+        "failures": 9,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 9,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.2991527535509594
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 0,
+          "n": 9,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.2991527535509594
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "separates": false
+      },
+      {
+        "signal": "control.repaired",
+        "family": "control",
+        "meaning": "the episode ran a repair",
+        "trials": 9,
+        "failures": 9,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 9,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.2991527535509594
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 0,
+          "n": 9,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.2991527535509594
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "separates": false
+      },
+      {
+        "signal": "control.second-fired",
+        "family": "control",
+        "meaning": "a second-executor trigger fired",
+        "trials": 9,
+        "failures": 9,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 9,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.2991527535509594
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 0,
+          "n": 9,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.2991527535509594
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "separates": false
+      },
+      {
+        "signal": "report.admits_unmet",
+        "family": "report",
+        "meaning": "Jev on the final report, at 0.5: the report says part of the task is not done, fails, or does not meet what the task asks",
+        "trials": 9,
+        "failures": 9,
+        "fail_precision": {
+          "k": 3,
+          "n": 3,
+          "p": 1.0,
+          "low": 0.43849391955098227,
+          "high": 1.0
+        },
+        "failure_recall": {
+          "k": 3,
+          "n": 9,
+          "p": 0.3333333333333333,
+          "low": 0.12058159868274293,
+          "high": 0.6458026525009102
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 6,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.3903430336530645
+        },
+        "pass_when_not_fail": {
+          "k": 0,
+          "n": 6,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.3903430336530645
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "separates": false
+      },
+      {
+        "signal": "report.rests_on_reading",
+        "family": "report",
+        "meaning": "Jev on the final report, at 0.5: the report says the result rests on an assumption or a reading of the task a grader could read differently",
+        "trials": 9,
+        "failures": 9,
+        "fail_precision": {
+          "k": 3,
+          "n": 3,
+          "p": 1.0,
+          "low": 0.43849391955098227,
+          "high": 1.0
+        },
+        "failure_recall": {
+          "k": 3,
+          "n": 9,
+          "p": 0.3333333333333333,
+          "low": 0.12058159868274293,
+          "high": 0.6458026525009102
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 6,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.3903430336530645
+        },
+        "pass_when_not_fail": {
+          "k": 0,
+          "n": 6,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.3903430336530645
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "separates": false
+      },
+      {
+        "signal": "report.left_untested",
+        "family": "report",
+        "meaning": "Jev on the final report, at 0.5: the report says the main behavior the task asks for was not run or not tested",
+        "trials": 9,
+        "failures": 9,
+        "fail_precision": {
+          "k": 4,
+          "n": 4,
+          "p": 1.0,
+          "low": 0.5100999795960008,
+          "high": 1.0
+        },
+        "failure_recall": {
+          "k": 4,
+          "n": 9,
+          "p": 0.4444444444444444,
+          "low": 0.188775429471914,
+          "high": 0.7333526542559703
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 5,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.43449149475208104
+        },
+        "pass_when_not_fail": {
+          "k": 0,
+          "n": 5,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.43449149475208104
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "separates": false
+      },
+      {
+        "signal": "report.checked_against_task",
+        "family": "report",
+        "meaning": "Jev on the final report, at 0.5: the report shows the result run against the task's own example, tests, thresholds, or exact expected output, and passing",
+        "trials": 9,
+        "failures": 9,
+        "fail_precision": {
+          "k": 9,
+          "n": 9,
+          "p": 1.0,
+          "low": 0.7008472464490407,
+          "high": 1.0
+        },
+        "failure_recall": {
+          "k": 9,
+          "n": 9,
+          "p": 1.0,
+          "low": 0.7008472464490407,
+          "high": 1.0
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "separates": false
+      },
+      {
+        "signal": "report.strict_grader_accepts",
+        "family": "report",
+        "meaning": "Jev on the final report, at 0.5: a strict grader of the task would accept the result the report describes",
+        "trials": 9,
+        "failures": 9,
+        "fail_precision": {
+          "k": 9,
+          "n": 9,
+          "p": 1.0,
+          "low": 0.7008472464490407,
+          "high": 1.0
+        },
+        "failure_recall": {
+          "k": 9,
+          "n": 9,
+          "p": 1.0,
+          "low": 0.7008472464490407,
+          "high": 1.0
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "separates": false
+      },
+      {
+        "signal": "verdict.combined",
+        "family": "verdict",
+        "meaning": "the calibrated combined verdict",
+        "trials": 9,
+        "failures": 9,
+        "fail_precision": {
+          "k": 3,
+          "n": 3,
+          "p": 1.0,
+          "low": 0.43849391955098227,
+          "high": 1.0
+        },
+        "failure_recall": {
+          "k": 3,
+          "n": 9,
+          "p": 0.3333333333333333,
+          "low": 0.12058159868274293,
+          "high": 0.6458026525009102
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 0,
+          "n": 6,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.3903430336530645
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "separates": false
+      },
+      {
+        "signal": "verdict.corroborated",
+        "family": "verdict",
+        "meaning": "the combined failure score corroborated by an admission (experimental)",
+        "trials": 9,
+        "failures": 9,
+        "fail_precision": {
+          "k": 3,
+          "n": 3,
+          "p": 1.0,
+          "low": 0.43849391955098227,
+          "high": 1.0
+        },
+        "failure_recall": {
+          "k": 3,
+          "n": 9,
+          "p": 0.3333333333333333,
+          "low": 0.12058159868274293,
+          "high": 0.6458026525009102
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 0,
+          "n": 6,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.3903430336530645
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "separates": false
+      },
+      {
+        "signal": "microluna.local-score",
+        "family": "microluna",
+        "meaning": "the selected candidate's self-written evaluator; a green score is not official acceptance",
+        "trials": 9,
+        "failures": 9,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 9,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.2991527535509594
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 9,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.2991527535509594
+        },
+        "pass_when_not_fail": {
+          "k": 0,
+          "n": 9,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.2991527535509594
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "separates": false
+      }
+    ],
+    "held_out": [
+      {
+        "signal": "checks.final",
+        "family": "checks",
+        "meaning": "today's checks on the final candidate: a failed scenario says fail, all passed says pass",
+        "trials": 9,
+        "failures": 4,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 4,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.48990002040399916
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 5,
+          "n": 9,
+          "p": 0.5555555555555556,
+          "low": 0.2666473457440297,
+          "high": 0.811224570528086
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 4,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.48990002040399916
+        },
+        "separates": false
+      },
+      {
+        "signal": "checks.first-flagged",
+        "family": "checks",
+        "meaning": "the first check failed a scenario",
+        "trials": 9,
+        "failures": 4,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 4,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.48990002040399916
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 5,
+          "n": 9,
+          "p": 0.5555555555555556,
+          "low": 0.2666473457440297,
+          "high": 0.811224570528086
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 4,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.48990002040399916
+        },
+        "separates": false
+      },
+      {
+        "signal": "checks.scenario-failed",
+        "family": "checks",
+        "meaning": "a scenario other than the self-report failed on the final candidate",
+        "trials": 9,
+        "failures": 4,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 4,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.48990002040399916
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 5,
+          "n": 9,
+          "p": 0.5555555555555556,
+          "low": 0.2666473457440297,
+          "high": 0.811224570528086
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 4,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.48990002040399916
+        },
+        "separates": false
+      },
+      {
+        "signal": "requirements.contradicted",
+        "family": "requirements",
+        "meaning": "a scenario contradicted a requirement",
+        "trials": 9,
+        "failures": 4,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 4,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.48990002040399916
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 5,
+          "n": 9,
+          "p": 0.5555555555555556,
+          "low": 0.2666473457440297,
+          "high": 0.811224570528086
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 4,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.48990002040399916
+        },
+        "separates": false
+      },
+      {
+        "signal": "requirements.unverifiable",
+        "family": "requirements",
+        "meaning": "a requirement is unverifiable",
+        "trials": 9,
+        "failures": 4,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 4,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.48990002040399916
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 5,
+          "n": 9,
+          "p": 0.5555555555555556,
+          "low": 0.2666473457440297,
+          "high": 0.811224570528086
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 4,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.48990002040399916
+        },
+        "separates": false
+      },
+      {
+        "signal": "requirements.observed-none-contradicted",
+        "family": "requirements",
+        "meaning": "a requirement was observed and none contradicted says pass",
+        "trials": 9,
+        "failures": 4,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 4,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.48990002040399916
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 5,
+          "n": 9,
+          "p": 0.5555555555555556,
+          "low": 0.2666473457440297,
+          "high": 0.811224570528086
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 4,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.48990002040399916
+        },
+        "separates": false
+      },
+      {
+        "signal": "support.contradicted",
+        "family": "support",
+        "meaning": "Jev support read a requirement as contradicted",
+        "trials": 9,
+        "failures": 4,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 4,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.48990002040399916
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 5,
+          "n": 9,
+          "p": 0.5555555555555556,
+          "low": 0.2666473457440297,
+          "high": 0.811224570528086
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 4,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.48990002040399916
+        },
+        "separates": false
+      },
+      {
+        "signal": "support.supported",
+        "family": "support",
+        "meaning": "Jev support read a requirement as supported and none as contradicted",
+        "trials": 9,
+        "failures": 4,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 4,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.48990002040399916
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 5,
+          "n": 9,
+          "p": 0.5555555555555556,
+          "low": 0.2666473457440297,
+          "high": 0.811224570528086
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 4,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.48990002040399916
+        },
+        "separates": false
+      },
+      {
+        "signal": "support.unresolved",
+        "family": "support",
+        "meaning": "Jev support left every judged requirement unresolved",
+        "trials": 9,
+        "failures": 4,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 4,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.48990002040399916
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 5,
+          "n": 9,
+          "p": 0.5555555555555556,
+          "low": 0.2666473457440297,
+          "high": 0.811224570528086
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 4,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.48990002040399916
+        },
+        "separates": false
+      },
+      {
+        "signal": "self-report.recorded",
+        "family": "self-report",
+        "meaning": "the episode's self-report on the final candidate failed",
+        "trials": 9,
+        "failures": 4,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 4,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.48990002040399916
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 5,
+          "n": 9,
+          "p": 0.5555555555555556,
+          "low": 0.2666473457440297,
+          "high": 0.811224570528086
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 4,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.48990002040399916
+        },
+        "separates": false
+      },
+      {
+        "signal": "self-report.first",
+        "family": "self-report",
+        "meaning": "the episode's self-report on the first candidate failed",
+        "trials": 9,
+        "failures": 4,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 4,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.48990002040399916
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 5,
+          "n": 9,
+          "p": 0.5555555555555556,
+          "low": 0.2666473457440297,
+          "high": 0.811224570528086
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 4,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.48990002040399916
+        },
+        "separates": false
+      },
+      {
+        "signal": "self-report.detector",
+        "family": "self-report",
+        "meaning": "the self-report detector, rerun on the final report of every trial, found an admission",
+        "trials": 9,
+        "failures": 4,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 4,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.48990002040399916
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 5,
+          "n": 9,
+          "p": 0.5555555555555556,
+          "low": 0.2666473457440297,
+          "high": 0.811224570528086
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 4,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.48990002040399916
+        },
+        "separates": false
+      },
+      {
+        "signal": "control.repaired",
+        "family": "control",
+        "meaning": "the episode ran a repair",
+        "trials": 9,
+        "failures": 4,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 4,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.48990002040399916
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 5,
+          "n": 9,
+          "p": 0.5555555555555556,
+          "low": 0.2666473457440297,
+          "high": 0.811224570528086
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 4,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.48990002040399916
+        },
+        "separates": false
+      },
+      {
+        "signal": "control.second-fired",
+        "family": "control",
+        "meaning": "a second-executor trigger fired",
+        "trials": 9,
+        "failures": 4,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 4,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.48990002040399916
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 5,
+          "n": 9,
+          "p": 0.5555555555555556,
+          "low": 0.2666473457440297,
+          "high": 0.811224570528086
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 4,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.48990002040399916
+        },
+        "separates": false
+      },
+      {
+        "signal": "report.admits_unmet",
+        "family": "report",
+        "meaning": "Jev on the final report, at 0.5: the report says part of the task is not done, fails, or does not meet what the task asks",
+        "trials": 9,
+        "failures": 4,
+        "fail_precision": {
+          "k": 3,
+          "n": 3,
+          "p": 1.0,
+          "low": 0.43849391955098227,
+          "high": 1.0
+        },
+        "failure_recall": {
+          "k": 3,
+          "n": 4,
+          "p": 0.75,
+          "low": 0.3006360524426366,
+          "high": 0.9544139373553637
+        },
+        "pass_when_pass": {
+          "k": 5,
+          "n": 6,
+          "p": 0.8333333333333334,
+          "low": 0.43649056343635395,
+          "high": 0.9699474141282697
+        },
+        "pass_when_not_fail": {
+          "k": 5,
+          "n": 6,
+          "p": 0.8333333333333334,
+          "low": 0.43649056343635395,
+          "high": 0.9699474141282697
+        },
+        "within_fail_precision": {
+          "k": 3,
+          "n": 3,
+          "p": 1.0,
+          "low": 0.43849391955098227,
+          "high": 1.0
+        },
+        "within_failure_recall": {
+          "k": 3,
+          "n": 4,
+          "p": 0.75,
+          "low": 0.3006360524426366,
+          "high": 0.9544139373553637
+        },
+        "separates": false
+      },
+      {
+        "signal": "report.rests_on_reading",
+        "family": "report",
+        "meaning": "Jev on the final report, at 0.5: the report says the result rests on an assumption or a reading of the task a grader could read differently",
+        "trials": 9,
+        "failures": 4,
+        "fail_precision": {
+          "k": 2,
+          "n": 4,
+          "p": 0.5,
+          "low": 0.15003570882017148,
+          "high": 0.8499642911798285
+        },
+        "failure_recall": {
+          "k": 2,
+          "n": 4,
+          "p": 0.5,
+          "low": 0.15003570882017148,
+          "high": 0.8499642911798285
+        },
+        "pass_when_pass": {
+          "k": 3,
+          "n": 5,
+          "p": 0.6,
+          "low": 0.23071993220883708,
+          "high": 0.8823817688407467
+        },
+        "pass_when_not_fail": {
+          "k": 3,
+          "n": 5,
+          "p": 0.6,
+          "low": 0.23071993220883708,
+          "high": 0.8823817688407467
+        },
+        "within_fail_precision": {
+          "k": 2,
+          "n": 4,
+          "p": 0.5,
+          "low": 0.15003570882017148,
+          "high": 0.8499642911798285
+        },
+        "within_failure_recall": {
+          "k": 2,
+          "n": 4,
+          "p": 0.5,
+          "low": 0.15003570882017148,
+          "high": 0.8499642911798285
+        },
+        "separates": false
+      },
+      {
+        "signal": "report.left_untested",
+        "family": "report",
+        "meaning": "Jev on the final report, at 0.5: the report says the main behavior the task asks for was not run or not tested",
+        "trials": 9,
+        "failures": 4,
+        "fail_precision": {
+          "k": 2,
+          "n": 2,
+          "p": 1.0,
+          "low": 0.34237195288961925,
+          "high": 1.0
+        },
+        "failure_recall": {
+          "k": 2,
+          "n": 4,
+          "p": 0.5,
+          "low": 0.15003570882017148,
+          "high": 0.8499642911798285
+        },
+        "pass_when_pass": {
+          "k": 5,
+          "n": 7,
+          "p": 0.7142857142857143,
+          "low": 0.35892909014821267,
+          "high": 0.9177828342909844
+        },
+        "pass_when_not_fail": {
+          "k": 5,
+          "n": 7,
+          "p": 0.7142857142857143,
+          "low": 0.35892909014821267,
+          "high": 0.9177828342909844
+        },
+        "within_fail_precision": {
+          "k": 2,
+          "n": 2,
+          "p": 1.0,
+          "low": 0.34237195288961925,
+          "high": 1.0
+        },
+        "within_failure_recall": {
+          "k": 2,
+          "n": 4,
+          "p": 0.5,
+          "low": 0.15003570882017148,
+          "high": 0.8499642911798285
+        },
+        "separates": false
+      },
+      {
+        "signal": "report.checked_against_task",
+        "family": "report",
+        "meaning": "Jev on the final report, at 0.5: the report shows the result run against the task's own example, tests, thresholds, or exact expected output, and passing",
+        "trials": 9,
+        "failures": 4,
+        "fail_precision": {
+          "k": 4,
+          "n": 9,
+          "p": 0.4444444444444444,
+          "low": 0.188775429471914,
+          "high": 0.7333526542559703
+        },
+        "failure_recall": {
+          "k": 4,
+          "n": 4,
+          "p": 1.0,
+          "low": 0.5100999795960008,
+          "high": 1.0
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_fail_precision": {
+          "k": 4,
+          "n": 9,
+          "p": 0.4444444444444444,
+          "low": 0.188775429471914,
+          "high": 0.7333526542559703
+        },
+        "within_failure_recall": {
+          "k": 4,
+          "n": 4,
+          "p": 1.0,
+          "low": 0.5100999795960008,
+          "high": 1.0
+        },
+        "separates": false
+      },
+      {
+        "signal": "report.strict_grader_accepts",
+        "family": "report",
+        "meaning": "Jev on the final report, at 0.5: a strict grader of the task would accept the result the report describes",
+        "trials": 9,
+        "failures": 4,
+        "fail_precision": {
+          "k": 4,
+          "n": 9,
+          "p": 0.4444444444444444,
+          "low": 0.188775429471914,
+          "high": 0.7333526542559703
+        },
+        "failure_recall": {
+          "k": 4,
+          "n": 4,
+          "p": 1.0,
+          "low": 0.5100999795960008,
+          "high": 1.0
+        },
+        "pass_when_pass": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "pass_when_not_fail": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_fail_precision": {
+          "k": 4,
+          "n": 9,
+          "p": 0.4444444444444444,
+          "low": 0.188775429471914,
+          "high": 0.7333526542559703
+        },
+        "within_failure_recall": {
+          "k": 4,
+          "n": 4,
+          "p": 1.0,
+          "low": 0.5100999795960008,
+          "high": 1.0
+        },
+        "separates": false
+      },
+      {
+        "signal": "verdict.combined",
+        "family": "verdict",
+        "meaning": "the calibrated combined verdict",
+        "trials": 9,
+        "failures": 4,
+        "fail_precision": {
+          "k": 3,
+          "n": 3,
+          "p": 1.0,
+          "low": 0.43849391955098227,
+          "high": 1.0
+        },
+        "failure_recall": {
+          "k": 3,
+          "n": 4,
+          "p": 0.75,
+          "low": 0.3006360524426366,
+          "high": 0.9544139373553637
+        },
+        "pass_when_pass": {
+          "k": 1,
+          "n": 1,
+          "p": 1.0,
+          "low": 0.20654329147389294,
+          "high": 1.0
+        },
+        "pass_when_not_fail": {
+          "k": 5,
+          "n": 6,
+          "p": 0.8333333333333334,
+          "low": 0.43649056343635395,
+          "high": 0.9699474141282697
+        },
+        "within_fail_precision": {
+          "k": 3,
+          "n": 3,
+          "p": 1.0,
+          "low": 0.43849391955098227,
+          "high": 1.0
+        },
+        "within_failure_recall": {
+          "k": 3,
+          "n": 4,
+          "p": 0.75,
+          "low": 0.3006360524426366,
+          "high": 0.9544139373553637
+        },
+        "separates": false
+      },
+      {
+        "signal": "verdict.corroborated",
+        "family": "verdict",
+        "meaning": "the combined failure score corroborated by an admission (experimental)",
+        "trials": 9,
+        "failures": 4,
+        "fail_precision": {
+          "k": 2,
+          "n": 2,
+          "p": 1.0,
+          "low": 0.34237195288961925,
+          "high": 1.0
+        },
+        "failure_recall": {
+          "k": 2,
+          "n": 4,
+          "p": 0.5,
+          "low": 0.15003570882017148,
+          "high": 0.8499642911798285
+        },
+        "pass_when_pass": {
+          "k": 1,
+          "n": 1,
+          "p": 1.0,
+          "low": 0.20654329147389294,
+          "high": 1.0
+        },
+        "pass_when_not_fail": {
+          "k": 5,
+          "n": 7,
+          "p": 0.7142857142857143,
+          "low": 0.35892909014821267,
+          "high": 0.9177828342909844
+        },
+        "within_fail_precision": {
+          "k": 2,
+          "n": 2,
+          "p": 1.0,
+          "low": 0.34237195288961925,
+          "high": 1.0
+        },
+        "within_failure_recall": {
+          "k": 2,
+          "n": 4,
+          "p": 0.5,
+          "low": 0.15003570882017148,
+          "high": 0.8499642911798285
+        },
+        "separates": false
+      },
+      {
+        "signal": "microluna.local-score",
+        "family": "microluna",
+        "meaning": "the selected candidate's self-written evaluator; a green score is not official acceptance",
+        "trials": 9,
+        "failures": 4,
+        "fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "failure_recall": {
+          "k": 0,
+          "n": 4,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.48990002040399916
+        },
+        "pass_when_pass": {
+          "k": 5,
+          "n": 9,
+          "p": 0.5555555555555556,
+          "low": 0.2666473457440297,
+          "high": 0.811224570528086
+        },
+        "pass_when_not_fail": {
+          "k": 5,
+          "n": 9,
+          "p": 0.5555555555555556,
+          "low": 0.2666473457440297,
+          "high": 0.811224570528086
+        },
+        "within_fail_precision": {
+          "k": 0,
+          "n": 0,
+          "p": null,
+          "low": null,
+          "high": null
+        },
+        "within_failure_recall": {
+          "k": 0,
+          "n": 4,
+          "p": 0.0,
+          "low": 0.0,
+          "high": 0.48990002040399916
+        },
+        "separates": false
+      }
+    ]
+  }
+}

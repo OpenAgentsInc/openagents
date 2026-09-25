@@ -1,0 +1,321 @@
+{
+  "schema": "openagents.truthful-checks-comparison.v1",
+  "seed": 9584,
+  "resamples": 10000,
+  "historical_reused_holdout": {
+    "trials": 185,
+    "tasks": 32,
+    "signals": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 6,
+          "total": 11,
+          "value": 0.5454545454545454,
+          "wilson_95": [
+            0.28008775568998817,
+            0.7872904245601196
+          ]
+        },
+        "failure_recall": {
+          "correct": 6,
+          "total": 60,
+          "value": 0.1,
+          "wilson_95": [
+            0.04664219945723587,
+            0.20149694492511044
+          ]
+        },
+        "pass_precision": {
+          "correct": 69,
+          "total": 97,
+          "value": 0.711340206185567,
+          "wilson_95": [
+            0.614479497470417,
+            0.792098740082339
+          ]
+        },
+        "unknown": 77
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 22,
+          "total": 37,
+          "value": 0.5945945945945946,
+          "wilson_95": [
+            0.4348568313132931,
+            0.7365370416005986
+          ]
+        },
+        "failure_recall": {
+          "correct": 22,
+          "total": 60,
+          "value": 0.36666666666666664,
+          "wilson_95": [
+            0.2562073884620827,
+            0.4931723263320327
+          ]
+        },
+        "pass_precision": {
+          "correct": 11,
+          "total": 13,
+          "value": 0.8461538461538461,
+          "wilson_95": [
+            0.5776482949136899,
+            0.9567427368172621
+          ]
+        },
+        "unknown": 135
+      },
+      "verdict.corroborated": {
+        "fail_precision": {
+          "correct": 13,
+          "total": 20,
+          "value": 0.65,
+          "wilson_95": [
+            0.43285051021946463,
+            0.8188104521320554
+          ]
+        },
+        "failure_recall": {
+          "correct": 13,
+          "total": 60,
+          "value": 0.21666666666666667,
+          "wilson_95": [
+            0.13122921046407016,
+            0.3362026834734252
+          ]
+        },
+        "pass_precision": {
+          "correct": 11,
+          "total": 13,
+          "value": 0.8461538461538461,
+          "wilson_95": [
+            0.5776482949136899,
+            0.9567427368172621
+          ]
+        },
+        "unknown": 152
+      },
+      "microluna.local-score": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 60,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.06017393047793289
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 185
+      }
+    },
+    "paired_task_bootstrap": {
+      "checks.final": {
+        "precision": {
+          "valid_resamples": 9951,
+          "undefined_resamples": 49,
+          "percentile_95": [
+            -0.1464646464646464,
+            0.5
+          ]
+        },
+        "recall": {
+          "valid_resamples": 10000,
+          "undefined_resamples": 0,
+          "percentile_95": [
+            -0.037037037037037035,
+            0.26666666666666666
+          ]
+        }
+      },
+      "verdict.combined": {
+        "precision": {
+          "valid_resamples": 10000,
+          "undefined_resamples": 0,
+          "percentile_95": [
+            -0.14224137931034486,
+            0.17229729729729726
+          ]
+        },
+        "recall": {
+          "valid_resamples": 10000,
+          "undefined_resamples": 0,
+          "percentile_95": [
+            -0.21428571428571427,
+            -0.08695652173913049
+          ]
+        }
+      }
+    }
+  },
+  "microluna_development": {
+    "trials": 18,
+    "tasks": 2,
+    "signals": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 13,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.22810184305529166
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 18
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 6,
+          "total": 6,
+          "value": 1.0,
+          "wilson_95": [
+            0.6096569663469354,
+            0.9999999999999999
+          ]
+        },
+        "failure_recall": {
+          "correct": 6,
+          "total": 13,
+          "value": 0.46153846153846156,
+          "wilson_95": [
+            0.2320575430148814,
+            0.7085656756816796
+          ]
+        },
+        "pass_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "unknown": 11
+      },
+      "verdict.corroborated": {
+        "fail_precision": {
+          "correct": 5,
+          "total": 5,
+          "value": 1.0,
+          "wilson_95": [
+            0.5655085052479191,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 5,
+          "total": 13,
+          "value": 0.38461538461538464,
+          "wilson_95": [
+            0.17709446581236818,
+            0.6447751902773146
+          ]
+        },
+        "pass_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "unknown": 12
+      },
+      "microluna.local-score": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 13,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.22810184305529166
+          ]
+        },
+        "pass_precision": {
+          "correct": 5,
+          "total": 18,
+          "value": 0.2777777777777778,
+          "wilson_95": [
+            0.12499569146355474,
+            0.5087307754619452
+          ]
+        },
+        "unknown": 0
+      }
+    },
+    "paired_task_bootstrap": {
+      "checks.final": {
+        "precision": {
+          "valid_resamples": 0,
+          "undefined_resamples": 10000,
+          "percentile_95": null
+        },
+        "recall": {
+          "valid_resamples": 10000,
+          "undefined_resamples": 0,
+          "percentile_95": [
+            0.3333333333333333,
+            0.5
+          ]
+        }
+      },
+      "verdict.combined": {
+        "precision": {
+          "valid_resamples": 10000,
+          "undefined_resamples": 0,
+          "percentile_95": [
+            0.0,
+            0.0
+          ]
+        },
+        "recall": {
+          "valid_resamples": 10000,
+          "undefined_resamples": 0,
+          "percentile_95": [
+            -0.25,
+            0.0
+          ]
+        }
+      }
+    }
+  },
+  "notes": [
+    "Wilson intervals are descriptive trial-level intervals.",
+    "Bootstrap resamples whole tasks; undefined precision is omitted and counted.",
+    "The historical comparison was previously inspected; the Microluna tasks were repeatedly studied.",
+    "Neither cohort is untouched confirmation of generalization."
+  ]
+}

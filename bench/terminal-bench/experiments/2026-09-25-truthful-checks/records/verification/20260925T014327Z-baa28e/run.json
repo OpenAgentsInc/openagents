@@ -1,0 +1,172 @@
+{
+  "schema": "openagents.gate-run.v1",
+  "run_id": "20260925T014327Z-baa28e",
+  "started_utc": "2026-09-25T01:43:27Z",
+  "finished_utc": "2026-09-25T01:47:48Z",
+  "elapsed_s": 261.4,
+  "tree": {
+    "head": "397ed870dfe26344e173ec8588cdeb22b421bbd5",
+    "dirty": true,
+    "diff_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "requested": {
+    "phases": "fmt clippy tests clippy-features tests-features",
+    "crates": "coder-one gym",
+    "workspace_scope": false,
+    "changed_ref": null,
+    "uncovered": "",
+    "keep_going": false,
+    "retry": true,
+    "postgres": true,
+    "metal": false,
+    "soak": false
+  },
+  "phases": [
+    {
+      "slug": "fmt",
+      "name": "Workspace formatting",
+      "command": [
+        "cargo",
+        "fmt",
+        "--all",
+        "--check"
+      ],
+      "status": "passed",
+      "attempts": 1,
+      "exit": 0,
+      "elapsed_s": 3.0,
+      "log": "/tmp/9584-verification-final/20260925T014327Z-baa28e/fmt.log"
+    },
+    {
+      "slug": "clippy",
+      "name": "Default workspace Clippy",
+      "command": [
+        "cargo",
+        "clippy",
+        "--locked",
+        "-p",
+        "coder-one",
+        "-p",
+        "gym",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "status": "passed",
+      "attempts": 1,
+      "exit": 0,
+      "elapsed_s": 7.6,
+      "log": "/tmp/9584-verification-final/20260925T014327Z-baa28e/clippy.log"
+    },
+    {
+      "slug": "clippy-features",
+      "name": "Feature workspace Clippy",
+      "command": [
+        "cargo",
+        "clippy",
+        "--locked",
+        "-p",
+        "coder-one",
+        "-p",
+        "gym",
+        "--all-targets",
+        "--features",
+        "gym/tui",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "status": "passed",
+      "attempts": 1,
+      "exit": 0,
+      "elapsed_s": 7.9,
+      "log": "/tmp/9584-verification-final/20260925T014327Z-baa28e/clippy-features.log"
+    },
+    {
+      "slug": "tests",
+      "name": "Default workspace tests",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "coder-one",
+        "-p",
+        "gym",
+        "--",
+        "--nocapture"
+      ],
+      "status": "passed",
+      "attempts": 1,
+      "exit": 0,
+      "elapsed_s": 120.1,
+      "log": "/tmp/9584-verification-final/20260925T014327Z-baa28e/tests.log"
+    },
+    {
+      "slug": "tests-features",
+      "name": "Feature workspace tests",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "coder-one",
+        "-p",
+        "gym",
+        "--features",
+        "gym/tui",
+        "--",
+        "--nocapture"
+      ],
+      "status": "passed",
+      "attempts": 1,
+      "exit": 0,
+      "elapsed_s": 121.7,
+      "log": "/tmp/9584-verification-final/20260925T014327Z-baa28e/tests-features.log"
+    }
+  ],
+  "skipped": [
+    {
+      "slug": "preflight",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "gate-tooling",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "artifacts",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "delegation",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "backup",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "deps",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "postgres",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "metal-clippy",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "metal-tests",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "soak",
+      "reason": "not in --phases"
+    }
+  ],
+  "result": "partial"
+}

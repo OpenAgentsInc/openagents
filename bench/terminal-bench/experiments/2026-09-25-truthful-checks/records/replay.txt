@@ -1,0 +1,16 @@
+Replayed 18 trials with identical rows and no live model calls.
+Truthful checks on the labeled Terminal-Bench set
+  18 graded trials (5 passes, 13 failures) on 2 tasks · report answers on 18
+  calibration: 9 trials on 1 tasks · held-out: 9 trials on 1 tasks (4 failures)
+  evidence: 18 reports, 0 missing, 18 Microluna self-scores
+  Historical task split; repeatedly studied tasks and reused comparison results are not untouched validation. Wilson intervals treat trials as independent; use task-cluster intervals for repeated tasks.
+
+  signal (all)                               fail precision          failure recall          pass when "pass"        separates
+  verdict.combined                             6/6   100%  61–100      6/13   46%  23–71       1/1   100%  21–100    no
+  verdict.corroborated                         5/5   100%  57–100      5/13   38%  18–64       1/1   100%  21–100    no
+
+  Held-out half: the combined verdict compared with today's checks
+    combined verdict  fail precision 3/3   100%  44–100 · failure recall 3/4    75%  30–95 · pass when "pass" 1/1   100%  21–100
+    corroborated      fail precision 2/2   100%  34–100 · failure recall 2/4    50%  15–85 · pass when "pass" 1/1   100%  21–100
+    today's checks    fail precision 0/0               — · failure recall 0/4     0%   0–49 · pass when "pass" 0/0               —
+    The verdict states its held-out precision: fail 22/37, pass 11/13.
