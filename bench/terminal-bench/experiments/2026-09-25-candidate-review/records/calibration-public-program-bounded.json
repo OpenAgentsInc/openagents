@@ -1,0 +1,2515 @@
+{
+  "partition": "calibration",
+  "feature": "public-program-bounded",
+  "trials": 132,
+  "tasks": 26,
+  "available": 121,
+  "chosen": null,
+  "threshold_table": {
+    "0.5": {
+      "fail_precision": {
+        "correct": 1,
+        "total": 1,
+        "value": 1.0,
+        "wilson_95": [
+          0.20654329147389294,
+          1
+        ]
+      },
+      "failure_recall": {
+        "correct": 1,
+        "total": 62,
+        "value": 0.016129032258064516,
+        "wilson_95": [
+          0.0028527936922403963,
+          0.08586923007388922
+        ]
+      },
+      "pass_precision": {
+        "correct": 0,
+        "total": 0,
+        "value": null,
+        "wilson_95": null
+      },
+      "unknown": 131
+    },
+    "0.7": {
+      "fail_precision": {
+        "correct": 1,
+        "total": 1,
+        "value": 1.0,
+        "wilson_95": [
+          0.20654329147389294,
+          1
+        ]
+      },
+      "failure_recall": {
+        "correct": 1,
+        "total": 62,
+        "value": 0.016129032258064516,
+        "wilson_95": [
+          0.0028527936922403963,
+          0.08586923007388922
+        ]
+      },
+      "pass_precision": {
+        "correct": 0,
+        "total": 0,
+        "value": null,
+        "wilson_95": null
+      },
+      "unknown": 131
+    },
+    "0.8": {
+      "fail_precision": {
+        "correct": 0,
+        "total": 0,
+        "value": null,
+        "wilson_95": null
+      },
+      "failure_recall": {
+        "correct": 0,
+        "total": 62,
+        "value": 0.0,
+        "wilson_95": [
+          0,
+          0.05834609122500061
+        ]
+      },
+      "pass_precision": {
+        "correct": 0,
+        "total": 0,
+        "value": null,
+        "wilson_95": null
+      },
+      "unknown": 132
+    },
+    "0.9": {
+      "fail_precision": {
+        "correct": 0,
+        "total": 0,
+        "value": null,
+        "wilson_95": null
+      },
+      "failure_recall": {
+        "correct": 0,
+        "total": 62,
+        "value": 0.0,
+        "wilson_95": [
+          0,
+          0.05834609122500061
+        ]
+      },
+      "pass_precision": {
+        "correct": 0,
+        "total": 0,
+        "value": null,
+        "wilson_95": null
+      },
+      "unknown": 132
+    },
+    "0.95": {
+      "fail_precision": {
+        "correct": 0,
+        "total": 0,
+        "value": null,
+        "wilson_95": null
+      },
+      "failure_recall": {
+        "correct": 0,
+        "total": 62,
+        "value": 0.0,
+        "wilson_95": [
+          0,
+          0.05834609122500061
+        ]
+      },
+      "pass_precision": {
+        "correct": 0,
+        "total": 0,
+        "value": null,
+        "wilson_95": null
+      },
+      "unknown": 132
+    }
+  },
+  "known_cost_usd": 0,
+  "predictions": [
+    {
+      "job": "extended--coder-one-tunable--git-leak-recovery",
+      "trial": "git-leak-recovery__ZeVnjRW",
+      "task": "terminal-bench/git-leak-recovery",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "extended--coder-one-tunable--git-leak-recovery-2",
+      "trial": "git-leak-recovery__jjGzjpC",
+      "task": "terminal-bench/git-leak-recovery",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "extended--coder-one-tunable--git-leak-recovery-3",
+      "trial": "git-leak-recovery__9ihLMP8",
+      "task": "terminal-bench/git-leak-recovery",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "extended--coder-one-tunable-luna--git-leak-recovery",
+      "trial": "git-leak-recovery__g6yGQSJ",
+      "task": "terminal-bench/git-leak-recovery",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "extended--coder-one-tunable-luna--git-leak-recovery-2",
+      "trial": "git-leak-recovery__G5NZ2hs",
+      "task": "terminal-bench/git-leak-recovery",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "extended--coder-one-tunable-luna--git-leak-recovery-3",
+      "trial": "git-leak-recovery__NQpZdD7",
+      "task": "terminal-bench/git-leak-recovery",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-pack--git-leak-recovery",
+      "trial": "git-leak-recovery__THsKzXF",
+      "task": "terminal-bench/git-leak-recovery",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-pack--git-leak-recovery-2",
+      "trial": "git-leak-recovery__9nT2jNY",
+      "task": "terminal-bench/git-leak-recovery",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-pack--git-leak-recovery-3",
+      "trial": "git-leak-recovery__pWCWrVm",
+      "task": "terminal-bench/git-leak-recovery",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-v2--git-leak-recovery",
+      "trial": "git-leak-recovery__gRXY9pH",
+      "task": "terminal-bench/git-leak-recovery",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-v2--git-leak-recovery-2",
+      "trial": "git-leak-recovery__cTpAoFS",
+      "task": "terminal-bench/git-leak-recovery",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-v2--git-leak-recovery-3",
+      "trial": "git-leak-recovery__WKEnyYD",
+      "task": "terminal-bench/git-leak-recovery",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "panel--coder-one-tunable--fix-code-vulnerability",
+      "trial": "fix-code-vulnerability__9f87Mzv",
+      "task": "terminal-bench/fix-code-vulnerability",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "panel--coder-one-tunable--fix-code-vulnerability-2",
+      "trial": "fix-code-vulnerability__SrxyDDg",
+      "task": "terminal-bench/fix-code-vulnerability",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "panel--coder-one-tunable--fix-code-vulnerability-3",
+      "trial": "fix-code-vulnerability__vSiEWQt",
+      "task": "terminal-bench/fix-code-vulnerability",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "panel--coder-one-tunable--fix-git",
+      "trial": "fix-git__k9rT6Bx",
+      "task": "terminal-bench/fix-git",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "panel--coder-one-tunable--fix-git-2",
+      "trial": "fix-git__YxBWCQJ",
+      "task": "terminal-bench/fix-git",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "panel--coder-one-tunable--fix-git-3",
+      "trial": "fix-git__MX25s8B",
+      "task": "terminal-bench/fix-git",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "panel--coder-one-tunable-luna--fix-code-vulnerability",
+      "trial": "fix-code-vulnerability__HTsLxAt",
+      "task": "terminal-bench/fix-code-vulnerability",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "panel--coder-one-tunable-luna--fix-code-vulnerability-2",
+      "trial": "fix-code-vulnerability__H3bdbdN",
+      "task": "terminal-bench/fix-code-vulnerability",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "panel--coder-one-tunable-luna--fix-code-vulnerability-3",
+      "trial": "fix-code-vulnerability__VpQLb2b",
+      "task": "terminal-bench/fix-code-vulnerability",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "panel--coder-one-tunable-luna--fix-git",
+      "trial": "fix-git__9288jhQ",
+      "task": "terminal-bench/fix-git",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "panel--coder-one-tunable-luna--fix-git-2",
+      "trial": "fix-git__24DAJ4U",
+      "task": "terminal-bench/fix-git",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "panel--coder-one-tunable-luna--fix-git-3",
+      "trial": "fix-git__C4uRAH7",
+      "task": "terminal-bench/fix-git",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-pack--fix-code-vulnerability",
+      "trial": "fix-code-vulnerability__pbLhhDi",
+      "task": "terminal-bench/fix-code-vulnerability",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-pack--fix-code-vulnerability-2",
+      "trial": "fix-code-vulnerability__9PTAuKy",
+      "task": "terminal-bench/fix-code-vulnerability",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-pack--fix-code-vulnerability-3",
+      "trial": "fix-code-vulnerability__mBKc6Zq",
+      "task": "terminal-bench/fix-code-vulnerability",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-pack--fix-git",
+      "trial": "fix-git__F9C4oF8",
+      "task": "terminal-bench/fix-git",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-pack--fix-git-2",
+      "trial": "fix-git__A9XCxQd",
+      "task": "terminal-bench/fix-git",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-pack--fix-git-3",
+      "trial": "fix-git__2fCaBxk",
+      "task": "terminal-bench/fix-git",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-v2--fix-code-vulnerability",
+      "trial": "fix-code-vulnerability__Ksgi4tX",
+      "task": "terminal-bench/fix-code-vulnerability",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-v2--fix-code-vulnerability-2",
+      "trial": "fix-code-vulnerability__F2ywMC7",
+      "task": "terminal-bench/fix-code-vulnerability",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-v2--fix-code-vulnerability-3",
+      "trial": "fix-code-vulnerability__QX76QYj",
+      "task": "terminal-bench/fix-code-vulnerability",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-v2--fix-git",
+      "trial": "fix-git__SvUP5GM",
+      "task": "terminal-bench/fix-git",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-v2--fix-git-2",
+      "trial": "fix-git__grhmUnf",
+      "task": "terminal-bench/fix-git",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-v2--fix-git-3",
+      "trial": "fix-git__ufNaxMJ",
+      "task": "terminal-bench/fix-git",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "smoke--coder-one-tunable--fix-git",
+      "trial": "fix-git__m4eoyBB",
+      "task": "terminal-bench/fix-git",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--heat-pump-warranty--matched-v8-9567-r1",
+      "trial": "heat-pump-warranty__XiAF7ri",
+      "task": "terminal-bench/heat-pump-warranty",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--heat-pump-warranty--matched-v8-9567-r2",
+      "trial": "heat-pump-warranty__VSFJ726",
+      "task": "terminal-bench/heat-pump-warranty",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--heat-pump-warranty--matched-v8-9567-r3",
+      "trial": "heat-pump-warranty__XimLDF4",
+      "task": "terminal-bench/heat-pump-warranty",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--mvcc-lsm-compaction--matched-v8-9567-r1",
+      "trial": "mvcc-lsm-compaction__s5z5Kwr",
+      "task": "terminal-bench/mvcc-lsm-compaction",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--mvcc-lsm-compaction--matched-v8-9567-r2",
+      "trial": "mvcc-lsm-compaction__pkCidVR",
+      "task": "terminal-bench/mvcc-lsm-compaction",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--mvcc-lsm-compaction--matched-v8-9567-r3",
+      "trial": "mvcc-lsm-compaction__4yfBDYL",
+      "task": "terminal-bench/mvcc-lsm-compaction",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--wal-recovery-ordering--matched-v8-9567-r1",
+      "trial": "wal-recovery-ordering__DXqWif2",
+      "task": "terminal-bench/wal-recovery-ordering",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--wal-recovery-ordering--matched-v8-9567-r2",
+      "trial": "wal-recovery-ordering__qbhxq2M",
+      "task": "terminal-bench/wal-recovery-ordering",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--wal-recovery-ordering--matched-v8-9567-r3",
+      "trial": "wal-recovery-ordering__uoUwaHU",
+      "task": "terminal-bench/wal-recovery-ordering",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v10--bun-sourcemap-leak--v10-persist-9570-r1",
+      "trial": "bun-sourcemap-leak__hTfpu6P",
+      "task": "terminal-bench/bun-sourcemap-leak",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v10--cargo-flight-dispatch--v10-persist-9570-r1",
+      "trial": "cargo-flight-dispatch__anfUuvh",
+      "task": "terminal-bench/cargo-flight-dispatch",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v10--mvcc-lsm-compaction--v10-persist-9570-r1",
+      "trial": "mvcc-lsm-compaction__cXLAxTv",
+      "task": "terminal-bench/mvcc-lsm-compaction",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--atrx-vep-crispr",
+      "trial": "atrx-vep-crispr__n4pQEBK",
+      "task": "terminal-bench/atrx-vep-crispr",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": 0.71,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--biped-contact-dynamics",
+      "trial": "biped-contact-dynamics__Cg7CqRp",
+      "task": "terminal-bench/biped-contact-dynamics",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--bun-sourcemap-leak",
+      "trial": "bun-sourcemap-leak__UEEnDnL",
+      "task": "terminal-bench/bun-sourcemap-leak",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--cargo-flight-dispatch",
+      "trial": "cargo-flight-dispatch__DRH9R9E",
+      "task": "terminal-bench/cargo-flight-dispatch",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--coq-block-bound",
+      "trial": "coq-block-bound__BuaH7r9",
+      "task": "terminal-bench/coq-block-bound",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--glycan-ms2-elucidation",
+      "trial": "glycan-ms2-elucidation__SJyggQr",
+      "task": "terminal-bench/glycan-ms2-elucidation",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--heat-pump-warranty",
+      "trial": "heat-pump-warranty__AfdurXo",
+      "task": "terminal-bench/heat-pump-warranty",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--hof-topology-interpenetration",
+      "trial": "hof-topology-interpenetration__Adzjrvb",
+      "task": "terminal-bench/hof-topology-interpenetration",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--interleaved-vigenere",
+      "trial": "interleaved-vigenere__RsGcrb3",
+      "task": "terminal-bench/interleaved-vigenere",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--interleaved-vigenere--effort-9569-r1",
+      "trial": "interleaved-vigenere__c7t5Vhg",
+      "task": "terminal-bench/interleaved-vigenere",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--interleaved-vigenere--effort-9569-r2",
+      "trial": "interleaved-vigenere__WvzGv2D",
+      "task": "terminal-bench/interleaved-vigenere",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--layout-config-recreation",
+      "trial": "layout-config-recreation__CJ76ek5",
+      "task": "terminal-bench/layout-config-recreation",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--medical-claims-processing",
+      "trial": "medical-claims-processing__xRGX835",
+      "task": "terminal-bench/medical-claims-processing",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--mvcc-lsm-compaction",
+      "trial": "mvcc-lsm-compaction__nhUf8R2",
+      "task": "terminal-bench/mvcc-lsm-compaction",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--react-lead-form",
+      "trial": "react-lead-form__b2MsQ4F",
+      "task": "terminal-bench/react-lead-form",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--retro-console-soc",
+      "trial": "retro-console-soc__zSmxL3Z",
+      "task": "terminal-bench/retro-console-soc",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--roy-polymorph-cn",
+      "trial": "roy-polymorph-cn__De3ie25",
+      "task": "terminal-bench/roy-polymorph-cn",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--session-window-debug",
+      "trial": "session-window-debug__joa7QeZ",
+      "task": "terminal-bench/session-window-debug",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--sglang-qwen-burst",
+      "trial": "sglang-qwen-burst__ioERXod",
+      "task": "terminal-bench/sglang-qwen-burst",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--takens-embedding-lean",
+      "trial": "takens-embedding-lean__N4BtTbm",
+      "task": "terminal-bench/takens-embedding-lean",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--vba-userform-port",
+      "trial": "vba-userform-port__UFHaKKE",
+      "task": "terminal-bench/vba-userform-port",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--vba-userform-port--effort-9569-r1",
+      "trial": "vba-userform-port__GDgw63Z",
+      "task": "terminal-bench/vba-userform-port",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--vba-userform-port--effort-9569-r2",
+      "trial": "vba-userform-port__x6Tgz87",
+      "task": "terminal-bench/vba-userform-port",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--vba-userform-port--effort-9569-r3",
+      "trial": "vba-userform-port__icxuPBa",
+      "task": "terminal-bench/vba-userform-port",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--vllm-deepseek-streaming",
+      "trial": "vllm-deepseek-streaming__usfxVic",
+      "task": "terminal-bench/vllm-deepseek-streaming",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--wal-recovery-ordering",
+      "trial": "wal-recovery-ordering__BYcFKPX",
+      "task": "terminal-bench/wal-recovery-ordering",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--interleaved-vigenere",
+      "trial": "interleaved-vigenere__yfy8vrD",
+      "task": "terminal-bench/interleaved-vigenere",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--interleaved-vigenere--effort-9569-r1",
+      "trial": "interleaved-vigenere__7e5hUoG",
+      "task": "terminal-bench/interleaved-vigenere",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--interleaved-vigenere--effort-9569-r2",
+      "trial": "interleaved-vigenere__dbkGkGd",
+      "task": "terminal-bench/interleaved-vigenere",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--vba-userform-port",
+      "trial": "vba-userform-port__EumaQXp",
+      "task": "terminal-bench/vba-userform-port",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--vba-userform-port--effort-9569-r1",
+      "trial": "vba-userform-port__8PPMh2Z",
+      "task": "terminal-bench/vba-userform-port",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--vba-userform-port--effort-9569-r2",
+      "trial": "vba-userform-port__ZAKo38r",
+      "task": "terminal-bench/vba-userform-port",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v4--atrx-vep-crispr",
+      "trial": "atrx-vep-crispr__n56Tmj4",
+      "task": "terminal-bench/atrx-vep-crispr",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v4--mvcc-lsm-compaction",
+      "trial": "mvcc-lsm-compaction__JiQV4ft",
+      "task": "terminal-bench/mvcc-lsm-compaction",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v5--atrx-vep-crispr",
+      "trial": "atrx-vep-crispr__n5F2AiC",
+      "task": "terminal-bench/atrx-vep-crispr",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v5--cargo-flight-dispatch",
+      "trial": "cargo-flight-dispatch__kS32Mq7",
+      "task": "terminal-bench/cargo-flight-dispatch",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v6--atrx-vep-crispr",
+      "trial": "atrx-vep-crispr__dQsvJqp",
+      "task": "terminal-bench/atrx-vep-crispr",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v6--cargo-flight-dispatch",
+      "trial": "cargo-flight-dispatch__GEa4vKX",
+      "task": "terminal-bench/cargo-flight-dispatch",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v6--coq-block-bound",
+      "trial": "coq-block-bound__Mu8ygpJ",
+      "task": "terminal-bench/coq-block-bound",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v7--bun-sourcemap-leak--v10-persist-9570-r1",
+      "trial": "bun-sourcemap-leak__KSe7EpL",
+      "task": "terminal-bench/bun-sourcemap-leak",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v7--cargo-flight-dispatch--v10-persist-9570-r1",
+      "trial": "cargo-flight-dispatch__eVK5hHc",
+      "task": "terminal-bench/cargo-flight-dispatch",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v7--mvcc-lsm-compaction--v10-persist-9570-r1",
+      "trial": "mvcc-lsm-compaction__JsFGzzJ",
+      "task": "terminal-bench/mvcc-lsm-compaction",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v8--bun-sourcemap-leak--v8-persist-9570-ca-r1",
+      "trial": "bun-sourcemap-leak__F4t2d8w",
+      "task": "terminal-bench/bun-sourcemap-leak",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v8--bun-sourcemap-leak--v8-persist-9570-ca-r2",
+      "trial": "bun-sourcemap-leak__YgVxiUg",
+      "task": "terminal-bench/bun-sourcemap-leak",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v8--bun-sourcemap-leak--v8-persist-9570-ca-r3",
+      "trial": "bun-sourcemap-leak__AhfCw5c",
+      "task": "terminal-bench/bun-sourcemap-leak",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v8--cargo-flight-dispatch--v8-persist-9570-r2",
+      "trial": "cargo-flight-dispatch__jTTHMeh",
+      "task": "terminal-bench/cargo-flight-dispatch",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v8--cargo-flight-dispatch--v8-persist-9570-r3",
+      "trial": "cargo-flight-dispatch__kzGkiRi",
+      "task": "terminal-bench/cargo-flight-dispatch",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v8--cargo-flight-dispatch--v8-persist-9570-r4",
+      "trial": "cargo-flight-dispatch__gsjsQr3",
+      "task": "terminal-bench/cargo-flight-dispatch",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9--interleaved-vigenere--effort-9569-r1",
+      "trial": "interleaved-vigenere__tFzU3sd",
+      "task": "terminal-bench/interleaved-vigenere",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9--interleaved-vigenere--effort-9569-r2",
+      "trial": "interleaved-vigenere__JQtzetw",
+      "task": "terminal-bench/interleaved-vigenere",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9--vba-userform-port--effort-9569-r1",
+      "trial": "vba-userform-port__hZxyDD4",
+      "task": "terminal-bench/vba-userform-port",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9--vba-userform-port--effort-9569-r2",
+      "trial": "vba-userform-port__V6oFTGN",
+      "task": "terminal-bench/vba-userform-port",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9--vba-userform-port--effort-9569-r3",
+      "trial": "vba-userform-port__dU5fpSE",
+      "task": "terminal-bench/vba-userform-port",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--atrx-vep-crispr--escalate-9571-r1",
+      "trial": "atrx-vep-crispr__RQM3iFa",
+      "task": "terminal-bench/atrx-vep-crispr",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--atrx-vep-crispr--escalate-9571b-r1",
+      "trial": "atrx-vep-crispr__evQzELY",
+      "task": "terminal-bench/atrx-vep-crispr",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--atrx-vep-crispr--escalate-9571b-r2",
+      "trial": "atrx-vep-crispr__ykHsy4X",
+      "task": "terminal-bench/atrx-vep-crispr",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--atrx-vep-crispr--escalate-9571b-r3",
+      "trial": "atrx-vep-crispr__Znd6Xna",
+      "task": "terminal-bench/atrx-vep-crispr",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--cargo-flight-dispatch--escalate-9571b-r1",
+      "trial": "cargo-flight-dispatch__usYEzUQ",
+      "task": "terminal-bench/cargo-flight-dispatch",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--cargo-flight-dispatch--escalate-9571b-r2",
+      "trial": "cargo-flight-dispatch__7xHzsYu",
+      "task": "terminal-bench/cargo-flight-dispatch",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--cargo-flight-dispatch--escalate-9571b-r3",
+      "trial": "cargo-flight-dispatch__osWtVpd",
+      "task": "terminal-bench/cargo-flight-dispatch",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--cargo-flight-dispatch--escalate-9571c-r1",
+      "trial": "cargo-flight-dispatch__R9rUoUQ",
+      "task": "terminal-bench/cargo-flight-dispatch",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--cargo-flight-dispatch--escalate-9571c-r2",
+      "trial": "cargo-flight-dispatch__QtTUDpN",
+      "task": "terminal-bench/cargo-flight-dispatch",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--cargo-flight-dispatch--escalate-9571c-r3",
+      "trial": "cargo-flight-dispatch__6pGdAdj",
+      "task": "terminal-bench/cargo-flight-dispatch",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--wal-recovery-ordering--escalate-9571b-r1",
+      "trial": "wal-recovery-ordering__ckJ6tad",
+      "task": "terminal-bench/wal-recovery-ordering",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--wal-recovery-ordering--escalate-9571b-r2",
+      "trial": "wal-recovery-ordering__tTWCgpb",
+      "task": "terminal-bench/wal-recovery-ordering",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--wal-recovery-ordering--escalate-9571b-r3",
+      "trial": "wal-recovery-ordering__5JZLxH6",
+      "task": "terminal-bench/wal-recovery-ordering",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--luna-jev--heat-pump-warranty--luna-tb4-9583-r1",
+      "trial": "heat-pump-warranty__hJAiTCe",
+      "task": "terminal-bench/heat-pump-warranty",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--luna-jev--mvcc-lsm-compaction--luna-tb4-9583-r1",
+      "trial": "mvcc-lsm-compaction__J3pVbur",
+      "task": "terminal-bench/mvcc-lsm-compaction",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--luna-jev--wal-recovery-ordering--luna-tb4-9583-r1",
+      "trial": "wal-recovery-ordering__DxL86DR",
+      "task": "terminal-bench/wal-recovery-ordering",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--prop-1790193215184-1--interleaved-vigenere--prop-1790193215184-1-codex-r1",
+      "trial": "interleaved-vigenere__JVKX6yF",
+      "task": "terminal-bench/interleaved-vigenere",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--prop-1790193215184-1--interleaved-vigenere--prop-1790193215184-1-codex-r2",
+      "trial": "interleaved-vigenere__Encp5RY",
+      "task": "terminal-bench/interleaved-vigenere",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--prop-1790193215184-1--interleaved-vigenere--prop-1790193215184-1-codex-r3",
+      "trial": "interleaved-vigenere__hoFTsGE",
+      "task": "terminal-bench/interleaved-vigenere",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--prop-1790193215184-1-base--interleaved-vigenere--prop-1790193215184-1-codex-r1",
+      "trial": "interleaved-vigenere__3e5S6jo",
+      "task": "terminal-bench/interleaved-vigenere",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--prop-1790193215184-1-base--interleaved-vigenere--prop-1790193215184-1-codex-r2",
+      "trial": "interleaved-vigenere__aemUcnU",
+      "task": "terminal-bench/interleaved-vigenere",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--prop-1790193215184-1-base--interleaved-vigenere--prop-1790193215184-1-codex-r3",
+      "trial": "interleaved-vigenere__Uoy73ue",
+      "task": "terminal-bench/interleaved-vigenere",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "try--coder-one-tunable-luna-snapshot--20260923T162706Z",
+      "trial": "cargo-flight-dispatch__M5T7oW8",
+      "task": "terminal-bench/cargo-flight-dispatch",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "try--coder-one-tunable-luna-snapshot--20260923T162706Z",
+      "trial": "interleaved-vigenere__FryxfnM",
+      "task": "terminal-bench/interleaved-vigenere",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "try--coder-one-tunable-luna-snapshot--20260923T162706Z",
+      "trial": "risk-scorer-replay__sSqd7oF",
+      "task": "terminal-bench/risk-scorer-replay",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "try--coder-one-tunable-v7--targets-9568b",
+      "trial": "heat-pump-warranty__bgPdMox",
+      "task": "terminal-bench/heat-pump-warranty",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "try--coder-one-tunable-v7--targets-9568b",
+      "trial": "risk-scorer-replay__xWMSei4",
+      "task": "terminal-bench/risk-scorer-replay",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "try--coder-one-tunable-v7--targets-9568b",
+      "trial": "rs-archive-clone__MgL93Lo",
+      "task": "terminal-bench/rs-archive-clone",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "try--coder-one-tunable-v7--targets-9568b",
+      "trial": "sglang-qwen-burst__Unf9hcE",
+      "task": "terminal-bench/sglang-qwen-burst",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": true,
+      "error": null,
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "try--coder-one-tunable-v7--targets-9568b",
+      "trial": "wal-recovery-ordering__rojNpSF",
+      "task": "terminal-bench/wal-recovery-ordering",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "public-program-bounded": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    }
+  ]
+}

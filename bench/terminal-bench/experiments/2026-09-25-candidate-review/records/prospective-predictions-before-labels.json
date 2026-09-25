@@ -1,0 +1,122 @@
+{
+  "schema": "openagents.blind-predictions.v1",
+  "contains_grades": false,
+  "rule_commits": {
+    "source-union-v1": "263bc4c59b",
+    "source-union-v2": "686195b368"
+  },
+  "predictions": [
+    {
+      "job": "tb4--coder-one-microluna-truth-confirmation--distributed-dedup--9584-r1",
+      "trial": "distributed-dedup__vSURoBk",
+      "task": "terminal-bench/distributed-dedup",
+      "input_sha256": "4c892414f22c30954e55baeaaf2dbb1fcf01cdef85c1d4fb8edc2d9df9958e68",
+      "source_score": 0.81,
+      "report_score": 0.03,
+      "calls": {
+        "checks.final": null,
+        "verdict.combined": "unknown",
+        "source-union-v1": null,
+        "source-union-v2": "fail"
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-truth-confirmation--formal-crypto--9584-r1",
+      "trial": "formal-crypto__DjBPnEM",
+      "task": "terminal-bench/formal-crypto",
+      "input_sha256": "4e9d7eca2f6978e7fbd6474a8894f075c7277ac8fef37b56cf9fb5d2206f35ed",
+      "source_score": null,
+      "report_score": 0.71,
+      "calls": {
+        "checks.final": null,
+        "verdict.combined": "fail",
+        "source-union-v1": "fail",
+        "source-union-v2": "fail"
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-truth-confirmation--freecad-impeller--9584-r1",
+      "trial": "freecad-impeller__wy7yRPQ",
+      "task": "terminal-bench/freecad-impeller",
+      "input_sha256": "a40aa1aa16cfac6f0e350f1161623c744af40e9ca38394e83ca9677fd7e97784",
+      "source_score": 0.9,
+      "report_score": 0.02,
+      "calls": {
+        "checks.final": null,
+        "verdict.combined": "pass",
+        "source-union-v1": "fail",
+        "source-union-v2": "fail"
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-truth-confirmation--freecad-spring-clip--9584-r1",
+      "trial": "freecad-spring-clip__TSfGK3H",
+      "task": "terminal-bench/freecad-spring-clip",
+      "input_sha256": "2c61dd3f1c77164112259cd49765415d5b62d3be608dabd13d8cfdf7cf2f55f2",
+      "source_score": 0.9,
+      "report_score": 0.09,
+      "calls": {
+        "checks.final": null,
+        "verdict.combined": "pass",
+        "source-union-v1": "fail",
+        "source-union-v2": "fail"
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-truth-confirmation--math-eval-grader--9584-r1",
+      "trial": "math-eval-grader__8VqJfiN",
+      "task": "terminal-bench/math-eval-grader",
+      "input_sha256": "ecd09376632263c33861170712bf5c3ca6866678809fa818c14472b59ca23f04",
+      "source_score": 0.91,
+      "report_score": null,
+      "calls": {
+        "checks.final": "fail",
+        "verdict.combined": "fail",
+        "source-union-v1": "fail",
+        "source-union-v2": "fail"
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-truth-confirmation--pretrain-shard-corruption--9584-r1",
+      "trial": "pretrain-shard-corruption__ZeirVXN",
+      "task": "terminal-bench/pretrain-shard-corruption",
+      "input_sha256": "adef2c3b107f0088281a70661d29b28387cb415f124fa891772ddea12ba0d0ec",
+      "source_score": 0.56,
+      "report_score": 0.06,
+      "calls": {
+        "checks.final": null,
+        "verdict.combined": "unknown",
+        "source-union-v1": null,
+        "source-union-v2": null
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-truth-confirmation--shadow-relay--9584-r1",
+      "trial": "shadow-relay__QWbzYAf",
+      "task": "terminal-bench/shadow-relay",
+      "input_sha256": "21bc61e488c530a62bae76db95a989b967560feddc429a04fd443d1df3653414",
+      "source_score": null,
+      "report_score": null,
+      "calls": {
+        "checks.final": "fail",
+        "verdict.combined": "fail",
+        "source-union-v1": null,
+        "source-union-v2": null
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-truth-confirmation--vpp-loss-divergence--9584-r1",
+      "trial": "vpp-loss-divergence__j23bCmx",
+      "task": "terminal-bench/vpp-loss-divergence",
+      "input_sha256": "2d7aeab5a515cb670afeb1d23eefb90765038b728c02a681705e74f353492917",
+      "source_score": null,
+      "report_score": null,
+      "calls": {
+        "checks.final": null,
+        "verdict.combined": "fail",
+        "source-union-v1": null,
+        "source-union-v2": null
+      }
+    }
+  ]
+}

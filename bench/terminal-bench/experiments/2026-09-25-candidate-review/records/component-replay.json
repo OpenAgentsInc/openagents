@@ -1,0 +1,14 @@
+{
+  "schema": "openagents.truthful-replay.v1",
+  "trials": 317,
+  "mismatches": 0,
+  "source_commit": "4d8ec85566",
+  "rule": "public-source-or-admission-v1",
+  "signals_compared": [
+    "call",
+    "source_score",
+    "report_score"
+  ],
+  "mode": "jev off; no native inference; no credentials",
+  "records": "retained.tar.gz:component-replay/"
+}
