@@ -441,7 +441,9 @@ def job(i):
         try:
             await asyncio.sleep(60)
         finally:
-            await asyncio.sleep(0.1)
+            # Different cleanup lengths expose a second cancellation while
+            # another worker is still cleaning up.
+            await asyncio.sleep(0.01 if i == 0 else 0.1)
             note(f"cleaned {i}")
     return task
 async def main():
@@ -718,6 +720,29 @@ mod tests {
         for task in CATALOG {
             let variants: Vec<&str> = scripts(task).iter().map(|(v, _)| *v).collect();
             assert_eq!(variants, ["good", "bad"], "{}", task.id);
+        }
+    }
+
+    #[tokio::test]
+    async fn cancellation_grade_rejects_the_former_good_double_cancel_runner() {
+        let task = find("cancel-cleanup").unwrap();
+        // Restore the exact cancellation path in the former known-good fixture.
+        let previous = sources::RUN_AWAITED.replace(
+            "await asyncio.shield(asyncio.gather(*workers))",
+            "await asyncio.gather(*workers)",
+        );
+        assert_ne!(previous, sources::RUN_AWAITED);
+        for (name, source, expected) in [
+            ("shielded", sources::RUN_AWAITED, "passed"),
+            ("double-cancel", previous.as_str(), "failed"),
+            ("early-return", sources::RUN_EARLY_RETURN, "failed"),
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let work = dir.path().join("work");
+            setup(&task, &work).unwrap();
+            std::fs::write(work.join("run.py"), source).unwrap();
+            let result = grade(&task, &work, dir.path()).await;
+            assert_eq!(result.verdict, expected, "{name}: {}", result.detail);
         }
     }
 }

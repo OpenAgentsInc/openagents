@@ -129,7 +129,9 @@ async def run_tasks(
 
     workers = [asyncio.create_task(worker()) for _ in range(min(max_concurrent, len(tasks)))]
     try:
-        await asyncio.gather(*workers)
+        # The handler owns cancellation. An unshielded gather also cancels its
+        # workers, so cancelling them again can interrupt slower cleanup.
+        await asyncio.shield(asyncio.gather(*workers))
     except BaseException:
         for worker_task in workers:
             worker_task.cancel()
