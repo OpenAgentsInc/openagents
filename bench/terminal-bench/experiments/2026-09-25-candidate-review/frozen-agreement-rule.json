@@ -39,6 +39,6 @@
   "digests": {
     "crates/coder-one/src/checks/readiness.rs": "818fd5105ea0fb262bedc2ce56b3d28ab4544a22e32914420e996c2d4dba186a",
     "bench/terminal-bench/experiments/2026-09-25-candidate-review/readiness.py": "08905fd0cbc42609483de1261210e480d11e4e31ef082d36a8dbd8f9ec021a36",
-    "bench/terminal-bench/experiments/2026-09-25-candidate-review/agreement-protocol.md": "6ff1e2b3b9ca4b2fad84ae44046d2e6d96e6161723c774d7f55c59d18d0cc97b"
+    "bench/terminal-bench/experiments/2026-09-25-candidate-review/agreement-protocol.md": "a5bd88bfde2554a2b3ed4e324606f76ab9d0e8df8e22777177ace2bcc2eafaf7"
   }
 }
