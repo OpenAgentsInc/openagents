@@ -1,8 +1,8 @@
 {
   "schema": "openagents.coder-one.verify-executed-summary.v1",
   "pooled": {
-    "graded": 44,
-    "failures": 34,
+    "graded": 59,
+    "failures": 49,
     "passes": 10,
     "rejected": 0,
     "precision": {
@@ -13,14 +13,14 @@
     },
     "recall": {
       "k": 0,
-      "n": 34,
+      "n": 49,
       "value": 0.0,
       "wilson_95": [
         0.0,
-        0.1015
+        0.0727
       ]
     },
-    "ungraded": 2,
+    "ungraded": 10,
     "errors": 0
   },
   "by_set": {
@@ -48,8 +48,8 @@
       "errors": 0
     },
     "fresh": {
-      "graded": 3,
-      "failures": 3,
+      "graded": 18,
+      "failures": 18,
       "passes": 0,
       "rejected": 0,
       "precision": {
@@ -60,14 +60,14 @@
       },
       "recall": {
         "k": 0,
-        "n": 3,
+        "n": 18,
         "value": 0.0,
         "wilson_95": [
           0.0,
-          0.5615
+          0.1759
         ]
       },
-      "ungraded": 0,
+      "ungraded": 8,
       "errors": 0
     }
   },
@@ -118,7 +118,162 @@
       "ungraded": 1,
       "errors": 0
     },
+    "fresh/distributed-dedup": {
+      "graded": 3,
+      "failures": 3,
+      "passes": 0,
+      "rejected": 0,
+      "precision": {
+        "k": 0,
+        "n": 0,
+        "value": null,
+        "wilson_95": null
+      },
+      "recall": {
+        "k": 0,
+        "n": 3,
+        "value": 0.0,
+        "wilson_95": [
+          0.0,
+          0.5615
+        ]
+      },
+      "ungraded": 0,
+      "errors": 0
+    },
+    "fresh/formal-crypto": {
+      "graded": 4,
+      "failures": 4,
+      "passes": 0,
+      "rejected": 0,
+      "precision": {
+        "k": 0,
+        "n": 0,
+        "value": null,
+        "wilson_95": null
+      },
+      "recall": {
+        "k": 0,
+        "n": 4,
+        "value": 0.0,
+        "wilson_95": [
+          0.0,
+          0.4899
+        ]
+      },
+      "ungraded": 0,
+      "errors": 0
+    },
+    "fresh/freecad-impeller": {
+      "graded": 0,
+      "failures": 0,
+      "passes": 0,
+      "rejected": 0,
+      "precision": {
+        "k": 0,
+        "n": 0,
+        "value": null,
+        "wilson_95": null
+      },
+      "recall": {
+        "k": 0,
+        "n": 0,
+        "value": null,
+        "wilson_95": null
+      },
+      "ungraded": 3,
+      "errors": 0
+    },
+    "fresh/freecad-spring-clip": {
+      "graded": 0,
+      "failures": 0,
+      "passes": 0,
+      "rejected": 0,
+      "precision": {
+        "k": 0,
+        "n": 0,
+        "value": null,
+        "wilson_95": null
+      },
+      "recall": {
+        "k": 0,
+        "n": 0,
+        "value": null,
+        "wilson_95": null
+      },
+      "ungraded": 4,
+      "errors": 0
+    },
+    "fresh/math-eval-grader": {
+      "graded": 2,
+      "failures": 2,
+      "passes": 0,
+      "rejected": 0,
+      "precision": {
+        "k": 0,
+        "n": 0,
+        "value": null,
+        "wilson_95": null
+      },
+      "recall": {
+        "k": 0,
+        "n": 2,
+        "value": 0.0,
+        "wilson_95": [
+          0.0,
+          0.6576
+        ]
+      },
+      "ungraded": 1,
+      "errors": 0
+    },
+    "fresh/pretrain-shard-corruption": {
+      "graded": 3,
+      "failures": 3,
+      "passes": 0,
+      "rejected": 0,
+      "precision": {
+        "k": 0,
+        "n": 0,
+        "value": null,
+        "wilson_95": null
+      },
+      "recall": {
+        "k": 0,
+        "n": 3,
+        "value": 0.0,
+        "wilson_95": [
+          0.0,
+          0.5615
+        ]
+      },
+      "ungraded": 0,
+      "errors": 0
+    },
     "fresh/shadow-relay": {
+      "graded": 3,
+      "failures": 3,
+      "passes": 0,
+      "rejected": 0,
+      "precision": {
+        "k": 0,
+        "n": 0,
+        "value": null,
+        "wilson_95": null
+      },
+      "recall": {
+        "k": 0,
+        "n": 3,
+        "value": 0.0,
+        "wilson_95": [
+          0.0,
+          0.5615
+        ]
+      },
+      "ungraded": 0,
+      "errors": 0
+    },
+    "fresh/vpp-loss-divergence": {
       "graded": 3,
       "failures": 3,
       "passes": 0,
@@ -143,17 +298,36 @@
     }
   },
   "verdicts": {
-    "ok": 107,
+    "ok": 116,
     "regressed": 0,
-    "not_a_regression": 1,
+    "not_a_regression": 7,
     "unknown": 0
   },
   "rejected": [],
   "keep_best": {
-    "loops": 13,
-    "replays_matching_record": 12,
+    "loops": 20,
+    "replays_matching_record": 18,
     "changed": 0,
     "decisions": [
+      {
+        "task": "distributed-dedup",
+        "trial": "distributed-dedup__vSURoBk",
+        "lean": "lean-1",
+        "recorded": 2,
+        "replayed_without_rule": 2,
+        "replay_matches_record": true,
+        "with_rule": 2,
+        "changed": false,
+        "rejected_sessions": [],
+        "sessions_measured": [
+          1,
+          2
+        ],
+        "rewards": {
+          "1": 0.0,
+          "2": 0.0
+        }
+      },
       {
         "task": "embedding-drift-monitor",
         "trial": "embedding-drift-monitor__6zRjd9n",
@@ -266,6 +440,105 @@
         "rewards": {
           "1": 1.0,
           "2": 1.0
+        }
+      },
+      {
+        "task": "formal-crypto",
+        "trial": "formal-crypto__DjBPnEM",
+        "lean": "lean-1",
+        "recorded": 3,
+        "replayed_without_rule": 3,
+        "replay_matches_record": true,
+        "with_rule": 3,
+        "changed": false,
+        "rejected_sessions": [],
+        "sessions_measured": [
+          1,
+          2,
+          3
+        ],
+        "rewards": {
+          "1": 0.0,
+          "2": 0.0,
+          "3": 0.0
+        }
+      },
+      {
+        "task": "freecad-impeller",
+        "trial": "freecad-impeller__wy7yRPQ",
+        "lean": "lean-1",
+        "recorded": 2,
+        "replayed_without_rule": 2,
+        "replay_matches_record": true,
+        "with_rule": 2,
+        "changed": false,
+        "rejected_sessions": [],
+        "sessions_measured": [
+          1,
+          2
+        ],
+        "rewards": {
+          "1": null,
+          "2": null
+        }
+      },
+      {
+        "task": "freecad-spring-clip",
+        "trial": "freecad-spring-clip__TSfGK3H",
+        "lean": "lean-1",
+        "recorded": 3,
+        "replayed_without_rule": 3,
+        "replay_matches_record": true,
+        "with_rule": 3,
+        "changed": false,
+        "rejected_sessions": [],
+        "sessions_measured": [
+          1,
+          2,
+          3
+        ],
+        "rewards": {
+          "1": null,
+          "2": null,
+          "3": null
+        }
+      },
+      {
+        "task": "math-eval-grader",
+        "trial": "math-eval-grader__8VqJfiN",
+        "lean": "lean-1",
+        "recorded": 2,
+        "replayed_without_rule": 2,
+        "replay_matches_record": true,
+        "with_rule": 2,
+        "changed": false,
+        "rejected_sessions": [],
+        "sessions_measured": [
+          1,
+          2
+        ],
+        "rewards": {
+          "1": null,
+          "2": 0.0
+        }
+      },
+      {
+        "task": "pretrain-shard-corruption",
+        "trial": "pretrain-shard-corruption__ZeirVXN",
+        "lean": "lean-1",
+        "recorded": 2,
+        "replayed_without_rule": 2,
+        "replay_matches_record": true,
+        "with_rule": 2,
+        "changed": false,
+        "rejected_sessions": [],
+        "sessions_measured": [
+          1,
+          2
+        ],
+        "rewards": {
+          "1": 0.0,
+          "2": 0.0
         }
       },
       {
@@ -385,6 +658,25 @@
       {
         "task": "shadow-relay",
         "trial": "shadow-relay__QWbzYAf",
+        "lean": "lean-1",
+        "recorded": 2,
+        "replayed_without_rule": 1,
+        "replay_matches_record": false,
+        "with_rule": 1,
+        "changed": false,
+        "rejected_sessions": [],
+        "sessions_measured": [
+          1,
+          2
+        ],
+        "rewards": {
+          "1": 0.0,
+          "2": 0.0
+        }
+      },
+      {
+        "task": "vpp-loss-divergence",
+        "trial": "vpp-loss-divergence__j23bCmx",
         "lean": "lean-1",
         "recorded": 2,
         "replayed_without_rule": 1,
