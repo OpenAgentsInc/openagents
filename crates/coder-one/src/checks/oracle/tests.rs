@@ -1046,3 +1046,19 @@ async fn a_named_directory_gives_the_writer_its_files_heads() {
     );
     assert!(inputs.iter().any(|i| i.path.ends_with("small.csv")));
 }
+
+#[test]
+fn a_command_the_instruction_calls_a_specification_is_a_reference() {
+    let instruction = "Repair `/app/tool` so it rebuilds the report. You can probe production \
+        behaviour by using the diagnostic black-box command named `legacy-score` that is installed \
+        in `PATH`. Treat `legacy-score` as the scorer behavior specification. Write \
+        `report.csv` with the scores.";
+    let found = super::find::find(instruction, "/app", &Default::default());
+    assert_eq!(found.references, ["legacy-score"]);
+    let plain = "Run `make-report` to build the report, then write `out.csv`.";
+    assert!(
+        super::find::find(plain, "/app", &Default::default())
+            .references
+            .is_empty()
+    );
+}

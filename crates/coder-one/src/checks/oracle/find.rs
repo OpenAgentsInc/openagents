@@ -7,7 +7,10 @@
 //! runnable file with such a name; it becomes an oracle with one case,
 //! passed on exit 0. A **reference program** is a named file whose name
 //! says it's a reference; it can't check anything on its own, so the
-//! oracle writer is told where it is.
+//! oracle writer is told where it is. So is a **reference command**: a
+//! bare command name in a sentence that calls it a reference, a
+//! specification, or a black box, such as a diagnostic program installed
+//! in `PATH`.
 //!
 //! A file the task asks to write, fix, or implement is the code under
 //! test, never a checker.
@@ -41,6 +44,41 @@ pub const CHECKER_WORDS: &[&str] = &[
 
 /// Name parts that say a file is a reference to compare with.
 pub const REFERENCE_WORDS: &[&str] = &["reference", "ref", "oracle", "golden"];
+
+/// Phrases in a sentence that make a command it names a reference: a
+/// program whose behavior the solution must match.
+pub const REFERENCE_CUES: &[&str] = &[
+    "reference",
+    "specification",
+    "black-box",
+    "black box",
+    "blackbox",
+    "oracle",
+    "ground truth",
+    "diagnostic",
+];
+
+/// Extensions that mark a span as a data or source file, not a command.
+const FILE_EXTENSIONS: &[&str] = &[
+    "py", "sh", "csv", "json", "jsonl", "txt", "md", "tsv", "yaml", "yml", "toml", "sql", "sqlite",
+    "db", "log", "html", "xml", "js", "rs", "c", "h", "go", "npy", "npz",
+];
+
+/// Whether `span` looks like a bare command name: a single word of
+/// letters, digits, dashes, and underscores, not a path or a file name.
+fn bare_command(span: &str) -> bool {
+    let span = span.trim();
+    !span.is_empty()
+        && span.len() <= 64
+        && span.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
+        && span
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+        && !span
+            .rsplit_once('.')
+            .is_some_and(|(_, ext)| FILE_EXTENSIONS.contains(&ext.to_lowercase().as_str()))
+        && span.contains(['-', '_'])
+}
 
 /// Words in a sentence that make the paths it names the code under test.
 const WORK_WORDS: &[&str] = &[
@@ -238,6 +276,25 @@ pub fn find(instruction: &str, workdir: &str, pristine: &Pristine) -> Found {
                     .considered
                     .push(format!("{path}: named like a checker, but not a program")),
             }
+        }
+    }
+    // 3. Commands a sentence calls a reference, a specification, or a
+    // black box, such as a diagnostic program installed in PATH. The writer
+    // is told the command's name; whether it runs is the writer's to see.
+    for unit in &units {
+        let lower = unit.text.to_lowercase();
+        if !REFERENCE_CUES.iter().any(|cue| lower.contains(cue)) {
+            continue;
+        }
+        for (_, span) in extract::spans(&unit.text) {
+            let name = span.trim().to_string();
+            if !bare_command(&name) || found.references.contains(&name) {
+                continue;
+            }
+            found.references.push(name.clone());
+            found.considered.push(format!(
+                "{name}: a command the instruction calls a reference or a specification"
+            ));
         }
     }
     found

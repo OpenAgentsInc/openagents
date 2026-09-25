@@ -174,7 +174,16 @@ pub fn brief(spec: &Spec) -> Brief {
             text: spec
                 .references
                 .iter()
-                .map(|r| format!("- {r}"))
+                .map(|r| {
+                    if r.contains('/') {
+                        format!("- {r}")
+                    } else {
+                        format!(
+                            "- `{r}`, a command installed in PATH: compare the solution's \
+                             behavior with it on many random inputs of the task's stated formats"
+                        )
+                    }
+                })
                 .collect::<Vec<_>>()
                 .join("\n"),
         });
