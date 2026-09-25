@@ -149,3 +149,21 @@ existing green checks do not establish pass. Freeze the chosen arm and threshold
 in a separate artifact and commit before comparison. Report all development
 alternatives, including the audit's additionally inspected 0.1–0.6 cutoffs, which
 are excluded from this selection rule.
+
+## Joint calibration amendment after the negative V1 comparison
+
+V1 detected only four of 60 comparison failures, with two false alarms. Retain
+that result. Public executable-check calibration also lacked enough failure
+calls. Before opening the eight fresh grades, freeze a second procedure that
+selects the source and audit cutoffs jointly. Each pair comes from the original
+five-cutoff grid. Require at least five combined calls and 90% combined precision;
+maximize correct failure detections, then minimize false alarms, then prefer the
+higher source and audit cutoffs. Use the original Astra questions, unchanged
+records, and calibration labels only. This selects source 0.7 and audit 0.5:
+28 correct failure calls and three false alarms across ten calibration tasks.
+
+This amendment is adaptive development following a negative comparison. The
+32-task historical partition is reused validation and cannot establish an
+untouched confirmation by itself. Keep V1, V2, and prospective results separate.
+The fresh eight-task grades remain unopened at this freeze. Do not tune V2
+against either its historical results or the fresh grades.

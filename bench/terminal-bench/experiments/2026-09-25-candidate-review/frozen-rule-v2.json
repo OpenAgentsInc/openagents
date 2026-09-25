@@ -1,0 +1,235 @@
+{
+  "schema": "openagents.truthful-checks-rule.v2",
+  "selection_partition": "calibration",
+  "source_review": {
+    "model": "gpt-6-astra",
+    "effort": "high",
+    "scope": false,
+    "threshold": 0.7,
+    "record": "astra"
+  },
+  "report_audit": {
+    "threshold": 0.5
+  },
+  "combination": "fail if source review or report audit reaches its threshold; otherwise unknown",
+  "calibration": {
+    "trials": 132,
+    "task_groups": 26,
+    "failures": 62,
+    "true_fail_calls": 28,
+    "false_fail_calls": 3,
+    "missing_source_packets": 38
+  },
+  "selection_note": "Adaptive second procedure after the negative V1 comparison. Select the pair jointly from the original 5 by 5 grid, requiring at least five combined fail calls and 90% combined precision. Maximize correct fail calls, then minimize false alarms, then prefer higher source and audit cutoffs. Original two-question Astra source score and report audit remain fixed. Historical validation is reused, not pristine. Fresh eight-task grades remain unopened.",
+  "comparison": "185 historical trials on 32 task groups held out from this fit; previously inspected report-only comparison, not pristine validation",
+  "prospective": "Eight fresh Microluna task groups, with known prior shadow-relay exposure reported separately",
+  "frozen_source_commit": "c430f93487",
+  "digests": {
+    "crates/coder-one/src/checks/review.rs": "1857c95faf8fbacf7f86505f0a720bd1da04636390a143f49187d03f52df368d",
+    "crates/coder-one/src/checks/report_audit.rs": "bd5d7b78656cfa569e426ec4e5181c4dd686774c7c9c6118fdcb4111a9a956fe",
+    "bench/terminal-bench/experiments/2026-09-25-candidate-review/prepare.py": "7b98268fcea766881ba427b3d96726c046777b461189d8479c6bb8251fe69658",
+    "bench/terminal-bench/experiments/2026-09-25-candidate-review/protocol.md": "815f2fae6847897d6ebec1662a2b45cce453de3616e0b7ff01f0e5a53c976b96"
+  },
+  "calibration_grid": [
+    {
+      "source": 0.5,
+      "audit": 0.5,
+      "calls": 35,
+      "true_failures": 31,
+      "false_alarms": 4,
+      "precision": 0.8857142857142857
+    },
+    {
+      "source": 0.5,
+      "audit": 0.7,
+      "calls": 32,
+      "true_failures": 28,
+      "false_alarms": 4,
+      "precision": 0.875
+    },
+    {
+      "source": 0.5,
+      "audit": 0.8,
+      "calls": 31,
+      "true_failures": 27,
+      "false_alarms": 4,
+      "precision": 0.8709677419354839
+    },
+    {
+      "source": 0.5,
+      "audit": 0.9,
+      "calls": 31,
+      "true_failures": 27,
+      "false_alarms": 4,
+      "precision": 0.8709677419354839
+    },
+    {
+      "source": 0.5,
+      "audit": 0.95,
+      "calls": 31,
+      "true_failures": 27,
+      "false_alarms": 4,
+      "precision": 0.8709677419354839
+    },
+    {
+      "source": 0.7,
+      "audit": 0.5,
+      "calls": 31,
+      "true_failures": 28,
+      "false_alarms": 3,
+      "precision": 0.9032258064516129
+    },
+    {
+      "source": 0.7,
+      "audit": 0.7,
+      "calls": 28,
+      "true_failures": 25,
+      "false_alarms": 3,
+      "precision": 0.8928571428571429
+    },
+    {
+      "source": 0.7,
+      "audit": 0.8,
+      "calls": 27,
+      "true_failures": 24,
+      "false_alarms": 3,
+      "precision": 0.8888888888888888
+    },
+    {
+      "source": 0.7,
+      "audit": 0.9,
+      "calls": 27,
+      "true_failures": 24,
+      "false_alarms": 3,
+      "precision": 0.8888888888888888
+    },
+    {
+      "source": 0.7,
+      "audit": 0.95,
+      "calls": 27,
+      "true_failures": 24,
+      "false_alarms": 3,
+      "precision": 0.8888888888888888
+    },
+    {
+      "source": 0.8,
+      "audit": 0.5,
+      "calls": 27,
+      "true_failures": 24,
+      "false_alarms": 3,
+      "precision": 0.8888888888888888
+    },
+    {
+      "source": 0.8,
+      "audit": 0.7,
+      "calls": 24,
+      "true_failures": 21,
+      "false_alarms": 3,
+      "precision": 0.875
+    },
+    {
+      "source": 0.8,
+      "audit": 0.8,
+      "calls": 23,
+      "true_failures": 20,
+      "false_alarms": 3,
+      "precision": 0.8695652173913043
+    },
+    {
+      "source": 0.8,
+      "audit": 0.9,
+      "calls": 23,
+      "true_failures": 20,
+      "false_alarms": 3,
+      "precision": 0.8695652173913043
+    },
+    {
+      "source": 0.8,
+      "audit": 0.95,
+      "calls": 23,
+      "true_failures": 20,
+      "false_alarms": 3,
+      "precision": 0.8695652173913043
+    },
+    {
+      "source": 0.9,
+      "audit": 0.5,
+      "calls": 13,
+      "true_failures": 13,
+      "false_alarms": 0,
+      "precision": 1.0
+    },
+    {
+      "source": 0.9,
+      "audit": 0.7,
+      "calls": 10,
+      "true_failures": 10,
+      "false_alarms": 0,
+      "precision": 1.0
+    },
+    {
+      "source": 0.9,
+      "audit": 0.8,
+      "calls": 8,
+      "true_failures": 8,
+      "false_alarms": 0,
+      "precision": 1.0
+    },
+    {
+      "source": 0.9,
+      "audit": 0.9,
+      "calls": 8,
+      "true_failures": 8,
+      "false_alarms": 0,
+      "precision": 1.0
+    },
+    {
+      "source": 0.9,
+      "audit": 0.95,
+      "calls": 8,
+      "true_failures": 8,
+      "false_alarms": 0,
+      "precision": 1.0
+    },
+    {
+      "source": 0.95,
+      "audit": 0.5,
+      "calls": 11,
+      "true_failures": 11,
+      "false_alarms": 0,
+      "precision": 1.0
+    },
+    {
+      "source": 0.95,
+      "audit": 0.7,
+      "calls": 7,
+      "true_failures": 7,
+      "false_alarms": 0,
+      "precision": 1.0
+    },
+    {
+      "source": 0.95,
+      "audit": 0.8,
+      "calls": 4,
+      "true_failures": 4,
+      "false_alarms": 0,
+      "precision": 1.0
+    },
+    {
+      "source": 0.95,
+      "audit": 0.9,
+      "calls": 4,
+      "true_failures": 4,
+      "false_alarms": 0,
+      "precision": 1.0
+    },
+    {
+      "source": 0.95,
+      "audit": 0.95,
+      "calls": 4,
+      "true_failures": 4,
+      "false_alarms": 0,
+      "precision": 1.0
+    }
+  ]
+}
