@@ -1,0 +1,2524 @@
+{
+  "partition": "calibration",
+  "feature": "readiness",
+  "trials": 132,
+  "tasks": 26,
+  "available": 132,
+  "chosen": null,
+  "threshold_table": {
+    "0.5": {
+      "fail_precision": {
+        "correct": 17,
+        "total": 29,
+        "value": 0.5862068965517241,
+        "wilson_95": [
+          0.40737528478515245,
+          0.7448706472035449
+        ]
+      },
+      "failure_recall": {
+        "correct": 17,
+        "total": 62,
+        "value": 0.27419354838709675,
+        "wilson_95": [
+          0.17880918599092133,
+          0.39592775843327255
+        ]
+      },
+      "pass_precision": {
+        "correct": 0,
+        "total": 0,
+        "value": null,
+        "wilson_95": null
+      },
+      "unknown": 103
+    },
+    "0.7": {
+      "fail_precision": {
+        "correct": 12,
+        "total": 20,
+        "value": 0.6,
+        "wilson_95": [
+          0.3865779423152061,
+          0.7811960325858074
+        ]
+      },
+      "failure_recall": {
+        "correct": 12,
+        "total": 62,
+        "value": 0.1935483870967742,
+        "wilson_95": [
+          0.11433696420146605,
+          0.3085203175170827
+        ]
+      },
+      "pass_precision": {
+        "correct": 0,
+        "total": 0,
+        "value": null,
+        "wilson_95": null
+      },
+      "unknown": 112
+    },
+    "0.8": {
+      "fail_precision": {
+        "correct": 11,
+        "total": 16,
+        "value": 0.6875,
+        "wilson_95": [
+          0.4440393186673406,
+          0.8583556494803894
+        ]
+      },
+      "failure_recall": {
+        "correct": 11,
+        "total": 62,
+        "value": 0.1774193548387097,
+        "wilson_95": [
+          0.10206333434361749,
+          0.2904180148338023
+        ]
+      },
+      "pass_precision": {
+        "correct": 0,
+        "total": 0,
+        "value": null,
+        "wilson_95": null
+      },
+      "unknown": 116
+    },
+    "0.9": {
+      "fail_precision": {
+        "correct": 8,
+        "total": 10,
+        "value": 0.8,
+        "wilson_95": [
+          0.49015684672072335,
+          0.9433190520193067
+        ]
+      },
+      "failure_recall": {
+        "correct": 8,
+        "total": 62,
+        "value": 0.12903225806451613,
+        "wilson_95": [
+          0.06685798258498754,
+          0.23449556896904517
+        ]
+      },
+      "pass_precision": {
+        "correct": 0,
+        "total": 0,
+        "value": null,
+        "wilson_95": null
+      },
+      "unknown": 122
+    },
+    "0.95": {
+      "fail_precision": {
+        "correct": 5,
+        "total": 6,
+        "value": 0.8333333333333334,
+        "wilson_95": [
+          0.43649056343635395,
+          0.9699474141282697
+        ]
+      },
+      "failure_recall": {
+        "correct": 5,
+        "total": 62,
+        "value": 0.08064516129032258,
+        "wilson_95": [
+          0.034937831855833754,
+          0.17528792207481192
+        ]
+      },
+      "pass_precision": {
+        "correct": 0,
+        "total": 0,
+        "value": null,
+        "wilson_95": null
+      },
+      "unknown": 126
+    }
+  },
+  "known_cost_usd": 22.33042,
+  "predictions": [
+    {
+      "job": "extended--coder-one-tunable--git-leak-recovery",
+      "trial": "git-leak-recovery__ZeVnjRW",
+      "task": "terminal-bench/git-leak-recovery",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.35,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.04533,
+      "milliseconds": 24825
+    },
+    {
+      "job": "extended--coder-one-tunable--git-leak-recovery-2",
+      "trial": "git-leak-recovery__jjGzjpC",
+      "task": "terminal-bench/git-leak-recovery",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.35,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.04452,
+      "milliseconds": 23201
+    },
+    {
+      "job": "extended--coder-one-tunable--git-leak-recovery-3",
+      "trial": "git-leak-recovery__9ihLMP8",
+      "task": "terminal-bench/git-leak-recovery",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "readiness": null
+      },
+      "score": 0.4,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.04855,
+      "milliseconds": 24972
+    },
+    {
+      "job": "extended--coder-one-tunable-luna--git-leak-recovery",
+      "trial": "git-leak-recovery__g6yGQSJ",
+      "task": "terminal-bench/git-leak-recovery",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.3,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.03369,
+      "milliseconds": 20000
+    },
+    {
+      "job": "extended--coder-one-tunable-luna--git-leak-recovery-2",
+      "trial": "git-leak-recovery__G5NZ2hs",
+      "task": "terminal-bench/git-leak-recovery",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "readiness": null
+      },
+      "score": 0.25,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.03338,
+      "milliseconds": 18690
+    },
+    {
+      "job": "extended--coder-one-tunable-luna--git-leak-recovery-3",
+      "trial": "git-leak-recovery__NQpZdD7",
+      "task": "terminal-bench/git-leak-recovery",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.25,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.03392,
+      "milliseconds": 18085
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-pack--git-leak-recovery",
+      "trial": "git-leak-recovery__THsKzXF",
+      "task": "terminal-bench/git-leak-recovery",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.23,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.03626,
+      "milliseconds": 19862
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-pack--git-leak-recovery-2",
+      "trial": "git-leak-recovery__9nT2jNY",
+      "task": "terminal-bench/git-leak-recovery",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "readiness": null
+      },
+      "score": 0.35,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.03713,
+      "milliseconds": 21119
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-pack--git-leak-recovery-3",
+      "trial": "git-leak-recovery__pWCWrVm",
+      "task": "terminal-bench/git-leak-recovery",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.25,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.03686,
+      "milliseconds": 20309
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-v2--git-leak-recovery",
+      "trial": "git-leak-recovery__gRXY9pH",
+      "task": "terminal-bench/git-leak-recovery",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.3,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.03202,
+      "milliseconds": 16869
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-v2--git-leak-recovery-2",
+      "trial": "git-leak-recovery__cTpAoFS",
+      "task": "terminal-bench/git-leak-recovery",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.25,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.03528,
+      "milliseconds": 19003
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-v2--git-leak-recovery-3",
+      "trial": "git-leak-recovery__WKEnyYD",
+      "task": "terminal-bench/git-leak-recovery",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "readiness": null
+      },
+      "score": 0.25,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.05184,
+      "milliseconds": 28962
+    },
+    {
+      "job": "panel--coder-one-tunable--fix-code-vulnerability",
+      "trial": "fix-code-vulnerability__9f87Mzv",
+      "task": "terminal-bench/fix-code-vulnerability",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "readiness": null
+      },
+      "score": 0.22,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.05173,
+      "milliseconds": 22706
+    },
+    {
+      "job": "panel--coder-one-tunable--fix-code-vulnerability-2",
+      "trial": "fix-code-vulnerability__SrxyDDg",
+      "task": "terminal-bench/fix-code-vulnerability",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.24,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.05907,
+      "milliseconds": 27276
+    },
+    {
+      "job": "panel--coder-one-tunable--fix-code-vulnerability-3",
+      "trial": "fix-code-vulnerability__vSiEWQt",
+      "task": "terminal-bench/fix-code-vulnerability",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.23,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.05726,
+      "milliseconds": 27409
+    },
+    {
+      "job": "panel--coder-one-tunable--fix-git",
+      "trial": "fix-git__k9rT6Bx",
+      "task": "terminal-bench/fix-git",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.16,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.03688,
+      "milliseconds": 18858
+    },
+    {
+      "job": "panel--coder-one-tunable--fix-git-2",
+      "trial": "fix-git__YxBWCQJ",
+      "task": "terminal-bench/fix-git",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.18,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.03738,
+      "milliseconds": 19058
+    },
+    {
+      "job": "panel--coder-one-tunable--fix-git-3",
+      "trial": "fix-git__MX25s8B",
+      "task": "terminal-bench/fix-git",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.22,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.03848,
+      "milliseconds": 20597
+    },
+    {
+      "job": "panel--coder-one-tunable-luna--fix-code-vulnerability",
+      "trial": "fix-code-vulnerability__HTsLxAt",
+      "task": "terminal-bench/fix-code-vulnerability",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "readiness": null
+      },
+      "score": 0.24,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.05331,
+      "milliseconds": 24692
+    },
+    {
+      "job": "panel--coder-one-tunable-luna--fix-code-vulnerability-2",
+      "trial": "fix-code-vulnerability__H3bdbdN",
+      "task": "terminal-bench/fix-code-vulnerability",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "readiness": null
+      },
+      "score": 0.28,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.04824,
+      "milliseconds": 21813
+    },
+    {
+      "job": "panel--coder-one-tunable-luna--fix-code-vulnerability-3",
+      "trial": "fix-code-vulnerability__VpQLb2b",
+      "task": "terminal-bench/fix-code-vulnerability",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "readiness": null
+      },
+      "score": 0.25,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.0522,
+      "milliseconds": 24075
+    },
+    {
+      "job": "panel--coder-one-tunable-luna--fix-git",
+      "trial": "fix-git__9288jhQ",
+      "task": "terminal-bench/fix-git",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "readiness": null
+      },
+      "score": 0.2,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.03028,
+      "milliseconds": 17652
+    },
+    {
+      "job": "panel--coder-one-tunable-luna--fix-git-2",
+      "trial": "fix-git__24DAJ4U",
+      "task": "terminal-bench/fix-git",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "readiness": null
+      },
+      "score": 0.25,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.02699,
+      "milliseconds": 14871
+    },
+    {
+      "job": "panel--coder-one-tunable-luna--fix-git-3",
+      "trial": "fix-git__C4uRAH7",
+      "task": "terminal-bench/fix-git",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "readiness": null
+      },
+      "score": 0.22,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.03107,
+      "milliseconds": 16907
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-pack--fix-code-vulnerability",
+      "trial": "fix-code-vulnerability__pbLhhDi",
+      "task": "terminal-bench/fix-code-vulnerability",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.28,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.05325,
+      "milliseconds": 23912
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-pack--fix-code-vulnerability-2",
+      "trial": "fix-code-vulnerability__9PTAuKy",
+      "task": "terminal-bench/fix-code-vulnerability",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.22,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.0558,
+      "milliseconds": 26334
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-pack--fix-code-vulnerability-3",
+      "trial": "fix-code-vulnerability__mBKc6Zq",
+      "task": "terminal-bench/fix-code-vulnerability",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "readiness": null
+      },
+      "score": 0.3,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.04994,
+      "milliseconds": 22709
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-pack--fix-git",
+      "trial": "fix-git__F9C4oF8",
+      "task": "terminal-bench/fix-git",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "readiness": null
+      },
+      "score": 0.25,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.03154,
+      "milliseconds": 18851
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-pack--fix-git-2",
+      "trial": "fix-git__A9XCxQd",
+      "task": "terminal-bench/fix-git",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "readiness": null
+      },
+      "score": 0.18,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.03093,
+      "milliseconds": 67534
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-pack--fix-git-3",
+      "trial": "fix-git__2fCaBxk",
+      "task": "terminal-bench/fix-git",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.25,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.03093,
+      "milliseconds": 17165
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-v2--fix-code-vulnerability",
+      "trial": "fix-code-vulnerability__Ksgi4tX",
+      "task": "terminal-bench/fix-code-vulnerability",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "readiness": null
+      },
+      "score": 0.3,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.05097,
+      "milliseconds": 24421
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-v2--fix-code-vulnerability-2",
+      "trial": "fix-code-vulnerability__F2ywMC7",
+      "task": "terminal-bench/fix-code-vulnerability",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.25,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.04923,
+      "milliseconds": 22346
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-v2--fix-code-vulnerability-3",
+      "trial": "fix-code-vulnerability__QX76QYj",
+      "task": "terminal-bench/fix-code-vulnerability",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "readiness": null
+      },
+      "score": 0.23,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.04789,
+      "milliseconds": 22260
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-v2--fix-git",
+      "trial": "fix-git__SvUP5GM",
+      "task": "terminal-bench/fix-git",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "readiness": null
+      },
+      "score": 0.22,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.0304,
+      "milliseconds": 16663
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-v2--fix-git-2",
+      "trial": "fix-git__grhmUnf",
+      "task": "terminal-bench/fix-git",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "readiness": null
+      },
+      "score": 0.25,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.02717,
+      "milliseconds": 15340
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-v2--fix-git-3",
+      "trial": "fix-git__ufNaxMJ",
+      "task": "terminal-bench/fix-git",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "readiness": null
+      },
+      "score": 0.25,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.03066,
+      "milliseconds": 16834
+    },
+    {
+      "job": "smoke--coder-one-tunable--fix-git",
+      "trial": "fix-git__m4eoyBB",
+      "task": "terminal-bench/fix-git",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.18,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.03548,
+      "milliseconds": 18321
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--heat-pump-warranty--matched-v8-9567-r1",
+      "trial": "heat-pump-warranty__XiAF7ri",
+      "task": "terminal-bench/heat-pump-warranty",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.25,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.14961,
+      "milliseconds": 38292
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--heat-pump-warranty--matched-v8-9567-r2",
+      "trial": "heat-pump-warranty__VSFJ726",
+      "task": "terminal-bench/heat-pump-warranty",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.35,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.15962,
+      "milliseconds": 36774
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--heat-pump-warranty--matched-v8-9567-r3",
+      "trial": "heat-pump-warranty__XimLDF4",
+      "task": "terminal-bench/heat-pump-warranty",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.5,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.14734,
+      "milliseconds": 25419
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--mvcc-lsm-compaction--matched-v8-9567-r1",
+      "trial": "mvcc-lsm-compaction__s5z5Kwr",
+      "task": "terminal-bench/mvcc-lsm-compaction",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.04,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.13423,
+      "milliseconds": 32165
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--mvcc-lsm-compaction--matched-v8-9567-r2",
+      "trial": "mvcc-lsm-compaction__pkCidVR",
+      "task": "terminal-bench/mvcc-lsm-compaction",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.03,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.09687,
+      "milliseconds": 9141
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--mvcc-lsm-compaction--matched-v8-9567-r3",
+      "trial": "mvcc-lsm-compaction__4yfBDYL",
+      "task": "terminal-bench/mvcc-lsm-compaction",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.04,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.13793,
+      "milliseconds": 34651
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--wal-recovery-ordering--matched-v8-9567-r1",
+      "trial": "wal-recovery-ordering__DXqWif2",
+      "task": "terminal-bench/wal-recovery-ordering",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.08,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.15192,
+      "milliseconds": 41614
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--wal-recovery-ordering--matched-v8-9567-r2",
+      "trial": "wal-recovery-ordering__qbhxq2M",
+      "task": "terminal-bench/wal-recovery-ordering",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.1,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.17505,
+      "milliseconds": 56462
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--wal-recovery-ordering--matched-v8-9567-r3",
+      "trial": "wal-recovery-ordering__uoUwaHU",
+      "task": "terminal-bench/wal-recovery-ordering",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.1,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.18778,
+      "milliseconds": 64919
+    },
+    {
+      "job": "tb4--coder-one-tunable-v10--bun-sourcemap-leak--v10-persist-9570-r1",
+      "trial": "bun-sourcemap-leak__hTfpu6P",
+      "task": "terminal-bench/bun-sourcemap-leak",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": true,
+      "error": "Readiness assessment exceeded its 180-second deadline",
+      "known_cost_usd": null,
+      "milliseconds": 180009
+    },
+    {
+      "job": "tb4--coder-one-tunable-v10--cargo-flight-dispatch--v10-persist-9570-r1",
+      "trial": "cargo-flight-dispatch__anfUuvh",
+      "task": "terminal-bench/cargo-flight-dispatch",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "readiness": null
+      },
+      "score": 0.2,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.14691,
+      "milliseconds": 47222
+    },
+    {
+      "job": "tb4--coder-one-tunable-v10--mvcc-lsm-compaction--v10-persist-9570-r1",
+      "trial": "mvcc-lsm-compaction__cXLAxTv",
+      "task": "terminal-bench/mvcc-lsm-compaction",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.04,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.16434,
+      "milliseconds": 43043
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--atrx-vep-crispr",
+      "trial": "atrx-vep-crispr__n4pQEBK",
+      "task": "terminal-bench/atrx-vep-crispr",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "readiness": "fail"
+      },
+      "score": 0.99,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.16309,
+      "milliseconds": 68123
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--biped-contact-dynamics",
+      "trial": "biped-contact-dynamics__Cg7CqRp",
+      "task": "terminal-bench/biped-contact-dynamics",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.36,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.23435,
+      "milliseconds": 56705
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--bun-sourcemap-leak",
+      "trial": "bun-sourcemap-leak__UEEnDnL",
+      "task": "terminal-bench/bun-sourcemap-leak",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.3,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.13926,
+      "milliseconds": 58529
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--cargo-flight-dispatch",
+      "trial": "cargo-flight-dispatch__DRH9R9E",
+      "task": "terminal-bench/cargo-flight-dispatch",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "readiness": null
+      },
+      "score": 0.3,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.15354,
+      "milliseconds": 58446
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--coq-block-bound",
+      "trial": "coq-block-bound__BuaH7r9",
+      "task": "terminal-bench/coq-block-bound",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "readiness": null
+      },
+      "score": 0.02,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.42035,
+      "milliseconds": 32055
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--glycan-ms2-elucidation",
+      "trial": "glycan-ms2-elucidation__SJyggQr",
+      "task": "terminal-bench/glycan-ms2-elucidation",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.35,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.07042,
+      "milliseconds": 32443
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--heat-pump-warranty",
+      "trial": "heat-pump-warranty__AfdurXo",
+      "task": "terminal-bench/heat-pump-warranty",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.45,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.15403,
+      "milliseconds": 35079
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--hof-topology-interpenetration",
+      "trial": "hof-topology-interpenetration__Adzjrvb",
+      "task": "terminal-bench/hof-topology-interpenetration",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.3,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.09319,
+      "milliseconds": 41081
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--interleaved-vigenere",
+      "trial": "interleaved-vigenere__RsGcrb3",
+      "task": "terminal-bench/interleaved-vigenere",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.52,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.1179,
+      "milliseconds": 47064
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--interleaved-vigenere--effort-9569-r1",
+      "trial": "interleaved-vigenere__c7t5Vhg",
+      "task": "terminal-bench/interleaved-vigenere",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.42,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.11478,
+      "milliseconds": 42180
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--interleaved-vigenere--effort-9569-r2",
+      "trial": "interleaved-vigenere__WvzGv2D",
+      "task": "terminal-bench/interleaved-vigenere",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.43,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.11837,
+      "milliseconds": 45699
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--layout-config-recreation",
+      "trial": "layout-config-recreation__CJ76ek5",
+      "task": "terminal-bench/layout-config-recreation",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.43,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.56608,
+      "milliseconds": 49730
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--medical-claims-processing",
+      "trial": "medical-claims-processing__xRGX835",
+      "task": "terminal-bench/medical-claims-processing",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.42,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.26031,
+      "milliseconds": 46700
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--mvcc-lsm-compaction",
+      "trial": "mvcc-lsm-compaction__nhUf8R2",
+      "task": "terminal-bench/mvcc-lsm-compaction",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "readiness": null
+      },
+      "score": 0.06,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.12092,
+      "milliseconds": 29172
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--react-lead-form",
+      "trial": "react-lead-form__b2MsQ4F",
+      "task": "terminal-bench/react-lead-form",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.35,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.75023,
+      "milliseconds": 53710
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--retro-console-soc",
+      "trial": "retro-console-soc__zSmxL3Z",
+      "task": "terminal-bench/retro-console-soc",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.7,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.25982,
+      "milliseconds": 54457
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--roy-polymorph-cn",
+      "trial": "roy-polymorph-cn__De3ie25",
+      "task": "terminal-bench/roy-polymorph-cn",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.25,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.07258,
+      "milliseconds": 36442
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--session-window-debug",
+      "trial": "session-window-debug__joa7QeZ",
+      "task": "terminal-bench/session-window-debug",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.84,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.12267,
+      "milliseconds": 47465
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--sglang-qwen-burst",
+      "trial": "sglang-qwen-burst__ioERXod",
+      "task": "terminal-bench/sglang-qwen-burst",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.32,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.46228,
+      "milliseconds": 29430
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--takens-embedding-lean",
+      "trial": "takens-embedding-lean__N4BtTbm",
+      "task": "terminal-bench/takens-embedding-lean",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "readiness": null
+      },
+      "score": 0.1,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.48925,
+      "milliseconds": 44040
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--vba-userform-port",
+      "trial": "vba-userform-port__UFHaKKE",
+      "task": "terminal-bench/vba-userform-port",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "readiness": null
+      },
+      "score": 0.86,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.61919,
+      "milliseconds": 44423
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--vba-userform-port--effort-9569-r1",
+      "trial": "vba-userform-port__GDgw63Z",
+      "task": "terminal-bench/vba-userform-port",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.34,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.60563,
+      "milliseconds": 44183
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--vba-userform-port--effort-9569-r2",
+      "trial": "vba-userform-port__x6Tgz87",
+      "task": "terminal-bench/vba-userform-port",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "readiness": null
+      },
+      "score": 0.72,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.60834,
+      "milliseconds": 43430
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--vba-userform-port--effort-9569-r3",
+      "trial": "vba-userform-port__icxuPBa",
+      "task": "terminal-bench/vba-userform-port",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "readiness": null
+      },
+      "score": 0.36,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.63541,
+      "milliseconds": 51380
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--vllm-deepseek-streaming",
+      "trial": "vllm-deepseek-streaming__usfxVic",
+      "task": "terminal-bench/vllm-deepseek-streaming",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.33,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.45177,
+      "milliseconds": 31980
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--wal-recovery-ordering",
+      "trial": "wal-recovery-ordering__BYcFKPX",
+      "task": "terminal-bench/wal-recovery-ordering",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "readiness": null
+      },
+      "score": 0.1,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.17475,
+      "milliseconds": 53629
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--interleaved-vigenere",
+      "trial": "interleaved-vigenere__yfy8vrD",
+      "task": "terminal-bench/interleaved-vigenere",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.19,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.11944,
+      "milliseconds": 36497
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--interleaved-vigenere--effort-9569-r1",
+      "trial": "interleaved-vigenere__7e5hUoG",
+      "task": "terminal-bench/interleaved-vigenere",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.5,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.03895,
+      "milliseconds": 18478
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--interleaved-vigenere--effort-9569-r2",
+      "trial": "interleaved-vigenere__dbkGkGd",
+      "task": "terminal-bench/interleaved-vigenere",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.35,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.49493,
+      "milliseconds": 159717
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--vba-userform-port",
+      "trial": "vba-userform-port__EumaQXp",
+      "task": "terminal-bench/vba-userform-port",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.57,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.63731,
+      "milliseconds": 53063
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--vba-userform-port--effort-9569-r1",
+      "trial": "vba-userform-port__8PPMh2Z",
+      "task": "terminal-bench/vba-userform-port",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "readiness": null
+      },
+      "score": 0.43,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.61403,
+      "milliseconds": 47114
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--vba-userform-port--effort-9569-r2",
+      "trial": "vba-userform-port__ZAKo38r",
+      "task": "terminal-bench/vba-userform-port",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "readiness": null
+      },
+      "score": 0.62,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.64014,
+      "milliseconds": 49560
+    },
+    {
+      "job": "tb4--coder-one-tunable-v4--atrx-vep-crispr",
+      "trial": "atrx-vep-crispr__n56Tmj4",
+      "task": "terminal-bench/atrx-vep-crispr",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.86,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.20742,
+      "milliseconds": 90925
+    },
+    {
+      "job": "tb4--coder-one-tunable-v4--mvcc-lsm-compaction",
+      "trial": "mvcc-lsm-compaction__JiQV4ft",
+      "task": "terminal-bench/mvcc-lsm-compaction",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.05,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.12286,
+      "milliseconds": 27285
+    },
+    {
+      "job": "tb4--coder-one-tunable-v5--atrx-vep-crispr",
+      "trial": "atrx-vep-crispr__n5F2AiC",
+      "task": "terminal-bench/atrx-vep-crispr",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.87,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.15132,
+      "milliseconds": 53110
+    },
+    {
+      "job": "tb4--coder-one-tunable-v5--cargo-flight-dispatch",
+      "trial": "cargo-flight-dispatch__kS32Mq7",
+      "task": "terminal-bench/cargo-flight-dispatch",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "readiness": null
+      },
+      "score": null,
+      "available": true,
+      "error": "Readiness assessment exceeded its 180-second deadline",
+      "known_cost_usd": null,
+      "milliseconds": 180003
+    },
+    {
+      "job": "tb4--coder-one-tunable-v6--atrx-vep-crispr",
+      "trial": "atrx-vep-crispr__dQsvJqp",
+      "task": "terminal-bench/atrx-vep-crispr",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "readiness": null
+      },
+      "score": 0.8,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.17156,
+      "milliseconds": 74544
+    },
+    {
+      "job": "tb4--coder-one-tunable-v6--cargo-flight-dispatch",
+      "trial": "cargo-flight-dispatch__GEa4vKX",
+      "task": "terminal-bench/cargo-flight-dispatch",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.25,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.14735,
+      "milliseconds": 46583
+    },
+    {
+      "job": "tb4--coder-one-tunable-v6--coq-block-bound",
+      "trial": "coq-block-bound__Mu8ygpJ",
+      "task": "terminal-bench/coq-block-bound",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "readiness": null
+      },
+      "score": 0.015,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.48736,
+      "milliseconds": 25460
+    },
+    {
+      "job": "tb4--coder-one-tunable-v7--bun-sourcemap-leak--v10-persist-9570-r1",
+      "trial": "bun-sourcemap-leak__KSe7EpL",
+      "task": "terminal-bench/bun-sourcemap-leak",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.38,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.1354,
+      "milliseconds": 51978
+    },
+    {
+      "job": "tb4--coder-one-tunable-v7--cargo-flight-dispatch--v10-persist-9570-r1",
+      "trial": "cargo-flight-dispatch__eVK5hHc",
+      "task": "terminal-bench/cargo-flight-dispatch",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "readiness": null
+      },
+      "score": 0.35,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.14542,
+      "milliseconds": 50749
+    },
+    {
+      "job": "tb4--coder-one-tunable-v7--mvcc-lsm-compaction--v10-persist-9570-r1",
+      "trial": "mvcc-lsm-compaction__JsFGzzJ",
+      "task": "terminal-bench/mvcc-lsm-compaction",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.04,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.1593,
+      "milliseconds": 41546
+    },
+    {
+      "job": "tb4--coder-one-tunable-v8--bun-sourcemap-leak--v8-persist-9570-ca-r1",
+      "trial": "bun-sourcemap-leak__F4t2d8w",
+      "task": "terminal-bench/bun-sourcemap-leak",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.43,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.16967,
+      "milliseconds": 70348
+    },
+    {
+      "job": "tb4--coder-one-tunable-v8--bun-sourcemap-leak--v8-persist-9570-ca-r2",
+      "trial": "bun-sourcemap-leak__YgVxiUg",
+      "task": "terminal-bench/bun-sourcemap-leak",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.52,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.15421,
+      "milliseconds": 61506
+    },
+    {
+      "job": "tb4--coder-one-tunable-v8--bun-sourcemap-leak--v8-persist-9570-ca-r3",
+      "trial": "bun-sourcemap-leak__AhfCw5c",
+      "task": "terminal-bench/bun-sourcemap-leak",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.27,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.1608,
+      "milliseconds": 58151
+    },
+    {
+      "job": "tb4--coder-one-tunable-v8--cargo-flight-dispatch--v8-persist-9570-r2",
+      "trial": "cargo-flight-dispatch__jTTHMeh",
+      "task": "terminal-bench/cargo-flight-dispatch",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "readiness": null
+      },
+      "score": 0.25,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.12629,
+      "milliseconds": 43474
+    },
+    {
+      "job": "tb4--coder-one-tunable-v8--cargo-flight-dispatch--v8-persist-9570-r3",
+      "trial": "cargo-flight-dispatch__kzGkiRi",
+      "task": "terminal-bench/cargo-flight-dispatch",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "readiness": null
+      },
+      "score": 0.2,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.1373,
+      "milliseconds": 47303
+    },
+    {
+      "job": "tb4--coder-one-tunable-v8--cargo-flight-dispatch--v8-persist-9570-r4",
+      "trial": "cargo-flight-dispatch__gsjsQr3",
+      "task": "terminal-bench/cargo-flight-dispatch",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "readiness": null
+      },
+      "score": 0.3,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.15889,
+      "milliseconds": 63313
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9--interleaved-vigenere--effort-9569-r1",
+      "trial": "interleaved-vigenere__tFzU3sd",
+      "task": "terminal-bench/interleaved-vigenere",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.35,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.25834,
+      "milliseconds": 46269
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9--interleaved-vigenere--effort-9569-r2",
+      "trial": "interleaved-vigenere__JQtzetw",
+      "task": "terminal-bench/interleaved-vigenere",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.5,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.05507,
+      "milliseconds": 28212
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9--vba-userform-port--effort-9569-r1",
+      "trial": "vba-userform-port__hZxyDD4",
+      "task": "terminal-bench/vba-userform-port",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.93,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.6265,
+      "milliseconds": 48052
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9--vba-userform-port--effort-9569-r2",
+      "trial": "vba-userform-port__V6oFTGN",
+      "task": "terminal-bench/vba-userform-port",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.48,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.6337,
+      "milliseconds": 55642
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9--vba-userform-port--effort-9569-r3",
+      "trial": "vba-userform-port__dU5fpSE",
+      "task": "terminal-bench/vba-userform-port",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.64,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.61191,
+      "milliseconds": 43988
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--atrx-vep-crispr--escalate-9571-r1",
+      "trial": "atrx-vep-crispr__RQM3iFa",
+      "task": "terminal-bench/atrx-vep-crispr",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "readiness": null
+      },
+      "score": null,
+      "available": true,
+      "error": "Readiness assessment exceeded its 180-second deadline",
+      "known_cost_usd": null,
+      "milliseconds": 180006
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--atrx-vep-crispr--escalate-9571b-r1",
+      "trial": "atrx-vep-crispr__evQzELY",
+      "task": "terminal-bench/atrx-vep-crispr",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.78,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.18091,
+      "milliseconds": 80724
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--atrx-vep-crispr--escalate-9571b-r2",
+      "trial": "atrx-vep-crispr__ykHsy4X",
+      "task": "terminal-bench/atrx-vep-crispr",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": "fail"
+      },
+      "score": 0.99,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.1927,
+      "milliseconds": 79493
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--atrx-vep-crispr--escalate-9571b-r3",
+      "trial": "atrx-vep-crispr__Znd6Xna",
+      "task": "terminal-bench/atrx-vep-crispr",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.93,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.1464,
+      "milliseconds": 51776
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--cargo-flight-dispatch--escalate-9571b-r1",
+      "trial": "cargo-flight-dispatch__usYEzUQ",
+      "task": "terminal-bench/cargo-flight-dispatch",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "readiness": null
+      },
+      "score": 0.3,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.15638,
+      "milliseconds": 49852
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--cargo-flight-dispatch--escalate-9571b-r2",
+      "trial": "cargo-flight-dispatch__7xHzsYu",
+      "task": "terminal-bench/cargo-flight-dispatch",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "readiness": null
+      },
+      "score": 0.24,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.14295,
+      "milliseconds": 51096
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--cargo-flight-dispatch--escalate-9571b-r3",
+      "trial": "cargo-flight-dispatch__osWtVpd",
+      "task": "terminal-bench/cargo-flight-dispatch",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "readiness": null
+      },
+      "score": 0.28,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.13082,
+      "milliseconds": 43169
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--cargo-flight-dispatch--escalate-9571c-r1",
+      "trial": "cargo-flight-dispatch__R9rUoUQ",
+      "task": "terminal-bench/cargo-flight-dispatch",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "readiness": null
+      },
+      "score": 0.45,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.14138,
+      "milliseconds": 47856
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--cargo-flight-dispatch--escalate-9571c-r2",
+      "trial": "cargo-flight-dispatch__QtTUDpN",
+      "task": "terminal-bench/cargo-flight-dispatch",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "readiness": null
+      },
+      "score": 0.22,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.12062,
+      "milliseconds": 41515
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--cargo-flight-dispatch--escalate-9571c-r3",
+      "trial": "cargo-flight-dispatch__6pGdAdj",
+      "task": "terminal-bench/cargo-flight-dispatch",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.2,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.14396,
+      "milliseconds": 49807
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--wal-recovery-ordering--escalate-9571b-r1",
+      "trial": "wal-recovery-ordering__ckJ6tad",
+      "task": "terminal-bench/wal-recovery-ordering",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.07,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.16321,
+      "milliseconds": 45808
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--wal-recovery-ordering--escalate-9571b-r2",
+      "trial": "wal-recovery-ordering__tTWCgpb",
+      "task": "terminal-bench/wal-recovery-ordering",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.08,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.1817,
+      "milliseconds": 56211
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--wal-recovery-ordering--escalate-9571b-r3",
+      "trial": "wal-recovery-ordering__5JZLxH6",
+      "task": "terminal-bench/wal-recovery-ordering",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.1,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.17195,
+      "milliseconds": 50263
+    },
+    {
+      "job": "tb4--luna-jev--heat-pump-warranty--luna-tb4-9583-r1",
+      "trial": "heat-pump-warranty__hJAiTCe",
+      "task": "terminal-bench/heat-pump-warranty",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.25,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.1336,
+      "milliseconds": 31951
+    },
+    {
+      "job": "tb4--luna-jev--mvcc-lsm-compaction--luna-tb4-9583-r1",
+      "trial": "mvcc-lsm-compaction__J3pVbur",
+      "task": "terminal-bench/mvcc-lsm-compaction",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.05,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.10948,
+      "milliseconds": 30922
+    },
+    {
+      "job": "tb4--luna-jev--wal-recovery-ordering--luna-tb4-9583-r1",
+      "trial": "wal-recovery-ordering__DxL86DR",
+      "task": "terminal-bench/wal-recovery-ordering",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.1,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.15203,
+      "milliseconds": 45137
+    },
+    {
+      "job": "tb4--prop-1790193215184-1--interleaved-vigenere--prop-1790193215184-1-codex-r1",
+      "trial": "interleaved-vigenere__JVKX6yF",
+      "task": "terminal-bench/interleaved-vigenere",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "readiness": "fail"
+      },
+      "score": 0.999,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.06154,
+      "milliseconds": 32025
+    },
+    {
+      "job": "tb4--prop-1790193215184-1--interleaved-vigenere--prop-1790193215184-1-codex-r2",
+      "trial": "interleaved-vigenere__Encp5RY",
+      "task": "terminal-bench/interleaved-vigenere",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "readiness": "fail"
+      },
+      "score": 0.997,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.06738,
+      "milliseconds": 28298
+    },
+    {
+      "job": "tb4--prop-1790193215184-1--interleaved-vigenere--prop-1790193215184-1-codex-r3",
+      "trial": "interleaved-vigenere__hoFTsGE",
+      "task": "terminal-bench/interleaved-vigenere",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.93,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.07473,
+      "milliseconds": 36071
+    },
+    {
+      "job": "tb4--prop-1790193215184-1-base--interleaved-vigenere--prop-1790193215184-1-codex-r1",
+      "trial": "interleaved-vigenere__3e5S6jo",
+      "task": "terminal-bench/interleaved-vigenere",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "readiness": null
+      },
+      "score": null,
+      "available": true,
+      "error": "Readiness assessment exceeded its 180-second deadline",
+      "known_cost_usd": null,
+      "milliseconds": 180001
+    },
+    {
+      "job": "tb4--prop-1790193215184-1-base--interleaved-vigenere--prop-1790193215184-1-codex-r2",
+      "trial": "interleaved-vigenere__aemUcnU",
+      "task": "terminal-bench/interleaved-vigenere",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": "fail"
+      },
+      "score": 0.999,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.05298,
+      "milliseconds": 26527
+    },
+    {
+      "job": "tb4--prop-1790193215184-1-base--interleaved-vigenere--prop-1790193215184-1-codex-r3",
+      "trial": "interleaved-vigenere__Uoy73ue",
+      "task": "terminal-bench/interleaved-vigenere",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": "fail"
+      },
+      "score": 0.999,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.07076,
+      "milliseconds": 36997
+    },
+    {
+      "job": "try--coder-one-tunable-luna-snapshot--20260923T162706Z",
+      "trial": "cargo-flight-dispatch__M5T7oW8",
+      "task": "terminal-bench/cargo-flight-dispatch",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "readiness": null
+      },
+      "score": 0.35,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.21166,
+      "milliseconds": 90453
+    },
+    {
+      "job": "try--coder-one-tunable-luna-snapshot--20260923T162706Z",
+      "trial": "interleaved-vigenere__FryxfnM",
+      "task": "terminal-bench/interleaved-vigenere",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "readiness": null
+      },
+      "score": null,
+      "available": true,
+      "error": "Readiness assessment exceeded its 180-second deadline",
+      "known_cost_usd": null,
+      "milliseconds": 180002
+    },
+    {
+      "job": "try--coder-one-tunable-luna-snapshot--20260923T162706Z",
+      "trial": "risk-scorer-replay__sSqd7oF",
+      "task": "terminal-bench/risk-scorer-replay",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "readiness": null
+      },
+      "score": 0.77,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.16113,
+      "milliseconds": 41928
+    },
+    {
+      "job": "try--coder-one-tunable-v7--targets-9568b",
+      "trial": "heat-pump-warranty__bgPdMox",
+      "task": "terminal-bench/heat-pump-warranty",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "readiness": null
+      },
+      "score": 0.25,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.1341,
+      "milliseconds": 31443
+    },
+    {
+      "job": "try--coder-one-tunable-v7--targets-9568b",
+      "trial": "risk-scorer-replay__xWMSei4",
+      "task": "terminal-bench/risk-scorer-replay",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.94,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.08479,
+      "milliseconds": 31372
+    },
+    {
+      "job": "try--coder-one-tunable-v7--targets-9568b",
+      "trial": "rs-archive-clone__MgL93Lo",
+      "task": "terminal-bench/rs-archive-clone",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.85,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.04235,
+      "milliseconds": 21185
+    },
+    {
+      "job": "try--coder-one-tunable-v7--targets-9568b",
+      "trial": "sglang-qwen-burst__Unf9hcE",
+      "task": "terminal-bench/sglang-qwen-burst",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.65,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.44479,
+      "milliseconds": 24814
+    },
+    {
+      "job": "try--coder-one-tunable-v7--targets-9568b",
+      "trial": "wal-recovery-ordering__rojNpSF",
+      "task": "terminal-bench/wal-recovery-ordering",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.08,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.14468,
+      "milliseconds": 40938
+    }
+  ]
+}

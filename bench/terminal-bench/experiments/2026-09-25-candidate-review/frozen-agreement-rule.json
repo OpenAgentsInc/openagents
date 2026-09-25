@@ -1,0 +1,44 @@
+{
+  "schema": "openagents.agreement-rule.v1",
+  "source_at": 0.8,
+  "readiness_at": 0.5,
+  "report_at": 0.5,
+  "meaning": "fail if concrete report audit reaches 0.5 or both source and readiness reach their cutoffs; otherwise unknown",
+  "calibration": {
+    "fail_precision": {
+      "correct": 14,
+      "total": 15,
+      "value": 0.9333333333333333,
+      "wilson_95": [
+        0.7018292244757601,
+        0.9881334113938051
+      ]
+    },
+    "failure_recall": {
+      "correct": 14,
+      "total": 62,
+      "value": 0.22580645161290322,
+      "wilson_95": [
+        0.13955057139297955,
+        0.34405857540782725
+      ]
+    },
+    "pass_precision": {
+      "correct": 0,
+      "total": 0,
+      "value": null,
+      "wilson_95": null
+    },
+    "unknown": 117
+  },
+  "selection_partition": "calibration",
+  "source_commit": "50fd2e73e1",
+  "historical_comparison": "Reused validation; no completion-assessment comparison answers have been generated or read.",
+  "prospective": "Eight fresh task groups; grades unopened.",
+  "short_circuit": "Audit at 0.5 establishes fail. A source score below 0.8 or absent establishes unknown for this rule. Ask readiness only for remaining candidates; this does not change predictions.",
+  "digests": {
+    "crates/coder-one/src/checks/readiness.rs": "818fd5105ea0fb262bedc2ce56b3d28ab4544a22e32914420e996c2d4dba186a",
+    "bench/terminal-bench/experiments/2026-09-25-candidate-review/readiness.py": "08905fd0cbc42609483de1261210e480d11e4e31ef082d36a8dbd8f9ec021a36",
+    "bench/terminal-bench/experiments/2026-09-25-candidate-review/agreement-protocol.md": "6ff1e2b3b9ca4b2fad84ae44046d2e6d96e6161723c774d7f55c59d18d0cc97b"
+  }
+}

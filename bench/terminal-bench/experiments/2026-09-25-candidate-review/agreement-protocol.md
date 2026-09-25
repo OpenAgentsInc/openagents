@@ -24,3 +24,13 @@ completion assessment of comparison rows and before joining fresh grades. The
 historical comparison remains reused validation; the eight fresh labels remain
 unopened. Report the full cost of producing both reviews, including unknown
 usage, and retain every rejected arm. Agreement is an empirical signal, not proof.
+
+The selected rule is source 0.8, completion 0.5, and audit 0.5: 14/15 correct
+calibration calls, detecting 14/62 failures. Freeze it before comparison.
+Evaluation can short-circuit the exact expression: audit success already says
+fail; absent or below-cutoff source evidence already says unknown. Completion
+assessment is needed only for the remaining candidates. This changes no verdict,
+drops no row from the denominator, and avoids paying for irrelevant model calls.
+Standalone completion metrics on that selected comparison subset must not be
+presented as full-population performance. The source-review and audit costs still
+count, including calls that a different evaluation order might have avoided.
