@@ -21,15 +21,15 @@ fn wide_workspace() -> (PathBuf, Cleanup) {
         ("src/tool/__init__.py", ""),
         (
             "src/tool/__main__.py",
-            "\"\"\"usage: python -m tool <reference.npy> <current.npy>\"\"\"\n",
+            "\"\"\"usage: python -m tool <baseline.npy> <sample.npy>\"\"\"\n",
         ),
         ("app/__init__.py", ""),
         ("app/cli/__init__.py", ""),
         ("app/cli/__main__.py", "print('cli')\n"),
-        ("data/reference_window.npy", "x"),
-        ("data/current_a.npy", "x"),
-        ("data/current_b.npy", "x"),
-        ("data/scenarios/current_c.npy", "x"),
+        ("data/baseline_set.npy", "x"),
+        ("data/sample_a.npy", "x"),
+        ("data/sample_b.npy", "x"),
+        ("data/scenarios/sample_c.npy", "x"),
         ("notes.md", "not an input"),
         (
             "pyproject.toml",
@@ -75,18 +75,18 @@ async fn wide_discovery_finds_each_kind_named_discovery_does_not() {
             ("module", "python3 -m app.cli", false),
             (
                 "module",
-                "PYTHONPATH=src python3 -m tool data/reference_window.npy data/current_a.npy",
+                "PYTHONPATH=src python3 -m tool data/baseline_set.npy data/sample_a.npy",
                 false
             ),
             (
                 "module",
-                "PYTHONPATH=src python3 -m tool data/reference_window.npy data/current_b.npy",
+                "PYTHONPATH=src python3 -m tool data/baseline_set.npy data/sample_b.npy",
                 false
             ),
             (
                 "module",
-                "PYTHONPATH=src python3 -m tool data/reference_window.npy \
-                 data/scenarios/current_c.npy",
+                "PYTHONPATH=src python3 -m tool data/baseline_set.npy \
+                 data/scenarios/sample_c.npy",
                 false
             ),
             ("make", "make test", true),
