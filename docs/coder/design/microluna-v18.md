@@ -1,6 +1,8 @@
 # Microluna v18: the executed briefing, and what characterizes a run
 
-Status: design, 2026-09-25. Not built, not measured. It follows from
+Status: design, 2026-09-25. Not built, not measured. Tracked in
+[#9640](https://github.com/OpenAgentsInc/openagents/issues/9640), with one
+issue per change: #9632 to #9638, and #9639 for the run card. It follows from
 [the step-by-step account](../../terminal-bench/2026-09-25-microluna-v13-embedding-trials.md)
 of the three `microluna-v13-retained` trials on `embedding-drift-monitor`,
 the only Microluna result that repeats, and from the
