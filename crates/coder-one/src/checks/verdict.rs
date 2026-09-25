@@ -370,6 +370,19 @@ pub const CORROBORATED_FAIL: (usize, usize) = (13, 20);
 /// verdict and does not change the episode's default decision policy.
 #[must_use]
 pub fn corroborated(evidence: &Evidence, params: &Params) -> Verdict {
+    corroborated_at(
+        evidence,
+        params,
+        crate::decision::VERDICT_ADMISSION.threshold(),
+    )
+}
+
+/// [`corroborated`] with the corroboration threshold on `admits_unmet`
+/// given, so a fit can score another value on recorded answers. The stated
+/// precision belongs to the fitted parameters at the setting in effect, and
+/// is left out otherwise.
+#[must_use]
+pub fn corroborated_at(evidence: &Evidence, params: &Params, admission: jev::Threshold) -> Verdict {
     let mut verdict = judge(evidence, params);
     if verdict.call == "fail" {
         let supported = evidence.admitted
@@ -377,9 +390,11 @@ pub fn corroborated(evidence: &Evidence, params: &Params) -> Verdict {
                 .report_answers
                 .as_ref()
                 .and_then(|a| a.get("admits_unmet"))
-                .is_some_and(|p| crate::decision::VERDICT_ADMISSION.yes(*p));
+                .is_some_and(|p| admission.yes(*p));
         if supported {
-            verdict.precision = (params == &fitted()).then(|| ratio(CORROBORATED_FAIL));
+            verdict.precision = (params == &fitted()
+                && admission == crate::decision::VERDICT_ADMISSION.threshold())
+            .then(|| ratio(CORROBORATED_FAIL));
             verdict
                 .why
                 .push_str("; corroborated by a reported unmet requirement");

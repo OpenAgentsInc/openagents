@@ -1,0 +1,240 @@
+{
+  "schema": "openagents.coder-one.study-result.v1",
+  "study": "decision-fit-control-stall-2ba38895aacc",
+  "study_kind": "decision-fit",
+  "component": "control.stall",
+  "status": "finished",
+  "metric": "recall-at-precision:0.8",
+  "positive": "true",
+  "before": {
+    "stall.progress": {
+      "threshold": 0.5
+    },
+    "stall.repeating": {
+      "threshold": 0.5
+    }
+  },
+  "after": {
+    "stall.progress": {
+      "threshold": 0.97
+    },
+    "stall.repeating": {
+      "threshold": 0.5
+    }
+  },
+  "changed": {
+    "stall.progress": {
+      "threshold": 0.97
+    }
+  },
+  "steps": [
+    {
+      "setting": "stall.progress",
+      "coordinate": "threshold",
+      "before": {
+        "threshold": 0.5
+      },
+      "proposed": {
+        "threshold": 0.97
+      },
+      "candidates": 40,
+      "train_before": 0.37037037037037035,
+      "train_after": 0.5046296296296297,
+      "held_out": {
+        "folds": 5,
+        "before": 0.37037037037037035,
+        "after": 0.5,
+        "passed": true,
+        "per_fold": [
+          {
+            "fold": 0,
+            "examples": 77,
+            "chosen": 0.97,
+            "before": 0.5666666666666667,
+            "after": 0.6666666666666666
+          },
+          {
+            "fold": 1,
+            "examples": 76,
+            "chosen": 0.97,
+            "before": 0.4117647058823529,
+            "after": 0.5294117647058824
+          },
+          {
+            "fold": 2,
+            "examples": 44,
+            "chosen": 0.885,
+            "before": -0.5,
+            "after": -0.2727272727272727
+          },
+          {
+            "fold": 3,
+            "examples": 47,
+            "chosen": 0.97,
+            "before": 0.12903225806451613,
+            "after": -0.2222222222222222
+          },
+          {
+            "fold": 4,
+            "examples": 83,
+            "chosen": 0.97,
+            "before": 0.29508196721311475,
+            "after": 0.4262295081967213
+          }
+        ]
+      },
+      "accepted": true,
+      "why": "accepted: better on training and on the held-out check"
+    },
+    {
+      "setting": "stall.repeating",
+      "coordinate": "threshold",
+      "before": {
+        "threshold": 0.5
+      },
+      "proposed": {
+        "threshold": 0.8300000000000001
+      },
+      "candidates": 40,
+      "train_before": 0.5046296296296297,
+      "train_after": 0.5046296296296297,
+      "accepted": false,
+      "why": "kept: no candidate scores strictly better on training"
+    }
+  ],
+  "training": {
+    "examples": 327,
+    "groups": 49,
+    "before": 0.37037037037037035,
+    "after": 0.5046296296296297,
+    "comparison": {
+      "examples": 327,
+      "tasks": 3,
+      "resamples": 10000,
+      "seed": 9659,
+      "before": {
+        "score": 0.37037037037037035,
+        "interval": [
+          -0.5,
+          0.40789473684210525
+        ],
+        "tally": {
+          "examples": 327,
+          "correct": 183,
+          "true_positive": 80,
+          "false_positive": 8,
+          "false_negative": 136
+        },
+        "precision": 0.9090909090909091,
+        "precision_wilson": [
+          0.830746093447303,
+          0.9532135787641234
+        ],
+        "recall": 0.37037037037037035,
+        "recall_wilson": [
+          0.3087610289779298,
+          0.4365099481845838
+        ]
+      },
+      "after": {
+        "score": 0.5046296296296297,
+        "interval": [
+          -0.4285714285714286,
+          0.6447368421052632
+        ],
+        "tally": {
+          "examples": 327,
+          "correct": 208,
+          "true_positive": 109,
+          "false_positive": 12,
+          "false_negative": 107
+        },
+        "precision": 0.9008264462809917,
+        "precision_wilson": [
+          0.8346307094014028,
+          0.9423547637676609
+        ],
+        "recall": 0.5046296296296297,
+        "recall_wilson": [
+          0.4384573239964861,
+          0.5706401411048527
+        ]
+      },
+      "difference": 0.1342592592592593,
+      "difference_interval": [
+        0.01733648542159172,
+        0.23756906077348067
+      ]
+    }
+  },
+  "evaluation": {
+    "examples": 102,
+    "tasks": 7,
+    "resamples": 10000,
+    "seed": 9659,
+    "before": {
+      "score": 0.35294117647058826,
+      "interval": [
+        -0.33333333333333337,
+        0.47619047619047616
+      ],
+      "tally": {
+        "examples": 102,
+        "correct": 42,
+        "true_positive": 30,
+        "false_positive": 5,
+        "false_negative": 55
+      },
+      "precision": 0.8571428571428571,
+      "precision_wilson": [
+        0.7062444577337144,
+        0.9373976896017628
+      ],
+      "recall": 0.35294117647058826,
+      "recall_wilson": [
+        0.25972485285316316,
+        0.45887499551939315
+      ]
+    },
+    "after": {
+      "score": 0.5294117647058824,
+      "interval": [
+        -0.3623188405797102,
+        0.7866666666666666
+      ],
+      "tally": {
+        "examples": 102,
+        "correct": 53,
+        "true_positive": 45,
+        "false_positive": 9,
+        "false_negative": 40
+      },
+      "precision": 0.8333333333333334,
+      "precision_wilson": [
+        0.7126348566142432,
+        0.9097560840063988
+      ],
+      "recall": 0.5294117647058824,
+      "recall_wilson": [
+        0.42434172969884215,
+        0.6319383006266466
+      ]
+    },
+    "difference": 0.1764705882352941,
+    "difference_interval": [
+      -0.6149350649350649,
+      0.32954545454545453
+    ]
+  },
+  "question_set": null,
+  "candidates": [],
+  "confirmation": {
+    "statement": "Moved stall.progress {\"threshold\":0.97}. On the evaluation partition, recall-at-precision:0.8 went from 0.3529 to 0.5294 (+0.1765, 95% interval -0.6149 to +0.3295)."
+  },
+  "spend": {
+    "calls": 0,
+    "spend_usd": 0.0,
+    "wall_ms": 715,
+    "complete": true
+  }
+}

@@ -15,6 +15,8 @@ pub const USAGE: &str =
                             [--reflection FILE] [--seed N] [--climb-moves N] [--random-draws N]
                             [--traces DIR] [--fixtures DIR] [--out DIR] [--retain [DIR]]
                             [--allow-terminal-bench --artifact FILE --artifact-sha256 HEX] [--json]
+       coder-one study run decision-fit --component control.stall|checks.verdict [--metric M] ...
+       coder-one study run decision-fit --questions FILE --examples FILE --metric M ...
        coder-one study list [--out DIR] [--json]
 
 A study screens candidates cheapest first. Tier 0 (replay) always runs: every
@@ -26,7 +28,10 @@ money and time: they run only with --allow-terminal-bench and the arm's artifact
 and otherwise the result lists the commands they would run.
 Studies are recorded under ~/.openagents/coder-one/studies unless --out names
 another directory. --retain copies the plan, candidates, and result into
-bench/terminal-bench/studies, or DIR.";
+bench/terminal-bench/studies, or DIR.
+
+decision-fit fits Jev decision settings on recorded answers and makes no Jev
+call; `coder-one study run decision-fit --help` lists its options.";
 
 /// Runs `coder-one study …` and returns the exit code.
 ///
@@ -34,6 +39,15 @@ bench/terminal-bench/studies, or DIR.";
 ///
 /// Returns a message for a malformed command or a study that can't run.
 pub async fn command(args: &[String]) -> Result<i32, String> {
+    if args.first().map(String::as_str) == Some("run")
+        && args.get(1).map(String::as_str) == Some(super::decisions::STUDY)
+    {
+        if args[2..].iter().any(|arg| arg == "--help" || arg == "-h") {
+            println!("{}", super::decisions::USAGE);
+            return Ok(0);
+        }
+        return super::decisions::command(&args[2..]);
+    }
     let mut positional = Vec::new();
     let mut out: Option<PathBuf> = None;
     let mut json_output = false;

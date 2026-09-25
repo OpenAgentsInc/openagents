@@ -1,0 +1,14 @@
+{
+  "schema": "openagents.coder-one.decision-fit.v1",
+  "study": "decision-fit-checks-verdict-2a5e15272e6a",
+  "component": "checks.verdict",
+  "status": "proposal: not in effect in any policy",
+  "decision": {},
+  "all": {
+    "checks.verdict.admission": {
+      "threshold": 0.8
+    }
+  },
+  "policy_jev_decision": null,
+  "note": "`decision` holds the settings the fit moved, by name, in the decision-block format; `policy_jev_decision` is the digest a manifest would record if they were the only settings off their defaults"
+}

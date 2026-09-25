@@ -1,0 +1,21 @@
+{
+  "schema": "openagents.coder-one.decision-fit.v1",
+  "study": "decision-fit-control-stall-73a65f315b28",
+  "component": "control.stall",
+  "status": "proposal: not in effect in any policy",
+  "decision": {
+    "stall.progress": {
+      "threshold": 0.935
+    }
+  },
+  "all": {
+    "stall.progress": {
+      "threshold": 0.935
+    },
+    "stall.repeating": {
+      "threshold": 0.5
+    }
+  },
+  "policy_jev_decision": "642fe95de662a057d947790793978399f3599bded9237ce04511720288646250",
+  "note": "`decision` holds the settings the fit moved, by name, in the decision-block format; `policy_jev_decision` is the digest a manifest would record if they were the only settings off their defaults"
+}

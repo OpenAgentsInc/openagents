@@ -24,11 +24,16 @@
 //! is written down.
 //!
 //! [`pack`] is the first study: `evidence.pack`'s parameters, scored by
-//! replaying every retained briefing.
+//! replaying every retained briefing. [`decisions`] fits Jev decision
+//! settings, the thresholds, cuts, and weights that turn an answer into an
+//! action, on recorded answers with [`reanchor`]: a tier 0 study that makes
+//! no Jev call.
 
 pub mod cli;
+pub mod decisions;
 pub mod harness;
 pub mod pack;
+pub mod reanchor;
 pub mod space;
 
 use std::collections::BTreeMap;

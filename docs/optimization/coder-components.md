@@ -720,7 +720,10 @@ GEPA still can't change a Jev question's wording or criteria. Two ideas are
 worth porting:
 
 - **Fitted decision settings** (#9659): ReAnchor's algorithm, reimplemented as
-  a study over recorded answers, at no Jev cost.
+  a study over recorded answers, at no Jev cost:
+  `coder-one study run decision-fit`. Its first runs moved no setting past
+  its component's own objective
+  ([results](../terminal-bench/2026-09-25-decision-fit.md)).
 - **Settings apart from wording** (#9660): a `decision` block in question-set
   files, digested separately, so changing a setting leaves every request and
   recorded answer unchanged.

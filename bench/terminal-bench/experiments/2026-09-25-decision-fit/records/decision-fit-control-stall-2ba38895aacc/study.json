@@ -1,0 +1,90 @@
+{
+  "schema": "openagents.coder-one.study.v1",
+  "nip_opt": "openagents.optimization-study.v1",
+  "study_kind": "decision-fit",
+  "component": "control.stall",
+  "algorithm": {
+    "name": "decision-settings fit on recorded answers",
+    "credit": "reimplemented from DSPy 3.4.0's ReAnchor (stanfordnlp/dspy#10475, MIT); no source copied",
+    "candidates": "threshold and cut: midpoints between neighboring observed values, 0 and 1 (or the neighboring cuts) as the outer neighbors; weight: flip points on a log scale from 1/16 to 16; at most 40 per coordinate, evenly spaced by rank",
+    "selection": "highest training score, then the widest gap, then the lowest value",
+    "acceptance": "strictly better on the fit partition and on a 5-fold held-out check that reruns the selection without each fold and pools the held-out predictions; otherwise the current value stays",
+    "fold_rule": "groups ordered by SHA-256 of \"openagents.decision-fit.fold:\" and the name, dealt round-robin",
+    "passes": 1
+  },
+  "metric": {
+    "metric": "recall-at-precision",
+    "floor": 0.8,
+    "positive": "true"
+  },
+  "settings": [
+    {
+      "name": "stall.progress",
+      "kind": {
+        "kind": "threshold"
+      }
+    },
+    {
+      "name": "stall.repeating",
+      "kind": {
+        "kind": "threshold"
+      }
+    }
+  ],
+  "start": {
+    "stall.progress": {
+      "threshold": 0.5
+    },
+    "stall.repeating": {
+      "threshold": 0.5
+    }
+  },
+  "data": {
+    "records": "bench/terminal-bench/experiments/2026-09-25-stall-detection/records/rows.jsonl",
+    "labels": [
+      "records/labels-calibration.jsonl",
+      "records/labels-evaluation.jsonl"
+    ],
+    "answers": "the Jev answers each row carries, from jev-recorded.json through `component replay control.stall` in recorded mode (records/replay.txt: 450 rows, 0 recorded misses)",
+    "split": {
+      "schema": "openagents.coder-one.stall-split.v1",
+      "calibration": [
+        "embedding-drift-monitor",
+        "sound-change-cascade",
+        "interleaved-vigenere"
+      ],
+      "evaluation": [
+        "session-window-debug",
+        "fin-saccr-rwa",
+        "gsea-proteomics",
+        "shadow-relay",
+        "coq-block-bound",
+        "uefi-bootkit",
+        "html-js-filter"
+      ]
+    },
+    "split_file": "bench/terminal-bench/experiments/2026-09-25-stall-detection/split.json",
+    "fold_unit": "trial",
+    "interval_unit": "task",
+    "label": "hindsight.stall: no measurable progress later in the attempt (protocol.md)",
+    "unlabeled_skipped": 21,
+    "rule": "crate::stall::decide: a suspect checkpoint stalls when progress < stall.progress or repeating >= stall.repeating"
+  },
+  "partitions": {
+    "fit": 327,
+    "evaluation": 102,
+    "evaluation_read": "after the fitted settings are written"
+  },
+  "interval": {
+    "resamples": 10000,
+    "seed": 9659,
+    "unit": "task"
+  },
+  "bounds": {
+    "spend_usd": 0.0,
+    "jev_calls": 0,
+    "note": "recorded answers only; no Jev, Luna, or Terminal-Bench call"
+  },
+  "study": "decision-fit-control-stall-2ba38895aacc",
+  "digest": "2ba38895aacc2a50e2e5899582c1307cdc776b2f62af1ac29cf633696fc389ed"
+}

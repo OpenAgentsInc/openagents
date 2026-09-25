@@ -1,0 +1,219 @@
+{
+  "schema": "openagents.coder-one.study-result.v1",
+  "study": "decision-fit-checks-verdict-51402ac43fe0",
+  "study_kind": "decision-fit",
+  "component": "checks.verdict",
+  "status": "finished",
+  "metric": "f1",
+  "positive": "true",
+  "before": {
+    "checks.verdict.admission": {
+      "threshold": 0.8
+    }
+  },
+  "after": {
+    "checks.verdict.admission": {
+      "threshold": 0.22
+    }
+  },
+  "changed": {
+    "checks.verdict.admission": {
+      "threshold": 0.22
+    }
+  },
+  "steps": [
+    {
+      "setting": "checks.verdict.admission",
+      "coordinate": "threshold",
+      "before": {
+        "threshold": 0.8
+      },
+      "proposed": {
+        "threshold": 0.22
+      },
+      "candidates": 25,
+      "train_before": 0.5454545454545454,
+      "train_after": 0.6538461538461539,
+      "held_out": {
+        "folds": 5,
+        "before": 0.5454545454545454,
+        "after": 0.6538461538461539,
+        "passed": true,
+        "per_fold": [
+          {
+            "fold": 0,
+            "examples": 24,
+            "chosen": 0.22,
+            "before": 0.0,
+            "after": 0.16666666666666666
+          },
+          {
+            "fold": 1,
+            "examples": 16,
+            "chosen": 0.22,
+            "before": 0.0,
+            "after": 0.4
+          },
+          {
+            "fold": 2,
+            "examples": 39,
+            "chosen": 0.24,
+            "before": 0.717948717948718,
+            "after": 0.7727272727272727
+          },
+          {
+            "fold": 3,
+            "examples": 32,
+            "chosen": 0.22,
+            "before": 0.47619047619047616,
+            "after": 0.6923076923076923
+          },
+          {
+            "fold": 4,
+            "examples": 21,
+            "chosen": 0.22,
+            "before": 0.625,
+            "after": 0.7058823529411765
+          }
+        ]
+      },
+      "accepted": true,
+      "why": "accepted: better on training and on the held-out check"
+    }
+  ],
+  "training": {
+    "examples": 132,
+    "groups": 26,
+    "before": 0.5454545454545454,
+    "after": 0.6538461538461539,
+    "comparison": {
+      "examples": 132,
+      "tasks": 26,
+      "resamples": 10000,
+      "seed": 9659,
+      "before": {
+        "score": 0.5454545454545454,
+        "interval": [
+          0.17391304347826086,
+          0.7450980392156863
+        ],
+        "tally": {
+          "examples": 132,
+          "correct": 92,
+          "true_positive": 24,
+          "false_positive": 2,
+          "false_negative": 38
+        },
+        "precision": 0.9230769230769231,
+        "precision_wilson": [
+          0.7585844605936842,
+          0.9786449117205875
+        ],
+        "recall": 0.3870967741935484,
+        "recall_wilson": [
+          0.2758464508910015,
+          0.5115215655856645
+        ]
+      },
+      "after": {
+        "score": 0.6538461538461539,
+        "interval": [
+          0.3939393939393939,
+          0.8108108108108109
+        ],
+        "tally": {
+          "examples": 132,
+          "correct": 96,
+          "true_positive": 34,
+          "false_positive": 8,
+          "false_negative": 28
+        },
+        "precision": 0.8095238095238095,
+        "precision_wilson": [
+          0.6669922586404059,
+          0.9001799176929347
+        ],
+        "recall": 0.5483870967741935,
+        "recall_wilson": [
+          0.425325123762919,
+          0.6658028691756526
+        ]
+      },
+      "difference": 0.10839160839160844,
+      "difference_interval": [
+        0.01686793176154877,
+        0.2928571428571429
+      ]
+    }
+  },
+  "evaluation": {
+    "examples": 185,
+    "tasks": 32,
+    "resamples": 10000,
+    "seed": 9659,
+    "before": {
+      "score": 0.325,
+      "interval": [
+        0.11267605633802817,
+        0.48695652173913045
+      ],
+      "tally": {
+        "examples": 185,
+        "correct": 131,
+        "true_positive": 13,
+        "false_positive": 7,
+        "false_negative": 47
+      },
+      "precision": 0.65,
+      "precision_wilson": [
+        0.4328542750684442,
+        0.818808176876017
+      ],
+      "recall": 0.21666666666666667,
+      "recall_wilson": [
+        0.13123043995390482,
+        0.3362002767654906
+      ]
+    },
+    "after": {
+      "score": 0.4536082474226804,
+      "interval": [
+        0.29850746268656714,
+        0.5663716814159292
+      ],
+      "tally": {
+        "examples": 185,
+        "correct": 132,
+        "true_positive": 22,
+        "false_positive": 15,
+        "false_negative": 38
+      },
+      "precision": 0.5945945945945946,
+      "precision_wilson": [
+        0.43485964609350425,
+        0.736534819034326
+      ],
+      "recall": 0.36666666666666664,
+      "recall_wilson": [
+        0.2562091661088542,
+        0.49316999470027295
+      ]
+    },
+    "difference": 0.1286082474226804,
+    "difference_interval": [
+      0.043921568627450946,
+      0.22232304900181488
+    ]
+  },
+  "question_set": null,
+  "candidates": [],
+  "confirmation": {
+    "statement": "Moved checks.verdict.admission {\"threshold\":0.22}. On the evaluation partition, f1 went from 0.3250 to 0.4536 (+0.1286, 95% interval +0.0439 to +0.2223)."
+  },
+  "spend": {
+    "calls": 0,
+    "spend_usd": 0.0,
+    "wall_ms": 608,
+    "complete": true
+  }
+}
