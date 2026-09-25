@@ -71,12 +71,13 @@
 //! use jev::{
 //!     Account, AccountDetails, AccountInfo, Answer, ApiError, ApiErrorKind, ApiKey, BalanceView,
 //!     CallOptions, Choice, ChoiceAnswer, Classify, ClassifyItem, ClassifyOutcomes, ClassifyReport,
-//!     ClassifyRequest, ClassifyTiming, ClassifyUnit, ClassifyUsage, Client, Config, Entry, Error,
-//!     JobCounts, JobStatus, JobSubmit, Jobs, ListOptions, ModelCard, Models, Noul, NoulAnswer,
-//!     NoulCriteria, Position, Question, Questions, RawResponse, ResponseBody, Result, ResultsPage,
-//!     ResultsQuery, RetryPolicy, RetryPredicate, Score, ScoreAnswer, SessionBudget, SessionInfo,
-//!     SessionView, SystemOneRequest, SystemOneResponse, Usage, UsageCost, UsageQuery, UsageTotals,
-//!     UsageUnits, UsageView, WorkspaceRef, defaults, env, parse_retry_after, parse_retry_after_at,
+//!     ClassifyRequest, ClassifyTiming, ClassifyUnit, ClassifyUsage, Client, Config, Cuts,
+//!     Decision, Entry, Error, JobCounts, JobStatus, JobSubmit, Jobs, ListOptions, ModelCard,
+//!     Models, Noul, NoulAnswer, NoulCriteria, Position, Question, Questions, RawResponse,
+//!     ResponseBody, Result, ResultsPage, ResultsQuery, RetryPolicy, RetryPredicate, Score,
+//!     ScoreAnswer, SessionBudget, SessionInfo, SessionView, SystemOneRequest, SystemOneResponse,
+//!     Threshold, Usage, UsageCost, UsageQuery, UsageTotals, UsageUnits, UsageView, Weights,
+//!     WorkspaceRef, defaults, env, parse_retry_after, parse_retry_after_at,
 //! };
 //!
 //! // Constants.
@@ -198,6 +199,30 @@
 //! let _ = RawResponse::text;
 //! let _ = RawResponse::request_id;
 //!
+//! // Decision settings, applied to answers and never sent.
+//! let _ = Threshold::MIDPOINT;
+//! let _ = Threshold::at;
+//! let _ = Threshold::value;
+//! let _ = Threshold::yes;
+//! let _ = Threshold::noul;
+//! let _ = Cuts::new;
+//! let _ = Cuts::values;
+//! let _ = Cuts::level;
+//! let _ = Weights::new;
+//! let _ = Weights::of;
+//! let _ = Weights::options;
+//! let _ = Weights::pick;
+//! let _ = Decision::is_empty;
+//! let _ = Decision::threshold_or;
+//! let _ = Decision::noul;
+//! let _ = Decision::level;
+//! let _ = Decision::choice;
+//! let _ = Decision::validate;
+//! let _ = jev::decision::split;
+//! let _ = jev::decision::join;
+//! let _ = jev::decision::selected_level;
+//! let _: &str = jev::decision::DECISION_KEY;
+//!
 //! // Retries and errors.
 //! let _: Option<RetryPredicate> = RetryPolicy::default().predicate;
 //! let _ = RetryPolicy::validate;
@@ -242,6 +267,7 @@ mod answers;
 mod classify;
 mod client;
 mod config;
+pub mod decision;
 mod error;
 mod jobs;
 mod models;
@@ -266,6 +292,7 @@ pub use classify::{
 pub use client::BlockingClient;
 pub use client::{Client, SystemOneRequest};
 pub use config::{ApiKey, Config};
+pub use decision::{Cuts, Decision, Threshold, Weights};
 pub use error::{ApiError, ApiErrorKind, Error, ResponseBody};
 pub use jobs::{JobCounts, JobStatus, JobSubmit, Jobs, ResultsPage, ResultsQuery};
 pub use models::{ListOptions, ModelCard, Models};

@@ -63,6 +63,30 @@
 //! What a suite may not do is mix the two. A per-item override of a
 //! set-provided question is exactly the per-item question data this module
 //! exists to remove, so [`crate::suite::Suite::load`] refuses it.
+//!
+//! # Decision settings
+//!
+//! A question may carry a `decision` block beside its wording: `threshold`
+//! for a Noul, `cuts` for a Score, and `weights` for a Choice, in the shape
+//! [`jev::Decision`] reads. The block is how an answer becomes a decision,
+//! not what was asked, so reading the file lifts it out of the question:
+//! [`QuestionSet::questions`] holds the wording the door is sent and
+//! [`QuestionSet::digest`] hashes, and [`QuestionSet::decisions`] holds the
+//! settings, which [`QuestionSet::decision_digest`] names on their own.
+//! Changing a setting moves only that second digest, so every row recorded
+//! under the wording stays comparable.
+//!
+//! ```json
+//! "refund": {
+//!   "type": "noul",
+//!   "instructions": "Does the customer ask for money back?",
+//!   "decision": { "threshold": 0.7 }
+//! }
+//! ```
+//!
+//! Choice weights are a rule applied where an answer is used. They never
+//! reach [`crate::calibrate`], whose maps are fitted on the model's own pick
+//! and never override it.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -170,7 +194,7 @@ pub enum QuestionError {
 /// by item id instead; [`QuestionSet::ask`] reads an item id before it reads
 /// a family. `external-jevbench-v1` is written that way.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(deny_unknown_fields, remote = "Self")]
 pub struct QuestionSet {
     /// Rationale prose carried in the file. Outside the digest: commentary
     /// on a question is not the question, and editing it must not orphan the
@@ -190,7 +214,46 @@ pub struct QuestionSet {
     /// [`QuestionSet::ask`].
     pub suite: String,
     /// The question each family is asked, in the shape the door reads.
+    /// Wording only: a question's `decision` block is lifted out into
+    /// [`QuestionSet::decisions`] as the file is read.
     pub questions: BTreeMap<String, Value>,
+    /// The decision settings the file writes beside a question's wording,
+    /// keyed as [`QuestionSet::questions`] is. Outside [`QuestionSet::digest`]
+    /// and never sent: [`QuestionSet::decision_digest`] names them on their
+    /// own, so changing a setting leaves every row recorded under the
+    /// wording comparable.
+    #[serde(skip)]
+    pub decisions: BTreeMap<String, jev::Decision>,
+}
+
+impl<'de> Deserialize<'de> for QuestionSet {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let mut set = Self::deserialize(deserializer)?;
+        for (key, question) in &mut set.questions {
+            let decision = jev::decision::split(question).map_err(|problem| {
+                serde::de::Error::custom(format!("the {key} question: {problem}"))
+            })?;
+            if let Some(decision) = decision {
+                set.decisions.insert(key.clone(), decision);
+            }
+        }
+        Ok(set)
+    }
+}
+
+impl Serialize for QuestionSet {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if self.decisions.is_empty() {
+            return Self::serialize(self, serializer);
+        }
+        let mut written = self.clone();
+        for (key, decision) in &self.decisions {
+            if let Some(question) = written.questions.get_mut(key) {
+                jev::decision::join(question, decision);
+            }
+        }
+        Self::serialize(&written, serializer)
+    }
 }
 
 impl QuestionSet {
@@ -235,6 +298,7 @@ impl QuestionSet {
             id: format!("{}-authored", suite.name),
             suite: suite.name.clone(),
             questions,
+            decisions: BTreeMap::new(),
         })
     }
 
@@ -378,6 +442,36 @@ impl QuestionSet {
         let mut hasher = Sha256::new();
         hasher.update(crate::suite::canonicalize(&value).as_bytes());
         format!("{:x}", hasher.finalize())
+    }
+
+    /// The digest of the decision settings, apart from the wording's.
+    ///
+    /// `None` when no question carries a `decision` block, so a set
+    /// written before settings existed names none. The same canonical JSON
+    /// [`QuestionSet::digest`] hashes, over the settings keyed by question.
+    #[must_use]
+    pub fn decision_digest(&self) -> Option<String> {
+        if self.decisions.is_empty() {
+            return None;
+        }
+        let value = serde_json::to_value(&self.decisions).unwrap_or(Value::Null);
+        let mut hasher = Sha256::new();
+        hasher.update(crate::suite::canonicalize(&value).as_bytes());
+        Some(format!("{:x}", hasher.finalize()))
+    }
+
+    /// The decision settings one item's answer is read under, found the
+    /// way [`QuestionSet::ask`] finds its question. Empty when the file
+    /// sets none, which reproduces the decision made before settings
+    /// existed.
+    #[must_use]
+    pub fn decision(&self, item: &Item) -> jev::Decision {
+        let key = if self.questions.contains_key(&item.id) {
+            &item.id
+        } else {
+            &item.family
+        };
+        self.decisions.get(key).cloned().unwrap_or_default()
     }
 
     /// The keys this set answers, in sorted order — family names, or item
@@ -717,6 +811,97 @@ mod tests {
             QuestionSet::load(&elsewhere),
             Err(QuestionError::Invalid { .. })
         ));
+    }
+
+    #[test]
+    fn a_decision_block_moves_its_own_digest_and_never_the_wordings() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let bare = QuestionSet::load(&written(dir.path(), "routing-v2", &a_set())).expect("bare");
+        let mut document = a_set();
+        document["questions"]["routing"]["decision"] =
+            json!({ "weights": { "billing": 1.0, "technical": 1.5 } });
+        let set = QuestionSet::load(&written(dir.path(), "routing-v2", &document)).expect("set");
+
+        assert_eq!(set.digest(), bare.digest());
+        assert_eq!(set.questions, bare.questions);
+        assert!(set.questions["routing"].get("decision").is_none());
+        assert_eq!(bare.decision_digest(), None);
+        let digest = set
+            .decision_digest()
+            .expect("a set with a block names its digest");
+
+        let mut reweighted = document.clone();
+        reweighted["questions"]["routing"]["decision"]["weights"]["technical"] = json!(2.0);
+        let moved =
+            QuestionSet::load(&written(dir.path(), "routing-v2", &reweighted)).expect("moved");
+        assert_eq!(moved.digest(), bare.digest());
+        assert_ne!(moved.decision_digest(), Some(digest));
+
+        // What an item is asked is the wording alone; its decision is apart.
+        let item = suite()
+            .items
+            .into_iter()
+            .find(|item| item.family == "routing")
+            .expect("a routing item");
+        assert_eq!(
+            set.ask(&item).expect("asked"),
+            bare.ask(&item).expect("asked")
+        );
+        let weights = set.decision(&item).weights.expect("the weights");
+        assert_eq!(weights.of("technical"), 1.5);
+        assert!(bare.decision(&item).is_empty());
+
+        // Writing the set back puts the block where the file had it.
+        let rewritten = serde_json::to_value(&set).expect("serializes");
+        assert_eq!(rewritten, document);
+        assert_eq!(serde_json::to_value(&bare).expect("serializes"), a_set());
+    }
+
+    #[test]
+    fn a_decision_block_that_does_not_fit_its_question_is_refused() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let mut document = a_set();
+        document["questions"]["routing"]["decision"] = json!({ "threshold": 0.7 });
+        let path = written(dir.path(), "routing-v2", &document);
+        assert!(matches!(
+            QuestionSet::load(&path),
+            Err(QuestionError::Parse { .. })
+        ));
+    }
+
+    #[test]
+    fn every_committed_set_reads_the_same_wording_with_a_block_beside_each_question() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        for set in load_all().expect("the committed sets load") {
+            let mut document = serde_json::to_value(&set).expect("serializes");
+            for question in document["questions"]
+                .as_object_mut()
+                .expect("questions")
+                .values_mut()
+            {
+                let block = match question["type"].as_str() {
+                    Some("noul") => json!({ "threshold": 0.6 }),
+                    Some("choice") => json!({ "weights": {} }),
+                    _ => continue,
+                };
+                if block == json!({ "weights": {} }) {
+                    // An empty weight map is refused; name a real option.
+                    let Some(option) = question["criteria"]
+                        .as_object()
+                        .and_then(|criteria| criteria.keys().next().cloned())
+                    else {
+                        continue;
+                    };
+                    question["decision"] = json!({ "weights": { option: 1.0 } });
+                } else {
+                    question["decision"] = block;
+                }
+            }
+            let path = written(dir.path(), &set.id, &document);
+            let with = QuestionSet::load(&path).expect("the set loads with its blocks");
+            assert_eq!(with.digest(), set.digest(), "{}", set.id);
+            assert_eq!(with.questions, set.questions, "{}", set.id);
+        }
     }
 
     #[test]

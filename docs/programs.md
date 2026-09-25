@@ -171,6 +171,34 @@ chosen after the route was:
   because a set of identical questions under different identifiers gives a
   model nothing to tell them apart with.
 
+A question, or a template, may also carry a `decision` block: how its
+answer becomes a decision, kept apart from what it asks. The block takes
+`threshold` for a Noul (a probability at or above it reads as yes),
+`cuts` for a Score (ascending boundaries that turn the
+probability-weighted mean into a level), and `weights` for a Choice (the
+decision is the option with the largest probability times weight):
+
+```json
+"per_requirement": {
+  "type": "noul",
+  "instructions": "The requirement the state lists under {requirement} landed.",
+  "decision": { "threshold": 0.75 }
+}
+```
+
+Every setting is optional. Without one, a Noul reads as yes at 0.5, a
+Score is the level the model selected, and a Choice is the option the
+model picked, which is what a host did before settings existed. The block
+is never sent and is outside the set's digest, so changing a setting
+leaves every request and every recorded answer unchanged. The host
+records the settings' own digest as `decision_digest` beside the set's
+digest, only when the set carries a block. Choice weights apply where an
+answer is used and never change a calibration map, which never overrides
+the model's pick. The Gym's question sets in `crates/gym/questions/` take
+the same block, and Coder One's policy manifest records the digest of the
+settings it reads Jev's answers under as `policy.jev.decision` when any
+differs from its default.
+
 The program registry read records the Nostr filter it would have sent
 beside the answer it got from disk, because the query is the part that has
 to keep working when the answer does not. Publishing to the relay changes

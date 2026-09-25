@@ -59,7 +59,15 @@ const REQUIREMENT: &str = "{requirement}";
 const FINDING: &str = "{finding}";
 
 /// One question set: the wording behind one identifier.
+///
+/// A question, or a template, may carry a `decision` block beside its
+/// wording — `threshold` for a Noul, `cuts` for a Score, `weights` for a
+/// Choice, in the shape [`jev::Decision`] reads. Reading the set lifts the
+/// block out, so [`Set::questions`] and the templates hold only what goes
+/// on the wire and what [`Set::digest`] covers, and
+/// [`Set::decision_digest`] names the settings on their own.
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(remote = "Self")]
 pub struct Set {
     pub v: u32,
     /// The identifier a `decide` step names.
@@ -88,6 +96,67 @@ pub struct Set {
     /// host allows.
     #[serde(default, skip_serializing_if = "Policy::is_empty")]
     pub policy: Policy,
+    /// The decision settings the file writes beside each question's
+    /// wording, by question identifier. Never sent and outside
+    /// [`Set::digest`].
+    #[serde(skip)]
+    pub decisions: BTreeMap<String, jev::Decision>,
+    /// The decision settings a template's questions are read under, when
+    /// the file writes a block beside the template.
+    #[serde(skip)]
+    pub template_decision: jev::Decision,
+}
+
+impl<'de> Deserialize<'de> for Set {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let mut set = Self::deserialize(deserializer)?;
+        let refused = |id: &str, problem: String| {
+            serde::de::Error::custom(format!("question {id:?}: {problem}"))
+        };
+        for (id, question) in &mut set.questions {
+            if let Some(decision) =
+                jev::decision::split(question).map_err(|problem| refused(id, problem))?
+            {
+                set.decisions.insert(id.clone(), decision);
+            }
+        }
+        for (marker, template) in [
+            (REQUIREMENT, set.per_requirement.as_mut()),
+            (FINDING, set.per_finding.as_mut()),
+        ] {
+            if let Some(template) = template
+                && let Some(decision) =
+                    jev::decision::split(template).map_err(|problem| refused(marker, problem))?
+            {
+                set.template_decision = decision;
+            }
+        }
+        Ok(set)
+    }
+}
+
+impl Serialize for Set {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if self.decisions.is_empty() && self.template_decision.is_empty() {
+            return Self::serialize(self, serializer);
+        }
+        let mut written = self.clone();
+        for (id, decision) in &self.decisions {
+            if let Some(question) = written.questions.get_mut(id) {
+                jev::decision::join(question, decision);
+            }
+        }
+        for template in [
+            written.per_requirement.as_mut(),
+            written.per_finding.as_mut(),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            jev::decision::join(template, &self.template_decision);
+        }
+        Self::serialize(&written, serializer)
+    }
 }
 
 /// The workload policy a decision function binds.
@@ -543,11 +612,48 @@ impl Set {
         atif::digest(&body)
     }
 
+    /// The decision settings one question's answer is read under: the
+    /// template's for a templated set, and the question's own otherwise.
+    /// Empty when the file sets none, which reproduces the decision a host
+    /// made before settings existed.
+    #[must_use]
+    pub fn decision(&self, id: &str) -> jev::Decision {
+        if self.template().is_some() {
+            return self.template_decision.clone();
+        }
+        self.decisions.get(id).cloned().unwrap_or_default()
+    }
+
+    /// The digest of the decision settings, apart from the wording's.
+    ///
+    /// `None` when the file sets none, so a set written before settings
+    /// existed names none and its records are unchanged.
+    #[must_use]
+    pub fn decision_digest(&self) -> Option<String> {
+        match (&self.per_requirement, &self.per_finding) {
+            (Some(_), _) if !self.template_decision.is_empty() => Some(atif::digest(
+                &json!({ "per_requirement": self.template_decision }),
+            )),
+            (None, Some(_)) if !self.template_decision.is_empty() => Some(atif::digest(
+                &json!({ "per_finding": self.template_decision }),
+            )),
+            (None, None) if !self.decisions.is_empty() => {
+                Some(atif::digest(&json!({ "questions": self.decisions })))
+            }
+            _ => None,
+        }
+    }
+
     /// What a host records about the wording it asked from, beside the
-    /// answer.
+    /// answer, and the digest of the decision settings when the set has
+    /// any.
     #[must_use]
     pub fn provenance(&self) -> Value {
-        record(&self.id, &self.gate, self.digest(), &self.policy)
+        let mut provenance = record(&self.id, &self.gate, self.digest(), &self.policy);
+        if let Some(digest) = self.decision_digest() {
+            provenance["decision_digest"] = json!(digest);
+        }
+        provenance
     }
 }
 
@@ -1009,6 +1115,95 @@ mod tests {
             unbound.provenance().get("evidence").is_none(),
             "an unmeasured function names no evidence"
         );
+    }
+
+    #[test]
+    fn a_decision_block_leaves_the_wording_the_wire_and_the_digest_alone() {
+        let bare: Set = serde_json::from_str(
+            r#"{"v":1,"id":"openagents.bound.v1","gate":"q",
+                "questions":{"q":{"type":"noul","instructions":"Done?"}}}"#,
+        )
+        .unwrap();
+        let with: Set = serde_json::from_str(
+            r#"{"v":1,"id":"openagents.bound.v1","gate":"q",
+                "questions":{"q":{"type":"noul","instructions":"Done?",
+                    "decision":{"threshold":0.75}}}}"#,
+        )
+        .unwrap();
+        with.validate().unwrap();
+        assert_eq!(with.digest(), bare.digest());
+        assert_eq!(
+            serde_json::to_value(with.build(&Fill::None).unwrap()).unwrap(),
+            serde_json::to_value(bare.build(&Fill::None).unwrap()).unwrap(),
+            "the block never goes on the wire"
+        );
+        assert_eq!(with.decision("q").threshold, Some(jev::Threshold::at(0.75)));
+        assert!(bare.decision("q").is_empty());
+        assert!(bare.decision_digest().is_none());
+        assert!(bare.provenance().get("decision_digest").is_none());
+        assert_eq!(
+            with.provenance()["decision_digest"],
+            json!(with.decision_digest().unwrap())
+        );
+        assert_eq!(
+            with.provenance()["set_digest"],
+            bare.provenance()["set_digest"]
+        );
+        // Written back, the block sits where the file had it.
+        assert_eq!(
+            serde_json::to_value(&with).unwrap()["questions"]["q"]["decision"],
+            json!({ "threshold": 0.75 })
+        );
+
+        let template: Set = serde_json::from_str(
+            r#"{"v":1,"id":"openagents.done.v1","per_requirement":{"type":"noul",
+                "instructions":"Did {requirement} land?","decision":{"threshold":0.6}}}"#,
+        )
+        .unwrap();
+        let plain: Set = serde_json::from_str(
+            r#"{"v":1,"id":"openagents.done.v1","per_requirement":{"type":"noul",
+                "instructions":"Did {requirement} land?"}}"#,
+        )
+        .unwrap();
+        assert_eq!(template.digest(), plain.digest());
+        let fill = Fill::Requirements(vec!["tests".to_string()]);
+        assert_eq!(
+            serde_json::to_value(template.build(&fill).unwrap()).unwrap(),
+            serde_json::to_value(plain.build(&fill).unwrap()).unwrap()
+        );
+        assert_eq!(
+            template.decision("tests").threshold,
+            Some(jev::Threshold::at(0.6))
+        );
+    }
+
+    #[test]
+    fn every_repository_set_reads_the_same_wording_with_a_block_beside_it() {
+        let registry = repository_questions();
+        for id in registry.ids() {
+            let set = registry.get(&id).unwrap().clone();
+            let mut document = serde_json::to_value(&set).unwrap();
+            let blocked = |question: &mut Value| {
+                if question["type"] == "noul" {
+                    question["decision"] = json!({ "threshold": 0.6 });
+                }
+            };
+            if let Some(map) = document["questions"].as_object_mut() {
+                map.values_mut().for_each(blocked);
+            }
+            for key in ["per_requirement", "per_finding"] {
+                if let Some(template) = document.get_mut(key) {
+                    blocked(template);
+                }
+            }
+            let with: Set = serde_json::from_value(document).unwrap();
+            with.validate().unwrap();
+            assert_eq!(with.digest(), set.digest(), "{id}");
+            assert_eq!(
+                with.provenance()["set_digest"],
+                set.provenance()["set_digest"]
+            );
+        }
     }
 
     #[test]

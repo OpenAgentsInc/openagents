@@ -4296,8 +4296,9 @@ impl Runtime {
                             let reviewed_read =
                                 reviewed.answers.get(&set.gate).and_then(probability);
                             if reviewed_read.is_some() {
-                                let changed = verdict_of(&reviewed, &set.gate)
-                                    != verdict_of(&response, &set.gate);
+                                let decision = set.decision(&set.gate);
+                                let changed = verdict_of(&reviewed, &set.gate, &decision)
+                                    != verdict_of(&response, &set.gate, &decision);
                                 review_record = Some(json!({
                                     "reason": reason,
                                     "reviewer": reviewed.model,
@@ -5103,12 +5104,18 @@ fn read_of(response: &jev::SystemOneResponse, gate: &str) -> String {
 /// The judgment a gate's answer carries, for whether a review changed
 /// it: a noul's yes or no, a choice's selection, a score's level — the
 /// verdict, not the confidence digits. Two answers that agree are the
-/// same outcome however far apart their probabilities sit.
-fn verdict_of(response: &jev::SystemOneResponse, gate: &str) -> String {
+/// same outcome however far apart their probabilities sit. The yes or
+/// no and the selection are read under the gate's decision settings, and
+/// a set without them reads a yes at 0.5 and the model's pick.
+fn verdict_of(response: &jev::SystemOneResponse, gate: &str, decision: &jev::Decision) -> String {
     match response.answers.get(gate) {
-        Some(Answer::Choice(choice)) => choice.choice.clone(),
-        Some(Answer::Noul(noul)) => (noul.noul >= 0.5).to_string(),
-        Some(Answer::Score(score)) => score.score.to_string(),
+        Some(Answer::Choice(choice)) => decision.choice(choice).to_string(),
+        Some(Answer::Noul(noul)) => decision.noul(noul).to_string(),
+        // Without cuts, the mean, as before settings existed.
+        Some(Answer::Score(score)) => match decision.cuts {
+            Some(_) => format!("{:?}", decision.level(score)),
+            None => score.score.to_string(),
+        },
         None => "unanswered".to_string(),
     }
 }
