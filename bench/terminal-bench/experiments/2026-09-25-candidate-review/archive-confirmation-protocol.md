@@ -135,3 +135,27 @@ checks occur on three tasks (`constraints-scheduling`,
 `model-extraction-relu-logits`, and `openssl-selfsigned-cert`); the other nine tasks
 have no selected cheap item. Keep all 12 tasks and the same rule. This coverage
 inventory precedes every candidate and does not justify adding task-specific code.
+
+## Infrastructure amendment before candidate generation
+
+The first scheduled jobs (`9584-literal-r1`) produced 72 setup refusals, zero
+agent episodes, and zero verifier logs. The strict contamination guard found
+eight task names in the unrelated offline finish-replay exclusion list added by
+`54f1f1bbd3`. No candidate or model call existed. Preserve all 72 attempts as
+infrastructure failures with unknown grades; they are not candidate failures.
+
+[#9642](https://github.com/OpenAgentsInc/openagents/issues/9642) moves that list to
+explicit offline CLI arguments, outside live product guidance. It leaves the
+contamination guard and finish rule unchanged. Both original policies pass the
+actual guard, and all 211 published finish-replay rows remain byte-identical.
+The scoped Rust gate passes at `285d6056df`.
+
+Permit one infrastructure restart as `9584-literal-r2`, in a separate cohort
+directory. This amendment is recorded before any candidate generation. Keep the
+same 12 tasks, image pins, policies, three attempts per executor, frozen executor
+and check binaries, literal-v2 prompt, strict validator, threshold, and budgets.
+Copy the successful pre-candidate public plans byte-for-byte. Do not include the
+72 setup refusals in candidate precision or recall, but retain them in the
+scheduled-attempt accounting. A later agent failure is not eligible for this
+restart. The launcher now takes an explicit `--run-id r2`; it still refuses any
+job directory that already exists.

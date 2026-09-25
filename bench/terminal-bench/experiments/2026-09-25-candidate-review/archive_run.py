@@ -37,7 +37,7 @@ def request(a, arm):
                                    'cpu_enforcement_policy': 'auto', 'memory_enforcement_policy': 'auto'})
     agent = replace(agents.load_agents()['coder-one-microluna-v13'],
                     id='coder-one-archive-' + arm)
-    name = 'archive--coder-one-' + ('truth-confirmation' if arm == 'luna' else 'truth-control') + '--9584-literal-r1'
+    name = 'archive--coder-one-' + ('truth-confirmation' if arm == 'luna' else 'truth-control') + '--9584-literal-' + a.run_id
     policy = 'prospective-policy.json' if arm == 'luna' else 'prospective-astra-policy.json'
     return runner.RunRequest(population, profile, agent, tasks, auth_mode='auth-json',
                              agent_kwargs={'policy': str(a.out / policy), 'artifact_path': str(a.binary),
@@ -92,6 +92,7 @@ def main():
     for name in ['upstream', 'preflight', 'out', 'jobs', 'binary']:
         p.add_argument('--' + name, type=Path, required=True)
     p.add_argument('--prepare-only', action='store_true')
+    p.add_argument('--run-id', choices=['r1', 'r2'], default='r1')
     p.add_argument('--arm', choices=['luna', 'astra'])
     a = p.parse_args()
     if a.arm:
@@ -121,7 +122,7 @@ def main():
         command = [sys.executable, str(Path(__file__).resolve())]
         for name in ['upstream', 'preflight', 'out', 'jobs', 'binary']:
             command += ['--' + name, str(getattr(a, name))]
-        command += ['--arm', arm]
+        command += ['--arm', arm, '--run-id', a.run_id]
         with (a.out / (arm + '-launcher.log')).open('w') as log:
             result = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT)
         write(a.out / (arm + '-launcher.json'), {'arm': arm, 'exit': result.returncode})

@@ -564,3 +564,16 @@ environments and check plans have passed preflight. The
 retains image identities, task hashes, exact job configurations, and both corrected
 setup failures. This broader archive population is component validation, not TB4
 or evidence of a Fable win. No confirmation outcome is claimed here.
+
+The initial 72 scheduled attempts all stopped at the static contamination guard
+before agent execution or grading. An unrelated offline replay exclusion list
+had added benchmark task names to scanned product source. The
+[#9642 fix](https://github.com/OpenAgentsInc/openagents/issues/9642) moves those
+exclusions to explicit CLI arguments, preserves the strict guard, passes the
+scoped Rust gate, and reproduces all 211 published finish-replay rows exactly.
+The [959-file record](../../bench/terminal-bench/experiments/2026-09-25-candidate-review/records/truth9642-records.tar.gz)
+retains every setup refusal, both clean policy checks, replay, and gate logs;
+all files were restored and hash-verified, with zero exact credential matches.
+The protocol records a separate `r2` infrastructure restart before any candidate
+exists, with the same frozen experimental rule. Keep the 72 original unknown
+setup attempts in the accounting; they provide no candidate accuracy evidence.
