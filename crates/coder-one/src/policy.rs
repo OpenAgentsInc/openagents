@@ -1553,6 +1553,10 @@ pub const REFERENCE: &[(&str, &str)] = &[
         include_str!("../policies/microluna-v14-retained.json"),
     ),
     (
+        "microluna-v14-retained-1lane.json",
+        include_str!("../policies/microluna-v14-retained-1lane.json"),
+    ),
+    (
         "microluna-v15.json",
         include_str!("../policies/microluna-v15.json"),
     ),
@@ -1849,6 +1853,32 @@ mod tests {
         assert_eq!(
             luna().digest(),
             "bdefda51a03c05ed4322f668c6ea8e1695b3102f50261afb649ce87dd5411f85"
+        );
+    }
+
+    #[test]
+    fn the_matched_best_of_n_arms_differ_only_in_the_lane_count() {
+        // Issue #9587: the one-lane control and the three-lane arm.
+        let (one, three) = (
+            reference("microluna-v14-retained-1lane.json"),
+            reference("microluna-v14-retained.json"),
+        );
+        let (a, b) = (flat(&one), flat(&three));
+        let differing: Vec<&str> = a
+            .keys()
+            .filter(|key| a.get(*key) != b.get(*key))
+            .map(String::as_str)
+            .collect();
+        assert_eq!(differing, ["policy.executor.microluna.lean.lanes"]);
+        assert_eq!(a.len(), b.len());
+        assert_eq!(one.protected, three.protected);
+        assert_eq!(
+            three.digest(),
+            "12d43746e8f2302bf90cdeb0775b70919aac4bb93e9456737c6d0004353642db"
+        );
+        assert_eq!(
+            one.digest(),
+            "c934dd174059d36f0a042253c479cdf3c196a1ffa2c4ddf55bda06ef3d8bd5c4"
         );
     }
 

@@ -18,9 +18,17 @@ sidecar, a transparent proxy with nftables rules that the task container
 shares a network namespace with. A trial whose environment can't enforce
 an allowlist fails before it starts rather than running open.
 
+Harbor's own sidecar overlay moves every task service into the
+sidecar's namespace, which Docker refuses for a service that exposes a
+port (#9607). With ``enforce=allowlist``, the plugin replaces that
+overlay with ``tbench.egress_compose``'s: only the agent's namespace goes
+behind the sidecar, and the task's other services stay on the task's
+networks, made internal.
+
 With either mode, the plugin writes ``network-policy.json`` into each
 trial directory: the policy Harbor resolved, the policy the agent phase
-ran under, and whether that phase had public network.
+ran under, whether that phase had public network, and, for an
+environment behind the sidecar, how each compose service was placed.
 """
 
 from __future__ import annotations
@@ -38,7 +46,7 @@ PLUGIN = "tbench.netpolicy:AgentNetworkPlugin"
 # ``allowlist`` narrows a public agent phase to the agent's allowed hosts.
 MODES = ("harbor", "allowlist")
 
-_state: dict[str, Any] = {"mode": None, "original": None}
+_state: dict[str, Any] = {"mode": None, "original": None, "original_overlay": None}
 
 
 def narrow(policy: Any, hosts: list[str] | tuple[str, ...]) -> Any:
@@ -81,11 +89,68 @@ def record(harbor_plan: Any, plan: Any, mode: str, step: str | None = None) -> d
     }
 
 
-def _write(trial_dir: Path, body: dict[str, Any]) -> None:
+def _read(trial_dir: Path) -> dict[str, Any]:
     try:
-        (trial_dir / RECORD_NAME).write_text(json.dumps(body, indent=2) + "\n")
+        body = json.loads((Path(trial_dir) / RECORD_NAME).read_text())
+    except (OSError, ValueError):
+        return {}
+    return body if isinstance(body, dict) else {}
+
+
+def _write(trial_dir: Path, body: dict[str, Any]) -> None:
+    """Write the record, keeping the service placement another hook wrote."""
+    services = _read(trial_dir).get("services")
+    if services is not None and "services" not in body:
+        body = {**body, "services": services}
+    try:
+        (Path(trial_dir) / RECORD_NAME).write_text(json.dumps(body, indent=2) + "\n")
     except OSError:
         pass
+
+
+def _record_services(trial_dir: Path, services: dict[str, Any]) -> None:
+    body = _read(trial_dir)
+    body["services"] = services
+    _write(trial_dir, body)
+
+
+def _write_services_overlay(env: Any) -> Path | None:
+    """``DockerEnvironment._write_egress_control_services_compose_file``
+    under ``allowlist`` enforcement: tbench's overlay in place of Harbor's.
+    """
+    import tempfile
+
+    import yaml
+
+    from tbench import egress_compose
+
+    env._cleanup_egress_control_services_compose_file()
+    if not env._enable_egress_control:
+        return None
+    paths = []
+    if env._environment_docker_compose_path.exists():
+        paths.append(env._environment_docker_compose_path)
+    paths.extend(env.extra_docker_compose_paths)
+    trial_dir = getattr(getattr(env, "trial_paths", None), "trial_dir", None)
+    if not paths:
+        # A single-container task: Harbor's overlay puts ``main`` alone
+        # behind the sidecar, which is already the design.
+        path = _state["original_overlay"](env)
+        if trial_dir is not None:
+            _record_services(trial_dir, egress_compose.single_container_summary())
+        return path
+    documents = [yaml.safe_load(Path(path).read_text()) for path in paths]
+    body, summary = egress_compose.overlay(documents)
+    env._egress_control_services_compose_temp_dir = tempfile.TemporaryDirectory()
+    path = (
+        Path(env._egress_control_services_compose_temp_dir.name)
+        / "docker-compose-egress-control-services.yaml"
+    )
+    path.write_text(egress_compose.dump(body))
+    env._egress_control_services_compose_path = path
+    if trial_dir is not None:
+        _record_services(trial_dir, summary)
+    return path
 
 
 def install(mode: str) -> None:
@@ -96,6 +161,7 @@ def install(mode: str) -> None:
     """
     if mode not in MODES:
         raise ValueError(f"enforce must be one of {', '.join(MODES)}, not {mode!r}")
+    from harbor.environments.docker.docker import DockerEnvironment
     from harbor.trial.trial import Trial
 
     _state["mode"] = mode
@@ -103,6 +169,15 @@ def install(mode: str) -> None:
         return
     original = Trial._network_plan
     _state["original"] = original
+    original_overlay = DockerEnvironment._write_egress_control_services_compose_file
+    _state["original_overlay"] = original_overlay
+
+    def _overlay(self: Any) -> Path | None:
+        if _state["mode"] == "allowlist":
+            return _write_services_overlay(self)
+        return original_overlay(self)
+
+    DockerEnvironment._write_egress_control_services_compose_file = _overlay
 
     def _network_plan(self: Any, step_cfg: Any = None, *, env_config: Any = None) -> Any:
         enforcing = _state["mode"] == "allowlist"
@@ -132,10 +207,13 @@ def uninstall() -> None:
     """Restore Harbor's own resolution; for tests."""
     if _state["original"] is None:
         return
+    from harbor.environments.docker.docker import DockerEnvironment
     from harbor.trial.trial import Trial
 
     Trial._network_plan = _state["original"]
+    DockerEnvironment._write_egress_control_services_compose_file = _state["original_overlay"]
     _state["original"] = None
+    _state["original_overlay"] = None
     _state["mode"] = None
 
 
@@ -182,4 +260,5 @@ def trial_network(trial_dir: Path) -> dict[str, Any]:
         "harbor_agent_phase": body.get("harbor_agent_phase"),
         "verifier_phase": body.get("verifier_phase"),
         "agent_phase_public": bool(body.get("agent_phase_public")),
+        "services": body.get("services"),
     }

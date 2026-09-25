@@ -64,6 +64,8 @@ def test_known_arms(agents):
         "coder-one-microluna-v14",
         "coder-one-microluna-v13",
         "coder-one-microluna-v13-retained",
+        "coder-one-microluna-v14-retained",
+        "coder-one-microluna-v14-retained-1lane",
         "coder-one-microluna-v12",
         "coder-one-microluna-evidence-v1",
         "coder-one-microluna-v11",
@@ -109,6 +111,20 @@ def test_retained_v13_changes_only_candidate_recording(agents):
     assert after["policy"]["executor"]["microluna"]["lean"].pop("retain_candidates") is True
     assert after["policy"] == before["policy"]
     assert after["protected"] == before["protected"]
+
+
+def test_matched_best_of_n_arms_differ_only_in_lanes(agents):
+    root = Path(__file__).resolve().parents[3]
+    three = agents["coder-one-microluna-v14-retained"]
+    one = agents["coder-one-microluna-v14-retained-1lane"]
+    lanes = json.loads((root / three.kwargs["policy"]).read_text())
+    control = json.loads((root / one.kwargs["policy"]).read_text())
+    assert lanes["policy"]["executor"]["microluna"]["lean"].pop("lanes") == 3
+    assert control["policy"]["executor"]["microluna"]["lean"].pop("lanes") == 1
+    assert control["policy"] == lanes["policy"]
+    assert control["protected"] == lanes["protected"]
+    assert one.extra_allowed_hosts == three.extra_allowed_hosts
+    assert one.agent_network == three.agent_network == "allowlist"
 
 
 def test_claude_oauth_needs_token_only(agents):

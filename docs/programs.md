@@ -33,8 +33,10 @@ runtime.
 
 ## The word
 
-Use **program** for a workflow and **plugin** for a bounded Wasm guest. Call
-the combined product surface **programs and extensions**. Selecting a program
+Use **program** for a workflow and **plugin** for a bounded Wasm guest. A
+Claude Code or Codex package under `plugins/` is a client plugin package, a
+different thing; the [glossary](glossary.md#plugins-and-skills) separates the
+meanings. Call the combined product surface **programs and extensions**. Selecting a program
 answers which workflow the request asks for; it does not select a package to
 install or grant permission to execute it.
 
@@ -56,12 +58,14 @@ So the words already exist and already fit:
   claimed for the decision engine, which is precisely where this belongs.
 - **A plugin is a Wasm guest**, and a Devin delegation cannot be one.
 
-That last point is structural rather than a preference. The plugin host
-sorts guests into three tiers: pure compute loads without asking, a guest
-wanting read-only directories needs an operator, and a guest declaring
-network access **never loads**. A Devin delegation spawns a process, reaches
+That last point is structural rather than a preference. The reference
+design's plugin host sorts guests into three tiers: pure compute loads
+without asking, a guest wanting read-only directories needs an operator, and
+a guest declaring network access **never loads**. A Devin delegation spawns a process, reaches
 the internet, writes files, and is not deterministic. It is the tier that
-never loads.
+never loads. The host here, `crates/plugin`, implements only the first two
+tiers, as its `Pure` and `SnapshotRead` profiles, and has no network
+profile to load.
 
 The
 [capability-sockets review](decision-models/research/2026-09-19-capability-sockets.md)
@@ -74,10 +78,10 @@ discovery without merging their execution contracts.
 **A program is the workflow composition unit.** The target composition
 contract connects typed step outputs to inputs under narrowed bounds. Two
 automatic plugins eligible to replace the same call's output need explicit
-host ownership so completion order cannot choose the result. Plugins can
-also compose through declared program dataflow once module steps and typed
-bindings are implemented. See [Programs and decisions](extensions/programs.md)
-and [plugin host roles](extensions/plugins.md#host-roles).
+host ownership so completion order cannot choose the result. The runtime
+runs `module` steps; plugins can also compose through declared program
+dataflow once typed bindings between steps are implemented. See
+[Programs and decisions](extensions/programs.md) and [plugin host roles](extensions/plugins.md#host-roles).
 
 ## The three layers
 
@@ -514,8 +518,8 @@ directory instead is the substitution the rule forbids.
 
 **A step kind the host does not run refuses the whole program.** An
 unrecognized kind is refused when the file is read. A kind this version
-recognizes and does not run — `program` and `module`, which are composition
-and WebAssembly — is refused at admission. Neither is skipped.
+recognizes and does not run — `invoke`, which names a host operation this
+host has not admitted — is refused. Neither is skipped.
 
 **A `decide` step names a question, never its wording**, and **a `query`
 step names a source, never a command.** See the previous section.
@@ -533,6 +537,8 @@ refusals, and each one stops the rest.
 | `decide` | Puts the named question set to a decision door and records `openagents.decision-call.v1`, with the set's identifier and digest beside the answer. |
 | `check` | Runs the admission test the `refuse_on` bound names. |
 | `delegate` | Hands the work to the executor the capability probe resolved, at the width, isolation, and wall bound the step states. A step with nothing to hand over refuses rather than reporting that none of nothing answered. |
+| `program` | Runs the child program the step's address resolves to, nested inside the parent's run. Admission checks the whole composition first: cycles, depth, step and call totals, and bounds that would widen. |
+| `module` | Runs the Wasm guest the step carries inline through `plugin::invoke`, under the `pure` or `snapshot-read` profile and the step's `fuel` and `memory_bytes` bounds. A step without guest bytes refuses at admission. See [Wasm plugins](extensions/plugins.md#what-is-built). |
 
 ### Admission has three answers, not two
 
@@ -653,9 +659,16 @@ cannot see is in [`coderbench.md`](coderbench.md).
   executable source is where a lookup would reach a tracker directly, and it
   waits on the trust boundary and subprocess bounds in
   [#9427](https://github.com/OpenAgentsInc/openagents/issues/9427).
-- **Compose.** No `program` step, no `module` step, no cycle detection, no
-  depth bound, and nothing that fetches. All are specified, and none is
-  needed to run the first program.
+- **Run an `invoke` step.** The kind parses and refuses, because no host
+  operation is admitted.
+- **Fetch.** `coder` reads programs from `programs/` on disk, and a
+  `module` step carries its guest's bytes inline. `coder` doesn't resolve
+  a program or a module from a relay or a catalog. The
+  [interoperability suite](coder/verification/2026-09-22-relay-interoperability.md)
+  fetches a program and a guest over a relay in a test, but no product path
+  does. No program in `programs/` uses a `module` step yet.
+- **Grant a snapshot to a guest.** A `snapshot-read` module step runs with
+  an empty snapshot, so it has nothing to read.
 
 ## What to build first
 
