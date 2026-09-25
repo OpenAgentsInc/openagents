@@ -1,0 +1,35 @@
+{
+  "recorded_at": "2026-09-25T11:30:17.334109+00:00",
+  "launch": {
+    "family_pid": 2319310,
+    "family_process": [
+      "31189635",
+      "S"
+    ],
+    "started_utc": "2026-09-25T10:32:54.237724+00:00",
+    "state": "launching",
+    "launcher_sha256": "9dce2b370d76d1b94e53217dbe4fb378745fed77ac038b4d9b844dfd75f1a4d5",
+    "outcomes_read": false,
+    "wait_seconds": 3180.0675242620055,
+    "family_finished": "2026-09-25T06:26:03",
+    "launched_utc": "2026-09-25T11:26:24.306513+00:00"
+  },
+  "protocol_sha256": "16301c4ddef6a4334f70779449a8717a479eab6ea46dfed249c3f0ab5eb8ac98",
+  "frozen_checkout": "edb7cc3739",
+  "checks_supervisor": {
+    "pid": 147481,
+    "started_utc": "2026-09-25T11:29:28.973233+00:00",
+    "state": "watching",
+    "outcomes_read": false,
+    "passes": [],
+    "updated_utc": "2026-09-25T11:29:28.973472+00:00",
+    "completed_attempts": 0,
+    "checks": 0
+  },
+  "checks_supervisor_source_sha256": "236fc2393e3b2140c55fa655ade8d1f471bc167d5fa5a1785550be2006515b9d",
+  "job_config_sha256": {
+    "luna": "3fb20944ee452d41da8bb32d2158b01e6425ede36d92d1e29e61fc3b1e6aa25a",
+    "astra": "a30f77d3449e03b5a9fbbdd42ae27c50ab660a9bbddfccbe950b426d7212d81d"
+  },
+  "official_outcomes_opened": false
+}

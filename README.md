@@ -220,7 +220,9 @@ runtime policies remain unchanged. A subsequent
 [artifact lifecycle correction](docs/terminal-bench/2026-09-25-literal-lifecycle.md)
 removes synthetic temporary-file and deferred-write false alarms while preserving
 all 72 development calls. The [90-attempt confirmation protocol](bench/terminal-bench/experiments/2026-09-25-literal-confirmation/protocol.md)
-is amended before generation and awaits the separate v18 family run.
+started its 90 attempts at 11:26 UTC after the separate v18 family run finished.
+Checks run as candidates finish; official outcomes stay unopened until the
+complete prediction seal is pushed.
 
 The [earlier candidate-review study](docs/terminal-bench/2026-09-25-candidate-review-validation.md)
 retains the rejected opinion-based rules, the negative 16-candidate evaluation,

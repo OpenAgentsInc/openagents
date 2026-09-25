@@ -11,7 +11,9 @@ already-opened 72 candidates. This is development evidence; runtime policies
 remain unchanged. A subsequent [lifecycle correction](2026-09-25-literal-lifecycle.md)
 removes synthetic false alarms without changing these 72 calls. The
 [90-attempt confirmation protocol](../../bench/terminal-bench/experiments/2026-09-25-literal-confirmation/protocol.md)
-is amended before generation and awaits the separate v18 family run. See
+started its 90 attempts at 11:26 UTC after the separate v18 family run finished.
+Checks run as candidates finish; official outcomes stay unopened until the
+complete prediction seal is pushed. See
 [implementation, controls, coverage, and retained records](2026-09-25-literal-artifact-checks.md).
 
 **The 72-candidate archive confirmation is complete.** Luna passes 26/36 and

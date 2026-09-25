@@ -199,3 +199,20 @@ including missing-price/grade denominators and declaration mismatch rejection;
 see the [verification record](records/accounting-verification.json) and
 [test log](records/accounting-tests.log). These reporting changes leave all frozen
 orchestration hashes and predictions unchanged.
+
+
+## Launch
+
+The separate v18 family driver completed all 18 records and exited before the
+artifact-v2 launcher started at **2026-09-25 11:26:24 UTC**. Both 45-attempt jobs
+are running from the unchanged `edb7cc3739` checkout, with two candidate workers
+each. The first four static contamination receipts are clean. No task outcome
+has been opened, and no completion result is claimed.
+
+The [launch receipt](records/artifact-v2-launch.json) binds the protocol and job
+configuration to the retained start. A [single locked supervisor](records/checks-supervisor.py)
+invokes the frozen check command as completed-result files appear, without
+reading their contents. It stops on check errors or an incomplete finished
+cohort and records each invocation. It does not launch candidates, retry failed
+attempts, join outcomes, or publish a seal. The original two-worker check bound
+and every frozen rule remain unchanged.
