@@ -86,6 +86,33 @@ fn quoted(text: &str, quote: &str) -> bool {
     let normalized = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ");
     quote.trim().chars().count() >= 8 && normalized(text).contains(&normalized(quote))
 }
+/// Match either a literal requirement or every explicitly quoted passage in it.
+/// Explanatory prose is not itself a citation; an invented quoted passage fails.
+fn cited_requirement(task: &str, requirement: &str) -> bool {
+    if quoted(task, requirement) {
+        return true;
+    }
+    let mut cited = false;
+    for delimiter in ['"', '`'] {
+        let parts: Vec<_> = requirement.split(delimiter).collect();
+        if parts.len() == 1 {
+            continue;
+        }
+        if parts.len() < 3 || parts.len() % 2 == 0 {
+            return false;
+        }
+        if !parts
+            .iter()
+            .skip(1)
+            .step_by(2)
+            .all(|span| quoted(task, span))
+        {
+            return false;
+        }
+        cited = true;
+    }
+    cited
+}
 fn grounded(input: &Input, finding: &Finding, observations: &BTreeMap<String, Value>) -> bool {
     quoted(&input.candidate.task, &finding.requirement)
         && observations.get(&finding.call_id).is_some_and(|v| {
@@ -364,9 +391,143 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
     Ok(0)
 }
 
+/// Rejudge retained observations with exact quoted-passage citation recovery.
+///
+/// # Errors
+/// Returns invalid or stale evidence, credentials, and storage errors.
+pub async fn rejudge_command(args: &[String]) -> Result<i32, String> {
+    let (mut input_path, mut source, mut out) = (None, None, None);
+    let mut args = args.iter();
+    while let Some(arg) = args.next() {
+        let value = args
+            .next()
+            .ok_or("reproduced-rejudge needs paired options")?;
+        match arg.as_str() {
+            "--input" => input_path = Some(value),
+            "--review" => source = Some(value),
+            "--out" => out = Some(value),
+            _ => return Err(format!("Unknown reproduced-rejudge option {arg}")),
+        }
+    }
+    let input: Input = serde_json::from_slice(
+        &std::fs::read(input_path.ok_or("Missing --input")?).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
+    let source = source.ok_or("Missing --review")?;
+    let original: Value =
+        serde_json::from_slice(&std::fs::read(source).map_err(|e| e.to_string())?)
+            .map_err(|e| e.to_string())?;
+    if original["schema"] != SCHEMA
+        || original["input_digest"] != atif::digest(&json!(input))
+        || original["candidate_identity"] != input.candidate_identity
+    {
+        return Err("Retained review does not match the supplied candidate".into());
+    }
+    let observations: BTreeMap<String, Value> =
+        serde_json::from_value(original["observations"].clone()).map_err(|e| e.to_string())?;
+    let review: Option<Review> =
+        serde_json::from_value(original["review"].clone()).map_err(|e| e.to_string())?;
+    let out = Path::new(out.ok_or("Missing --out")?);
+    if out.join("review.json").exists() {
+        return Err("Rejudgment already exists; choose a new output".into());
+    }
+    std::fs::create_dir_all(out).map_err(|e| e.to_string())?;
+    let home = crate::credentials::openagents_dir().ok_or("HOME is not set")?;
+    let key = crate::credentials::jev_key(|name| std::env::var(name).ok(), &home)?;
+    let mode = JevMode::Live(crate::credentials::jev_client(&key.secret)?);
+    let recorder = Recorder::default();
+    let deadline = crate::deadline::Deadline::new(Some(Duration::from_secs(180)), Duration::ZERO);
+    let mut findings = Vec::new();
+    for (i, finding) in review
+        .as_ref()
+        .into_iter()
+        .flat_map(|r| &r.findings)
+        .enumerate()
+    {
+        let actual_output = observations.get(&finding.call_id).is_some_and(|v| {
+            quoted(
+                &format!(
+                    "{}\n{}",
+                    v["stdout"].as_str().unwrap_or_default(),
+                    v["stderr"].as_str().unwrap_or_default()
+                ),
+                &finding.output_quote,
+            )
+        });
+        let supported = cited_requirement(&input.candidate.task, &finding.requirement)
+            && actual_output
+            && [&finding.expected, &finding.actual, &finding.reasoning]
+                .iter()
+                .all(|s| !s.trim().is_empty());
+        let mut record = json!({"finding":finding,"grounded":supported,"score":null});
+        if supported {
+            let state = json!({"task":input.candidate.task,"coverage":input.candidate.coverage,"finding":finding,"observation":observations[&finding.call_id]});
+            if serde_json::to_vec(&state).map_err(|e| e.to_string())?.len() <= 64000 {
+                let asked = ask(
+                    &mode,
+                    &recorder,
+                    Ask {
+                        component: "verify.reproduced",
+                        name: "jev_reproduced_failure",
+                        id: format!("finding-{i}"),
+                        state: state.clone(),
+                        questions: questions(),
+                        parent: None,
+                        deadline: Some(deadline.clone()),
+                    },
+                )
+                .await;
+                record["state"] = state;
+                record["questions"] = json!(questions());
+                record["score"] = json!(asked.answers.as_ref().and_then(score));
+                record["answers"] = json!(asked.answers);
+                record["error"] = json!(asked.error);
+                record["input_tokens"] = json!(asked.input_tokens);
+                record["milliseconds"] = json!(asked.milliseconds);
+            } else {
+                record["error"] = json!("Judgment state exceeds 64 KB");
+            }
+        }
+        findings.push(record);
+    }
+    let best = findings
+        .iter()
+        .filter_map(|f| f["score"].as_f64())
+        .max_by(f64::total_cmp);
+    let value = json!({"schema":SCHEMA,"citation_mode":"quoted-passages-v1","candidate_identity":input.candidate_identity,
+        "input_digest":original["input_digest"],"reviewer_source":source,"source_digest":atif::digest(&original),
+        "review":review,"observations":observations,"findings":findings,"steps":recorder.steps(),
+        "score":best,"call":if best.is_some_and(|p|p>=0.8){"fail"}else{"unknown"},
+        "error":original["error"],"known_native_cost_usd":0,"milliseconds":deadline.elapsed().as_millis()});
+    save(out, "review.json", &value)?;
+    println!("{}", json!({"out":out,"call":value["call"]}));
+    Ok(0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn quoted_passages_recover_citations_without_admitting_invented_quotes() {
+        let task = "The total must equal 42. The input must be UTF-8.";
+        assert!(cited_requirement(
+            task,
+            "The task says \"total must equal 42\", in the public requirements."
+        ));
+        assert!(cited_requirement(
+            task,
+            "Required: `The total must equal 42` and `input must be UTF-8`."
+        ));
+        assert!(!cited_requirement(
+            task,
+            "It says \"total must equal 42\" and \"the total is 43\"."
+        ));
+        assert!(!cited_requirement(task, "The total should really be 43."));
+        assert!(!cited_requirement(
+            task,
+            "The task says \"total must equal 42"
+        ));
+    }
     #[test]
     fn citations_require_the_task_and_actual_observation() {
         let input = Input {

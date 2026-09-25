@@ -48,3 +48,22 @@ outside that root (including a separately collected patch or installed framework
 source) make the review unavailable, rather than silently substituting the public
 image's original files. Three of the first 15 candidates have this limitation.
 The temporary preflight records describe these exclusions before review starts.
+
+## Quoted-passage recovery before outcome joins
+
+The first four completed reviews exposed a citation-interface mismatch. The
+reviewer put exact public quotations inside explanatory text in its `requirement`
+field. The original validator compared that entire field with the task, so it
+rejected otherwise literal quotations before Jev saw the finding. Preserve that
+strict arm unchanged. A separate `reproduced-rejudge` arm accepts either an exact
+whole-field quotation or all explicitly double-quoted/backticked passages in that
+field, each at least eight characters and present verbatim after whitespace
+normalization. Unmatched quotes or invented quoted passages are refused. The
+actual-output quotation still must match the named recorded command.
+
+Freeze this recovery before opening any official outcomes. Reuse the exact
+native findings and executions; make no new native review. Ask the unchanged
+reproduction and mandatory-scope questions at the unchanged 0.8 cutoff. Record
+new Jev costs, citation mode, original-record digest, and original candidate
+identity. Measure strict and recovered arms separately. This is an implementation
+correction discovered from unlabeled records, not permission to tune on grades.

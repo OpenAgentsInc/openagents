@@ -108,6 +108,9 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
     if verb == "reproduced-review" {
         return super::reproduced::command(rest).await;
     }
+    if verb == "reproduced-rejudge" {
+        return super::reproduced::rejudge_command(rest).await;
+    }
     if verb == "readiness" {
         return super::readiness::command(rest).await;
     }
