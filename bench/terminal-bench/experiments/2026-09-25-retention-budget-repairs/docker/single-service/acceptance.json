@@ -1,0 +1,12 @@
+{
+  "reward": 1.0,
+  "rewards": {
+    "reward": 1.0
+  },
+  "exit": 0,
+  "exception": null,
+  "message": null,
+  "image_cache": "warm",
+  "trial_dir": "/private/tmp/bench-retention-docker-acceptance-4/test_real_collection_and_indep0/grade/verify__49a128a",
+  "stdout_tail": null
+}

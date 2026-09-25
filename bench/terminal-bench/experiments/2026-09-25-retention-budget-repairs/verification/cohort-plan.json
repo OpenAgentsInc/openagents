@@ -1,0 +1,54 @@
+{
+  "spec": {
+    "schema": "openagents.tbench.cohort.v1",
+    "id": "acceptance-plan-only",
+    "budget_usd": "0.18",
+    "reservation_usd": "0.12",
+    "concurrency": 1,
+    "retries": 1,
+    "cost_rule": {
+      "version": "microluna-open-request-v1",
+      "luna_bound_usd": "0.09"
+    },
+    "artifact_path": "/home/christopherdavid/.cache/openagents/target-bench-retention-budgets/debug/coder-one",
+    "artifact_sha256": "cefe8f54da6fef75b898f4383be557ef2b1fd300d014d47d957af5dc0c80381e",
+    "policy_path": "/home/christopherdavid/.cache/openagents/worktrees/bench-retention-budgets/crates/coder-one/policies/microluna-v18.json",
+    "schedule": [
+      {
+        "id": "metadata-only",
+        "profile": "tb4",
+        "agent": "coder-one-microluna-v18",
+        "task_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/photonic-waveguide-routing"
+      }
+    ]
+  },
+  "identity": {
+    "source_dirty": "12644c907b5932303d40f42bdf41898b9a00584dfc32980049da8c936d4b3a92",
+    "source_commit": "640586ba183eeb24d5039f83ef6b972d764e8053",
+    "artifact_sha256": "cefe8f54da6fef75b898f4383be557ef2b1fd300d014d47d957af5dc0c80381e",
+    "policy_sha256": "4da78507d84a67bbc18886ba9e6975d1f8b0bd15962dde8901f4186f9b1ba912",
+    "tasks": {
+      "metadata-only": "aeb33f4149622968935ef3c7b3406dae12fca8be49463056050e67caae785ea3"
+    }
+  },
+  "coverage": {
+    "metadata-only": {
+      "schema": "candidate-checkpoint-v1",
+      "supported": true,
+      "reasons": [],
+      "task_checksum": "aeb33f4149622968935ef3c7b3406dae12fca8be49463056050e67caae785ea3",
+      "artifacts": [
+        "/app/routing_result_1.json"
+      ],
+      "hooks": [],
+      "max_capture_seconds": 120,
+      "verifier_executed": false
+    }
+  },
+  "cost_rule": {
+    "version": "microluna-open-request-v1",
+    "luna_bound_usd": "0.09"
+  },
+  "launches": 1,
+  "inference_started": false
+}

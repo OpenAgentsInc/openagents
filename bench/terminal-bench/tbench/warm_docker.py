@@ -288,6 +288,11 @@ class TimedDockerEnvironment(CdiDockerEnvironment):
 class WarmDockerEnvironment(TimedDockerEnvironment):
     """Harbor's Docker environment that keeps and reuses task images."""
 
+    async def candidate_pause(self, paused: bool) -> None:
+        """Quiesce main while a candidate's sidecar artifacts are collected."""
+        await self._run_docker_compose_command(
+            ["pause" if paused else "unpause", "main"], timeout_sec=15)
+
     STOP_TIMEOUT_SEC: int | None = 1
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:

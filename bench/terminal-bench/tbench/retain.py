@@ -332,6 +332,14 @@ def plan_trial(trial_dir: Path) -> tuple[_Plan, dict[str, Any]]:
                 )
                 native += 1
     context["native"] = native
+    checkpoints = agent / "candidate-checkpoints"
+    if checkpoints.is_dir():
+        for path in sorted(p for p in checkpoints.rglob("*") if p.is_file()):
+            plan.add("candidate checkpoint", path,
+                     f"candidate-checkpoints/{path.relative_to(checkpoints).as_posix()}")
+    coverage = agent / "candidate-preflight.json"
+    if coverage.is_file():
+        plan.add("candidate coverage", coverage, "candidate-preflight.json")
     setup = agent / "toolchain-setup.json"
     if setup.is_file():
         plan.add("setup record", setup, "setup/toolchain-setup.json")

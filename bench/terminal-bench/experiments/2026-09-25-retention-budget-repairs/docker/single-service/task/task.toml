@@ -1,0 +1,11 @@
+schema_version="1.0"
+artifacts=[{source="/app/out.txt", destination="main/output.txt"}, "/app/absent.txt", "/app/absent-dir"]
+[task]
+name="synthetic/checkpoint"
+[environment]
+cpus=1
+memory_mb=256
+[verifier]
+environment_mode="separate"
+timeout_sec=30
+

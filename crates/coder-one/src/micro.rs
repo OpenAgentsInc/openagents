@@ -32,6 +32,7 @@
 //! `handoff` step, which the Gym shows as a hand-off.
 
 pub mod candidate;
+mod checkpoint;
 mod detect;
 pub mod lean;
 pub mod parallel;
@@ -926,6 +927,7 @@ pub fn login_path() -> Option<PathBuf> {
 /// printed.
 #[must_use]
 pub fn check_login() -> Vec<String> {
+    println!("candidate capture: {}", checkpoint::VERSION);
     let Some(path) = login_path() else {
         return vec!["microluna: no CODEX_HOME or HOME to find the Codex login in".to_string()];
     };

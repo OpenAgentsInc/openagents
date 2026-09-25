@@ -1,6 +1,6 @@
 # Terminal-Bench status
 
-Updated on 2026-09-25 with the completed v18 family assessment. This page summarizes retained evidence, not the host's live queue.
+Updated on 2026-09-25 with the v18 family assessment and infrastructure repairs. This page summarizes retained evidence, not the host's live queue.
 
 ## Latest status
 
@@ -11,9 +11,10 @@ the strict protocol result is inconclusive because the harness changed after
 setup failures and the driver restarted. Counted spend is $0.9636; no successful
 output means no cost/pass or time/pass comparison. Candidate oracle coverage is
 complete for only 6/18 trials. #9640 is complete as a measurement;
-[#9649](https://github.com/OpenAgentsInc/openagents/issues/9649) and
-[#9650](https://github.com/OpenAgentsInc/openagents/issues/9650) track retention
-and orchestration repairs. No policy is promoted.
+the [retention and budget repairs](2026-09-25-retention-budget-repairs.md) add
+sealed per-session artifact collection and a persistent cohort reservation ledger
+(#9649 and #9650). The audit recovers no missing v18 state, so historical oracle
+coverage remains 6/18. No policy is promoted.
 
 **Executed-contract measurement is complete (#9628).** The
 [sixteen-candidate supplement](2026-09-25-executed-contract-supplement.md)

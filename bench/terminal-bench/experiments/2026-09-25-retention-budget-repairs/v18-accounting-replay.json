@@ -1,0 +1,177 @@
+{
+  "rule": "microluna-open-request-v1",
+  "luna_bound_usd": "0.09",
+  "model_calls": 0,
+  "counted_usd": "0.9635969900000000103",
+  "open_request_bounds": 6,
+  "attempts": [
+    {
+      "usage": "bench/terminal-bench/experiments/2026-09-25-microluna-v18-family/records/attempts/cumulative-layout-shift/a1/usage.json",
+      "usage_sha256": "87df0d8ae667f95a6cb032f9fc87ffa35aefdc4a3181b08d28d0415538625f48",
+      "accounting": {
+        "kind": "recorded",
+        "recorded_usd": "0.076152102",
+        "counted_usd": "0.076152102"
+      }
+    },
+    {
+      "usage": "bench/terminal-bench/experiments/2026-09-25-microluna-v18-family/records/attempts/cumulative-layout-shift/a2/usage.json",
+      "usage_sha256": "726f193b064ce2e178c9d8956161be5200b3c9429356b6ee1c3c6ac42e320a22",
+      "accounting": {
+        "kind": "recorded",
+        "recorded_usd": "0.07725434800000001",
+        "counted_usd": "0.07725434800000001"
+      }
+    },
+    {
+      "usage": "bench/terminal-bench/experiments/2026-09-25-microluna-v18-family/records/attempts/cumulative-layout-shift/a3/usage.json",
+      "usage_sha256": "c630866bab66cfd4c66000ad5849d64be339e25e1d54b54b34499aad2310e11f",
+      "accounting": {
+        "kind": "recorded",
+        "recorded_usd": "0.079527064",
+        "counted_usd": "0.079527064"
+      }
+    },
+    {
+      "usage": "bench/terminal-bench/experiments/2026-09-25-microluna-v18-family/records/attempts/live-database-cutover/a1/usage.json",
+      "usage_sha256": "7b1916640cb6bc222d175aeff5d3858e7551d7479bb5c16ebeb77490fa54abfc",
+      "accounting": {
+        "kind": "recorded",
+        "recorded_usd": "0.019474018",
+        "counted_usd": "0.019474018"
+      }
+    },
+    {
+      "usage": "bench/terminal-bench/experiments/2026-09-25-microluna-v18-family/records/attempts/live-database-cutover/a2/usage.json",
+      "usage_sha256": "5aeacfb8710436c5a40741a263c26657c8f2741d51486f1a9394e3645a33c5da",
+      "accounting": {
+        "kind": "recorded",
+        "recorded_usd": "0.024544098",
+        "counted_usd": "0.024544098"
+      }
+    },
+    {
+      "usage": "bench/terminal-bench/experiments/2026-09-25-microluna-v18-family/records/attempts/live-database-cutover/a3/usage.json",
+      "usage_sha256": "c5ed296bc812346e10c4f7b80764a989cf9557ed9a4184d64262182be64156fb",
+      "accounting": {
+        "kind": "recorded",
+        "recorded_usd": "0.018938054000000003",
+        "counted_usd": "0.018938054000000003"
+      }
+    },
+    {
+      "usage": "bench/terminal-bench/experiments/2026-09-25-microluna-v18-family/records/attempts/mp-checkpoint-consolidation/a1/usage.json",
+      "usage_sha256": "efe8b3f8e6f4d58abcd0ecf1ab01031364f7314fbcf2f798ba8e54aec31560f4",
+      "accounting": {
+        "kind": "open-request-bound",
+        "recorded_usd": null,
+        "lower_bound_usd": "0.061207598",
+        "counted_usd": "0.0911860379999999997"
+      }
+    },
+    {
+      "usage": "bench/terminal-bench/experiments/2026-09-25-microluna-v18-family/records/attempts/mp-checkpoint-consolidation/a2/usage.json",
+      "usage_sha256": "313409fcda3f48e9cd6882f53ccf72b55eff920b5d77b1ca4bbb826e494c2421",
+      "accounting": {
+        "kind": "open-request-bound",
+        "recorded_usd": null,
+        "lower_bound_usd": "0.056201559999999984",
+        "counted_usd": "0.0911881799999999996"
+      }
+    },
+    {
+      "usage": "bench/terminal-bench/experiments/2026-09-25-microluna-v18-family/records/attempts/mp-checkpoint-consolidation/a3/usage.json",
+      "usage_sha256": "c7bd227f70cc4b37614cb79ea5efbdf1b251aec006981acf94dbabbf53e5ac52",
+      "accounting": {
+        "kind": "open-request-bound",
+        "recorded_usd": null,
+        "lower_bound_usd": "0.04926865800000001",
+        "counted_usd": "0.0911860379999999997"
+      }
+    },
+    {
+      "usage": "bench/terminal-bench/experiments/2026-09-25-microluna-v18-family/records/attempts/payments-pipeline-fix/a1/usage.json",
+      "usage_sha256": "a59f51ea30f598578d32781948b721ab878e3f33c02d9648c37d8929039ba6b3",
+      "accounting": {
+        "kind": "recorded",
+        "recorded_usd": "0.014113238",
+        "counted_usd": "0.014113238"
+      }
+    },
+    {
+      "usage": "bench/terminal-bench/experiments/2026-09-25-microluna-v18-family/records/attempts/payments-pipeline-fix/a2/usage.json",
+      "usage_sha256": "eb1db26d27223d62ec697182b2a129947d1221204378b23a063fef0d45738925",
+      "accounting": {
+        "kind": "recorded",
+        "recorded_usd": "0.042587768000000005",
+        "counted_usd": "0.042587768000000005"
+      }
+    },
+    {
+      "usage": "bench/terminal-bench/experiments/2026-09-25-microluna-v18-family/records/attempts/payments-pipeline-fix/a3/usage.json",
+      "usage_sha256": "5306f607fc601ffca8882c48ac0a4b9dc160dd8fba1ab8e280a9ec212d761287",
+      "accounting": {
+        "kind": "recorded",
+        "recorded_usd": "0.008750764000000001",
+        "counted_usd": "0.008750764000000001"
+      }
+    },
+    {
+      "usage": "bench/terminal-bench/experiments/2026-09-25-microluna-v18-family/records/attempts/photonic-waveguide-routing/a1/usage.json",
+      "usage_sha256": "67252678819811ad7e04050d3199a8755770130893e0a15ef6dc0808217f764a",
+      "accounting": {
+        "kind": "open-request-bound",
+        "recorded_usd": null,
+        "lower_bound_usd": "0.026435720000000003",
+        "counted_usd": "0.0913767599999999999"
+      }
+    },
+    {
+      "usage": "bench/terminal-bench/experiments/2026-09-25-microluna-v18-family/records/attempts/photonic-waveguide-routing/a2/usage.json",
+      "usage_sha256": "b8a4bc3de3e2a574996e26c8716b0f2af702912b2f33450692baeb8e6e78b9e7",
+      "accounting": {
+        "kind": "open-request-bound",
+        "recorded_usd": null,
+        "lower_bound_usd": "0.034299926",
+        "counted_usd": "0.0912664259999999997"
+      }
+    },
+    {
+      "usage": "bench/terminal-bench/experiments/2026-09-25-microluna-v18-family/records/attempts/photonic-waveguide-routing/a3/usage.json",
+      "usage_sha256": "ac7fdda608ef40573bbc9ea463e6239d87169485ab6dca03ec52d5b31a291175",
+      "accounting": {
+        "kind": "open-request-bound",
+        "recorded_usd": null,
+        "lower_bound_usd": "0.038498347999999995",
+        "counted_usd": "0.0912891479999999997"
+      }
+    },
+    {
+      "usage": "bench/terminal-bench/experiments/2026-09-25-microluna-v18-family/records/attempts/telecom-entity-resolution/a1/usage.json",
+      "usage_sha256": "b223aaa0beecc2954fe67fa1231d460db29da4efa48eb301d02652c0a9814bea",
+      "accounting": {
+        "kind": "recorded",
+        "recorded_usd": "0.019651907999999996",
+        "counted_usd": "0.019651907999999996"
+      }
+    },
+    {
+      "usage": "bench/terminal-bench/experiments/2026-09-25-microluna-v18-family/records/attempts/telecom-entity-resolution/a2/usage.json",
+      "usage_sha256": "b3f52425edaa4474e6f17d09ef0e608ac0fac64e901d0eafdb91a99df719a83b",
+      "accounting": {
+        "kind": "recorded",
+        "recorded_usd": "0.013540666",
+        "counted_usd": "0.013540666"
+      }
+    },
+    {
+      "usage": "bench/terminal-bench/experiments/2026-09-25-microluna-v18-family/records/attempts/telecom-entity-resolution/a3/usage.json",
+      "usage_sha256": "74ac7630a1624cfc38a696f7c2d9801bdd75912622ca40297a2005eeb02559a8",
+      "accounting": {
+        "kind": "recorded",
+        "recorded_usd": "0.021570371999999997",
+        "counted_usd": "0.021570371999999997"
+      }
+    }
+  ]
+}

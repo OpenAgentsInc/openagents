@@ -1,0 +1,145 @@
+{
+  "schema": "openagents.repair-evidence-index.v1",
+  "files": {
+    "docker/sidecar/acceptance.json": {
+      "bytes": 279,
+      "sha256": "d6a1428a650d0a9d11c18ddb3cbfd5b0303207761694ddb39719e852c2b2b440"
+    },
+    "docker/sidecar/checkpoint/artifacts/database/dump.txt": {
+      "bytes": 5,
+      "sha256": "a7937b64b8caa58f03721bb6bacf5c78cb235febe0e70b1b84cd99541461a08e"
+    },
+    "docker/sidecar/checkpoint/artifacts/logs/artifacts/note.txt": {
+      "bytes": 8,
+      "sha256": "ca67bd59cc4116ac80db5f64cbf4747f26ba929c85e8cc689a6123368d08719b"
+    },
+    "docker/sidecar/checkpoint/artifacts/main/output.txt": {
+      "bytes": 5,
+      "sha256": "a7937b64b8caa58f03721bb6bacf5c78cb235febe0e70b1b84cd99541461a08e"
+    },
+    "docker/sidecar/checkpoint/artifacts/manifest.json": {
+      "bytes": 757,
+      "sha256": "8a4e4f704568b9a83f45ba5460a891e2cf050c384ee074edabf02bb66df2c6e8"
+    },
+    "docker/sidecar/checkpoint/receipt.json": {
+      "bytes": 2283,
+      "sha256": "1830ac8c0c6d16aea53f232415a32a85f26044958ce80c9f0a8e73f6ed1c81f3"
+    },
+    "docker/sidecar/regrade-result.json": {
+      "bytes": 3630,
+      "sha256": "0fd11c2702b635644c5dd10a811d4a23e8b27f43f3cec4de554a08cce3cd060b"
+    },
+    "docker/sidecar/task/environment/Dockerfile": {
+      "bytes": 42,
+      "sha256": "84b926839413d1c69bdbc9d70a73a8395b4df6f275bf63d2a74ce16af23b0445"
+    },
+    "docker/sidecar/task/environment/docker-compose.yaml": {
+      "bytes": 173,
+      "sha256": "fb0eb5abee3cb89531457d0315462bccd900795474cbbd3b3b18a8d8105b1938"
+    },
+    "docker/sidecar/task/instruction.md": {
+      "bytes": 32,
+      "sha256": "04884ada4df95e2beb12865e41ac5f996384b4a5fd0096d2316107fe16b8f39d"
+    },
+    "docker/sidecar/task/task.toml": {
+      "bytes": 415,
+      "sha256": "d3ad9f12e044f0d813e902febf8f5acfd02ac010e9e9290ffd172a308734099d"
+    },
+    "docker/sidecar/task/tests/Dockerfile": {
+      "bytes": 110,
+      "sha256": "d8507cb5a71cdd7e025c0319af008c5b3af20aaf8d5a28dd34e153e011e8ca2e"
+    },
+    "docker/sidecar/task/tests/test.sh": {
+      "bytes": 227,
+      "sha256": "3d570fcb785cb3fbfd0f2fc64835771ea1840e0a71b34b2df5f159c115f4ab1f"
+    },
+    "docker/sidecar/verifier/reward.txt": {
+      "bytes": 1,
+      "sha256": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b"
+    },
+    "docker/sidecar/verifier/test-stdout.txt": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "docker/single-service/acceptance.json": {
+      "bytes": 279,
+      "sha256": "91c6e1d5e031a920754152b20de706f7cfce8646bdab335bf19d3b4422034752"
+    },
+    "docker/single-service/checkpoint/artifacts/logs/artifacts/note.txt": {
+      "bytes": 8,
+      "sha256": "ca67bd59cc4116ac80db5f64cbf4747f26ba929c85e8cc689a6123368d08719b"
+    },
+    "docker/single-service/checkpoint/artifacts/main/output.txt": {
+      "bytes": 5,
+      "sha256": "a7937b64b8caa58f03721bb6bacf5c78cb235febe0e70b1b84cd99541461a08e"
+    },
+    "docker/single-service/checkpoint/artifacts/manifest.json": {
+      "bytes": 666,
+      "sha256": "43424fabc32866b21386502d66c65b6bfa764273b2dd93907215820b9b08a9a3"
+    },
+    "docker/single-service/checkpoint/receipt.json": {
+      "bytes": 1617,
+      "sha256": "4f0cfa20e75ae23f0e62c710b973ab4f8fa1d617c7efc7367b6dfd445861a7e7"
+    },
+    "docker/single-service/regrade-result.json": {
+      "bytes": 3630,
+      "sha256": "d055c17fa3c74a1cf30ab29defbf56731aa0866fc4d6bde682bef789222cee1d"
+    },
+    "docker/single-service/task/environment/Dockerfile": {
+      "bytes": 42,
+      "sha256": "84b926839413d1c69bdbc9d70a73a8395b4df6f275bf63d2a74ce16af23b0445"
+    },
+    "docker/single-service/task/instruction.md": {
+      "bytes": 32,
+      "sha256": "04884ada4df95e2beb12865e41ac5f996384b4a5fd0096d2316107fe16b8f39d"
+    },
+    "docker/single-service/task/task.toml": {
+      "bytes": 251,
+      "sha256": "f95b42ca71c60b8f3003190235b5c7bbeec33492f687417becf59b824098e55b"
+    },
+    "docker/single-service/task/tests/Dockerfile": {
+      "bytes": 110,
+      "sha256": "d8507cb5a71cdd7e025c0319af008c5b3af20aaf8d5a28dd34e153e011e8ca2e"
+    },
+    "docker/single-service/task/tests/test.sh": {
+      "bytes": 192,
+      "sha256": "6d608940fea43f0b9feadd547cf68bc31d5cf2714e9c64f47c46e37a7f7c46cf"
+    },
+    "docker/single-service/verifier/reward.txt": {
+      "bytes": 1,
+      "sha256": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b"
+    },
+    "docker/single-service/verifier/test-stdout.txt": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "v18-accounting-replay.json": {
+      "bytes": 7404,
+      "sha256": "e45c6f8d83f07e20c0d349817bbac1b15398e1d328edaeddc09852f8ba3b7431"
+    },
+    "v18-recovery-audit.json": {
+      "bytes": 16096,
+      "sha256": "e99c7b02260f81e453e536f85b3ad9f93f8d113b6940570a7650f9fc7893de70"
+    },
+    "verification/cohort-plan.json": {
+      "bytes": 1912,
+      "sha256": "e53b9a5dd3fd0aa000f6efb4d87034470c45a0a4ce45f70e094f104ebdfd9596"
+    },
+    "verification/python-linux.txt": {
+      "bytes": 1863,
+      "sha256": "b62e4d0ac3b9a7af61aab378cdc22a6126735585edbacc59ae542d233e0832cc"
+    },
+    "verification/rust-linux.json": {
+      "bytes": 3438,
+      "sha256": "7d564111b19b4654008d836c4a53ddf93662ea716ddd35a2d5205d00e6b5963d"
+    },
+    "verification/summary.json": {
+      "bytes": 4482,
+      "sha256": "0dde410be97393c757132823011631f7725bc9fad397b2fb14bfbddf5925251e"
+    },
+    "verification/support-linux.json": {
+      "bytes": 3453,
+      "sha256": "2e8fa9a12008bb8051617e6b9dc6512f7ff8eba7b2290e26dae0fba35299b0d7"
+    }
+  }
+}

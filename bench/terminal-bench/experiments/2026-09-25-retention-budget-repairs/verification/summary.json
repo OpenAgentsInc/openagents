@@ -1,0 +1,106 @@
+{
+  "schema": "openagents.retention-budget-verification.v1",
+  "base_commit": "640586ba183eeb24d5039f83ef6b972d764e8053",
+  "model_calls": 0,
+  "official_outcomes_from_9584_opened": false,
+  "code_sha256": {
+    "bench/terminal-bench/tbench/candidate_capture.py": "48e16c1f8979a67491b6c2f9b05efb38bc6e8a05ee016f062c38eeafb6dab966",
+    "bench/terminal-bench/tbench/candidates.py": "61ee262292b898833cb66009f909ed16a76e6bfdba090686a63e3afc31a16209",
+    "bench/terminal-bench/tbench/cli.py": "1f6357888b9fb6b75aa51fd1a88075a25c2ca7b2ecee107a6c3b79501c360402",
+    "bench/terminal-bench/tbench/coder_one.py": "0878f959ce5061247f1a284f634e34ec82c3c7bb82e9e14ca7e6ddb6ca7ec110",
+    "bench/terminal-bench/tbench/cohort.py": "3b28a90db50380ac3a148ee091dd7eadfc5a117372d90c573a76b2dd736553d0",
+    "bench/terminal-bench/tbench/replay.py": "b8c9cfa15da6e77bbfd67304fbcb12fac2f839058f0ecbfe459b98c99d6bd4ac",
+    "bench/terminal-bench/tbench/retain.py": "bf1f6b6bb6f14eb5acf1efa53c1572853d64a3b5a439d9ccde24117a6759c75e",
+    "bench/terminal-bench/tbench/warm_docker.py": "921350697e119f3bd1c291264d64205221fb7cbd8bfa128605e34a080fda12c3",
+    "bench/terminal-bench/tests/test_candidate_capture.py": "ce8ce3107e5937379e503896ac6a23c42d6573dd80b2a3204aceac8c772a10e0",
+    "bench/terminal-bench/tests/test_candidate_capture_docker.py": "481c0c9d654e1af010e6b86d189bdd019b08b0ef4387d09223c839235a0e081e",
+    "bench/terminal-bench/tests/test_candidates.py": "93a4aa95be436f5c1a248f4c44add17a4c8ebd38dd2eb631b01392ae8092f981",
+    "bench/terminal-bench/tests/test_coder_one.py": "3ccec2952f3a1241817ded3ec0c3ecee448ab27d2d8c0a41937ece181c2c6680",
+    "bench/terminal-bench/tests/test_cohort.py": "5037665b287f580f9729d2ae0fa467d2ed7c5799f86c6a9c6696e1651b78412c",
+    "bench/terminal-bench/tests/test_retain.py": "74501df92e6f3992578354b2ac8e57ff71ee82ea0d51960715a2a6fe0dfe2e7f",
+    "crates/coder-one/src/micro.rs": "39e145369b88b4a87d563c35e20753adcd4cd0cb2d99fe42534ceeb956e8ceb2",
+    "crates/coder-one/src/micro/checkpoint.rs": "94146bcb7cb08c4269e8e37fd5125b2ee502cfed8c2439c380bb01a7c9adfab9",
+    "crates/coder-one/src/micro/lean.rs": "24f63a3327026bbab77ab41807374bd755e3f45125f92a9126f109cb3b96e48c"
+  },
+  "python_linux": {
+    "passed": 341,
+    "skipped": 3,
+    "failed": 0,
+    "command": "PYTHONPATH=bench/terminal-bench python -m pytest -q bench/terminal-bench/tests"
+  },
+  "docker_macos": {
+    "passed": 2,
+    "failed": 0,
+    "seconds": 16.05,
+    "command": "TBENCH_DOCKER_TEST=1 PYTHONPATH=bench/terminal-bench python -m pytest -q bench/terminal-bench/tests/test_candidate_capture_docker.py",
+    "checkpoint_requester": "nobody"
+  },
+  "rust_linux": {
+    "scope": "coder-one",
+    "default_tests": {
+      "unit_passed": 762,
+      "integration_passed": 2,
+      "ignored": 1
+    },
+    "feature_tests": {
+      "unit_passed": 762,
+      "integration_passed": 2,
+      "ignored": 1
+    },
+    "all_requested_phases_passed": true,
+    "full_workspace_gate": false,
+    "environment": {
+      "CARGO_BUILD_JOBS": "2",
+      "CARGO_PROFILE_DEV_DEBUG": "0",
+      "CARGO_PROFILE_TEST_DEBUG": "0",
+      "make": "/nix/store/0ifzrc5zbhfn9577h5gjxndagjcnmmd9-gnumake-4.4.1/bin/make"
+    },
+    "target_dir": "/home/christopherdavid/.cache/openagents/target-bench-retention-budgets"
+  },
+  "prior_failed_checks": [
+    {
+      "host": "macOS",
+      "scope": "default Rust gate",
+      "passed": 633,
+      "failed": 128,
+      "ignored": 1,
+      "reason": "RLIMIT_DATA EINVAL; issue #9651"
+    },
+    {
+      "host": "macOS",
+      "scope": "SUPERVISE_MEMORY_MAX=none diagnostic Rust run",
+      "passed": 755,
+      "failed": 7,
+      "ignored": 1,
+      "claim": "not a successful default gate"
+    },
+    {
+      "host": "macOS",
+      "scope": "initial Python suite",
+      "passed": 330,
+      "failed": 1,
+      "skipped": 5,
+      "reason": "RLIMIT_DATA regression"
+    },
+    {
+      "host": "Linux",
+      "scope": "initial Rust tests",
+      "passed": 760,
+      "failed": 2,
+      "ignored": 1,
+      "reason": "make absent from PATH; supplied an already installed GNU make and reran the scoped gate"
+    },
+    {
+      "host": "macOS",
+      "scope": "initial Docker fixtures",
+      "passed": 0,
+      "failed": 2,
+      "reason": "synthetic verifier Dockerfile did not copy its script; corrected fixture and reran"
+    }
+  ],
+  "checks": {
+    "documentation_links": true,
+    "evidence_known_credential_scan": "no matches",
+    "git_diff_check": true
+  }
+}

@@ -1,5 +1,9 @@
 # Where Coder stands: morning, 2026-09-25
 
+> **Infrastructure update:** [the retention and budget repairs](../../terminal-bench/2026-09-25-retention-budget-repairs.md)
+> complete #9649 and #9650. The audit recovers no missing v18 state, so oracle
+> coverage stays at 6/18. No new policy or family run is admitted by these repairs.
+
 Status: assessment, written at 09:15 local on 2026-09-25 from everything
 pushed since the [midnight assessment](2026-09-25-assessment.md): about 110
 commits from three sessions (Claude, a Claude Fable 5.1 session, and the

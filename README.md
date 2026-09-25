@@ -209,7 +209,11 @@ a driver restart make the strict protocol result inconclusive. Counted spend is
 $0.9636, with six incomplete charges; cost and time per successful output are
 undefined. The report retains every attempt, candidate-coverage gap, run card,
 and the budget-accounting correction. #9640 is complete as a measurement, with
-no policy promotion.
+no policy promotion. The [retention and budget repairs](docs/terminal-bench/2026-09-25-retention-budget-repairs.md)
+add sealed sequential checkpoints, task-coverage preflight, and a persistent cohort
+budget ledger. They reproduce the conservative spend total and leave the historical
+coverage gaps explicit. The [morning assessment](docs/coder/design/2026-09-25-morning-assessment.md)
+explains what the remaining evidence can support.
 
 The [executed-contract measurement](docs/terminal-bench/2026-09-25-executed-contract-supplement.md)
 now includes all 16 candidates from the previously excluded eight-task cohort.

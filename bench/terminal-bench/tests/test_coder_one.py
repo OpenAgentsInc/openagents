@@ -631,3 +631,48 @@ def test_the_instruction_is_uploaded_readable_by_any_task_user(tmp_path):
     with pytest.raises(Exception):
         asyncio.run(agent.run("do the task", Env(), None))
     assert modes and modes[0] & 0o044 == 0o044
+
+
+def test_retained_microluna_requires_checkpoint_support_and_legacy_is_explicit(tmp_path):
+    path, digest = _binary(tmp_path)
+    args = dict(logs_dir=tmp_path, artifact_path=path, artifact_sha256=digest,
+                policy='crates/coder-one/policies/microluna-v18.json')
+    agent = CoderOne(**args)
+    report = 'policy: coder-one-microluna-v18 abc (inline)\nok\n'
+    with pytest.raises(EpisodeContractError, match='lacks candidate-checkpoint'):
+        agent._check_doctor_report(report)
+    agent._check_doctor_report(report + 'candidate capture: candidate-checkpoint-v1\n')
+    assert agent._episode_env()['CODER_ONE_CANDIDATE_CHECKPOINT'] == '/opt/openagents/candidate-checkpoints'
+    legacy = CoderOne(**args, candidate_capture='false')
+    legacy._check_doctor_report(report)
+    assert 'CODER_ONE_CANDIDATE_CHECKPOINT' not in legacy._episode_env()
+
+
+def test_collector_failure_cancels_episode_and_preserves_cleanup(tmp_path, monkeypatch):
+    from tbench import candidate_capture, replay
+    path, digest = _binary(tmp_path)
+    agent = CoderOne(logs_dir=tmp_path, artifact_path=path, artifact_sha256=digest,
+                     policy='crates/coder-one/policies/microluna-v18.json')
+    started = asyncio.Event()
+    cleaned = []
+    class BrokenCollector:
+        def __init__(self, *args):
+            pass
+        async def prepare(self):
+            pass
+        async def follow(self):
+            await started.wait()
+            raise OSError('synthetic checkpoint transport failure')
+    async def episode(self, *args):
+        try:
+            started.set()
+            await asyncio.Future()
+        finally:
+            cleaned.append('partial bundle collected')
+    monkeypatch.setattr(candidate_capture, 'Collector', BrokenCollector)
+    monkeypatch.setattr(replay, 'task_dir', lambda _: tmp_path)
+    monkeypatch.setattr(CoderV05, 'run', episode)
+    with pytest.raises(ExceptionGroup) as error:
+        asyncio.run(agent.run('fixture', object(), object()))
+    assert isinstance(error.value.exceptions[0], OSError)
+    assert cleaned == ['partial bundle collected']

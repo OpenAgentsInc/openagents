@@ -2747,6 +2747,30 @@ impl Micro {
                     crate::judge::clip(&score_tail, 600)
                 ));
             }
+            let capture = if keep_evidence {
+                if let Some(root) = std::env::var_os(super::checkpoint::ENV) {
+                    let dispatch = format!("lean-{}", self.dispatch());
+                    match super::checkpoint::capture(Path::new(&root), &dispatch, number).await {
+                        Ok(receipt) => Some(receipt),
+                        Err(error) => {
+                            stopped = error.clone();
+                            moves.push(json!({"kind": "lean", "after_session": number,
+                                "candidate": retained.join(format!("session-{number}")),
+                                "snapshot_error": error, "capture_failed": true}));
+                            let _ = crate::record::write_atomic(
+                                &retained.join("selection.json"),
+                                &serde_json::to_vec_pretty(&moves).unwrap_or_default(),
+                            );
+                            best = None;
+                            break;
+                        }
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
             let candidate = retained.join(format!("session-{number}"));
             let snapshot_started = Instant::now();
             let bound = if keep_evidence || lean.keep_best {
@@ -2878,6 +2902,7 @@ impl Micro {
                 "spent_usd": spent,
                 "candidate": keep_evidence.then(|| candidate.display().to_string()),
                 "snapshot_error": snapshot.err(),
+                "capture": capture,
                 "keep_error": keep_error,
                 "supported": graded.is_some().then(|| {
                     supported.map(|(p, t)| json!({"passed": p, "total": t}))

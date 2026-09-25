@@ -192,6 +192,7 @@ class Workspace:
     source: str  # snapshot | artifacts | candidate
     full: bool  # whether it replaces the workdir, or overlays the image
     note: str = ""
+    collected: Path | None = None  # Sealed checkpoint with Harbor artifacts/manifest.json.
 
 
 def _safe_extract(archive: Path, target: Path) -> None:
@@ -439,6 +440,11 @@ def _synthetic_source(
         )
         (target / "config.json").write_text(config.model_dump_json(indent=2))
         (target / "result.json").write_text(result.model_dump_json(indent=2))
+    if workspace.collected is not None:
+        shutil.copytree(workspace.collected / "artifacts", target / "artifacts")
+        (target / "agent").mkdir(exist_ok=True)
+        shutil.copy2(workspace.collected / "receipt.json", target / "agent/checkpoint-receipt.json")
+        return target
     import tomllib
 
     declared = tomllib.loads((task / "task.toml").read_text()).get("artifacts") or []
@@ -506,7 +512,7 @@ def run_verifier(
             "-p",
             str(task),
             "-e",
-            WARM_ENVIRONMENT,
+            "tbench.candidate_capture:CheckpointVerifierEnvironment" if workspace.collected else WARM_ENVIRONMENT,
             "-o",
             str(out),
             "--trial-name",

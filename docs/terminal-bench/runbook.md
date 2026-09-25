@@ -441,6 +441,15 @@ workspace over either bound keeps only its subject. The snapshot runs
 nothing in the task and changes nothing an executor sees. Retention keeps
 the subject and the record and leaves the archive in the job directory.
 
+### Capture candidates and enforce a cohort budget
+
+For new sequential Microluna cohorts, use the
+[candidate retention and budget guide](2026-09-25-retention-budget-repairs.md).
+It documents `tbench candidate-preflight`, the per-session collection barrier,
+and `tbench cohort plan|run|report`. The cohort journal reserves spend before
+launch, preserves unknown charges and retries, and refuses changed inputs on
+restart. Freeze the new harness in the protocol before starting a cohort.
+
 ### Run a verifier on any directory
 
 For completed sequential Microluna runs with `lean.retain_candidates`, grade

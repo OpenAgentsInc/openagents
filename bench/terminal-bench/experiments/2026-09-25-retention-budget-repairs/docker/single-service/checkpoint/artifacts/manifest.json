@@ -1,0 +1,32 @@
+[
+  {
+    "source": "/logs/artifacts",
+    "destination": "artifacts/logs/artifacts",
+    "type": "directory",
+    "status": "ok",
+    "service": null
+  },
+  {
+    "source": "/app/out.txt",
+    "destination": "artifacts/main/output.txt",
+    "type": "file",
+    "status": "ok",
+    "service": null
+  },
+  {
+    "source": "/app/absent.txt",
+    "destination": "artifacts/app/absent.txt",
+    "type": "file",
+    "status": "empty",
+    "service": null,
+    "observed_absent": true
+  },
+  {
+    "source": "/app/absent-dir",
+    "destination": "artifacts/app/absent-dir",
+    "type": "file",
+    "status": "empty",
+    "service": null,
+    "observed_absent": true
+  }
+]

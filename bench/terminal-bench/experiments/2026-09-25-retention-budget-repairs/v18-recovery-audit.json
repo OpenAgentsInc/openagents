@@ -1,0 +1,386 @@
+{
+  "schema": "openagents.candidate-recovery-audit.v1",
+  "source_state_sha256": "93c6748a7c775af55153a3ac59aa148f30c7a0d8f941277301557b8ef8687667",
+  "prior_batch_sha256": "3546cb421b7b70acef5846c6c2e3f81b73ea14308380d8e5f0d655671adb3a4b",
+  "verifier_executions": 0,
+  "trials": [
+    {
+      "task": "payments-pipeline-fix",
+      "trial": "payments-pipeline-fix__xSC7ngE",
+      "job": "tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a1-20260925T032803",
+      "usable_snapshots": [
+        {
+          "dispatch": "lean-1",
+          "session": 1,
+          "input_digest": "f634b54523139cf9bc900b769c71e305512ae95732f38f86f98ec1532d1ca164"
+        },
+        {
+          "dispatch": "lean-1",
+          "session": 2,
+          "input_digest": "12ddc58a3475d4b4f299b49c3143b5ecd742e3353dbc5094f42784a3d023540c"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "task": "mp-checkpoint-consolidation",
+      "trial": "mp-checkpoint-consolidation__tQT74ja",
+      "job": "tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a1-20260925T032843",
+      "usable_snapshots": [],
+      "errors": [
+        {
+          "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a1-20260925T032843/mp-checkpoint-consolidation__tQT74ja",
+          "dispatch": "lean-1",
+          "session": 1,
+          "error": "snapshot unavailable: the workspace is over the snapshot bound of 20000 files or 256 MiB, or a directory in it can't be read"
+        },
+        {
+          "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a1-20260925T032843/mp-checkpoint-consolidation__tQT74ja",
+          "dispatch": "lean-1",
+          "session": 2,
+          "error": "snapshot unavailable: the workspace is over the snapshot bound of 20000 files or 256 MiB, or a directory in it can't be read"
+        }
+      ]
+    },
+    {
+      "task": "cumulative-layout-shift",
+      "trial": "cumulative-layout-shift__gZBT3gZ",
+      "job": "tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a1-20260925T033723",
+      "usable_snapshots": [],
+      "errors": [
+        {
+          "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a1-20260925T033723/cumulative-layout-shift__gZBT3gZ",
+          "dispatch": "lean-1",
+          "session": 1,
+          "error": "snapshot unavailable: the workspace is over the snapshot bound of 20000 files or 256 MiB, or a directory in it can't be read"
+        },
+        {
+          "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a1-20260925T033723/cumulative-layout-shift__gZBT3gZ",
+          "dispatch": "lean-1",
+          "session": 2,
+          "error": "snapshot unavailable: the workspace is over the snapshot bound of 20000 files or 256 MiB, or a directory in it can't be read"
+        },
+        {
+          "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a1-20260925T033723/cumulative-layout-shift__gZBT3gZ",
+          "dispatch": "lean-1",
+          "session": 3,
+          "error": "snapshot unavailable: the workspace is over the snapshot bound of 20000 files or 256 MiB, or a directory in it can't be read"
+        }
+      ]
+    },
+    {
+      "task": "live-database-cutover",
+      "trial": "live-database-cutover__WTNo7fG",
+      "job": "tb4--coder-one-microluna-v18--live-database-cutover--family-a1-20260925T040033",
+      "usable_snapshots": [
+        {
+          "dispatch": "lean-1",
+          "session": 1,
+          "input_digest": "29a17e4a5b59c6b9f0fd918d08e8997c44b6cb1dce529cc9bf9a07424335a1f3"
+        },
+        {
+          "dispatch": "lean-1",
+          "session": 2,
+          "input_digest": "29a17e4a5b59c6b9f0fd918d08e8997c44b6cb1dce529cc9bf9a07424335a1f3"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "task": "telecom-entity-resolution",
+      "trial": "telecom-entity-resolution__wB2fijb",
+      "job": "tb4--coder-one-microluna-v18--telecom-entity-resolution--family-a1-20260925T041013",
+      "usable_snapshots": [
+        {
+          "dispatch": "lean-1",
+          "session": 1,
+          "input_digest": "43bfc79457dd93fa9a69f0bfff9d73f89a9d55f55288052d9ab21388518536ac"
+        },
+        {
+          "dispatch": "lean-1",
+          "session": 2,
+          "input_digest": "3e1fa3d242ccb7c1cc9f9b514f5786a1d17c86e82d1bd8a09d7fc5a91adfdf33"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "task": "photonic-waveguide-routing",
+      "trial": "photonic-waveguide-routing__HnP7Nmn",
+      "job": "tb4--coder-one-microluna-v18--photonic-waveguide-routing--family-a1-20260925T041053",
+      "usable_snapshots": [
+        {
+          "dispatch": "lean-1",
+          "session": 1,
+          "input_digest": "71063a7f461b03a10956372e69fe2d67c7eaee03f023f8a5b53ccd9fa54a4541"
+        },
+        {
+          "dispatch": "lean-1",
+          "session": 2,
+          "input_digest": "d41dd9ee6b5b03f8e25d6c10cbfbd9032bb60dcc721ee559496bd3045f6ac387"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "task": "payments-pipeline-fix",
+      "trial": "payments-pipeline-fix__hEYMz2a",
+      "job": "tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a2-20260925T042233",
+      "usable_snapshots": [
+        {
+          "dispatch": "lean-1",
+          "session": 1,
+          "input_digest": "907a6616867bfad2bfe6680ce8a9f3cc94d4c81340bac24cf0d54ef57b2d62bc"
+        },
+        {
+          "dispatch": "lean-1",
+          "session": 2,
+          "input_digest": "e5deb96d861921a66e57508b5c8d7c0525fa4a04a8aa238d4b7e9206be7f65a4"
+        },
+        {
+          "dispatch": "lean-1",
+          "session": 3,
+          "input_digest": "e5deb96d861921a66e57508b5c8d7c0525fa4a04a8aa238d4b7e9206be7f65a4"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "task": "mp-checkpoint-consolidation",
+      "trial": "mp-checkpoint-consolidation__zWRwtDd",
+      "job": "tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a2-20260925T043313",
+      "usable_snapshots": [],
+      "errors": [
+        {
+          "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a2-20260925T043313/mp-checkpoint-consolidation__zWRwtDd",
+          "dispatch": "lean-1",
+          "session": 1,
+          "error": "snapshot unavailable: the workspace is over the snapshot bound of 20000 files or 256 MiB, or a directory in it can't be read"
+        },
+        {
+          "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a2-20260925T043313/mp-checkpoint-consolidation__zWRwtDd",
+          "dispatch": "lean-1",
+          "session": 2,
+          "error": "snapshot unavailable: the workspace is over the snapshot bound of 20000 files or 256 MiB, or a directory in it can't be read"
+        }
+      ]
+    },
+    {
+      "task": "cumulative-layout-shift",
+      "trial": "cumulative-layout-shift__V2vyUx3",
+      "job": "tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a2-20260925T044223",
+      "usable_snapshots": [],
+      "errors": [
+        {
+          "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a2-20260925T044223/cumulative-layout-shift__V2vyUx3",
+          "dispatch": "lean-1",
+          "session": 1,
+          "error": "snapshot unavailable: the workspace is over the snapshot bound of 20000 files or 256 MiB, or a directory in it can't be read"
+        },
+        {
+          "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a2-20260925T044223/cumulative-layout-shift__V2vyUx3",
+          "dispatch": "lean-1",
+          "session": 2,
+          "error": "snapshot unavailable: the workspace is over the snapshot bound of 20000 files or 256 MiB, or a directory in it can't be read"
+        },
+        {
+          "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a2-20260925T044223/cumulative-layout-shift__V2vyUx3",
+          "dispatch": "lean-1",
+          "session": 3,
+          "error": "snapshot unavailable: the workspace is over the snapshot bound of 20000 files or 256 MiB, or a directory in it can't be read"
+        }
+      ]
+    },
+    {
+      "task": "live-database-cutover",
+      "trial": "live-database-cutover__KZ6YnS9",
+      "job": "tb4--coder-one-microluna-v18--live-database-cutover--family-a2-20260925T050233",
+      "usable_snapshots": [
+        {
+          "dispatch": "lean-1",
+          "session": 1,
+          "input_digest": "238fa7b5c419501a8c25aeb47723c069e9e9423a328a67ebc41b7d2a382b3df3"
+        },
+        {
+          "dispatch": "lean-1",
+          "session": 2,
+          "input_digest": "1f00f4ce77a1f833606cae6817cb83f543c557ba5f5d12852812b7df3f89b297"
+        },
+        {
+          "dispatch": "lean-1",
+          "session": 3,
+          "input_digest": "536f99220db0b0ab75aabda3e3b49267772cc5c18a57b5f9fa6bef3b51b865d8"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "task": "telecom-entity-resolution",
+      "trial": "telecom-entity-resolution__MKCp2Yg",
+      "job": "tb4--coder-one-microluna-v18--telecom-entity-resolution--family-a2-20260925T051313",
+      "usable_snapshots": [
+        {
+          "dispatch": "lean-1",
+          "session": 1,
+          "input_digest": "402a406a2f139d1e17ea932948b4971f8fe9089fed445c3daa48d8f575e954e5"
+        },
+        {
+          "dispatch": "lean-1",
+          "session": 2,
+          "input_digest": "b806a84ece9e172321877ced6e843001ebdb20c6c757244472d3d48263087095"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "task": "payments-pipeline-fix",
+      "trial": "payments-pipeline-fix__Wcy8BbS",
+      "job": "tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a3-20260925T051933",
+      "usable_snapshots": [
+        {
+          "dispatch": "lean-1",
+          "session": 1,
+          "input_digest": "e615c3ea34ba5f59f7c0392f64aaee2ebd9ed1b80fdfcae28314853479aa4ad5"
+        },
+        {
+          "dispatch": "lean-1",
+          "session": 2,
+          "input_digest": "a930776b082b8070feab217c2e7955c99513731ae146551077de131cc4dd0b87"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "task": "photonic-waveguide-routing",
+      "trial": "photonic-waveguide-routing__RbDGpkz",
+      "job": "tb4--coder-one-microluna-v18--photonic-waveguide-routing--family-a2-20260925T051353",
+      "usable_snapshots": [
+        {
+          "dispatch": "lean-1",
+          "session": 1,
+          "input_digest": "4dd6db5465b06d9002c026f0f24da78aed16abed68e0a26630b2cbb15252fbe9"
+        },
+        {
+          "dispatch": "lean-1",
+          "session": 2,
+          "input_digest": "42af6123b6d41725a02a36691f6c75fa1494b9ffdb5b442b0ee47e36659b7d67"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "task": "mp-checkpoint-consolidation",
+      "trial": "mp-checkpoint-consolidation__rpcuKgN",
+      "job": "tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a3-20260925T052613",
+      "usable_snapshots": [],
+      "errors": [
+        {
+          "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a3-20260925T052613/mp-checkpoint-consolidation__rpcuKgN",
+          "dispatch": "lean-1",
+          "session": 1,
+          "error": "snapshot unavailable: the workspace is over the snapshot bound of 20000 files or 256 MiB, or a directory in it can't be read"
+        },
+        {
+          "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a3-20260925T052613/mp-checkpoint-consolidation__rpcuKgN",
+          "dispatch": "lean-1",
+          "session": 2,
+          "error": "snapshot unavailable: the workspace is over the snapshot bound of 20000 files or 256 MiB, or a directory in it can't be read"
+        }
+      ]
+    },
+    {
+      "task": "cumulative-layout-shift",
+      "trial": "cumulative-layout-shift__ucFSsb2",
+      "job": "tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a3-20260925T053453",
+      "usable_snapshots": [],
+      "errors": [
+        {
+          "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a3-20260925T053453/cumulative-layout-shift__ucFSsb2",
+          "dispatch": "lean-1",
+          "session": 1,
+          "error": "snapshot unavailable: the workspace is over the snapshot bound of 20000 files or 256 MiB, or a directory in it can't be read"
+        },
+        {
+          "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a3-20260925T053453/cumulative-layout-shift__ucFSsb2",
+          "dispatch": "lean-1",
+          "session": 2,
+          "error": "snapshot unavailable: the workspace is over the snapshot bound of 20000 files or 256 MiB, or a directory in it can't be read"
+        },
+        {
+          "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a3-20260925T053453/cumulative-layout-shift__ucFSsb2",
+          "dispatch": "lean-1",
+          "session": 3,
+          "error": "snapshot unavailable: the workspace is over the snapshot bound of 20000 files or 256 MiB, or a directory in it can't be read"
+        }
+      ]
+    },
+    {
+      "task": "live-database-cutover",
+      "trial": "live-database-cutover__4AVYKpU",
+      "job": "tb4--coder-one-microluna-v18--live-database-cutover--family-a3-20260925T055503",
+      "usable_snapshots": [
+        {
+          "dispatch": "lean-1",
+          "session": 1,
+          "input_digest": "003b1b16346d9ea1b586c099f05149e8b357083ec323a59a540c83352bdcea4e"
+        },
+        {
+          "dispatch": "lean-1",
+          "session": 2,
+          "input_digest": "003b1b16346d9ea1b586c099f05149e8b357083ec323a59a540c83352bdcea4e"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "task": "telecom-entity-resolution",
+      "trial": "telecom-entity-resolution__gRETFg7",
+      "job": "tb4--coder-one-microluna-v18--telecom-entity-resolution--family-a3-20260925T060243",
+      "usable_snapshots": [
+        {
+          "dispatch": "lean-1",
+          "session": 1,
+          "input_digest": "156823e4ef638807fdbb1c01e6f2280b18406f53bd9746325072a9f7dc2c3728"
+        },
+        {
+          "dispatch": "lean-1",
+          "session": 2,
+          "input_digest": "ca04c73a81837acc45f53aa839fdbe86767d0f49a8ab323b671b6029edc7dba9"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "task": "photonic-waveguide-routing",
+      "trial": "photonic-waveguide-routing__mEjzdB4",
+      "job": "tb4--coder-one-microluna-v18--photonic-waveguide-routing--family-a3-20260925T060323",
+      "usable_snapshots": [
+        {
+          "dispatch": "lean-1",
+          "session": 1,
+          "input_digest": "bbf28489b8418ac897eabd70e079f2ed1ab701261b6d92261d2d9706aea9a3c6"
+        },
+        {
+          "dispatch": "lean-1",
+          "session": 2,
+          "input_digest": "dbf5278109137a4182d2fdf5b78efffe08b422c37841cfdfea2bfae3ceee3a47"
+        }
+      ],
+      "errors": []
+    }
+  ],
+  "summary": {
+    "trials": 18,
+    "usable_snapshots": 26,
+    "unavailable_snapshots": 15,
+    "additional_usable_identities": 0,
+    "all_previous_identities_match": true,
+    "complete_oracles": 6,
+    "unknown_oracles": 12,
+    "prior_verifier_executions_reused": 12,
+    "new_verifier_executions": 0,
+    "confirmation_tasks_used_for_fitting": false,
+    "candidates_missing_collect_hook_artifacts": 14,
+    "sessions_without_candidate_record": 0
+  }
+}

@@ -174,3 +174,15 @@ def test_known_credentials_reads_files_without_short_values(tmp_path, monkeypatc
         "~/.openagents/bearer": SECRET,
         "~/.codex/auth.json tokens.access_token": SECRET + "a",
     }
+
+
+def test_candidate_checkpoint_and_coverage_are_in_the_retained_closure(tmp_path):
+    _, trial = _job(tmp_path)
+    relative = 'candidate-checkpoints/lean-1-session-1'
+    _write(trial / 'agent' / relative / 'receipt.json', '{"complete":true}')
+    _write(trial / 'agent' / relative / 'artifacts/db/dump.sql', 'synthetic checkpoint')
+    _write(trial / 'agent/candidate-preflight.json', '{"supported":true}')
+    out = retain_trial(trial, tmp_path / 'traces', {})
+    assert (out.destination / (trial.name + '.episode') / relative / 'receipt.json').read_text() == '{"complete":true}'
+    assert (out.destination / (trial.name + '.episode') / relative / 'artifacts/db/dump.sql').read_text() == 'synthetic checkpoint'
+    assert (out.destination / (trial.name + '.episode') / 'candidate-preflight.json').exists()

@@ -1,0 +1,23 @@
+...................................ss................................... [ 20%]
+.................................................s...................... [ 41%]
+........................................................................ [ 62%]
+........................................................................ [ 83%]
+........................................................                 [100%]
+=============================== warnings summary ===============================
+tests/test_candidate_capture.py: 7 warnings
+tests/test_cohort.py: 6 warnings
+  /home/christopherdavid/.cache/openagents/worktrees/bench-retention-budgets/bench/terminal-bench/tbench/candidate_capture.py:55: DeprecationWarning: Task.checksum will be deprecated soon. Use TrialLock.task.digest from the trial lock when you need the task content hash.
+    'task_checksum': task.checksum, 'artifacts': artifacts, 'hooks': hooks,
+
+tests/test_candidate_capture.py: 4 warnings
+tests/test_candidates.py: 10 warnings
+  /home/christopherdavid/.cache/openagents/worktrees/bench-retention-budgets/bench/terminal-bench/tests/test_candidates.py:17: DeprecationWarning: Task.checksum will be deprecated soon. Use TrialLock.task.digest from the trial lock when you need the task content hash.
+    result["task_checksum"] = Task(task).checksum
+
+tests/test_candidate_capture.py: 5 warnings
+tests/test_candidates.py: 10 warnings
+  /home/christopherdavid/.cache/openagents/worktrees/bench-retention-budgets/bench/terminal-bench/tbench/candidates.py:78: DeprecationWarning: Task.checksum will be deprecated soon. Use TrialLock.task.digest from the trial lock when you need the task content hash.
+    if not result.get("task_checksum") or Task(task).checksum != result["task_checksum"]:
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+341 passed, 3 skipped, 42 warnings in 4.73s

@@ -1,0 +1,148 @@
+{
+  "schema": "openagents.gate-run.v1",
+  "run_id": "20260925T145125Z-c54fd9",
+  "started_utc": "2026-09-25T14:51:25Z",
+  "finished_utc": "2026-09-25T14:51:28Z",
+  "elapsed_s": 3.3,
+  "tree": {
+    "head": "640586ba183eeb24d5039f83ef6b972d764e8053",
+    "dirty": true,
+    "diff_digest": "6ed77da3f51a745e2f827f4de30bf30042c4578bd1592cf2f34a5b145e4b2c77"
+  },
+  "requested": {
+    "phases": "preflight gate-tooling artifacts delegation backup",
+    "crates": "coder-one",
+    "workspace_scope": false,
+    "changed_ref": null,
+    "uncovered": "",
+    "keep_going": false,
+    "retry": true,
+    "postgres": true,
+    "metal": false,
+    "soak": false
+  },
+  "phases": [
+    {
+      "slug": "preflight",
+      "name": "Environment preflight",
+      "command": [
+        "environment preflight"
+      ],
+      "status": "passed",
+      "attempts": 1,
+      "exit": 0,
+      "elapsed_s": 0.0,
+      "log": ".coder/verification/20260925T145125Z-c54fd9/preflight.log"
+    },
+    {
+      "slug": "gate-tooling",
+      "name": "Gate tooling tests",
+      "command": [
+        "bash",
+        "-c",
+        "python3 -B -m unittest discover -s scripts/tests -p \"test_gate_*.py\" \\\n    && python3 -B -m unittest discover -s scripts -p \"test_verification_phase.py\""
+      ],
+      "status": "passed",
+      "attempts": 1,
+      "exit": 0,
+      "elapsed_s": 0.7,
+      "log": ".coder/verification/20260925T145125Z-c54fd9/gate-tooling.log"
+    },
+    {
+      "slug": "artifacts",
+      "name": "Artifact acquisition tests",
+      "command": [
+        "python3",
+        "scripts/test_fetch_kev_artifacts.py"
+      ],
+      "status": "passed",
+      "attempts": 1,
+      "exit": 0,
+      "elapsed_s": 0.1,
+      "log": ".coder/verification/20260925T145125Z-c54fd9/artifacts.log"
+    },
+    {
+      "slug": "delegation",
+      "name": "Delegation evidence checks",
+      "command": [
+        "python3",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "scripts/tests",
+        "-p",
+        "test_check_coder_delegation_run.py"
+      ],
+      "status": "passed",
+      "attempts": 1,
+      "exit": 0,
+      "elapsed_s": 0.8,
+      "log": ".coder/verification/20260925T145125Z-c54fd9/delegation.log"
+    },
+    {
+      "slug": "backup",
+      "name": "Backup collection tests",
+      "command": [
+        "python3",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "scripts/tests",
+        "-p",
+        "test_backup_media.py"
+      ],
+      "status": "passed",
+      "attempts": 1,
+      "exit": 0,
+      "elapsed_s": 0.3,
+      "log": ".coder/verification/20260925T145125Z-c54fd9/backup.log"
+    }
+  ],
+  "skipped": [
+    {
+      "slug": "fmt",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "clippy",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "clippy-features",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "tests",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "tests-features",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "deps",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "postgres",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "metal-clippy",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "metal-tests",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "soak",
+      "reason": "not in --phases"
+    }
+  ],
+  "result": "partial"
+}

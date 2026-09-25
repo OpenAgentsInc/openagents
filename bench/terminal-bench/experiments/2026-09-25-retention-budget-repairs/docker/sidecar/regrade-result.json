@@ -1,0 +1,103 @@
+{
+    "id": "94c1b8c9-1cfc-4ff8-8db2-66bf12f66d16",
+    "task_name": "synthetic/checkpoint",
+    "trial_name": "verify__a02e5b6",
+    "trial_uri": "file:///private/tmp/bench-retention-docker-acceptance-4/test_real_collection_and_indep1/grade/verify__a02e5b6",
+    "task_id": {
+        "path": "/private/tmp/bench-retention-docker-acceptance-4/test_real_collection_and_indep1/task"
+    },
+    "source": null,
+    "task_checksum": "161b905bf34be5e48d7f8e2d8aaa029caca22a481998b85bbfa5a97caf56b490",
+    "config": {
+        "task": {
+            "path": "/private/tmp/bench-retention-docker-acceptance-4/test_real_collection_and_indep1/task",
+            "git_url": null,
+            "git_commit_id": null,
+            "name": null,
+            "ref": null,
+            "overwrite": false,
+            "download_dir": null,
+            "source": null
+        },
+        "trial_name": "verify__a02e5b6",
+        "trials_dir": "/private/tmp/bench-retention-docker-acceptance-4/test_real_collection_and_indep1/grade",
+        "install_only": false,
+        "timeout_multiplier": 1.0,
+        "agent_timeout_multiplier": null,
+        "verifier_timeout_multiplier": null,
+        "agent_setup_timeout_multiplier": null,
+        "environment_build_timeout_multiplier": null,
+        "agent": {
+            "name": "nop",
+            "import_path": null,
+            "model_name": null,
+            "n_concurrent": null,
+            "concurrency_group": null,
+            "skills": [],
+            "override_timeout_sec": null,
+            "override_setup_timeout_sec": null,
+            "max_timeout_sec": null,
+            "resume_trajectory": false,
+            "load_trajectory": null,
+            "extra_allowed_hosts": [],
+            "kwargs": {},
+            "mcp_servers": []
+        },
+        "user_agent": null,
+        "environment": {
+            "type": null,
+            "import_path": "tbench.candidate_capture:CheckpointVerifierEnvironment",
+            "force_build": false,
+            "delete": true,
+            "cpu_enforcement_policy": "auto",
+            "memory_enforcement_policy": "auto",
+            "override_cpus": null,
+            "override_memory_mb": null,
+            "override_storage_mb": null,
+            "override_gpus": null,
+            "override_tpu": null,
+            "mounts": null,
+            "extra_docker_compose": [],
+            "kwargs": {},
+            "extra_allowed_hosts": []
+        },
+        "verifier": {
+            "override_timeout_sec": null,
+            "max_timeout_sec": null,
+            "disable": false
+        },
+        "artifacts": [],
+        "extra_instruction_paths": [],
+        "extra_instructions": [],
+        "job_id": null,
+        "source_trial": {
+            "action": "regrade",
+            "type": "local",
+            "trial_id": "179525f0-a872-4753-bebf-f48896eae920",
+            "path": "/private/tmp/bench-retention-docker-acceptance-4/test_real_collection_and_indep1/grade/source/candidate"
+        }
+    },
+    "agent_info": {
+        "name": "candidate",
+        "version": "0",
+        "model_info": null
+    },
+    "agent_result": null,
+    "verifier_result": {
+        "rewards": {
+            "reward": 1.0
+        }
+    },
+    "verifier_environment_mode": "separate",
+    "exception_info": null,
+    "started_at": "2026-09-25T14:47:39.742181Z",
+    "finished_at": "2026-09-25T14:47:43.327719Z",
+    "environment_setup": null,
+    "agent_setup": null,
+    "agent_execution": null,
+    "verifier": {
+        "started_at": "2026-09-25T14:47:39.868118Z",
+        "finished_at": "2026-09-25T14:47:43.327699Z"
+    },
+    "step_results": null
+}

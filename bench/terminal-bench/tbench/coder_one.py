@@ -176,6 +176,19 @@ class CoderOne(CoderV05):
         self._policy: dict[str, Any] | None = load_policy(policy) if policy else None
         self._policy_file: Path | None = policy_file(policy) if policy else None
         self._instruction: str | None = None
+        lean = ((self._policy or {}).get("policy", {}).get("executor", {})
+                 .get("microluna", {}).get("lean", {}))
+        self._candidate_capture = kwargs.pop("candidate_capture", bool(lean.get("retain_candidates")))
+        if self._candidate_capture in ("true", "false"):
+            self._candidate_capture = self._candidate_capture == "true"
+        if not isinstance(self._candidate_capture, bool):
+            raise EpisodeContractError("candidate_capture must be a boolean")
+        if self._candidate_capture:
+            from .candidate_capture import check_policy
+            try:
+                check_policy(self._policy)
+            except ValueError as error:
+                raise EpisodeContractError(str(error)) from error
         super().__init__(*args, **kwargs)
         # Without an explicit exec timeout, the process runs 60 seconds
         # inside Harbor's own agent timeout, so the episode ends and its
@@ -196,11 +209,34 @@ class CoderOne(CoderV05):
             policy=self._policy_file,
             artifact=self._artifact_path,
         )
+        if self._candidate_capture:
+            from .candidate_capture import preflight
+            from .replay import task_dir
+            coverage = preflight(task_dir(self.logs_dir.parent))
+            (self.logs_dir / "candidate-preflight.json").write_text(json.dumps(coverage, indent=2))
+            if not coverage["supported"] or not callable(getattr(environment, "candidate_pause", None)):
+                raise EpisodeContractError("candidate capture is unsupported: " +
+                                           "; ".join(coverage["reasons"] or ["the environment lacks checkpoint pause support"]))
         await super().setup(environment)
 
     async def run(self, instruction: str, environment: BaseEnvironment, context) -> None:
         self._instruction = instruction
-        await super().run(instruction, environment, context)
+        if not self._candidate_capture:
+            await super().run(instruction, environment, context)
+            return
+        from .candidate_capture import Collector
+        from .replay import task_dir
+        collector = Collector(environment, task_dir(self.logs_dir.parent),
+                              self.logs_dir / "candidate-checkpoints")
+        await collector.prepare()
+        # A collector failure cancels the episode immediately. The base
+        # adapter still collects its partial bundle in its finally block.
+        async with asyncio.TaskGroup() as group:
+            worker = group.create_task(collector.follow())
+            try:
+                await super().run(instruction, environment, context)
+            finally:
+                worker.cancel()
 
     def populate_context_post_run(self, context) -> None:
         """Fold the bundle in, then check the run's own briefings."""
@@ -218,6 +254,9 @@ class CoderOne(CoderV05):
 
     def _episode_env(self) -> dict[str, str]:
         env = super()._episode_env()
+        if self._candidate_capture:
+            from .candidate_capture import REMOTE
+            env["CODER_ONE_CANDIDATE_CHECKPOINT"] = REMOTE
         if self._policy is not None:
             env["CODER_ONE_POLICY"] = json.dumps(self._policy, separators=(",", ":"))
         # With an exec timeout, the episode runs one deadline inside it.
@@ -236,6 +275,8 @@ class CoderOne(CoderV05):
         A policy-aware artifact's doctor names the policy it resolved.
         """
         super()._check_doctor_report(report)
+        if self._candidate_capture and "candidate capture: candidate-checkpoint-v1" not in report:
+            raise EpisodeContractError("the artifact lacks candidate-checkpoint-v1; rebuild it or explicitly disable candidate capture for a legacy reproduction")
         if self._policy is None:
             return
         name = str(self._policy.get("name") or "")

@@ -1,0 +1,73 @@
+{
+  "schema": "candidate-checkpoint-v1",
+  "id": "lean-1-session-1",
+  "coverage": {
+    "schema": "candidate-checkpoint-v1",
+    "supported": true,
+    "reasons": [],
+    "task_checksum": "01fd7b17e6dadf7f3c9b14f4fa301c55800c75e580ccd287a13a9a6bf80e84a5",
+    "artifacts": [
+      {
+        "source": "/app/out.txt",
+        "destination": "main/output.txt",
+        "exclude": [],
+        "service": null
+      },
+      "/app/absent.txt",
+      "/app/absent-dir"
+    ],
+    "hooks": [],
+    "max_capture_seconds": 120,
+    "verifier_executed": false
+  },
+  "complete": true,
+  "hooks": [],
+  "observed_absent": [
+    {
+      "service": null,
+      "source": "/app/absent.txt"
+    },
+    {
+      "service": null,
+      "source": "/app/absent-dir"
+    }
+  ],
+  "verifier_executed": false,
+  "files": {
+    ".": {
+      "kind": "directory",
+      "mode": 493
+    },
+    "app": {
+      "kind": "directory",
+      "mode": 493
+    },
+    "logs": {
+      "kind": "directory",
+      "mode": 493
+    },
+    "main": {
+      "kind": "directory",
+      "mode": 493
+    },
+    "manifest.json": {
+      "kind": "file",
+      "mode": 420,
+      "sha256": "43424fabc32866b21386502d66c65b6bfa764273b2dd93907215820b9b08a9a3"
+    },
+    "main/output.txt": {
+      "kind": "file",
+      "mode": 420,
+      "sha256": "a7937b64b8caa58f03721bb6bacf5c78cb235febe0e70b1b84cd99541461a08e"
+    },
+    "logs/artifacts": {
+      "kind": "directory",
+      "mode": 493
+    },
+    "logs/artifacts/note.txt": {
+      "kind": "file",
+      "mode": 420,
+      "sha256": "ca67bd59cc4116ac80db5f64cbf4747f26ba929c85e8cc689a6123368d08719b"
+    }
+  }
+}

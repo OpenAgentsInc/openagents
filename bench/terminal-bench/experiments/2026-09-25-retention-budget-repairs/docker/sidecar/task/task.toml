@@ -1,0 +1,16 @@
+schema_version="1.0"
+artifacts=[{source="/app/out.txt", destination="main/output.txt"}, "/app/absent.txt", "/app/absent-dir", {source="/tmp/db.dump", destination="database/dump.txt", service="db"}]
+[task]
+name="synthetic/checkpoint"
+[environment]
+cpus=1
+memory_mb=256
+[verifier]
+environment_mode="separate"
+timeout_sec=30
+
+[[verifier.collect]]
+command="cp /tmp/live-state /tmp/db.dump"
+service="db"
+timeout_sec=10
+

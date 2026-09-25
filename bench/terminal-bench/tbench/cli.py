@@ -1119,6 +1119,55 @@ def cmd_replay(args: argparse.Namespace) -> int:
     return 1 if summary["errors"] else 0
 
 
+def cmd_candidate_preflight(args: argparse.Namespace) -> int:
+    from .candidate_capture import preflight
+    result = preflight(Path(args.task).expanduser())
+    print(json.dumps(result, indent=2))
+    return 0 if result["supported"] else 1
+
+
+def cmd_cohort(args: argparse.Namespace) -> int:
+    from . import cohort, paths
+    output = Path(args.output).expanduser().resolve()
+    checkout = Path(__file__).resolve().parents[3]
+    try:
+        spec = json.loads(Path(args.spec).expanduser().read_text())
+        cohort.validate(spec)
+        if output.is_relative_to(checkout):
+            raise cohort.CohortError("the durable ledger must stay outside the source checkout")
+        if args.action == "plan":
+            from .candidate_capture import preflight
+            coverage = {row['id']: preflight(Path(row['task_path']).expanduser()) for row in spec['schedule']}
+            print(json.dumps({"spec": spec, "identity": cohort.identity(checkout, spec), "coverage": coverage,
+                             "cost_rule": spec["cost_rule"],
+                             "launches": len(spec["schedule"]), "inference_started": False}, indent=2))
+            return 0 if all(row['supported'] for row in coverage.values()) else 1
+        # Reporting reads the original pin and records an inspection epoch;
+        # it never relabels old runs with today's source identity.
+        if args.action == "report":
+            first = json.loads((output / "ledger.jsonl").read_text().splitlines()[0])
+            pin = first["identity"]
+        else:
+            try:
+                pin = cohort.identity(checkout, spec)
+            except (cohort.CohortError, OSError, ValueError, KeyError):
+                ledger = output / "ledger.jsonl"
+                if ledger.exists():
+                    original = json.loads(ledger.read_text().splitlines()[0])
+                    with cohort.Journal(output, original["spec"], original["identity"]) as journal:
+                        journal.append("deviation", reason="restart identity could not be verified; no launch",
+                                       attempted_spec_digest=cohort.digest(spec))
+                        journal.report()
+                raise
+        with cohort.Journal(output, spec, pin) as journal:
+            report = (cohort.run(journal, paths.jobs_dir(), checkout) if args.action == "run" else journal.report())
+        print(json.dumps(report, indent=2))
+        return 0 if report["complete"] and report["accounting_complete"] else 1
+    except (cohort.CohortError, OSError, ValueError, KeyError) as error:
+        print(f"cohort: {error}", file=sys.stderr)
+        return 2
+
+
 def cmd_candidates(args: argparse.Namespace) -> int:
     """Grade all retained candidates from completed trials."""
     from . import candidates, replay
@@ -1445,6 +1494,14 @@ def build_parser() -> argparse.ArgumentParser:
     suite_parser.set_defaults(func=cmd_suite)
 
     add_experiment_parser(sub)
+    cohort_parser = sub.add_parser("cohort", help="run or report a frozen cohort with durable spend holds")
+    cohort_parser.add_argument("action", choices=("run", "report", "plan"))
+    cohort_parser.add_argument("--spec", required=True, help="frozen cohort JSON specification")
+    cohort_parser.add_argument("--output", required=True, help="durable ledger directory outside the checkout")
+    cohort_parser.set_defaults(func=cmd_cohort)
+    coverage = sub.add_parser("candidate-preflight", help="check per-session artifact capture coverage without inference")
+    coverage.add_argument("task", help="task directory")
+    coverage.set_defaults(func=cmd_candidate_preflight)
 
     reference_parser = sub.add_parser(
         "reference",

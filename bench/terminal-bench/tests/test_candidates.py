@@ -114,5 +114,5 @@ def test_failed_discovery_retains_an_unknown_oracle(tmp_path):
     trial, _, parent = retained(tmp_path)
     (parent / "session-1/out.txt").unlink()
     result = candidates.batch([trial], tmp_path / "out", runner=grade)
-    assert result["errors"] and result["verifier_executions"] == 0
+    assert result["errors"] and result["verifier_executions"] == 1
     assert result["oracle"][0]["any_candidate_passes"] is None

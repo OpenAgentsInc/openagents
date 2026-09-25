@@ -1,0 +1,101 @@
+{
+  "schema": "candidate-checkpoint-v1",
+  "id": "lean-1-session-1",
+  "coverage": {
+    "schema": "candidate-checkpoint-v1",
+    "supported": true,
+    "reasons": [],
+    "task_checksum": "161b905bf34be5e48d7f8e2d8aaa029caca22a481998b85bbfa5a97caf56b490",
+    "artifacts": [
+      {
+        "source": "/app/out.txt",
+        "destination": "main/output.txt",
+        "exclude": [],
+        "service": null
+      },
+      "/app/absent.txt",
+      "/app/absent-dir",
+      {
+        "source": "/tmp/db.dump",
+        "destination": "database/dump.txt",
+        "exclude": [],
+        "service": "db"
+      }
+    ],
+    "hooks": [
+      {
+        "command": "cp /tmp/live-state /tmp/db.dump",
+        "service": "db",
+        "timeout_sec": 10.0,
+        "user": null
+      }
+    ],
+    "max_capture_seconds": 120,
+    "verifier_executed": false
+  },
+  "complete": true,
+  "hooks": [
+    {
+      "service": "db",
+      "command_sha256": "90c424db16c5000e33b037a3f477a66f81e386ecdcc2572627ea6e77b3e22403",
+      "exit": 0
+    }
+  ],
+  "observed_absent": [
+    {
+      "service": null,
+      "source": "/app/absent.txt"
+    },
+    {
+      "service": null,
+      "source": "/app/absent-dir"
+    }
+  ],
+  "verifier_executed": false,
+  "files": {
+    ".": {
+      "kind": "directory",
+      "mode": 493
+    },
+    "app": {
+      "kind": "directory",
+      "mode": 493
+    },
+    "database": {
+      "kind": "directory",
+      "mode": 493
+    },
+    "logs": {
+      "kind": "directory",
+      "mode": 493
+    },
+    "main": {
+      "kind": "directory",
+      "mode": 493
+    },
+    "manifest.json": {
+      "kind": "file",
+      "mode": 420,
+      "sha256": "8a4e4f704568b9a83f45ba5460a891e2cf050c384ee074edabf02bb66df2c6e8"
+    },
+    "main/output.txt": {
+      "kind": "file",
+      "mode": 420,
+      "sha256": "a7937b64b8caa58f03721bb6bacf5c78cb235febe0e70b1b84cd99541461a08e"
+    },
+    "logs/artifacts": {
+      "kind": "directory",
+      "mode": 493
+    },
+    "logs/artifacts/note.txt": {
+      "kind": "file",
+      "mode": 420,
+      "sha256": "ca67bd59cc4116ac80db5f64cbf4747f26ba929c85e8cc689a6123368d08719b"
+    },
+    "database/dump.txt": {
+      "kind": "file",
+      "mode": 420,
+      "sha256": "a7937b64b8caa58f03721bb6bacf5c78cb235febe0e70b1b84cd99541461a08e"
+    }
+  }
+}
