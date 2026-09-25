@@ -10,6 +10,7 @@ Configure Coder, run work, and verify retained artifacts.
 | [coder-one-ask](coder-one-ask.md) | Ask Coder One a question about runs, answered from the Gym with checked citations |
 | [coder-one-checks](coder-one-checks.md) | Check claimed behavior with admitted scenarios |
 | [coder-one-components](coder-one-components.md) | Run a Coder One component alone on fixtures |
+| [coder-one-issue-eval](coder-one-issue-eval.md) | Measure an issue-flow change on past issues, with a development and a held-out part |
 | [coder-one-minitasks](coder-one-minitasks.md) | Run Coder One on a mini-task with the scripted executor or a real one |
 | [coder-one-repair](coder-one-repair.md) | Repair once from a diagnostic packet |
 | [coder-one-support](coder-one-support.md) | Judge requirement support with paired Jev questions |
