@@ -299,6 +299,7 @@ failure without regressions. The v8 results above do not evaluate v10.
 | [gateway](crates/gateway/), [tenancy](crates/tenancy/) | Authenticated HTTP serving, artifact admission, durable quotas, accounts, billing, skills, and training records. |
 | [discovery](crates/discovery/) | Shared documentation, agent cards, skill indexes, and discovery surfaces. |
 | [plugin](crates/plugin/), [plugin-pdk](crates/plugin-pdk/), [plugin-outline](crates/plugin-outline/) | Bounded plugin host, shared packet ABI, and diagnostic guest. |
+| [plugin-repo-map](crates/plugin-repo-map/), [plugin-code-search](crates/plugin-code-search/), [plugin-test-report](crates/plugin-test-report/) | Evidence guests that [`programs/evidence-guests.json`](programs/evidence-guests.json) runs; built by `scripts/build-plugin-guests.sh`. |
 | [nostr](crates/nostr/), [nostr-relay](crates/nostr-relay/) | Protocol verification and the self-hostable PostgreSQL-backed relay. |
 | [voyager](crates/voyager/) | Minecraft curriculum, bounded programs, critics, skill retention, and traces through the separate [nightly Rust bridge](mc-bridge/). |
 | [verse](crates/verse/) | The Verse desktop world: an amber line city, a WoW-style player controller, a following agent, and multiplayer over Nostr with [NIP-MV](nips/openagents/NIP-MV.md). |

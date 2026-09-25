@@ -7828,6 +7828,51 @@ mod tests {
         }
     }
 
+    /// `programs/evidence-guests.json` asks for more than the terminal's
+    /// default module ceilings, so an ordinary turn never admits or offers
+    /// it. A host whose ceilings are wide enough runs all three guests.
+    #[tokio::test]
+    async fn the_evidence_guests_run_only_under_wide_enough_ceilings() {
+        let program = crate::program::Program::load(
+            &Path::new(env!("CARGO_MANIFEST_DIR")).join("../../programs/evidence-guests.json"),
+        )
+        .expect("the repository carries the evidence guests");
+        let workspace = tempfile::tempdir().unwrap();
+        let root = workspace.path();
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        std::fs::write(root.join("src/ledger.py"), "class Ledger:\n    pass\n").unwrap();
+        std::fs::write(root.join("README.md"), "# TODO: document the ledger\n").unwrap();
+
+        let terminal = workspace_runtime(root);
+        let refused = terminal.admit(&program).unwrap_err();
+        assert_eq!(refused.code, "bound_unenforceable", "{refused:?}");
+
+        let wide = workspace_runtime(root).with_module_ceiling(plugin::Limits {
+            fuel: 2_000_000_000,
+            memory_bytes: 64 * 1024 * 1024,
+            output_bytes: 32 * 1024 * 1024,
+            read_bytes: 16 * 1024 * 1024,
+            module_bytes: 2 * 1024 * 1024,
+        });
+        wide.admit(&program).expect("wide ceilings admit it");
+        let run = wide
+            .run(
+                &program,
+                &Inputs::read("gather evidence", "stub-local"),
+                &Grant::all(),
+                None,
+            )
+            .await;
+        assert!(run.finished(), "{:?}", run.stopped);
+        let value = |step: usize| -> Value {
+            serde_json::from_str::<Value>(&run.steps[step].output).unwrap()["value"].clone()
+        };
+        assert_eq!(value(0)["kind"], "repo-map");
+        assert_eq!(value(0)["files"], 2);
+        assert_eq!(value(1)["files"][0]["path"], "README.md");
+        assert_eq!(value(2)["files_considered"], 0);
+    }
+
     /// A symlink in the granted scope whose target is outside the
     /// workspace refuses the step before the guest starts, whether the
     /// scope names it or walks into it. One whose target stays inside is

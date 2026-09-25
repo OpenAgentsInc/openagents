@@ -1,0 +1,17 @@
+[package]
+name = "plugin-repo-map"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Repository map guest: files, sizes, languages, and top-level structure of a granted snapshot."
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+plugin-pdk = { path = "../plugin-pdk", features = ["guest"] }
+serde_json = "1"
+
+[lints]
+workspace = true

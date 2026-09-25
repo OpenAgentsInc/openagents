@@ -1,0 +1,14 @@
+{
+  "schema": "openagents.plugin-build-receipt.v1",
+  "guest": "repo-map",
+  "crate": "plugin-repo-map",
+  "profile": "snapshot-read",
+  "pdk_digest": "sha256:43850828ef08df2014f724f5fac3c4431307d7d6930f837b71f8567090091be9",
+  "source_digest": "sha256:0100141765aff1449fea1375eeae7c18c55f6c4c38d509759eaeda59fb529408",
+  "guest_digest": "sha256:0f788d7adacbe189aed5c8be9aa96a13e2568074f3db213d708c5ac7254a1536",
+  "size": 134838,
+  "toolchain": "1.97.1",
+  "target": "wasm32-unknown-unknown",
+  "cargo_profile": "guest",
+  "command": "./scripts/build-plugin-guests.sh"
+}

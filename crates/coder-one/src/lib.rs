@@ -36,6 +36,7 @@ pub mod delegate;
 pub mod effort;
 pub mod episode;
 pub mod generate;
+pub mod guests;
 pub mod handoff;
 pub mod issue_eval;
 pub mod issue_turn;

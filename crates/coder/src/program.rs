@@ -679,7 +679,7 @@ mod tests {
     }
 
     #[test]
-    fn the_registry_lists_the_six_programs_the_repository_carries() {
+    fn the_registry_lists_the_seven_programs_the_repository_carries() {
         let registry = repository_programs();
         assert!(registry.refused().is_empty(), "{:?}", registry.refused());
         let mut slugs = registry.slugs();
@@ -690,6 +690,7 @@ mod tests {
                 "answer-question",
                 "burn-down",
                 "delegate-fan-out",
+                "evidence-guests",
                 "review-changes",
                 "review-runs",
                 "run-suite"
@@ -708,6 +709,12 @@ mod tests {
             ["answer"]
         );
         assert_eq!(registry.get("run-suite").unwrap().step_names(), ["score"]);
+        let guests = registry.get("evidence-guests").unwrap();
+        assert_eq!(
+            guests.step_names(),
+            ["repo_map", "code_search", "test_report"]
+        );
+        assert!(guests.steps.iter().all(|step| step.kind == Kind::Module));
         // `review-runs` reads the Gym through a source and hands the
         // question to the one executor it names.
         let review = registry.get("review-runs").unwrap();
@@ -752,7 +759,7 @@ mod tests {
             call.extra["programs"]["delegate-fan-out"]["steps"],
             json!(["select", "independence", "admit", "fan_out", "accept"])
         );
-        assert!(call.output.starts_with("6 programs: "));
+        assert!(call.output.starts_with("7 programs: "));
     }
 
     #[test]

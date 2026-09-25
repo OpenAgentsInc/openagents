@@ -7,6 +7,9 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
+#[cfg(feature = "guest")]
+pub mod guest;
+
 /// Packet version string.
 pub const VERSION: &str = "openagents.plugin-packet.v1";
 

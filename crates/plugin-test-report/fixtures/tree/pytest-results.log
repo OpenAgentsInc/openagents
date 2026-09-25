@@ -1,0 +1,29 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.0, pytest-8.0.0, pluggy-1.4.0
+rootdir: /work/app
+collected 4 items
+
+tests/test_core.py .F.                                                   [ 75%]
+tests/test_io.py E                                                       [100%]
+
+==================================== ERRORS ====================================
+_________________________ ERROR at setup of test_read __________________________
+
+    @pytest.fixture
+    def data():
+>       return open("data.csv")
+E       FileNotFoundError: [Errno 2] No such file or directory: 'data.csv'
+
+tests/conftest.py:5: FileNotFoundError
+=================================== FAILURES ===================================
+__________________________________ test_scale __________________________________
+
+    def test_scale():
+>       assert scale([1, 2], 2) == [2, 4, 6]
+E       assert [2, 4] == [2, 4, 6]
+
+tests/test_core.py:12: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_core.py::test_scale - assert [2, 4] == [2, 4, 6]
+ERROR tests/test_io.py::test_read - FileNotFoundError: [Errno 2] No such file...
+===================== 1 failed, 2 passed, 1 error in 0.12s =====================

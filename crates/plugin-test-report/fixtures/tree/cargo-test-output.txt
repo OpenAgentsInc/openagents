@@ -1,0 +1,29 @@
+
+running 6 tests
+test ledger::tests::adds ... ok
+test ledger::tests::posts_twice ... FAILED
+test ledger::tests::old_style ... FAILED
+test ledger::tests::skipped ... ignored
+test ledger::tests::scales ... ok
+test ledger::tests::rounds ... ok
+
+failures:
+
+---- ledger::tests::posts_twice stdout ----
+
+thread 'ledger::tests::posts_twice' panicked at src/ledger.rs:42:9:
+assertion `left == right` failed
+  left: 1
+ right: 2
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- ledger::tests::old_style stdout ----
+thread 'ledger::tests::old_style' panicked at 'balance went negative', src/ledger.rs:51:13
+
+
+failures:
+    ledger::tests::old_style
+    ledger::tests::posts_twice
+
+test result: FAILED. 3 passed; 2 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
