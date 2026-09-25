@@ -933,7 +933,8 @@ impl App {
         ));
         let times: Vec<_> = fresh.iter().filter_map(|a| a.phases_ms[2]).collect();
         let costs: Vec<_> = fresh.iter().filter_map(|a| a.cost_usd).collect();
-        lines.push(format!("Observed spread: agent time {} · cost {}. Missing measurements stay out of each range.", spread_u64(&times), spread_f64(&costs)));
+        let before_agent: Vec<_> = fresh.iter().filter_map(|a| a.setup_ms()).collect();
+        lines.push(format!("Observed spread: setup before the agent (environment and agent setup) {} · agent time {} · cost {}. Missing measurements stay out of each range.", spread_u64(&before_agent), spread_u64(&times), spread_f64(&costs)));
         lines.push(
             "Other configurations on this task (runs with different pinned versions are not pooled):"
                 .to_owned(),

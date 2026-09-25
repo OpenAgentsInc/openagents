@@ -99,12 +99,30 @@ def task_images(task_id: str) -> list[str]:
     code, text = _docker(["images", "--format", "{{.Repository}}:{{.Tag}}"])
     if code != 0:
         return []
+    return images_of_task(task_id, text.splitlines())
+
+
+def images_of_task(task_id: str, references: list[str]) -> list[str]:
+    """The references that belong to one task: a trial's leftover
+    ``<trial>__…`` image, or an image ``tbench.warm_docker`` keeps for it
+    (``tbench-warm/<task>`` and ``tbench-warm/<task>-<service>``).
+
+    The kept images are the cache across trials; the scheduler removes a
+    finished task's only when free disk is near the floor.
+    """
+    from .warm_docker import WARM_REPOSITORY, _component
+
     prefix = f"{task_id.lower()}__"
-    return sorted(
-        line.strip()
-        for line in text.splitlines()
-        if line.strip().startswith(prefix)
-    )
+    warm = f"{WARM_REPOSITORY}/{_component(task_id)}"
+    found = []
+    for line in references:
+        reference = line.strip()
+        repository = reference.rsplit(":", 1)[0]
+        if reference.startswith(prefix) or repository == warm or repository.startswith(
+            f"{warm}-"
+        ):
+            found.append(reference)
+    return sorted(found)
 
 
 def remove_images(names: list[str]) -> list[str]:

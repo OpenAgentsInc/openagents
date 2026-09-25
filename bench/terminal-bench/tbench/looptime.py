@@ -162,20 +162,32 @@ def episode_phases(log: Path | None) -> dict[str, Any]:
     return phases
 
 
-def environment_starts(trial_dir: Path) -> list[dict[str, Any]]:
-    """The ``tbench.warm_docker`` start records a trial left, in order."""
+def environment_records(trial_dir: Path) -> list[dict[str, Any]]:
+    """Every ``tbench.warm_docker`` record a trial left, in order."""
     path = trial_dir / "tbench-environment.jsonl"
-    starts = []
+    records = []
     try:
         lines = path.read_text().splitlines()
     except OSError:
         return []
     for line in lines:
         try:
-            starts.append(json.loads(line))
+            record = json.loads(line)
         except json.JSONDecodeError:
             continue
-    return starts
+        if isinstance(record, dict):
+            records.append(record)
+    return records
+
+
+def environment_starts(trial_dir: Path) -> list[dict[str, Any]]:
+    """The ``tbench.warm_docker`` start records a trial left, in order."""
+    return [r for r in environment_records(trial_dir) if r.get("event", "start") == "start"]
+
+
+def environment_stops(trial_dir: Path) -> list[dict[str, Any]]:
+    """The ``tbench.warm_docker`` stop records a trial left, in order."""
+    return [r for r in environment_records(trial_dir) if r.get("event") == "stop"]
 
 
 def trial_looptime(trial_dir: Path) -> dict[str, Any]:

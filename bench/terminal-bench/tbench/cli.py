@@ -1192,6 +1192,30 @@ def cmd_images(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_envstart(args: argparse.Namespace) -> int:
+    """Start and stop a task's environments with no agent or verifier."""
+    from . import envstart
+    from .panel import load_panel
+
+    agent = load_agents()[args.arm]
+    hosts = [] if args.open else list(agent.extra_allowed_hosts)
+    panel = load_panel(catalog=args.catalog)
+    task_dirs = [panel.checkout() / panel.task(task).path for task in args.task]
+    artifact = Path(args.artifact).expanduser() if args.artifact else None
+    report = envstart.run(
+        task_dirs,
+        modes=args.mode or ["harbor", "warm"],
+        repeat=args.repeat,
+        allowed_hosts=hosts,
+        probe=args.probe,
+        artifact=artifact,
+        verifier=not args.no_verifier,
+    )
+    failed = [row for row in report["rows"] if row.get("error")]
+    print(f"envstart: {len(report['rows'])} startups, {len(failed)} failed; {report['path']}")
+    return 1 if failed else 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tbench",
@@ -1554,6 +1578,43 @@ def build_parser() -> argparse.ArgumentParser:
         "--match", help="remove only images whose reference contains this text"
     )
     images_parser.set_defaults(func=cmd_images)
+
+    envstart_parser = sub.add_parser(
+        "envstart",
+        help="time a task's environment startups with no agent, verifier, or model",
+    )
+    envstart_parser.add_argument("task", nargs="+", help="task names in the catalog")
+    envstart_parser.add_argument(
+        "--mode",
+        action="append",
+        choices=("harbor", "warm"),
+        help="harbor's own start and stop, or kept images and a short stop "
+        "(default: both, harbor first)",
+    )
+    envstart_parser.add_argument(
+        "--repeat", type=int, default=1, help="startups per task and mode (default 1)"
+    )
+    envstart_parser.add_argument(
+        "--arm",
+        default="coder-one-microluna-v15",
+        help="the arm whose allowed hosts the agent phase gets",
+    )
+    envstart_parser.add_argument(
+        "--open", action="store_true", help="skip the allowlist; the agent phase stays public"
+    )
+    envstart_parser.add_argument(
+        "--probe", action="store_true", help="check the allowlist from inside the environment"
+    )
+    envstart_parser.add_argument(
+        "--artifact", help="also time a Coder One binary's upload and digest check"
+    )
+    envstart_parser.add_argument(
+        "--no-verifier", action="store_true", help="skip the separate verifier environment"
+    )
+    envstart_parser.add_argument(
+        "--catalog", default="tb4", help="the task catalog (default tb4)"
+    )
+    envstart_parser.set_defaults(func=cmd_envstart)
 
     cmp_parser = sub.add_parser(
         "compare", help="fold attempts into a comparison report"

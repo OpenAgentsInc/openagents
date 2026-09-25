@@ -56,7 +56,7 @@ def test_the_tb4_job_profile_draws_from_the_catalog(tb4):
     profile = load_job_profile("tb4")
     assert profile.catalog == "tb4"
     assert set(profile.task_ids) == {task.id for task in tb4.tasks}
-    assert profile.environment["import_path"] == "tbench.gpu_docker:CdiDockerEnvironment"
+    assert profile.environment["import_path"] == "tbench.warm_docker:WarmDockerEnvironment"
     config = build_job_config(
         tb4,
         profile,
@@ -65,7 +65,7 @@ def test_the_tb4_job_profile_draws_from_the_catalog(tb4):
         checkout=Path("/checkout"),
     )
     assert config["tasks"] == [{"path": "/checkout/tasks/cad-model"}]
-    assert config["environment"]["import_path"].endswith("CdiDockerEnvironment")
+    assert config["environment"]["import_path"].endswith("WarmDockerEnvironment")
 
 
 def test_the_checked_catalog_matches_its_checkout(tb4):

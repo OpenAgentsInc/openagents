@@ -23,8 +23,9 @@ Budgets:
   or in the order the profile lists its tasks.
 - Disk: no trial starts while the Docker volume has less free space than
   the floor. When a task's trials have all finished and free space is
-  within the prune margin of the floor, the task's leftover images go;
-  under the floor, Docker's unused build cache goes too.
+  within the prune margin of the floor, the task's leftover images and the
+  images ``tbench.warm_docker`` kept for it go; under the floor, Docker's
+  unused build cache goes too.
 - GPUs: a task that needs a GPU is skipped, with the reason recorded, when
   Docker can't hand a container one (no NVIDIA CDI spec or runtime) or when
   the GPU budget is 0. GPU trials take GPU slots, one by default, so they
@@ -1236,9 +1237,11 @@ class Scheduler:
         """Free disk near the floor: finished tasks' leftover images first.
 
         Harbor removes a trial's image when the trial ends, so what stays is
-        an image a crashed trial left, the base images, and Docker's build
-        cache. Near the floor this removes a finished task's leftover
-        images; under the floor it also drops the unused build cache.
+        an image a crashed trial left, the images ``tbench.warm_docker``
+        keeps for the task's next trials, the base images, and Docker's
+        build cache. Near the floor this removes a finished task's leftover
+        and kept images; under the floor it also drops the unused build
+        cache.
         """
         free = self.host.free_disk_gb()
         threshold = self.budget.min_free_disk_gb + self.budget.prune_margin_gb

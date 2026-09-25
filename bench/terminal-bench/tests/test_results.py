@@ -243,3 +243,64 @@ def test_unreadable_task_leaves_image_unknown(tmp_path):
     state = _record(result, trial_dir=tmp_path)["environment"]
     assert state["image_state"] == "unknown"
     assert state["image_source"] == "unknown"
+
+
+def _environment_records(trial, *records):
+    trial.mkdir(exist_ok=True)
+    (trial / "tbench-environment.jsonl").write_text(
+        "".join(json.dumps(record) + "\n" for record in records)
+    )
+
+
+def test_setup_is_kept_apart_from_agent_time(tmp_path):
+    result = _trial_result(
+        agent_setup={
+            "started_at": "2026-09-22T10:01:00Z",
+            "finished_at": "2026-09-22T10:01:02Z",
+        },
+        verifier={
+            "started_at": "2026-09-22T10:09:12Z",
+            "finished_at": "2026-09-22T10:10:00Z",
+        },
+    )
+    _environment_records(
+        tmp_path,
+        {"event": "start", "role": "environment", "cache": "warm", "start_ms": 3000,
+         "phases_ms": {"up": 2500, "other": 500}},
+        {"event": "stop", "role": "environment", "stop_ms": 2000, "stop_timeout_sec": 1},
+        {"event": "start", "role": "tests", "cache": "warm", "start_ms": 1400},
+        {"event": "stop", "role": "tests", "stop_ms": 2100},
+    )
+    timing = _record(result, trial_dir=tmp_path)["timing"]
+    assert timing["setup_ms"] == 62_000
+    assert timing["handoff_ms"] == 12_000
+    assert timing["verifier_environment_ms"] == 3_500
+    assert timing["agent_execution_ms"] == 420_000
+
+
+def test_setup_fields_are_unknown_without_their_evidence(tmp_path):
+    timing = _record(_trial_result(), trial_dir=tmp_path)["timing"]
+    # No agent_setup phase, no verifier, and no environment records.
+    assert timing["setup_ms"] is None
+    assert timing["handoff_ms"] is None
+    assert timing["verifier_environment_ms"] is None
+
+
+def test_kept_image_records_answer_a_dockerfile_task(tmp_path):
+    state = _image_trial(tmp_path, docker_image=None)
+    assert state["image_state"] == "unknown"
+    _environment_records(
+        tmp_path / "trial",
+        {"role": "environment", "cache": "warm", "start_ms": 3000},
+        {"event": "stop", "role": "environment", "stop_ms": 2000},
+    )
+    state = _image_trial(tmp_path, docker_image=None)
+    assert state["image_state"] == "warm"
+    assert state["image_action"] == "reused"
+    assert [s["event"] for s in state["starts"]] == ["start", "stop"]
+    _environment_records(
+        tmp_path / "trial", {"event": "start", "role": "environment", "cache": "cold"}
+    )
+    state = _image_trial(tmp_path, docker_image=None)
+    assert state["image_state"] == "cold"
+    assert state["image_action"] == "built"
