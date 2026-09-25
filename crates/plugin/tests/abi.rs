@@ -396,3 +396,121 @@ fn the_outline_guest_lists_only_the_granted_snapshot() {
     assert_ne!(receipt.guest_digest, pure_receipt.guest_digest);
     assert_eq!(receipt.pdk_digest, pure_receipt.pdk_digest);
 }
+
+#[test]
+fn setting_the_cancel_flag_stops_a_running_guest() {
+    let spin = wat::parse_str(
+        r#"
+        (module
+          (memory (export "memory") 1)
+          (func (export "oa_alloc") (param i32) (result i32) (i32.const 100))
+          (func (export "oa_free") (param i32 i32))
+          (func (export "oa_handle") (param i32 i32) (result i64)
+            (loop $again (br $again))
+            (i64.const 0)))
+        "#,
+    )
+    .unwrap();
+    // Enough fuel that the loop would run for hours without the flag.
+    let limits = Limits {
+        fuel: u64::MAX / 2,
+        ..Limits::default()
+    };
+    let flag = Arc::new(AtomicBool::new(false));
+    let setter = Arc::clone(&flag);
+    let started = std::time::Instant::now();
+    let cancel = std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        setter.store(true, std::sync::atomic::Ordering::SeqCst);
+    });
+    let outcome = invoke(plugin::Call {
+        wasm: &spin,
+        profile: Profile::Pure,
+        invocation: "inv-1",
+        operation: "echo",
+        input: &json!(null),
+        snapshot: &Snapshot::default(),
+        handles: &BTreeMap::new(),
+        limits,
+        cancelled: flag,
+        required: true,
+    });
+    cancel.join().unwrap();
+    assert!(matches!(outcome, Err(HostError::Cancelled)), "{outcome:?}");
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(10),
+        "{:?}",
+        started.elapsed()
+    );
+}
+
+#[test]
+fn a_listed_child_is_readable_through_its_minted_handle() {
+    let body = ok_body();
+    let escaped = wat_escape(&body);
+    let list_raw =
+        r#"{"v":1,"handle":"h-root","operation":"list","args":{"cursor":null,"max_entries":8}}"#;
+    let read_raw =
+        r#"{"v":1,"handle":"child-1","operation":"read","args":{"offset":0,"max_bytes":16}}"#;
+    let list = wat_escape(list_raw);
+    let read = wat_escape(read_raw);
+    // The guest lists the root, then reads the first child by the token
+    // the list minted. Either call failing traps.
+    let guest = wat::parse_str(format!(
+        r#"
+        (module
+          (import "oa_host" "call" (func $call (param i32 i32 i32 i32) (result i32)))
+          (memory (export "memory") 1)
+          (data (i32.const 32) "{escaped}")
+          (data (i32.const 400) "{list}")
+          (data (i32.const 600) "{read}")
+          (func (export "oa_alloc") (param i32) (result i32) (i32.const 4096))
+          (func (export "oa_free") (param i32 i32))
+          (func (export "oa_handle") (param i32 i32) (result i64)
+            (if (i32.lt_s (call $call (i32.const 400) (i32.const {list_len}) (i32.const 1024) (i32.const 1024)) (i32.const 0))
+              (then (unreachable)))
+            (if (i32.lt_s (call $call (i32.const 600) (i32.const {read_len}) (i32.const 2048) (i32.const 1024)) (i32.const 0))
+              (then (unreachable)))
+            (i64.or
+              (i64.shl (i64.extend_i32_u (i32.const 32)) (i64.const 32))
+              (i64.extend_i32_u (i32.const {len})))))
+        "#,
+        list_len = list_raw.len(),
+        read_len = read_raw.len(),
+        len = body.len()
+    ))
+    .unwrap();
+    let mut snapshot = Snapshot::default();
+    snapshot
+        .insert(
+            "src/lib.rs",
+            Entry::File {
+                bytes: b"pub fn f() {}".to_vec(),
+                version: "v1".into(),
+                complete: true,
+            },
+        )
+        .unwrap();
+    snapshot
+        .insert(
+            "workspace",
+            Entry::Directory {
+                children: vec!["src/lib.rs".into()],
+            },
+        )
+        .unwrap();
+    let mut handles = BTreeMap::new();
+    handles.insert("workspace".to_string(), "h-root".to_string());
+    let value = run(
+        &guest,
+        Profile::SnapshotRead,
+        "echo",
+        &snapshot,
+        &handles,
+        Limits::default(),
+        false,
+        true,
+    )
+    .unwrap();
+    assert_eq!(value.value["echo"], json!(true));
+}

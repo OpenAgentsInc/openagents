@@ -3,10 +3,15 @@
 //! The host copies the packet in, calls `oa_handle`, copies the output out,
 //! and frees both allocations. A trap discards the instance. No ambient
 //! interface is linked.
+//!
+//! Setting the call's cancel flag stops a running guest: a watcher thread
+//! bumps the engine's epoch, and the guest traps at its next loop header or
+//! function entry. The host call path checks the same flag.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 use nostr::contracts::parse_strict;
 use serde_json::{Map, Value, json};
@@ -14,6 +19,9 @@ use wasmtime::{Caller, Engine, Linker, Memory, Module, Store, StoreLimits, Trap}
 
 use crate::memory::{check_range, overlaps};
 use crate::snapshot::Snapshot;
+
+/// How often the watcher thread checks the cancel flag while a guest runs.
+const CANCEL_POLL: Duration = Duration::from_millis(5);
 
 /// Which guest profile this invocation grants.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -106,6 +114,8 @@ struct GuestState {
     memory: Option<Memory>,
     read_left: usize,
     output_left: usize,
+    /// Child handles minted by `list` so far, for unique tokens.
+    minted: usize,
     cancelled: Arc<AtomicBool>,
     store_limits: StoreLimits,
 }
@@ -128,7 +138,9 @@ pub struct Call<'a> {
     pub handles: &'a BTreeMap<String, String>,
     /// Ceilings.
     pub limits: Limits,
-    /// Set when the caller cancels the invocation.
+    /// Set when the caller cancels the invocation. The host checks it
+    /// before the guest starts, at each host call, and from a watcher
+    /// thread that interrupts a running guest.
     pub cancelled: Arc<AtomicBool>,
     /// Whether a guest refusal fails the invocation.
     pub required: bool,
@@ -140,6 +152,40 @@ pub struct Call<'a> {
 ///
 /// Returns a typed host error. The instance is not reused after a trap.
 pub fn invoke(call: Call<'_>) -> Result<GuestValue, HostError> {
+    if call.wasm.len() > call.limits.module_bytes {
+        return Err(HostError::Limit("module bytes".into()));
+    }
+    if call.cancelled.load(Ordering::SeqCst) {
+        return Err(HostError::Cancelled);
+    }
+    let mut config = wasmtime::Config::new();
+    config.consume_fuel(true);
+    config.epoch_interruption(true);
+    let engine = Engine::new(&config).map_err(|error| HostError::Failed(error.to_string()))?;
+    let cancelled = Arc::clone(&call.cancelled);
+    let done = AtomicBool::new(false);
+    std::thread::scope(|scope| {
+        let watcher = scope.spawn(|| interrupt_on_cancel(&engine, &cancelled, &done));
+        let outcome = run_guest(&engine, call);
+        done.store(true, Ordering::SeqCst);
+        watcher.thread().unpark();
+        outcome
+    })
+}
+
+/// Bumps the engine's epoch once the cancel flag is set, which traps a
+/// running guest, and returns when the invocation is done.
+fn interrupt_on_cancel(engine: &Engine, cancelled: &AtomicBool, done: &AtomicBool) {
+    while !done.load(Ordering::SeqCst) {
+        if cancelled.load(Ordering::SeqCst) {
+            engine.increment_epoch();
+            return;
+        }
+        std::thread::park_timeout(CANCEL_POLL);
+    }
+}
+
+fn run_guest(engine: &Engine, call: Call<'_>) -> Result<GuestValue, HostError> {
     let Call {
         wasm,
         profile,
@@ -152,17 +198,8 @@ pub fn invoke(call: Call<'_>) -> Result<GuestValue, HostError> {
         cancelled,
         required,
     } = call;
-    if wasm.len() > limits.module_bytes {
-        return Err(HostError::Limit("module bytes".into()));
-    }
-    if cancelled.load(Ordering::Relaxed) {
-        return Err(HostError::Cancelled);
-    }
-    let mut config = wasmtime::Config::new();
-    config.consume_fuel(true);
-    let engine = Engine::new(&config).map_err(|error| HostError::Failed(error.to_string()))?;
     let module =
-        Module::new(&engine, wasm).map_err(|error| HostError::Malformed(error.to_string()))?;
+        Module::new(engine, wasm).map_err(|error| HostError::Malformed(error.to_string()))?;
     check_imports(&module, profile)?;
     let state = GuestState {
         snapshot: snapshot.clone(),
@@ -173,15 +210,23 @@ pub fn invoke(call: Call<'_>) -> Result<GuestValue, HostError> {
         memory: None,
         read_left: limits.read_bytes,
         output_left: limits.output_bytes,
-        cancelled,
+        minted: 0,
+        cancelled: Arc::clone(&cancelled),
         store_limits: store_limits(limits.memory_bytes),
     };
-    let mut store = Store::new(&engine, state);
+    let mut store = Store::new(engine, state);
     store
         .set_fuel(limits.fuel)
         .map_err(|error| HostError::Failed(error.to_string()))?;
+    // The epoch starts at zero and the watcher bumps it once, on cancel. A
+    // bump that landed before this deadline was set would not trap, so the
+    // flag is read again after it.
+    store.set_epoch_deadline(1);
+    if cancelled.load(Ordering::SeqCst) {
+        return Err(HostError::Cancelled);
+    }
     store.limiter(|guest| &mut guest.store_limits);
-    let mut linker = Linker::new(&engine);
+    let mut linker = Linker::new(engine);
     if profile == Profile::SnapshotRead {
         linker
             .func_wrap("oa_host", "call", host_call)
@@ -350,10 +395,20 @@ fn dispatch_import(guest: &mut GuestState, value: &Value) -> Result<Value, i32> 
                 .and_then(|args| args.get("max_entries"))
                 .and_then(Value::as_u64)
                 .unwrap_or(16) as usize;
-            guest
+            let mut value = guest
                 .snapshot
                 .list(&name, cursor, max_entries)
-                .map_err(import_code)
+                .map_err(import_code)?;
+            // A listed child gets a token scoped to this invocation, so
+            // the guest can read what it listed and nothing it didn't.
+            if let Some(entries) = value["entries"].as_array_mut() {
+                for entry in entries {
+                    let child = entry["name"].as_str().unwrap_or_default().to_string();
+                    let token = guest.mint(child);
+                    entry["handle"] = Value::String(token);
+                }
+            }
+            Ok(value)
         }
         "read" => {
             let offset = args
@@ -379,6 +434,20 @@ fn dispatch_import(guest: &mut GuestState, value: &Value) -> Result<Value, i32> 
             Ok(value)
         }
         _ => Err(-2),
+    }
+}
+
+impl GuestState {
+    /// A fresh invocation-scoped token for the entry `name`.
+    fn mint(&mut self, name: String) -> String {
+        loop {
+            self.minted += 1;
+            let token = format!("child-{}", self.minted);
+            if !self.handles.contains_key(&token) {
+                self.handles.insert(token.clone(), name);
+                return token;
+            }
+        }
     }
 }
 
@@ -456,10 +525,10 @@ fn map_trap(error: wasmtime::Error) -> HostError {
     if error.to_string().contains("cancelled") {
         return HostError::Cancelled;
     }
-    if let Some(trap) = error.downcast_ref::<Trap>()
-        && matches!(trap, Trap::OutOfFuel)
-    {
-        return HostError::Limit("fuel".into());
+    match error.downcast_ref::<Trap>() {
+        Some(Trap::OutOfFuel) => return HostError::Limit("fuel".into()),
+        Some(Trap::Interrupt) => return HostError::Cancelled,
+        _ => {}
     }
     let text = error.to_string();
     if text.contains("fuel") {
@@ -496,7 +565,9 @@ pub fn build_receipt(pdk: &[u8], guest: &[u8], profile: &str) -> BuildReceipt {
     }
 }
 
-fn digest(bytes: &[u8]) -> String {
+/// The `sha256:`-prefixed hex digest of `bytes`.
+#[must_use]
+pub fn digest(bytes: &[u8]) -> String {
     use sha2::{Digest, Sha256};
     let hash = Sha256::digest(bytes);
     format!("sha256:{}", hex(&hash))
