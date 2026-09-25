@@ -167,6 +167,8 @@ implement this shared context system.
 | Entity state | Implemented | A `33301` event recording where one entity was last and whether its publisher is online. Relays keep the latest per entity, which is how a player resumes and how resting players stay visible. |
 | Scan | Implemented | The agent's look-around after a chase: a one-shot query for entity states in the cells around it, answered by glancing at the nearest players or agents found. |
 | Greeting | Implemented | Two agents within 7 m of each other turn, bow, and hop, and each sends a NIP-MV `greet` gesture addressed to the other. A received greeting is returned once; a pair greets at most once every 45 s. |
+| World chat | Implemented | Verse chat after Horse Isle 1: ALL, ADS, ZONE, NEAR, and HERE as NIP-C7 kind `9` lines scoped by NIP-MV tags, NIP-29 rooms, and NIP-17 private messages, in two windows with a method selector, `/` shortcuts, Horse Isle's limits, and speech bubbles. See [chat](verse/chat.md). |
+| Zone | Implemented | A named district of a Verse world, the scope of ZONE chat: the Plaza and the four Wards around it. |
 
 ## Capabilities and programs
 

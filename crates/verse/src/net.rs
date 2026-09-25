@@ -32,6 +32,8 @@ pub enum Out {
     },
     /// Close a subscription.
     Close(String),
+    /// Answer a NIP-42 challenge with a signed kind `22242` event.
+    Auth(Event),
 }
 
 /// A message from the relay to the game.
@@ -63,6 +65,8 @@ pub enum In {
     Closed(String, String),
     /// A human-readable relay notice.
     Notice(String),
+    /// A NIP-42 challenge.
+    Auth(String),
 }
 
 /// The game's handle on the link thread.
@@ -235,6 +239,7 @@ fn apply(socket: &mut Socket, live: &mut BTreeMap<String, Vec<Value>>, command: 
             live.remove(&id);
             write(socket, &json!(["CLOSE", id]))
         }
+        Out::Auth(event) => write(socket, &json!(["AUTH", event])),
     }
 }
 
@@ -270,6 +275,7 @@ pub fn parse(text: &str) -> Option<In> {
         }),
         "CLOSED" => Some(In::Closed(str_at(1)?, str_at(2).unwrap_or_default())),
         "NOTICE" => Some(In::Notice(str_at(1)?)),
+        "AUTH" => Some(In::Auth(str_at(1)?)),
         _ => None,
     }
 }
@@ -286,6 +292,7 @@ mod tests {
             Some(In::Ok { accepted: false, message, .. }) if message.starts_with("rate-limited:")
         ));
         assert!(matches!(parse(r#"["NOTICE","hi"]"#), Some(In::Notice(_))));
+        assert!(matches!(parse(r#"["AUTH","abc"]"#), Some(In::Auth(c)) if c == "abc"));
         assert!(parse("not json").is_none());
         assert!(parse(r#"["EVENT","s1",{"bad":1}]"#).is_none());
     }

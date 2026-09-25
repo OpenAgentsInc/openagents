@@ -12,13 +12,16 @@
 //! - **Scans.** When the agent looks around, the session queries entity
 //!   states in the surrounding cells and reports what is near.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use glam::{Quat, Vec3};
 use serde_json::json;
 
+use nostr::domain::Tag;
+
 use crate::agent::Agent;
+use crate::chat::{self, Channel};
 use crate::controller::{Footprint, PlayerController};
 use crate::crowd::Crowd;
 use crate::identity::{self, Identity};
@@ -33,6 +36,13 @@ pub const DEFAULT_RELAY: &str = "ws://127.0.0.1:7447";
 pub const SPAWN_RADIUS: f32 = 28.0;
 /// How far the agent's scan reaches, in meters.
 pub const SCAN_RADIUS: f32 = 80.0;
+/// The NIP-29 rooms a Verse relay seeds (`scripts/verse-relay.sh`).
+pub const ROOMS: [&str; 3] = ["lounge", "trading-post", "builders"];
+/// How long an overhead bubble stays up.
+pub const BUBBLE_TIME: Duration = Duration::from_secs(7);
+const CHAT_SUB: &str = "chat-world";
+const ROOM_SUB: &str = "chat-rooms";
+const DM_SUB: &str = "chat-pm";
 const LIVE_SUB: &str = "mv-live";
 const STATE_SUB: &str = "mv-state";
 const ME_SUB: &str = "mv-me";
@@ -83,6 +93,38 @@ pub struct Session {
     /// Pubkeys whose agents greeted this one, and when.
     invited: Vec<(String, Instant)>,
     greets_received: u64,
+    /// Both chat windows.
+    pub log: chat::Log,
+    /// Lines floating over speakers' heads.
+    pub bubbles: Vec<Bubble>,
+    /// Display names by pubkey.
+    names: HashMap<String, String>,
+    asked_names: HashSet<String>,
+    want_names: Vec<String>,
+    last_name_ask: Option<Instant>,
+    limits: chat::Limits,
+    muted: HashSet<String>,
+    /// Room display names by id, from NIP-29 metadata.
+    pub room_names: HashMap<String, String>,
+    joined: u64,
+    auth_id: Option<String>,
+    seen_chat: HashSet<String>,
+    online: HashSet<String>,
+    started: Instant,
+    my_pos: Vec3,
+    /// The last player to send this one a private message.
+    pub last_pm_from: Option<String>,
+}
+
+/// A line floating over a speaker.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Bubble {
+    /// Speaker.
+    pub pubkey: String,
+    /// Text.
+    pub text: String,
+    /// When it disappears.
+    pub until: Instant,
 }
 
 /// Starting place for the local player.
@@ -125,6 +167,19 @@ impl Session {
             filters: vec![json!({"kinds": [mv::STATE_KIND], "#w": [WORLD], "limit": 500})],
             live: true,
         });
+        link.send(Out::Subscribe {
+            id: CHAT_SUB.into(),
+            filters: vec![json!({"kinds": [mv::CHAT_KIND], "#w": [WORLD], "limit": 100})],
+            live: true,
+        });
+        link.send(Out::Subscribe {
+            id: ROOM_SUB.into(),
+            filters: vec![
+                json!({"kinds": [mv::CHAT_KIND], "#h": ROOMS, "limit": 60}),
+                json!({"kinds": [39_000], "#d": ROOMS}),
+            ],
+            live: true,
+        });
         if id.created {
             link.send(Out::Publish(mv::profile_event(
                 &id.signer,
@@ -148,6 +203,22 @@ impl Session {
             greeted: HashMap::new(),
             invited: Vec::new(),
             greets_received: 0,
+            log: chat::Log::default(),
+            bubbles: Vec::new(),
+            names: HashMap::new(),
+            asked_names: HashSet::new(),
+            want_names: Vec::new(),
+            last_name_ask: None,
+            limits: chat::Limits::new(Instant::now()),
+            muted: HashSet::new(),
+            room_names: HashMap::new(),
+            joined: unix_now(),
+            auth_id: None,
+            seen_chat: HashSet::new(),
+            online: HashSet::new(),
+            started: Instant::now(),
+            my_pos: Vec3::ZERO,
+            last_pm_from: None,
         })
     }
 
@@ -230,6 +301,10 @@ impl Session {
             self.handle(message, now);
         }
         self.crowd.prune(now);
+        self.my_pos = player.pos;
+        self.bubbles.retain(|b| b.until > now);
+        self.notice_logins(now);
+        self.ask_names(now);
 
         let moving = self
             .last_player
@@ -408,8 +483,51 @@ impl Session {
         match message {
             In::Connected => self.status = Status::Online,
             In::Disconnected(_) => self.status = Status::Offline,
+            In::Auth(challenge) => {
+                let event = self.id.signer.sign(
+                    unix_now(),
+                    22_242,
+                    vec![
+                        Tag::new(vec!["relay".into(), self.link.url.clone()]),
+                        Tag::new(vec!["challenge".into(), challenge]),
+                    ],
+                    String::new(),
+                );
+                self.auth_id = Some(event.id.clone());
+                self.link.send(Out::Auth(event));
+            }
+            In::Ok {
+                id, accepted: true, ..
+            } if self.auth_id.as_deref() == Some(id.as_str()) => {
+                self.link.send(Out::Subscribe {
+                    id: DM_SUB.into(),
+                    filters: vec![json!({"kinds": [1_059], "#p": [self.pubkey()]})],
+                    live: true,
+                });
+            }
+            In::Event { event, .. } if event.kind == mv::CHAT_KIND => {
+                self.receive_chat(&event, now)
+            }
+            In::Event { event, .. } if event.kind == 1_059 => self.receive_pm(&event, now),
+            In::Event { event, .. } if event.kind == 0 => {
+                if let Some(name) = profile_name(&event.content) {
+                    self.names.insert(event.pubkey.clone(), name);
+                }
+            }
+            In::Event { event, .. } if event.kind == 39_000 => {
+                let d = event.tag_values("d").next().map(str::to_owned);
+                let name = event.tag_values("name").next().map(str::to_owned);
+                if let (Some(d), Some(name)) = (d, name) {
+                    self.room_names.insert(d, name);
+                }
+            }
             In::Event { event, .. } => {
                 if let Ok(received) = mv::decode(&event, WORLD) {
+                    if let Received::State { pubkey, state } = &received
+                        && let Some(name) = &state.name
+                    {
+                        self.names.insert(pubkey.clone(), clean_name(name));
+                    }
                     if let Received::Gesture { pubkey, gesture } = &received
                         && gesture.g == "greet"
                         && gesture
@@ -420,6 +538,16 @@ impl Session {
                         self.greets_received += 1;
                         self.invited.retain(|(p, _)| p != pubkey);
                         self.invited.push((pubkey.clone(), now));
+                        if !self.muted.contains("gestures") {
+                            let who = self.name_of(pubkey);
+                            self.log.push(chat::Line {
+                                channel: Some(Channel::Here),
+                                from: String::new(),
+                                to: None,
+                                text: format!("* {who}'s agent greets your agent *"),
+                                note: None,
+                            });
+                        }
                     }
                     self.crowd.apply(received, now);
                 }
@@ -441,6 +569,418 @@ impl Session {
             In::Ok { .. } | In::Closed(..) | In::Notice(_) => {}
         }
     }
+
+    /// A display name for `pubkey`: its profile or state name, or a short
+    /// key while the name is unknown.
+    #[must_use]
+    pub fn name_of(&self, pubkey: &str) -> String {
+        if pubkey == self.pubkey() {
+            return self.id.profile.clone();
+        }
+        self.names
+            .get(pubkey)
+            .cloned()
+            .unwrap_or_else(|| format!("{}…", &pubkey[..pubkey.len().min(8)]))
+    }
+
+    fn want_name(&mut self, pubkey: &str) {
+        if !self.names.contains_key(pubkey)
+            && pubkey != self.pubkey()
+            && self.asked_names.insert(pubkey.to_owned())
+        {
+            self.want_names.push(pubkey.to_owned());
+        }
+    }
+
+    /// Asks the relay for NIP-01 profiles of speakers with no known name,
+    /// in batches.
+    fn ask_names(&mut self, now: Instant) {
+        for pubkey in self.crowd.shown(now).into_iter().map(|e| e.pubkey) {
+            self.want_name(&pubkey);
+        }
+        if self.want_names.is_empty()
+            || self
+                .last_name_ask
+                .is_some_and(|t| now.saturating_duration_since(t) < Duration::from_secs(2))
+        {
+            return;
+        }
+        self.last_name_ask = Some(now);
+        let batch: Vec<String> = self.want_names.drain(..).take(100).collect();
+        self.link.send(Out::Subscribe {
+            id: format!("names-{}", self.asked_names.len()),
+            filters: vec![json!({"kinds": [0], "authors": batch})],
+            live: false,
+        });
+    }
+
+    /// Logs players coming online and going offline, once the initial
+    /// burst of stored states has settled.
+    fn notice_logins(&mut self, now: Instant) {
+        let online: HashSet<String> = self
+            .crowd
+            .shown(now)
+            .into_iter()
+            .filter(|e| e.role == "avatar" && e.online)
+            .map(|e| e.pubkey)
+            .collect();
+        if now.saturating_duration_since(self.started) > Duration::from_secs(3)
+            && !self.muted.contains("logins")
+        {
+            let joined: Vec<String> = online.difference(&self.online).cloned().collect();
+            let left: Vec<String> = self.online.difference(&online).cloned().collect();
+            for p in joined {
+                let name = self.name_of(&p);
+                self.log
+                    .push(chat::Line::system(format!("Player {name} has logged in")));
+            }
+            for p in left {
+                let name = self.name_of(&p);
+                self.log.push(chat::Line::system(format!(
+                    "Player {name} has disconnected"
+                )));
+            }
+        }
+        self.online = online;
+    }
+
+    /// Online players whose name starts with `prefix`, case-insensitive.
+    #[must_use]
+    pub fn find_player(&self, prefix: &str) -> Option<(String, String)> {
+        let prefix = prefix.to_lowercase();
+        let now = Instant::now();
+        let mut candidates: Vec<(String, String)> = self
+            .crowd
+            .shown(now)
+            .into_iter()
+            .filter(|e| e.role == "avatar")
+            .map(|e| (e.pubkey.clone(), self.name_of(&e.pubkey)))
+            .chain(self.names.iter().map(|(p, n)| (p.clone(), n.clone())))
+            .filter(|(p, n)| p != self.pubkey() && n.to_lowercase().starts_with(&prefix))
+            .collect();
+        candidates.sort_by(|a, b| a.1.len().cmp(&b.1.len()).then(a.1.cmp(&b.1)));
+        candidates.dedup_by(|a, b| a.0 == b.0);
+        candidates.into_iter().next()
+    }
+
+    /// Mutes or unmutes by `!mute` word. Returns the notice to show.
+    pub fn set_mute(&mut self, word: &str, mute: bool) -> String {
+        let keys = chat::mute_set(word);
+        if keys.is_empty() {
+            return format!(
+                "Unknown channel {word}. Try all, ads, zone, near, here, rooms, pm, logins, gestures."
+            );
+        }
+        for key in &keys {
+            if mute {
+                self.muted.insert((*key).to_owned());
+            } else {
+                self.muted.remove(*key);
+            }
+        }
+        format!(
+            "PLAYER COMMAND [{} {}] COMPLETED",
+            if mute { "MUTE" } else { "UNMUTE" },
+            word.to_uppercase()
+        )
+    }
+
+    /// Sends a line on a public channel or a room.
+    ///
+    /// # Errors
+    ///
+    /// Returns the notice explaining why the line was not sent.
+    pub fn say(&mut self, channel: &Channel, text: &str, now: Instant) -> Result<(), String> {
+        self.limits
+            .admit(channel, text, now)
+            .map_err(|r| r.to_string())?;
+        let pos = self.my_pos;
+        let zone = chat::zone_of(pos);
+        let event = match channel {
+            Channel::Room(room) => mv::room_chat_event(&self.id.signer, room, text, unix_now()),
+            Channel::Pm(to) => {
+                let to = to.clone();
+                return self.pm(&to, text);
+            }
+            other => mv::world_chat_event(
+                &self.id.signer,
+                WORLD,
+                other.slug().unwrap_or("all"),
+                zone,
+                pos,
+                text,
+                unix_now(),
+            ),
+        };
+        self.seen_chat.insert(event.id.clone());
+        self.publish_now(event);
+        let note = self.audience(channel, zone, now);
+        self.log.push(chat::Line {
+            channel: Some(channel.clone()),
+            from: self.id.profile.clone(),
+            to: None,
+            text: text.to_owned(),
+            note,
+        });
+        if channel.overhead() {
+            let me = self.pubkey().to_owned();
+            self.bubbles.retain(|b| b.pubkey != me);
+            self.bubbles.push(Bubble {
+                pubkey: me,
+                text: text.to_owned(),
+                until: now + BUBBLE_TIME,
+            });
+        }
+        Ok(())
+    }
+
+    /// The sender-only audience note, as Horse Isle showed it.
+    fn audience(&self, channel: &Channel, zone: &str, now: Instant) -> Option<String> {
+        let avatars: Vec<_> = self
+            .crowd
+            .shown(now)
+            .into_iter()
+            .filter(|e| e.role == "avatar" && e.online)
+            .collect();
+        let count = |f: &dyn Fn(Vec3) -> bool| avatars.iter().filter(|e| f(e.pos)).count();
+        let me = self.my_pos;
+        Some(match channel {
+            Channel::Here => format!(
+                "({} here)",
+                count(&|p| chat::reaches(channel, zone, me, zone, p))
+            ),
+            Channel::Near => format!(
+                "[{} near]",
+                count(&|p| chat::reaches(channel, zone, me, zone, p))
+            ),
+            Channel::Zone => format!(
+                "[{} in {}]",
+                count(&|p| chat::zone_of(p) == zone),
+                chat::zone_name(zone)
+            ),
+            Channel::Ads => format!("[{} listening]", avatars.len()),
+            _ => return None,
+        })
+    }
+
+    /// Sends a NIP-17 private message to `to`, gift-wrapped for the
+    /// recipient and for this player's own other sessions.
+    ///
+    /// # Errors
+    ///
+    /// Returns a notice when the message cannot be built.
+    pub fn pm(&mut self, to: &str, text: &str) -> Result<(), String> {
+        use std::str::FromStr;
+        let reader = secp256k1::XOnlyPublicKey::from_str(to)
+            .map_err(|_| "Could not find player to Private chat!".to_owned())?;
+        let me = self.pubkey().to_owned();
+        let myself = secp256k1::XOnlyPublicKey::from_str(&me).map_err(|e| e.to_string())?;
+        let now = unix_now();
+        let rumor = nostr::nip17::chat_rumor(
+            &me,
+            now,
+            text,
+            vec![Tag::new(vec!["p".into(), to.to_owned()])],
+        )
+        .map_err(|e| e.to_string())?;
+        for target in [reader, myself] {
+            let hide = |n: [u8; 2]| u64::from(u16::from_le_bytes(n)) * 2;
+            let sealed_at = nostr::nip17::hidden_timestamp(now, hide(identity::random_bytes()))
+                .map_err(|e| e.to_string())?;
+            let wrapped_at = nostr::nip17::hidden_timestamp(now, hide(identity::random_bytes()))
+                .map_err(|e| e.to_string())?;
+            let seal = nostr::nip17::seal(
+                &rumor,
+                &self.id.secret,
+                &target,
+                sealed_at,
+                identity::random_bytes(),
+                None,
+            )
+            .map_err(|e| e.to_string())?;
+            let wrap = nostr::nip17::gift_wrap(
+                &seal,
+                &identity::random_secret(),
+                &target,
+                wrapped_at,
+                identity::random_bytes(),
+                None,
+            )
+            .map_err(|e| e.to_string())?;
+            self.publish_now(wrap);
+        }
+        self.seen_chat.insert(rumor.id.clone());
+        let name = self.name_of(to);
+        self.log.push(chat::Line {
+            channel: Some(Channel::Pm(to.to_owned())),
+            from: self.id.profile.clone(),
+            to: Some(name),
+            text: text.to_owned(),
+            note: None,
+        });
+        Ok(())
+    }
+
+    fn receive_chat(&mut self, event: &nostr::domain::Event, now: Instant) {
+        if !self.seen_chat.insert(event.id.clone()) || event.pubkey == self.pubkey() {
+            return;
+        }
+        let Ok(line) = mv::decode_chat(event, WORLD) else {
+            return;
+        };
+        self.want_name(&line.pubkey);
+        let channel = match (&line.room, &line.channel) {
+            (Some(room), _) => Channel::Room(room.clone()),
+            (None, Some(slug)) => match Channel::from_slug(slug) {
+                Some(channel) => channel,
+                None => return,
+            },
+            (None, None) => return,
+        };
+        if self.muted.contains(chat::mute_key(&channel)) {
+            return;
+        }
+        let fresh = line.created_at + 10 >= unix_now();
+        let here = self.my_pos;
+        let my_zone = chat::zone_of(here);
+        let speaker_zone = line.zone.as_deref().unwrap_or("");
+        let local = matches!(channel, Channel::Near | Channel::Here);
+        if local {
+            let Some(from) = line.pos else { return };
+            if line.created_at < self.joined
+                || !chat::reaches(&channel, speaker_zone, from, my_zone, here)
+            {
+                return;
+            }
+        }
+        if channel == Channel::Zone && speaker_zone != my_zone {
+            return;
+        }
+        let from = self.name_of(&line.pubkey);
+        if fresh && channel.overhead() {
+            self.bubbles.retain(|b| b.pubkey != line.pubkey);
+            self.bubbles.push(Bubble {
+                pubkey: line.pubkey.clone(),
+                text: line.text.clone(),
+                until: now + BUBBLE_TIME,
+            });
+        }
+        self.log.push(chat::Line {
+            channel: Some(channel),
+            from,
+            to: None,
+            text: line.text,
+            note: None,
+        });
+    }
+
+    fn receive_pm(&mut self, event: &nostr::domain::Event, _now: Instant) {
+        let Ok(rumor) = nostr::nip17::open_direct_message(event, &self.id.secret) else {
+            return;
+        };
+        let Ok(message) = nostr::nip17::chat_message(&rumor) else {
+            return;
+        };
+        if !self.seen_chat.insert(rumor.id.clone()) || self.muted.contains("pm") {
+            return;
+        }
+        let mine = message.pubkey == self.pubkey();
+        let other = if mine {
+            message.receivers.first().cloned().unwrap_or_default()
+        } else {
+            message.pubkey.clone()
+        };
+        self.want_name(&other);
+        if !mine {
+            self.last_pm_from = Some(other.clone());
+        }
+        self.log.push(chat::Line {
+            channel: Some(Channel::Pm(other.clone())),
+            from: self.name_of(&message.pubkey),
+            to: mine.then(|| self.name_of(&other)),
+            text: message.content,
+            note: None,
+        });
+    }
+}
+
+/// The `name` (or `display_name`) of a NIP-01 profile.
+fn profile_name(content: &str) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_str(content).ok()?;
+    let name = value
+        .get("display_name")
+        .or_else(|| value.get("name"))?
+        .as_str()?;
+    let name = clean_name(name);
+    (!name.is_empty()).then_some(name)
+}
+
+fn clean_name(name: &str) -> String {
+    name.chars()
+        .filter(|c| !c.is_control())
+        .take(24)
+        .collect::<String>()
+        .trim()
+        .to_owned()
+}
+
+/// Creates the Verse NIP-29 rooms on `relay`, signing as the relay itself
+/// (only the relay key may create groups). Rooms are open: anyone may read
+/// and post. Returns how many rooms the relay accepted; rooms that already
+/// exist are refused and not counted.
+///
+/// # Errors
+///
+/// Returns a message when the key is invalid or the relay never answers.
+pub fn seed_rooms(relay: &str, relay_secret: &str) -> Result<usize, String> {
+    let signer = nostr::domain::RelaySigner::from_secret_hex(relay_secret.trim())
+        .map_err(|e| format!("invalid relay key: {e}"))?;
+    let link = Link::start(relay);
+    let about = |room: &str| match room {
+        "lounge" => ("The Lounge", "Hang out and talk."),
+        "trading-post" => ("Trading Post", "Buy, sell, and trade."),
+        "builders" => ("Builders", "Talk about building Verse."),
+        _ => ("Room", ""),
+    };
+    let mut pending = HashMap::new();
+    for room in ROOMS {
+        let (name, text) = about(room);
+        let h = Tag::new(vec!["h".into(), room.into()]);
+        let create = signer.sign(unix_now(), 9_007, vec![h.clone()], String::new());
+        let edit = signer.sign(
+            unix_now(),
+            9_002,
+            vec![
+                h,
+                Tag::new(vec!["name".into(), name.into()]),
+                Tag::new(vec!["about".into(), text.into()]),
+            ],
+            String::new(),
+        );
+        pending.insert(edit.id.clone(), room);
+        link.send(Out::Publish(create));
+        link.send(Out::Publish(edit));
+    }
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut count = 0;
+    let mut connected = false;
+    while Instant::now() < deadline && !pending.is_empty() {
+        for message in link.drain() {
+            match message {
+                In::Connected => connected = true,
+                In::Ok { id, accepted, .. } => {
+                    let ours = pending.remove(&id).is_some();
+                    count += usize::from(ours && accepted);
+                }
+                _ => {}
+            }
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    if !connected {
+        return Err(format!("could not reach {relay}"));
+    }
+    Ok(count)
 }
 
 /// The avatar's and the agent's poses as this client publishes them.

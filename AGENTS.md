@@ -279,8 +279,10 @@ uses, and marks which are implemented and which are only specified.
   --capture <file.png>` renders the spawn view without a window. Players
   share the world over Nostr with NIP-MV (`nips/openagents/NIP-MV.md`):
   pose frames, entity states, and gestures through a relay, which
-  `scripts/verse-relay.sh` runs locally. Read `docs/verse/` before changing
-  the controller, the palette, the world, or the wire format.
+  `scripts/verse-relay.sh` runs locally. Chat follows Horse Isle 1 over
+  NIP-C7, NIP-29, and NIP-17 (`docs/verse/chat.md`). Read `docs/verse/`
+  before changing the controller, the palette, the world, chat, or the wire
+  format.
 - `crates/nostr` — pure Nostr protocol and verification primitives
   (events, filters, signatures, NIP-19/NIP-44, replacement and deletion,
   Block NIP validators). No storage, no network, no third-party Nostr

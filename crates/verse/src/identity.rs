@@ -13,6 +13,8 @@ use nostr::domain::RelaySigner;
 pub struct Identity {
     /// The signer for this player's events.
     pub signer: RelaySigner,
+    /// The secret key, for NIP-44 encryption and NIP-17 private messages.
+    pub secret: secp256k1::SecretKey,
     /// The profile name, used as the display name.
     pub profile: String,
     /// True when this launch created the key.
@@ -58,8 +60,18 @@ pub fn load_or_create(dir: &Path, profile: &str) -> Result<Identity, String> {
     };
     let signer = RelaySigner::from_secret_hex(&secret)
         .map_err(|e| format!("{} holds an invalid key: {e}", path.display()))?;
+    let bytes: Vec<u8> = (0..secret.len())
+        .step_by(2)
+        .filter_map(|i| u8::from_str_radix(secret.get(i..i + 2)?, 16).ok())
+        .collect();
+    let array: [u8; 32] = bytes
+        .try_into()
+        .map_err(|_| format!("{} does not hold 32 bytes of hex", path.display()))?;
+    let secret = secp256k1::SecretKey::from_byte_array(array)
+        .map_err(|e| format!("{} holds an invalid key: {e}", path.display()))?;
     Ok(Identity {
         signer,
+        secret,
         profile: profile.to_owned(),
         created,
     })
@@ -92,6 +104,24 @@ fn write_private(path: &Path, secret: &str) -> Result<(), String> {
         .open(path)
         .map_err(|e| format!("cannot create {}: {e}", path.display()))?;
     writeln!(file, "{secret}").map_err(|e| format!("cannot write {}: {e}", path.display()))
+}
+
+/// Fresh random bytes.
+#[must_use]
+pub fn random_bytes<const N: usize>() -> [u8; N] {
+    let mut buf = [0u8; N];
+    let _ = std::fs::File::open("/dev/urandom").and_then(|mut f| f.read_exact(&mut buf));
+    buf
+}
+
+/// A fresh random secret key, for one-time NIP-59 wrapper keys.
+#[must_use]
+pub fn random_secret() -> secp256k1::SecretKey {
+    loop {
+        if let Ok(key) = secp256k1::SecretKey::from_byte_array(random_bytes::<32>()) {
+            return key;
+        }
+    }
 }
 
 /// A short random hex string, for session ids.

@@ -53,6 +53,7 @@ each other.
 | --- | --- | --- | --- |
 | Pose frame | `23300` | No (ephemeral) | 10 per second while moving, 4 while still. Carries the avatar's and the agent's position and quaternion. |
 | Entity state | `33301` | Yes (addressable) | On join, every 3 s of movement, and on quit with `online: false`. |
+| Chat | `9` (NIP-C7), `1059` (NIP-17) | Yes | ALL, ADS, ZONE, NEAR, and HERE as kind `9` with NIP-MV tags; rooms as kind `9` with a NIP-29 `h` tag; PMs gift-wrapped. |
 | Gesture | `23301` | No (ephemeral) | `look-around` when the agent looks around, with the positions it looked at; `greet` when it greets another agent, addressed to that agent. |
 | Profile | `0` | Yes | Once, when a profile is created. |
 
@@ -79,9 +80,21 @@ a per-second lane for these kinds, as NIP-MV recommends.
 identity without a network. With a relay running,
 `VERSE_TEST_RELAY=ws://127.0.0.1:7447 cargo test -p verse --test relay`
 signs up two players, checks each sees the other's avatar and agent,
-checks a returning player resumes, and checks two agents that meet greet
-each other. It leaves two resting test players in
+checks a returning player resumes, checks two agents that meet greet each
+other, and checks NEAR chat, a room line, and a private message arrive. It leaves two resting test players in
 the relay's world.
+
+## Chat
+
+Chat follows Horse Isle 1:
+- ALL, ADS, ZONE, NEAR, and HERE channels, NIP-29 rooms, and NIP-17
+  private messages.
+- Two chat windows along the bottom and one input line with a method
+  selector.
+- `/` shortcuts and Horse Isle's limits.
+- RuneScape-style speech bubbles over speakers.
+
+[`chat.md`](chat.md) has the reference, the NIP review, and the details.
 
 ## The agent
 
@@ -125,7 +138,10 @@ The agent has no behavior yet beyond following and emoting. Its game design is i
 | Right mouse drag | Mouselook: the character turns to face the camera, then turns with the mouse. |
 | Both mouse buttons | Run forward. |
 | Mouse wheel | Zoom between 2.5 m and 40 m. |
-| `Esc` | Quit. |
+| `Enter` | Open the chat line; `Enter` again sends. See [chat](chat.md). |
+| `Tab` | Change the chat channel: ALL, ADS, ZONE, NEAR, HERE, rooms, PM. |
+| `/` | Open the chat line with a shortcut: `/a`, `/$`, `/z`, `/n`, `/h`, `/r room`, `/name`. |
+| `Esc` | Close the chat line, or quit when it is closed. |
 
 While a mouse button is held, the cursor is hidden and locked. When the
 character moves and the left button is up, the camera swings back behind it.
@@ -211,6 +227,9 @@ The character collides with building footprints and the world edge.
 | [`src/session.rs`](../../crates/verse/src/session.rs) | Sign-up, spawn or resume, publish cadence, scans, and leaving. |
 | [`src/crowd.rs`](../../crates/verse/src/crowd.rs) | Other players: buffered, interpolated poses, online and resting, and their meshes. |
 | [`src/identity.rs`](../../crates/verse/src/identity.rs) | Profile keys under `~/.openagents/verse/`. |
+| [`src/chat.rs`](../../crates/verse/src/chat.rs) | Channels, shortcut parsing, limits, zones, and the two chat windows' history. |
+| [`src/hud.rs`](../../crates/verse/src/hud.rs) | Chat windows, input line, name tags, and speech bubbles. |
+| [`src/ui.rs`](../../crates/verse/src/ui.rs), [`src/ui.wgsl`](../../crates/verse/src/ui.wgsl) | Glyph atlas (Fira Mono, OFL) and screen-space quads. |
 | [`src/mesh.rs`](../../crates/verse/src/mesh.rs) | The shared vertex format and line, quad, cube, and ring builders. |
 | [`src/palette.rs`](../../crates/verse/src/palette.rs) | The amber ladder in linear light. |
 | [`src/render.rs`](../../crates/verse/src/render.rs), [`src/shader.wgsl`](../../crates/verse/src/shader.wgsl) | Pipelines, fog, the window renderer, and PNG capture. |

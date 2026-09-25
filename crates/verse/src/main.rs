@@ -4,6 +4,9 @@
 //! picks the player key (one per profile), `--relay <ws-url>` picks the
 //! relay (`VERSE_RELAY` also works), and `--offline` plays alone.
 //!
+//! `verse --seed-rooms <relay-key-file>` creates the NIP-29 chat rooms as
+//! the relay; `scripts/verse-relay.sh` runs it.
+//!
 //! `verse --capture <file.png>` renders the spawn view to a PNG without a
 //! window; `--orbit <degrees>`, `--pitch <degrees>`, `--distance <meters>`,
 //! and `--size <width>x<height>` adjust the shot.
@@ -14,7 +17,11 @@ use verse::app::Options;
 use verse::camera::FollowCamera;
 
 fn main() -> ExitCode {
-    let result = match parse(std::env::args().skip(1)) {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.first().map(String::as_str) == Some("--seed-rooms") {
+        return seed(&args[1..]);
+    }
+    let result = match parse(args.into_iter()) {
         Ok((None, options)) => verse::app::run(&options),
         Ok((Some(shot), _)) => {
             verse::app::capture(&shot.path, shot.width, shot.height, shot.camera)
@@ -23,6 +30,34 @@ fn main() -> ExitCode {
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("verse: {e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// `verse --seed-rooms <relay-key-file> [--relay <url>]`: create the Verse
+/// NIP-29 rooms as the relay. Used by `scripts/verse-relay.sh`.
+fn seed(args: &[String]) -> ExitCode {
+    let Some(key_file) = args.first() else {
+        eprintln!("verse: --seed-rooms needs the relay key file");
+        return ExitCode::FAILURE;
+    };
+    let relay = args
+        .iter()
+        .position(|a| a == "--relay")
+        .and_then(|i| args.get(i + 1))
+        .cloned()
+        .unwrap_or_else(|| verse::session::DEFAULT_RELAY.to_owned());
+    let result = std::fs::read_to_string(key_file)
+        .map_err(|e| format!("cannot read {key_file}: {e}"))
+        .and_then(|key| verse::session::seed_rooms(&relay, &key));
+    match result {
+        Ok(n) => {
+            eprintln!("verse: {n} new rooms on {relay}");
+            ExitCode::SUCCESS
+        }
         Err(e) => {
             eprintln!("verse: {e}");
             ExitCode::FAILURE

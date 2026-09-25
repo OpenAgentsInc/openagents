@@ -116,3 +116,59 @@ fn two_agents_that_meet_greet_each_other() {
     assert!(got_a >= 1, "the first agent was never greeted");
     assert!(got_b >= 1, "the second agent was never greeted");
 }
+
+#[test]
+fn players_chat_in_the_world_in_rooms_and_privately() {
+    use verse::chat::Channel;
+    let Ok(relay) = std::env::var("VERSE_TEST_RELAY") else {
+        eprintln!("skipped: set VERSE_TEST_RELAY to run against a relay");
+        return;
+    };
+    let dir = std::env::temp_dir().join(format!("verse-chat-test-{}", std::process::id()));
+    let mut a = Session::start_in(&dir, "talker-a", &relay).expect("signs up");
+    let mut b = Session::start_in(&dir, "talker-b", &relay).expect("signs up");
+    let pa = PlayerController::new(Vec3::new(-2.0, 0.0, 10.0), 0.0);
+    let pb = PlayerController::new(Vec3::new(2.0, 0.0, 10.0), 0.0);
+    let (ga, gb) = (Agent::new(&pa), Agent::new(&pb));
+    let pump = |a: &mut Session, b: &mut Session, secs: u64, done: &dyn Fn(&Session) -> bool| {
+        let start = Instant::now();
+        while start.elapsed() < Duration::from_secs(secs) && !done(b) {
+            let now = Instant::now();
+            a.tick(now, &pa, &ga);
+            b.tick(now, &pb, &gb);
+            std::thread::sleep(Duration::from_millis(16));
+        }
+    };
+    // Let both connect, authenticate, and see each other.
+    pump(&mut a, &mut b, 3, &|b| !b.crowd.is_empty());
+    let has = |s: &Session, text: &str| {
+        s.log
+            .world
+            .iter()
+            .chain(&s.log.personal)
+            .any(|l| l.text == text)
+    };
+    let now = Instant::now();
+    a.say(&Channel::Near, "hello near", now)
+        .expect("near sends");
+    a.say(&Channel::Room("lounge".into()), "hello lounge", now)
+        .expect("room sends");
+    a.pm(b.pubkey(), "psst").expect("pm sends");
+    pump(&mut a, &mut b, 6, &|b| {
+        has(b, "hello near") && has(b, "hello lounge") && has(b, "psst")
+    });
+    let bubble = b
+        .bubbles
+        .iter()
+        .any(|x| x.pubkey == a.pubkey() && x.text == "hello near");
+    let (near, room, pm) = (
+        has(&b, "hello near"),
+        has(&b, "hello lounge"),
+        has(&b, "psst"),
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(near, "NEAR chat did not arrive");
+    assert!(bubble, "NEAR chat did not float over the speaker");
+    assert!(room, "the lounge room line did not arrive");
+    assert!(pm, "the private message did not arrive");
+}
