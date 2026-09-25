@@ -508,3 +508,38 @@ All four test-set tasks are provisional entries in the
 [capability-gap log](capability-gaps.md): `shadow-relay` and
 `coq-block-bound` as capability gaps, and `fin-saccr-rwa` and
 `gsea-proteomics` as signal gaps first.
+
+## Luna-sized family: `microluna-v15`, inconclusive
+
+On 2026-09-24 `microluna-v15` ran the
+[pre-registered Luna-sized family](../../bench/terminal-bench/experiments/2026-09-25-luna-sized-family/protocol.md)
+on the same artifact (`coder-one 0.1.0 (83b48ccc08c8)`), harness, network
+allowlist, and memory caps as the trials above. The pinned policy digest
+matched on every graded trial. The
+[results](../../bench/terminal-bench/experiments/2026-09-25-luna-sized-family/results.md)
+hold every figure.
+
+**The run is invalid, so the result is inconclusive.** Three of the six
+family tasks, `payments-pipeline-fix`, `cumulative-layout-shift`, and
+`live-database-cutover`, can't start under the allowlist: Harbor moves
+their side services into the egress sidecar's network namespace, and
+Docker refuses that for a service that declares `expose:`. Each failed
+before the agent started, on the attempt and on its rerun. At the fourth
+such trial the run passed the protocol's limit of 3 ungradable trials and
+stopped.
+
+| Task | Split | Verifier | Trial time | Cost, Luna and Jev | Fable 5.1 low: passes, mean trial time, cost per pass |
+| --- | --- | --- | ---: | ---: | --- |
+| `mp-checkpoint-consolidation` | Development | **Fail**, 3 of 4 tests | 28.1 min (wall bound) | At least $0.0775 | 5 of 5, 26.7 min, $5.93 |
+| `telecom-entity-resolution` | Confirmation | **Fail**, 4 of 10 tests | 9.1 min | $0.0159 | 5 of 5, 22.1 min, $6.05 |
+| `photonic-waveguide-routing` | Development | **Fail**, 12 of 14 tests | 26.5 min (wall bound) | At least $0.0399 | 4 of 5, 38.6 min, $11.88 |
+
+- `telecom-entity-resolution` is a signal gap: it failed at a full
+  self-score of 3 of 3. Its trace stays unread, as the protocol requires
+  for confirmation tasks.
+- `mp-checkpoint-consolidation` and `photonic-waveguide-routing` ran to the
+  wall bound with honest self-scores and no passing workspace.
+- The pinned artifact predates candidate retention, so no oracle headroom
+  is measured.
+- Spend: $0.133 recorded, $0.199 under the protocol's threshold rule.
+  Wall time: 60 minutes.
