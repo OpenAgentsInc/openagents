@@ -124,3 +124,19 @@ For each set (development, held out, both):
 Negative results are reported as they come. The held-out numbers are the
 only ones that can support a claim; the development numbers are fitted.
 The component isn't wired into any policy.
+
+## Amendments before the freeze
+
+Made while developing on the development tasks, before any held-out task
+ran:
+
+- The population also reads the candidate grades under
+  `bench/terminal-bench/experiments/2026-09-24-iteration-speed/records/grading-parallel`,
+  the second grade directory `accept offline`'s reader understands.
+- Images that weren't on this machine were built from each task's public
+  `environment/` directory as `accept-env/<task>:latest`:
+  `telecom-entity-resolution`, `legacy-utility-triage`,
+  `mp-checkpoint-consolidation`, `session-window-debug`,
+  `photonic-waveguide-routing`, and `coq-block-bound`.
+- A workspace that `accept offline`'s reader can't restore is an error,
+  listed and left out of every count, never a failure.

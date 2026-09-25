@@ -15,6 +15,7 @@ pub const USAGE: &str = "usage: coder-one checks readiness --input FILE --out DI
                                       [--partition calibration|held-out|all]
        coder-one checks report-audit --trial-dir DIR --input FILE --out DIR
        coder-one checks public-program --input FILE --out DIR
+       coder-one checks contract plan|run|offline …    (coder-one checks contract help)
        coder-one checks synthetic [NAME] [--json]
        coder-one checks run --input FILE [--json]
        coder-one checks recover --traces DIR [--arm ARM|all] [--out DIR] [--json]
@@ -102,6 +103,9 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
     let Some((verb, rest)) = args.split_first() else {
         return Err(USAGE.to_string());
     };
+    if verb == "contract" {
+        return super::contract::cli::command(rest).await;
+    }
     if verb == "execution-audit" {
         return super::execution_audit::command(rest).await;
     }
