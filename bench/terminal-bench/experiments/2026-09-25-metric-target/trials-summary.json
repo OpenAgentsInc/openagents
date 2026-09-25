@@ -1,0 +1,249 @@
+{
+  "schema": "openagents.metric-target-trials-summary.v1",
+  "definitions": {
+    "failed": "reward is 0 (from verifier/reward.txt, or verifier/reward.json when reward.txt is absent)",
+    "no_reward": "the verifier left no reward: the environment failed to start, the trial was cancelled, or the disk filled",
+    "failed_claimed_done_and_unmeasured_or_unmet": "failed, the agent's final word claimed done, and either no command measured the labeled quantity or the verifier shows the metric test failing"
+  },
+  "totals": {
+    "trials": 77,
+    "passed": 23,
+    "failed": 41,
+    "no_reward": 13,
+    "failed_claimed_done": 25,
+    "failed_claimed_done_target_not_measured": 5,
+    "failed_claimed_done_target_unmet": 13,
+    "failed_claimed_done_and_unmeasured_or_unmet": 14
+  },
+  "per_task": {
+    "batched-eval-parity": {
+      "trials": 2,
+      "passed": 2,
+      "failed": 0,
+      "no_reward": 0,
+      "failed_claimed_done": 0,
+      "failed_claimed_done_target_not_measured": 0,
+      "failed_claimed_done_target_unmet": 0,
+      "failed_claimed_done_and_unmeasured_or_unmet": 0,
+      "flagged_trials": []
+    },
+    "biped-contact-dynamics": {
+      "trials": 1,
+      "passed": 1,
+      "failed": 0,
+      "no_reward": 0,
+      "failed_claimed_done": 0,
+      "failed_claimed_done_target_not_measured": 0,
+      "failed_claimed_done_target_unmet": 0,
+      "failed_claimed_done_and_unmeasured_or_unmet": 0,
+      "flagged_trials": []
+    },
+    "ctr-optimization": {
+      "trials": 1,
+      "passed": 0,
+      "failed": 0,
+      "no_reward": 1,
+      "failed_claimed_done": 0,
+      "failed_claimed_done_target_not_measured": 0,
+      "failed_claimed_done_target_unmet": 0,
+      "failed_claimed_done_and_unmeasured_or_unmet": 0,
+      "flagged_trials": []
+    },
+    "cumulative-layout-shift": {
+      "trials": 6,
+      "passed": 1,
+      "failed": 3,
+      "no_reward": 2,
+      "failed_claimed_done": 3,
+      "failed_claimed_done_target_not_measured": 3,
+      "failed_claimed_done_target_unmet": 3,
+      "failed_claimed_done_and_unmeasured_or_unmet": 3,
+      "flagged_trials": [
+        "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a1-20260925T033723/cumulative-layout-shift__gZBT3gZ",
+        "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a2-20260925T044223/cumulative-layout-shift__V2vyUx3",
+        "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a3-20260925T053453/cumulative-layout-shift__ucFSsb2"
+      ]
+    },
+    "data-anonymization": {
+      "trials": 4,
+      "passed": 1,
+      "failed": 3,
+      "no_reward": 0,
+      "failed_claimed_done": 3,
+      "failed_claimed_done_target_not_measured": 0,
+      "failed_claimed_done_target_unmet": 0,
+      "failed_claimed_done_and_unmeasured_or_unmet": 0,
+      "flagged_trials": []
+    },
+    "formal-crypto": {
+      "trials": 2,
+      "passed": 1,
+      "failed": 1,
+      "no_reward": 0,
+      "failed_claimed_done": 0,
+      "failed_claimed_done_target_not_measured": 0,
+      "failed_claimed_done_target_unmet": 0,
+      "failed_claimed_done_and_unmeasured_or_unmet": 0,
+      "flagged_trials": []
+    },
+    "interleaved-vigenere": {
+      "trials": 19,
+      "passed": 8,
+      "failed": 10,
+      "no_reward": 1,
+      "failed_claimed_done": 1,
+      "failed_claimed_done_target_not_measured": 1,
+      "failed_claimed_done_target_unmet": 0,
+      "failed_claimed_done_and_unmeasured_or_unmet": 1,
+      "flagged_trials": [
+        "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v8--interleaved-vigenere--manual-20260924T123904/interleaved-vigenere__MoPZqbY"
+      ]
+    },
+    "jax-speedrun-gpu": {
+      "trials": 1,
+      "passed": 0,
+      "failed": 0,
+      "no_reward": 1,
+      "failed_claimed_done": 0,
+      "failed_claimed_done_target_not_measured": 0,
+      "failed_claimed_done_target_unmet": 0,
+      "failed_claimed_done_and_unmeasured_or_unmet": 0,
+      "flagged_trials": []
+    },
+    "ks-solver-cpp": {
+      "trials": 9,
+      "passed": 1,
+      "failed": 7,
+      "no_reward": 1,
+      "failed_claimed_done": 7,
+      "failed_claimed_done_target_not_measured": 0,
+      "failed_claimed_done_target_unmet": 7,
+      "failed_claimed_done_and_unmeasured_or_unmet": 7,
+      "flagged_trials": [
+        "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-matched-v8--ks-solver-cpp--matched-v8-9567-r1/ks-solver-cpp__PDuFFLt",
+        "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-matched-v8--ks-solver-cpp--matched-v8-9567-r2/ks-solver-cpp__Lt6izN8",
+        "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-matched-v8--ks-solver-cpp--matched-v8-9567-r3/ks-solver-cpp__pFx79Ga",
+        "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-tunable-v2--ks-solver-cpp/ks-solver-cpp__VoHECwg",
+        "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-tunable-v3--ks-solver-cpp/ks-solver-cpp__ZnfrMxv",
+        "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-tunable-v9-escalate--ks-solver-cpp--escalate-9571b-r2/ks-solver-cpp__esTosjF",
+        "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-tunable-v9-escalate--ks-solver-cpp--escalate-9571b-r3/ks-solver-cpp__TMx3LP6"
+      ]
+    },
+    "kv-live-surgery": {
+      "trials": 1,
+      "passed": 1,
+      "failed": 0,
+      "no_reward": 0,
+      "failed_claimed_done": 0,
+      "failed_claimed_done_target_not_measured": 0,
+      "failed_claimed_done_target_unmet": 0,
+      "failed_claimed_done_and_unmeasured_or_unmet": 0,
+      "flagged_trials": []
+    },
+    "layout-config-recreation": {
+      "trials": 1,
+      "passed": 1,
+      "failed": 0,
+      "no_reward": 0,
+      "failed_claimed_done": 0,
+      "failed_claimed_done_target_not_measured": 0,
+      "failed_claimed_done_target_unmet": 0,
+      "failed_claimed_done_and_unmeasured_or_unmet": 0,
+      "flagged_trials": []
+    },
+    "layout-config-recreation2": {
+      "trials": 1,
+      "passed": 1,
+      "failed": 0,
+      "no_reward": 0,
+      "failed_claimed_done": 0,
+      "failed_claimed_done_target_not_measured": 0,
+      "failed_claimed_done_target_unmet": 0,
+      "failed_claimed_done_and_unmeasured_or_unmet": 0,
+      "flagged_trials": []
+    },
+    "live-database-cutover": {
+      "trials": 5,
+      "passed": 0,
+      "failed": 3,
+      "no_reward": 2,
+      "failed_claimed_done": 1,
+      "failed_claimed_done_target_not_measured": 1,
+      "failed_claimed_done_target_unmet": 1,
+      "failed_claimed_done_and_unmeasured_or_unmet": 1,
+      "flagged_trials": [
+        "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--live-database-cutover--family-a1-20260925T040033/live-database-cutover__WTNo7fG"
+      ]
+    },
+    "math-eval-grader": {
+      "trials": 2,
+      "passed": 0,
+      "failed": 2,
+      "no_reward": 0,
+      "failed_claimed_done": 0,
+      "failed_claimed_done_target_not_measured": 0,
+      "failed_claimed_done_target_unmet": 0,
+      "failed_claimed_done_and_unmeasured_or_unmet": 0,
+      "flagged_trials": []
+    },
+    "pretrain-shard-corruption": {
+      "trials": 3,
+      "passed": 0,
+      "failed": 2,
+      "no_reward": 1,
+      "failed_claimed_done": 1,
+      "failed_claimed_done_target_not_measured": 0,
+      "failed_claimed_done_target_unmet": 1,
+      "failed_claimed_done_and_unmeasured_or_unmet": 1,
+      "flagged_trials": [
+        "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-truth-confirmation--pretrain-shard-corruption--9584-r1/pretrain-shard-corruption__ZeirVXN"
+      ]
+    },
+    "retro-console-soc": {
+      "trials": 1,
+      "passed": 1,
+      "failed": 0,
+      "no_reward": 0,
+      "failed_claimed_done": 0,
+      "failed_claimed_done_target_not_measured": 0,
+      "failed_claimed_done_target_unmet": 0,
+      "failed_claimed_done_and_unmeasured_or_unmet": 0,
+      "flagged_trials": []
+    },
+    "vba-userform-port": {
+      "trials": 11,
+      "passed": 2,
+      "failed": 8,
+      "no_reward": 1,
+      "failed_claimed_done": 8,
+      "failed_claimed_done_target_not_measured": 0,
+      "failed_claimed_done_target_unmet": 0,
+      "failed_claimed_done_and_unmeasured_or_unmet": 0,
+      "flagged_trials": []
+    },
+    "vf2-speedup-networkx": {
+      "trials": 2,
+      "passed": 1,
+      "failed": 1,
+      "no_reward": 0,
+      "failed_claimed_done": 1,
+      "failed_claimed_done_target_not_measured": 0,
+      "failed_claimed_done_target_unmet": 1,
+      "failed_claimed_done_and_unmeasured_or_unmet": 1,
+      "flagged_trials": [
+        "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-tunable-v2--vf2-speedup-networkx/vf2-speedup-networkx__ArPJp6A"
+      ]
+    },
+    "vpp-loss-divergence": {
+      "trials": 5,
+      "passed": 1,
+      "failed": 1,
+      "no_reward": 3,
+      "failed_claimed_done": 0,
+      "failed_claimed_done_target_not_measured": 0,
+      "failed_claimed_done_target_unmet": 0,
+      "failed_claimed_done_and_unmeasured_or_unmet": 0,
+      "flagged_trials": []
+    }
+  }
+}

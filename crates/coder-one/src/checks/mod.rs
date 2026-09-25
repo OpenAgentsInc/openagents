@@ -44,6 +44,7 @@ pub mod generic;
 pub mod html;
 pub mod interactive;
 pub mod labeled;
+pub mod metric_target;
 pub mod oracle;
 pub mod place;
 pub mod public_program;

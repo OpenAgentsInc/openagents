@@ -1503,6 +1503,8 @@ fn lean_shape() -> lean::Lean {
         method_conformance: false,
         localize: None,
         oracle: None,
+        metric_target: None,
+        optimize: None,
     }
 }
 

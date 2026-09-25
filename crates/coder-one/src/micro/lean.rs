@@ -36,7 +36,7 @@ use crate::checks::contract::executed;
 /// File-content identity for candidate evidence. Match the merge inventory's
 /// exclusions, but refuse incomplete reads instead of comparing partial trees.
 /// Git metadata, Python bytecode, and the named cache directories are excluded.
-pub(super) fn evidence_tree(dir: &Path) -> Result<BTreeMap<String, String>, String> {
+pub(crate) fn evidence_tree(dir: &Path) -> Result<BTreeMap<String, String>, String> {
     let mut tree = BTreeMap::new();
     let mut stack = vec![dir.to_path_buf()];
     while let Some(at) = stack.pop() {
@@ -275,6 +275,19 @@ pub struct Lean {
     /// runs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub localize: Option<crate::localize::Localize>,
+    /// `checks.metric_target` (issue #9657): before session 1, extract the
+    /// task's stated numeric goal, find or write a harness, measure the
+    /// workspace after every work session, and hold a `done` finish while
+    /// the target is unmet or unmeasured ([`super::optimize`]). Absent, as
+    /// in every manifest before it, nothing is measured.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metric_target: Option<super::optimize::MetricTargetRule>,
+    /// `control.optimize` (issue #9657): after the loop, bounded rounds
+    /// that keep a change only when the acceptance check still passes and
+    /// the metric improves beyond its spread. Needs `metric_target` and
+    /// `keep_best`. Absent, as in every manifest before it, no round runs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub optimize: Option<super::optimize::OptimizeRule>,
     /// `checks.oracle` (issue #9656): before session 1, find a checker the
     /// instruction names or have a separate Luna session write an oracle
     /// from the task's stated definition ([`crate::checks::oracle`]), and
@@ -713,6 +726,12 @@ impl Lean {
                         .to_string(),
                 );
             }
+        }
+        if let Some(rule) = &self.metric_target {
+            problems.extend(rule.validate());
+        }
+        if let Some(rule) = &self.optimize {
+            problems.extend(rule.validate(self));
         }
         if self.grade && self.tiered.is_some() {
             problems.push(
@@ -2681,6 +2700,35 @@ impl Micro {
                 }
             }
         }
+        // `checks.metric_target` (issue #9657): the stated target, its
+        // harness, and the untouched workspace's measurement, before the
+        // first work session.
+        let mut metric = super::optimize::Metric::default();
+        let mut metric_note: Option<String> = None;
+        let mut metric_sessions: Vec<Ran> = Vec::new();
+        if let Some(rule) = lean.metric_target.as_ref().filter(|_| !halted) {
+            let (found, ran, record, usd) = self
+                .metric_setup(
+                    prepared,
+                    rule,
+                    offset + 1,
+                    base.as_deref(),
+                    (self.policy.spend_usd - spent).max(0.0),
+                    time_left().min(wall_left().unwrap_or(Duration::MAX)),
+                )
+                .await;
+            spent += usd;
+            if let Some(ran) = ran {
+                spent += ran.cost_usd.unwrap_or(0.0);
+                metric_sessions.push(ran);
+                offset += 1;
+            }
+            moves.push(record);
+            if let Some(evidence) = found.evidence() {
+                samples.insert(0, evidence);
+            }
+            metric = found;
+        }
         let total = offset + lean.sessions + u32::from(lean.self_check);
         let mut number = offset;
         let mut checking = false;
@@ -2796,6 +2844,9 @@ impl Micro {
                     state.push(note.clone());
                 }
                 if let Some(note) = &reject_note {
+                    state.push(note.clone());
+                }
+                if let Some(note) = &metric_note {
                     state.push(note.clone());
                 }
                 if let Some(tail) = &last_tail {
@@ -3078,6 +3129,25 @@ impl Micro {
                     }
                     _ => (false, Value::Null, Vec::new()),
                 };
+            // `checks.metric_target`: measure the workspace after every
+            // work session.
+            let mut metric_record = Value::Null;
+            if metric.active() && !checking {
+                let measured = self
+                    .metric_measure(
+                        &metric,
+                        time_left().min(wall_left().unwrap_or(Duration::MAX)),
+                    )
+                    .await;
+                if let (Some(m), Some(target)) = (&measured, metric.target.as_ref()) {
+                    metric_record = metric.record(m);
+                    metric_note = Some(format!(
+                        "After session {number} the host measured the stated target: {}.",
+                        m.line(target)
+                    ));
+                }
+                metric.last = measured;
+            }
             let powers = match &tier {
                 Some(tier) => {
                     let (powers, record, notes) = self.tier_run(tier, number).await;
@@ -3327,6 +3397,9 @@ impl Micro {
             if let (false, Some(last)) = (oracle_record.is_null(), moves.last_mut()) {
                 last["oracle"] = oracle_record;
             }
+            if let (false, Some(last)) = (metric_record.is_null(), moves.last_mut()) {
+                last["metric"] = metric_record;
+            }
             if keep_evidence {
                 let evidence = serde_json::to_vec_pretty(&moves).unwrap_or_default();
                 if let Err(error) =
@@ -3358,13 +3431,36 @@ impl Micro {
             let full = score.is_some_and(|(p, t)| p >= t);
             // A holding test's red keeps the loop going; its green is
             // necessary, never sufficient.
+            // `control.finish` (issue #9657): no `done` while a stated
+            // target is unmet or unmeasured.
+            let metric_refusal = lean
+                .metric_target
+                .as_ref()
+                .filter(|rule| rule.finish)
+                .and_then(|_| metric.refusal());
             // A failing oracle refuses the finish, as a holding test does.
             let settled = status == "done"
                 && !flagged
                 && !rejected
                 && (!lean.keep_best || full)
                 && held == 0
-                && !oracle_failing;
+                && !oracle_failing
+                && metric_refusal.is_none();
+            if status == "done"
+                && let Some(why) = &metric_refusal
+            {
+                crate::say::line(&format!(
+                    "  microluna ▸ session {number}'s done doesn't stand: {why}"
+                ));
+                moves
+                    .push(json!({"kind": "lean.finish_refused", "session": number, "reason": why}));
+                metric_note = Some(format!(
+                    "{}The host didn't accept session {number}'s done: {why}.",
+                    metric_note
+                        .as_ref()
+                        .map_or(String::new(), |n| format!("{n} "))
+                ));
+            }
             if settled {
                 stopped = format!("session {number} ended done");
                 if !lean.self_check {
@@ -3437,6 +3533,56 @@ impl Micro {
                     }
                 }
             }
+        }
+        // `control.optimize` (issue #9657): improvement rounds on the
+        // workspace the loop ended on.
+        if let Some(rule) = lean.optimize.as_ref().filter(|_| !halted) {
+            let acceptance = super::optimize::LeanAcceptance {
+                micro: self,
+                lean,
+                frozen: &frozen,
+                digest: evaluator_digest.as_ref(),
+                executed: lean.executed.as_ref().zip(executed_plan.as_ref()),
+                executed_file: &executed_file,
+                deadline: Instant::now() + time_left(),
+            };
+            let first = sessions
+                .iter()
+                .chain(&metric_sessions)
+                .map(|r| r.number)
+                .max()
+                .unwrap_or(offset)
+                + 1;
+            let (ran, records, _, line) = self
+                .optimize(
+                    prepared,
+                    rule,
+                    &mut metric,
+                    &acceptance,
+                    first,
+                    (self.policy.spend_usd - spent).max(0.0),
+                    time_left().min(wall_left().unwrap_or(Duration::MAX)),
+                )
+                .await;
+            sessions.extend(ran);
+            moves.extend(records);
+            if !line.is_empty() {
+                stopped.push_str(&format!("; {line}"));
+            }
+        }
+        if let Some(target) = metric.target.as_ref() {
+            stopped.push_str(&format!(
+                "; the stated target is {}",
+                match metric.last.as_ref().map(|m| m.verdict(target)) {
+                    Some(crate::checks::metric_target::Verdict::Met) => "met",
+                    Some(crate::checks::metric_target::Verdict::Unmet) => "unmet",
+                    _ => "unmeasured",
+                }
+            ));
+        }
+        if !metric_sessions.is_empty() {
+            sessions.extend(metric_sessions);
+            sessions.sort_by_key(|r| r.number);
         }
         for dir in best_cleanup {
             let _ = std::fs::remove_dir_all(dir);

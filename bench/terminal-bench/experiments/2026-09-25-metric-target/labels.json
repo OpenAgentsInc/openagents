@@ -1,0 +1,807 @@
+{
+  "schema": "openagents.metric-target-labels.v1",
+  "labeled_from": "instruction text only",
+  "definition": "Does the instruction state a numeric goal: a threshold on a quantity measured by running or evaluating the finished work as a whole (its speed, run time, latency, throughput, cost, memory, output size, error or distance to a reference, accuracy, or score)? NOT goals: numbers that specify what to build or how (parameters, formats, decimal places, ports, dates, versions, counts of items to output, a retry limit or timeout the code must implement as behavior, input sizes). A timeout that bounds how long the finished program may take on a stated workload IS a goal (runtime, at_most).",
+  "excluded": [
+    "embedding-drift-monitor",
+    "coq-block-bound",
+    "shadow-relay",
+    "risk-scorer-replay",
+    "mp-checkpoint-consolidation",
+    "payments-pipeline-fix",
+    "telecom-entity-resolution",
+    "fp8-rmsnorm-gemm",
+    "distributed-dedup",
+    "intrastat-meldung",
+    "photonic-waveguide-routing"
+  ],
+  "tasks": [
+    {
+      "task": "atrx-vep-crispr",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/atrx-vep-crispr/instruction.md",
+      "instruction_sha256": "189f0bba9ce7068fe0bef168c2e61d9ac6b5c6e88c2900e8fa01d122708c93d6",
+      "states_numeric_goal": false,
+      "targets": [],
+      "borderline": ""
+    },
+    {
+      "task": "batched-eval-parity",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/batched-eval-parity/instruction.md",
+      "instruction_sha256": "5da93cdf030a3d4a10bcb463fe313c8b317d99568dae74c52ebb493ab63308dc",
+      "states_numeric_goal": true,
+      "targets": [
+        {
+          "sentence": "the dedicated shared-prefix verifier has a fixed 55-second timeout",
+          "number": "55-second",
+          "quantity": "runtime",
+          "direction": "at_most",
+          "threshold": 55,
+          "unit": "s",
+          "relative_to": null
+        }
+      ],
+      "borderline": "The 55-second limit is stated as the verifier's timeout rather than as a speed goal, but it bounds how long packed evaluation may take on the shared-prefix workload, so it is labeled a runtime goal."
+    },
+    {
+      "task": "biped-contact-dynamics",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/biped-contact-dynamics/instruction.md",
+      "instruction_sha256": "f7449495a333fe05f01809b3d3b044f3a93fb8f32fc7fe2408b38061debd83ef",
+      "states_numeric_goal": true,
+      "targets": [
+        {
+          "sentence": "Each invocation of your submitted generator, including hidden-config reruns, must complete within 1200 seconds",
+          "number": "1200 seconds",
+          "quantity": "runtime",
+          "direction": "at_most",
+          "threshold": 1200,
+          "unit": "s",
+          "relative_to": null
+        },
+        {
+          "sentence": "velocities must integrate to positions with a trapezoidal residual below `0.005`",
+          "number": "0.005",
+          "quantity": "error",
+          "direction": "at_most",
+          "threshold": 0.005,
+          "unit": "",
+          "relative_to": null
+        },
+        {
+          "sentence": "the center-of-mass force-balance residual must remain below `100 N`",
+          "number": "100 N",
+          "quantity": "error",
+          "direction": "at_most",
+          "threshold": 100,
+          "unit": "N",
+          "relative_to": null
+        },
+        {
+          "sentence": "both the floating-base and full inverse-dynamics residuals must remain below `30`",
+          "number": "30",
+          "quantity": "error",
+          "direction": "at_most",
+          "threshold": 30,
+          "unit": "",
+          "relative_to": null
+        },
+        {
+          "sentence": "the contact-force rate must remain below `8000 N/s`",
+          "number": "8000 N/s",
+          "quantity": "other",
+          "direction": "at_most",
+          "threshold": 8000,
+          "unit": "N/s",
+          "relative_to": null
+        },
+        {
+          "sentence": "the actuator-torque rate must remain below `3500 N·m/s`",
+          "number": "3500 N·m/s",
+          "quantity": "other",
+          "direction": "at_most",
+          "threshold": 3500,
+          "unit": "N·m/s",
+          "relative_to": null
+        }
+      ],
+      "borderline": "The residual and rate limits are 95th-percentile thresholds on the exported trajectories, which read as goals measured on the output; the gait geometry numbers (clearances, sample counts, torque bounds, the 40% velocity rule) were treated as specification and left out."
+    },
+    {
+      "task": "build-cython-ext",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench/archive/build-cython-ext/instruction.md",
+      "instruction_sha256": "7e52874e45f88505bd21540229719de6639a401477557d814489981d472f0e34",
+      "states_numeric_goal": false,
+      "targets": [],
+      "borderline": ""
+    },
+    {
+      "task": "bun-sourcemap-leak",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/bun-sourcemap-leak/instruction.md",
+      "instruction_sha256": "665d8100ad29dd7fbf42e3ec5f00fbde8c04141183319deb30bd6722caf0f7a2",
+      "states_numeric_goal": false,
+      "targets": [],
+      "borderline": ""
+    },
+    {
+      "task": "cad-model",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/cad-model/instruction.md",
+      "instruction_sha256": "0e55907f7c75272b78231715f6a1ef551d3b0c24206813b6ec1ce7f55f08ea60",
+      "states_numeric_goal": false,
+      "targets": [],
+      "borderline": ""
+    },
+    {
+      "task": "cancel-async-tasks",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench/archive/cancel-async-tasks/instruction.md",
+      "instruction_sha256": "23d22f7039b50682941652c716f96dac314b8585c32c133614cac77dc067f47e",
+      "states_numeric_goal": false,
+      "targets": [],
+      "borderline": ""
+    },
+    {
+      "task": "cargo-flight-dispatch",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/cargo-flight-dispatch/instruction.md",
+      "instruction_sha256": "a7b0333a36ba08895d4858a6f216de7802b4e584566149acbb2ccb4420be165d",
+      "states_numeric_goal": false,
+      "targets": [],
+      "borderline": ""
+    },
+    {
+      "task": "ctr-optimization",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/ctr-optimization/instruction.md",
+      "instruction_sha256": "66d92f6e5693981cd48598c2031dc8f3ce103b02d42fee32418bea99b1ec3f1e",
+      "states_numeric_goal": true,
+      "targets": [
+        {
+          "sentence": "the genuine user click-through rate (CTR) averages at least 2.2% during the evaluation window from hour 42 through hour 48",
+          "number": "2.2%",
+          "quantity": "score",
+          "direction": "at_least",
+          "threshold": 2.2,
+          "unit": "%",
+          "relative_to": null
+        },
+        {
+          "sentence": "the campaign must maintain at least 38 hours of airtime across the 48 hour campaign",
+          "number": "38 hours",
+          "quantity": "other",
+          "direction": "at_least",
+          "threshold": 38,
+          "unit": "hours",
+          "relative_to": null
+        }
+      ],
+      "borderline": "The 38-hour airtime floor is a constraint on the campaign run rather than a performance score, but it is measured over the finished run, so it is kept as a second target."
+    },
+    {
+      "task": "cumulative-layout-shift",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/cumulative-layout-shift/instruction.md",
+      "instruction_sha256": "c0c3c8ef00cbd7399e9b4a401c6eeace2445043da641b5a2042dd6605cdd3644",
+      "states_numeric_goal": true,
+      "targets": [
+        {
+          "sentence": "All pages should measure zero CLS.",
+          "number": "zero",
+          "quantity": "score",
+          "direction": "at_most",
+          "threshold": 0,
+          "unit": "",
+          "relative_to": null
+        }
+      ],
+      "borderline": "The target is written as the word zero rather than a digit; CLS is a measured page metric, so it counts as a numeric goal."
+    },
+    {
+      "task": "data-anonymization",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/data-anonymization/instruction.md",
+      "instruction_sha256": "2b1c2f0be6beb3ac6aea1a3c59325fc3e5d5c20ffcdb1ea4347afb8f004709c1",
+      "states_numeric_goal": true,
+      "targets": [
+        {
+          "sentence": "peak memory must stay within `--max-memory`",
+          "number": "64MB",
+          "quantity": "memory",
+          "direction": "at_most",
+          "threshold": 64,
+          "unit": "MB",
+          "relative_to": null
+        }
+      ],
+      "borderline": "The number 64MB appears in the command line as the --max-memory argument; the sentence that makes it a goal names the flag rather than the number."
+    },
+    {
+      "task": "fin-saccr-rwa",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/fin-saccr-rwa/instruction.md",
+      "instruction_sha256": "7b49f7e95dc8f991ef80ef18fb6f1431cb27cea7506f2e0327edacbf30d5b4ef",
+      "states_numeric_goal": false,
+      "targets": [],
+      "borderline": "The 8% capital factor is a formula parameter, not a goal."
+    },
+    {
+      "task": "fix-code-vulnerability",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench/archive/fix-code-vulnerability/instruction.md",
+      "instruction_sha256": "89b1abdf0af19399f720233b5cdf6b2e8e0ff7b6e3fe3e2a3af0d4d298a8641a",
+      "states_numeric_goal": false,
+      "targets": [],
+      "borderline": ""
+    },
+    {
+      "task": "fix-git",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench/archive/fix-git/instruction.md",
+      "instruction_sha256": "f98174e47ba5ce040f6fad22ef3cbca4dd27b3192868ea5d082077222c3ec4e8",
+      "states_numeric_goal": false,
+      "targets": [],
+      "borderline": ""
+    },
+    {
+      "task": "foodstuff-beta-activity",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/foodstuff-beta-activity/instruction.md",
+      "instruction_sha256": "6e3b2a3e05a93ed5ba06bc691f786e6597ba914d5ca0131dfca860d3db45e965",
+      "states_numeric_goal": false,
+      "targets": [],
+      "borderline": ""
+    },
+    {
+      "task": "formal-crypto",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/formal-crypto/instruction.md",
+      "instruction_sha256": "812ccd6590c01ad6a375df4d3aa7050642ae1379a00fd08407fc7e00fdeb6981",
+      "states_numeric_goal": true,
+      "targets": [
+        {
+          "sentence": "The script must work in the general case (for any freshly generated benchmark input) within 20 seconds.",
+          "number": "20 seconds",
+          "quantity": "runtime",
+          "direction": "at_most",
+          "threshold": 20,
+          "unit": "s",
+          "relative_to": null
+        }
+      ],
+      "borderline": ""
+    },
+    {
+      "task": "freecad-impeller",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/freecad-impeller/instruction.md",
+      "instruction_sha256": "3a887462e0134d9a5de50f72ce178b2aa135d516ce03c3abc1c9af55d06d06b7",
+      "states_numeric_goal": false,
+      "targets": [],
+      "borderline": ""
+    },
+    {
+      "task": "freecad-platform-drawing",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/freecad-platform-drawing/instruction.md",
+      "instruction_sha256": "28e26ec2d6821ad758711e581cc5194c5c095428f04913039621168b038aeb5b",
+      "states_numeric_goal": false,
+      "targets": [],
+      "borderline": ""
+    },
+    {
+      "task": "freecad-spring-clip",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/freecad-spring-clip/instruction.md",
+      "instruction_sha256": "28596ebe9683dbd0aa1067bc6b97d136b58c44d2578f7d7f674daefe6a264a07",
+      "states_numeric_goal": false,
+      "targets": [],
+      "borderline": ""
+    },
+    {
+      "task": "freight-dispatch-shift",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/freight-dispatch-shift/instruction.md",
+      "instruction_sha256": "45cd70448d788cd5191f13e890f49f0c63e126309800b817f3bd8f44dd41f19e",
+      "states_numeric_goal": false,
+      "targets": [],
+      "borderline": ""
+    },
+    {
+      "task": "git-leak-recovery",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench/archive/git-leak-recovery/instruction.md",
+      "instruction_sha256": "54ac693fd26a4c003f610d62c4b2671f1d1d04ac5b1286f780605e385a9a5861",
+      "states_numeric_goal": false,
+      "targets": [],
+      "borderline": ""
+    },
+    {
+      "task": "glycan-ms2-elucidation",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/glycan-ms2-elucidation/instruction.md",
+      "instruction_sha256": "e4680aee92757d1b901171fc50599e5fd4a23ea7e650704c20654fb010fe205f",
+      "states_numeric_goal": false,
+      "targets": [],
+      "borderline": ""
+    },
+    {
+      "task": "gsea-proteomics",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/gsea-proteomics/instruction.md",
+      "instruction_sha256": "df6d4abd314213ba5c3298b7c652571a3b4335f09de239e0973bd2a14a57dc86",
+      "states_numeric_goal": false,
+      "targets": [],
+      "borderline": "The fold-change, p-value, and FDR cutoffs define the analysis, not a threshold on the finished work."
+    },
+    {
+      "task": "headless-terminal",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench/archive/headless-terminal/instruction.md",
+      "instruction_sha256": "004ac3efa98dd4c564f3888fe199962772d23de405c96ec9232c1eab1a2089e8",
+      "states_numeric_goal": false,
+      "targets": [],
+      "borderline": ""
+    },
+    {
+      "task": "heat-pump-warranty",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/heat-pump-warranty/instruction.md",
+      "instruction_sha256": "70e707bc7ee459a25ab7f1d34d21abd64a7952894a96cefd365dafe13e4dbbaf",
+      "states_numeric_goal": false,
+      "targets": [],
+      "borderline": ""
+    },
+    {
+      "task": "hof-topology-interpenetration",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/hof-topology-interpenetration/instruction.md",
+      "instruction_sha256": "1c16c9b3806341a28ff986e0ab32883a08efad07d553d455737320640e91ff87",
+      "states_numeric_goal": false,
+      "targets": [],
+      "borderline": ""
+    },
+    {
+      "task": "html-js-filter",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/html-js-filter/instruction.md",
+      "instruction_sha256": "bb76e0fdffe2b3ebf4f458729ab3b3e5a2360f593d24cd06f9235a111dce8a82",
+      "states_numeric_goal": false,
+      "targets": [],
+      "borderline": ""
+    },
+    {
+      "task": "interleaved-vigenere",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/interleaved-vigenere/instruction.md",
+      "instruction_sha256": "d9a28686a9f18d5f76ef876f7b035d90bdede6d0625056e581fc65fba0e2f3cd",
+      "states_numeric_goal": true,
+      "targets": [
+        {
+          "sentence": "Each invocation must complete within 30 s.",
+          "number": "30 s",
+          "quantity": "runtime",
+          "direction": "at_most",
+          "threshold": 30,
+          "unit": "s",
+          "relative_to": null
+        }
+      ],
+      "borderline": "The recovery-accuracy threshold is described only as close to perfect, with no number, so only the 30-second runtime is labeled."
+    },
+    {
+      "task": "jax-speedrun-gpu",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/jax-speedrun-gpu/instruction.md",
+      "instruction_sha256": "8d9880d5337c855d0a8cd7bd62cad4931e579a33bbd7718c86cc0e007e60377d",
+      "states_numeric_goal": true,
+      "targets": [
+        {
+          "sentence": "it must achieve validation cross-entropy loss ≤ 3.38",
+          "number": "3.38",
+          "quantity": "error",
+          "direction": "at_most",
+          "threshold": 3.38,
+          "unit": "",
+          "relative_to": null
+        },
+        {
+          "sentence": "within ≤ 1200 seconds of training wall-clock time",
+          "number": "1200 seconds",
+          "quantity": "runtime",
+          "direction": "at_most",
+          "threshold": 1200,
+          "unit": "s",
+          "relative_to": null
+        }
+      ],
+      "borderline": ""
+    },
+    {
+      "task": "ks-solver-cpp",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/ks-solver-cpp/instruction.md",
+      "instruction_sha256": "5725992168af454e73174efb4b5f60eb99124f036ed2bd60eab70555869e0b75",
+      "states_numeric_goal": true,
+      "targets": [
+        {
+          "sentence": "Success criterion: relative MSE at hidden evaluation points must be at most $ 10^{-7} $.",
+          "number": "10^{-7}",
+          "quantity": "error",
+          "direction": "at_most",
+          "threshold": 1e-07,
+          "unit": "",
+          "relative_to": null
+        },
+        {
+          "sentence": "The verifier timeout is 180 seconds total, including compilation, oracle calls, and evaluating `u_hat`.",
+          "number": "180 seconds",
+          "quantity": "runtime",
+          "direction": "at_most",
+          "threshold": 180,
+          "unit": "s",
+          "relative_to": null
+        }
+      ],
+      "borderline": ""
+    },
+    {
+      "task": "kv-live-surgery",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/kv-live-surgery/instruction.md",
+      "instruction_sha256": "78c31d0b82a368b1d464375990c2a8f059f0744ee4ad27ef7eab2548d87bd0ba",
+      "states_numeric_goal": true,
+      "targets": [
+        {
+          "sentence": "It must reach at least 5x its original throughput.",
+          "number": "5x",
+          "quantity": "throughput",
+          "direction": "at_least",
+          "threshold": 5,
+          "unit": "x",
+          "relative_to": "its original throughput"
+        },
+        {
+          "sentence": "Do not break connections or take longer than 2s to respond.",
+          "number": "2s",
+          "quantity": "latency",
+          "direction": "at_most",
+          "threshold": 2,
+          "unit": "s",
+          "relative_to": null
+        },
+        {
+          "sentence": "Respond to every liveness request within 1s.",
+          "number": "1s",
+          "quantity": "latency",
+          "direction": "at_most",
+          "threshold": 1,
+          "unit": "s",
+          "relative_to": null
+        }
+      ],
+      "borderline": ""
+    },
+    {
+      "task": "layout-config-recreation",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/layout-config-recreation/instruction.md",
+      "instruction_sha256": "bfbfce4d449bc0ed93f6dcbbcc26a06471dd961fa03be6d3071ed946f97e0933",
+      "states_numeric_goal": true,
+      "targets": [
+        {
+          "sentence": "Rendering `/app/output/config.json` with the provided `/app/render.py` must match `/app/data/layout.png` with ≥ 98 % identical pixels.",
+          "number": "98 %",
+          "quantity": "accuracy",
+          "direction": "at_least",
+          "threshold": 98,
+          "unit": "%",
+          "relative_to": "`/app/data/layout.png`"
+        },
+        {
+          "sentence": "Each generated SVG should be under 32 KB",
+          "number": "32 KB",
+          "quantity": "size",
+          "direction": "at_most",
+          "threshold": 32,
+          "unit": "KB",
+          "relative_to": null
+        }
+      ],
+      "borderline": "The 32 KB limit is a per-file output size cap on generated SVGs; the primitive count and canvas coverage limits were treated as specification."
+    },
+    {
+      "task": "layout-config-recreation2",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/layout-config-recreation2/instruction.md",
+      "instruction_sha256": "809d187271aafca2f018fca8d7ade560c580f6aa3174db62ea6170dff257fb07",
+      "states_numeric_goal": true,
+      "targets": [
+        {
+          "sentence": "must match the original image with ≥ 98 % identical pixels",
+          "number": "98 %",
+          "quantity": "accuracy",
+          "direction": "at_least",
+          "threshold": 98,
+          "unit": "%",
+          "relative_to": "the original image"
+        }
+      ],
+      "borderline": ""
+    },
+    {
+      "task": "legacy-utility-triage",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/legacy-utility-triage/instruction.md",
+      "instruction_sha256": "0e15ae9335f8c4ca2d214ce37215be4dc70c5bd889902b170731cb3360e5c9ac",
+      "states_numeric_goal": false,
+      "targets": [],
+      "borderline": ""
+    },
+    {
+      "task": "live-database-cutover",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/live-database-cutover/instruction.md",
+      "instruction_sha256": "7c466c3b181bdda2751d8af68af5d030802bce94d3e9ece62d755af4aa9ec27e",
+      "states_numeric_goal": true,
+      "targets": [
+        {
+          "sentence": "After the migration, p95 API response latency for each endpoint must stay within 10ms of the MySQL baseline.",
+          "number": "10ms",
+          "quantity": "latency",
+          "direction": "at_most",
+          "threshold": 10,
+          "unit": "ms",
+          "relative_to": "the MySQL baseline"
+        },
+        {
+          "sentence": "The migration should be done with zero downtime (no failed customer requests) and zero stale or inconsistent reads.",
+          "number": "zero",
+          "quantity": "count",
+          "direction": "at_most",
+          "threshold": 0,
+          "unit": "",
+          "relative_to": null
+        }
+      ],
+      "borderline": "The zero-downtime and zero-stale-read requirements are written as words, and they read as correctness requirements as much as measured goals; the 5s client timeout is a client parameter, not a goal."
+    },
+    {
+      "task": "log-summary-date-ranges",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench/archive/log-summary-date-ranges/instruction.md",
+      "instruction_sha256": "c1d4516ad4ec2238209740eaf01291df9ab48b0028a3fc5df383c6f831453484",
+      "states_numeric_goal": false,
+      "targets": [],
+      "borderline": ""
+    },
+    {
+      "task": "math-eval-grader",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/math-eval-grader/instruction.md",
+      "instruction_sha256": "21492ba62ebdc2014efd1b2ce04502638e20ae6473796036ed8de114b1f274b4",
+      "states_numeric_goal": true,
+      "targets": [
+        {
+          "sentence": "return whether it is mathematically equivalent to the gold answer within ≤2s/call",
+          "number": "≤2s/call",
+          "quantity": "latency",
+          "direction": "at_most",
+          "threshold": 2,
+          "unit": "s",
+          "relative_to": null
+        }
+      ],
+      "borderline": "The per-call limit applies to the grader function, a component, rather than the whole deliverable."
+    },
+    {
+      "task": "medical-claims-processing",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/medical-claims-processing/instruction.md",
+      "instruction_sha256": "b5a17b6b71fd64657ce3baaeddab8c59aae171bc209ee644783afea44f416e53",
+      "states_numeric_goal": false,
+      "targets": [],
+      "borderline": "The limit of one CRP flag per invoice line is a behavior requirement on the engine output, not a measured goal."
+    },
+    {
+      "task": "music-harmony",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/music-harmony/instruction.md",
+      "instruction_sha256": "b553e6bff2f67e9e537e836b9a8146e7aa2ac87b17d5da45e1f04b83067c9122",
+      "states_numeric_goal": false,
+      "targets": [],
+      "borderline": ""
+    },
+    {
+      "task": "mvcc-lsm-compaction",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/mvcc-lsm-compaction/instruction.md",
+      "instruction_sha256": "76c595ed358032ab3c5af64292564e0f58346e629318c7d791b9b91f5ae1ca08",
+      "states_numeric_goal": false,
+      "targets": [],
+      "borderline": ""
+    },
+    {
+      "task": "nextjs-performance",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/nextjs-performance/instruction.md",
+      "instruction_sha256": "ba7bb4dddcd86fa36380226d7bc66c02dfc7fddf49649cf6e584a60e5b6df11e",
+      "states_numeric_goal": false,
+      "targets": [],
+      "borderline": "The task is about reducing latency, but the instruction states no numeric threshold."
+    },
+    {
+      "task": "ontology-kg-querying",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/ontology-kg-querying/instruction.md",
+      "instruction_sha256": "e20d406a83fdfb97a829e71ec1674d2bf2c662257b86c2f3be8755c77a142fab",
+      "states_numeric_goal": false,
+      "targets": [],
+      "borderline": ""
+    },
+    {
+      "task": "pretrain-shard-corruption",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/pretrain-shard-corruption/instruction.md",
+      "instruction_sha256": "a9c0f8112fcad8afbaf5106062f390c528c61d536618e71e57fbad2651524fd5",
+      "states_numeric_goal": true,
+      "targets": [
+        {
+          "sentence": "produces a validation loss close to **6.4**",
+          "number": "6.4",
+          "quantity": "error",
+          "direction": "at_most",
+          "threshold": 6.4,
+          "unit": "",
+          "relative_to": null
+        }
+      ],
+      "borderline": "The target is two-sided (close to 6.4) with no stated tolerance; at_most is the nearest single direction because the failure mode is a higher loss."
+    },
+    {
+      "task": "production-planning",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/production-planning/instruction.md",
+      "instruction_sha256": "6e91894f336151c0bfd37dac384e45da6d80915e08c4f9e9ef90d1d172035d8e",
+      "states_numeric_goal": false,
+      "targets": [],
+      "borderline": "The floor of at least 10 sales orders is a count of items the plan must contain, which the definition treats as specification."
+    },
+    {
+      "task": "protein-autointerp-disulfide",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/protein-autointerp-disulfide/instruction.md",
+      "instruction_sha256": "afeb868c8dcab7c793337a890f7ecd1d5dad7beeff618d062bcee688c4108301",
+      "states_numeric_goal": false,
+      "targets": [],
+      "borderline": ""
+    },
+    {
+      "task": "react-lead-form",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/react-lead-form/instruction.md",
+      "instruction_sha256": "e1cc9571c8c9e69a2c12ace760ecad6ff2330bbc246b8ad025edd03a7eea9f9d",
+      "states_numeric_goal": false,
+      "targets": [],
+      "borderline": ""
+    },
+    {
+      "task": "retro-console-soc",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/retro-console-soc/instruction.md",
+      "instruction_sha256": "8a5e2393ae8b53b015ab27761016ea6475dcde5231a43570cfce6f7953892e5d",
+      "states_numeric_goal": true,
+      "targets": [
+        {
+          "sentence": "Achieves an FMax of at least 33 MHz",
+          "number": "33 MHz",
+          "quantity": "other",
+          "direction": "at_least",
+          "threshold": 33,
+          "unit": "MHz",
+          "relative_to": null
+        }
+      ],
+      "borderline": "FMax is a clock-speed figure from synthesis timing analysis rather than a run-time measurement, but it is a threshold on the finished design."
+    },
+    {
+      "task": "roy-polymorph-cn",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/roy-polymorph-cn/instruction.md",
+      "instruction_sha256": "da944cb2cafd1183cc2b9c6356e8872214af45111f1bbc800d9304e6c4d180e1",
+      "states_numeric_goal": false,
+      "targets": [],
+      "borderline": ""
+    },
+    {
+      "task": "rs-archive-clone",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/rs-archive-clone/instruction.md",
+      "instruction_sha256": "16c7eebb3143af99bebec5eddee12dd0e72f154879f3e46293930490d997084e",
+      "states_numeric_goal": false,
+      "targets": [],
+      "borderline": ""
+    },
+    {
+      "task": "satb-audio-transcription",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/satb-audio-transcription/instruction.md",
+      "instruction_sha256": "b26d0b48d20f1263e2956b3f95e85ec2cbc5daaea04626292344d315047a3755",
+      "states_numeric_goal": false,
+      "targets": [],
+      "borderline": ""
+    },
+    {
+      "task": "session-window-debug",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/session-window-debug/instruction.md",
+      "instruction_sha256": "65b05c866323a7b7195a5ab72ac9c4844d1d4e5f179ff24c15baf86a5a50e193",
+      "states_numeric_goal": false,
+      "targets": [],
+      "borderline": ""
+    },
+    {
+      "task": "sglang-qwen-burst",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/sglang-qwen-burst/instruction.md",
+      "instruction_sha256": "36108a78dee57649577a348d8637a7d25b09b2bd2f023581707e6463aa00d2cc",
+      "states_numeric_goal": false,
+      "targets": [],
+      "borderline": ""
+    },
+    {
+      "task": "sound-change-cascade",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/sound-change-cascade/instruction.md",
+      "instruction_sha256": "3f4f415d6057a4b802ffdf2fdbb106b7865dd7a50aaf7ff2b6150a14bfc70b34",
+      "states_numeric_goal": false,
+      "targets": [],
+      "borderline": "The instruction asks for rules that explain as many pairs as possible but states no numeric threshold; 780 is the input size."
+    },
+    {
+      "task": "sqlite-db-truncate",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench/archive/sqlite-db-truncate/instruction.md",
+      "instruction_sha256": "465c135cd80be49023ea3ecf8f1d840c679b3a960efe425d510894e417b9d802",
+      "states_numeric_goal": false,
+      "targets": [],
+      "borderline": "The instruction asks to recover as many rows as possible but states no number."
+    },
+    {
+      "task": "takens-embedding-lean",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/takens-embedding-lean/instruction.md",
+      "instruction_sha256": "ccf6d9214c94da7135c51e43b5bcff5a71db6b3a4c23b915d102aaca9afdd6d9",
+      "states_numeric_goal": false,
+      "targets": [],
+      "borderline": ""
+    },
+    {
+      "task": "uefi-bootkit",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/uefi-bootkit/instruction.md",
+      "instruction_sha256": "7d16c962b5f58fe0edd301cac698ed5986666f0b8e988313a0b544d3056a3c96",
+      "states_numeric_goal": false,
+      "targets": [],
+      "borderline": "The 8 GB RAM and 250 MB per QEMU process figures describe the environment, not a goal."
+    },
+    {
+      "task": "vba-userform-port",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/vba-userform-port/instruction.md",
+      "instruction_sha256": "33d576e87bef222748bbf86da9ad1eb9ceb7913b104deb517d15176e28bce01d",
+      "states_numeric_goal": true,
+      "targets": [
+        {
+          "sentence": "the verifier expects the frontend to be ready within 30 seconds after launch",
+          "number": "30 seconds",
+          "quantity": "latency",
+          "direction": "at_most",
+          "threshold": 30,
+          "unit": "s",
+          "relative_to": null
+        }
+      ],
+      "borderline": "The 30-second limit is a startup readiness bound on the packaged app, which is a measured time on the finished work but not its main goal."
+    },
+    {
+      "task": "vf2-speedup-networkx",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/vf2-speedup-networkx/instruction.md",
+      "instruction_sha256": "18c06496a69be455bf3fc738e3cbfcdc4fd023fea7064a1279182248b1b9a6ae",
+      "states_numeric_goal": true,
+      "targets": [
+        {
+          "sentence": "The geometric mean of the per-case speedup ratios must be at least 5000x faster than NetworkX.",
+          "number": "5000x",
+          "quantity": "speedup",
+          "direction": "at_least",
+          "threshold": 5000,
+          "unit": "x",
+          "relative_to": "NetworkX"
+        }
+      ],
+      "borderline": ""
+    },
+    {
+      "task": "vllm-deepseek-streaming",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/vllm-deepseek-streaming/instruction.md",
+      "instruction_sha256": "90d13b042394c28a4e543d1257659a7218749089779112663d4638c90f9215ce",
+      "states_numeric_goal": false,
+      "targets": [],
+      "borderline": ""
+    },
+    {
+      "task": "vpp-loss-divergence",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/vpp-loss-divergence/instruction.md",
+      "instruction_sha256": "ae695a9099b4469994167b4aff2ee471c210f91d9681d981ec5d2b1e7322ee48",
+      "states_numeric_goal": true,
+      "targets": [
+        {
+          "sentence": "Fix the installed framework code so the verifier's `torch.allclose(atol=1e-5, rtol=1e-5)` comparison passes.",
+          "number": "atol=1e-5, rtol=1e-5",
+          "quantity": "error",
+          "direction": "at_most",
+          "threshold": 1e-05,
+          "unit": "",
+          "relative_to": "a known-correct reference"
+        }
+      ],
+      "borderline": "The tolerance is on distance to a reference trace, which fits the definition, but the task reads as a correctness fix with an exact-match check."
+    },
+    {
+      "task": "wal-recovery-ordering",
+      "instruction_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/wal-recovery-ordering/instruction.md",
+      "instruction_sha256": "f8e44418b9cb1329b1ac226d88a03c8c9654c496e1a32950ce31d768139a4ad3",
+      "states_numeric_goal": false,
+      "targets": [],
+      "borderline": "The instruction asks to avoid quadratic growth but states no numeric threshold."
+    }
+  ],
+  "missing": []
+}

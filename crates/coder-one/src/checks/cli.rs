@@ -18,6 +18,7 @@ pub const USAGE: &str = "usage: coder-one checks readiness --input FILE --out DI
        coder-one checks contract plan|run|offline …    (coder-one checks contract help)
        coder-one checks conformance registry|run|offline …    (coder-one checks conformance help)
        coder-one checks oracle offline …    (coder-one checks oracle help)
+       coder-one checks metric-target extract|offline|measure …    (coder-one checks metric-target help)
        coder-one checks synthetic [NAME] [--json]
        coder-one checks run --input FILE [--json]
        coder-one checks recover --traces DIR [--arm ARM|all] [--out DIR] [--json]
@@ -113,6 +114,9 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
     }
     if verb == "conformance" {
         return super::conformance::cli::command(rest).await;
+    }
+    if verb == "metric-target" {
+        return super::metric_target::cli::command(rest).await;
     }
     if verb == "execution-audit" {
         return super::execution_audit::command(rest).await;
