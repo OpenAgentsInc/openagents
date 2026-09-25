@@ -9,9 +9,11 @@
 //! Jev answers five questions per action: whether the run is on track,
 //! which of the card's phases it's in, how it deviates, which known
 //! pitfall it shows, and whether it should stop. Code decides the stop
-//! from those answers, and only after the same signal twice in a row: a
-//! high stop answer, a low on-track answer with a bad deviation, or a
-//! named pitfall with a stop answer of 0.7 or more.
+//! from those answers. A judgment votes to stop on a high stop answer, a
+//! low on-track answer with a bad deviation, or a named pitfall with a
+//! stop answer of 0.7 or more. Two votes among the last three judgments
+//! stop the run, and so do four judgments in a row with a stop answer of
+//! 0.7 or more.
 
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -41,8 +43,11 @@ pub struct Rules {
     /// Jev's on-track answer at or below which a judgment with a bad
     /// deviation votes to stop.
     pub off_track_p: f64,
-    /// Votes in a row that stop the run.
+    /// Votes among the last `votes + 1` judgments that stop the run.
     pub votes: usize,
+    /// Judgments in a row with a stop answer of `pitfall_p` or more that
+    /// stop the run, votes or not.
+    pub steady: usize,
     /// Actions before Jev's votes can stop a run.
     pub min_actions: usize,
 }
@@ -58,6 +63,7 @@ impl Default for Rules {
             idle_s: 300.0,
             off_track_p: 0.15,
             votes: 2,
+            steady: 4,
             min_actions: 5,
         }
     }
@@ -526,22 +532,41 @@ pub fn votes(judgment: &Judgment, rules: &Rules) -> bool {
 /// Jev's stop: the last `rules.votes` judgments all voted to stop.
 #[must_use]
 pub fn jev_stop(run: &Run, rules: &Rules) -> Option<Stop> {
-    if run.actions.len() < rules.min_actions || run.judgments.len() < rules.votes {
+    if run.actions.len() < rules.min_actions {
         return None;
     }
-    let last = &run.judgments[run.judgments.len() - rules.votes..];
-    if !last
+    // Judgments cast before `min_actions` don't count.
+    let counted: Vec<&Judgment> = run
+        .judgments
         .iter()
-        .all(|j| j.vote && j.actions >= rules.min_actions)
-    {
+        .filter(|j| j.actions >= rules.min_actions)
+        .collect();
+    let newest = *counted.last()?;
+    // `votes` of the last `votes + 1` judgments voted to stop.
+    let window = &counted[counted.len().saturating_sub(rules.votes + 1)..];
+    let voted = window.iter().filter(|j| j.vote).count();
+    // Or the stop answer stayed at `pitfall_p` or more for `steady` judgments.
+    let steady = counted.len() >= rules.steady
+        && counted[counted.len() - rules.steady..]
+            .iter()
+            .all(|j| j.stop.is_some_and(|p| p >= rules.pitfall_p));
+    let how = if newest.vote && voted >= rules.votes {
+        format!(
+            "{voted} of its last {} judgments voted to stop",
+            window.len()
+        )
+    } else if steady {
+        format!(
+            "its stop answer stayed at {:.2} or more for {} judgments in a row",
+            rules.pitfall_p, rules.steady
+        )
+    } else {
         return None;
-    }
-    let newest = last.last()?;
+    };
     Some(Stop {
         rule: "jev".to_string(),
         why: format!(
-            "Jev judged the run off the winners' strategy {} times in a row: phase {}, deviation {}, pitfall {}, on track {}, stop {}.",
-            rules.votes,
+            "Jev judged the run off the winners' strategy: {how}. Latest: phase {}, deviation {}, pitfall {}, on track {}, stop {}.",
             newest.phase.as_deref().unwrap_or("unknown"),
             newest.deviation.as_deref().unwrap_or("unknown"),
             newest.pitfall.as_deref().unwrap_or("none"),

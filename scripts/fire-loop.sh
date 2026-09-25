@@ -52,7 +52,9 @@ done
 
 step() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
 
-step "Credentials"
+step "Checking the harness and credentials"
+export PATH="$bench/.venv/bin:$PATH"
+command -v harbor >/dev/null || { echo "fire-loop: harbor isn't in $bench/.venv; install the harness first" >&2; exit 2; }
 [ -s ~/.openagents/bearer ] || { echo "fire-loop: ~/.openagents/bearer is missing" >&2; exit 2; }
 [ -s ~/.openagents/jev.json ] || { echo "fire-loop: ~/.openagents/jev.json is missing" >&2; exit 2; }
 [ -s ~/.codex/auth.json ] || { echo "fire-loop: ~/.codex/auth.json is missing; sign in to Codex first" >&2; exit 2; }
@@ -60,19 +62,18 @@ OPENAGENTS_API_KEY="$(tr -d '\n' < ~/.openagents/bearer)"
 TYPESAFE_API_KEY="$(jq -r .api_key ~/.openagents/jev.json)"
 export OPENAGENTS_API_KEY TYPESAFE_API_KEY CODEX_FORCE_AUTH_JSON=1
 unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN OPENAI_API_KEY
-echo "door key, Jev key, and Codex sign-in found"
+echo "harbor, door key, Jev key, and Codex sign-in found"
 
-step "Building the watcher"
+step "Building the watcher (the first build takes several minutes; later ones take seconds)"
 watch_target="${FIRE_TARGET_DIR:-$root/target-fire}"
 CARGO_TARGET_DIR="$watch_target" cargo build -q --release -p coder-one --manifest-path "$root/Cargo.toml"
 watcher="$watch_target/release/coder-one"
 echo "$watcher"
 
-step "Building the trial binary"
-built="$("$root/scripts/build-coder-one-linux.sh")"
+step "Building the trial binary (also several minutes the first time)"
+built="$("$root/scripts/build-coder-one-linux.sh" | tee /dev/stderr)"
 artifact_path="$(printf '%s\n' "$built" | sed -n 's/^artifact_path=//p')"
 artifact_sha256="$(printf '%s\n' "$built" | sed -n 's/^artifact_sha256=//p')"
-printf '%s\n' "$built"
 
 policy_rel="$(jq -r --arg arm "$arm" '.agents[$arm].kwargs.policy // empty' "$bench/profiles/agents.json")"
 [ -n "$policy_rel" ] || { echo "fire-loop: arm $arm has no policy in profiles/agents.json" >&2; exit 2; }
@@ -104,7 +105,8 @@ docker ps -q --filter \"name=\$(printf %s \"\$FIRE_TRIAL\" | tr '[:upper:]' '[:l
 kill -TERM -$pid 2>/dev/null; true"
   echo "Task $task: job $jobs_dir/$job, harness log $harness"
   "$watcher" fire watch --job "$jobs_dir/$job" --card "$cards/$task.json" \
-    --policy "$policy" --on-stop "$on_stop" "${watch_args[@]}" || code=$?
+    --policy "$policy" --on-stop "$on_stop" --harness-pid "$pid" --harness-log "$harness" \
+    "${watch_args[@]}" || code=$?
   wait "$pid" 2>/dev/null || true
   return "$code"
 }

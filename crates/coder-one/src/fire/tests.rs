@@ -308,6 +308,65 @@ fn jev_stops_only_after_votes_in_a_row() {
 }
 
 #[test]
+fn two_votes_in_three_or_a_steady_stop_answer_stop_the_run() {
+    let rules = Rules::default();
+    let mut run = run_with(&[
+        (2_000, "run_command", json!({"command": "a"}), "1"),
+        (3_000, "run_command", json!({"command": "b"}), "2"),
+        (4_000, "run_command", json!({"command": "c"}), "3"),
+        (5_000, "run_command", json!({"command": "d"}), "4"),
+        (6_000, "run_command", json!({"command": "e"}), "5"),
+    ]);
+    let quiet = Judgment {
+        stop: Some(0.3),
+        ..Judgment::default()
+    };
+    // A vote, a miss, then a vote: two of the last three.
+    run.judgments = vec![
+        Judgment {
+            vote: true,
+            actions: 5,
+            ..quiet.clone()
+        },
+        Judgment {
+            actions: 6,
+            ..quiet.clone()
+        },
+    ];
+    assert!(judge::jev_stop(&run, &rules).is_none());
+    run.judgments.push(Judgment {
+        vote: true,
+        actions: 7,
+        ..quiet.clone()
+    });
+    assert!(
+        judge::jev_stop(&run, &rules)
+            .unwrap()
+            .why
+            .contains("2 of its last 3")
+    );
+    // A stop answer of 0.7 or more four times in a row, with no votes.
+    let high = Judgment {
+        stop: Some(0.73),
+        ..quiet
+    };
+    run.judgments = (5..8)
+        .map(|n| Judgment {
+            actions: n,
+            ..high.clone()
+        })
+        .collect();
+    assert!(judge::jev_stop(&run, &rules).is_none());
+    run.judgments.push(Judgment { actions: 8, ..high });
+    assert!(
+        judge::jev_stop(&run, &rules)
+            .unwrap()
+            .why
+            .contains("in a row")
+    );
+}
+
+#[test]
 fn the_request_carries_the_card_and_the_recent_actions() {
     let card = card();
     let run = run_with(&[(

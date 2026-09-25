@@ -59,12 +59,16 @@ Options:
   --stop-p P           Jev's stop answer that votes to stop (default 0.85)
   --pitfall-p P        Jev's stop answer that votes to stop with a named pitfall (default 0.7)
   --idle-s S           stop after S seconds with no action from the model (default 300)
-  --votes N            votes in a row that stop the run (default 2)
+  --votes N            votes among the last N+1 judgments that stop the run (default 2)
+  --steady N           judgments in a row with a stop answer of --pitfall-p or more
+                       that stop the run (default 4)
   --no-stop            judge and report, but never stop
   --on-stop CMD        run CMD with sh when the loop stops a watched trial;
                        FIRE_TRIAL and FIRE_TRIAL_DIR name the trial
   --out DIR            where the report goes (default: the trial's fire/ folder)
   --verifier-wait S    seconds to wait for the verifier after the run ends (default 900)
+  --harness-pid PID    the harness process; the watch ends when it exits early
+  --harness-log FILE   the harness's log, printed while the trial starts
   --speed N            replay at N times real speed (default 0: no waiting)
 
 Exit codes: 0 the run finished and passed, 1 it finished without a pass or
@@ -83,6 +87,8 @@ struct Options {
     out: Option<PathBuf>,
     verifier_wait: u64,
     speed: f64,
+    harness_pid: Option<u32>,
+    harness_log: Option<PathBuf>,
 }
 
 fn parse(args: &[String]) -> Result<(Options, Vec<String>), String> {
@@ -99,6 +105,8 @@ fn parse(args: &[String]) -> Result<(Options, Vec<String>), String> {
         out: None,
         verifier_wait: 900,
         speed: 0.0,
+        harness_pid: None,
+        harness_log: None,
     };
     let mut positional = Vec::new();
     let mut iter = args.iter();
@@ -125,10 +133,13 @@ fn parse(args: &[String]) -> Result<(Options, Vec<String>), String> {
             "--pitfall-p" => options.rules.pitfall_p = number(value()?)?,
             "--idle-s" => options.rules.idle_s = number(value()?)?,
             "--votes" => options.rules.votes = (number(value()?)? as usize).max(1),
+            "--steady" => options.rules.steady = (number(value()?)? as usize).max(1),
             "--no-stop" => options.no_stop = true,
             "--on-stop" => options.on_stop = Some(value()?),
             "--out" => options.out = Some(PathBuf::from(value()?)),
             "--verifier-wait" => options.verifier_wait = number(value()?)? as u64,
+            "--harness-pid" => options.harness_pid = Some(number(value()?)? as u32),
+            "--harness-log" => options.harness_log = Some(PathBuf::from(value()?)),
             "--speed" => options.speed = number(value()?)?,
             flag if flag.starts_with("--") => return Err(format!("unknown option {flag}")),
             _ => positional.push(arg.clone()),
@@ -341,6 +352,11 @@ async fn watch(
     style: Style,
 ) -> Result<i32, String> {
     let begun = now_ms();
+    let mut harness = Harness {
+        pid: options.harness_pid,
+        log: options.harness_log.clone(),
+        lines: 0,
+    };
     let trial = if let Some(trial) = &options.trial {
         trial.clone()
     } else {
@@ -349,9 +365,24 @@ async fn watch(
             "Waiting for the harness to create the trial in {}",
             job.display()
         );
+        let mut ticks = 0u64;
         loop {
+            harness.echo(style, now_ms() - begun);
             if let Some(trial) = trial_in(job) {
                 break trial;
+            }
+            if !harness.alive() {
+                harness.echo(style, now_ms() - begun);
+                return Err(
+                    "the harness exited before it created the trial; its log is above".to_string(),
+                );
+            }
+            ticks += 1;
+            if ticks.is_multiple_of(20) {
+                println!(
+                    "{} still waiting for the trial to start",
+                    style_harbor(style, now_ms() - begun)
+                );
             }
             tokio::time::sleep(Duration::from_millis(500)).await;
         }
@@ -424,6 +455,14 @@ async fn watch(
             }
             break Ending::Finished(reward(&trial));
         }
+        if state.run.started.is_none() {
+            harness.echo(style, now_ms() - begun);
+        }
+        if !harness.alive() {
+            harness.echo(style, now_ms() - begun);
+            println!("The harness exited before the episode ended; its log is above.");
+            break Ending::Unknown;
+        }
         if state.run.started.is_none() && trial.join("result.json").is_file() {
             println!(
                 "The trial ended before its episode started; see {}",
@@ -448,6 +487,45 @@ async fn watch(
         Ending::Finished(Some(r)) if r >= 1.0 => 0,
         _ => 1,
     })
+}
+
+/// The harness process a watch was started beside, when the caller named it.
+struct Harness {
+    pid: Option<u32>,
+    log: Option<PathBuf>,
+    lines: usize,
+}
+
+impl Harness {
+    /// Whether the harness is still running; true when no process was named.
+    fn alive(&self) -> bool {
+        let Some(pid) = self.pid else {
+            return true;
+        };
+        let proc = PathBuf::from(format!("/proc/{pid}"));
+        if Path::new("/proc/self").exists() {
+            return proc.exists();
+        }
+        std::process::Command::new("kill")
+            .args(["-0", &pid.to_string()])
+            .status()
+            .is_ok_and(|status| status.success())
+    }
+
+    /// Prints the lines the harness has logged since the last call.
+    fn echo(&mut self, style: Style, elapsed_ms: u64) {
+        let Some(text) = self
+            .log
+            .as_ref()
+            .and_then(|log| std::fs::read_to_string(log).ok())
+        else {
+            return;
+        };
+        for line in text.lines().skip(self.lines) {
+            println!("{} {line}", style_harbor(style, elapsed_ms));
+        }
+        self.lines = text.lines().count();
+    }
 }
 
 fn style_harbor(style: Style, elapsed_ms: u64) -> String {
