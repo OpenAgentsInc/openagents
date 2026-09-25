@@ -1,0 +1,48 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "evidence.data_profile",
+  "source": {
+    "kind": "synthetic",
+    "issue": 9654,
+    "case": "A CSV with an empty field, a ragged row, and a duplicate row; JSON Lines with a line that doesn't parse and a null; a log; a pickle this build can't read; code and configuration that aren't data."
+  },
+  "input": {
+    "files": {
+      "data/scores.csv": "id,score,label\n1,0.5,a\n2,,b\n3,1.5,c\n3,1.5,c\n4,2.5\n",
+      "data/events.jsonl": "{\"t\": 1, \"kind\": \"open\"}\n{\"t\": null, \"kind\": \"close\"}\nnot json\n",
+      "logs/run.log": "2026-09-25 10:00:01 INFO start\n2026-09-25 10:00:02 ERROR failed to read\n",
+      "model.pkl": "not read",
+      "main.py": "print(1)\n",
+      "package.json": "{\"name\": \"x\"}\n"
+    }
+  },
+  "retained": {
+    "files": [
+      {
+        "path": "data/events.jsonl",
+        "kind": "jsonl",
+        "findings": [
+          "lines that don't parse",
+          "null values"
+        ]
+      },
+      {
+        "path": "data/scores.csv",
+        "kind": "csv",
+        "findings": [
+          "field count other than 3",
+          "duplicate rows",
+          "empty fields"
+        ]
+      },
+      {
+        "path": "logs/run.log",
+        "kind": "text",
+        "findings": []
+      }
+    ],
+    "skipped": [
+      "model.pkl"
+    ]
+  }
+}

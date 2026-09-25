@@ -217,6 +217,14 @@ pub struct Lean {
     /// before it, nothing runs before the session.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub baseline: bool,
+    /// `evidence.baseline`'s wide discovery (issue #9654): also packages
+    /// under `src/` and one level down, console scripts, more Makefile
+    /// targets, `package.json` scripts, and Cargo binaries, run on the
+    /// input files the task ships when the instruction names none
+    /// ([`crate::checks::contract::entry::wide`]). Needs `baseline`.
+    /// Absent, as in every manifest before it, discovery is #9633's.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub baseline_wide: bool,
     /// `verify.executed` (issue #9636): after every session, rerun the
     /// baseline commands, the commands the instruction names, and a
     /// compile or import of the package on a scratch copy of the
@@ -569,6 +577,9 @@ impl Lean {
                     "executor.microluna.lean.executed bounds must be at least 1 second".to_string(),
                 );
             }
+        }
+        if self.baseline_wide && !self.baseline {
+            problems.push("executor.microluna.lean.baseline_wide requires baseline".to_string());
         }
         if self.review_rule.is_some() && !self.self_check {
             problems.push("review_rule requires self_check".to_string());
@@ -1042,6 +1053,7 @@ impl Micro {
         &self,
         prepared: &Prepared,
         left: Duration,
+        wide: bool,
     ) -> (Option<Evidence>, Value, Vec<String>) {
         let wall = crate::baseline::WALL.min(left);
         if wall < Duration::from_secs(5) {
@@ -1056,6 +1068,11 @@ impl Micro {
             alias: self.workdir.display().to_string(),
             wall,
             container: self.isolation == Isolation::TaskContainer,
+            discovery: if wide {
+                crate::baseline::Discovery::Wide
+            } else {
+                crate::baseline::Discovery::Named
+            },
         };
         let found = crate::baseline::run(&prepared.instruction, &setup).await;
         let file = self
@@ -2106,7 +2123,9 @@ impl Micro {
         let mut baseline_record = Value::Null;
         let mut baseline_text: Option<String> = None;
         if lean.baseline {
-            let (evidence, record, commands) = self.run_baseline(prepared, time_left()).await;
+            let (evidence, record, commands) = self
+                .run_baseline(prepared, time_left(), lean.baseline_wide)
+                .await;
             if let Some(evidence) = evidence {
                 baseline_text = Some(evidence.text.clone());
                 // After the suspects, when there are any.

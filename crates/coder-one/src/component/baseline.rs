@@ -8,6 +8,8 @@
 //! `workdir` is the directory the instruction calls the workspace, `/app`
 //! by default for inline files and the directory itself otherwise.
 //! `wall_sec` shortens the 60-second bound, for a fixture that tests it.
+//! `wide: true` turns on wide discovery (issue #9654), and
+//! `discover_only: true` finds the entry points without running any.
 //!
 //! The fixture's `retained` states what must happen: `runs`, each with its
 //! `kind`, and optionally `exit`, `timed_out`, `stdout` and `stderr`
@@ -42,6 +44,13 @@ struct BaselineInput {
     workdir: Option<String>,
     #[serde(default)]
     wall_sec: Option<u64>,
+    /// Wide discovery (issue #9654), off by default.
+    #[serde(default)]
+    wide: bool,
+    /// Find the entry points and run none, for an offline replay that
+    /// runs them elsewhere.
+    #[serde(default)]
+    discover_only: bool,
 }
 
 /// A directory that removes itself.
@@ -173,7 +182,37 @@ impl Component for BaselineComponent {
                     .map_or(baseline::WALL, Duration::from_secs)
                     .min(baseline::WALL),
                 container: false,
+                discovery: if input.wide {
+                    baseline::Discovery::Wide
+                } else {
+                    baseline::Discovery::Named
+                },
             };
+            if input.discover_only {
+                let started = std::time::Instant::now();
+                let entries = crate::checks::contract::entry::find_with(
+                    &input.task,
+                    &setup.root,
+                    &setup.alias,
+                    setup.discovery,
+                )
+                .await;
+                let ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+                let mut metrics = Map::new();
+                metrics.insert(
+                    "runnable".to_string(),
+                    json!(entries.iter().filter(|e| e.refused.is_none()).count()),
+                );
+                metrics.insert(
+                    "refused".to_string(),
+                    json!(entries.iter().filter(|e| e.refused.is_some()).count()),
+                );
+                metrics.insert("ms".to_string(), json!(ms));
+                return Ok(Ran {
+                    output: json!({ "entries": entries, "ms": ms }),
+                    metrics,
+                });
+            }
             let found = baseline::run(&input.task, &setup).await;
             let mut metrics = Map::new();
             metrics.insert("runs".to_string(), json!(found.runs.len()));
@@ -187,7 +226,9 @@ impl Component for BaselineComponent {
             if let Some(untouched) = found.untouched {
                 metrics.insert("untouched".to_string(), json!(untouched));
             }
-            for kind in ["named", "module", "make", "script"] {
+            for kind in [
+                "named", "module", "make", "script", "console", "npm", "cargo",
+            ] {
                 metrics.insert(
                     format!("runs_{kind}"),
                     json!(found.runs.iter().filter(|r| r.kind.word() == kind).count()),

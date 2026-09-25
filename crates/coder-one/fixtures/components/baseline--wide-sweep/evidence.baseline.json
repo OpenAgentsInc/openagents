@@ -1,0 +1,37 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "evidence.baseline",
+  "source": {
+    "kind": "synthetic",
+    "issue": 9654,
+    "case": "Wide discovery: a package under src/ whose usage takes a fixed two files, run once per shipped scenario file for the second, the reference file fixed by name; the instruction names no file."
+  },
+  "input": {
+    "task": "The monitor compares windows against a reference, and it's broken. Fix it.\n",
+    "wide": true,
+    "files": {
+      "src/monitor/__init__.py": "",
+      "src/monitor/__main__.py": "\"\"\"usage: python -m monitor <reference.csv> <current.csv>\"\"\"\nimport sys\n\n\ndef load(path):\n    with open(path) as handle:\n        return [[float(x) for x in line.split(\",\")] for line in handle if line.strip()]\n\n\nif __name__ == \"__main__\":\n    reference, current = load(sys.argv[1]), load(sys.argv[2])\n    zero = sum(1 for row in current if not any(row))\n    print(sys.argv[2], len(reference), len(current), \"zero rows:\", zero)\n",
+      "data/reference.csv": "1,0\n0,1\n",
+      "data/scenarios/current_a.csv": "1,1\n",
+      "data/scenarios/current_zero.csv": "0,0\n1,0\n"
+    }
+  },
+  "retained": {
+    "runs": [
+      {
+        "kind": "module",
+        "exit": 0,
+        "command": "PYTHONPATH=src python3 -m monitor data/reference.csv data/scenarios/current_a.csv",
+        "stdout": "zero rows: 0"
+      },
+      {
+        "kind": "module",
+        "exit": 0,
+        "command": "PYTHONPATH=src python3 -m monitor data/reference.csv data/scenarios/current_zero.csv",
+        "stdout": "zero rows: 1"
+      }
+    ],
+    "refused": []
+  }
+}

@@ -191,6 +191,7 @@ async fn a_run_leaves_the_workspace_alone_and_shows_the_paths_the_task_uses() {
         alias: "/app".to_string(),
         wall: Duration::from_secs(20),
         container: false,
+        discovery: Discovery::Named,
     };
     let baseline = run(instruction, &setup).await;
     assert_eq!(baseline.runs.len(), 1, "{baseline:#?}");
@@ -229,6 +230,7 @@ async fn the_network_is_off_inside_a_run() {
         alias: "/app".to_string(),
         wall: Duration::from_secs(20),
         container: false,
+        discovery: Discovery::Named,
     };
     let baseline = run("Run `python3 probe.py` to see.", &setup).await;
     assert!(

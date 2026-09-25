@@ -29,6 +29,8 @@
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod wide_tests;
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -36,7 +38,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-pub use crate::checks::contract::entry::{Entry, EntryKind};
+pub use crate::checks::contract::entry::{Discovery, Entry, EntryKind};
 use crate::record::Implementation;
 
 /// The component's ID.
@@ -94,6 +96,8 @@ pub struct Setup {
     /// Run without a boundary when the host can't build one: true only in
     /// a task container.
     pub container: bool,
+    /// Which entry points to look for: #9633's kinds, or also #9654's.
+    pub discovery: Discovery,
 }
 
 impl Setup {
@@ -105,6 +109,7 @@ impl Setup {
             alias: root.display().to_string(),
             wall: WALL,
             container: false,
+            discovery: Discovery::Named,
         }
     }
 }
@@ -303,17 +308,45 @@ pub fn read_commands(file: &Path) -> Vec<String> {
 /// The implementation record.
 #[must_use]
 pub fn implementation() -> Implementation {
-    Implementation::new(
-        COMPONENT,
-        "entry points by code, each run once in a bounded scratch copy",
-        &json!({
-            "wall_sec": WALL.as_secs(),
-            "stream_bytes": STREAM_BYTES,
-            "brief_chars": BRIEF_CHARS,
-            "max_entries": crate::checks::contract::entry::MAX_ENTRIES,
-            "network": "off",
-        }),
-    )
+    implementation_for(Discovery::Named)
+}
+
+/// The implementation record under `discovery`. [`Discovery::Named`]'s
+/// is #9633's, unchanged.
+#[must_use]
+pub fn implementation_for(discovery: Discovery) -> Implementation {
+    use crate::checks::contract::entry::{self, wide};
+    match discovery {
+        Discovery::Named => Implementation::new(
+            COMPONENT,
+            "entry points by code, each run once in a bounded scratch copy",
+            &json!({
+                "wall_sec": WALL.as_secs(),
+                "stream_bytes": STREAM_BYTES,
+                "brief_chars": BRIEF_CHARS,
+                "max_entries": entry::MAX_ENTRIES,
+                "network": "off",
+            }),
+        ),
+        Discovery::Wide => Implementation::new(
+            COMPONENT,
+            "wide entry points by code (packages, console scripts, make, npm, and Cargo) on \
+             shipped inputs, each run once in a bounded scratch copy",
+            &json!({
+                "wall_sec": WALL.as_secs(),
+                "stream_bytes": STREAM_BYTES,
+                "brief_chars": BRIEF_CHARS,
+                "max_entries": entry::MAX_ENTRIES_WIDE,
+                "network": "off",
+                "input_dirs": wide::INPUT_DIRS,
+                "data_extensions": wide::DATA_EXTENSIONS,
+                "max_shipped": wide::MAX_SHIPPED,
+                "sweep": wide::SWEEP,
+                "make_targets": wide::MAKE_TARGETS,
+                "npm_scripts": wide::NPM_SCRIPTS,
+            }),
+        ),
+    }
 }
 
 fn head(text: &str, max: usize) -> (String, bool) {
@@ -529,17 +562,28 @@ pub async fn run(instruction: &str, setup: &Setup) -> Baseline {
         cwd: setup.alias.clone(),
         ..Baseline::default()
     };
-    let found = crate::checks::contract::entry::find(instruction, &setup.root, &setup.alias).await;
+    let found = crate::checks::contract::entry::find_with(
+        instruction,
+        &setup.root,
+        &setup.alias,
+        setup.discovery,
+    )
+    .await;
     let (refused, runnable): (Vec<Entry>, Vec<Entry>) =
         found.into_iter().partition(|e| e.refused.is_some());
     baseline.refused = refused;
     if runnable.is_empty() {
-        baseline.none = Some(if baseline.refused.is_empty() {
+        baseline.none = Some(if !baseline.refused.is_empty() {
+            "every entry point found was refused".to_string()
+        } else if setup.discovery == Discovery::Wide {
+            "no entry point: the instruction names no command or script, and the workspace has \
+             no package with __main__.py, console script, Makefile or package.json run or test \
+             target, or Cargo binary"
+                .to_string()
+        } else {
             "no entry point: the instruction names no command or script, and the workspace has \
              no package with __main__.py and no Makefile test or check target"
                 .to_string()
-        } else {
-            "every entry point found was refused".to_string()
         });
         baseline.ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
         return baseline;

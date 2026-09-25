@@ -32,6 +32,7 @@ pub mod component;
 pub mod compose;
 pub mod contamination;
 pub mod credentials;
+pub mod data_profile;
 pub mod deadline;
 pub mod delegate;
 pub mod departures;

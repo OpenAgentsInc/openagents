@@ -107,6 +107,9 @@ pub enum Source {
     LastOutput,
     /// The `evidence.environment` line: delivered whole, always.
     Environment,
+    /// One `evidence.data_profile` summary of a data file
+    /// ([`crate::data_profile`]), ranked and trimmed like a file.
+    Profile,
 }
 
 /// One piece of evidence the packer may deliver.
@@ -173,6 +176,13 @@ impl Item {
                 "the explorer's full output is in the trajectory".to_string()
             }
             Source::Environment => "it is never trimmed".to_string(),
+            Source::Profile => format!(
+                "it summarizes {}; read that file for the rest",
+                self.label
+                    .strip_prefix(crate::data_profile::LABEL)
+                    .unwrap_or(&self.label)
+                    .trim()
+            ),
         }
     }
 }
@@ -198,6 +208,8 @@ pub fn items(inputs: &BriefingInputs) -> Vec<Item> {
     for (path, p, text) in &inputs.files {
         let source = if path == crate::environment::LABEL {
             Source::Environment
+        } else if path.starts_with(crate::data_profile::LABEL) {
+            Source::Profile
         } else if path.contains("(setup the host already ran") {
             Source::Setup
         } else if path.starts_with("$ ") {
@@ -898,7 +910,7 @@ pub fn pack(
 /// the first packer's naming.
 fn name(item: &Item) -> String {
     match item.source {
-        Source::Probe | Source::Setup | Source::File | Source::Environment => {
+        Source::Probe | Source::Setup | Source::File | Source::Environment | Source::Profile => {
             format!("file {}", item.label)
         }
         Source::Span => format!("output span from {}", item.label),
@@ -1087,9 +1099,11 @@ pub fn delivered_by_sections(
         .into_iter()
         .map(|item| {
             let named = match item.source {
-                Source::Probe | Source::Setup | Source::File | Source::Environment => {
-                    briefing.included.contains(&format!("file {}", item.label))
-                }
+                Source::Probe
+                | Source::Setup
+                | Source::File
+                | Source::Environment
+                | Source::Profile => briefing.included.contains(&format!("file {}", item.label)),
                 Source::Span => briefing
                     .included
                     .iter()
@@ -1186,6 +1200,43 @@ mod tests {
             conclusion: "The explorer reached its 0-step bound without a conclusion.".to_string(),
             directions: "Complete the task. The files, command outputs, and setup results in this briefing were gathered just before you started and are complete and current: do not list, read, or run them again. End with a summary.".to_string(),
         }
+    }
+
+    /// Issue #9654: a data profile is its own kind of item, ranked and
+    /// trimmed like a file, with a route to the file it describes.
+    #[test]
+    fn a_data_profile_is_packed_as_a_profile_item() {
+        let mut inputs = inputs();
+        let label = format!("{} logs/2025-08-10_db.log", crate::data_profile::LABEL);
+        let text = format!(
+            "{}\nlogs/2025-08-10_db.log: text file, 8,061 bytes; 200 lines\nNotable: none\n{}",
+            crate::data_profile::NOTE,
+            "Head:\n  line\n".repeat(400)
+        );
+        inputs.files.insert(0, (label.clone(), Some(0.8), text));
+        let all = items(&inputs);
+        assert_eq!(all[0].source, Source::Profile);
+        assert!(!all[0].is_data());
+        assert_eq!(
+            all[0].route(2, 10),
+            "it summarizes logs/2025-08-10_db.log; read that file for the rest"
+        );
+        let map = crate::requirements::mechanical(&inputs.instruction);
+        let packed = pack(&inputs, &map, None, Params::default());
+        assert!(
+            packed.briefing.text.contains(&label),
+            "{}",
+            packed.briefing.text
+        );
+        assert!(
+            packed
+                .record
+                .items
+                .iter()
+                .any(|p| p.source == Source::Profile),
+            "{:?}",
+            packed.record.items
+        );
     }
 
     /// Issue #9632: under any cap, both packers deliver the environment

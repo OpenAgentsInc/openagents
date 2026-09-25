@@ -162,6 +162,13 @@ pub struct EvidencePolicy {
     /// before it, nothing is probed and the digest is unchanged.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub environment: Option<crate::environment::Params>,
+    /// `evidence.data_profile`: code profiles every data file the task
+    /// ships and puts each profile in the survey as an evidence item the
+    /// coverage packer ranks with the rest ([`crate::data_profile`], issue
+    /// #9654). Needs `probes`. Absent, as in every manifest before it,
+    /// nothing is profiled and the digest is unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data_profile: Option<crate::data_profile::Params>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -548,6 +555,7 @@ impl Manifest {
                     survey_files: crate::judge::SURVEY_FILES,
                     guests: None,
                     environment: None,
+                    data_profile: None,
                 },
                 control: ControlPolicy {
                     delegate: DelegateMode::Off,
@@ -649,6 +657,14 @@ impl Manifest {
                 problems.push("evidence.environment needs evidence.probes".to_string());
             }
             if let Err(problem) = environment.validate() {
+                problems.push(problem);
+            }
+        }
+        if let Some(profile) = &policy.evidence.data_profile {
+            if policy.evidence.probes == Probes::Off {
+                problems.push("evidence.data_profile needs evidence.probes".to_string());
+            }
+            if let Err(problem) = profile.validate() {
                 problems.push(problem);
             }
         }
@@ -994,6 +1010,13 @@ impl Manifest {
                 self.policy
                     .evidence
                     .environment
+                    .clone()
+                    .filter(|_| self.deep() && probes != Probes::Off),
+            )
+            .data_profile(
+                self.policy
+                    .evidence
+                    .data_profile
                     .clone()
                     .filter(|_| self.deep() && probes != Probes::Off),
             )
@@ -1935,6 +1958,69 @@ mod tests {
             ..crate::environment::Params::default()
         });
         assert!(dropped.validate().unwrap_err().contains("{absent}"));
+    }
+
+    /// Issue #9654: `evidence.data_profile` is absent from every manifest,
+    /// so no digest changed; on, it needs the probes and reaches the judge.
+    #[test]
+    fn the_data_profile_switch_is_off_everywhere_and_needs_the_probes() {
+        for (file, text) in REFERENCE {
+            let manifest = Manifest::parse(text).unwrap();
+            assert!(manifest.policy.evidence.data_profile.is_none(), "{file}");
+            let micro = manifest.policy.executor.microluna.as_ref();
+            let lean = micro.and_then(|m| m.lean.as_ref());
+            assert!(!lean.is_some_and(|l| l.baseline_wide), "{file}");
+            // What a manifest says is what it serializes to: no new field.
+            let raw: Value = serde_json::from_str(text).unwrap();
+            let back = serde_json::to_value(&manifest.policy).unwrap();
+            assert_eq!(back, raw["policy"], "{file}");
+        }
+        let (_, text) = REFERENCE
+            .iter()
+            .find(|(file, _)| *file == "microluna-v18.json")
+            .unwrap();
+        let v18 = Manifest::parse(text).unwrap();
+        let issue = crate::state::Issue {
+            url: String::new(),
+            title: "t".to_string(),
+            body: "b".to_string(),
+            labels: Vec::new(),
+        };
+        let judge = |manifest: &Manifest| {
+            manifest.judge(
+                None,
+                PathBuf::from("/app"),
+                &issue,
+                crate::record::Recorder::default(),
+            )
+        };
+        assert!(judge(&v18).data_profile_params().is_none());
+        let mut raw: Value = serde_json::from_str(text).unwrap();
+        raw["policy"]["evidence"]["data_profile"] = json!({});
+        raw["policy"]["executor"]["microluna"]["lean"]["baseline_wide"] = json!(true);
+        let on = Manifest::parse(&raw.to_string()).unwrap();
+        on.validate().unwrap();
+        assert_ne!(on.digest(), v18.digest());
+        assert_eq!(
+            judge(&on).data_profile_params(),
+            Some(&crate::data_profile::Params::default())
+        );
+        let mut unprobed = on.clone();
+        unprobed.policy.evidence.probes = Probes::Off;
+        assert!(
+            unprobed
+                .validate()
+                .unwrap_err()
+                .contains("evidence.data_profile needs evidence.probes")
+        );
+        let mut alone = raw.clone();
+        alone["policy"]["executor"]["microluna"]["lean"]["baseline"] = json!(false);
+        assert!(
+            Manifest::parse(&alone.to_string())
+                .and_then(|m| m.validate())
+                .unwrap_err()
+                .contains("baseline_wide requires baseline")
+        );
     }
 
     #[test]

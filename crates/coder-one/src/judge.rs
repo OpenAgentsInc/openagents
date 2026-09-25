@@ -92,6 +92,9 @@ pub struct JevJudge {
     /// `evidence.environment`: presence probes and the briefing line
     /// that states what they found, under this template. `None` is off.
     environment: Option<crate::environment::Params>,
+    /// `evidence.data_profile`: profile every data file in the probe
+    /// stage, under these bounds. `None` is off.
+    data_profile: Option<crate::data_profile::Params>,
     /// The most files the deep survey judges.
     survey_files: usize,
     /// The evidence guests the probe stage runs, when the manifest turns
@@ -162,6 +165,7 @@ impl JevJudge {
             probes: false,
             v2: false,
             environment: None,
+            data_profile: None,
             survey_files: SURVEY_FILES,
             guests: None,
             deadline: Deadline::unbounded(),
@@ -224,6 +228,20 @@ impl JevJudge {
     pub fn environment(mut self, params: Option<crate::environment::Params>) -> Self {
         self.environment = params;
         self
+    }
+
+    /// Turns on `evidence.data_profile` with `params`, or off with
+    /// `None`. It runs in the probe stage, so it needs probe mode.
+    #[must_use]
+    pub fn data_profile(mut self, params: Option<crate::data_profile::Params>) -> Self {
+        self.data_profile = params;
+        self
+    }
+
+    /// The `evidence.data_profile` bounds, when it is on.
+    #[must_use]
+    pub fn data_profile_params(&self) -> Option<&crate::data_profile::Params> {
+        self.data_profile.as_ref()
     }
 
     /// The `evidence.environment` template, when it is on.
@@ -612,6 +630,9 @@ impl JevJudge {
         if let Some(environment) = self.environment.clone() {
             self.environment_line(&environment, &captures, state);
         }
+        if let Some(params) = self.data_profile.clone() {
+            self.data_profile_items(&params, state).await;
+        }
         let mut outputs: Vec<Probe> = captures
             .iter()
             .filter(|capture| !matches!(capture.operation, crate::ops::Operation::Presence { .. }))
@@ -736,6 +757,74 @@ impl JevJudge {
             Finish::new(Outcome::Completed)
                 .output(json!({ "line": line, "presence": presence }))
                 .cost(Cost::none()),
+        );
+    }
+
+    /// `evidence.data_profile`: code profiles every data file in the
+    /// workspace and puts each profile in `state.survey`, after the
+    /// environment line, where the coverage packer ranks and trims it with
+    /// the rest. Jev isn't asked; a profile is a fact.
+    async fn data_profile_items(
+        &mut self,
+        params: &crate::data_profile::Params,
+        state: &mut State,
+    ) {
+        let invocation = self.recorder.enter(
+            Start::new(
+                crate::data_profile::COMPONENT,
+                crate::data_profile::implementation(params),
+            )
+            .named("data profile")
+            .reading(&json!({ "workdir": self.workdir }))
+            .effect("observe"),
+        );
+        let root = self.workdir.clone();
+        let bounds = params.clone();
+        let profile =
+            tokio::task::spawn_blocking(move || crate::data_profile::profile(&root, &bounds))
+                .await
+                .unwrap_or_default();
+        let items = profile.items(params);
+        let at = usize::from(
+            state
+                .survey
+                .first()
+                .is_some_and(|s| s.path == crate::environment::LABEL),
+        );
+        state
+            .survey
+            .retain(|s| !s.path.starts_with(crate::data_profile::LABEL));
+        for (offset, (label, text)) in items.into_iter().enumerate() {
+            state.survey.insert(
+                (at + offset).min(state.survey.len()),
+                Surveyed {
+                    path: label,
+                    relevance: params.relevance,
+                    edit: 0.0,
+                    content: text,
+                },
+            );
+        }
+        crate::say::say!(
+            "  data profile ▸ profiled {} data files in {}{}",
+            profile.files.len(),
+            crate::say::seconds(u128::from(profile.ms)),
+            if profile.skipped.is_empty() {
+                String::new()
+            } else {
+                format!("; {} not read", profile.skipped.len())
+            }
+        );
+        self.recorder.revise();
+        self.recorder.end(
+            &invocation,
+            Finish::new(if profile.files.is_empty() {
+                Outcome::Skipped
+            } else {
+                Outcome::Completed
+            })
+            .output(profile.summary())
+            .cost(Cost::none()),
         );
     }
 

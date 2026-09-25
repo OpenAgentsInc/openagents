@@ -20,6 +20,7 @@
 pub mod baseline;
 pub mod checks;
 pub mod cli;
+pub mod data_profile;
 pub mod departures;
 pub mod evidence;
 pub mod extract;
@@ -146,6 +147,7 @@ pub fn registry() -> Vec<Box<dyn Component>> {
         Box::new(Select),
         Box::new(Pack),
         Box::new(departures::Departures),
+        Box::new(data_profile::DataProfileComponent),
         Box::new(baseline::BaselineComponent),
         Box::new(scripted::ScriptedAdapter),
         Box::new(monitor::MonitorComponent),

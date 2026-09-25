@@ -1495,6 +1495,7 @@ fn lean_shape() -> lean::Lean {
         detect: None,
         finish_rule: None,
         baseline: false,
+        baseline_wide: false,
         executed: None,
         tiered: None,
         review_rule: None,

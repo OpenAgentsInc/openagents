@@ -21,6 +21,12 @@
 //! none. The data files are the files the instruction names, and the
 //! files directly inside the directories it names, that aren't code.
 //!
+//! [`Discovery::Wide`] (issue #9654) adds package entry points below the
+//! top level and under `src/`, console scripts, more Makefile targets,
+//! `package.json` scripts, and Cargo binaries, and matches a program to
+//! the input files the task ships when the instruction names none. See
+//! [`wide`].
+//!
 //! This module only adds to #9628's extractor. It doesn't change
 //! [`extract::draft`] or [`extract::plan`], so the frozen contract plans
 //! and their measurement stay as they were.
@@ -37,8 +43,25 @@ use super::Kind as ItemKind;
 use super::extract::{self, Pristine};
 use super::host::{Host, Ran, Stat};
 
+pub mod wide;
+
 /// Entry points found for one task, at most.
 pub const MAX_ENTRIES: usize = 6;
+
+/// Entry points found for one task under [`Discovery::Wide`], at most.
+pub const MAX_ENTRIES_WIDE: usize = 8;
+
+/// Which entry points discovery looks for.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Discovery {
+    /// Issue #9633's four kinds: named commands, top-level packages,
+    /// `make test` or `make check`, and named scripts.
+    #[default]
+    Named,
+    /// Those, plus the kinds in [`wide`] (issue #9654).
+    Wide,
+}
 
 /// The largest program text read for a usage line.
 const PROGRAM_MAX: u64 = 256 * 1024;
@@ -74,6 +97,13 @@ pub enum EntryKind {
     Make,
     /// A script the instruction names by path.
     Script,
+    /// A console script a `pyproject.toml`, `setup.cfg`, or `setup.py`
+    /// declares.
+    Console,
+    /// A `package.json` script.
+    Npm,
+    /// A Cargo binary.
+    Cargo,
 }
 
 impl EntryKind {
@@ -85,6 +115,9 @@ impl EntryKind {
             EntryKind::Module => "module",
             EntryKind::Make => "make",
             EntryKind::Script => "script",
+            EntryKind::Console => "console",
+            EntryKind::Npm => "npm",
+            EntryKind::Cargo => "cargo",
         }
     }
 }
@@ -607,6 +640,18 @@ fn is_program(text: &str) -> bool {
 /// and `alias` the directory the instruction calls it, the same as `root`
 /// outside an offline replay.
 pub async fn find(instruction: &str, root: &Path, alias: &str) -> Vec<Entry> {
+    find_with(instruction, root, alias, Discovery::Named).await
+}
+
+/// [`find`] under `discovery`: with [`Discovery::Wide`], also the kinds
+/// [`wide`] finds, at most [`MAX_ENTRIES_WIDE`].
+pub async fn find_with(
+    instruction: &str,
+    root: &Path,
+    alias: &str,
+    discovery: Discovery,
+) -> Vec<Entry> {
+    let is_wide = discovery == Discovery::Wide;
     let host = Mapped {
         root: root.to_path_buf(),
         alias: alias.to_string(),
@@ -655,7 +700,31 @@ pub async fn find(instruction: &str, root: &Path, alias: &str) -> Vec<Entry> {
         .map(|e| e.command.as_str())
         .collect::<Vec<_>>()
         .join("\n");
-    let files = data_files(instruction, alias, &host);
+    let mut files = data_files(instruction, alias, &host);
+    if is_wide && files.is_empty() {
+        files = wide::shipped_inputs(root, alias);
+    }
+    if is_wide {
+        for entry in wide::modules(root, alias, &files, &named_text) {
+            push(entry, &mut out);
+        }
+        scripts(
+            instruction,
+            alias,
+            &host,
+            &files,
+            &named_text,
+            true,
+            &mut |e| {
+                push(e, &mut out);
+            },
+        );
+        for entry in wide::others(root, alias, &files, &named_text) {
+            push(entry, &mut out);
+        }
+        out.truncate(MAX_ENTRIES_WIDE);
+        return out;
+    }
     // Module: python3 -m <package>.
     for package in packages(root) {
         if named_text.contains(&format!("-m {package}")) {
@@ -694,6 +763,33 @@ pub async fn find(instruction: &str, root: &Path, alias: &str) -> Vec<Entry> {
         }
     }
     // Script: a program the instruction names by path.
+    scripts(
+        instruction,
+        alias,
+        &host,
+        &files,
+        &named_text,
+        false,
+        &mut |e| {
+            push(e, &mut out);
+        },
+    );
+    out.truncate(MAX_ENTRIES);
+    out
+}
+
+/// Script: each Python or shell program the instruction names by path.
+/// With `sweep`, a program whose usage the files don't fit runs once per
+/// file ([`wide::argument_sets`]).
+fn scripts(
+    instruction: &str,
+    alias: &str,
+    host: &Mapped,
+    files: &[String],
+    named_text: &str,
+    sweep: bool,
+    push: &mut dyn FnMut(Entry),
+) {
     let (units, _) = extract::segment(instruction);
     for unit in &units {
         for (_, span) in extract::spans(&unit.text) {
@@ -714,35 +810,34 @@ pub async fn find(instruction: &str, root: &Path, alias: &str) -> Vec<Entry> {
                 continue;
             }
             let name = path.rsplit('/').next().unwrap_or(&path).to_string();
-            let (interpreter, how) = if ext == "py" {
+            let interpreter = if ext == "py" {
                 if !is_program(&text) {
                     continue;
                 }
-                ("python3", arguments(&text, &name, &files, alias))
+                "python3"
+            } else if text.lines().next().is_some_and(|l| l.contains("bash")) {
+                "bash"
             } else {
-                let bash = text.lines().next().is_some_and(|l| l.contains("bash"));
-                (
-                    if bash { "bash" } else { "sh" },
-                    arguments(&text, &name, &files, alias),
-                )
+                "sh"
             };
-            let (args, how) = how;
-            let mut command = format!("{interpreter} {}", shell_word(&shown));
-            for arg in &args {
-                command.push(' ');
-                command.push_str(arg);
-            }
-            push(
-                Entry {
+            let sets = if sweep {
+                wide::argument_sets(&text, &name, files, alias)
+            } else {
+                vec![arguments(&text, &name, files, alias)]
+            };
+            for (args, how) in sets {
+                let mut command = format!("{interpreter} {}", shell_word(&shown));
+                for arg in &args {
+                    command.push(' ');
+                    command.push_str(arg);
+                }
+                push(Entry {
                     kind: EntryKind::Script,
                     command,
                     why: format!("the instruction names {shown}; {how}"),
                     refused: None,
-                },
-                &mut out,
-            );
+                });
+            }
         }
     }
-    out.truncate(MAX_ENTRIES);
-    out
 }
