@@ -105,15 +105,14 @@ its exit criteria, except for work marked as preparation.
    to keep, the ones kept, and the ones retired, each retired with a reason.
    The 2024 plugin-author payments and the "1 million sats" bounty are the
    most important entries; they get a stated disposition, not silence.
-2. **Fix the documents that contradict the code.** Done in the commit that
-   added this note, "docs: say the Wasm plugin host and module steps are
-   built". `extensions/plugins.md`, `glossary.md`, and `programs.md` said
+2. **Fix the documents that contradict the code.** Done in 68ac39fed6.
+   `extensions/plugins.md`, `glossary.md`, and `programs.md` said
    the Wasm host and the program `module` step weren't built; both landed on
    2026-09-21 (#9519).
 3. **Disambiguate the words.** "Plugin" means a Wasm guest in this repository,
    a client package for Claude Code or Codex under `plugins/`, and an Extism
    module in 2024; "skill" means a `SKILL.md` guide and, in Voyager, a Lua
-   program. The glossary says which is which. Done in the same commit:
+   program. The glossary says which is which. Done in 68ac39fed6:
    [Plugins and skills](glossary.md#plugins-and-skills).
 
 **Exit:** the ledger is published, and no document contradicts the code.
