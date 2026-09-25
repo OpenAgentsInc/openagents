@@ -167,8 +167,9 @@ file arm yields zero items on all 15 groups. The literal arm retains one
 obligation each for `extract-elf`, `large-scale-text-editing`, and
 `schemelike-metacircular-eval`, and abstains on the other 12 groups. Conservative
 lifecycle handling removes the earlier obligations for `filter-js-from-html`
-and `regex-chess`; their public instructions describe removal/replacement
-behavior, which this small grammar does not safely distinguish from cleanup.
+and `regex-chess`; the first describes a program removing JavaScript, and the second uses the
+domain word `move` for chess. This small grammar does not safely distinguish
+those references from file cleanup or relocation.
 This is lost coverage, not evidence that those outputs are optional. Do not
 retune the grammar to recover these selected tasks. The remaining rule can
 still use the unchanged reproduced reviewer.
