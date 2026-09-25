@@ -680,6 +680,16 @@ async fn a_second_executor_that_checks_better_replaces_the_first_candidate() {
         .map(|b| b["role"].as_str().unwrap())
         .collect();
     assert_eq!(roles, ["primary", "second"]);
+    let repair_stream =
+        std::fs::read_to_string(ran.out.join("artifacts/delegate-2.stream.jsonl")).unwrap();
+    let second_stream =
+        std::fs::read_to_string(ran.out.join("artifacts/delegate-3.stream.jsonl")).unwrap();
+    let repair_id = record["repair"]["session"]["session_id"].as_str().unwrap();
+    let second_id = record["branches"][1]["session_id"].as_str().unwrap();
+    assert_ne!(repair_id, second_id);
+    assert!(repair_stream.contains(repair_id));
+    assert!(!repair_stream.contains(second_id));
+    assert!(second_stream.contains(second_id));
 }
 
 #[tokio::test(flavor = "current_thread")]

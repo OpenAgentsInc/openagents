@@ -1981,6 +1981,11 @@ where
             |granted| factory.make(&tier, granted, made_runs),
         )
         .await?;
+        // Repair dispatches once through its own executor. Reserve its stream
+        // number before second-candidate or persistence dispatches can use it.
+        if result.ran {
+            runs = made_runs.saturating_add(1);
+        }
         if result.changed
             && let Some(said) = result.record["session"]["result"].as_str()
         {
