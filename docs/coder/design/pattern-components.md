@@ -285,6 +285,12 @@ keep only improvements that still pass. The map's build list starts with
 `checks.oracle`, `checks.metric_target` with `control.optimize`, and failure
 localization.
 
+Failure localization (#9658) is built and off in every policy. Offline, on
+45 tasks outside the mapped eleven, only 7% of failing commands named a
+workspace line, Luna's next edit already went to the named line 76% of the
+time when it edited that file, and re-reading the named file took 0.15% of
+turns. [Report](../../terminal-bench/2026-09-25-failure-localization.md)
+
 ## Tracking
 
 - #9652

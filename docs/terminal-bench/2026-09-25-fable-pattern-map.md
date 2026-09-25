@@ -111,7 +111,8 @@ admission only on tasks it wasn't learned from:
    error names), `evidence.mismatch_trace` (the first value that fails the
    oracle, compared stage by stage), and `evidence.phase_timing` (where the
    time goes), each produced by code and handed to the next Luna session as
-   evidence.
+   evidence. Built and measured offline, and left off:
+   [failure localization](2026-09-25-failure-localization.md).
 4. **`checks.prohibitions` and `control.cleanup`.** Jev extracts every
    "must not" from the instruction; code checks each one and cleans up
    scratch files before finishing.

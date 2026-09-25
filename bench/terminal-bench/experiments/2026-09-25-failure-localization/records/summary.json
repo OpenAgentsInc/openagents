@@ -1,0 +1,364 @@
+{
+  "schema": "openagents.coder_one.localize_offline_summary.v1",
+  "window": 6,
+  "totals": {
+    "trials": 226,
+    "sessions": 553,
+    "turns": 6591,
+    "read_only_turns": 860,
+    "commands": 4842,
+    "failing_commands": 582,
+    "skipped_excluded": 61
+  },
+  "parsable": {
+    "k": 86,
+    "n": 582,
+    "rate": 0.14776632302405499,
+    "wilson95": [
+      0.12124694102405188,
+      0.1789051820071566
+    ]
+  },
+  "resolved": {
+    "k": 41,
+    "n": 582,
+    "rate": 0.070446735395189,
+    "wilson95": [
+      0.05235083569461567,
+      0.09417614361173608
+    ]
+  },
+  "resolved_of_parsable": {
+    "k": 41,
+    "n": 86,
+    "rate": 0.47674418604651164,
+    "wilson95": [
+      0.37445361147407896,
+      0.5810235839454149
+    ]
+  },
+  "by_rule": {
+    "colon": 8,
+    "file-line": 59,
+    "jvm-frame": 19,
+    "paren": 2
+  },
+  "by_task": {
+    "adaptive-rejection-sampler": {
+      "failing": 26,
+      "parsable": 0,
+      "resolved": 0
+    },
+    "bn-fit-modify": {
+      "failing": 17,
+      "parsable": 1,
+      "resolved": 0
+    },
+    "circuit-fibsqrt": {
+      "failing": 3,
+      "parsable": 1,
+      "resolved": 0
+    },
+    "cobol-modernization": {
+      "failing": 9,
+      "parsable": 0,
+      "resolved": 0
+    },
+    "constraints-scheduling": {
+      "failing": 6,
+      "parsable": 2,
+      "resolved": 2
+    },
+    "cumulative-layout-shift": {
+      "failing": 34,
+      "parsable": 2,
+      "resolved": 1
+    },
+    "db-wal-recovery": {
+      "failing": 9,
+      "parsable": 3,
+      "resolved": 3
+    },
+    "distribution-search": {
+      "failing": 4,
+      "parsable": 3,
+      "resolved": 1
+    },
+    "extract-elf": {
+      "failing": 3,
+      "parsable": 0,
+      "resolved": 0
+    },
+    "filter-js-from-html": {
+      "failing": 10,
+      "parsable": 5,
+      "resolved": 5
+    },
+    "fin-saccr-rwa": {
+      "failing": 1,
+      "parsable": 0,
+      "resolved": 0
+    },
+    "financial-document-processor": {
+      "failing": 43,
+      "parsable": 0,
+      "resolved": 0
+    },
+    "formal-crypto": {
+      "failing": 3,
+      "parsable": 0,
+      "resolved": 0
+    },
+    "freecad-impeller": {
+      "failing": 4,
+      "parsable": 2,
+      "resolved": 2
+    },
+    "freecad-spring-clip": {
+      "failing": 3,
+      "parsable": 1,
+      "resolved": 1
+    },
+    "gsea-proteomics": {
+      "failing": 29,
+      "parsable": 19,
+      "resolved": 2
+    },
+    "html-js-filter": {
+      "failing": 1,
+      "parsable": 0,
+      "resolved": 0
+    },
+    "interleaved-vigenere": {
+      "failing": 42,
+      "parsable": 9,
+      "resolved": 2
+    },
+    "large-scale-text-editing": {
+      "failing": 1,
+      "parsable": 0,
+      "resolved": 0
+    },
+    "largest-eigenval": {
+      "failing": 15,
+      "parsable": 3,
+      "resolved": 1
+    },
+    "live-database-cutover": {
+      "failing": 11,
+      "parsable": 0,
+      "resolved": 0
+    },
+    "math-eval-grader": {
+      "failing": 11,
+      "parsable": 4,
+      "resolved": 4
+    },
+    "model-extraction-relu-logits": {
+      "failing": 5,
+      "parsable": 0,
+      "resolved": 0
+    },
+    "modernize-scientific-stack": {
+      "failing": 3,
+      "parsable": 0,
+      "resolved": 0
+    },
+    "multi-source-data-merger": {
+      "failing": 1,
+      "parsable": 0,
+      "resolved": 0
+    },
+    "mvcc-lsm-compaction": {
+      "failing": 48,
+      "parsable": 1,
+      "resolved": 0
+    },
+    "openssl-selfsigned-cert": {
+      "failing": 2,
+      "parsable": 0,
+      "resolved": 0
+    },
+    "overfull-hbox": {
+      "failing": 7,
+      "parsable": 0,
+      "resolved": 0
+    },
+    "polyglot-c-py": {
+      "failing": 33,
+      "parsable": 4,
+      "resolved": 4
+    },
+    "portfolio-optimization": {
+      "failing": 5,
+      "parsable": 1,
+      "resolved": 1
+    },
+    "pretrain-shard-corruption": {
+      "failing": 6,
+      "parsable": 1,
+      "resolved": 0
+    },
+    "query-optimize": {
+      "failing": 10,
+      "parsable": 0,
+      "resolved": 0
+    },
+    "raman-fitting": {
+      "failing": 13,
+      "parsable": 1,
+      "resolved": 0
+    },
+    "regex-chess": {
+      "failing": 11,
+      "parsable": 10,
+      "resolved": 10
+    },
+    "regex-log": {
+      "failing": 19,
+      "parsable": 0,
+      "resolved": 0
+    },
+    "schemelike-metacircular-eval": {
+      "failing": 7,
+      "parsable": 1,
+      "resolved": 0
+    },
+    "session-window-debug": {
+      "failing": 15,
+      "parsable": 0,
+      "resolved": 0
+    },
+    "sound-change-cascade": {
+      "failing": 33,
+      "parsable": 7,
+      "resolved": 1
+    },
+    "sparql-university": {
+      "failing": 23,
+      "parsable": 0,
+      "resolved": 0
+    },
+    "uefi-bootkit": {
+      "failing": 9,
+      "parsable": 2,
+      "resolved": 0
+    },
+    "vpp-loss-divergence": {
+      "failing": 1,
+      "parsable": 1,
+      "resolved": 0
+    },
+    "wal-recovery-ordering": {
+      "failing": 13,
+      "parsable": 1,
+      "resolved": 1
+    },
+    "write-compressor": {
+      "failing": 33,
+      "parsable": 1,
+      "resolved": 0
+    }
+  },
+  "next_edit_every_failure": {
+    "localized": 41,
+    "region": 16,
+    "file_only": 5,
+    "other_file": 8,
+    "no_edit": 12,
+    "undetermined": 0,
+    "region_of_determined_edits": {
+      "k": 16,
+      "n": 29,
+      "rate": 0.5517241379310345,
+      "wilson95": [
+        0.37547667068067625,
+        0.715870888512542
+      ]
+    },
+    "region_of_same_file_edits": {
+      "k": 16,
+      "n": 21,
+      "rate": 0.7619047619047619,
+      "wilson95": [
+        0.5490841802765406,
+        0.8937214361088773
+      ]
+    },
+    "chance_of_same_file_edits": 0.3387588111147232
+  },
+  "next_edit_last_failure_before_edit": {
+    "localized": 38,
+    "region": 14,
+    "file_only": 5,
+    "other_file": 8,
+    "no_edit": 11,
+    "undetermined": 0,
+    "region_of_determined_edits": {
+      "k": 14,
+      "n": 27,
+      "rate": 0.5185185185185185,
+      "wilson95": [
+        0.3398532458621043,
+        0.6925704935029092
+      ]
+    },
+    "region_of_same_file_edits": {
+      "k": 14,
+      "n": 19,
+      "rate": 0.7368421052631579,
+      "wilson95": [
+        0.5120803155892935,
+        0.8819376166045982
+      ]
+    },
+    "chance_of_same_file_edits": 0.26915447544258886
+  },
+  "rereads": {
+    "turns": 10,
+    "turns_reading_the_named_line": 7,
+    "share_of_all_turns": 0.0015172204521316948,
+    "share_of_read_only_turns": 0.011627906976744186,
+    "localized_failures_followed_by_a_reread": {
+      "k": 9,
+      "n": 41,
+      "rate": 0.21951219512195122,
+      "wilson95": [
+        0.12003040155386346,
+        0.36705302098235293
+      ]
+    }
+  },
+  "mismatch": {
+    "cases": {
+      "k": 3,
+      "n": 582,
+      "rate": 0.005154639175257732,
+      "wilson95": [
+        0.001754526855620572,
+        0.015044553305296646
+      ]
+    },
+    "formats": {
+      "unittest": 3
+    },
+    "with_stages": 0
+  },
+  "timing": {
+    "timed_out": {
+      "k": 28,
+      "n": 582,
+      "rate": 0.048109965635738834,
+      "wilson95": [
+        0.033492530727259454,
+        0.0686538515030226
+      ]
+    },
+    "profilers": {
+      "process": 24,
+      "python": 3,
+      "shell": 1
+    }
+  },
+  "sources": 226
+}
