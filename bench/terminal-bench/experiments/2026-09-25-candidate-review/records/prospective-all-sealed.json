@@ -1,0 +1,785 @@
+{
+  "schema": "openagents.blind-predictions.v2",
+  "contains_grades": false,
+  "partition": "prospective",
+  "manifest_sha256": "f04572dcc90b82b7bc2080124c3de837d39193fd2f4772dab126d57e06b35585",
+  "models_sha256": {
+    "verdict.fusion": "0d00e4803795ab09290ea810be2f07f4032e13567237aade0a42f64a8105cc98",
+    "verdict.pooled": "4b756d9703218631da8765eedba9c94f96a63e9b865cccca7085dfd68b2fa18a"
+  },
+  "predictions": [
+    {
+      "job": "tb4--coder-one-microluna-truth-confirmation--distributed-dedup--9584-r1",
+      "trial": "distributed-dedup__vSURoBk",
+      "task": "terminal-bench/distributed-dedup",
+      "executor": "luna",
+      "features": {
+        "report.admits_unmet": 0.04,
+        "report.rests_on_reading": 0.05,
+        "report.left_untested": 0.14,
+        "report.checked_against_task": 0.58,
+        "report.strict_grader_accepts": 0.25,
+        "report.admitted": 0.0,
+        "execution.observed": 0.08,
+        "execution.unresolved": 0.16,
+        "execution.required": 0.08,
+        "audit.observed": 0.03,
+        "audit.current": 0.05,
+        "audit.required": 0.09,
+        "source": 0.81,
+        "readiness": 0.84
+      },
+      "model_scores": {
+        "verdict.fusion": 0.5677736898313623,
+        "verdict.pooled": 0.2219992375040077
+      },
+      "reproduced_score": null,
+      "reproduced_error": null,
+      "calls": {
+        "checks.final": null,
+        "verdict.combined": null,
+        "source-union-v1": null,
+        "source-union-v2": "fail",
+        "verdict.agreement": "fail",
+        "verdict.observed": null,
+        "verdict.fusion": null,
+        "verdict.pooled": null,
+        "verdict.reproduced": null,
+        "verdict.reproduced-quoted-v1": null,
+        "verdict.reproduced-citations-v2": null
+      },
+      "records_sha256": {
+        "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-truth-confirmation--distributed-dedup--9584-r1/distributed-dedup__vSURoBk/agent/episode/artifacts/composition.json": "c23cec561beaefb427a13f6e0acf21e8fe1cdcb3cf7f8c9fb75957c1c82e7291",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/report-features-prospective/distributed-dedup__vSURoBk.json": "dd9cc9fd5211ad8ac41c2210783c5fd139fdbc63869da4d6377f186945e08c9f",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/execution-v2/execution-audit-prospective/distributed-dedup__vSURoBk.json": "6254ffe572dc7615dcdd2ba09e8fdf6003eb238b81fcc0ce2d5ea8a1a7787239",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/execution-v2/report-audit-prospective/distributed-dedup__vSURoBk.json": "badb5ca51194fede815101392067662b6899dbc3ba146d4ef7716d1435cc5536",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/distributed-dedup__vSURoBk/astra/review.json": "f416d97ff5918ae3692e461ec8be168e8681bd790ffd5fa5ac3a5204b3c695b8",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/distributed-dedup__vSURoBk/readiness/assessment.json": "b9b2e29f934427c354217561341d3b7f1c110815438c24e4537af59dc694d3e3",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/report-audit-prospective/distributed-dedup__vSURoBk.json": "f6b99d3a3a5b86908da28d8a7d4f807b7c4c404de97d7010012cf088ed4a6ddf",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/distributed-dedup__vSURoBk/reproduced/process.json": "36bd62763b263955a2eca036142df1d9cbeb0df33b9d549386d1bc3bad959232",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/distributed-dedup__vSURoBk/reproduced/review.json": "ba10a0e41bd1042106d11a173c6e913dba9c4bcc32ba37588247caf5df311c14",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/distributed-dedup__vSURoBk/reproduced-quoted/review.json": "bc7b1ff3b7ade065721bcdba1ba0c0e8a54c3ebab0c09338229f9000edfad4b4",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/distributed-dedup__vSURoBk/reproduced-citations-v2/review.json": "c185ce21a1aa45a5fb7e38b0f07c2d28f5ef06f8834fd555a5a3e48c9445b3f0"
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-truth-confirmation--formal-crypto--9584-r1",
+      "trial": "formal-crypto__DjBPnEM",
+      "task": "terminal-bench/formal-crypto",
+      "executor": "luna",
+      "features": {
+        "report.admits_unmet": 0.96,
+        "report.rests_on_reading": 0.48,
+        "report.left_untested": 0.75,
+        "report.checked_against_task": 0.04,
+        "report.strict_grader_accepts": 0.04,
+        "report.admitted": 0.0,
+        "execution.observed": 0.41,
+        "execution.unresolved": 0.68,
+        "execution.required": 0.48,
+        "audit.observed": 0.74,
+        "audit.current": 0.83,
+        "audit.required": 0.74,
+        "source": null,
+        "readiness": 0.99
+      },
+      "model_scores": {
+        "verdict.fusion": 0.8203656129251995,
+        "verdict.pooled": 0.6424953174062571
+      },
+      "reproduced_score": null,
+      "reproduced_error": null,
+      "calls": {
+        "checks.final": null,
+        "verdict.combined": "fail",
+        "source-union-v1": "fail",
+        "source-union-v2": "fail",
+        "verdict.agreement": "fail",
+        "verdict.observed": "fail",
+        "verdict.fusion": "fail",
+        "verdict.pooled": null,
+        "verdict.reproduced": null,
+        "verdict.reproduced-quoted-v1": null,
+        "verdict.reproduced-citations-v2": null
+      },
+      "records_sha256": {
+        "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-truth-confirmation--formal-crypto--9584-r1/formal-crypto__DjBPnEM/agent/episode/artifacts/composition.json": "cb94fe0e67b02fb619913dead901876054a8934b70ad6b621ce1eb73eddb11cd",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/report-features-prospective/formal-crypto__DjBPnEM.json": "5d54dcbad0ae44e7aacfffcd0f9d7df51f2026699065cc5e0bbcff3e27d68fd3",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/execution-v2/execution-audit-prospective/formal-crypto__DjBPnEM.json": "b08f22512567278d7d69f5f47c7be53aa4d363355c9d48b0fa511e51c523ead4",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/execution-v2/report-audit-prospective/formal-crypto__DjBPnEM.json": "000b640575c50b61c67c79c083143916b579d4c662d4490ce1bb36f5fafe5289",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/formal-crypto__DjBPnEM/astra/review.json": "fb00ccb71f4b6e539a343bfec18f1d4a401759035de11dfe6ca011f5c090515e",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/formal-crypto__DjBPnEM/readiness/assessment.json": "359a3f0aecf088a1fb18eaf9d35024d118b353fc450f363fc4947d115bc91bb1",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/report-audit-prospective/formal-crypto__DjBPnEM.json": "1df43a35ca4948a315f9e8f2cbb05f5aff6abbdb600dcbc8e8a305cff04ed0f7",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/formal-crypto__DjBPnEM/reproduced/process.json": "437c582de788eaf5b12946065bcf50db5e022363d8bd18f3670d4406b47f212c",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/formal-crypto__DjBPnEM/reproduced/review.json": "2236c296b0349f430812ee416af03419788437dc048307f9c50b8fc7131f58cc",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/formal-crypto__DjBPnEM/reproduced-quoted/review.json": "4fb439c08dd30fa413353c6851736850e6067e6cf3c97cdc9c5df0d32b4e7535",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/formal-crypto__DjBPnEM/reproduced-citations-v2/review.json": "bb7af8e2d076211bf6ca720ef126d8cc013db036c9d6b43548188c2662e6a6b1"
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-truth-confirmation--freecad-impeller--9584-r1",
+      "trial": "freecad-impeller__wy7yRPQ",
+      "task": "terminal-bench/freecad-impeller",
+      "executor": "luna",
+      "features": {
+        "report.admits_unmet": 0.03,
+        "report.rests_on_reading": 0.04,
+        "report.left_untested": 0.07,
+        "report.checked_against_task": 0.33,
+        "report.strict_grader_accepts": 0.39,
+        "report.admitted": 0.0,
+        "execution.observed": 0.07,
+        "execution.unresolved": 0.09,
+        "execution.required": 0.07,
+        "audit.observed": 0.02,
+        "audit.current": 0.04,
+        "audit.required": 0.07,
+        "source": 0.9,
+        "readiness": 0.86
+      },
+      "model_scores": {
+        "verdict.fusion": 0.622176234245407,
+        "verdict.pooled": 0.1881747687563351
+      },
+      "reproduced_score": null,
+      "reproduced_error": null,
+      "calls": {
+        "checks.final": null,
+        "verdict.combined": "pass",
+        "source-union-v1": "fail",
+        "source-union-v2": "fail",
+        "verdict.agreement": "fail",
+        "verdict.observed": null,
+        "verdict.fusion": "fail",
+        "verdict.pooled": null,
+        "verdict.reproduced": null,
+        "verdict.reproduced-quoted-v1": "fail",
+        "verdict.reproduced-citations-v2": "fail"
+      },
+      "records_sha256": {
+        "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-truth-confirmation--freecad-impeller--9584-r1/freecad-impeller__wy7yRPQ/agent/episode/artifacts/composition.json": "b5b7d4b3c3b35f762c154bdc08b9121f017f30ce9a3fd1bcfe9bf6913ae4bda9",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/report-features-prospective/freecad-impeller__wy7yRPQ.json": "1ed922db69f1d07e33054e20815d7d247aa0acf37850869aba4d4a1f4fbc0265",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/execution-v2/execution-audit-prospective/freecad-impeller__wy7yRPQ.json": "d921edbc6d9766afabc39562c51dd51caca9a65f75eeef94c6fe63d2a056bb48",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/execution-v2/report-audit-prospective/freecad-impeller__wy7yRPQ.json": "b8b3e0fb2e5cd403d7853dcd36a0e13b1d49c00b2dd3e08dd8e472c149417c2a",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/freecad-impeller__wy7yRPQ/astra/review.json": "36d7f253f98898861cf5b39a0987a61232abdf9972f08d887fc3f454081fff1d",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/freecad-impeller__wy7yRPQ/readiness/assessment.json": "57a63ab1baed3255b10f081db5388afccc11b86caabd9317cc2cee911d1c95ab",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/report-audit-prospective/freecad-impeller__wy7yRPQ.json": "341e578fb86e17fb42ca7d139894fd753702a867ef2bdd7ff4bffc8d2ba2ec2e",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/freecad-impeller__wy7yRPQ/reproduced/process.json": "5f7b43c4b04383eed48235c94fc0d478da28510b1c57cf243b842513babe4659",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/freecad-impeller__wy7yRPQ/reproduced/review.json": "5abdb1d38bd82113952942b04de9a5ea8b6e4e5ad21c97dd811ea5720e49c1a0",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/freecad-impeller__wy7yRPQ/reproduced-quoted/review.json": "082fc2d8c3847bfc243b6ef0cdeac46ba971689ace48c93b1f009b1382530e23",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/freecad-impeller__wy7yRPQ/reproduced-citations-v2/review.json": "e88597934ad8b3aecc21b1e9769618f726ed0efeef7c40f346f35fa6f1fc509d"
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-truth-confirmation--freecad-spring-clip--9584-r1",
+      "trial": "freecad-spring-clip__TSfGK3H",
+      "task": "terminal-bench/freecad-spring-clip",
+      "executor": "luna",
+      "features": {
+        "report.admits_unmet": 0.21,
+        "report.rests_on_reading": 0.05,
+        "report.left_untested": 0.14,
+        "report.checked_against_task": 0.2,
+        "report.strict_grader_accepts": 0.18,
+        "report.admitted": 0.0,
+        "execution.observed": 0.16,
+        "execution.unresolved": 0.19,
+        "execution.required": 0.18,
+        "audit.observed": 0.07,
+        "audit.current": 0.08,
+        "audit.required": 0.26,
+        "source": 0.9,
+        "readiness": 0.999
+      },
+      "model_scores": {
+        "verdict.fusion": 0.7271893207282263,
+        "verdict.pooled": 0.371982572472988
+      },
+      "reproduced_score": null,
+      "reproduced_error": null,
+      "calls": {
+        "checks.final": null,
+        "verdict.combined": "pass",
+        "source-union-v1": "fail",
+        "source-union-v2": "fail",
+        "verdict.agreement": "fail",
+        "verdict.observed": null,
+        "verdict.fusion": "fail",
+        "verdict.pooled": null,
+        "verdict.reproduced": null,
+        "verdict.reproduced-quoted-v1": null,
+        "verdict.reproduced-citations-v2": "fail"
+      },
+      "records_sha256": {
+        "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-truth-confirmation--freecad-spring-clip--9584-r1/freecad-spring-clip__TSfGK3H/agent/episode/artifacts/composition.json": "0fede2687125b7055498c26acf3e79c54dec9cf844363f34444b4840cfb9bc13",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/report-features-prospective/freecad-spring-clip__TSfGK3H.json": "7419eefda7d1aff7af6603e160aaac066bf8aba25adb6ae38efbd65a3014d983",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/execution-v2/execution-audit-prospective/freecad-spring-clip__TSfGK3H.json": "a91e38f792493e20371058e1e61d1d034ce8d4a7a9cd2c1126c9151e5142951d",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/execution-v2/report-audit-prospective/freecad-spring-clip__TSfGK3H.json": "8a4f3c9658b50d85d254b980eab1f05696dc2442003a54257518cb8be0fb0459",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/freecad-spring-clip__TSfGK3H/astra/review.json": "c79e6f2db19bccc85f1e6216c68b2cb976b7f04a80307e719c8d7743c46eb2a4",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/freecad-spring-clip__TSfGK3H/readiness/assessment.json": "b0a8f6947bec240c46061479bf793d8146f57abe7cc0cd50f161deae57ca73a8",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/report-audit-prospective/freecad-spring-clip__TSfGK3H.json": "235ac5f6b8786d9cdb84f9f5dbf0c77b950c5b8a6f85b6581a9b6431b0ebf57a",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/freecad-spring-clip__TSfGK3H/reproduced/process.json": "2a4e28000d117d81b1db1e66d1c2eb3b6d42f9a6318097bb45e755b9aed568be",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/freecad-spring-clip__TSfGK3H/reproduced/review.json": "278ccb8f96a58dfc9bebf1d81149889649fb7e033cb8c568864f911a8950fade",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/freecad-spring-clip__TSfGK3H/reproduced-quoted/review.json": "2b50ceb0c6637939914aa831c512601fbfc80715e1edceded50ee08e3016bcd7",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/freecad-spring-clip__TSfGK3H/reproduced-citations-v2/review.json": "0063b02f2c3128d7449ae6d7c9a1cd60d898bf01aa4731b461901f485a6a4349"
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-truth-confirmation--math-eval-grader--9584-r1",
+      "trial": "math-eval-grader__8VqJfiN",
+      "task": "terminal-bench/math-eval-grader",
+      "executor": "luna",
+      "features": {
+        "source": 0.91,
+        "readiness": 0.999
+      },
+      "model_scores": {
+        "verdict.fusion": 0.8817048605068805,
+        "verdict.pooled": 0.19259203791161203
+      },
+      "reproduced_score": null,
+      "reproduced_error": "No complete attributable app snapshot",
+      "calls": {
+        "checks.final": "fail",
+        "verdict.combined": "fail",
+        "source-union-v1": "fail",
+        "source-union-v2": "fail",
+        "verdict.agreement": "fail",
+        "verdict.observed": null,
+        "verdict.fusion": "fail",
+        "verdict.pooled": null,
+        "verdict.reproduced": null,
+        "verdict.reproduced-quoted-v1": null,
+        "verdict.reproduced-citations-v2": null
+      },
+      "records_sha256": {
+        "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-truth-confirmation--math-eval-grader--9584-r1/math-eval-grader__8VqJfiN/agent/episode/artifacts/composition.json": "09a6df06cb75b22df473be639718011f82e55a3d00aaaebff479d625830714db",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/report-features-prospective/math-eval-grader__8VqJfiN.json": "f2c4cef6e6ffc85594d7d7a688f29a9ab2609a258060beefc3aca406cb51c576",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/execution-v2/execution-audit-prospective/math-eval-grader__8VqJfiN.json": "15da33567c083dc858869c27d638d64f681721e3526fe610720158ba6f353a2b",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/execution-v2/report-audit-prospective/math-eval-grader__8VqJfiN.json": "f2c4cef6e6ffc85594d7d7a688f29a9ab2609a258060beefc3aca406cb51c576",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/math-eval-grader__8VqJfiN/astra/review.json": "48e837632b47c8c09e18a0049f2ceec1118ce6ff56b17b449b339ffde1a2ed6e",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/math-eval-grader__8VqJfiN/readiness/assessment.json": "69fb21b1ba5f4b479c3167db52eade35368d5d8e16e76ba2ab3fa0cd69c4f330",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/report-audit-prospective/math-eval-grader__8VqJfiN.json": "f2c4cef6e6ffc85594d7d7a688f29a9ab2609a258060beefc3aca406cb51c576",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/math-eval-grader__8VqJfiN/reproduced/process.json": "7fc3751c7ced1f672cef6afd0be514f64ac7c9e56da64da0d8d7a76494de82de"
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-truth-confirmation--pretrain-shard-corruption--9584-r1",
+      "trial": "pretrain-shard-corruption__ZeirVXN",
+      "task": "terminal-bench/pretrain-shard-corruption",
+      "executor": "luna",
+      "features": {
+        "report.admits_unmet": 0.13,
+        "report.rests_on_reading": 0.11,
+        "report.left_untested": 0.05,
+        "report.checked_against_task": 0.66,
+        "report.strict_grader_accepts": 0.32,
+        "report.admitted": 0.0,
+        "execution.observed": 0.13,
+        "execution.unresolved": 0.16,
+        "execution.required": 0.21,
+        "audit.observed": 0.06,
+        "audit.current": 0.07,
+        "audit.required": 0.22,
+        "source": 0.56,
+        "readiness": 0.88
+      },
+      "model_scores": {
+        "verdict.fusion": 0.5386989582013681,
+        "verdict.pooled": 0.1286169623629701
+      },
+      "reproduced_score": null,
+      "reproduced_error": null,
+      "calls": {
+        "checks.final": null,
+        "verdict.combined": null,
+        "source-union-v1": null,
+        "source-union-v2": null,
+        "verdict.agreement": null,
+        "verdict.observed": null,
+        "verdict.fusion": null,
+        "verdict.pooled": null,
+        "verdict.reproduced": null,
+        "verdict.reproduced-quoted-v1": null,
+        "verdict.reproduced-citations-v2": null
+      },
+      "records_sha256": {
+        "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-truth-confirmation--pretrain-shard-corruption--9584-r1/pretrain-shard-corruption__ZeirVXN/agent/episode/artifacts/composition.json": "176662b0d381532a17e534c7decff1aeb8100be2068faf9d9845c121353eba06",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/report-features-prospective/pretrain-shard-corruption__ZeirVXN.json": "fd999eace2d06176313ae7a7502d165e8adfd13b2cdd7d55b2100b18705ab91b",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/execution-v2/execution-audit-prospective/pretrain-shard-corruption__ZeirVXN.json": "7f9ff73717dc2c8002a82b1d63e11bdf0de72264d318f89ee58daa8ffe18b19e",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/execution-v2/report-audit-prospective/pretrain-shard-corruption__ZeirVXN.json": "c3c5a8ca6d356699faee590ec6be2cee878d9ca05a1cc2b81ba4681c13d43283",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/pretrain-shard-corruption__ZeirVXN/astra/review.json": "0b0eff14ae8f0307e8bb5b2382bdd31f13a6e01c3a1cd5762bf1edc1bb0b5205",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/pretrain-shard-corruption__ZeirVXN/readiness/assessment.json": "e41954b034ee592f7359aa9f7e2913a2ae1a7a89651c0c9cb11233a687ae2156",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/report-audit-prospective/pretrain-shard-corruption__ZeirVXN.json": "7f6ffcf52638a051e1f65b6717c9a4cdb8299435eaf7fa887055ee82b5507997",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/pretrain-shard-corruption__ZeirVXN/reproduced/process.json": "2634324bd2939da71f97f0c34a492197252783f7956c8431e04b42e4c2ec05e9",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/pretrain-shard-corruption__ZeirVXN/reproduced/review.json": "ca311d7028977ffe386d0c939f94f2d5fd15c8580c7f9068af07a96d8dabb689",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/pretrain-shard-corruption__ZeirVXN/reproduced-quoted/review.json": "1fb6f31d5eedadf079aeb4d8215b51891fdd574e705467631d03fa75f0d17801",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/pretrain-shard-corruption__ZeirVXN/reproduced-citations-v2/review.json": "3c192059472872921014fcd046eb85873214717ba4d739644deca515348f90f4"
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-truth-confirmation--shadow-relay--9584-r1",
+      "trial": "shadow-relay__QWbzYAf",
+      "task": "terminal-bench/shadow-relay",
+      "executor": "luna",
+      "features": {
+        "source": null,
+        "readiness": 0.5
+      },
+      "model_scores": {
+        "verdict.fusion": 0.7055510424665982,
+        "verdict.pooled": 0.19259203791161203
+      },
+      "reproduced_score": null,
+      "reproduced_error": "The final candidate includes paths outside the retained app snapshot",
+      "calls": {
+        "checks.final": "fail",
+        "verdict.combined": "fail",
+        "source-union-v1": null,
+        "source-union-v2": null,
+        "verdict.agreement": null,
+        "verdict.observed": null,
+        "verdict.fusion": "fail",
+        "verdict.pooled": null,
+        "verdict.reproduced": null,
+        "verdict.reproduced-quoted-v1": null,
+        "verdict.reproduced-citations-v2": null
+      },
+      "records_sha256": {
+        "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-truth-confirmation--shadow-relay--9584-r1/shadow-relay__QWbzYAf/agent/episode/artifacts/composition.json": "49abcdc33dc3ef383130d076214f97d04625fe053908f3c34406810d66758b57",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/report-features-prospective/shadow-relay__QWbzYAf.json": "6d65c682448d2e852bc80da93c5d7b98e8cf1bc2539de13be69d0c968751b22e",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/execution-v2/execution-audit-prospective/shadow-relay__QWbzYAf.json": "2c89dccef9f013f833a3ca68f64fde0b5076328360502efa202466433b7c2b4d",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/execution-v2/report-audit-prospective/shadow-relay__QWbzYAf.json": "6d65c682448d2e852bc80da93c5d7b98e8cf1bc2539de13be69d0c968751b22e",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/shadow-relay__QWbzYAf/astra/review.json": "ddac567509970cbca8d6630b4779141592f81c7c7e5fcb49eea0fd62c6ce1ef7",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/shadow-relay__QWbzYAf/readiness/assessment.json": "422d10c887746860fa89c04377e644b7b0008fcfc1c173f95e928b8590eddd81",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/report-audit-prospective/shadow-relay__QWbzYAf.json": "6d65c682448d2e852bc80da93c5d7b98e8cf1bc2539de13be69d0c968751b22e",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/shadow-relay__QWbzYAf/reproduced/process.json": "d0ae1d9074c9acbefbc7ff5583455f2723171ac2a263a2171dd06e30bbdf3dee"
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-truth-confirmation--vpp-loss-divergence--9584-r1",
+      "trial": "vpp-loss-divergence__j23bCmx",
+      "task": "terminal-bench/vpp-loss-divergence",
+      "executor": "luna",
+      "features": {
+        "source": null,
+        "readiness": 0.5
+      },
+      "model_scores": {
+        "verdict.fusion": 0.7055510424665982,
+        "verdict.pooled": 0.19259203791161203
+      },
+      "reproduced_score": null,
+      "reproduced_error": "The final candidate includes paths outside the retained app snapshot",
+      "calls": {
+        "checks.final": null,
+        "verdict.combined": "fail",
+        "source-union-v1": null,
+        "source-union-v2": null,
+        "verdict.agreement": null,
+        "verdict.observed": null,
+        "verdict.fusion": "fail",
+        "verdict.pooled": null,
+        "verdict.reproduced": null,
+        "verdict.reproduced-quoted-v1": null,
+        "verdict.reproduced-citations-v2": null
+      },
+      "records_sha256": {
+        "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-truth-confirmation--vpp-loss-divergence--9584-r1/vpp-loss-divergence__j23bCmx/agent/episode/artifacts/composition.json": "3b615dd162fcd85c959396ebb24209e0cd2ed201cb4ffa8e82bd7132d4a01da0",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/report-features-prospective/vpp-loss-divergence__j23bCmx.json": "03ff54e5f1d1494cc0b0dc4bf5330a94d7a2fe23e1b40719a98fb06d0d01ad58",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/execution-v2/execution-audit-prospective/vpp-loss-divergence__j23bCmx.json": "75ee803842d7dfafc0df5d1906724374ce65925d01181e3ec6d630479aa34a0d",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/execution-v2/report-audit-prospective/vpp-loss-divergence__j23bCmx.json": "03ff54e5f1d1494cc0b0dc4bf5330a94d7a2fe23e1b40719a98fb06d0d01ad58",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/vpp-loss-divergence__j23bCmx/astra/review.json": "482e88849b052aa2702aad3c1d4272c2b54d70a939caaa89a6698c0a36c7bff3",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/vpp-loss-divergence__j23bCmx/readiness/assessment.json": "4537933b4676f1b184895dd0e090b5d8530ee13da963c71bd32ee32c886a1e7d",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/report-audit-prospective/vpp-loss-divergence__j23bCmx.json": "03ff54e5f1d1494cc0b0dc4bf5330a94d7a2fe23e1b40719a98fb06d0d01ad58",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/vpp-loss-divergence__j23bCmx/reproduced/process.json": "9bd993e020b42762876cda5ccf0dfdbc56285a414ca7fdc3293b03f4cee23904"
+      }
+    },
+    {
+      "job": "tb4--coder-one-astra-truth-control--distributed-dedup--9584-r1",
+      "trial": "distributed-dedup__YT5MuTJ",
+      "task": "terminal-bench/distributed-dedup",
+      "executor": "astra",
+      "features": {
+        "report.admits_unmet": 0.04,
+        "report.rests_on_reading": 0.05,
+        "report.left_untested": 0.06,
+        "report.checked_against_task": 0.46,
+        "report.strict_grader_accepts": 0.29,
+        "report.admitted": 0.0,
+        "execution.observed": 0.07,
+        "execution.unresolved": 0.1,
+        "execution.required": 0.06,
+        "audit.observed": 0.03,
+        "audit.current": 0.05,
+        "audit.required": 0.13,
+        "source": 0.71,
+        "readiness": 0.55
+      },
+      "model_scores": {
+        "verdict.fusion": 0.576685735114864,
+        "verdict.pooled": 0.19959286944782437
+      },
+      "reproduced_score": null,
+      "reproduced_error": null,
+      "calls": {
+        "checks.final": null,
+        "verdict.combined": null,
+        "source-union-v1": null,
+        "source-union-v2": "fail",
+        "verdict.agreement": null,
+        "verdict.observed": null,
+        "verdict.fusion": null,
+        "verdict.pooled": null,
+        "verdict.reproduced": null,
+        "verdict.reproduced-quoted-v1": null,
+        "verdict.reproduced-citations-v2": null
+      },
+      "records_sha256": {
+        "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-astra-truth-control--distributed-dedup--9584-r1/distributed-dedup__YT5MuTJ/agent/episode/artifacts/composition.json": "138c9429bb9e971ce5b35340b61bfa633d6c19e0009a3fe162c6bb0f341325b5",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/report-features-prospective/distributed-dedup__YT5MuTJ.json": "3c361575ded4108e5508781d69b68cc9a6ecc020996e874f6d5afdb3f42d9eac",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/execution-v2/execution-audit-prospective/distributed-dedup__YT5MuTJ.json": "60138d8373eb918d63ba82c5f93f587672ce85ea20efbc90350330c61e8f2506",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/execution-v2/report-audit-prospective/distributed-dedup__YT5MuTJ.json": "cf1294b2d9e975b397f081ad3bb8b78f19e7d99644b4039a91786184ecf238a1",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/distributed-dedup__YT5MuTJ/astra/review.json": "5aa8e81c52a99b760f2c34cbf24017068a35d510ab9da517c48a23c58df7d2f5",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/distributed-dedup__YT5MuTJ/readiness/assessment.json": "da381f18053087da6937cf2fba5010d0e4dd95558316c3a9535a577743810a42",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/report-audit-prospective/distributed-dedup__YT5MuTJ.json": "856c41270a38cb2de8c7c1db6629be11697d0e9b17c73019454cb4949215ce93",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/distributed-dedup__YT5MuTJ/reproduced/process.json": "caeb8fe2ab47bb1055b90b82900f49e1eeff2ff69d1b79731c0a08e0cda1fb16",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/distributed-dedup__YT5MuTJ/reproduced/review.json": "7283119c4a69664ee0f3a63adf2c1d2a0c219d9ec4fffce71426b98743ba6d90",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/distributed-dedup__YT5MuTJ/reproduced-quoted/review.json": "88c3a24b89542eaded931db745d6e095b939ac31e4c3067b6ee56567e3e00e51",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/distributed-dedup__YT5MuTJ/reproduced-citations-v2/review.json": "e17255faa0bb191814232fa0c106b22441b21a8f218fdb583860b99f74f82aad"
+      }
+    },
+    {
+      "job": "tb4--coder-one-astra-truth-control--formal-crypto--9584-r1",
+      "trial": "formal-crypto__iCSMsv3",
+      "task": "terminal-bench/formal-crypto",
+      "executor": "astra",
+      "features": {
+        "source": null,
+        "readiness": 0.3
+      },
+      "model_scores": {
+        "verdict.fusion": 0.6983908171324723,
+        "verdict.pooled": 0.19259203791161203
+      },
+      "reproduced_score": null,
+      "reproduced_error": null,
+      "calls": {
+        "checks.final": null,
+        "verdict.combined": null,
+        "source-union-v1": null,
+        "source-union-v2": null,
+        "verdict.agreement": null,
+        "verdict.observed": null,
+        "verdict.fusion": "fail",
+        "verdict.pooled": null,
+        "verdict.reproduced": null,
+        "verdict.reproduced-quoted-v1": null,
+        "verdict.reproduced-citations-v2": null
+      },
+      "records_sha256": {
+        "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-astra-truth-control--formal-crypto--9584-r1/formal-crypto__iCSMsv3/agent/episode/artifacts/composition.json": "5679d11a9151ff97e8aea1554005447b586cfdbd848a2781e8aeb8ce8c156e86",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/report-features-prospective/formal-crypto__iCSMsv3.json": "0c617e2a65b144da1f326de1dbff2c484206116008339827dd303e70eb2365fa",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/execution-v2/execution-audit-prospective/formal-crypto__iCSMsv3.json": "345cd8283071345ccf7eebd0403f41b4eedf8d6563c0fcfa518809bf5f188f40",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/execution-v2/report-audit-prospective/formal-crypto__iCSMsv3.json": "0c617e2a65b144da1f326de1dbff2c484206116008339827dd303e70eb2365fa",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/formal-crypto__iCSMsv3/astra/review.json": "96636a9dc742c04508f57776657e83baa48e09e165ba1d8809ad26cc9c80b99a",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/formal-crypto__iCSMsv3/readiness/assessment.json": "dc730eac2851a2e2111dffe79a69391b32de215c384ce865d0de497012aed917",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/report-audit-prospective/formal-crypto__iCSMsv3.json": "0c617e2a65b144da1f326de1dbff2c484206116008339827dd303e70eb2365fa",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/formal-crypto__iCSMsv3/reproduced/process.json": "df9457b549394c7d5c0131bf49aa0f3d1a781c1c296e41db76b8a52d73a5133b",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/formal-crypto__iCSMsv3/reproduced/review.json": "28e5f7acf5df55346b104bffc9ba79673f7baf05b7fd470b28c85113106a217a",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/formal-crypto__iCSMsv3/reproduced-quoted/review.json": "0e001282ac67425b3f2e5b6f833f3f50e624dd6aefcb180745c1bf975d7f3418",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/formal-crypto__iCSMsv3/reproduced-citations-v2/review.json": "3bbdbb8ecec775541ac3f613f8770017df085add5bf84664144efb28487509de"
+      }
+    },
+    {
+      "job": "tb4--coder-one-astra-truth-control--freecad-impeller--9584-r1",
+      "trial": "freecad-impeller__XWiud7W",
+      "task": "terminal-bench/freecad-impeller",
+      "executor": "astra",
+      "features": {
+        "report.admits_unmet": 0.03,
+        "report.rests_on_reading": 0.06,
+        "report.left_untested": 0.06,
+        "report.checked_against_task": 0.29,
+        "report.strict_grader_accepts": 0.54,
+        "report.admitted": 0.0,
+        "execution.observed": 0.05,
+        "execution.unresolved": 0.08,
+        "execution.required": 0.06,
+        "audit.observed": 0.03,
+        "audit.current": 0.04,
+        "audit.required": 0.06,
+        "source": null,
+        "readiness": 0.1
+      },
+      "model_scores": {
+        "verdict.fusion": 0.32783029651466405,
+        "verdict.pooled": 0.11648573540178574
+      },
+      "reproduced_score": null,
+      "reproduced_error": null,
+      "calls": {
+        "checks.final": null,
+        "verdict.combined": "pass",
+        "source-union-v1": null,
+        "source-union-v2": null,
+        "verdict.agreement": null,
+        "verdict.observed": null,
+        "verdict.fusion": null,
+        "verdict.pooled": null,
+        "verdict.reproduced": null,
+        "verdict.reproduced-quoted-v1": null,
+        "verdict.reproduced-citations-v2": null
+      },
+      "records_sha256": {
+        "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-astra-truth-control--freecad-impeller--9584-r1/freecad-impeller__XWiud7W/agent/episode/artifacts/composition.json": "e616b78e1989785047cc41de28a43e1cb4db690a0eaf49efb9622706e084f892",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/report-features-prospective/freecad-impeller__XWiud7W.json": "31ed8c42acde0d48ef776f2293791648d336d0cf4938d6b7a84316a3c55a2283",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/execution-v2/execution-audit-prospective/freecad-impeller__XWiud7W.json": "d6f2f8ceabb5d7a6688710b19047cc709eff7fc01b46593b43305d21ba00e041",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/execution-v2/report-audit-prospective/freecad-impeller__XWiud7W.json": "c171590a190694395c3ae81f1be2f6b6beae800426c279033f3f27dd854d4b8c",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/freecad-impeller__XWiud7W/astra/review.json": "d13d69d0269c0b98df6db0cc5568e1a239e1d441876275461e8224a6edd4da09",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/freecad-impeller__XWiud7W/readiness/assessment.json": "5951ffa8cba6565a15a936ed5228c7c4ee74bfd6855db0f3c7f383ef252e8966",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/report-audit-prospective/freecad-impeller__XWiud7W.json": "834c11394ed121a161715458ac14e347a3b3d4f16fb1d50a566530919b621b8c",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/freecad-impeller__XWiud7W/reproduced/process.json": "9e1966850c7e7ba90c2f41501b10c381bd45c5a4e11a57ac96cf30e1df935e08",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/freecad-impeller__XWiud7W/reproduced/review.json": "63db147e990085004d425ec6e74777ebe19ae251f601da6f1e24dc90b6599f59",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/freecad-impeller__XWiud7W/reproduced-quoted/review.json": "136ac3744f9f1a21455eab3a9b1c1240c6d368c8e04efa3d464fd0050e17c17c",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/freecad-impeller__XWiud7W/reproduced-citations-v2/review.json": "709655a2e7792bca30132c4d0bc05f5f1d078b40ac4fc385e6a456e58fa09acc"
+      }
+    },
+    {
+      "job": "tb4--coder-one-astra-truth-control--freecad-spring-clip--9584-r1",
+      "trial": "freecad-spring-clip__YHtXhkG",
+      "task": "terminal-bench/freecad-spring-clip",
+      "executor": "astra",
+      "features": {
+        "report.admits_unmet": 0.03,
+        "report.rests_on_reading": 0.05,
+        "report.left_untested": 0.04,
+        "report.checked_against_task": 0.27,
+        "report.strict_grader_accepts": 0.48,
+        "report.admitted": 0.0,
+        "execution.observed": 0.06,
+        "execution.unresolved": 0.09,
+        "execution.required": 0.08,
+        "audit.observed": 0.02,
+        "audit.current": 0.04,
+        "audit.required": 0.06,
+        "source": null,
+        "readiness": 0.1
+      },
+      "model_scores": {
+        "verdict.fusion": 0.34387952540451366,
+        "verdict.pooled": 0.14816742389340684
+      },
+      "reproduced_score": null,
+      "reproduced_error": null,
+      "calls": {
+        "checks.final": null,
+        "verdict.combined": "pass",
+        "source-union-v1": null,
+        "source-union-v2": null,
+        "verdict.agreement": null,
+        "verdict.observed": null,
+        "verdict.fusion": null,
+        "verdict.pooled": null,
+        "verdict.reproduced": null,
+        "verdict.reproduced-quoted-v1": null,
+        "verdict.reproduced-citations-v2": null
+      },
+      "records_sha256": {
+        "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-astra-truth-control--freecad-spring-clip--9584-r1/freecad-spring-clip__YHtXhkG/agent/episode/artifacts/composition.json": "1ac4ae119bb793233f8fe7ecb616a3da28f7bb04c483a328f1f1fea5f2345dd3",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/report-features-prospective/freecad-spring-clip__YHtXhkG.json": "fd2ce3735c0c8c57f7f0b31aa255a11390f5b56d3b62357f833c14d3b7f3aa30",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/execution-v2/execution-audit-prospective/freecad-spring-clip__YHtXhkG.json": "8a6121749af3fe1f61302190cacf0b9508bc981142d3c6f354356f586c889c89",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/execution-v2/report-audit-prospective/freecad-spring-clip__YHtXhkG.json": "80e6b57761c9b74ccbacff9fcfb4a17e6e5962d6f0fd87f7ff5fb8b367b70018",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/freecad-spring-clip__YHtXhkG/astra/review.json": "915c001d09348a84a8b7c0303789565188858ecd7e996397f5891e468bce10ff",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/freecad-spring-clip__YHtXhkG/readiness/assessment.json": "0fcc9f1973f9865b1e8ef5c93f424827793d7ceecb89bc918428cb4282cd827e",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/report-audit-prospective/freecad-spring-clip__YHtXhkG.json": "74b5056d5e52e1943104bd29a18ffe9178c6e2f6af2486f08366e2e00931efb4",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/freecad-spring-clip__YHtXhkG/reproduced/process.json": "85b92e5b24fb86f878e40f9abbd6f3c22d14f4a063cd6ff03d908ec46f8eb882",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/freecad-spring-clip__YHtXhkG/reproduced/review.json": "3e5769ed04567768ae01692ff16201cccaa2d1cbcae5efde6f6d968ba33cbe1d",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/freecad-spring-clip__YHtXhkG/reproduced-quoted/review.json": "5f5d63d6b24dda5387ba58efa43f1267925be02496c66011104c2cbe6fa9c17f",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/freecad-spring-clip__YHtXhkG/reproduced-citations-v2/review.json": "ce03058966c8a481263feaa17c675fe979e2b17009df814c76550053530bb8f4"
+      }
+    },
+    {
+      "job": "tb4--coder-one-astra-truth-control--math-eval-grader--9584-r1",
+      "trial": "math-eval-grader__G6edYMz",
+      "task": "terminal-bench/math-eval-grader",
+      "executor": "astra",
+      "features": {
+        "source": 0.87,
+        "readiness": 0.55
+      },
+      "model_scores": {
+        "verdict.fusion": 0.8720852405006287,
+        "verdict.pooled": 0.19259203791161203
+      },
+      "reproduced_score": null,
+      "reproduced_error": "No complete attributable app snapshot",
+      "calls": {
+        "checks.final": "fail",
+        "verdict.combined": "fail",
+        "source-union-v1": null,
+        "source-union-v2": "fail",
+        "verdict.agreement": "fail",
+        "verdict.observed": null,
+        "verdict.fusion": "fail",
+        "verdict.pooled": null,
+        "verdict.reproduced": null,
+        "verdict.reproduced-quoted-v1": null,
+        "verdict.reproduced-citations-v2": null
+      },
+      "records_sha256": {
+        "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-astra-truth-control--math-eval-grader--9584-r1/math-eval-grader__G6edYMz/agent/episode/artifacts/composition.json": "e48ddcf5a8258ffa5c3361e5f86a7e9830150e3a798c462b08a5c879f09c3d5d",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/report-features-prospective/math-eval-grader__G6edYMz.json": "979a544c3740d3f15a1379e121f437c4ff865f263b7928cd2fdd84cfabfb56f0",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/execution-v2/execution-audit-prospective/math-eval-grader__G6edYMz.json": "e064ebcbd4897da0e0122b14f458ad2571566d9d9d00d7f6ca9140c01528a1b3",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/execution-v2/report-audit-prospective/math-eval-grader__G6edYMz.json": "979a544c3740d3f15a1379e121f437c4ff865f263b7928cd2fdd84cfabfb56f0",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/math-eval-grader__G6edYMz/astra/review.json": "c63921ebe260ae7f291be770a84074008cce283f7e460d2950c6029baa414e70",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/math-eval-grader__G6edYMz/readiness/assessment.json": "76d040f2bbd9dceff96a6e39846993a3796b15692331d3a28982260ab512123a",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/report-audit-prospective/math-eval-grader__G6edYMz.json": "979a544c3740d3f15a1379e121f437c4ff865f263b7928cd2fdd84cfabfb56f0",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/math-eval-grader__G6edYMz/reproduced/process.json": "d7155d9ffed2793d830591a23bd4a7b5a6fad6cbdfd47adfae18e6b73114993f"
+      }
+    },
+    {
+      "job": "tb4--coder-one-astra-truth-control--pretrain-shard-corruption--9584-r1",
+      "trial": "pretrain-shard-corruption__DwSw56Y",
+      "task": "terminal-bench/pretrain-shard-corruption",
+      "executor": "astra",
+      "features": {
+        "source": null,
+        "readiness": 0.94
+      },
+      "model_scores": {
+        "verdict.fusion": 0.7209486573996966,
+        "verdict.pooled": 0.19259203791161203
+      },
+      "reproduced_score": null,
+      "reproduced_error": null,
+      "calls": {
+        "checks.final": null,
+        "verdict.combined": "fail",
+        "source-union-v1": null,
+        "source-union-v2": null,
+        "verdict.agreement": null,
+        "verdict.observed": null,
+        "verdict.fusion": "fail",
+        "verdict.pooled": null,
+        "verdict.reproduced": null,
+        "verdict.reproduced-quoted-v1": null,
+        "verdict.reproduced-citations-v2": null
+      },
+      "records_sha256": {
+        "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-astra-truth-control--pretrain-shard-corruption--9584-r1/pretrain-shard-corruption__DwSw56Y/agent/episode/artifacts/composition.json": "fd848249d7828281baa8d18e920d4c68b7630f0bc79ef4983ca9ec596fa085c9",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/report-features-prospective/pretrain-shard-corruption__DwSw56Y.json": "b94b9e427f20983269f4b6559c6d267bdae1a8c7c0ddf1e4d1109a109a8dd36c",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/execution-v2/execution-audit-prospective/pretrain-shard-corruption__DwSw56Y.json": "6fff6ffc0e37c9fe0c0918bdd4f3dc79ca2c9e9b06918801e9085357ed7050b5",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/execution-v2/report-audit-prospective/pretrain-shard-corruption__DwSw56Y.json": "b94b9e427f20983269f4b6559c6d267bdae1a8c7c0ddf1e4d1109a109a8dd36c",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/pretrain-shard-corruption__DwSw56Y/astra/review.json": "0b1e5100f1e820074f9cb62c6e91e95394a437a00133a7a38b85d5dd62b771d7",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/pretrain-shard-corruption__DwSw56Y/readiness/assessment.json": "67cade791a0b5e4c82b15055ac2c71a7a7e300fb22581327bb9a5c0f9c5a592a",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/report-audit-prospective/pretrain-shard-corruption__DwSw56Y.json": "b94b9e427f20983269f4b6559c6d267bdae1a8c7c0ddf1e4d1109a109a8dd36c",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/pretrain-shard-corruption__DwSw56Y/reproduced/process.json": "4dbc7392f598807e578b67a1e1bf0806a4f3619b52cb739583db949dd89297e2",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/pretrain-shard-corruption__DwSw56Y/reproduced/review.json": "62365fa9cfa4062bb1618b4cdc74f0ee5a7f2a725433581196eb80782ee980e9",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/pretrain-shard-corruption__DwSw56Y/reproduced-citations-v2/review.json": "33180559ad1559f1d4dbe61fb966b7aa3ba3cd95d95ce59b3ee9c75bdb545554"
+      }
+    },
+    {
+      "job": "tb4--coder-one-astra-truth-control--shadow-relay--9584-r1",
+      "trial": "shadow-relay__vjf9cyb",
+      "task": "terminal-bench/shadow-relay",
+      "executor": "astra",
+      "features": {
+        "report.admits_unmet": 0.05,
+        "report.rests_on_reading": 0.06,
+        "report.left_untested": 0.19,
+        "report.checked_against_task": 0.4,
+        "report.strict_grader_accepts": 0.35,
+        "report.admitted": 0.0,
+        "execution.observed": 0.06,
+        "execution.unresolved": 0.08,
+        "execution.required": 0.07,
+        "audit.observed": 0.03,
+        "audit.current": 0.04,
+        "audit.required": 0.19,
+        "source": null,
+        "readiness": 0.04
+      },
+      "model_scores": {
+        "verdict.fusion": 0.29683850597394196,
+        "verdict.pooled": 0.15938494678430098
+      },
+      "reproduced_score": null,
+      "reproduced_error": "The final candidate includes paths outside the retained app snapshot",
+      "calls": {
+        "checks.final": null,
+        "verdict.combined": "pass",
+        "source-union-v1": null,
+        "source-union-v2": null,
+        "verdict.agreement": null,
+        "verdict.observed": null,
+        "verdict.fusion": null,
+        "verdict.pooled": null,
+        "verdict.reproduced": null,
+        "verdict.reproduced-quoted-v1": null,
+        "verdict.reproduced-citations-v2": null
+      },
+      "records_sha256": {
+        "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-astra-truth-control--shadow-relay--9584-r1/shadow-relay__vjf9cyb/agent/episode/artifacts/composition.json": "804af572e86c374ccccd99ff54cb5a47ddd507298a59bad1eebdbce9a927d4c7",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/report-features-prospective/shadow-relay__vjf9cyb.json": "7dae331974838f420a5e91369ebbd72d75482ec806cd4415b15f39011761fe21",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/execution-v2/execution-audit-prospective/shadow-relay__vjf9cyb.json": "3c19029561ffc492e36b4437ca89bb8d2f398431a58d944fd8761570d4242fdd",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/execution-v2/report-audit-prospective/shadow-relay__vjf9cyb.json": "1ffdbda574fef189772ba0349526acc4bffec5da66620d3a73502a0134366235",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/shadow-relay__vjf9cyb/astra/review.json": "ec98ca96cdd730ae90568f11c559a75dd7a221c06abce851bc18636f77dd9821",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/shadow-relay__vjf9cyb/readiness/assessment.json": "deeb5d7a10449598c5011fa4b7c9fc6a5a8b80de50f772d33f42abf351871746",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/report-audit-prospective/shadow-relay__vjf9cyb.json": "44720b11775210e1c351c442720ab9ebb361c694f469c07f0d79e436fe890d5e",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/shadow-relay__vjf9cyb/reproduced/process.json": "2cb4def49610ccea4f2431bbf26ca138fc5f00a24a58db1d6932b715fa83edb9"
+      }
+    },
+    {
+      "job": "tb4--coder-one-astra-truth-control--vpp-loss-divergence--9584-r2",
+      "trial": "vpp-loss-divergence__T9Z3LzN",
+      "task": "terminal-bench/vpp-loss-divergence",
+      "executor": "astra",
+      "features": {
+        "report.admits_unmet": 0.11,
+        "report.rests_on_reading": 0.13,
+        "report.left_untested": 0.19,
+        "report.checked_against_task": 0.36,
+        "report.strict_grader_accepts": 0.19,
+        "report.admitted": 0.0,
+        "execution.observed": 0.23,
+        "execution.unresolved": 0.21,
+        "execution.required": 0.18,
+        "audit.observed": 0.04,
+        "audit.current": 0.06,
+        "audit.required": 0.26,
+        "source": null,
+        "readiness": 0.18
+      },
+      "model_scores": {
+        "verdict.fusion": 0.3492702631186149,
+        "verdict.pooled": 0.30481759518485374
+      },
+      "reproduced_score": null,
+      "reproduced_error": "The final candidate includes paths outside the retained app snapshot",
+      "calls": {
+        "checks.final": null,
+        "verdict.combined": null,
+        "source-union-v1": null,
+        "source-union-v2": null,
+        "verdict.agreement": null,
+        "verdict.observed": null,
+        "verdict.fusion": null,
+        "verdict.pooled": null,
+        "verdict.reproduced": null,
+        "verdict.reproduced-quoted-v1": null,
+        "verdict.reproduced-citations-v2": null
+      },
+      "records_sha256": {
+        "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-astra-truth-control--vpp-loss-divergence--9584-r2/vpp-loss-divergence__T9Z3LzN/agent/episode/artifacts/composition.json": "7a6af5175280b8094267f3ef33a60e73b9bff43c74388c0d2a06237b9bda322c",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/report-features-prospective/vpp-loss-divergence__T9Z3LzN.json": "1e3fedd287dbfa2ee636fd6570c4c3a682f9877b60cdc1fd6f7246da0b425566",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/execution-v2/execution-audit-prospective/vpp-loss-divergence__T9Z3LzN.json": "fbd2c09156d06c795f0a99cb957ec6dea2db586f714b5416c36cef93e52c0478",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/execution-v2/report-audit-prospective/vpp-loss-divergence__T9Z3LzN.json": "c4a2ed1fbd78dc97c0feb56d9755811483f0b3e790eaf691c2f38dc5b9d67343",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/vpp-loss-divergence__T9Z3LzN/astra/review.json": "20051328af5d4e85ba7874ca6e86c3d7b2e2c1d4d6fed8c6e1ad975a90ffe38b",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/vpp-loss-divergence__T9Z3LzN/readiness/assessment.json": "2982f81e3cc04ec06a5dee35e6a3bfdf181962a62b19253c9d793bb7d076b8dd",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/report-audit-prospective/vpp-loss-divergence__T9Z3LzN.json": "f559a1bb13b8ebb3b5b7bf513f5f2e6159e6002f48744b769d23598cd75d669b",
+        "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/vpp-loss-divergence__T9Z3LzN/reproduced/process.json": "e6b249d8b268b6723b48b56236ae7bad4defbee4bff6664b04b5dcbd1fe69277"
+      }
+    }
+  ]
+}
