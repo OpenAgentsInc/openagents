@@ -1,0 +1,371 @@
+{
+  "schema": "openagents.coder-one.finish-summary.v1",
+  "implementation": {
+    "name": "finish-rule-v1",
+    "digest": "f405f2b85acdaa105c458ca9920618f15de84ea0042dccc05409c814e9802190"
+  },
+  "sources": {
+    "microluna_logs": 36,
+    "codex_streams": 185,
+    "excluded_sealed": 0,
+    "excluded_truth": 0,
+    "luna_without_stream": [
+      "extended--codex-gpt-6-luna--cancel-async-tasks/cancel-async-tasks__QsgoyqM",
+      "extended--codex-gpt-6-luna--cancel-async-tasks-2/cancel-async-tasks__QyNh4hS",
+      "extended--codex-gpt-6-luna--cancel-async-tasks-3/cancel-async-tasks__JKuxhWi",
+      "extended--codex-gpt-6-luna--git-leak-recovery/git-leak-recovery__Px5XLYp",
+      "extended--codex-gpt-6-luna--git-leak-recovery-2/git-leak-recovery__2DpCMUB",
+      "extended--codex-gpt-6-luna--git-leak-recovery-3/git-leak-recovery__QwKqxEE",
+      "extended--codex-gpt-6-luna--log-summary-date-ranges/log-summary-date-ranges__atEfQzQ",
+      "extended--codex-gpt-6-luna--log-summary-date-ranges-2/log-summary-date-ranges__tCSZFuY",
+      "extended--codex-gpt-6-luna--log-summary-date-ranges-3/log-summary-date-ranges__rJomAiT",
+      "extended--codex-gpt-6-luna--sqlite-db-truncate/sqlite-db-truncate__T8KUQ5r",
+      "extended--codex-gpt-6-luna--sqlite-db-truncate-2/sqlite-db-truncate__dUgwPwT",
+      "extended--codex-gpt-6-luna--sqlite-db-truncate-3/sqlite-db-truncate__QU3DPmn",
+      "panel--codex-gpt-6-luna--fix-code-vulnerability/fix-code-vulnerability__HikB2CD",
+      "panel--codex-gpt-6-luna--headless-terminal/headless-terminal__uSs7yKU",
+      "smoke--codex-gpt-6-luna--build-cython-ext/build-cython-ext__enAZDH2",
+      "smoke--codex-gpt-6-luna--fix-git/fix-git__BscvqG8",
+      "tb4--luna-jev--legacy-utility-triage--luna-tb4-9583-r1/legacy-utility-triage__GD7sPC8",
+      "tb4--luna-jev--uefi-bootkit--luna-tb4-9583-r1/uefi-bootkit__7XjtqYb"
+    ]
+  },
+  "families": {
+    "all": {
+      "done_finishes": 211,
+      "graded_done_finishes": 211,
+      "ungraded_done_finishes": 0,
+      "refused_of_done": {
+        "k": 11,
+        "n": 211,
+        "rate": 0.052132701421800945,
+        "wilson95": [
+          0.029356210939319713,
+          0.09092531673162157
+        ]
+      },
+      "verifier_failed_of_refused": {
+        "k": 2,
+        "n": 11,
+        "rate": 0.18181818181818182,
+        "wilson95": [
+          0.051367689278583956,
+          0.47698056435423286
+        ]
+      },
+      "verifier_failed_of_allowed": {
+        "k": 67,
+        "n": 200,
+        "rate": 0.335,
+        "wilson95": [
+          0.27324086932910685,
+          0.40297808847165084
+        ]
+      },
+      "refused_of_verifier_failed": {
+        "k": 2,
+        "n": 69,
+        "rate": 0.028985507246376812,
+        "wilson95": [
+          0.007985202620479928,
+          0.09966583844494696
+        ]
+      },
+      "loose_refused_of_done": {
+        "k": 1,
+        "n": 180,
+        "rate": 0.005555555555555556,
+        "wilson95": [
+          0.0009813660563752335,
+          0.03079307109638775
+        ]
+      },
+      "loose_verifier_failed_of_refused": {
+        "k": 1,
+        "n": 1,
+        "rate": 1.0,
+        "wilson95": [
+          0.2065493117918027,
+          1.0
+        ]
+      },
+      "trials": 198,
+      "trials_refused": {
+        "k": 11,
+        "n": 198,
+        "rate": 0.05555555555555555,
+        "wilson95": [
+          0.03130117424206669,
+          0.09672732408787005
+        ]
+      },
+      "trials_verifier_failed_of_refused": {
+        "k": 2,
+        "n": 11,
+        "rate": 0.18181818181818182,
+        "wilson95": [
+          0.051367689278583956,
+          0.47698056435423286
+        ]
+      },
+      "trials_refused_of_verifier_failed": {
+        "k": 2,
+        "n": 61,
+        "rate": 0.03278688524590164,
+        "wilson95": [
+          0.009037890316981302,
+          0.11189490509792765
+        ]
+      }
+    },
+    "luna-codex": {
+      "done_finishes": 180,
+      "graded_done_finishes": 180,
+      "ungraded_done_finishes": 0,
+      "refused_of_done": {
+        "k": 11,
+        "n": 180,
+        "rate": 0.06111111111111111,
+        "wilson95": [
+          0.03446271341532465,
+          0.10610111282139756
+        ]
+      },
+      "verifier_failed_of_refused": {
+        "k": 2,
+        "n": 11,
+        "rate": 0.18181818181818182,
+        "wilson95": [
+          0.051367689278583956,
+          0.47698056435423286
+        ]
+      },
+      "verifier_failed_of_allowed": {
+        "k": 46,
+        "n": 169,
+        "rate": 0.27218934911242604,
+        "wilson95": [
+          0.2107053505762599,
+          0.34379968254266297
+        ]
+      },
+      "refused_of_verifier_failed": {
+        "k": 2,
+        "n": 48,
+        "rate": 0.041666666666666664,
+        "wilson95": [
+          0.011501893385757703,
+          0.1397565598003493
+        ]
+      },
+      "loose_refused_of_done": {
+        "k": 1,
+        "n": 180,
+        "rate": 0.005555555555555556,
+        "wilson95": [
+          0.0009813660563752335,
+          0.03079307109638775
+        ]
+      },
+      "loose_verifier_failed_of_refused": {
+        "k": 1,
+        "n": 1,
+        "rate": 1.0,
+        "wilson95": [
+          0.2065493117918027,
+          1.0
+        ]
+      },
+      "trials": 180,
+      "trials_refused": {
+        "k": 11,
+        "n": 180,
+        "rate": 0.06111111111111111,
+        "wilson95": [
+          0.03446271341532465,
+          0.10610111282139756
+        ]
+      },
+      "trials_verifier_failed_of_refused": {
+        "k": 2,
+        "n": 11,
+        "rate": 0.18181818181818182,
+        "wilson95": [
+          0.051367689278583956,
+          0.47698056435423286
+        ]
+      },
+      "trials_refused_of_verifier_failed": {
+        "k": 2,
+        "n": 48,
+        "rate": 0.041666666666666664,
+        "wilson95": [
+          0.011501893385757703,
+          0.1397565598003493
+        ]
+      }
+    },
+    "luna-codex-luna-tb4-9583": {
+      "done_finishes": 23,
+      "graded_done_finishes": 23,
+      "ungraded_done_finishes": 0,
+      "refused_of_done": {
+        "k": 1,
+        "n": 23,
+        "rate": 0.043478260869565216,
+        "wilson95": [
+          0.007716666057951335,
+          0.2099115525545071
+        ]
+      },
+      "verifier_failed_of_refused": {
+        "k": 1,
+        "n": 1,
+        "rate": 1.0,
+        "wilson95": [
+          0.2065493117918027,
+          1.0
+        ]
+      },
+      "verifier_failed_of_allowed": {
+        "k": 22,
+        "n": 22,
+        "rate": 1.0,
+        "wilson95": [
+          0.8513451233948545,
+          1.0
+        ]
+      },
+      "refused_of_verifier_failed": {
+        "k": 1,
+        "n": 23,
+        "rate": 0.043478260869565216,
+        "wilson95": [
+          0.007716666057951335,
+          0.2099115525545071
+        ]
+      },
+      "loose_refused_of_done": {
+        "k": 1,
+        "n": 23,
+        "rate": 0.043478260869565216,
+        "wilson95": [
+          0.007716666057951335,
+          0.2099115525545071
+        ]
+      },
+      "loose_verifier_failed_of_refused": {
+        "k": 1,
+        "n": 1,
+        "rate": 1.0,
+        "wilson95": [
+          0.2065493117918027,
+          1.0
+        ]
+      },
+      "trials": 23,
+      "trials_refused": {
+        "k": 1,
+        "n": 23,
+        "rate": 0.043478260869565216,
+        "wilson95": [
+          0.007716666057951335,
+          0.2099115525545071
+        ]
+      },
+      "trials_verifier_failed_of_refused": {
+        "k": 1,
+        "n": 1,
+        "rate": 1.0,
+        "wilson95": [
+          0.2065493117918027,
+          1.0
+        ]
+      },
+      "trials_refused_of_verifier_failed": {
+        "k": 1,
+        "n": 23,
+        "rate": 0.043478260869565216,
+        "wilson95": [
+          0.007716666057951335,
+          0.2099115525545071
+        ]
+      }
+    },
+    "microluna": {
+      "done_finishes": 31,
+      "graded_done_finishes": 31,
+      "ungraded_done_finishes": 0,
+      "refused_of_done": {
+        "k": 0,
+        "n": 31,
+        "rate": 0.0,
+        "wilson95": [
+          0.0,
+          0.11025539700802303
+        ]
+      },
+      "verifier_failed_of_refused": {
+        "k": 0,
+        "n": 0,
+        "rate": null,
+        "wilson95": null
+      },
+      "verifier_failed_of_allowed": {
+        "k": 21,
+        "n": 31,
+        "rate": 0.6774193548387096,
+        "wilson95": [
+          0.5014100916911381,
+          0.8143057351769827
+        ]
+      },
+      "refused_of_verifier_failed": {
+        "k": 0,
+        "n": 21,
+        "rate": 0.0,
+        "wilson95": [
+          0.0,
+          0.15463902098714374
+        ]
+      },
+      "loose_refused_of_done": {
+        "k": 0,
+        "n": 0,
+        "rate": null,
+        "wilson95": null
+      },
+      "loose_verifier_failed_of_refused": {
+        "k": 0,
+        "n": 0,
+        "rate": null,
+        "wilson95": null
+      },
+      "trials": 18,
+      "trials_refused": {
+        "k": 0,
+        "n": 18,
+        "rate": 0.0,
+        "wilson95": [
+          0.0,
+          0.17587922593328437
+        ]
+      },
+      "trials_verifier_failed_of_refused": {
+        "k": 0,
+        "n": 0,
+        "rate": null,
+        "wilson95": null
+      },
+      "trials_refused_of_verifier_failed": {
+        "k": 0,
+        "n": 13,
+        "rate": 0.0,
+        "wilson95": [
+          0.0,
+          0.22809537513180025
+        ]
+      }
+    }
+  }
+}
