@@ -1,0 +1,84 @@
+{
+  "schema": "openagents.evidence-fusion.v1",
+  "features": [
+    "report.strict_grader_accepts",
+    "report.admits_unmet",
+    "report.rests_on_reading",
+    "report.left_untested",
+    "report.checked_against_task",
+    "report.admitted",
+    "execution.observed",
+    "execution.unresolved",
+    "execution.required",
+    "audit.observed",
+    "audit.current",
+    "audit.required"
+  ],
+  "weights": [
+    -4.1072627025535215,
+    1.0853441060915776,
+    -0.34732705439247497,
+    0.3742123947212028,
+    -1.52999556941286,
+    1.9324908519963988,
+    1.5859447464375944,
+    0.24746311344669317,
+    -0.4166409411419212,
+    0.5934465075725963,
+    -0.22900355152558682,
+    -2.5446217131760074,
+    0.1736307709329594,
+    0.1736307709329594,
+    0.1736307709329594,
+    0.1736307709329594,
+    0.1736307709329594,
+    0.1736307709329594,
+    -0.3787167323553904,
+    -0.3787167323553904,
+    -0.3787167323553904,
+    0.1736307709329594,
+    0.1736307709329594,
+    0.1736307709329594
+  ],
+  "bias": 0.2447199946920534,
+  "fail_at": 0.9,
+  "ridge": 0.1,
+  "family": 1,
+  "out_of_fold": {
+    "fail_precision": {
+      "correct": 5,
+      "total": 5,
+      "value": 1.0,
+      "wilson_95": [
+        0.5655085052479191,
+        1
+      ]
+    },
+    "failure_recall": {
+      "correct": 5,
+      "total": 122,
+      "value": 0.040983606557377046,
+      "wilson_95": [
+        0.017630459445038327,
+        0.09236178477308984
+      ]
+    },
+    "pass_precision": {
+      "correct": 0,
+      "total": 0,
+      "value": null,
+      "wilson_95": null
+    },
+    "unknown": 312
+  },
+  "selection": "Task-held-out pooled development predictions only; fresh outcomes excluded; otherwise unknown.",
+  "protocol_commit": "bf705f43d8",
+  "development_trials": 317,
+  "development_tasks": 58,
+  "prospective": "Eight Luna trials and eight Astra controls; grades unopened.",
+  "digests": {
+    "bench/terminal-bench/experiments/2026-09-25-candidate-review/pooled_fit.py": "cd68c0e4a09e1a6a55875427d02de24f779663796c03d068f6b5303aa187c2ad",
+    "crates/coder-one/src/checks/report_audit.rs": "f917dc1e8e5fb5d3b60799701dc637e740fb26ba44182bd2dae65bc0ed23e03f",
+    "crates/coder-one/src/checks/truth_selected.rs": "e0a716477ac1f1a37119561d151e24d373f9b4d9973dd30b7fcc1ad99fd44819"
+  }
+}
