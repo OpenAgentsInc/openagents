@@ -55,19 +55,6 @@ pub const ROW_SCHEMA: &str = "openagents.coder-one.finish-row.v1";
 /// The schema of a replay's summary.
 pub const SUMMARY_SCHEMA: &str = "openagents.coder-one.finish-summary.v1";
 
-/// Tasks the replay never reads: the prospective cohort of issue #9584,
-/// whose outcomes that protocol seals.
-pub const SEALED: [&str; 8] = [
-    "distributed-dedup",
-    "formal-crypto",
-    "freecad-impeller",
-    "freecad-spring-clip",
-    "math-eval-grader",
-    "pretrain-shard-corruption",
-    "shadow-relay",
-    "vpp-loss-divergence",
-];
-
 /// One thing a session did, as the rule counts it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -516,6 +503,10 @@ fn episodes(root: &Path) -> Vec<PathBuf> {
 pub struct Sources {
     pub microluna_logs: usize,
     pub codex_streams: usize,
+    /// Explicitly excluded task names, supplied by the measurement protocol.
+    #[serde(default)]
+    pub excluded_tasks: Vec<String>,
+    /// Count excluded by that list; retain the original summary field name.
     pub excluded_sealed: usize,
     pub excluded_truth: usize,
     /// Luna trials whose native stream wasn't retained.
@@ -524,10 +515,13 @@ pub struct Sources {
 
 /// Judges every `done` finish under `roots`.
 #[must_use]
-pub fn replay(roots: &[PathBuf]) -> (Vec<Row>, Sources) {
+pub fn replay(roots: &[PathBuf], excluded_tasks: &[String]) -> (Vec<Row>, Sources) {
     let microluna_rule = FinishRule::score(&[crate::micro::lean::SCORE_NAME]);
     let mut rows = Vec::new();
-    let mut sources = Sources::default();
+    let mut sources = Sources {
+        excluded_tasks: excluded_tasks.to_vec(),
+        ..Sources::default()
+    };
     for root in roots {
         for episode in episodes(root) {
             let job = episode
@@ -544,7 +538,7 @@ pub fn replay(roots: &[PathBuf]) -> (Vec<Row>, Sources) {
                 sources.excluded_truth += 1;
                 continue;
             }
-            if SEALED.contains(&task.as_str()) {
+            if excluded_tasks.contains(&task) {
                 sources.excluded_sealed += 1;
                 continue;
             }
@@ -765,6 +759,33 @@ pub fn summary(rows: &[Row], sources: &Sources) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn replay_excludes_declared_tasks_before_reading_their_logs() {
+        let root = tempfile::tempdir().unwrap();
+        for (job, task) in [
+            ("fixture--microluna", "reserved-fixture"),
+            ("fixture--microluna", "available-fixture"),
+            ("fixture--truth-confirmation", "other-fixture"),
+        ] {
+            let artifacts = root
+                .path()
+                .join(job)
+                .join(format!("{task}__one.episode/artifacts"));
+            std::fs::create_dir_all(&artifacts).unwrap();
+            std::fs::write(artifacts.join("microluna-1.atif.jsonl"), "\n").unwrap();
+        }
+        let roots = [root.path().to_path_buf()];
+        let (_, all) = replay(&roots, &[]);
+        assert_eq!(all.microluna_logs, 2);
+        assert_eq!(all.excluded_truth, 1);
+        let excluded = vec!["reserved-fixture".to_string()];
+        let (_, filtered) = replay(&roots, &excluded);
+        assert_eq!(filtered.microluna_logs, 1);
+        assert_eq!(filtered.excluded_sealed, 1);
+        assert_eq!(filtered.excluded_truth, 1);
+        assert_eq!(filtered.excluded_tasks, excluded);
+    }
 
     #[test]
     fn a_codex_heredoc_then_a_run_counts_the_run_after_the_write() {

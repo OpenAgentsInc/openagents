@@ -21,7 +21,7 @@ pub const USAGE: &str = "usage: coder-one component list [--json]
                                   --out DIR [--partition calibration|evaluation|all]...
                                   [--jev recorded|live|off] [--recorded FILE] [--save-jev]
                                   [--live-limit N]
-       coder-one component replay control.finish [--traces DIR]... --out DIR
+       coder-one component replay control.finish [--traces DIR]... [--exclude-task NAME]... --out DIR
 
 --jev defaults to recorded: answers replay from each fixture's jev-recorded.json,
 and a changed state or question set misses. live calls Jev with TYPESAFE_API_KEY;
@@ -49,7 +49,9 @@ answers and calls but no label. --inputs replays a retained inputs file instead.
 replay control.finish judges every done finish in the retained Microluna session
 logs and Luna Codex streams under each --traces directory (bench/terminal-bench/traces
 by default) against the finish rule (issue #9638), and writes rows.jsonl and
-summary.json to --out. It asks no model.";
+summary.json to --out. --exclude-task omits a task before reading its records;
+the measurement protocol supplies these names. Jobs containing truth-confirmation
+or truth-control are always omitted. It asks no model.";
 
 /// A live Jev client from `TYPESAFE_API_KEY` or `~/.openagents/jev.json`.
 ///
@@ -88,6 +90,7 @@ struct Flags {
     split: Option<PathBuf>,
     inputs: Option<PathBuf>,
     partitions: Vec<String>,
+    excluded_tasks: Vec<String>,
 }
 
 impl Flags {
@@ -111,6 +114,7 @@ impl Flags {
             split: None,
             inputs: None,
             partitions: Vec::new(),
+            excluded_tasks: Vec::new(),
         };
         let mut args = args.iter();
         while let Some(arg) = args.next() {
@@ -130,6 +134,7 @@ impl Flags {
                 "--split" => flags.split = Some(value("--split")?.into()),
                 "--inputs" => flags.inputs = Some(value("--inputs")?.into()),
                 "--partition" => flags.partitions.push(value("--partition")?),
+                "--exclude-task" => flags.excluded_tasks.push(value("--exclude-task")?),
                 "--arm" => flags.arm = Some(value("--arm")?),
                 "--out" => flags.out = Some(value("--out")?.into()),
                 "--export" => flags.export = Some(value("--export")?.into()),
@@ -174,6 +179,12 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
         return Err(USAGE.to_string());
     };
     let flags = Flags::parse(rest)?;
+    if !flags.excluded_tasks.is_empty()
+        && !(verb == "replay"
+            && flags.positional.first().map(String::as_str) == Some("control.finish"))
+    {
+        return Err("--exclude-task applies only to replay control.finish".to_string());
+    }
     match verb.as_str() {
         "list" => {
             let components: Vec<Value> = registry()
@@ -417,7 +428,7 @@ fn replay_finish(flags: &Flags) -> Result<i32, String> {
     } else {
         flags.traces_all.clone()
     };
-    let (rows, sources) = super::finish::replay(&roots);
+    let (rows, sources) = super::finish::replay(&roots, &flags.excluded_tasks);
     std::fs::create_dir_all(&out).map_err(|error| error.to_string())?;
     let mut lines = String::new();
     for row in &rows {

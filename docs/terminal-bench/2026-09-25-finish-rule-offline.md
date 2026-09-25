@@ -85,6 +85,13 @@ stream (16 older `codex-gpt-6-luna` trials and two `luna-jev` trials) and
 aren't counted; `summary.json` lists them. Every counted finish has a
 verifier reward.
 
+Task exclusions are measurement inputs, supplied by `--exclude-task` in the
+reproduction command below. They are no longer hardcoded in product source:
+that made the strict contamination guard reject unrelated live trials before
+setup ([#9642](https://github.com/OpenAgentsInc/openagents/issues/9642)). The guard
+remains unchanged. The replay records the supplied list and keeps the original
+`excluded_sealed` count field; its finish rule and historical labels are unchanged.
+
 **Two rules.** Microluna sessions ran the lean loop, so the rule is the
 shipped one: score `score.sh`, no baseline commands. Codex sessions had no
 host score, so the replay uses a proxy: a command that runs code (an
@@ -182,6 +189,10 @@ noise.
 ```sh
 cargo build -p coder-one
 target/debug/coder-one component replay control.finish \
+  --exclude-task distributed-dedup --exclude-task formal-crypto \
+  --exclude-task freecad-impeller --exclude-task freecad-spring-clip \
+  --exclude-task math-eval-grader --exclude-task pretrain-shard-corruption \
+  --exclude-task shadow-relay --exclude-task vpp-loss-divergence \
   --out bench/terminal-bench/experiments/2026-09-25-finish-rule/records
 target/debug/coder-one component suite control.finish --no-record
 ```
