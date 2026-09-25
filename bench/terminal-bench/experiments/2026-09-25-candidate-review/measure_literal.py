@@ -43,9 +43,9 @@ def main():
                 raise ValueError('Replay call differs from its report')
         elif record['call'] != 'unknown':
             raise ValueError('Unavailable evidence cannot produce a failure call')
-        row['calls']['literal.artifacts'] = record['call']
+        row['calls']['literal.artifacts'] = 'fail' if record['call'] == 'fail' else None
         row['calls']['literal.or.executed'] = (
-            'fail' if 'fail' in (record['call'], row['calls']['verdict.executed']) else 'unknown')
+            'fail' if 'fail' in (record['call'], row['calls']['verdict.executed']) else None)
     if by_key:
         raise ValueError('Extra replay candidates')
     signals = list(rows[0]['calls'])
@@ -70,6 +70,10 @@ def main():
         ],
         'predictions': rows,
     }
+    for signal in ('literal.artifacts', 'literal.or.executed'):
+        counts = result['all']['signals'][signal]
+        if counts['unknown'] + counts['fail_precision']['total'] != result['all']['graded']:
+            raise ValueError('Failure-only calls and abstentions do not cover the graded population')
     a.out.write_text(json.dumps(result, indent=2) + '\n')
     print(json.dumps({'signals': result['all']['signals'], 'runtime': result['runtime']}, indent=2))
 
