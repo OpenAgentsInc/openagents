@@ -29,7 +29,7 @@ for path in sorted(a.records.rglob('*.json')):
             raise ValueError('One provider reply has conflicting usage')
         native.setdefault(key, dict(identity, records=[]))['records'].append(relative)
     elif value.get('schema') == 'openagents.coder-one.reproduced-review.v1':
-        if value.get('error'):
+        if value.get('error') and not value.get('reviewer_source'):
             unknown.append(relative)
     elif path.name in {'review.json','program.json','assessment.json'} and not any(value.get(k) for k in ['reviewer_source','luna_source','generator_source']):
         unknown.append(relative)

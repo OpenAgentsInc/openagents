@@ -82,6 +82,10 @@ def main():
         if reproduced and process.get('review_sha256') != identities[str(a.records / row['trial'] / 'reproduced/review.json')]:
             raise ValueError('Reproduced review identity changed')
         calls['verdict.reproduced'] = 'fail' if process.get('call') == 'fail' and not process.get('error') else None
+        for directory, name in [('reproduced-quoted', 'verdict.reproduced-quoted-v1'),
+                                ('reproduced-citations-v2', 'verdict.reproduced-citations-v2')]:
+            packet = read(a.records / row['trial'] / directory / 'review.json', required=bool(reproduced) and directory.endswith('v2'))
+            calls[name] = 'fail' if packet.get('call') == 'fail' and not process.get('error') else None
         predictions.append({k: row[k] for k in ['job', 'trial', 'task']} | {
             'executor': 'astra' if 'astra-truth-control' in row['job'] else 'luna',
             'features': features, 'model_scores': model_scores, 'reproduced_score': reproduced.get('score'),
