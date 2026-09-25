@@ -213,6 +213,7 @@ impl<T: Transport> MicrolunaWriter<'_, T> {
                 Ending::TurnLimit => "turn_limit",
                 Ending::Deadline => "deadline",
                 Ending::Transport(_) => "transport",
+                Ending::Host(_) => "host_ended",
             }
             .to_string(),
             summary: match (&report.finish, &report.ending) {

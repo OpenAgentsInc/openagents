@@ -23,8 +23,13 @@
 //! The older live monitor ([`crate::monitor`]) stopped working sessions
 //! 12 to 30 seconds in, on a stall flag that replays had found right 0 of
 //! 22 times. This detector differs on purpose: it needs [`MIN_TURNS`] turns
-//! of evidence and a code-side feature before Jev is consulted, it acts
-//! only between sessions, and its first action is a re-brief, not a stop.
+//! of evidence and a code-side feature before Jev is consulted, and its
+//! first action is a re-brief, not a stop. Between sessions it re-briefs
+//! the next session; inside one, when [`Detect::in_session`] is on, it
+//! tells the session the evidence and ends it on a second stall.
+//!
+//! [`Mode`] says who calls the stall: Jev confirming the code's suspect
+//! call, or the suspect call alone with Jev's answers recorded beside it.
 //! [`hindsight`] labels a checkpoint from what happened after it, for the
 //! offline measurement in `docs/terminal-bench/`.
 
@@ -813,9 +818,11 @@ pub struct Verdict {
     /// threshold.
     pub jev: Option<bool>,
     /// The call code acts on: a suspect checkpoint Jev confirms, or, when
-    /// Jev has no answer, a strong code signal.
+    /// Jev has no answer, a strong code signal. In [`Mode::Code`], every
+    /// suspect checkpoint.
     pub stalled: bool,
-    /// How the call was made: `not_suspect`, `jev`, or `code_fallback`.
+    /// How the call was made: `not_suspect`, `jev`, `code_fallback`, or,
+    /// in [`Mode::Code`], `code`.
     pub by: String,
 }
 
@@ -843,8 +850,52 @@ pub fn decide(features: &Features, answers: &Answers, params: Params) -> Verdict
     }
 }
 
+/// The stall call at a checkpoint in `mode`. [`Mode::Code`] keeps Jev's
+/// answer in [`Verdict::jev`], report-only, and calls a stall at every
+/// suspect checkpoint.
+#[must_use]
+pub fn decide_in(mode: Mode, features: &Features, answers: &Answers, params: Params) -> Verdict {
+    let verdict = decide(features, answers, params);
+    match mode {
+        Mode::Jev => verdict,
+        Mode::Code => Verdict {
+            stalled: verdict.suspect,
+            by: if verdict.suspect {
+                "code"
+            } else {
+                "not_suspect"
+            }
+            .to_string(),
+            ..verdict
+        },
+    }
+}
+
+/// Who calls the stall at a suspect checkpoint.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Mode {
+    /// Jev confirms the code's suspect call at the [`FROZEN`] thresholds;
+    /// with no Jev answer, a strong code signal decides ([`decide`]).
+    #[default]
+    Jev,
+    /// The code's suspect call decides. Jev is still asked at a suspect
+    /// checkpoint, and its answers are recorded beside the call,
+    /// report-only. The offline remeasure in
+    /// `docs/terminal-bench/2026-09-25-stall-detection.md` found the same
+    /// precision as [`Mode::Jev`] within noise and higher recall.
+    Code,
+}
+
+impl Mode {
+    #[allow(clippy::trivially_copy_pass_by_ref)]
+    fn is_jev(&self) -> bool {
+        *self == Mode::Jev
+    }
+}
+
 /// `executor.microluna.lean.detect`: which detectors the lean loop runs
-/// after each work session.
+/// after each work session, and inside one.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Detect {
@@ -856,6 +907,16 @@ pub struct Detect {
     /// session's brief, as a suggestion.
     #[serde(default)]
     pub next_step: bool,
+    /// Who calls a stall. Absent, Jev confirms, as before the mode
+    /// existed, and the manifest's digest doesn't change.
+    #[serde(default, skip_serializing_if = "Mode::is_jev")]
+    pub mode: Mode,
+    /// With `stall`, also check every [`EVERY`] turns inside a work
+    /// session, from turn [`MIN_TURNS`]: a first stall tells the session
+    /// the evidence, and a stall at the next checkpoint after that ends
+    /// the session.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub in_session: bool,
 }
 
 /// What the lean loop does after a session.
@@ -880,23 +941,41 @@ pub fn action(stalled: bool, rebriefed_last: bool) -> Action {
     }
 }
 
-/// What the next session is told after a stall.
-#[must_use]
-pub fn rebrief_note(checkpoint: &Checkpoint) -> String {
+/// The evidence a stall's note names.
+fn stall_evidence(checkpoint: &Checkpoint) -> String {
     let mut evidence = checkpoint.features.evidence();
     if let Some((command, times)) = &checkpoint.repeated {
         evidence.push(format!("`{}` failed {times} times", clip(command, 160)));
     }
+    if evidence.is_empty() {
+        "Jev read the last steps as repeating without progress".to_string()
+    } else {
+        evidence.join("; ")
+    }
+}
+
+/// What the next session is told after a stall.
+#[must_use]
+pub fn rebrief_note(checkpoint: &Checkpoint) -> String {
     format!(
         "The host's stall check after session {} found no progress: {}. Don't repeat those \
          steps. First state in one line what has not worked and why, then re-read the task's \
          core requirement and take a different approach to it.",
         checkpoint.session,
-        if evidence.is_empty() {
-            "Jev read the last steps as repeating without progress".to_string()
-        } else {
-            evidence.join("; ")
-        }
+        stall_evidence(checkpoint)
+    )
+}
+
+/// What a session is told inside itself after a first stall.
+#[must_use]
+pub fn in_session_note(checkpoint: &Checkpoint) -> String {
+    format!(
+        "The host's stall check at turn {} of this session found no progress: {}. Don't repeat \
+         those steps. First state in one line what has not worked and why, then re-read the \
+         task's core requirement and take a different approach to it. If the next check finds \
+         no progress either, the host ends this session.",
+        checkpoint.turn,
+        stall_evidence(checkpoint)
     )
 }
 
@@ -1161,6 +1240,46 @@ mod tests {
         let verdict = decide(&at.features, &stuck, FROZEN);
         assert!(!verdict.stalled);
         assert_eq!(verdict.jev, Some(true));
+    }
+
+    #[test]
+    fn code_mode_calls_every_suspect_checkpoint_and_keeps_jev_beside_it() {
+        let sessions = vec![parse_session(&looping_session(10))];
+        let at = checkpoint(&sessions, 1, 11, At::SessionEnd);
+        let working = Answers {
+            progress: Some(0.9),
+            repeating: Some(0.1),
+            ..Answers::default()
+        };
+        assert!(!decide_in(Mode::Jev, &at.features, &working, FROZEN).stalled);
+        let code = decide_in(Mode::Code, &at.features, &working, FROZEN);
+        assert!(code.stalled);
+        assert_eq!(code.by, "code");
+        assert_eq!(code.jev, Some(false));
+        let early = checkpoint(&sessions, 1, 3, At::InSession);
+        let stuck = Answers {
+            progress: Some(0.0),
+            ..Answers::default()
+        };
+        let quiet = decide_in(Mode::Code, &early.features, &stuck, FROZEN);
+        assert!(!quiet.stalled);
+        assert_eq!(quiet.by, "not_suspect");
+    }
+
+    #[test]
+    fn a_detect_without_the_new_fields_serializes_as_before() {
+        let old: Detect = serde_json::from_value(json!({ "stall": true })).unwrap();
+        assert_eq!(old.mode, Mode::Jev);
+        assert!(!old.in_session);
+        assert_eq!(
+            serde_json::to_value(&old).unwrap(),
+            json!({ "stall": true, "next_step": false })
+        );
+        let code: Detect =
+            serde_json::from_value(json!({ "stall": true, "mode": "code", "in_session": true }))
+                .unwrap();
+        assert_eq!(code.mode, Mode::Code);
+        assert!(code.in_session);
     }
 
     #[test]

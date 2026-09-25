@@ -1620,8 +1620,16 @@ impl Micro {
             } else {
                 "the lean loop continues the task".to_string()
             };
+            // The in-session stall check (issue #9627), on work sessions
+            // only; inert unless `detect.in_session` is on.
+            let mut watch = self.in_session(
+                prepared,
+                lean.detect.as_ref().filter(|_| !checking),
+                &sessions,
+                number,
+            );
             let ran = self
-                .session_at(
+                .session_watched(
                     number,
                     &[if checking {
                         "the self-check".to_string()
@@ -1647,9 +1655,11 @@ impl Micro {
                         }),
                         ..Place::default()
                     },
+                    &mut watch,
                 )
                 .await;
-            spent += ran.cost_usd.unwrap_or(0.0);
+            spent += ran.cost_usd.unwrap_or(0.0) + watch.usd;
+            let in_session = watch.record();
             let status = ran.status();
             let lost = matches!(ran.ending, Ending::Transport(_));
             sessions.push(ran);
@@ -1855,6 +1865,9 @@ impl Micro {
                 "workspace_files": keep_evidence.then(|| scope.identity(&self.workdir).ok()),
                 "evaluator_files": evaluator_digest,
             }));
+            if let (Some(record), Some(last)) = (in_session, moves.last_mut()) {
+                last["in_session"] = record;
+            }
             if keep_evidence {
                 let evidence = serde_json::to_vec_pretty(&moves).unwrap_or_default();
                 if let Err(error) =

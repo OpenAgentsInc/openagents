@@ -562,3 +562,110 @@ async fn a_session_ends_at_its_spend_bound() {
     assert_eq!(report.turns, 1);
     assert_eq!(report.ending, Ending::TurnLimit);
 }
+
+/// Tells the session something after turn 2 and ends it after turn 4.
+struct Scripted {
+    seen: Vec<usize>,
+}
+
+impl microluna::Watch for Scripted {
+    async fn after_turn(&mut self, turn: usize, _steps: &[atif::Step]) -> microluna::Intervention {
+        self.seen.push(turn);
+        match turn {
+            2 => microluna::Intervention::Tell("The host says: try another way.".to_string()),
+            4 => microluna::Intervention::End("The host ended this session.".to_string()),
+            _ => microluna::Intervention::Continue,
+        }
+    }
+}
+
+#[tokio::test]
+async fn a_watch_tells_the_session_between_turns_and_can_end_it() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("x"), "x\n").unwrap();
+    let workspace = Workspace::new(dir.path()).unwrap();
+    let read = |id: String| {
+        call(
+            &id,
+            "read_file",
+            &json!({"path": "x", "start_line": null, "max_lines": null}),
+            usage(1, 0, 1),
+        )
+    };
+    let transport = FakeTransport::new((0..6).map(|i| read(format!("c{i}"))).collect());
+    let mut watch = Scripted { seen: Vec::new() };
+    let mut recorder = Recorder::new();
+    let report = microluna::run_watched(
+        &transport,
+        &workspace,
+        &Brief::task("Loop."),
+        &Config::luna("t"),
+        &mut recorder,
+        &mut watch,
+    )
+    .await;
+    assert_eq!(
+        report.ending,
+        Ending::Host("The host ended this session.".to_string())
+    );
+    assert_eq!(report.turns, 4);
+    assert_eq!(watch.seen, [1, 2, 3, 4]);
+    // The message reaches the next request as host input, after the
+    // turn's call output, and the record holds both interventions.
+    let requests = transport.requests();
+    let text = |i: usize| serde_json::to_string(&requests[i].input).unwrap();
+    assert!(!text(1).contains("try another way"));
+    assert!(text(2).contains("try another way"), "{}", text(2));
+    let system: Vec<&str> = recorder
+        .steps()
+        .iter()
+        .filter(|s| s.source == atif::Source::System)
+        .map(|s| s.message.as_str())
+        .collect();
+    assert!(system.iter().any(|m| m.contains("try another way")));
+    assert!(system.iter().any(|m| m.contains("ended this session")));
+}
+
+#[tokio::test]
+async fn a_watch_is_not_asked_after_a_finish_or_the_last_turn() {
+    let dir = tempfile::tempdir().unwrap();
+    let workspace = Workspace::new(dir.path()).unwrap();
+    let transport = FakeTransport::new(vec![call(
+        "f",
+        "finish",
+        &json!({"status": "done", "summary": "Nothing to do.", "answer": ""}),
+        usage(1, 0, 1),
+    )]);
+    let mut watch = Scripted { seen: Vec::new() };
+    let report = microluna::run_watched(
+        &transport,
+        &workspace,
+        &Brief::task("Finish."),
+        &Config::luna("t"),
+        &mut Recorder::new(),
+        &mut watch,
+    )
+    .await;
+    assert_eq!(report.ending, Ending::Finished);
+    assert!(watch.seen.is_empty());
+    let transport = FakeTransport::new(vec![call(
+        "r",
+        "read_file",
+        &json!({"path": "x", "start_line": null, "max_lines": null}),
+        usage(1, 0, 1),
+    )]);
+    let report = microluna::run_watched(
+        &transport,
+        &workspace,
+        &Brief::task("Read."),
+        &Config {
+            max_turns: 1,
+            ..Config::luna("t")
+        },
+        &mut Recorder::new(),
+        &mut watch,
+    )
+    .await;
+    assert_eq!(report.ending, Ending::TurnLimit);
+    assert!(watch.seen.is_empty());
+}
