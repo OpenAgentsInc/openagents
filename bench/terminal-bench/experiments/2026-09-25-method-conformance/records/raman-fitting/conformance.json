@@ -1,0 +1,183 @@
+{
+  "schema": "openagents.coder-one.method-conformance-offline.v1",
+  "task": "raman-fitting",
+  "image": "truth9584-archive/raman-fitting:public",
+  "registry": "d1e85531e7ddd081b691d53ba6a8fcb99555cf87f04623f09ce585646dcf745c",
+  "question_set": "c0437e07ca57b4d58c10a3e97ac7edfafe4307a60f3503e54d6e9b734b22854e",
+  "implementation": {
+    "name": "registry entries identified by one Jev Choice, then checked by code",
+    "digest": "6c847c747f2d6d7747f7e3f0b331ce690887ca9126b4e43b14eef88e631eda56"
+  },
+  "distinct": [
+    {
+      "digest": "0b684dd42cf4faa289fd32bb1fa5a1d26a534465dab30817737a76b973f48e78",
+      "file": "fit_peaks.py",
+      "line": 43,
+      "qualname": "minimize",
+      "method": null
+    },
+    {
+      "digest": "1830e0a2bc19a3086f53486ecb0408ac80ee587b19ce6d242f5b68c04617ea51",
+      "file": "fit_peaks.py",
+      "line": 28,
+      "qualname": "lorentzian",
+      "method": null
+    },
+    {
+      "digest": "414d6f8ea519ad8bab7ebea4bcb3100bde9eb2f053d1fcdbe332fff66deb6d19",
+      "file": "fit_raman.py",
+      "line": 25,
+      "qualname": "fit_peak",
+      "method": null
+    },
+    {
+      "digest": "4e6bea1a027b964dd3ba7187a16e8ce382e380f81e5be360825950a3c0df3751",
+      "file": "fit_spectrum.py",
+      "line": 21,
+      "qualname": "read_data",
+      "method": null
+    },
+    {
+      "digest": "527019240254c56a64bd1afdd83b530186fdf4ab2175e54e2082f6eb22dc1c9d",
+      "file": "fit_spectrum.py",
+      "line": 8,
+      "qualname": "read_spectrum",
+      "method": null
+    },
+    {
+      "digest": "69d73ed1ae35d5f3e48d2778a3e56538eea920ba5afaa655eb6bc83255b5f476",
+      "file": "fit_peaks.py",
+      "line": 73,
+      "qualname": "predict",
+      "method": null
+    },
+    {
+      "digest": "70a084f321cb42e48fbbd275a880692ee69fdcc64b9c08ada03dc0bffff1fa98",
+      "file": "fit_peaks.py",
+      "line": 9,
+      "qualname": "solve_linear",
+      "method": null
+    },
+    {
+      "digest": "74ec0c27b9cda10660bcec20f8510e55272708d8ab0d6f569ec8904fde3775fd",
+      "file": "fit_spectrum.py",
+      "line": 19,
+      "qualname": "fit_peak",
+      "method": null
+    },
+    {
+      "digest": "814d7f77b9588f47a9522db09911634fc99e668b6f22a432344b74a0c555a90e",
+      "file": "fit_peaks.py",
+      "line": 34,
+      "qualname": "fit_peak",
+      "method": null
+    },
+    {
+      "digest": "84ebad9d7b7368a27f951278890478661e7f33414b96c4e39a1a3062d482a613",
+      "file": "fit_peaks.py",
+      "line": 24,
+      "qualname": "project",
+      "method": null
+    },
+    {
+      "digest": "944399868b54b7af8a4a88ae35163d774cfa44984bdfe249455a68be34a6a3a1",
+      "file": "fit_spectrum.py",
+      "line": 33,
+      "qualname": "solve_linear",
+      "method": null
+    },
+    {
+      "digest": "9ab922ac2a423fd3415e1db3c5589124a5c445d10b1c9aac07c2ba8a95e0040a",
+      "file": "fit_peaks.py",
+      "line": 39,
+      "qualname": "fit",
+      "method": null
+    },
+    {
+      "digest": "bc79172d36b424e337dd54cc1aee70c3de8708d28d7d2bd7c0318b7157999021",
+      "file": "fit_raman.py",
+      "line": 19,
+      "qualname": "load_spectrum",
+      "method": null
+    },
+    {
+      "digest": "c1b21c1781ef181afef47c6cf74d7c349c06e62d698e05026f3c1cfacf9026b5",
+      "file": "fit_peaks.py",
+      "line": 18,
+      "qualname": "read_spectrum",
+      "method": null
+    },
+    {
+      "digest": "c425b8a2400c3170cc99ef25e60222bcb94bba480337f86ff00b3d7fdce92915",
+      "file": "fit_peaks.py",
+      "line": 72,
+      "qualname": "fit",
+      "method": null
+    },
+    {
+      "digest": "cbf8e0a644d632755439a1d33e8995ba911982b3f644311817d691423b2bb43d",
+      "file": "fit_spectrum.py",
+      "line": 49,
+      "qualname": "fit_peak",
+      "method": null
+    },
+    {
+      "digest": "efbb4cbbbb7fd4a7b70938da810739569e4fb95fea317e64a0ff1d19e6a51a69",
+      "file": "fit_peaks.py",
+      "line": 24,
+      "qualname": "profile",
+      "method": null
+    }
+  ],
+  "jev_usd": 0.0006961500000000001,
+  "trials": [
+    {
+      "trial": "raman-fitting__3UuvhPe",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 3,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "raman-fitting__Gbq5vcD",
+      "job": "archive--coder-one-truth-control--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 4,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "raman-fitting__N7WNw7X",
+      "job": "archive--coder-one-truth-control--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 3,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "raman-fitting__cQ3PSAu",
+      "job": "archive--coder-one-truth-control--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 2,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "raman-fitting__mSq3vFb",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 2,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "raman-fitting__mUnvSuZ",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 3,
+      "tied": 0,
+      "error": null
+    }
+  ]
+}

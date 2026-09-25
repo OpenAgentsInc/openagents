@@ -1,0 +1,54 @@
+{
+  "schema": "openagents.coder-one.method-conformance-labels.v1",
+  "task": "financial-document-processor",
+  "trials": [
+    {
+      "trial": "financial-document-processor__GZQJYM9",
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "kind": "snapshot",
+      "reward": 1.0,
+      "reward_source": null,
+      "snapshot_graded": true
+    },
+    {
+      "trial": "financial-document-processor__Tq5JAmN",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "kind": "snapshot",
+      "reward": 0.0,
+      "reward_source": null,
+      "snapshot_graded": true
+    },
+    {
+      "trial": "financial-document-processor__Wu2v2EL",
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "kind": "snapshot",
+      "reward": 1.0,
+      "reward_source": null,
+      "snapshot_graded": true
+    },
+    {
+      "trial": "financial-document-processor__iUk2vrc",
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "kind": "snapshot",
+      "reward": 0.0,
+      "reward_source": null,
+      "snapshot_graded": true
+    },
+    {
+      "trial": "financial-document-processor__qJZNUBC",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "kind": "snapshot",
+      "reward": 0.0,
+      "reward_source": null,
+      "snapshot_graded": true
+    },
+    {
+      "trial": "financial-document-processor__vWXXrpH",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "kind": "snapshot",
+      "reward": 0.0,
+      "reward_source": null,
+      "snapshot_graded": true
+    }
+  ]
+}

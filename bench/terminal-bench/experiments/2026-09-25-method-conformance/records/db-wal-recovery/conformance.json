@@ -1,0 +1,176 @@
+{
+  "schema": "openagents.coder-one.method-conformance-offline.v1",
+  "task": "db-wal-recovery",
+  "image": "truth9584-archive/db-wal-recovery:public",
+  "registry": "d1e85531e7ddd081b691d53ba6a8fcb99555cf87f04623f09ce585646dcf745c",
+  "question_set": "c0437e07ca57b4d58c10a3e97ac7edfafe4307a60f3503e54d6e9b734b22854e",
+  "implementation": {
+    "name": "registry entries identified by one Jev Choice, then checked by code",
+    "digest": "6c847c747f2d6d7747f7e3f0b331ce690887ca9126b4e43b14eef88e631eda56"
+  },
+  "distinct": [
+    {
+      "digest": "10f76bfcb2384e0e6c829de2a903cc58e1095f1d051d7e3515e8791cabb2dd5e",
+      "file": "recover.py",
+      "line": 56,
+      "qualname": "decode_wal",
+      "method": null
+    },
+    {
+      "digest": "4445bca8b63233521474a64d056818a23a4064133572b4ee477c0164613ec189",
+      "file": "check_recovery.py",
+      "line": 14,
+      "qualname": "read_rows",
+      "method": null
+    },
+    {
+      "digest": "5781ae873da6724c5b13191ff0c621804d266b5b957914d8e12b705a3aac420f",
+      "file": "recover.py",
+      "line": 14,
+      "qualname": "plausible_wal_header",
+      "method": null
+    },
+    {
+      "digest": "6d0bc8637be1fece092360f22928570d986058a7b06e481ca3d86526ad69462d",
+      "file": "recover.py",
+      "line": 19,
+      "qualname": "checksum",
+      "method": null
+    },
+    {
+      "digest": "713d742017741a84eaa84998704011c161e86f68ce1895df3fe8f2ae2d21012e",
+      "file": "recover.py",
+      "line": 62,
+      "qualname": "decode_wal",
+      "method": null
+    },
+    {
+      "digest": "85e7d7e01888659089aa391b3c97c38ddb30e163020a45335f5bd227a417ae43",
+      "file": "recover.py",
+      "line": 78,
+      "qualname": "export_rows",
+      "method": null
+    },
+    {
+      "digest": "8aaca656fb8248dd0f4f836c4b7c4cc217a9c0289776451974f646eea8c5b13a",
+      "file": "recover.py",
+      "line": 18,
+      "qualname": "repair_wal",
+      "method": null
+    },
+    {
+      "digest": "8cd71084e0e4bbd392d5e77ee90dc897790f29ec928bf044e7742fe298ee953c",
+      "file": "recover.py",
+      "line": 18,
+      "qualname": "checksum",
+      "method": null
+    },
+    {
+      "digest": "8fa3d77bd3ab29b65782e8d6b83f8f4a5c94e0e6da0c5f0b6797361fd7caa512",
+      "file": "recover.py",
+      "line": 75,
+      "qualname": "quote_identifier",
+      "method": null
+    },
+    {
+      "digest": "a129305e21db287a593e9aa0ad107229f6042da795ec2e8c137489076eee13a8",
+      "file": "recover.py",
+      "line": 79,
+      "qualname": "recover",
+      "method": null
+    },
+    {
+      "digest": "a6f9f2ccfce5c8c82b45a25906a050f8a4c4b96822540df03ba93cde821df113",
+      "file": "recover.py",
+      "line": 30,
+      "qualname": "validate_wal",
+      "method": null
+    },
+    {
+      "digest": "ab79b40d4d6c9011d5bf4560ffc5e79c98e59db82d5d3bf1177eb32dd18b7b59",
+      "file": "recover.py",
+      "line": 29,
+      "qualname": "validate_wal",
+      "method": null
+    },
+    {
+      "digest": "b8fccb3ebde9ebf17fa74ea33578cb0bea211e0d8609caeb730dde90a3e4d0d0",
+      "file": "recover.py",
+      "line": 57,
+      "qualname": "decode_wal",
+      "method": null
+    },
+    {
+      "digest": "c17331f064570f4612df5b993a90853f148fb0534f51539b074d958f05e41456",
+      "file": "recover.py",
+      "line": 28,
+      "qualname": "validate_wal",
+      "method": null
+    },
+    {
+      "digest": "cd7f9c4c9e2bccd3dbc21a8c20029859406359419e87ad3dda1fd2cea95ca910",
+      "file": "recover.py",
+      "line": 19,
+      "qualname": "checksum",
+      "method": null
+    },
+    {
+      "digest": "e43c82e6f6044845ed9628f58f2f1ffa5b829ed26f200986686e5da992348549",
+      "file": "recover.py",
+      "line": 77,
+      "qualname": "recover",
+      "method": null
+    }
+  ],
+  "jev_usd": 0.000619374,
+  "trials": [
+    {
+      "trial": "db-wal-recovery__8AsanDg",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 0,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "db-wal-recovery__9x9pout",
+      "job": "archive--coder-one-truth-control--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 5,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "db-wal-recovery__CUjJqXJ",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 1,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "db-wal-recovery__gbUgvvN",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 1,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "db-wal-recovery__uxJVwfg",
+      "job": "archive--coder-one-truth-control--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 5,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "db-wal-recovery__w4Q5edq",
+      "job": "archive--coder-one-truth-control--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 5,
+      "tied": 0,
+      "error": null
+    }
+  ]
+}

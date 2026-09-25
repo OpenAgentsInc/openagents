@@ -1,0 +1,106 @@
+{
+  "schema": "openagents.coder-one.method-conformance-offline.v1",
+  "task": "bn-fit-modify",
+  "image": "truth9584-archive/bn-fit-modify:public",
+  "registry": "d1e85531e7ddd081b691d53ba6a8fcb99555cf87f04623f09ce585646dcf745c",
+  "question_set": "c0437e07ca57b4d58c10a3e97ac7edfafe4307a60f3503e54d6e9b734b22854e",
+  "implementation": {
+    "name": "registry entries identified by one Jev Choice, then checked by code",
+    "digest": "6c847c747f2d6d7747f7e3f0b331ce690887ca9126b4e43b14eef88e631eda56"
+  },
+  "distinct": [
+    {
+      "digest": "0c4e161a7228b89c39b87d4ccc7acedff60d710507896717219badb3126b9061",
+      "file": "solve.py",
+      "line": 104,
+      "qualname": "write_csv",
+      "method": null
+    },
+    {
+      "digest": "4abf38acd958ec91ea2ea2d9414b6c595f164996427d4d7bf1db74df72bffef6",
+      "file": "solve.py",
+      "line": 44,
+      "qualname": "local_models",
+      "method": null
+    },
+    {
+      "digest": "aab86d65faed5f64fdfdaf4f787138642db9040320cea1f28afacc67e75d7067",
+      "file": "solve.py",
+      "line": 20,
+      "qualname": "linear_solve",
+      "method": null
+    },
+    {
+      "digest": "d2254b2794869db324e5fbe812557f78a538a1e0c082d0d51c6456f22943ed5e",
+      "file": "solve.py",
+      "line": 92,
+      "qualname": "topological_order",
+      "method": null
+    },
+    {
+      "digest": "ddc644b7a64d81596047cf7810456ae2e5269da331e1e12c60c33726732bcc82",
+      "file": "solve.py",
+      "line": 36,
+      "qualname": "moments",
+      "method": null
+    },
+    {
+      "digest": "f696ce5f2063f7feedf13d96291ce2e701f20ccac80c5626ec637abdc5ea81a6",
+      "file": "solve.py",
+      "line": 59,
+      "qualname": "discover",
+      "method": null
+    }
+  ],
+  "jev_usd": 0.00020949600000000001,
+  "trials": [
+    {
+      "trial": "bn-fit-modify__Tqn97Gu",
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "kind": "snapshot",
+      "candidates": 0,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "bn-fit-modify__XBjQVJf",
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "kind": "snapshot",
+      "candidates": 6,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "bn-fit-modify__aamGcUp",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "kind": "snapshot",
+      "candidates": 0,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "bn-fit-modify__bFJqScn",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "kind": "snapshot",
+      "candidates": 0,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "bn-fit-modify__hh3CepA",
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "kind": "snapshot",
+      "candidates": 0,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "bn-fit-modify__nomggBk",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "kind": "snapshot",
+      "candidates": 0,
+      "tied": 0,
+      "error": null
+    }
+  ]
+}

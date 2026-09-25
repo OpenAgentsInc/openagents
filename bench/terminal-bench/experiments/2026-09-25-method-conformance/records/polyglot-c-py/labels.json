@@ -1,0 +1,54 @@
+{
+  "schema": "openagents.coder-one.method-conformance-labels.v1",
+  "task": "polyglot-c-py",
+  "trials": [
+    {
+      "trial": "polyglot-c-py__4ajgUVL",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "kind": "snapshot",
+      "reward": 1.0,
+      "reward_source": null,
+      "snapshot_graded": true
+    },
+    {
+      "trial": "polyglot-c-py__BefiH6a",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "kind": "snapshot",
+      "reward": 1.0,
+      "reward_source": null,
+      "snapshot_graded": true
+    },
+    {
+      "trial": "polyglot-c-py__FyxYrAv",
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "kind": "snapshot",
+      "reward": 1.0,
+      "reward_source": null,
+      "snapshot_graded": true
+    },
+    {
+      "trial": "polyglot-c-py__NDvEvHe",
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "kind": "snapshot",
+      "reward": 1.0,
+      "reward_source": null,
+      "snapshot_graded": true
+    },
+    {
+      "trial": "polyglot-c-py__e7VT9Jp",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "kind": "snapshot",
+      "reward": 1.0,
+      "reward_source": null,
+      "snapshot_graded": true
+    },
+    {
+      "trial": "polyglot-c-py__pjSexXf",
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "kind": "snapshot",
+      "reward": 1.0,
+      "reward_source": null,
+      "snapshot_graded": true
+    }
+  ]
+}

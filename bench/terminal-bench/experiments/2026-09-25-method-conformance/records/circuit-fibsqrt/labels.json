@@ -1,0 +1,54 @@
+{
+  "schema": "openagents.coder-one.method-conformance-labels.v1",
+  "task": "circuit-fibsqrt",
+  "trials": [
+    {
+      "trial": "circuit-fibsqrt__7YduQi2",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "kind": "snapshot",
+      "reward": 1.0,
+      "reward_source": null,
+      "snapshot_graded": true
+    },
+    {
+      "trial": "circuit-fibsqrt__AsrhbfB",
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "kind": "snapshot",
+      "reward": 1.0,
+      "reward_source": null,
+      "snapshot_graded": true
+    },
+    {
+      "trial": "circuit-fibsqrt__GsDeSsu",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "kind": "snapshot",
+      "reward": 1.0,
+      "reward_source": null,
+      "snapshot_graded": true
+    },
+    {
+      "trial": "circuit-fibsqrt__X9xhXrv",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "kind": "snapshot",
+      "reward": 1.0,
+      "reward_source": null,
+      "snapshot_graded": true
+    },
+    {
+      "trial": "circuit-fibsqrt__cbpJmSh",
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "kind": "snapshot",
+      "reward": 1.0,
+      "reward_source": null,
+      "snapshot_graded": true
+    },
+    {
+      "trial": "circuit-fibsqrt__iXo3BvS",
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "kind": "snapshot",
+      "reward": 1.0,
+      "reward_source": null,
+      "snapshot_graded": true
+    }
+  ]
+}

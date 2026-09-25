@@ -1,0 +1,54 @@
+{
+  "schema": "openagents.coder-one.method-conformance-labels.v1",
+  "task": "portfolio-optimization",
+  "trials": [
+    {
+      "trial": "portfolio-optimization__CHNzXQ6",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "reward": 1.0,
+      "reward_source": null,
+      "snapshot_graded": true
+    },
+    {
+      "trial": "portfolio-optimization__DN3oUek",
+      "job": "archive--coder-one-truth-control--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "reward": 1.0,
+      "reward_source": null,
+      "snapshot_graded": true
+    },
+    {
+      "trial": "portfolio-optimization__kxmTZ3d",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "reward": 1.0,
+      "reward_source": null,
+      "snapshot_graded": true
+    },
+    {
+      "trial": "portfolio-optimization__o7PuLMU",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "reward": 1.0,
+      "reward_source": null,
+      "snapshot_graded": true
+    },
+    {
+      "trial": "portfolio-optimization__zo2nECU",
+      "job": "archive--coder-one-truth-control--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "reward": 1.0,
+      "reward_source": null,
+      "snapshot_graded": true
+    },
+    {
+      "trial": "portfolio-optimization__ztHi9so",
+      "job": "archive--coder-one-truth-control--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "reward": 1.0,
+      "reward_source": null,
+      "snapshot_graded": true
+    }
+  ]
+}

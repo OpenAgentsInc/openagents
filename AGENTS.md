@@ -310,3 +310,10 @@ uses, and marks which are implemented and which are only specified.
   its own so two runs are comparable. A program never carries a command
   either; a `query` step names a source in `sources/`, and what that source
   reads is the machine's business rather than the program's.
+- `methods/` holds the well-known method registry that
+  `verify.method_conformance` in `crates/coder-one/src/checks/conformance/`
+  reads: one digested file per method, with its standard definition and
+  citations, how to call a Python implementation, executable property
+  checks derived from the definition, its provenance (the tasks it was
+  learned from, which never count as its evidence), and its admission
+  record. An entry cites a textbook or reference, never a benchmark task.

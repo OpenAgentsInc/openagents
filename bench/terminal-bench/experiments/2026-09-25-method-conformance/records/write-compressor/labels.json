@@ -1,0 +1,54 @@
+{
+  "schema": "openagents.coder-one.method-conformance-labels.v1",
+  "task": "write-compressor",
+  "trials": [
+    {
+      "trial": "write-compressor__AdqzkqJ",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "kind": "snapshot",
+      "reward": 0.0,
+      "reward_source": null,
+      "snapshot_graded": true
+    },
+    {
+      "trial": "write-compressor__PMcdu2M",
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "kind": "snapshot",
+      "reward": 1.0,
+      "reward_source": null,
+      "snapshot_graded": true
+    },
+    {
+      "trial": "write-compressor__Y6JMAvX",
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "kind": "snapshot",
+      "reward": 1.0,
+      "reward_source": null,
+      "snapshot_graded": true
+    },
+    {
+      "trial": "write-compressor__a7ExoaT",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "kind": "snapshot",
+      "reward": 0.0,
+      "reward_source": null,
+      "snapshot_graded": true
+    },
+    {
+      "trial": "write-compressor__hfBx6Mh",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "kind": "snapshot",
+      "reward": 0.0,
+      "reward_source": null,
+      "snapshot_graded": true
+    },
+    {
+      "trial": "write-compressor__mWyWPBC",
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "kind": "snapshot",
+      "reward": 1.0,
+      "reward_source": null,
+      "snapshot_graded": true
+    }
+  ]
+}

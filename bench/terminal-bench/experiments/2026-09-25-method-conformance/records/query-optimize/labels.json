@@ -1,0 +1,54 @@
+{
+  "schema": "openagents.coder-one.method-conformance-labels.v1",
+  "task": "query-optimize",
+  "trials": [
+    {
+      "trial": "query-optimize__KW3CCNE",
+      "job": "archive--coder-one-truth-control--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "reward": 1.0,
+      "reward_source": null,
+      "snapshot_graded": true
+    },
+    {
+      "trial": "query-optimize__QHUSPVd",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "reward": 0.0,
+      "reward_source": null,
+      "snapshot_graded": true
+    },
+    {
+      "trial": "query-optimize__jKpVJYQ",
+      "job": "archive--coder-one-truth-control--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "reward": 1.0,
+      "reward_source": null,
+      "snapshot_graded": true
+    },
+    {
+      "trial": "query-optimize__oqFKBLm",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "reward": 0.0,
+      "reward_source": null,
+      "snapshot_graded": true
+    },
+    {
+      "trial": "query-optimize__t6y9yFK",
+      "job": "archive--coder-one-truth-control--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "reward": 1.0,
+      "reward_source": null,
+      "snapshot_graded": true
+    },
+    {
+      "trial": "query-optimize__zhWSb4B",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "reward": 0.0,
+      "reward_source": null,
+      "snapshot_graded": true
+    }
+  ]
+}

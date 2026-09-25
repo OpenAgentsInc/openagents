@@ -1,0 +1,113 @@
+{
+  "schema": "openagents.coder-one.method-conformance-offline.v1",
+  "task": "modernize-scientific-stack",
+  "image": "truth9584-archive/modernize-scientific-stack:public",
+  "registry": "d1e85531e7ddd081b691d53ba6a8fcb99555cf87f04623f09ce585646dcf745c",
+  "question_set": "c0437e07ca57b4d58c10a3e97ac7edfafe4307a60f3503e54d6e9b734b22854e",
+  "implementation": {
+    "name": "registry entries identified by one Jev Choice, then checked by code",
+    "digest": "6c847c747f2d6d7747f7e3f0b331ce690887ca9126b4e43b14eef88e631eda56"
+  },
+  "distinct": [
+    {
+      "digest": "0cd16a61c80415609124b5cecc121304c3095c60384d1abcb715d0e4faba90ab",
+      "file": "analyze_climate_modern.py",
+      "line": 17,
+      "qualname": "station_mean_temperatures",
+      "method": null
+    },
+    {
+      "digest": "15653b2a7474fb66b55e3389e499c6b546ec38e14f927ef7862b4f43ad622af6",
+      "file": "climate_analyzer/analyze_climate.py",
+      "line": 36,
+      "qualname": "ClimateAnalyzer.calculate_anomalies",
+      "method": null
+    },
+    {
+      "digest": "24f41332f0f6c3be29ecb79797bf84867c08e27b505181381f4ef302acb76841",
+      "file": "climate_analyzer/analyze_climate.py",
+      "line": 26,
+      "qualname": "ClimateAnalyzer.load_temperature_data",
+      "method": null
+    },
+    {
+      "digest": "3936b421dcc7c6a7672914bacefb5e85e6151da9d4ce348886562afcd468847b",
+      "file": "analyze_climate_modern.py",
+      "line": 16,
+      "qualname": "analyze",
+      "method": null
+    },
+    {
+      "digest": "3e8728ebbd74cd8c6a0237bb6cb690ff8427def284a842bc01440857b660dc43",
+      "file": "analyze_climate_modern.py",
+      "line": 17,
+      "qualname": "mean_temperatures",
+      "method": null
+    },
+    {
+      "digest": "7d77499e17a6d285807d08a2be9817f762d7da2371070574d2a2e063ea852613",
+      "file": "climate_analyzer/analyze_climate.py",
+      "line": 48,
+      "qualname": "ClimateAnalyzer.create_visualization",
+      "method": null
+    },
+    {
+      "digest": "cb8a013d34505717b239e3685ccec730f1ce641c1ae91365caecc357dbfdbb64",
+      "file": "analyze_climate_modern.py",
+      "line": 22,
+      "qualname": "mean_temperatures",
+      "method": null
+    }
+  ],
+  "jev_usd": 0.00028320600000000004,
+  "trials": [
+    {
+      "trial": "modernize-scientific-stack__A4atPhj",
+      "job": "archive--coder-one-truth-control--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 4,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "modernize-scientific-stack__HriWybi",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 3,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "modernize-scientific-stack__N2fkAoN",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 3,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "modernize-scientific-stack__QazhZBi",
+      "job": "archive--coder-one-truth-control--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 4,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "modernize-scientific-stack__QzTTVwc",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 4,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "modernize-scientific-stack__bJjX2fa",
+      "job": "archive--coder-one-truth-control--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 4,
+      "tied": 0,
+      "error": null
+    }
+  ]
+}

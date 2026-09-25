@@ -1,0 +1,526 @@
+{
+  "schema": "openagents.coder-one.method-conformance-offline.v1",
+  "task": "filter-js-from-html",
+  "image": "truth9584-archive/filter-js-from-html:public",
+  "registry": "d1e85531e7ddd081b691d53ba6a8fcb99555cf87f04623f09ce585646dcf745c",
+  "question_set": "c0437e07ca57b4d58c10a3e97ac7edfafe4307a60f3503e54d6e9b734b22854e",
+  "implementation": {
+    "name": "registry entries identified by one Jev Choice, then checked by code",
+    "digest": "6c847c747f2d6d7747f7e3f0b331ce690887ca9126b4e43b14eef88e631eda56"
+  },
+  "distinct": [
+    {
+      "digest": "0101a33806c713b24aca40bc7f005326b3b06f32ce0fee8d6947feef621ca0fd",
+      "file": "filter.py",
+      "line": 355,
+      "qualname": "Sanitizer.handle_data",
+      "method": null
+    },
+    {
+      "digest": "02b4149261bafee0e52945d831ed02644be86f3676ec607859a8d25d525d7b92",
+      "file": "filter.py",
+      "line": 22,
+      "qualname": "_tag_end",
+      "method": null
+    },
+    {
+      "digest": "0c56ca4ce3ece39aa62a13d3a7700411d24010fc78ad03546f2a5f3b34afbfb1",
+      "file": "filter.py",
+      "line": 183,
+      "qualname": "Sanitizer.normalized_start",
+      "method": null
+    },
+    {
+      "digest": "118c40f87ded96e3ae5065a119502776b6a4a04cb60702e200cb0e923f7c2aa1",
+      "file": "filter.py",
+      "line": 196,
+      "qualname": "Sanitizer.handle_starttag",
+      "method": null
+    },
+    {
+      "digest": "119f304a0c9a117b92e3768e553f58407a14a7d4f88f2a205311cc08d7ee31e8",
+      "file": "filter.py",
+      "line": 72,
+      "qualname": "sanitize",
+      "method": null
+    },
+    {
+      "digest": "1783846c703d8e4d59fc0f2a44214f69c24f69b0d57269a075eed9fb1cde2449",
+      "file": "filter.py",
+      "line": 120,
+      "qualname": "srcset_urls",
+      "method": null
+    },
+    {
+      "digest": "179b361bc0bec3095617b7486f07f3a7829e216b2c18b4752eaf2c6302713648",
+      "file": "filter.py",
+      "line": 51,
+      "qualname": "safe_foreign",
+      "method": null
+    },
+    {
+      "digest": "1cab7843b19873014b8e1b6619913af785fb2edc3c7379ad0d7c3bebfda14ce4",
+      "file": "filter.py",
+      "line": 273,
+      "qualname": "Sanitizer.handle_data",
+      "method": null
+    },
+    {
+      "digest": "1cf936d2191f01d32a97aada10a48166915bffcb3f1981cc0227339a0249c5c1",
+      "file": "filter.py",
+      "line": 281,
+      "qualname": "Sanitizer.handle_entityref",
+      "method": null
+    },
+    {
+      "digest": "1fec16977861469b1bc4aa19f2ccc2f82fba0cf01b6aeb2015d5d4b257baa7d6",
+      "file": "filter.py",
+      "line": 403,
+      "qualname": "decode_document",
+      "method": null
+    },
+    {
+      "digest": "225463ca6de102b21f0302cf2354bf3838cf6ce1809c8cdc281bbb4dbd9d48cc",
+      "file": "filter.py",
+      "line": 485,
+      "qualname": "sanitize",
+      "method": null
+    },
+    {
+      "digest": "2386c36486328222d76f023b0d6d9497ac04e6ec592f599be556df3d0033be45",
+      "file": "filter.py",
+      "line": 194,
+      "qualname": "Sanitizer.attrs",
+      "method": null
+    },
+    {
+      "digest": "25869522c1089a929220ed546f2b4101f61b1ec3412fda6ee1641849cdb7b5f9",
+      "file": "filter.py",
+      "line": 291,
+      "qualname": "Sanitizer.handle_comment",
+      "method": null
+    },
+    {
+      "digest": "29e02f6c216ed7a46aec4bbaeac1cd0aa4c399c74bfd6bd53173ccad148c76d6",
+      "file": "filter.py",
+      "line": 246,
+      "qualname": "Sanitizer.handle_endtag",
+      "method": null
+    },
+    {
+      "digest": "2bc91866496ca96c3feb19ce6b4b50477179f57f7e7540bde6af32d182e9bcf0",
+      "file": "filter.py",
+      "line": 70,
+      "qualname": "_unsafe_css",
+      "method": null
+    },
+    {
+      "digest": "2c42df45f29897c133ca8f8c033d85c9cd219ab86f9fc793e77334ec24efddd7",
+      "file": "filter.py",
+      "line": 500,
+      "qualname": "decode_document",
+      "method": null
+    },
+    {
+      "digest": "2e421a6bada02a274d8cf9b5362bfed3ad9c1d76d0293934a99a2a59b9d14ce9",
+      "file": "filter.py",
+      "line": 41,
+      "qualname": "dangerous_style",
+      "method": null
+    },
+    {
+      "digest": "300e35683c5e75a5d7b2714f4c72177fca08b78964151d8c4b73bedf49ee740b",
+      "file": "filter.py",
+      "line": 134,
+      "qualname": "sanitize",
+      "method": null
+    },
+    {
+      "digest": "305473cc13d306117c5ad6436d0303d9ee1b703322217dc3ca2d6290636a9ecb",
+      "file": "filter.py",
+      "line": 246,
+      "qualname": "Sanitizer.handle_starttag",
+      "method": null
+    },
+    {
+      "digest": "32e63f81f030a078d1f76ac2cfe509a3af6705498864403c5609735f67128e0e",
+      "file": "filter.py",
+      "line": 96,
+      "qualname": "Sanitizer.handle_starttag",
+      "method": null
+    },
+    {
+      "digest": "332a0a37a68831fbb37abe15a4bcf4e247542a3ee46cceb46849d9409afb0397",
+      "file": "filter.py",
+      "line": 111,
+      "qualname": "sanitize",
+      "method": null
+    },
+    {
+      "digest": "34e03b0c0c15266230314af4b2c9d431d22db3bd0d9179574a52117a5bb94e28",
+      "file": "filter.py",
+      "line": 110,
+      "qualname": "safe_css_piece",
+      "method": null
+    },
+    {
+      "digest": "353317aa33b7e097de733dfd407b73810f47241c5a94b4f8b9154f5d2ed8c32f",
+      "file": "filter.py",
+      "line": 111,
+      "qualname": "Sanitizer.handle_startendtag",
+      "method": null
+    },
+    {
+      "digest": "35a2ebe9fbcf2405b3135079dc03dd6489ddaa33b9d7aa1bab49ef2f171c2e44",
+      "file": "filter.py",
+      "line": 83,
+      "qualname": "safe_url",
+      "method": null
+    },
+    {
+      "digest": "3632bdcdda2a570cfcf2b7224adf2cc094be7aeba712ecb67891f87f9fcecc11",
+      "file": "filter.py",
+      "line": 332,
+      "qualname": "Sanitizer.handle_endtag",
+      "method": null
+    },
+    {
+      "digest": "3f65a252321d2b4a50967342252191481ad0bbaa21f00af687a08c628f7b7b10",
+      "file": "filter.py",
+      "line": 372,
+      "qualname": "Sanitizer.handle_decl",
+      "method": null
+    },
+    {
+      "digest": "40e4c2aef6035fe2b79c3422f14db12e572c10db166ea8ab3cb511017f819f3d",
+      "file": "filter.py",
+      "line": 56,
+      "qualname": "unsafe_url",
+      "method": null
+    },
+    {
+      "digest": "4260ebd16de9a9ec45f1d192a0027b3710dc255d3ff021b291b6664d592854e6",
+      "file": "filter.py",
+      "line": 150,
+      "qualname": "Sanitizer.clean_start",
+      "method": null
+    },
+    {
+      "digest": "4bb59249331115bd9b9751210fa320ef046f6c24af185ea501c5efa912be62ab",
+      "file": "filter.py",
+      "line": 69,
+      "qualname": "css_key",
+      "method": null
+    },
+    {
+      "digest": "4bbe9e7a961dca1de6ddfdb8ee16fbe7faffb776b91f7c93e35e60df62a0cc95",
+      "file": "filter.py",
+      "line": 312,
+      "qualname": "sanitize",
+      "method": null
+    },
+    {
+      "digest": "4c0af7619eac1a186315dab485c9fa896c025fdcd3054c75a0cd6ac1fe625c29",
+      "file": "filter.py",
+      "line": 526,
+      "qualname": "main",
+      "method": null
+    },
+    {
+      "digest": "4caf9c16606a04fbf8f9262e4607200d30b492258bb079d00d403fa0c3c46553",
+      "file": "filter.py",
+      "line": 345,
+      "qualname": "Sanitizer.handle_startendtag",
+      "method": null
+    },
+    {
+      "digest": "52d097c0dab2aae124823e0297a0d1a87ca11d00a24ca366d983481ac5cdf138",
+      "file": "filter.py",
+      "line": 60,
+      "qualname": "Sanitizer.add_start_attributes",
+      "method": null
+    },
+    {
+      "digest": "558e039eb16efc3f23ef46d02d64769d2f76a40e0daf060dda75382216cde017",
+      "file": "filter.py",
+      "line": 364,
+      "qualname": "Sanitizer.handle_charref",
+      "method": null
+    },
+    {
+      "digest": "5c61f2198d36a27fd52854cf0f5074e90cc1205ff907b990b903ea35d5480c0d",
+      "file": "filter.py",
+      "line": 63,
+      "qualname": "srcset_urls",
+      "method": null
+    },
+    {
+      "digest": "6419041cb8122f63f8e00b45ca61d17e45c94f9bad34d4d8f60dfd7cf55ecf6c",
+      "file": "filter.py",
+      "line": 39,
+      "qualname": "_attribute_value",
+      "method": null
+    },
+    {
+      "digest": "64de678a4f1df258a1470f391f89bae9b2e0f522c9167c2e66fbae54d1c1d471",
+      "file": "filter.py",
+      "line": 305,
+      "qualname": "Sanitizer.emit_start",
+      "method": null
+    },
+    {
+      "digest": "698f8ad50ba554ceeaf1f2b4a675760d3da371b2c2f4524e1dfff04307cb0e25",
+      "file": "filter.py",
+      "line": 263,
+      "qualname": "container_end",
+      "method": null
+    },
+    {
+      "digest": "73daaf082395a5f7f09618f0e4d13065d8c360346df2b493ebd90fedd5ba5c02",
+      "file": "filter.py",
+      "line": 26,
+      "qualname": "_tag_end",
+      "method": null
+    },
+    {
+      "digest": "77e2eba3672e8ca84830403b3e2e0ccc5ee41120918e3485adaa803c547aba0e",
+      "file": "filter.py",
+      "line": 50,
+      "qualname": "url_key",
+      "method": null
+    },
+    {
+      "digest": "7aae3185677ff7a7d93fcbb1593c3acc1fa81baf806a0a3ebe03d7d102172c64",
+      "file": "filter.py",
+      "line": 88,
+      "qualname": "_clean_tag",
+      "method": null
+    },
+    {
+      "digest": "81b7dfc3df1bd28f31c89af7b80e29a3a9e892ec109d8298e8b1bde15fcf39a7",
+      "file": "filter.py",
+      "line": 16,
+      "qualname": "_dangerous_value",
+      "method": null
+    },
+    {
+      "digest": "860ecdf40a1144e89c79bcbdd321f13e8407b9cde14378689c434e9cd16ad4d2",
+      "file": "filter.py",
+      "line": 378,
+      "qualname": "Sanitizer.unknown_decl",
+      "method": null
+    },
+    {
+      "digest": "8b48a9152c5f8c3352d6a725af682017678647d23a37824dc936c6fc60fbad1d",
+      "file": "filter.py",
+      "line": 308,
+      "qualname": "attribute_edits",
+      "method": null
+    },
+    {
+      "digest": "8d64172e26765e59014c84ec5614844fa2ac6ca9336d4f4f1ade4195450d5bba",
+      "file": "filter.py",
+      "line": 288,
+      "qualname": "Sanitizer.handle_charref",
+      "method": null
+    },
+    {
+      "digest": "95a28c7fbe5357f87d4e6fc795f43ea44344bb8bef3c18a287ab37800c2d1cdd",
+      "file": "filter.py",
+      "line": 46,
+      "qualname": "ascii_lower",
+      "method": null
+    },
+    {
+      "digest": "9702e7554de54e8e5111a391a33d1a4066c70ef3bc41b859645390612a438f20",
+      "file": "filter.py",
+      "line": 113,
+      "qualname": "safe_attribute",
+      "method": null
+    },
+    {
+      "digest": "9aa14f4b89b8ca017dad63c5ff47b5050981060200b4e5b61f83b2ec1b9ff55f",
+      "file": "filter.py",
+      "line": 42,
+      "qualname": "_clean_tag",
+      "method": null
+    },
+    {
+      "digest": "a0dcaa38a164aebebd7a97e2085d0bfa3ce1ce84531253d4568eea0a716741a6",
+      "file": "filter.py",
+      "line": 91,
+      "qualname": "safe_url",
+      "method": null
+    },
+    {
+      "digest": "a5d7af6840b652bb7daeffddb3d8d47ce5f3254c1c91b0b1899d03dc7b283b1a",
+      "file": "filter.py",
+      "line": 254,
+      "qualname": "raw_end",
+      "method": null
+    },
+    {
+      "digest": "a6a54bcc13ba2f269f2cfa417641ed499b2c7c5325748cc7ca4875cdc8825c99",
+      "file": "filter.py",
+      "line": 232,
+      "qualname": "Sanitizer.handle_startendtag",
+      "method": null
+    },
+    {
+      "digest": "aeb4c3ebc3e3ddb50e68f78788ca040d6ee6f4bd018cfa1bfcd285ada36bc5d7",
+      "file": "filter.py",
+      "line": 93,
+      "qualname": "safe_css",
+      "method": null
+    },
+    {
+      "digest": "b2f1757ae13d6d069e54a76cf14573f9838237cafb0a0d6c839c385fa3f75a72",
+      "file": "filter.py",
+      "line": 188,
+      "qualname": "read_tag",
+      "method": null
+    },
+    {
+      "digest": "b8cddcfa74a0809f74d4db59951153003a9024251908a66782a3aa0842f3a49f",
+      "file": "filter.py",
+      "line": 361,
+      "qualname": "Sanitizer.handle_entityref",
+      "method": null
+    },
+    {
+      "digest": "be1872e6fc2a93f78b245f4e1515afb166f07a3bbe7510e4294b630861feae5e",
+      "file": "filter.py",
+      "line": 119,
+      "qualname": "Sanitizer.handle_endtag",
+      "method": null
+    },
+    {
+      "digest": "becdf6e5da0e36ccea77cf0253af862c6ff67b167a312401bd4412fd388e9238",
+      "file": "filter.py",
+      "line": 49,
+      "qualname": "_unsafe_attribute",
+      "method": null
+    },
+    {
+      "digest": "bfaa4de54eb825052544f10b3c5d66ab5a200bdf1cf80a631a223082e949e380",
+      "file": "filter.py",
+      "line": 81,
+      "qualname": "unsafe_css",
+      "method": null
+    },
+    {
+      "digest": "c0ef3d16e1d74cc026b25e8a59ac3b4bc63d7728685c8adeda84d29e4a829527",
+      "file": "filter.py",
+      "line": 300,
+      "qualname": "Sanitizer.handle_decl",
+      "method": null
+    },
+    {
+      "digest": "c9a418a305e8fd7e70beffbb7bf94ed264d124f272969e4089f9bcb602440280",
+      "file": "filter.py",
+      "line": 131,
+      "qualname": "clean_css",
+      "method": null
+    },
+    {
+      "digest": "d2b810b506e403ff22d672f21d753da7d4c39c3ef4bafe3206ddef1bc18ca939",
+      "file": "filter.py",
+      "line": 147,
+      "qualname": "clean_css",
+      "method": null
+    },
+    {
+      "digest": "e2319ca4d74a199e901feac3c405bdaa1720a4c9357edeb66e4a8c3ae06f58c9",
+      "file": "filter.py",
+      "line": 20,
+      "qualname": "dangerous_url",
+      "method": null
+    },
+    {
+      "digest": "e7adcc5726e52c98875c1aa93093125ab6bf5010417151b25076a791640c50d6",
+      "file": "filter.py",
+      "line": 367,
+      "qualname": "Sanitizer.handle_comment",
+      "method": null
+    },
+    {
+      "digest": "e87f21a2c5facbf4fad523aae8ef2f1670dd6fbc107ab329d4bb906c31e6936b",
+      "file": "filter.py",
+      "line": 34,
+      "qualname": "dangerous_srcset",
+      "method": null
+    },
+    {
+      "digest": "ebe915ab84606c4b4703f1fdc3c2df3149d535fefe52e4cfd7abfee076616984",
+      "file": "filter.py",
+      "line": 356,
+      "qualname": "apply_edits",
+      "method": null
+    },
+    {
+      "digest": "feae88fa9bd7a766a284b81715ef79a582e11218aa751e07e56dd5835590ef08",
+      "file": "filter.py",
+      "line": 101,
+      "qualname": "css_decode",
+      "method": null
+    },
+    {
+      "digest": "ffe2f335ec858bacf0a34300254450c6250713605a39522c232297edb5ddca49",
+      "file": "filter.py",
+      "line": 397,
+      "qualname": "sanitize",
+      "method": null
+    }
+  ],
+  "jev_usd": 0.002396226,
+  "trials": [
+    {
+      "trial": "filter-js-from-html__4CLumL2",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 6,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "filter-js-from-html__Cf6E5Sh",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 8,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "filter-js-from-html__LbkYCLE",
+      "job": "archive--coder-one-truth-control--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 18,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "filter-js-from-html__i9yDpjv",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 4,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "filter-js-from-html__oK3YcjS",
+      "job": "archive--coder-one-truth-control--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 15,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "filter-js-from-html__rt7W4BY",
+      "job": "archive--coder-one-truth-control--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 15,
+      "tied": 0,
+      "error": null
+    }
+  ]
+}

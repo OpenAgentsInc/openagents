@@ -1,0 +1,127 @@
+{
+  "schema": "openagents.coder-one.method-conformance-offline.v1",
+  "task": "distribution-search",
+  "image": "truth9584-archive/distribution-search:public",
+  "registry": "d1e85531e7ddd081b691d53ba6a8fcb99555cf87f04623f09ce585646dcf745c",
+  "question_set": "c0437e07ca57b4d58c10a3e97ac7edfafe4307a60f3503e54d6e9b734b22854e",
+  "implementation": {
+    "name": "registry entries identified by one Jev Choice, then checked by code",
+    "digest": "6c847c747f2d6d7747f7e3f0b331ce690887ca9126b4e43b14eef88e631eda56"
+  },
+  "distinct": [
+    {
+      "digest": "060f7e5cf8ee1cfce38db2dbdef2ff17bb28685bc7975023ccb9e1678c07f913",
+      "file": "find_distribution.py",
+      "line": 22,
+      "qualname": "group_divergences",
+      "method": null
+    },
+    {
+      "digest": "0f20840464b7325042eca26b97a6e5056747ae09b521f095a9fccdaf592f2ffa",
+      "file": "find_distribution.py",
+      "line": 19,
+      "qualname": "group_probabilities",
+      "method": null
+    },
+    {
+      "digest": "3530d7b4159a280aff616750177f4b63ff0de33307d959cd71782488ccd4f90c",
+      "file": "generate_distribution.py",
+      "line": 13,
+      "qualname": "distribution_from_parameters",
+      "method": null
+    },
+    {
+      "digest": "44ac893610b5165458f4012aec5ac5c1fb6d85de447580dd66f694450b45c879",
+      "file": "generate_distribution.py",
+      "line": 30,
+      "qualname": "grouped_kl",
+      "method": null
+    },
+    {
+      "digest": "8b33116f2d5c7ca108e5cda0b4593e0c062674b5e94d8ec20a3ce03e8610662a",
+      "file": "find_distribution.py",
+      "line": 35,
+      "qualname": "solve_head_share",
+      "method": null
+    },
+    {
+      "digest": "97caae462ce6559731928eff84b3b6028bd791bbd5efb0bbd7b4e02a331e38c9",
+      "file": "generate_distribution.py",
+      "line": 25,
+      "qualname": "divergences",
+      "method": null
+    },
+    {
+      "digest": "a0474549972335ccef72ee634ff472bd2c89f3aaeaf76deda5677b5498406691",
+      "file": "find_distribution.py",
+      "line": 30,
+      "qualname": "residuals",
+      "method": null
+    },
+    {
+      "digest": "ad1f7e58d76c3c873dd4d0e4e919baf59ac0fbdae208b214d1e2fdf573c55d05",
+      "file": "solution.py",
+      "line": 15,
+      "qualname": "divergences",
+      "method": null
+    },
+    {
+      "digest": "c4e891979b65d2314f523fce543d57ad2e783f3f4a0bf057f0d7e644cb2b0cac",
+      "file": "generate_distribution.py",
+      "line": 19,
+      "qualname": "group_probabilities",
+      "method": null
+    }
+  ],
+  "jev_usd": 0.000327432,
+  "trials": [
+    {
+      "trial": "distribution-search__2iPcGxp",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "kind": "snapshot",
+      "candidates": 2,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "distribution-search__UEB9GvZ",
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "kind": "snapshot",
+      "candidates": 2,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "distribution-search__dsotnuZ",
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "kind": "snapshot",
+      "candidates": 2,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "distribution-search__fDiucoR",
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "kind": "snapshot",
+      "candidates": 2,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "distribution-search__wfDMeV5",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "kind": "snapshot",
+      "candidates": 1,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "distribution-search__xGDRd3x",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "kind": "snapshot",
+      "candidates": 0,
+      "tied": 0,
+      "error": null
+    }
+  ]
+}

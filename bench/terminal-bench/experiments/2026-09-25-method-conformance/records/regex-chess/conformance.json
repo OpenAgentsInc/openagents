@@ -1,0 +1,330 @@
+{
+  "schema": "openagents.coder-one.method-conformance-offline.v1",
+  "task": "regex-chess",
+  "image": "truth9584-archive/regex-chess:public",
+  "registry": "d1e85531e7ddd081b691d53ba6a8fcb99555cf87f04623f09ce585646dcf745c",
+  "question_set": "c0437e07ca57b4d58c10a3e97ac7edfafe4307a60f3503e54d6e9b734b22854e",
+  "implementation": {
+    "name": "registry entries identified by one Jev Choice, then checked by code",
+    "digest": "6c847c747f2d6d7747f7e3f0b331ce690887ca9126b4e43b14eef88e631eda56"
+  },
+  "distinct": [
+    {
+      "digest": "0b4db238df1de6593619ade8c5122cb51118890af8dc33d0ae614bd23a6795ae",
+      "file": "generate.py",
+      "line": 22,
+      "qualname": "skip",
+      "method": null
+    },
+    {
+      "digest": "161406fdcd637ffb8bcab6ea11ee0527ab873e4462f7cb8708070aaaa69f47f0",
+      "file": "check.py",
+      "line": 23,
+      "qualname": "ChessGameTester.verify_legal_moves",
+      "method": null
+    },
+    {
+      "digest": "1cf218ba8a4dd1eedefe0319ca39f0a9848a9cb234a881f3ea4da241e2aa4180",
+      "file": "evaluate.py",
+      "line": 10,
+      "qualname": "key",
+      "method": null
+    },
+    {
+      "digest": "1ea0c3c618e6d64b45f8893f1cb67ad224aa37a924c7c88b95d7b48a07bf92b2",
+      "file": "component_checks.py",
+      "line": 23,
+      "qualname": "check",
+      "method": null
+    },
+    {
+      "digest": "23b320caee6b1e16deb2e907e140b1d3ecd8e1d5458e6147211e7c87c52c3fbf",
+      "file": "generate.py",
+      "line": 71,
+      "qualname": "move",
+      "method": null
+    },
+    {
+      "digest": "2983b0c443d02f3638600819ce56df630b10409f94ee34e4b90fb86d5a07de81",
+      "file": "generate.py",
+      "line": 12,
+      "qualname": "emit",
+      "method": null
+    },
+    {
+      "digest": "2d018ba2fcd4f39354d96c4dfb6e89fd6ca8906acc77fef40824be784cacc466",
+      "file": "generate.py",
+      "line": 76,
+      "qualname": "move",
+      "method": null
+    },
+    {
+      "digest": "39b4304a24e4a529daad068b7631e9ff8e8ba8efcc91e93ea9ac9d26ecba5d97",
+      "file": "generate_reference.py",
+      "line": 18,
+      "qualname": "gap",
+      "method": null
+    },
+    {
+      "digest": "3a57ae6451abe2dea95696c59a614a666b82e3d01d671ce167a2cb268d335e14",
+      "file": "generate_reference.py",
+      "line": 22,
+      "qualname": "sparse",
+      "method": null
+    },
+    {
+      "digest": "3fd1e0b01b5673e670872fe4de93f004a1a6c69d60d972f36f92e0eec7aac8a3",
+      "file": "generate.py",
+      "line": 40,
+      "qualname": "attacks",
+      "method": null
+    },
+    {
+      "digest": "49a82ef0427f052ce00f3d387c8738c3c3c8ce78f083120d3fd9bddf68b5e5a6",
+      "file": "generate_reference.py",
+      "line": 14,
+      "qualname": "emit",
+      "method": null
+    },
+    {
+      "digest": "4b3119b22bc892018f58d4f638ad938912ebac2255605ca6edcd2a430a9e43b8",
+      "file": "generate.previous.py",
+      "line": 38,
+      "qualname": "attacks",
+      "method": null
+    },
+    {
+      "digest": "4ddf38d610da304d937d39601ec7783e8e30d06c62828f076899d778ea4ed730",
+      "file": "generate.previous.py",
+      "line": 16,
+      "qualname": "ref",
+      "method": null
+    },
+    {
+      "digest": "538702fa7496d19e7645e875735570fc28f917cc4738c19b79985d398ecefd02",
+      "file": "generate.previous.py",
+      "line": 22,
+      "qualname": "constraints",
+      "method": null
+    },
+    {
+      "digest": "57801033ad43c92dacba2103c8ec6a1750edb2b515a8390a58337eecd074d8a2",
+      "file": "generate_reference.py",
+      "line": 76,
+      "qualname": "move",
+      "method": null
+    },
+    {
+      "digest": "59e3f90eb165b20a87561db34f030595a95b97c92c7f8a8df6eef009aef8ffbe",
+      "file": "generate.py",
+      "line": 42,
+      "qualname": "attacks",
+      "method": null
+    },
+    {
+      "digest": "5cbf18d09d2cbbf24d43e8cacbed92103b42efe8a293ab97e817b033035d665a",
+      "file": "generate.py",
+      "line": 18,
+      "qualname": "cells_pattern",
+      "method": null
+    },
+    {
+      "digest": "5eeb4329f5ce3677aa4153793f2767208f4fa544687c4323d6bb5c0658c3afe4",
+      "file": "generate.py",
+      "line": 32,
+      "qualname": "square",
+      "method": null
+    },
+    {
+      "digest": "633a4fd73c2d112228a7cb26989da51f06bf2a54f78e21ee9313c96cdd32355d",
+      "file": "generate.py",
+      "line": 129,
+      "qualname": "relative_move",
+      "method": null
+    },
+    {
+      "digest": "72c650688aabde09ec199f99741e7845123ad9669bd5f552d2d3c70f8d850504",
+      "file": "stress.py",
+      "line": 8,
+      "qualname": "run",
+      "method": null
+    },
+    {
+      "digest": "743a2c29adccd91de98539928975cd695de2e1362022ad69b0470ab012f60d70",
+      "file": "evaluate.py",
+      "line": 16,
+      "qualname": "expected",
+      "method": null
+    },
+    {
+      "digest": "789913ed31af0b22535148304992ba9b166e1d0faf0fc4ee656c3d97c1396bae",
+      "file": "generate.py",
+      "line": 22,
+      "qualname": "sparse",
+      "method": null
+    },
+    {
+      "digest": "79bfa1bb53786b569ebd370b2ef77d35fc17b0877aea5f89ec3c4ed7da3ae7ca",
+      "file": "check.py",
+      "line": 44,
+      "qualname": "ChessGameTester.test_game",
+      "method": null
+    },
+    {
+      "digest": "83e4718914c3932ec7e2133bfedfdc370c9a11f43295935bed87c63e3294b4d1",
+      "file": "generate.py",
+      "line": 15,
+      "qualname": "ref",
+      "method": null
+    },
+    {
+      "digest": "846c5ed6c0fe58ec179acbe7853cd93adea7acb99507a7b96da0452cc4c0fbae",
+      "file": "generate.py",
+      "line": 37,
+      "qualname": "on_board",
+      "method": null
+    },
+    {
+      "digest": "887ea37e71e88e585eaa82d965cfaaf0e013bf9530f21e0e451d7a0f4e1cbfca",
+      "file": "special_cases.py",
+      "line": 10,
+      "qualname": "verify",
+      "method": null
+    },
+    {
+      "digest": "8a68b05f1b9a3965c7a6ee2d6d06593a98e7febc2f4ae3c77114dfc31df9d317",
+      "file": "evaluate.py",
+      "line": 10,
+      "qualname": "normalize",
+      "method": null
+    },
+    {
+      "digest": "950a7dc398798b99294b4281ef6d53c317a17a6e3709205df635d69bbe6262e8",
+      "file": "check.py",
+      "line": 10,
+      "qualname": "run_solution",
+      "method": null
+    },
+    {
+      "digest": "97b88908c74e1422fed21050dac5a81a4a90c8d2a4092a018f3100d08ed4a813",
+      "file": "generate.py",
+      "line": 18,
+      "qualname": "gap",
+      "method": null
+    },
+    {
+      "digest": "99f553c7ff0739f76182faf7dfebe1bbdf3329bec85634539263941893d3f257",
+      "file": "generate.py",
+      "line": 41,
+      "qualname": "attacks",
+      "method": null
+    },
+    {
+      "digest": "a771e68ab1ad0482c238307a2dce3467e2c187f2a0ed2a1c6adc2ef2d7dda29a",
+      "file": "generate.py",
+      "line": 25,
+      "qualname": "constraints",
+      "method": null
+    },
+    {
+      "digest": "be2f861a48876044e929a1918f9c682d6d289c5475cc87d4d20f1365c47e2d93",
+      "file": "generate.py",
+      "line": 16,
+      "qualname": "add",
+      "method": null
+    },
+    {
+      "digest": "bf2d9624109742accf702a36d236e8aae4c63c6972c59df7caab9d1b59f70625",
+      "file": "generate.previous.py",
+      "line": 13,
+      "qualname": "add",
+      "method": null
+    },
+    {
+      "digest": "c104e7a4615cf168e3879d987d1139c55757f6b4b2ce920ca3423568d723224b",
+      "file": "generate_reference.py",
+      "line": 42,
+      "qualname": "attacks",
+      "method": null
+    },
+    {
+      "digest": "cf47b888b56b0be1d04dc5f31723a4c915f0e3f64494d78e953ec891b7a627f3",
+      "file": "generate.previous.py",
+      "line": 30,
+      "qualname": "square",
+      "method": null
+    },
+    {
+      "digest": "cfcbb0ea26e45915fceac57fe73ba63c65fafa7e1dde79dc30755e9632bf14a8",
+      "file": "generate.previous.py",
+      "line": 19,
+      "qualname": "skip",
+      "method": null
+    },
+    {
+      "digest": "e11e0a402311fc12e97e1047086388948f8ed4f4ad788646eed7d9648d5e0ef7",
+      "file": "generate_reference.py",
+      "line": 32,
+      "qualname": "square",
+      "method": null
+    },
+    {
+      "digest": "fad449ce717c3acee67d42064b7f7ebe9fa14a0388b9f0f80203e906c4582ea9",
+      "file": "stress.py",
+      "line": 17,
+      "qualname": "verify",
+      "method": null
+    }
+  ],
+  "jev_usd": 0.001337952,
+  "trials": [
+    {
+      "trial": "regex-chess__9wcXZb5",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 3,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "regex-chess__PjpFb9w",
+      "job": "archive--coder-one-truth-control--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 10,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "regex-chess__QhQT67G",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 3,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "regex-chess__WceScsq",
+      "job": "archive--coder-one-truth-control--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 15,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "regex-chess__fBKuFp5",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 3,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "regex-chess__wjaTPvs",
+      "job": "archive--coder-one-truth-control--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 22,
+      "tied": 0,
+      "error": null
+    }
+  ]
+}

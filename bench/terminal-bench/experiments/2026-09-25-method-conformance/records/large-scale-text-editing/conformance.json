@@ -1,0 +1,63 @@
+{
+  "schema": "openagents.coder-one.method-conformance-offline.v1",
+  "task": "large-scale-text-editing",
+  "image": "truth9584-archive/large-scale-text-editing:public",
+  "registry": "d1e85531e7ddd081b691d53ba6a8fcb99555cf87f04623f09ce585646dcf745c",
+  "question_set": "c0437e07ca57b4d58c10a3e97ac7edfafe4307a60f3503e54d6e9b734b22854e",
+  "implementation": {
+    "name": "registry entries identified by one Jev Choice, then checked by code",
+    "digest": "6c847c747f2d6d7747f7e3f0b331ce690887ca9126b4e43b14eef88e631eda56"
+  },
+  "distinct": [],
+  "jev_usd": 0.0,
+  "trials": [
+    {
+      "trial": "large-scale-text-editing__7ay73dZ",
+      "job": "archive--coder-one-truth-control--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 0,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "large-scale-text-editing__GCZBGhH",
+      "job": "archive--coder-one-truth-control--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 0,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "large-scale-text-editing__SbQCLyX",
+      "job": "archive--coder-one-truth-control--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 0,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "large-scale-text-editing__X8sqhsx",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 0,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "large-scale-text-editing__n3Cwcxu",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 0,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "large-scale-text-editing__ygZkdsV",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 0,
+      "tied": 0,
+      "error": null
+    }
+  ]
+}

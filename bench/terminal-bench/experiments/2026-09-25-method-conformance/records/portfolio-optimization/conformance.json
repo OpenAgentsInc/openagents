@@ -1,0 +1,169 @@
+{
+  "schema": "openagents.coder-one.method-conformance-offline.v1",
+  "task": "portfolio-optimization",
+  "image": "truth9584-archive/portfolio-optimization:public",
+  "registry": "d1e85531e7ddd081b691d53ba6a8fcb99555cf87f04623f09ce585646dcf745c",
+  "question_set": "c0437e07ca57b4d58c10a3e97ac7edfafe4307a60f3503e54d6e9b734b22854e",
+  "implementation": {
+    "name": "registry entries identified by one Jev Choice, then checked by code",
+    "digest": "6c847c747f2d6d7747f7e3f0b331ce690887ca9126b4e43b14eef88e631eda56"
+  },
+  "distinct": [
+    {
+      "digest": "080e55ba43aa6ac0131bc333f115d4d7192fb788abcec487e18e60b891682695",
+      "file": "portfolio_baseline.py",
+      "line": 38,
+      "qualname": "generate_test_data",
+      "method": null
+    },
+    {
+      "digest": "0c7f31afa484cbfabacd7051fca6eea5ae34104712d0e1e1e7a41826ecf214fb",
+      "file": "portfolio_optimized.py",
+      "line": 24,
+      "qualname": "portfolio_return_c",
+      "method": null
+    },
+    {
+      "digest": "150d4e33eaa91996a1c233d1870152686ecff46246b574c6ebd9d796bd73079b",
+      "file": "portfolio_baseline.py",
+      "line": 11,
+      "qualname": "portfolio_risk_python",
+      "method": null
+    },
+    {
+      "digest": "1865884226caed501a97388654899d3d593292ca230bc4babf28cd329c094d93",
+      "file": "portfolio_optimized.py",
+      "line": 9,
+      "qualname": "portfolio_risk_c",
+      "method": null
+    },
+    {
+      "digest": "401fc12d59863e634a04395a8d8ede5c013dfb766b79485458ab1f76a0ca6351",
+      "file": "portfolio_optimized.py",
+      "line": 23,
+      "qualname": "portfolio_return_c",
+      "method": null
+    },
+    {
+      "digest": "5eaa7dcb9e4bf4ec577732fc2c251c8e87d2f81af7143c6a4c6e14d98b8d1941",
+      "file": "portfolio_optimized.py",
+      "line": 11,
+      "qualname": "portfolio_risk_c",
+      "method": null
+    },
+    {
+      "digest": "7247ae5b2b6f47a7bd66284364502c24107c875af78ddd5a701e6347a30ef110",
+      "file": "portfolio_optimized.py",
+      "line": 9,
+      "qualname": "portfolio_risk_c",
+      "method": null
+    },
+    {
+      "digest": "898f2c6fc52db0981b720af23f1d77009d7933d120b885d914e67af7ffbfae8d",
+      "file": "portfolio_optimized.py",
+      "line": 18,
+      "qualname": "portfolio_return_c",
+      "method": null
+    },
+    {
+      "digest": "8bdaa21698b65a131b0a029b843609caccd64cfba22a288dc765d5e080584bd1",
+      "file": "portfolio_optimized.py",
+      "line": 9,
+      "qualname": "portfolio_risk_c",
+      "method": null
+    },
+    {
+      "digest": "a29e1e614759773c5a459f191e74b38650b366d905830d9797a98486e2d2aaec",
+      "file": "portfolio_optimized.py",
+      "line": 9,
+      "qualname": "portfolio_risk_c",
+      "method": null
+    },
+    {
+      "digest": "aca1eec97e23df962b8d77afefe7bfd473c25a2c1af00cde08b2daf878b269d6",
+      "file": "portfolio_optimized.py",
+      "line": 24,
+      "qualname": "portfolio_return_c",
+      "method": null
+    },
+    {
+      "digest": "b36f9af1eb878afe9e5a195cce7daabf350d13a81fcdfaa03cb57bc43f737866",
+      "file": "portfolio_baseline.py",
+      "line": 31,
+      "qualname": "portfolio_return_python",
+      "method": null
+    },
+    {
+      "digest": "d1c8de7283f78320346980fd816bc5978853f8825e23ffe24bc7d68839da1c53",
+      "file": "portfolio_optimized.py",
+      "line": 23,
+      "qualname": "portfolio_return_c",
+      "method": null
+    },
+    {
+      "digest": "ed001b8a704cac5a83e2dcb42b56ab47098a0b5816043fa613b1d848f60156d7",
+      "file": "benchmark.py",
+      "line": 15,
+      "qualname": "time_function",
+      "method": null
+    },
+    {
+      "digest": "fccf004fb0ca1241d325d1982724a8961f446fcf225de0f86daa0b819b02d3aa",
+      "file": "benchmark.py",
+      "line": 25,
+      "qualname": "test_correctness",
+      "method": null
+    }
+  ],
+  "jev_usd": 0.000546798,
+  "trials": [
+    {
+      "trial": "portfolio-optimization__CHNzXQ6",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 7,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "portfolio-optimization__DN3oUek",
+      "job": "archive--coder-one-truth-control--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 7,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "portfolio-optimization__kxmTZ3d",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 7,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "portfolio-optimization__o7PuLMU",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 7,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "portfolio-optimization__zo2nECU",
+      "job": "archive--coder-one-truth-control--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 7,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "portfolio-optimization__ztHi9so",
+      "job": "archive--coder-one-truth-control--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 7,
+      "tied": 0,
+      "error": null
+    }
+  ]
+}

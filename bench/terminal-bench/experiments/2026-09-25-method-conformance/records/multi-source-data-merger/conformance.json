@@ -1,0 +1,211 @@
+{
+  "schema": "openagents.coder-one.method-conformance-offline.v1",
+  "task": "multi-source-data-merger",
+  "image": "truth9584-archive/multi-source-data-merger:public",
+  "registry": "d1e85531e7ddd081b691d53ba6a8fcb99555cf87f04623f09ce585646dcf745c",
+  "question_set": "c0437e07ca57b4d58c10a3e97ac7edfafe4307a60f3503e54d6e9b734b22854e",
+  "implementation": {
+    "name": "registry entries identified by one Jev Choice, then checked by code",
+    "digest": "6c847c747f2d6d7747f7e3f0b331ce690887ca9126b4e43b14eef88e631eda56"
+  },
+  "distinct": [
+    {
+      "digest": "08171fc7b156bc577311ca762e83da07c727f1179a80485f325a9e91be287e94",
+      "file": "merge_users.py",
+      "line": 27,
+      "qualname": "present",
+      "method": null
+    },
+    {
+      "digest": "3383370ab60d3d8669cd5cfaf8ccc1d90d831653a19e5e49437019f072aa6d22",
+      "file": "merge_users.py",
+      "line": 82,
+      "qualname": "merge",
+      "method": null
+    },
+    {
+      "digest": "37bf36c55fd19875e4bb33c66d9e97baaf026c4a9cb180cec7e208936d603a7c",
+      "file": "merge_users.py",
+      "line": 28,
+      "qualname": "read_source",
+      "method": null
+    },
+    {
+      "digest": "3ff7187320266f83ad45fa6d81afd92279c05466de4f17eab916d7e055c37b38",
+      "file": "main.py",
+      "line": 64,
+      "qualname": "normalize",
+      "method": null
+    },
+    {
+      "digest": "42950b46aa0caed80a5363ec2574f4a0be454450a59981eeae68cfec16c28104",
+      "file": "main.py",
+      "line": 35,
+      "qualname": "present",
+      "method": null
+    },
+    {
+      "digest": "4bbddc49a03ca60a93c962b7c7e10732a5929f06379654fda6b49226291fd1e6",
+      "file": "main.py",
+      "line": 39,
+      "qualname": "date_string",
+      "method": null
+    },
+    {
+      "digest": "56199dc5acab7109d96634ad14696a18fe858a1fe3893b041775619123805d12",
+      "file": "merge_users.py",
+      "line": 85,
+      "qualname": "merge_sources",
+      "method": null
+    },
+    {
+      "digest": "5953dd991626e9806445ce7a92b6092577b773341eee334996ac73688eaec4e1",
+      "file": "merge_users.py",
+      "line": 41,
+      "qualname": "normalize",
+      "method": null
+    },
+    {
+      "digest": "6cc3cad64bc4564bd3aee10f15dbffe912bd6b6dbf6f4252c2fd924c65d56645",
+      "file": "merge_users.py",
+      "line": 36,
+      "qualname": "normalize",
+      "method": null
+    },
+    {
+      "digest": "71e1926c1d85617d4de5c25d66368e3f62897c9f0e4327d98498077b19fad187",
+      "file": "merge_users.py",
+      "line": 38,
+      "qualname": "is_missing",
+      "method": null
+    },
+    {
+      "digest": "75f98548a79b855c1e3a92fed9201df65cd484216b2292b49e5af1d5796caefe",
+      "file": "merge_users.py",
+      "line": 83,
+      "qualname": "merge",
+      "method": null
+    },
+    {
+      "digest": "812cc07de1c9a2ddd3efa764781adad54984a50021bdcdbe80d38d7746e68a44",
+      "file": "merge_users.py",
+      "line": 37,
+      "qualname": "present",
+      "method": null
+    },
+    {
+      "digest": "8332794cac2cd1cfa12b54e0bd83949578d40cbac31ea3c47adc3d9847c61bd5",
+      "file": "merge_users.py",
+      "line": 43,
+      "qualname": "value_for",
+      "method": null
+    },
+    {
+      "digest": "87c52efae8260e124b7b09ad22cd8e34108ca9e8596c50be2730f109de5031ba",
+      "file": "main.py",
+      "line": 57,
+      "qualname": "get_first",
+      "method": null
+    },
+    {
+      "digest": "8dfbcd774fe0f605f05e16e93df99fd66b3e055ff06e4bd3cbad77754eea16c3",
+      "file": "merge_users.py",
+      "line": 41,
+      "qualname": "normalize_date",
+      "method": null
+    },
+    {
+      "digest": "afa4f1095ddf6a1792674e1a4214ca0eb4e8864e6517f39236876c6e4188f732",
+      "file": "merge_users.py",
+      "line": 72,
+      "qualname": "read_sources",
+      "method": null
+    },
+    {
+      "digest": "b66307f6b5d82c79ad1ebd2e4546dfcee3edd73cbb2d830f7d1b40a2d65a06cd",
+      "file": "merge_users.py",
+      "line": 51,
+      "qualname": "normalize",
+      "method": null
+    },
+    {
+      "digest": "b6a38b8e281585d9cfe5b1dddf604a8ea68dd8bd63949fe1d6441f9d7e58bf30",
+      "file": "merge_users.py",
+      "line": 54,
+      "qualname": "load_source",
+      "method": null
+    },
+    {
+      "digest": "c9f698130ada649c8fb795084150effd81ca6e1e3529c95c81ce991b1f10913a",
+      "file": "merge_users.py",
+      "line": 43,
+      "qualname": "normalize",
+      "method": null
+    },
+    {
+      "digest": "d13c8578114c3bdf4518f2d3523d64221927952b83193709748f98456d90141b",
+      "file": "merge_users.py",
+      "line": 59,
+      "qualname": "normalize_record",
+      "method": null
+    },
+    {
+      "digest": "f585fe2b79c6937e9cf14624d50e6a89c55aef2e9a244774ad5dd5a60d6be971",
+      "file": "main.py",
+      "line": 25,
+      "qualname": "read_rows",
+      "method": null
+    }
+  ],
+  "jev_usd": 0.000760242,
+  "trials": [
+    {
+      "trial": "multi-source-data-merger__bUc8CK5",
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "kind": "snapshot",
+      "candidates": 4,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "multi-source-data-merger__oJGMRvv",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "kind": "snapshot",
+      "candidates": 5,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "multi-source-data-merger__pS6dYp5",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "kind": "snapshot",
+      "candidates": 3,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "multi-source-data-merger__rVGDNrM",
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "kind": "snapshot",
+      "candidates": 4,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "multi-source-data-merger__vyzUujE",
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "kind": "snapshot",
+      "candidates": 3,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "multi-source-data-merger__zWJATYe",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "kind": "snapshot",
+      "candidates": 3,
+      "tied": 0,
+      "error": null
+    }
+  ]
+}

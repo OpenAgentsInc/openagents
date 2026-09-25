@@ -1,0 +1,232 @@
+{
+  "schema": "openagents.coder-one.method-conformance-offline.v1",
+  "task": "constraints-scheduling",
+  "image": "truth9584-archive/constraints-scheduling:public",
+  "registry": "d1e85531e7ddd081b691d53ba6a8fcb99555cf87f04623f09ce585646dcf745c",
+  "question_set": "c0437e07ca57b4d58c10a3e97ac7edfafe4307a60f3503e54d6e9b734b22854e",
+  "implementation": {
+    "name": "registry entries identified by one Jev Choice, then checked by code",
+    "digest": "6c847c747f2d6d7747f7e3f0b331ce690887ca9126b4e43b14eef88e631eda56"
+  },
+  "distinct": [
+    {
+      "digest": "08ac05015d8e89cfa3c50ecbd2fa0b65addca8ef60028ddeda722bc4811a156a",
+      "file": "schedule_meeting.py",
+      "line": 48,
+      "qualname": "busy_intervals",
+      "method": null
+    },
+    {
+      "digest": "18fe57499a027c88b5b6fbe1e77f8dc01a9377471a86348b3933ace36879309e",
+      "file": "schedule_meeting.py",
+      "line": 45,
+      "qualname": "allowed",
+      "method": null
+    },
+    {
+      "digest": "1f6d0835a7bf6085e9c1b7f63b0a8f2a327156a815940ae8f04d35dedadcd919",
+      "file": "schedule_meeting.py",
+      "line": 26,
+      "qualname": "overlaps",
+      "method": null
+    },
+    {
+      "digest": "24855f5911e3f4e633dc985995798088022a812fa3708a57d95c2a97cb40fb54",
+      "file": "schedule_meeting.py",
+      "line": 56,
+      "qualname": "load_calendars",
+      "method": null
+    },
+    {
+      "digest": "2772ce2bcfd2789ebe15c2a2d8c66cabb5744256e8ef3e5e28f0e2d7f11fee34",
+      "file": "schedule_meeting.py",
+      "line": 77,
+      "qualname": "find_slot",
+      "method": null
+    },
+    {
+      "digest": "4571feb8aaa42b228ef2503d5afb9b7febb60aaee3db87b65f816e61e95971ef",
+      "file": "schedule_meeting.py",
+      "line": 72,
+      "qualname": "write_calendar",
+      "method": null
+    },
+    {
+      "digest": "4d72a93d30a17aba0f8cab2310052cbfa147a38a9d7b420d7d250a9d80bff7ad",
+      "file": "schedule_meeting.py",
+      "line": 98,
+      "qualname": "choose_slot",
+      "method": null
+    },
+    {
+      "digest": "551ac89c1b90a5af85bcba07d4c329273819b2428f5db6be931e89b684896acd",
+      "file": "schedule_meeting.py",
+      "line": 105,
+      "qualname": "write_meeting",
+      "method": null
+    },
+    {
+      "digest": "7b5f5cf45c85768b00d0773eb830e110eb0305acc18b39419e080bd6fd7d8644",
+      "file": "schedule_meeting.py",
+      "line": 20,
+      "qualname": "parse_events",
+      "method": null
+    },
+    {
+      "digest": "89bd56f836aaae8e5d5a2b621d24c71a0e07f664ac42148b61407a8ac43b0ff9",
+      "file": "schedule_meeting.py",
+      "line": 13,
+      "qualname": "read_events",
+      "method": null
+    },
+    {
+      "digest": "8ae0ac31eba3c2a3649da0161dc01db70402efffe1c66c7acdde67093fb82f13",
+      "file": "schedule_meeting.py",
+      "line": 19,
+      "qualname": "read_events",
+      "method": null
+    },
+    {
+      "digest": "997ccfc3ad0b807004526a3e57a8a5ea82d9390cbd3719d4a6c3b49de02a4129",
+      "file": "schedule_meeting.py",
+      "line": 19,
+      "qualname": "load_calendar",
+      "method": null
+    },
+    {
+      "digest": "9b005dbdb648a132d6553f6290ef7b5c079475b871395428d12f6d407d9112e0",
+      "file": "schedule_meeting.py",
+      "line": 74,
+      "qualname": "ics_for",
+      "method": null
+    },
+    {
+      "digest": "ba36d90c38c94dc213c8ff8149dded829767df9ff62d751c9b7d0ec950a5f5f9",
+      "file": "schedule_meeting.py",
+      "line": 82,
+      "qualname": "write_calendar",
+      "method": null
+    },
+    {
+      "digest": "c9cd86ce37266a355903c0231b16169191658ac8c3471f6b0502de72c96860f9",
+      "file": "schedule_meeting.py",
+      "line": 66,
+      "qualname": "overlaps",
+      "method": null
+    },
+    {
+      "digest": "cb06e4f4450b1a07f3f5afcf1642e6226f4ea757e8d8d045a30d86c14744fca2",
+      "file": "schedule_meeting.py",
+      "line": 60,
+      "qualname": "busy_intervals",
+      "method": null
+    },
+    {
+      "digest": "cc30a2a98ff8440d974022eb367f582804e551e162ccf4115d75a08af8057afb",
+      "file": "schedule_meeting.py",
+      "line": 55,
+      "qualname": "allowed",
+      "method": null
+    },
+    {
+      "digest": "dc3dd9ede672ec624961b696055c353578c4681428897122f8b6e2e11c80a817",
+      "file": "schedule_meeting.py",
+      "line": 65,
+      "qualname": "find_slot",
+      "method": null
+    },
+    {
+      "digest": "e10c35768c68af23f0ba67371e2e7841e145def683f7017d42551f6afc885be9",
+      "file": "schedule_meeting.py",
+      "line": 41,
+      "qualname": "overlaps",
+      "method": null
+    },
+    {
+      "digest": "e5d44dece3cae62003b297311f3f0641fc761a92611a73670a2160f76c9094c8",
+      "file": "schedule_meeting.py",
+      "line": 14,
+      "qualname": "calendar_events",
+      "method": null
+    },
+    {
+      "digest": "ee114fcbd8dad72c1612bb8201f654069c4e7b957101cd9708f15b7997f1187c",
+      "file": "schedule_meeting.py",
+      "line": 95,
+      "qualname": "write_meeting",
+      "method": null
+    },
+    {
+      "digest": "f0ddc8b30e2e350f80bae6a546b07bcff5a25cbf99739c87c1f44b708b82698b",
+      "file": "schedule_meeting.py",
+      "line": 32,
+      "qualname": "overlaps",
+      "method": null
+    },
+    {
+      "digest": "f18d4687941e32ffbe88d69cfe8dd2b34a3f2f792c1870fdb9e537e2c563872c",
+      "file": "schedule_meeting.py",
+      "line": 70,
+      "qualname": "valid_slots",
+      "method": null
+    },
+    {
+      "digest": "f45a9da332b66f16df0ea1e562135ceef0da8a56d2b45a2f964387d3da221e39",
+      "file": "schedule_meeting.py",
+      "line": 30,
+      "qualname": "find_slot",
+      "method": null
+    }
+  ],
+  "jev_usd": 0.000869904,
+  "trials": [
+    {
+      "trial": "constraints-scheduling__6RAdWrC",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "kind": "snapshot",
+      "candidates": 3,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "constraints-scheduling__8BvpdSE",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "kind": "snapshot",
+      "candidates": 4,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "constraints-scheduling__HKRJM8E",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "kind": "snapshot",
+      "candidates": 5,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "constraints-scheduling__Kj54Rts",
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "kind": "snapshot",
+      "candidates": 7,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "constraints-scheduling__QCqy7tt",
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "kind": "snapshot",
+      "candidates": 5,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "constraints-scheduling__WQjTCna",
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "kind": "snapshot",
+      "candidates": 0,
+      "tied": 0,
+      "error": null
+    }
+  ]
+}

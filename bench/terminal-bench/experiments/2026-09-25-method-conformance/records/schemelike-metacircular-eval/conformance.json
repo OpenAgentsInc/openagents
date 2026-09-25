@@ -1,0 +1,113 @@
+{
+  "schema": "openagents.coder-one.method-conformance-offline.v1",
+  "task": "schemelike-metacircular-eval",
+  "image": "truth9584-archive/schemelike-metacircular-eval:public",
+  "registry": "d1e85531e7ddd081b691d53ba6a8fcb99555cf87f04623f09ce585646dcf745c",
+  "question_set": "c0437e07ca57b4d58c10a3e97ac7edfafe4307a60f3503e54d6e9b734b22854e",
+  "implementation": {
+    "name": "registry entries identified by one Jev Choice, then checked by code",
+    "digest": "6c847c747f2d6d7747f7e3f0b331ce690887ca9126b4e43b14eef88e631eda56"
+  },
+  "distinct": [
+    {
+      "digest": "2fe79db28f8a7b291d896598bb8fd19919a61e3899d4ee44d2f541c9c8d1bc32",
+      "file": "interp.py",
+      "line": 482,
+      "qualname": "run_file",
+      "method": null
+    },
+    {
+      "digest": "38e6e3cc0fb430cdb1b65055d46dde7d05c5d54b2c3b53a6198780edb9ebf78e",
+      "file": "interp.py",
+      "line": 49,
+      "qualname": "Environment.get",
+      "method": null
+    },
+    {
+      "digest": "659e9ede447ed7461dd5cce8875d45d726a1b074e920a44d5434b31275ac68b1",
+      "file": "interp.py",
+      "line": 512,
+      "qualname": "parse_expr",
+      "method": null
+    },
+    {
+      "digest": "7d28a4af86e51fd22e1687cc94574ca3f1571b5e14a72472183e2754fa72c0f0",
+      "file": "interp.py",
+      "line": 38,
+      "qualname": "Environment.define",
+      "method": null
+    },
+    {
+      "digest": "b19017234326b9ef409695e7aa56d05fbbd927eee8afa989104fb078eb83837b",
+      "file": "interp.py",
+      "line": 84,
+      "qualname": "tokenize",
+      "method": null
+    },
+    {
+      "digest": "bfd04b9a72f73ae5096dcf21a79eb5efe1788e9d87f58d5b2a286983aa964bb5",
+      "file": "interp.py",
+      "line": 41,
+      "qualname": "Environment.set",
+      "method": null
+    },
+    {
+      "digest": "e87c46f704a85c6f90e594f55d7cee5016ed6104180e07dc0f501a9b7d7922fe",
+      "file": "interp.py",
+      "line": 560,
+      "qualname": "parse",
+      "method": null
+    }
+  ],
+  "jev_usd": 0.000277662,
+  "trials": [
+    {
+      "trial": "schemelike-metacircular-eval__4K5rZE5",
+      "job": "archive--coder-one-truth-control--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 7,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "schemelike-metacircular-eval__D5Ket22",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 7,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "schemelike-metacircular-eval__HYLYhso",
+      "job": "archive--coder-one-truth-control--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 7,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "schemelike-metacircular-eval__gKo8Uoh",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 7,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "schemelike-metacircular-eval__godZpCQ",
+      "job": "archive--coder-one-truth-control--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 7,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "schemelike-metacircular-eval__h24YdK7",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 7,
+      "tied": 0,
+      "error": null
+    }
+  ]
+}

@@ -1,0 +1,183 @@
+{
+  "schema": "openagents.coder-one.method-conformance-offline.v1",
+  "task": "model-extraction-relu-logits",
+  "image": "truth9584-archive/model-extraction-relu-logits:public",
+  "registry": "d1e85531e7ddd081b691d53ba6a8fcb99555cf87f04623f09ce585646dcf745c",
+  "question_set": "c0437e07ca57b4d58c10a3e97ac7edfafe4307a60f3503e54d6e9b734b22854e",
+  "implementation": {
+    "name": "registry entries identified by one Jev Choice, then checked by code",
+    "digest": "6c847c747f2d6d7747f7e3f0b331ce690887ca9126b4e43b14eef88e631eda56"
+  },
+  "distinct": [
+    {
+      "digest": "075bfac3c15763c0454f9ad188877ec70abdd101b436cd2794de5219597b4169",
+      "file": "steal.py",
+      "line": 16,
+      "qualname": "gradient",
+      "method": null
+    },
+    {
+      "digest": "0cfb1161b780ef8c8c7475f322a94508536df124c6c8022a4889c9d5430de159",
+      "file": "steal.py",
+      "line": 17,
+      "qualname": "gradient",
+      "method": null
+    },
+    {
+      "digest": "3985d1d31ce1431652d352b58e90940d7c0da7be86720ecc5b25509e699d31f1",
+      "file": "steal.py",
+      "line": 9,
+      "qualname": "numerical_gradient",
+      "method": null
+    },
+    {
+      "digest": "3ca5d5b9edc88a699e5bb75a3e8380059b47f66e6f6bb5d4594beabfcd24b6e7",
+      "file": "steal.py",
+      "line": 12,
+      "qualname": "directional_derivative",
+      "method": null
+    },
+    {
+      "digest": "513f7f6b98e1f8d90ef8e0b65d51c9cea07b218f480f05ffe1b8dfb8d88e2a66",
+      "file": "steal.py",
+      "line": 46,
+      "qualname": "recover",
+      "method": null
+    },
+    {
+      "digest": "56602003cd771f730b79177886ee481a2ebf32bfab233599c1e363e1e3cb7d72",
+      "file": "steal.py",
+      "line": 98,
+      "qualname": "recover",
+      "method": null
+    },
+    {
+      "digest": "56c9a4ce16c221a6474cf5cc890f8ca7c0237018b831caf8c7df720f6b5e285b",
+      "file": "steal.py",
+      "line": 15,
+      "qualname": "line_kinks",
+      "method": null
+    },
+    {
+      "digest": "5e94fb864d6cc2a69888fb58d508b1cef5556f749148a29985a4de7bf1b9986e",
+      "file": "forward.py",
+      "line": 16,
+      "qualname": "forward",
+      "method": null
+    },
+    {
+      "digest": "60d16c6eda87475554381fb9340f13ffd7637bdacd84b0065d9daf5f41e1be2f",
+      "file": "steal.py",
+      "line": 5,
+      "qualname": "query",
+      "method": null
+    },
+    {
+      "digest": "61017ce524a849ccd9ea495b1d9a9260a417e7579f0b48cd3b9b638090265873",
+      "file": "steal.py",
+      "line": 23,
+      "qualname": "kink_intervals",
+      "method": null
+    },
+    {
+      "digest": "71a4906f031f163faed370f6a75d9c915ef5ba78ad2410efa429a77dc7117e2f",
+      "file": "steal.py",
+      "line": 5,
+      "qualname": "value",
+      "method": null
+    },
+    {
+      "digest": "72879c10ee4cb279337d375c6b3c8b182ac515856174cd53c91099dac42a2f90",
+      "file": "steal.py",
+      "line": 9,
+      "qualname": "gradient",
+      "method": null
+    },
+    {
+      "digest": "768d4f2f099742c11917b2c1d256d6b5fbcf9ebef69df67c7fd74193730903cf",
+      "file": "steal.py",
+      "line": 24,
+      "qualname": "line_crossings",
+      "method": null
+    },
+    {
+      "digest": "990c3c10276c1249a8d6840a333ecfa84a9abc0486be7e943fe3aec663635b02",
+      "file": "forward.py",
+      "line": 11,
+      "qualname": "relu",
+      "method": null
+    },
+    {
+      "digest": "a01e4785aefb9b3c55345f121511e190ada2420528780f694e3b4a7638803ed2",
+      "file": "steal.py",
+      "line": 16,
+      "qualname": "gradient",
+      "method": null
+    },
+    {
+      "digest": "e219a3c45cb8da0896bf62fa575c3a29ea9d6d649bd0a8f40b5dda836fc97bf0",
+      "file": "steal.py",
+      "line": 18,
+      "qualname": "line_kinks",
+      "method": null
+    },
+    {
+      "digest": "e6dd99ff3ee207917ed06eac3e5ee53bcf5063c48cfd16185f217b95e14fb7d3",
+      "file": "steal.py",
+      "line": 39,
+      "qualname": "refine_kink",
+      "method": null
+    }
+  ],
+  "jev_usd": 0.000633276,
+  "trials": [
+    {
+      "trial": "model-extraction-relu-logits__438AiAn",
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "kind": "snapshot",
+      "candidates": 2,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "model-extraction-relu-logits__7GNM99Y",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "kind": "snapshot",
+      "candidates": 6,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "model-extraction-relu-logits__UmfHku9",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "kind": "snapshot",
+      "candidates": 5,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "model-extraction-relu-logits__ZyD7uDx",
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "kind": "snapshot",
+      "candidates": 5,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "model-extraction-relu-logits__iQwXJ8F",
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "kind": "snapshot",
+      "candidates": 5,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "model-extraction-relu-logits__ouMhUtE",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "kind": "snapshot",
+      "candidates": 5,
+      "tied": 0,
+      "error": null
+    }
+  ]
+}

@@ -1,0 +1,211 @@
+{
+  "schema": "openagents.coder-one.method-conformance-offline.v1",
+  "task": "cobol-modernization",
+  "image": "truth9584-archive/cobol-modernization:public",
+  "registry": "d1e85531e7ddd081b691d53ba6a8fcb99555cf87f04623f09ce585646dcf745c",
+  "question_set": "c0437e07ca57b4d58c10a3e97ac7edfafe4307a60f3503e54d6e9b734b22854e",
+  "implementation": {
+    "name": "registry entries identified by one Jev Choice, then checked by code",
+    "digest": "6c847c747f2d6d7747f7e3f0b331ce690887ca9126b4e43b14eef88e631eda56"
+  },
+  "distinct": [
+    {
+      "digest": "0f84677e6d4ac0c7dc9de73538afbaf4791af9077520658f3cee2707f88cdfa2",
+      "file": "program.py",
+      "line": 16,
+      "qualname": "numeric",
+      "method": null
+    },
+    {
+      "digest": "1d0fdbcaf7fe90e7c3c7dfa120cc50063b2ff379ceaa9941c07acdc2e4a33e72",
+      "file": "program.py",
+      "line": 10,
+      "qualname": "records",
+      "method": null
+    },
+    {
+      "digest": "2c5ab2e99f94d5492fb0aabdf525fe7a06a69a406f3d375b28ad85ed5874d75a",
+      "file": "program.py",
+      "line": 9,
+      "qualname": "records",
+      "method": null
+    },
+    {
+      "digest": "2d1e053de624a90261f07572a733beb2ab0771c5f091b9321edbba924c5fa335",
+      "file": "differential_eval.py",
+      "line": 13,
+      "qualname": "book",
+      "method": null
+    },
+    {
+      "digest": "3c7902f516d9f4f66bc50d21b2343f39470cb802d1d6583ee1c6abb90b706a91",
+      "file": "program.py",
+      "line": 70,
+      "qualname": "balance_digits",
+      "method": null
+    },
+    {
+      "digest": "486213821307c2f8bab44f16ddb48157bf6cc5884f897272ac153781559b36e6",
+      "file": "tmpdiff/program.py",
+      "line": 10,
+      "qualname": "records",
+      "method": null
+    },
+    {
+      "digest": "48e881579bac747ab82f64adee29a4de9cb764a1e1e72681ca928649a3ddc9fe",
+      "file": "program.py",
+      "line": 9,
+      "qualname": "records",
+      "method": null
+    },
+    {
+      "digest": "6cd1b586203896e856f05a6cad3825b24ab5e288b178d58d22bda31af499e0f4",
+      "file": "program.py",
+      "line": 9,
+      "qualname": "records",
+      "method": null
+    },
+    {
+      "digest": "72bb9df59795335f759d57821aff5fb54c5dba8f4cde783396ede20bde9aa710",
+      "file": "program.py",
+      "line": 38,
+      "qualname": "balance",
+      "method": null
+    },
+    {
+      "digest": "75d0e05aaf19455098f2367ecc0f5450c5b6701df30a0935a4ac335fd03b70fa",
+      "file": "program.py",
+      "line": 10,
+      "qualname": "records",
+      "method": null
+    },
+    {
+      "digest": "98cf464af66a317d7cda4dd1a9688e299b2211168d258a96bc82c3014126bcae",
+      "file": "program.py",
+      "line": 16,
+      "qualname": "put_records",
+      "method": null
+    },
+    {
+      "digest": "9d5ddb5611112ad02c275012298787bc17f8027378c935af5bb6a5b63b285ce2",
+      "file": "differential_eval.py",
+      "line": 10,
+      "qualname": "account",
+      "method": null
+    },
+    {
+      "digest": "b4d7239f9fd8223cc28ce150ba25f6cb78fe7beae0d6e531ca51f6bfb44c392f",
+      "file": "program.py",
+      "line": 29,
+      "qualname": "balance",
+      "method": null
+    },
+    {
+      "digest": "b7d69633c26cc77d6a8477cf85a74cd6b4db029a7f27ba0409ddf013828cdeb7",
+      "file": "program.py",
+      "line": 46,
+      "qualname": "move_digits",
+      "method": null
+    },
+    {
+      "digest": "b82e3697c6a68b7afa39ec018515e01641858c732748804fe7cf12569ce4189d",
+      "file": "program.py",
+      "line": 26,
+      "qualname": "RecordFile.records",
+      "method": null
+    },
+    {
+      "digest": "c183c7ce2dd991c262ff5d528755e43f2f72fbecbabc909961a559549f3c9424",
+      "file": "program.py",
+      "line": 22,
+      "qualname": "numeric",
+      "method": null
+    },
+    {
+      "digest": "cb68a6e812be38b47d53592dd19ca89ab2e9bdfe6a969cd414ed5ce778c97638",
+      "file": "program.py",
+      "line": 14,
+      "qualname": "text",
+      "method": null
+    },
+    {
+      "digest": "d18e870b1bbba51527fdd45b9056cedeaed1e06d587dd5afb6f4b4ef41b98075",
+      "file": "tmpdiff/program.py",
+      "line": 16,
+      "qualname": "numeric",
+      "method": null
+    },
+    {
+      "digest": "d95c2f2c7e21a443e3acb788bfaa3f56a0e5baf9df6e02cd48744a12290e95c1",
+      "file": "program.py",
+      "line": 51,
+      "qualname": "display_number",
+      "method": null
+    },
+    {
+      "digest": "f772f2cadef33e07a39a37e9aa937ac353b2d7d92b1147083eb46054d9c4407d",
+      "file": "program.py",
+      "line": 21,
+      "qualname": "number",
+      "method": null
+    },
+    {
+      "digest": "fb9cc2188aa33e77580d4897aa18dc66bfb6eb715a40c60ff3b7c2b54f3eaf27",
+      "file": "program.py",
+      "line": 36,
+      "qualname": "RecordFile.rewrite",
+      "method": null
+    }
+  ],
+  "jev_usd": 0.0006826680000000001,
+  "trials": [
+    {
+      "trial": "cobol-modernization__25SbV5C",
+      "job": "archive--coder-one-truth-control--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 3,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "cobol-modernization__74yDVz4",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 2,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "cobol-modernization__WMW47BB",
+      "job": "archive--coder-one-truth-control--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 3,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "cobol-modernization__o5fEEGj",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 4,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "cobol-modernization__tRgrCPf",
+      "job": "archive--coder-one-truth-control--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 7,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "cobol-modernization__wYtGyBX",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 2,
+      "tied": 0,
+      "error": null
+    }
+  ]
+}

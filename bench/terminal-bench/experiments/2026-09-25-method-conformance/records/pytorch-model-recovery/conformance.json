@@ -1,0 +1,155 @@
+{
+  "schema": "openagents.coder-one.method-conformance-offline.v1",
+  "task": "pytorch-model-recovery",
+  "image": "truth9584-archive/pytorch-model-recovery:public",
+  "registry": "d1e85531e7ddd081b691d53ba6a8fcb99555cf87f04623f09ce585646dcf745c",
+  "question_set": "c0437e07ca57b4d58c10a3e97ac7edfafe4307a60f3503e54d6e9b734b22854e",
+  "implementation": {
+    "name": "registry entries identified by one Jev Choice, then checked by code",
+    "digest": "6c847c747f2d6d7747f7e3f0b331ce690887ca9126b4e43b14eef88e631eda56"
+  },
+  "distinct": [
+    {
+      "digest": "074e829f4b24f4d28c4d687112ed4f47b2af70e5b039e2a67bad8da0f993ddfe",
+      "file": "recovered_model.py",
+      "line": 38,
+      "qualname": "RecoveredModel.features",
+      "method": null
+    },
+    {
+      "digest": "2f5f992bfd2e864ef4338be3697276c69f0d5ec33d0f48c50bc8458376fd304c",
+      "file": "recover.py",
+      "line": 29,
+      "qualname": "RecoveredModel.forward",
+      "method": null
+    },
+    {
+      "digest": "352e66e9509c587e14153c365fa8873f84e93ef9cbe3d1509917e83ddf027cd8",
+      "file": "tune.py",
+      "line": 9,
+      "qualname": "fit",
+      "method": null
+    },
+    {
+      "digest": "3a395340c2ec2e64f9553fb9d218f49c96e67a0b1e33c31b86713b36b6a5d4ac",
+      "file": "recovered_model.py",
+      "line": 44,
+      "qualname": "RecoveredModel.features",
+      "method": null
+    },
+    {
+      "digest": "87ee7b06ebfec857588207d4fbc130a4ce95f0108806cc837d038fb335649915",
+      "file": "recovered_model.py",
+      "line": 50,
+      "qualname": "RecoveredModel.forward",
+      "method": null
+    },
+    {
+      "digest": "a35392d21b6f85188df0c19383edb1b078a0a6ded21495ccca53488848c82226",
+      "file": "solution.py",
+      "line": 30,
+      "qualname": "RecoveredModel.forward",
+      "method": null
+    },
+    {
+      "digest": "b0ef21f5435de9f3381e1b57dd92ab403fa2d8cb8c4e1d9526bede14a6d8392d",
+      "file": "recover.py",
+      "line": 10,
+      "qualname": "PositionalEncoding.forward",
+      "method": null
+    },
+    {
+      "digest": "d8630a3102161b8e90f30c3769a955744104c11d634cf039aa0f191f0220b9e8",
+      "file": "solution.py",
+      "line": 15,
+      "qualname": "PositionalEncoding.forward",
+      "method": null
+    },
+    {
+      "digest": "e0548269595e16ced1374c26a2289993456d81b952ee749ab981e51c6dcfe8a5",
+      "file": "recovered_model.py",
+      "line": 20,
+      "qualname": "PositionalEncoding.forward",
+      "method": null
+    },
+    {
+      "digest": "e48322b800957736e91be3068a0f4fb80f4c63c139723dc8e7978573ec3bbcdd",
+      "file": "solution.py",
+      "line": 41,
+      "qualname": "RecoveredModel.forward",
+      "method": null
+    },
+    {
+      "digest": "ee78e8ad1f98ade8159fac2a82dfefe4cdfbeafda229561c1879d20868e6727a",
+      "file": "solution.py",
+      "line": 35,
+      "qualname": "RecoveredModel.decode_features",
+      "method": null
+    },
+    {
+      "digest": "f2bfb3900cfb8caa678a0fb97a126e07898c59b8ce7e11082c0119071bf109d3",
+      "file": "solution.py",
+      "line": 16,
+      "qualname": "PositionalEncoding.forward",
+      "method": null
+    },
+    {
+      "digest": "f93a8f77279671e22b57f0371f00ff0180a2f772cf804149c3ab543c58eefbc9",
+      "file": "recovered_model.py",
+      "line": 48,
+      "qualname": "RecoveredModel.forward",
+      "method": null
+    }
+  ],
+  "jev_usd": 0.00044931600000000006,
+  "trials": [
+    {
+      "trial": "pytorch-model-recovery__9NM5bqT",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 3,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "pytorch-model-recovery__D8pojcw",
+      "job": "archive--coder-one-truth-control--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 3,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "pytorch-model-recovery__GMHxKCB",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 2,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "pytorch-model-recovery__RpwaLq6",
+      "job": "archive--coder-one-truth-control--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 3,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "pytorch-model-recovery__wAPsVMd",
+      "job": "archive--coder-one-truth-control--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 4,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "pytorch-model-recovery__wUokuWx",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-artifact-v2",
+      "kind": "snapshot",
+      "candidates": 2,
+      "tied": 0,
+      "error": null
+    }
+  ]
+}

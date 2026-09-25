@@ -1,0 +1,281 @@
+{
+  "schema": "openagents.coder-one.method-conformance-offline.v1",
+  "task": "circuit-fibsqrt",
+  "image": "truth9584-archive/circuit-fibsqrt:public",
+  "registry": "d1e85531e7ddd081b691d53ba6a8fcb99555cf87f04623f09ce585646dcf745c",
+  "question_set": "c0437e07ca57b4d58c10a3e97ac7edfafe4307a60f3503e54d6e9b734b22854e",
+  "implementation": {
+    "name": "registry entries identified by one Jev Choice, then checked by code",
+    "digest": "6c847c747f2d6d7747f7e3f0b331ce690887ca9126b4e43b14eef88e631eda56"
+  },
+  "distinct": [
+    {
+      "digest": "0b4c5d531d20c20400585f1761ea9d42d1eef847941e470479895cc0387317ad",
+      "file": "generate_gates.py",
+      "line": 76,
+      "qualname": "Circuit.any",
+      "method": null
+    },
+    {
+      "digest": "0cd732106f4cf3403961b1365a286941647408e09f677c12734ceb8cf2244915",
+      "file": "generate_gates.py",
+      "line": 23,
+      "qualname": "Circuit.reg",
+      "method": null
+    },
+    {
+      "digest": "1258070e84d0bd32ba953a6aad83b7eb43de5c8286d10933a10a0458399f8bef",
+      "file": "generate_gates.py",
+      "line": 37,
+      "qualname": "Circuit.binary",
+      "method": null
+    },
+    {
+      "digest": "1d12b32212554b7ff8c36e97f178b7601affd08b90497037d3f4fce98055b3ec",
+      "file": "generate_gates.py",
+      "line": 17,
+      "qualname": "Circuit.emit",
+      "method": null
+    },
+    {
+      "digest": "1ea2b9f8ce074f86ca524e1c4900dcc3e783dcdafea28a037eca88860ece55ba",
+      "file": "generate_gates.py",
+      "line": 111,
+      "qualname": "Circuit.sqrt",
+      "method": null
+    },
+    {
+      "digest": "1fa8f3c293119e87ae4324baff936ddab05a67d7e71e4100d8c7991f1cb9787e",
+      "file": "generate_gates.py",
+      "line": 33,
+      "qualname": "Circuit.inv",
+      "method": null
+    },
+    {
+      "digest": "240cd4af1528e5d817289288ae123a26ea35d44bc338351c120a0e07c7ffcf1d",
+      "file": "generate_gates.py",
+      "line": 25,
+      "qualname": "Circuit.bind",
+      "method": null
+    },
+    {
+      "digest": "24780d4fd167a53cee68c00b38c20d50cc0fc81e30dda02fdad6d8c41d42dd35",
+      "file": "generate_gates.py",
+      "line": 73,
+      "qualname": "Circuit.subtract",
+      "method": null
+    },
+    {
+      "digest": "30c41894b36b0d978151ec7a08c01bfa4169bbc51b71819e7d04f09271ecfd55",
+      "file": "generate_gates.py",
+      "line": 59,
+      "qualname": "Circuit.mul",
+      "method": null
+    },
+    {
+      "digest": "372f5c23725658a01678f5cac1f3aae630358bb2e8e4b327030c319fa6a6c247",
+      "file": "generate_gates.py",
+      "line": 58,
+      "qualname": "Circuit.choose",
+      "method": null
+    },
+    {
+      "digest": "3bf9355e300cbfe4b308252acee940450ed8a9a120478bebfc4b874887fe2cb0",
+      "file": "generate_gates.py",
+      "line": 64,
+      "qualname": "Circuit.add",
+      "method": null
+    },
+    {
+      "digest": "4fcb7be1722262198c0217dd857335b402ea5cb44caf4fdb3db1a987852a2842",
+      "file": "generate_gates.py",
+      "line": 56,
+      "qualname": "Circuit.sub",
+      "method": null
+    },
+    {
+      "digest": "551e34caff74339322e2fec6c0aeb5ae34e5d2d1e849e032e9dcf33e87f2ebf8",
+      "file": "generate_gates.py",
+      "line": 29,
+      "qualname": "Circuit.invert",
+      "method": null
+    },
+    {
+      "digest": "575ce891d2ebb687619bdb2ac4cca347bb72117433362e614885def4b27326fd",
+      "file": "generate_gates.py",
+      "line": 41,
+      "qualname": "Circuit.gate",
+      "method": null
+    },
+    {
+      "digest": "580e6210e197fddb3eb62df3e2c7c3e5335cbda8c858b010882719757cb931d4",
+      "file": "generate_gates.py",
+      "line": 76,
+      "qualname": "Circuit.add",
+      "method": null
+    },
+    {
+      "digest": "5e8c6713caf6ab45e0c15cf6bb71330c7c213acfa5620d1bed0fa2530181d35c",
+      "file": "generate_gates.py",
+      "line": 42,
+      "qualname": "Circuit.mux",
+      "method": null
+    },
+    {
+      "digest": "6b35c1f121d9a967a248bfcb62e6f042545869d608ae30b6649c6abf9c394288",
+      "file": "generate_gates.py",
+      "line": 47,
+      "qualname": "Circuit.add",
+      "method": null
+    },
+    {
+      "digest": "88510a7a07d92411a170a017bfd7e190e9e18de53710d0fbb97f9e8938859fd4",
+      "file": "generate_gates.py",
+      "line": 55,
+      "qualname": "Circuit.mux",
+      "method": null
+    },
+    {
+      "digest": "991dfef72357008e7664b607dbc6d4695e08a563a1f158e99d19d0fdfe82be56",
+      "file": "generate_gates.py",
+      "line": 22,
+      "qualname": "Circuit.reserve",
+      "method": null
+    },
+    {
+      "digest": "9cfd33f251a5ef313d17628cfdcdf9eea140699dc9f1916abcb47fff1f9189f9",
+      "file": "generate_gates.py",
+      "line": 34,
+      "qualname": "Circuit.bit",
+      "method": null
+    },
+    {
+      "digest": "9db02a1137fcee165e202ad8658a4084fb8bf667615b3e6c076d1842376789e6",
+      "file": "generate_gates.py",
+      "line": 22,
+      "qualname": "Circuit.reg",
+      "method": null
+    },
+    {
+      "digest": "a0e144a09fe700ab1206b84b4a19131e25b19012fbbe2623f331a4d33a26c012",
+      "file": "generate_gates.py",
+      "line": 61,
+      "qualname": "Circuit.pad",
+      "method": null
+    },
+    {
+      "digest": "a9ae5576c31e5f31221b2a678d5f63b8d52597e7daa82ddf5ebe41d8d95d7d53",
+      "file": "generate_gates.py",
+      "line": 26,
+      "qualname": "Circuit.connect",
+      "method": null
+    },
+    {
+      "digest": "b77631e53356c14164aa4d00b42d3d6541bbf430696913e9bdd12cb825ad8187",
+      "file": "generate_gates.py",
+      "line": 67,
+      "qualname": "Circuit.vmux",
+      "method": null
+    },
+    {
+      "digest": "c794b3c348efd020c9ed6a264b49034ccd736f3f987360c3c56da6abed866fb7",
+      "file": "generate_gates.py",
+      "line": 25,
+      "qualname": "Circuit.connect",
+      "method": null
+    },
+    {
+      "digest": "ca8c026045a9e16f6e65530534c4d124f24c29e54d43466310761b057d63e9b1",
+      "file": "generate_gates.py",
+      "line": 70,
+      "qualname": "Circuit.fulladd",
+      "method": null
+    },
+    {
+      "digest": "d000bf3eca8fcd438d7bd971645571eae10af4f69b5737443c409bbd3a5d7c6c",
+      "file": "generate_gates.py",
+      "line": 63,
+      "qualname": "Circuit.mux",
+      "method": null
+    },
+    {
+      "digest": "d4ee5b1e6ae461e623b39c01e1e6fb2a25117e8ab3b004ca01c6ee097fadab0a",
+      "file": "generate_gates.py",
+      "line": 29,
+      "qualname": "Circuit.inv",
+      "method": null
+    },
+    {
+      "digest": "ef6ac17e83ec7bdcfa124fbdb680bb5de044d5d695dc3ad06fd907d4fd80bc83",
+      "file": "generate_gates.py",
+      "line": 17,
+      "qualname": "Circuit.emit",
+      "method": null
+    },
+    {
+      "digest": "f8056234bc8aaf00eaa0c5d1c29a536bb5da795d9dc6021dbcdce2129f9d4951",
+      "file": "generate_gates.py",
+      "line": 87,
+      "qualname": "Circuit.product",
+      "method": null
+    },
+    {
+      "digest": "f8c4cd4fcc0bafc057411bba6d03f0d094858cce477ebb47a3e7435f99b9ce9c",
+      "file": "generate_gates.py",
+      "line": 18,
+      "qualname": "Circuit.emit",
+      "method": null
+    }
+  ],
+  "jev_usd": 0.001007286,
+  "trials": [
+    {
+      "trial": "circuit-fibsqrt__7YduQi2",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "kind": "snapshot",
+      "candidates": 0,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "circuit-fibsqrt__AsrhbfB",
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "kind": "snapshot",
+      "candidates": 9,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "circuit-fibsqrt__GsDeSsu",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "kind": "snapshot",
+      "candidates": 0,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "circuit-fibsqrt__X9xhXrv",
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "kind": "snapshot",
+      "candidates": 0,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "circuit-fibsqrt__cbpJmSh",
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "kind": "snapshot",
+      "candidates": 11,
+      "tied": 0,
+      "error": null
+    },
+    {
+      "trial": "circuit-fibsqrt__iXo3BvS",
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "kind": "snapshot",
+      "candidates": 12,
+      "tied": 0,
+      "error": null
+    }
+  ]
+}
