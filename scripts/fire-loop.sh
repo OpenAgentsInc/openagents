@@ -114,6 +114,14 @@ flock -u 9
 policy_rel="$(jq -r --arg arm "$arm" '.agents[$arm].kwargs.policy // empty' "$bench/profiles/agents.json")"
 [ -n "$policy_rel" ] || { echo "fire-loop: arm $arm has no policy in profiles/agents.json" >&2; exit 2; }
 policy="$root/$policy_rel"
+# Check the policy the way the trial will, before any trial starts, so a
+# refused manifest fails here in seconds rather than inside the container.
+if ! checked="$(CODER_ONE_POLICY="$policy" "$watcher" episode doctor --contract openagents.coder.episode.v1 2>&1)"; then
+  printf '%s\n' "$checked" | tail -3 >&2
+  echo "fire-loop: the policy $policy_rel is refused" >&2
+  exit 2
+fi
+printf '%s\n' "$checked" | grep '^policy:' || true
 jobs_dir="${TBENCH_JOBS_DIR:-$HOME/.openagents/terminal-bench/jobs}"
 logs_dir="$HOME/.openagents/terminal-bench/fire"
 mkdir -p "$logs_dir"
