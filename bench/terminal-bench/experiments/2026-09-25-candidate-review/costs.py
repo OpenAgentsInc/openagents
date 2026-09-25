@@ -28,6 +28,8 @@ for path in sorted(a.records.rglob('*.json')):
         if key in native and any(native[key][k] != identity[k] for k in identity):
             raise ValueError('One provider reply has conflicting usage')
         native.setdefault(key, dict(identity, records=[]))['records'].append(relative)
+        if reply.get('cost_usd') is None:
+            unknown.append(relative)
     elif value.get('schema') == 'openagents.coder-one.reproduced-review.v1':
         if value.get('error') and not value.get('reviewer_source'):
             unknown.append(relative)
@@ -41,7 +43,9 @@ for path in sorted(a.records.rglob('*.json')):
         jev[path.parent.name] += value.get('input_tokens') or 0
 summary = dict(schema='openagents.truth-check-costs.v1',
     native_requests_with_usage=len(native), known_native_list_price_usd=sum(r['cost_usd'] or 0 for r in native.values()),
-    native_cost_unknown_records=unknown, known_jev_input_tokens=dict(jev),
+    native_cost_unknown_records=unknown,
+    native_responses_with_unknown_cost=[key for key, value in native.items() if value['cost_usd'] is None],
+    known_jev_input_tokens=dict(jev),
     known_jev_list_price_usd=sum(jev.values())*.042/1_000_000,
     notes=['List-price accounting is not an invoice for the logged-in subscription.',
            'Native response IDs deduplicate replayed replies.',
