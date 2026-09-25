@@ -76,3 +76,16 @@ first recovery remains under `reproduced-quoted`. No outcome has been opened.
 This correction addresses the spring-clip review, which quoted two measured
 lines but omitted intervening output. Jev still receives the complete retained
 observation and unchanged semantic questions.
+
+## Recover missing official grades
+
+Predictions were sealed in `3dbd2599bc` before the first outcome join. Four CAD
+trials then had no reward: their official verifier images all failed while pip
+tried to uninstall conda's VTK 9.2.6. The same logs show the resolver selecting
+VTK 9.7.0. Regrade all four unchanged candidates after installing that selected
+wheel with `--ignore-installed --no-deps`, before the original pinned validator
+install. Use copied task directories; preserve the originals, record every file
+hash, and require the only task-file difference to be `tests/Dockerfile`.
+Verifier assertions and candidate hashes must remain unchanged. Keep original
+unknown labels and recovered labels separately. This repairs a measurement
+failure; it cannot convert an unknown into failure without running the verifier.

@@ -1,0 +1,149 @@
+{
+  "prediction_sha256": "c93a61b90c4a823fb576ec19f0959aef27f4e156c9e34fcd9fd5e0bfb818510f",
+  "labels": [
+    {
+      "job": "tb4--coder-one-microluna-truth-confirmation--distributed-dedup--9584-r1",
+      "trial": "distributed-dedup__vSURoBk",
+      "task": "terminal-bench/distributed-dedup",
+      "executor": "luna",
+      "reward": 0.0,
+      "exception_type": null,
+      "result_sha256": "853ea77bb23aefa348623c58142a063f6307934fbe6857d82f70f1b44e6fdbc4"
+    },
+    {
+      "job": "tb4--coder-one-microluna-truth-confirmation--formal-crypto--9584-r1",
+      "trial": "formal-crypto__DjBPnEM",
+      "task": "terminal-bench/formal-crypto",
+      "executor": "luna",
+      "reward": 0.0,
+      "exception_type": null,
+      "result_sha256": "7f7ad4e910df3d61d18a9d2121da497ad9c67e4b51a393945572b8f3c66a49c2"
+    },
+    {
+      "job": "tb4--coder-one-microluna-truth-confirmation--freecad-impeller--9584-r1",
+      "trial": "freecad-impeller__wy7yRPQ",
+      "task": "terminal-bench/freecad-impeller",
+      "executor": "luna",
+      "reward": null,
+      "exception_type": "RuntimeError",
+      "result_sha256": "87520b815b9820b2a3e1273ec5607818ed38bfb58db4e61965c0e8cf3b4f9189"
+    },
+    {
+      "job": "tb4--coder-one-microluna-truth-confirmation--freecad-spring-clip--9584-r1",
+      "trial": "freecad-spring-clip__TSfGK3H",
+      "task": "terminal-bench/freecad-spring-clip",
+      "executor": "luna",
+      "reward": null,
+      "exception_type": "RuntimeError",
+      "result_sha256": "444d533e2e23e826e061e12f798200259efbaa2c7ffd1d97cffeb8d793397c15"
+    },
+    {
+      "job": "tb4--coder-one-microluna-truth-confirmation--math-eval-grader--9584-r1",
+      "trial": "math-eval-grader__8VqJfiN",
+      "task": "terminal-bench/math-eval-grader",
+      "executor": "luna",
+      "reward": 0.0,
+      "exception_type": null,
+      "result_sha256": "94e777c3021d4ff1b7e9f87f1f03c23404ee41445d760646fad5c2e7553b19d8"
+    },
+    {
+      "job": "tb4--coder-one-microluna-truth-confirmation--pretrain-shard-corruption--9584-r1",
+      "trial": "pretrain-shard-corruption__ZeirVXN",
+      "task": "terminal-bench/pretrain-shard-corruption",
+      "executor": "luna",
+      "reward": 0.0,
+      "exception_type": null,
+      "result_sha256": "bcf10e6fc25d49dccbc182f5945b40814e594a14bc09b150390f1b6051b064fc"
+    },
+    {
+      "job": "tb4--coder-one-microluna-truth-confirmation--shadow-relay--9584-r1",
+      "trial": "shadow-relay__QWbzYAf",
+      "task": "terminal-bench/shadow-relay",
+      "executor": "luna",
+      "reward": 0.0,
+      "exception_type": null,
+      "result_sha256": "104a6639989efa387f7933fdbb69a0000aa33e0a04a4a0682daf352f7b7a3f2a"
+    },
+    {
+      "job": "tb4--coder-one-microluna-truth-confirmation--vpp-loss-divergence--9584-r1",
+      "trial": "vpp-loss-divergence__j23bCmx",
+      "task": "terminal-bench/vpp-loss-divergence",
+      "executor": "luna",
+      "reward": 0.0,
+      "exception_type": null,
+      "result_sha256": "32ba3bbd183daeebcbb82e5be028a568de8a6c256a7dbbc326593c02f623c8a2"
+    },
+    {
+      "job": "tb4--coder-one-astra-truth-control--distributed-dedup--9584-r1",
+      "trial": "distributed-dedup__YT5MuTJ",
+      "task": "terminal-bench/distributed-dedup",
+      "executor": "astra",
+      "reward": 0.0,
+      "exception_type": null,
+      "result_sha256": "203088d75f617594da38dff63707e034fc9ffa571416e5d75892e60ebd3ac4bc"
+    },
+    {
+      "job": "tb4--coder-one-astra-truth-control--formal-crypto--9584-r1",
+      "trial": "formal-crypto__iCSMsv3",
+      "task": "terminal-bench/formal-crypto",
+      "executor": "astra",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "afb38ba22f04b4561ab671d24d568196b4644c8e7ac01952e9ca21c6cb65fbd3"
+    },
+    {
+      "job": "tb4--coder-one-astra-truth-control--freecad-impeller--9584-r1",
+      "trial": "freecad-impeller__XWiud7W",
+      "task": "terminal-bench/freecad-impeller",
+      "executor": "astra",
+      "reward": null,
+      "exception_type": "RuntimeError",
+      "result_sha256": "282436453d50b6b270ab899a30c5d2ccf286124dc7d3b344a783496a5fd26969"
+    },
+    {
+      "job": "tb4--coder-one-astra-truth-control--freecad-spring-clip--9584-r1",
+      "trial": "freecad-spring-clip__YHtXhkG",
+      "task": "terminal-bench/freecad-spring-clip",
+      "executor": "astra",
+      "reward": null,
+      "exception_type": "RuntimeError",
+      "result_sha256": "06795caebdb4f930f8410c2e9781544817f4d9d9a3cf6c7de9d5415365b75e46"
+    },
+    {
+      "job": "tb4--coder-one-astra-truth-control--math-eval-grader--9584-r1",
+      "trial": "math-eval-grader__G6edYMz",
+      "task": "terminal-bench/math-eval-grader",
+      "executor": "astra",
+      "reward": 0.0,
+      "exception_type": null,
+      "result_sha256": "d0b700cf4349835bc0dfc043deb02a642a408dd064d0012c4907a67ba4940851"
+    },
+    {
+      "job": "tb4--coder-one-astra-truth-control--pretrain-shard-corruption--9584-r1",
+      "trial": "pretrain-shard-corruption__DwSw56Y",
+      "task": "terminal-bench/pretrain-shard-corruption",
+      "executor": "astra",
+      "reward": 0.0,
+      "exception_type": null,
+      "result_sha256": "b0c615eb10689d743c65f032428733c3e1cd1253b784770455b4cc94ec3cdff6"
+    },
+    {
+      "job": "tb4--coder-one-astra-truth-control--shadow-relay--9584-r1",
+      "trial": "shadow-relay__vjf9cyb",
+      "task": "terminal-bench/shadow-relay",
+      "executor": "astra",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "2b6f9b88d0b82b7bb2191865aa7219cfd78a7f4ba172ce6f3cd1784eeba9f903"
+    },
+    {
+      "job": "tb4--coder-one-astra-truth-control--vpp-loss-divergence--9584-r2",
+      "trial": "vpp-loss-divergence__T9Z3LzN",
+      "task": "terminal-bench/vpp-loss-divergence",
+      "executor": "astra",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "bc4a8f653b9479835d0c06c7840c9ffe38fa9c491a9e042fab1f31acc306cf0a"
+    }
+  ]
+}
