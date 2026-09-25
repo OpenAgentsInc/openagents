@@ -36,3 +36,22 @@ arms; its intervals do not correct for that adaptive selection. Keep prospective
 grades unopened until frozen predictions are retained. Unknown inputs cannot
 become pass calls. This experiment generates fail or unknown only, keeping the
 existing three-state interface without interpreting absence of failure as success.
+
+## Exact inference bounds for optional reviews
+
+After freezing the model, comparison review acquisition can stop when no answer
+can change the call. For an unrequested readiness feature, include all allowed
+outcomes: missing contributes `0.5 * value_weight`; a present score contributes
+`presence_weight + score * value_weight`, for score in [0, 1]. The minimum and
+maximum occur at missing, present zero, or present one. Add these bounds to the
+known logit. If both bounds are at or above the frozen fail cutoff, call fail;
+if both are below, call unknown. Otherwise acquire the assessment. Keep skipped
+features explicitly pending rather than pretending an API failed.
+
+This changes acquisition cost, not the frozen classification rule. Preserve the
+score interval, pending features, feature-record identities, and model digest.
+Let already-running bounded requests finish. No official comparison label is
+used to choose which requests are necessary. The first bound calculation found
+12 unresolved readiness decisions and 108 that no readiness result could change;
+other candidates already had retained assessments. Do not interpret these bounds
+as statistical confidence intervals or probabilities of correctness.
