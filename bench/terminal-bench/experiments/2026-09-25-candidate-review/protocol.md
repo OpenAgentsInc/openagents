@@ -105,3 +105,15 @@ explicitly more expensive verifier for a cheap executor, not a Luna-only
 configuration. Bound each call to 180 seconds and record its list-price usage.
 Use the same threshold-selection rule. No model is promoted without reporting
 its full cost and comparing its own held-out behavior after calibration freezes.
+
+## Scope checks on calibration
+
+The full Luna calibration has 15 true and seven false failure calls at 0.8;
+none of the five thresholds qualifies. Record that result before trying a
+second scoring variant. Keep the Luna proposals fixed and add two narrow Jev
+questions: whether the counterexample belongs to the task's actual input domain,
+and whether the claimed wrong result follows from supplied observations without
+an unsupported premise. The score becomes the minimum of all four probabilities.
+Missing answers remain unknown. Measure this separately; choose no threshold or
+model from comparison results. The Astra development arm uses the original
+questions so its model comparison remains interpretable.

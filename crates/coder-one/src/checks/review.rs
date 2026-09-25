@@ -118,6 +118,21 @@ pub fn questions() -> Questions {
                 .when_false("No stated requirement is shown to fail.")))
 }
 
+/// Development-only scope checks distinguish the requested task from a broader
+/// problem a reviewer invents. These are measured separately from version 1.
+#[must_use]
+pub fn scoped_questions() -> Questions {
+    questions()
+        .with("scope", Noul::with_criteria(
+            "Is the counterexample inside the task's explicitly required input domain and scope? If the task asks to solve one supplied instance, reject a counterexample that substitutes a different instance or demands a universal solver. If it requires a reusable function over arbitrary inputs of a stated type, examples of that type are in scope. Do not expand the requirement to arbitrary custom objects, different schemas, or unspecified platforms.",
+            NoulCriteria::new().when_true("The task explicitly requires correct behavior for this input or situation.")
+                .when_false("The counterexample silently broadens or changes the task, or its required input domain is not established.")))
+        .with("decisive", Noul::with_criteria(
+            "Does the supplied evidence establish the claimed wrong result on the final candidate, without an unverified step in the reviewer's argument? Check claims about substring presence, arithmetic, paths, and control flow rather than accepting the reviewer's conclusion. Reject findings that depend on unprovided input data, omitted modules, unused intermediate files, timing assumptions, or a tool that was not run when execution is necessary to establish the result.",
+            NoulCriteria::new().when_true("The wrong result follows from supplied facts; no missing observation or unsupported premise decides it.")
+                .when_false("An essential observation or premise is missing or the claimed result is contradicted by the supplied evidence.")))
+}
+
 /// A score is evidence strength, not a calibrated probability of task failure.
 #[must_use]
 pub fn score(answers: &Value) -> Option<f64> {
@@ -127,6 +142,20 @@ pub fn score(answers: &Value) -> Option<f64> {
         .iter()
         .all(|p| p.is_finite() && (0.0..=1.0).contains(p))
         .then_some(v.min(c))
+}
+
+fn scoped_score(answers: &Value, strict: bool) -> Option<f64> {
+    let mut value = score(answers)?;
+    if strict {
+        for key in ["scope", "decisive"] {
+            let p = answers[key]["noul"].as_f64()?;
+            if !p.is_finite() || !(0.0..=1.0).contains(&p) {
+                return None;
+            }
+            value = value.min(p);
+        }
+    }
+    Some(value)
 }
 
 /// This component only asserts failures. Absence of a proved defect is unknown.
@@ -156,7 +185,7 @@ pub async fn run<T: Transport>(
     jev: &JevMode,
     out: &Path,
 ) -> Result<Value, String> {
-    run_model(input, transport, jev, out, "gpt-6-luna").await
+    run_model(input, transport, jev, out, "gpt-6-luna", false).await
 }
 
 /// The same component with an explicitly selected reviewer model.
@@ -169,6 +198,7 @@ pub async fn run_model<T: Transport>(
     jev: &JevMode,
     out: &Path,
     model: &str,
+    scope: bool,
 ) -> Result<Value, String> {
     if input.task.is_empty()
         || input.task.len() > 64_000
@@ -230,7 +260,11 @@ pub async fn run_model<T: Transport>(
                         name: "jev_candidate_counterexample",
                         id: format!("review-{n}"),
                         state: state.clone(),
-                        questions: questions(),
+                        questions: if scope {
+                            scoped_questions()
+                        } else {
+                            questions()
+                        },
                         parent: None,
                         deadline: None,
                     },
@@ -242,11 +276,11 @@ pub async fn run_model<T: Transport>(
         };
         let answers = asked.as_ref().and_then(|a| a.answers.clone());
         findings.push(json!({"finding":finding,"grounded":valid,"state":state,"answers":answers,
-            "score":answers.as_ref().and_then(score), "error":asked.as_ref().and_then(|a| a.error.clone()),
+            "score":answers.as_ref().and_then(|a| scoped_score(a, scope)), "error":asked.as_ref().and_then(|a| a.error.clone()),
             "jev_input_tokens":asked.as_ref().and_then(|a| a.input_tokens),
             "jev_milliseconds":asked.as_ref().and_then(|a| a.milliseconds)}));
     }
-    let record = json!({"schema":SCHEMA,"input_digest":atif::digest(&json!(input)),
+    let record = json!({"schema":SCHEMA,"scope":scope,"input_digest":atif::digest(&json!(input)),
         "request_digest":atif::digest(&request_json),"review":parsed,"findings":findings,
         "error":error.or_else(|| parsed.is_none().then(|| "No valid structured review arrived".to_string())),
         "reply":reply.as_ref().map(|r| json!({"id":r.id,"model":r.model,"items":r.items,
@@ -266,6 +300,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
     let mut out = None;
     let mut replay = None;
     let mut model = "gpt-6-luna";
+    let mut scope = false;
     let mut args = args.iter();
     while let Some(arg) = args.next() {
         let value = args.next().ok_or("review needs --input FILE --out DIR")?;
@@ -274,6 +309,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
             "--out" => out = Some(value),
             "--replay" => replay = Some(value),
             "--model" => model = value,
+            "--scope" if value == "strict" => scope = true,
             _ => return Err(format!("Unknown review option {arg}")),
         }
     }
@@ -318,7 +354,8 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
                 reasoning: usage["reasoning"].as_u64().unwrap_or(0),
             },
         });
-        let mut result = run(&input, &transport, &jev, out).await?;
+        let mut result =
+            run_model(&input, &transport, &jev, out, &transport.0.model, scope).await?;
         result["luna_source"] = json!({"mode":"recorded","source":path,"network_calls":0});
         crate::record::write_atomic(
             &out.join("review.json"),
@@ -327,7 +364,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
         result
     } else {
         let transport = crate::micro::codex_wire(&format!("review-{}", atif::now_ms()))?;
-        run_model(&input, &transport, &jev, out, model).await?
+        run_model(&input, &transport, &jev, out, model, scope).await?
     };
     println!("{}",serde_json::to_string(&json!({"output":out,"findings":result["findings"].as_array().map(Vec::len),"error":result["error"]})).map_err(|e|e.to_string())?);
     Ok(0)
