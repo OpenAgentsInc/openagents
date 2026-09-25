@@ -35,6 +35,16 @@ class RestoreTests(unittest.TestCase):
             reproduce.restore(self.archive(root, 'app/file'), root / 'restored')
             self.assertEqual((root / 'restored/app/file').read_bytes(), b'test')
 
+    def test_one_primary_dispatch_can_reach_snapshot_validation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            path = root / 'agent/episode/artifacts/composition.json'
+            path.parent.mkdir(parents=True)
+            path.write_text(json.dumps({'branches': [{'role': 'primary'}]}))
+            # The next missing input is the snapshot, not a fictitious later writer.
+            with self.assertRaises(FileNotFoundError):
+                reproduce.snapshot(root, root / 'restore')
+
     def test_does_not_inherit_snapshot_after_another_writer(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

@@ -35,3 +35,16 @@ Seal all predictions before reading any official outcomes. Measure this arm alon
 and keep the previously frozen arms separate. This prospective sample contains
 only eight task groups; report uncertainty and do not hide false alarms or
 unavailable cases. Later changes require new development and confirmation data.
+
+Preflight corrections before any grade: a composition's one `primary` branch is
+its original executor, not evidence of a later writer. The first runner refused
+all 15 candidates for that reason without making model calls; its records stay
+under `reproduced-preflight-v1`. The corrected runner admits exactly one primary
+branch and no escalation, repair, second executor, or persistence. It reuses
+pinned public image identities after checking their source manifests.
+
+The current runner supports only a complete `/app` candidate. Collected artifacts
+outside that root (including a separately collected patch or installed framework
+source) make the review unavailable, rather than silently substituting the public
+image's original files. Three of the first 15 candidates have this limitation.
+The temporary preflight records describe these exclusions before review starts.

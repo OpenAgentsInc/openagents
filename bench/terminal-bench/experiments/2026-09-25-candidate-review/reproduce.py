@@ -55,7 +55,9 @@ def tree(root):
 def snapshot(trial, dest):
     comp = json.loads((trial / 'agent/episode/artifacts/composition.json').read_text())
     # Snapshot is immediately after the only executor. Later writers invalidate it.
-    if comp.get('escalated') or comp.get('branches') or comp.get('repair') or comp.get('second') or comp.get('persist'):
+    branches = comp.get('branches') or []
+    if (len(branches) != 1 or branches[0].get('role') != 'primary' or comp.get('escalated')
+            or comp.get('repair') or comp.get('second') or comp.get('persist')):
         raise ValueError('Post-executor snapshot cannot be attributed after another writer')
     meta = json.loads((trial / 'agent/episode/snapshot/snapshot.json').read_text())
     if (meta.get('taken') is not True or meta.get('stage') != 'post-executor'
@@ -68,6 +70,10 @@ def snapshot(trial, dest):
     restore(archive, dest)
     # Require every collected /app file to match the snapshot used for review.
     manifest = json.loads((trial / 'artifacts/manifest.json').read_text())
+    outside = [e['source'] for e in manifest
+               if not e['source'].startswith(('/app/', '/logs/')) and e['source'] not in ['/app', '/logs']]
+    if outside:
+        raise ValueError('The final candidate includes paths outside the retained app snapshot')
     compared = {}
     for entry in manifest:
         source = PurePosixPath(entry['source'])
@@ -98,6 +104,15 @@ def environment(row, jobs, out):
     context = task / 'environment'
     tag = 'truth9584-review/' + task.name + ':public-environment'
     out.mkdir(parents=True, exist_ok=True)
+    cached = out / (task.name + '.json')
+    if cached.exists():
+        old = json.loads(cached.read_text())
+        if old.get('files') != tree(context):
+            raise ValueError('Public environment changed since the image was retained')
+        inspected = subprocess.run(['docker', 'image', 'inspect', '--format', '{{.Id}}', old['image']],
+                                   capture_output=True, text=True, timeout=30)
+        if inspected.returncode == 0 and inspected.stdout.strip() == old['image']:
+            return old['image']
     log_path = out / (task.name + '.build.log')
     with log_path.open('w') as log:
         subprocess.run(['docker', 'build', '--network', 'default', '-t', tag, str(context)],
