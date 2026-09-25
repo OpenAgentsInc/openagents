@@ -281,3 +281,40 @@ integration tests per configuration). Its recorded tree is marked dirty because
 partial gate, not a full-workspace result. Six Python regressions cover safe
 snapshot restoration and exact inference bounds. Earlier V1 Rust replay matches
 all 317 historical calls and scores without new inference.
+
+## Plan update after the 2026-09-25 design assessment
+
+The [new assessment](../coder/design/2026-09-25-assessment.md) changes the promotion
+path, not the already frozen experiment. Stop proposing source-only and report
+fusion rules for promotion. Retain their negative results and seal their fresh
+calls so the work remains auditable. Finish the reproduced-defect arm without
+opening grades early or changing its rule after seeing them.
+
+Continue #9584 through executed evidence in this order:
+
+1. Run checks stated by the task itself. Extract exact commands, examples, and
+   expected outputs without inventing assertions. Unsupported or ambiguous
+   examples remain unknown. Run them on copies or read-only views of attributable
+   candidates, and retain the actual command, expected-value source, output,
+   candidate identity, and environment limits.
+2. Add independent recomputation and comparisons with a named reference tool
+   where the public task supplies enough information. A reviewer-written constant
+   is not independent support. Keep unsupported tests advisory.
+3. Keep the reproduced-defect reviewer. Measure its ability to distinguish
+   passing and failing candidates within a task, not just task-level agreement.
+4. Give every check an explicit support class. Green checks provide coverage,
+   not whole-task completion. Writer-derived checks and guards cannot reverse
+   edits or stop the loop. Even a stronger support class earns control authority
+   only after measured reliability on separate tasks.
+5. Use fixtures, retained-candidate replay, and graded mini-tasks before another
+   live policy. Freeze a new task-grouped confirmation cohort before acquiring
+   outcomes; use at least three attempts per selected task, excluding tuned and
+   gap-log development tasks. Keep the current eight task groups separate from
+   that later confirmation if their outcomes inform any revision.
+
+Do not turn this into a new `microluna-vN`, best-of-N selector, escalation policy,
+or broader controller experiment before the signal earns that role. Existing
+controller work and the broader family rerun are dependencies for later product
+claims, not evidence that #9584 is complete. Coordinate any new benchmark cohort
+with the other coderos agent before launch, keep all attempts and costs, and
+compare trial time with trial time.
