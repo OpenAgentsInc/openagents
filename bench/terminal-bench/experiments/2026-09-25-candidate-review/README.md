@@ -1,8 +1,8 @@
 # Candidate review validation records
 
 See the [assessment](../../../../docs/terminal-bench/2026-09-25-candidate-review-validation.md).
-This study preserves rejected alternatives. None of the source-review rules is a
-runtime default. The completion-assessment experiment is separate.
+This study preserves rejected alternatives. No new rule is a runtime default.
+All 317 historical rows are now development data; fresh outcomes remain separate.
 
 - `protocol.md`: source-review development, frozen V1, and adaptive V2.
 - `frozen-rule.json`, `frozen-rule-v2.json`: exact union rules and selection records.
@@ -76,3 +76,31 @@ ATIF logs, reports, candidate snapshots, and collected deliverables. The initial
 bundle has 1,077 files in 533 unique blobs and was restored and hash-checked in
 full. `collect_fresh.py` reproduces collection from the frozen prospective
 manifest, scanning the current host's credential values before publication.
+
+
+## Later protocols and fitted rules
+
+- `agreement-protocol.md` and `frozen-agreement-rule.json`: source/readiness agreement.
+- `observed-union-protocol.md` and `frozen-observed-rule.json`: selected execution evidence.
+- `feature-fit-protocol.md` and `frozen-fusion-model.json`: original calibration fit.
+- `feature-fit-protocol.md` (optional-review addendum): exact bounds that skip irrelevant readiness calls.
+- `pooled-development-protocol.md` and `frozen-pooled-model.json`: historical data
+  retired as validation, with fresh outcomes reserved.
+- `reproduced-review-protocol.md`: bounded execution against the actual candidate.
+- `strong-controls-protocol.md`: Astra controls and the one infrastructure retry.
+
+`pooled_fit.py --manifest MANIFEST --records RECORDS --partition prospective
+--model frozen-pooled-model.json --out PREDICTIONS` applies the frozen model
+without labels. It requires NumPy (the retained fit used 2.0.2). Only an explicit
+labeled development invocation fits weights. `compare_predictions.py` joins
+sealed calls to official outcomes later; unknown rewards stay out of labeled
+counts and remain listed. `fusion_bounds.py` applies the earlier full model using
+exact ranges for unrequested readiness answers.
+
+`reproduce.py --manifest MANIFEST --jobs JOBS --out RECORDS --binary CODER_ONE`
+restores attributable snapshots, builds only public task environments, runs the
+review with two workers, and removes its containers. It reads no official grade.
+Its inputs and image identities, native replies, commands, judgment answers,
+costs, and cleanup results remain under each trial's `reproduced/` directory.
+Run `python3 -m unittest test_reproduce test_fusion_bounds` for the evidence
+restoration and inference-bounds regression checks.

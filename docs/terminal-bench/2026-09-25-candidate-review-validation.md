@@ -3,9 +3,10 @@
 This study continues [#9584](https://github.com/OpenAgentsInc/openagents/issues/9584)
 after the [Microluna evidence repair](2026-09-25-truthful-checks-microluna.md).
 The original 317 graded trials contain 58 task groups: 132 calibration rows on
-26 tasks and 185 comparison rows on 32 tasks. The comparison partition has been
-inspected repeatedly. It remains separate from threshold fitting, but it is
-**reused validation**, not an untouched estimate of generalization.
+26 tasks and 185 comparison rows on 32 tasks. After repeated negative experiments, all 317 rows are now development data.
+The original comparison was excluded from each earlier fit, but it was inspected
+repeatedly and is no longer used as confirmation. The fresh eight-task cohort
+remains separate; its official outcomes have not been opened.
 
 The [experiment directory](../../bench/terminal-bench/experiments/2026-09-25-candidate-review/)
 retains the protocols and rejected alternatives. All missing observations stay
@@ -137,51 +138,6 @@ check actual overlap or their own retained paths instead of a loaded host's
 absolute latency or other tests' scratch directories. These changes improve the
 iteration loop; they do not change correctness labels or model answers.
 
-## Whole-task completion assessment
-
-A separate procedure asks Astra high to assess each deciding public requirement,
-then estimate whether the submitted result fails acceptance. It reads final
-source and the selected report, including rows without retained source. The
-input explicitly says that report-described tests are writer claims, not
-independently reproduced observations. The generated output cannot execute a
-command. The exact [protocol](../../bench/terminal-bench/experiments/2026-09-25-candidate-review/readiness-protocol.md)
-uses the same five-cutoff calibration rule and keeps comparison labels out of
-model inputs.
-
-This is a stronger and more expensive assessor for a cheap executor. Its cost
-must be included when comparing a configuration with a stronger agent. Neither
-the model's numerical confidence nor a promising calibration table establishes
-that the overall configuration is faster, cheaper, or more accurate.
-
-The scoped manual gate at `a5903a5e37` passed formatting, default and feature
-Clippy, and default and feature tests for `coder-one`. This is a partial gate,
-not a full-workspace result. The V1 component replay matches all 317 historical
-calls and scores with no model calls. Verification and prediction records are
-in the experiment's `records/` directory.
-
-The standalone completion assessor failed calibration: at 0.5 it made 29 calls,
-17 correct; at 0.95 it made six calls, five correct. No declared cutoff reached
-90% precision with at least five calls. Known native cost was $22.33042, with
-additional unknown cost for timeouts. In particular, several passing ATRX outputs
-received confident failure predictions based on a conflict between local reference
-coordinates and the named transcript. More reasoning did not remove uncertainty
-about what the benchmark accepts.
-
-A subsequent [agreement protocol](../../bench/terminal-bench/experiments/2026-09-25-candidate-review/agreement-protocol.md)
-requires source concern and completion assessment to agree, or the concrete-report
-audit to establish failure. Joint calibration selects source 0.8 and completion
-0.5, with audit 0.5: 14/15 correct calls and 14/62 failure recall. These are fitting
-results. The fixed expression needs completion inference for only 28 of the 185
-comparison candidates. All 185 remain in the denominator. No standalone completion
-performance is inferred from that gated subset.
-
-Before opening fresh grades, a second prospective cohort adds one Astra high
-executor trial per fresh task, with a $3 soft model budget and otherwise the same
-retained v13 loop. These [stronger-model controls](../../bench/terminal-bench/experiments/2026-09-25-candidate-review/strong-controls-protocol.md)
-can reveal false alarms on successful candidates if they produce any. Both executor
-and assessor use Astra, which limits independence. Their outcomes are not used to
-fit the frozen rule. No passing outcome or identical-cost comparison is assumed.
-
 ## Whole-task assessments and agreement
 
 A separate Astra assessment read the task, final text files, and selected writer
@@ -190,6 +146,10 @@ checks. All 132 calibration trials were attempted; native timeouts remain unknow
 At the supported cutoffs, its best qualifying-size precision was 5/6 at 0.95,
 below the declared 90% target. Known calibration model cost was $22.33042, with
 unknown usage for timed-out calls. No standalone comparison claim follows.
+
+Several passing ATRX outputs received confident failure predictions based on a
+conflict between local reference coordinates and the named transcript. More
+reasoning did not remove uncertainty about what the benchmark accepts.
 
 The next preregistered rule required agreement between source review and the
 whole-task assessment, or a concrete report admission. Calibration selected source
@@ -235,6 +195,89 @@ With unchanged execution questions and corrected attribution, calibration gave
 14/14 correct calls at 0.5. The preregistered union added the corrected report audit
 at 0.7, yielding 15/15 correct calls and 15/62 recall. These are fitting results.
 The [frozen rule](../../bench/terminal-bench/experiments/2026-09-25-candidate-review/frozen-observed-rule.json)
-was committed before generating execution comparison answers. Its comparison is
-still reused validation, following several negative arms. Prospective grades
-remain unopened while this evaluation runs.
+was committed before generating execution comparison answers. The historical comparison gave **4/7 correct failure calls, 57% (25–84%),
+and 4/60 recall, 7% (3–16%)**. It failed to improve both measures. Correcting
+attribution is necessary for trustworthy evidence, but did not make these
+judgments discriminate well enough. The negative result is retained in
+`records/comparison-observed.json`.
+
+
+## Fitted feature combinations also failed to transfer
+
+A task-weighted ridge logistic model combined five original report judgments,
+the deterministic admission detector, corrected report and execution audits,
+source review, and whole-task readiness. The fixed search used three feature
+families, three regularization strengths, 3,000 fitting steps, and cutoffs from
+0.50 through 0.95. Leave-one-task-out calibration selected the model before any
+comparison feature acquisition. It required at least five calls on three tasks
+and at least 90% precision, then preferred greater recall.
+
+The selected model reached 24/26 correct out-of-fold calibration detections and
+24/62 recall. Historical comparison fell to **8/23 precision, 35% (19–55%), and
+8/60 recall, 13% (7–24%)**. The paired task-bootstrap differences from scenario
+checks include zero for both measures. Neither impressive calibration nor a
+more flexible combination established an improvement. The frozen predictions
+precede the outcome join in commits `9e28bda9d7` and `bf705f43d8`.
+
+The experiment also saved unnecessary inference. Exact bounds on the fitted
+logit considered a missing readiness answer and every possible present answer
+from zero through one. If all possibilities gave the same decision, that call
+was skipped. This avoided 91 of 185 comparison readiness requests without
+changing a verdict. These are mathematical bounds on a fixed expression, not
+confidence intervals. Interrupted requests and unknown usage remain recorded.
+
+The next [protocol](../../bench/terminal-bench/experiments/2026-09-25-candidate-review/pooled-development-protocol.md)
+explicitly retires the old comparison as validation. Pooling 317 development
+rows, with task-held-out fitting on all 58 groups, selects a cheaper family of
+report and observed-execution judgments. Readiness is excluded because its
+acquisition pattern differs across the old partitions. At its frozen 0.9 cutoff,
+out-of-fold precision is 5/5, 100% (57–100%), but recall is only 5/122, 4% (2–9%).
+This is inadequate coverage for promotion. Fresh predictions still need to be
+measured; the historical training and cross-validation numbers cannot replace
+that measurement.
+
+## Reproduce a defect in the submitted candidate
+
+The [executable-review protocol](../../bench/terminal-bench/experiments/2026-09-25-candidate-review/reproduced-review-protocol.md)
+adds one prespecified arm before fresh outcomes are opened. Astra high receives
+the public task and unchanged final snapshot, without a writer report or previous
+verdict. It can run at most seven checks and submit up to three findings. Each
+finding quotes a task requirement and an actual tool output; code checks those
+citations, and Jev judges both reproduction and mandatory scope. The smaller
+score must reach the fixed 0.8 cutoff. Otherwise the result is unknown, never a
+claim that the whole task passed. This cutoff is experimental, not a calibrated
+80% correctness claim.
+
+The task image is built only from its public `environment/` directory. The
+container has no network or GPU, no host credentials, a read-only root and
+candidate, 2 GiB of RAM, and 128 MiB of writable temporary space. Candidate
+hashes before and after review must match. A snapshot is usable only when no
+later writer invalidates it and every collected final artifact matches. Missing
+state, unsupported tools, invalid tests, and these environmental restrictions
+cannot establish candidate failure. Native calls and commands share 300 seconds;
+the harness also removes the disposable container after completion or timeout.
+
+Eight Astra high controls use the same retained v13 loop on the fresh tasks,
+with a $3 soft model budget. These stronger-model controls can expose false
+alarms if they produce correct candidates. They are not a matched-cost test,
+and using Astra for both executor and review limits independence. The first
+Astra `vpp-loss-divergence` attempt was refused before agent startup by Harbor's
+network capability check. One identical retry was specified before reading any
+grades; both attempts remain in the records.
+
+The source, agreement, observed, pooled, and executable-review arms retain their
+own frozen predictions. Results will be reported together, with executor-specific
+breakdowns, whole-task paired intervals, every false alarm, and all unknowns.
+Eight task groups can still leave a large uncertainty interval. #9584 remains
+open until the required improvement is demonstrated.
+
+
+## Verification
+
+The scoped manual gate at `a8ae150e6d` passed formatting, default and feature
+Clippy, and default and feature tests for `coder-one` (608 unit tests and two
+integration tests per configuration). Its recorded tree is marked dirty because
+`scripts/__pycache__/` was untracked; the tracked diff is empty. This is a scoped
+partial gate, not a full-workspace result. Six Python regressions cover safe
+snapshot restoration and exact inference bounds. Earlier V1 Rust replay matches
+all 317 historical calls and scores without new inference.

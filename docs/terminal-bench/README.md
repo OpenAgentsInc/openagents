@@ -4,13 +4,12 @@ Updated on 2026-09-25 with candidate-review validation and its negative results.
 
 ## Latest status
 
-**Candidate source review has not improved truthful checks.** The first frozen
-source/report union caught 4/60 failures with 4/6 correct calls. A jointly
-calibrated alternative caught 15/60 with 15/33 correct calls. Neither improves
-both metrics over existing checks. Public executable programs detected too few
-calibration failures to qualify. A completion assessment and eight fresh
-Microluna trials remain under evaluation. See the
-[protocols, results, and implementation](2026-09-25-candidate-review-validation.md).
+**Truthful checks still need confirmation.** Source review, whole-task assessment,
+observed-execution audits, and fitted combinations have not established an
+improvement in both fail precision and failure recall. The 317 historical trials
+are now development data. Fresh Luna and Astra candidates are being reviewed
+through bounded commands against their unchanged snapshots before grades are
+opened. See the [protocols, rejected alternatives, and implementation](2026-09-25-candidate-review-validation.md).
 [#9584](https://github.com/OpenAgentsInc/openagents/issues/9584) remains open;
 the [earlier report-evidence repair](2026-09-25-truthful-checks-microluna.md)
 remains useful independently of these rejected rules.

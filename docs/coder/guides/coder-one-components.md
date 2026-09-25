@@ -565,6 +565,23 @@ scope questions. A review finding is not an executed test.
 the selected report and judges explicit unresolved failures. It does not read
 the official verifier. The `--rows FILE --jobs DIR --partition calibration`
 form supports retained studies; comparison partitions must be chosen explicitly.
+Use `--kind verdict-features` to retain the original five report judgments and
+deterministic admission feature with the corrected selected-report attribution.
+
+`coder-one checks execution-audit --manifest FILE --jobs DIR --records DIR
+--out DIR --partition PARTITION` judges the selected session's retained tool
+observations. Missing selected streams stay unknown; an earlier executor cannot
+stand in for a later selected candidate.
+
+`coder-one checks reproduced-review --input FILE --container ID --out DIR` runs
+up to seven bounded commands against an unchanged candidate, then asks Jev about
+reproduced, mandatory defects. The caller must create an isolated Docker container
+with the candidate identity label, no network or privileges, a read-only root and
+`/app` mount, and memory and process limits. The experiment's `reproduce.py`
+creates and removes that container, verifies candidate attribution and hashes,
+and retains every request and command. This is an experimental fail-or-unknown
+verdict; a clean review does not mean pass. See the linked protocol for bounds.
+
 
 `verify.truthful` combines attributable retained source-review and report-audit
 records without inference. Its fixture contains `candidate`, `report`, `review`,

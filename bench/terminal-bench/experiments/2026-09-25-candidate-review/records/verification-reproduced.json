@@ -1,0 +1,160 @@
+{
+  "schema": "openagents.gate-run.v1",
+  "run_id": "20260925T052755Z-fb70a0",
+  "started_utc": "2026-09-25T05:27:55Z",
+  "finished_utc": "2026-09-25T05:31:52Z",
+  "elapsed_s": 237.3,
+  "tree": {
+    "head": "a8ae150e6d37ee358c90dbe45031700ddcbeeae0",
+    "dirty": true,
+    "diff_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "requested": {
+    "phases": "fmt clippy clippy-features tests tests-features",
+    "crates": "coder-one",
+    "workspace_scope": false,
+    "changed_ref": null,
+    "uncovered": "",
+    "keep_going": false,
+    "retry": true,
+    "postgres": true,
+    "metal": false,
+    "soak": false
+  },
+  "phases": [
+    {
+      "slug": "fmt",
+      "name": "Workspace formatting",
+      "command": [
+        "cargo",
+        "fmt",
+        "--all",
+        "--check"
+      ],
+      "status": "passed",
+      "attempts": 1,
+      "exit": 0,
+      "elapsed_s": 6.1,
+      "log": "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/verification-reproduced/20260925T052755Z-fb70a0/fmt.log"
+    },
+    {
+      "slug": "clippy",
+      "name": "Default workspace Clippy",
+      "command": [
+        "cargo",
+        "clippy",
+        "--locked",
+        "-p",
+        "coder-one",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "status": "passed",
+      "attempts": 1,
+      "exit": 0,
+      "elapsed_s": 24.4,
+      "log": "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/verification-reproduced/20260925T052755Z-fb70a0/clippy.log"
+    },
+    {
+      "slug": "clippy-features",
+      "name": "Feature workspace Clippy",
+      "command": [
+        "cargo",
+        "clippy",
+        "--locked",
+        "-p",
+        "coder-one",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "status": "passed",
+      "attempts": 1,
+      "exit": 0,
+      "elapsed_s": 0.3,
+      "log": "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/verification-reproduced/20260925T052755Z-fb70a0/clippy-features.log"
+    },
+    {
+      "slug": "tests",
+      "name": "Default workspace tests",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "coder-one",
+        "--",
+        "--nocapture"
+      ],
+      "status": "passed",
+      "attempts": 1,
+      "exit": 0,
+      "elapsed_s": 132.6,
+      "log": "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/verification-reproduced/20260925T052755Z-fb70a0/tests.log"
+    },
+    {
+      "slug": "tests-features",
+      "name": "Feature workspace tests",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "coder-one",
+        "--",
+        "--nocapture"
+      ],
+      "status": "passed",
+      "attempts": 1,
+      "exit": 0,
+      "elapsed_s": 68.3,
+      "log": "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/verification-reproduced/20260925T052755Z-fb70a0/tests-features.log"
+    }
+  ],
+  "skipped": [
+    {
+      "slug": "preflight",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "gate-tooling",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "artifacts",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "delegation",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "backup",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "deps",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "postgres",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "metal-clippy",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "metal-tests",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "soak",
+      "reason": "not in --phases"
+    }
+  ],
+  "result": "partial"
+}

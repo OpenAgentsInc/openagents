@@ -1,0 +1,6093 @@
+{
+  "partition": "held-out",
+  "trials": 185,
+  "tasks": 32,
+  "rule": {
+    "execution_at": 0.5,
+    "report_at": 0.7,
+    "schema": "openagents.observed-verdict-rule.v1",
+    "calibration": {
+      "fail_precision": {
+        "correct": 15,
+        "total": 15,
+        "value": 1.0,
+        "wilson_95": [
+          0.7961107336956521,
+          1
+        ]
+      },
+      "failure_recall": {
+        "correct": 15,
+        "total": 62,
+        "value": 0.24193548387096775,
+        "wilson_95": [
+          0.15245763680948543,
+          0.3615274425324505
+        ]
+      },
+      "pass_precision": {
+        "correct": 0,
+        "total": 0,
+        "value": null,
+        "wilson_95": null
+      },
+      "unknown": 117
+    },
+    "meaning": "Fail on an attributed unresolved execution failure or a concrete report admission; otherwise unknown. No pass calls.",
+    "selection_partition": "calibration",
+    "protocol_commit": "92cf520598",
+    "historical_comparison": "Reused validation; execution comparison answers not yet generated.",
+    "prospective": "Eight Luna and eight Astra control tasks; official outcomes unopened.",
+    "digests": {
+      "crates/coder-one/src/checks/execution_audit.rs": "7b9fb8ae25c1ede8dee637a39072221401a9e974b676af6bf2c568f83b068e5b",
+      "crates/coder-one/src/checks/report_audit.rs": "47b428ecdaf1b832cb0d8bb61e264132ff2c9ff2e9c4185c5258d721ee0cf6a1",
+      "crates/coder-one/src/checks/truth_selected.rs": "e0a716477ac1f1a37119561d151e24d373f9b4d9973dd30b7fcc1ad99fd44819",
+      "crates/coder-one/src/checks/truth.rs": "947e3ab2038c0613a0a9c6673cbb4fe949fb11c09d968927912cbb6dc389e03e"
+    }
+  },
+  "calibration_grid": [],
+  "signals": {
+    "checks.final": {
+      "fail_precision": {
+        "correct": 6,
+        "total": 11,
+        "value": 0.5454545454545454,
+        "wilson_95": [
+          0.28008775568998817,
+          0.7872904245601196
+        ]
+      },
+      "failure_recall": {
+        "correct": 6,
+        "total": 60,
+        "value": 0.1,
+        "wilson_95": [
+          0.04664219945723587,
+          0.20149694492511044
+        ]
+      },
+      "pass_precision": {
+        "correct": 69,
+        "total": 97,
+        "value": 0.711340206185567,
+        "wilson_95": [
+          0.614479497470417,
+          0.792098740082339
+        ]
+      },
+      "unknown": 77
+    },
+    "verdict.combined": {
+      "fail_precision": {
+        "correct": 22,
+        "total": 37,
+        "value": 0.5945945945945946,
+        "wilson_95": [
+          0.4348568313132931,
+          0.7365370416005986
+        ]
+      },
+      "failure_recall": {
+        "correct": 22,
+        "total": 60,
+        "value": 0.36666666666666664,
+        "wilson_95": [
+          0.2562073884620827,
+          0.4931723263320327
+        ]
+      },
+      "pass_precision": {
+        "correct": 11,
+        "total": 13,
+        "value": 0.8461538461538461,
+        "wilson_95": [
+          0.5776482949136899,
+          0.9567427368172621
+        ]
+      },
+      "unknown": 135
+    },
+    "verdict.observed": {
+      "fail_precision": {
+        "correct": 4,
+        "total": 7,
+        "value": 0.5714285714285714,
+        "wilson_95": [
+          0.2504542304090258,
+          0.8417830777373732
+        ]
+      },
+      "failure_recall": {
+        "correct": 4,
+        "total": 60,
+        "value": 0.06666666666666667,
+        "wilson_95": [
+          0.02622827414319792,
+          0.15925579893767722
+        ]
+      },
+      "pass_precision": {
+        "correct": 0,
+        "total": 0,
+        "value": null,
+        "wilson_95": null
+      },
+      "unknown": 178
+    }
+  },
+  "paired_task_bootstrap": {
+    "checks.final": {
+      "precision": {
+        "valid_resamples": 9818,
+        "undefined_resamples": 182,
+        "percentile_95": [
+          -0.4666666666666666,
+          0.6666666666666667
+        ]
+      },
+      "recall": {
+        "valid_resamples": 10000,
+        "undefined_resamples": 0,
+        "percentile_95": [
+          -0.1764705882352941,
+          0.06382978723404255
+        ]
+      }
+    },
+    "verdict.combined": {
+      "precision": {
+        "valid_resamples": 9866,
+        "undefined_resamples": 134,
+        "percentile_95": [
+          -0.47619047619047616,
+          0.4666666666666667
+        ]
+      },
+      "recall": {
+        "valid_resamples": 10000,
+        "undefined_resamples": 0,
+        "percentile_95": [
+          -0.4716981132075472,
+          -0.12499999999999999
+        ]
+      }
+    }
+  },
+  "tasks_table": {
+    "terminal-bench/batched-eval-parity": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 5
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 5
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 5
+      }
+    },
+    "terminal-bench/build-cython-ext": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 11
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 3,
+          "total": 3,
+          "value": 1.0,
+          "wilson_95": [
+            0.43849391955098227,
+            1
+          ]
+        },
+        "unknown": 9
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 12
+      }
+    },
+    "terminal-bench/cad-model": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 4,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.48990002040399916
+          ]
+        },
+        "pass_precision": {
+          "correct": 8,
+          "total": 12,
+          "value": 0.6666666666666666,
+          "wilson_95": [
+            0.3906175873976139,
+            0.8618821601026385
+          ]
+        },
+        "unknown": 4
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 1,
+          "total": 4,
+          "value": 0.25,
+          "wilson_95": [
+            0.045586062644636216,
+            0.6993639475573634
+          ]
+        },
+        "pass_precision": {
+          "correct": 2,
+          "total": 2,
+          "value": 1.0,
+          "wilson_95": [
+            0.34237195288961925,
+            1
+          ]
+        },
+        "unknown": 13
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 1,
+          "total": 4,
+          "value": 0.25,
+          "wilson_95": [
+            0.045586062644636216,
+            0.6993639475573634
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 15
+      }
+    },
+    "terminal-bench/cancel-async-tasks": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 11,
+          "total": 11,
+          "value": 1.0,
+          "wilson_95": [
+            0.7411599827511859,
+            1
+          ]
+        },
+        "unknown": 0
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 4,
+          "total": 4,
+          "value": 1.0,
+          "wilson_95": [
+            0.5100999795960008,
+            1
+          ]
+        },
+        "unknown": 7
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 12
+      }
+    },
+    "terminal-bench/cumulative-layout-shift": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 0
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      }
+    },
+    "terminal-bench/data-anonymization": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 3,
+          "total": 4,
+          "value": 0.75,
+          "wilson_95": [
+            0.3006360524426366,
+            0.9544139373553637
+          ]
+        },
+        "failure_recall": {
+          "correct": 3,
+          "total": 3,
+          "value": 1.0,
+          "wilson_95": [
+            0.43849391955098227,
+            1
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 0
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 3,
+          "total": 4,
+          "value": 0.75,
+          "wilson_95": [
+            0.3006360524426366,
+            0.9544139373553637
+          ]
+        },
+        "failure_recall": {
+          "correct": 3,
+          "total": 3,
+          "value": 1.0,
+          "wilson_95": [
+            0.43849391955098227,
+            1
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 0
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 3,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.5615060804490177
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 4
+      }
+    },
+    "terminal-bench/embedding-drift-monitor": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 11
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 10
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 10
+      }
+    },
+    "terminal-bench/fin-saccr-rwa": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 7,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.35433884297520657
+          ]
+        },
+        "pass_precision": {
+          "correct": 3,
+          "total": 7,
+          "value": 0.42857142857142855,
+          "wilson_95": [
+            0.15821692226262685,
+            0.7495457695909742
+          ]
+        },
+        "unknown": 3
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 1,
+          "total": 2,
+          "value": 0.5,
+          "wilson_95": [
+            0.09452865480086614,
+            0.9054713451991339
+          ]
+        },
+        "failure_recall": {
+          "correct": 1,
+          "total": 7,
+          "value": 0.14285714285714285,
+          "wilson_95": [
+            0.02567895594897479,
+            0.51313450331903
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 8
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 7,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.35433884297520657
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 10
+      }
+    },
+    "terminal-bench/foodstuff-beta-activity": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 0
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      }
+    },
+    "terminal-bench/freight-dispatch-shift": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "unknown": 0
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 0
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      }
+    },
+    "terminal-bench/gsea-proteomics": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 7,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.35433884297520657
+          ]
+        },
+        "pass_precision": {
+          "correct": 4,
+          "total": 11,
+          "value": 0.36363636363636365,
+          "wilson_95": [
+            0.15166223614131383,
+            0.6462032231083628
+          ]
+        },
+        "unknown": 0
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 1,
+          "total": 7,
+          "value": 0.14285714285714285,
+          "wilson_95": [
+            0.02567895594897479,
+            0.51313450331903
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 10
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 7,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.35433884297520657
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 11
+      }
+    },
+    "terminal-bench/headless-terminal": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 12,
+          "total": 12,
+          "value": 1.0,
+          "wilson_95": [
+            0.7574992425007574,
+            1
+          ]
+        },
+        "unknown": 0
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 11
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 12
+      }
+    },
+    "terminal-bench/html-js-filter": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 2,
+          "total": 4,
+          "value": 0.5,
+          "wilson_95": [
+            0.15003570882017148,
+            0.8499642911798285
+          ]
+        },
+        "failure_recall": {
+          "correct": 2,
+          "total": 5,
+          "value": 0.4,
+          "wilson_95": [
+            0.1176182311592533,
+            0.769280067791163
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 3,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.5615060804490177
+          ]
+        },
+        "unknown": 1
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 1,
+          "total": 5,
+          "value": 0.2,
+          "wilson_95": [
+            0.03622316096978745,
+            0.6244717358814613
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "unknown": 6
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 2,
+          "total": 4,
+          "value": 0.5,
+          "wilson_95": [
+            0.15003570882017148,
+            0.8499642911798285
+          ]
+        },
+        "failure_recall": {
+          "correct": 2,
+          "total": 5,
+          "value": 0.4,
+          "wilson_95": [
+            0.1176182311592533,
+            0.769280067791163
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 4
+      }
+    },
+    "terminal-bench/intrastat-meldung": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "unknown": 0
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      }
+    },
+    "terminal-bench/ks-solver-cpp": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 1,
+          "total": 9,
+          "value": 0.1111111111111111,
+          "wilson_95": [
+            0.019890371327130535,
+            0.4350062147680601
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 3,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.5615060804490177
+          ]
+        },
+        "unknown": 6
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 5,
+          "total": 5,
+          "value": 1.0,
+          "wilson_95": [
+            0.5655085052479191,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 5,
+          "total": 9,
+          "value": 0.5555555555555556,
+          "wilson_95": [
+            0.2666473457440297,
+            0.811224570528086
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 5
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 9,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.2991527535509594
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 10
+      }
+    },
+    "terminal-bench/kv-live-surgery": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      }
+    },
+    "terminal-bench/layout-config-recreation2": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "unknown": 0
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      }
+    },
+    "terminal-bench/legacy-utility-triage": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 3,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.5615060804490177
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 4
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 1,
+          "total": 2,
+          "value": 0.5,
+          "wilson_95": [
+            0.09452865480086614,
+            0.9054713451991339
+          ]
+        },
+        "failure_recall": {
+          "correct": 1,
+          "total": 3,
+          "value": 0.3333333333333333,
+          "wilson_95": [
+            0.0614903152761605,
+            0.7923450448735121
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 2
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 3,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.5615060804490177
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 4
+      }
+    },
+    "terminal-bench/log-summary-date-ranges": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 2,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.6576280471103807
+          ]
+        },
+        "pass_precision": {
+          "correct": 10,
+          "total": 12,
+          "value": 0.8333333333333334,
+          "wilson_95": [
+            0.5519636426153274,
+            0.9530358523851776
+          ]
+        },
+        "unknown": 0
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 2,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.6576280471103807
+          ]
+        },
+        "pass_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "unknown": 11
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 2,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.6576280471103807
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 12
+      }
+    },
+    "terminal-bench/mp-checkpoint-consolidation": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "unknown": 0
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      }
+    },
+    "terminal-bench/music-harmony": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 4,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.48990002040399916
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "unknown": 3
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 1,
+          "total": 4,
+          "value": 0.25,
+          "wilson_95": [
+            0.045586062644636216,
+            0.6993639475573634
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 3
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 4,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.48990002040399916
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 4
+      }
+    },
+    "terminal-bench/nextjs-performance": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 2,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.6576280471103807
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 8
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 1,
+          "total": 3,
+          "value": 0.3333333333333333,
+          "wilson_95": [
+            0.0614903152761605,
+            0.7923450448735121
+          ]
+        },
+        "failure_recall": {
+          "correct": 1,
+          "total": 2,
+          "value": 0.5,
+          "wilson_95": [
+            0.09452865480086614,
+            0.9054713451991339
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 5
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 2,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.6576280471103807
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 8
+      }
+    },
+    "terminal-bench/ontology-kg-querying": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "unknown": 0
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      }
+    },
+    "terminal-bench/payments-pipeline-fix": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "unknown": 0
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      }
+    },
+    "terminal-bench/photonic-waveguide-routing": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "unknown": 0
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      }
+    },
+    "terminal-bench/production-planning": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 7,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.35433884297520657
+          ]
+        },
+        "pass_precision": {
+          "correct": 1,
+          "total": 2,
+          "value": 0.5,
+          "wilson_95": [
+            0.09452865480086614,
+            0.9054713451991339
+          ]
+        },
+        "unknown": 12
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 5,
+          "total": 10,
+          "value": 0.5,
+          "wilson_95": [
+            0.23658959361548731,
+            0.7634104063845126
+          ]
+        },
+        "failure_recall": {
+          "correct": 5,
+          "total": 7,
+          "value": 0.7142857142857143,
+          "wilson_95": [
+            0.35892909014821267,
+            0.9177828342909844
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 4
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 1,
+          "total": 7,
+          "value": 0.14285714285714285,
+          "wilson_95": [
+            0.02567895594897479,
+            0.51313450331903
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 13
+      }
+    },
+    "terminal-bench/protein-autointerp-disulfide": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 2,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.6576280471103807
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "unknown": 1
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 2,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.6576280471103807
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "unknown": 1
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 2,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.6576280471103807
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 2
+      }
+    },
+    "terminal-bench/satb-audio-transcription": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "unknown": 0
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      }
+    },
+    "terminal-bench/sound-change-cascade": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "unknown": 3
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "unknown": 3
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 4
+      }
+    },
+    "terminal-bench/sqlite-db-truncate": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 12,
+          "total": 12,
+          "value": 1.0,
+          "wilson_95": [
+            0.7574992425007574,
+            1
+          ]
+        },
+        "unknown": 0
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 12
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 12
+      }
+    },
+    "terminal-bench/telecom-entity-resolution": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "unknown": 0
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 0
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      }
+    },
+    "terminal-bench/vf2-speedup-networkx": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 2
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 2
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 2
+      }
+    }
+  },
+  "predictions": [
+    {
+      "job": "extended--coder-one-tunable--cancel-async-tasks",
+      "trial": "cancel-async-tasks__EZNWX8x",
+      "task": "terminal-bench/cancel-async-tasks",
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.33,
+      "execution-audit-error": null,
+      "execution-audit-digest": "4600d8b3cbdf731630382671f82bd3f9b45b57e3e7b2f8e8cbce59b0d4b7b9ce",
+      "report-audit": 0.12,
+      "report-audit-error": null,
+      "report-audit-digest": "4965e80a05f0df397468335d7fc14c61ca66d425b2932133b1339a8c41e75087"
+    },
+    {
+      "job": "extended--coder-one-tunable--cancel-async-tasks-2",
+      "trial": "cancel-async-tasks__ojx3LrP",
+      "task": "terminal-bench/cancel-async-tasks",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.15,
+      "execution-audit-error": null,
+      "execution-audit-digest": "c47f4f2d495528f4082de6912813fcc8051c57244af872ab8f881b2a32ecc9ff",
+      "report-audit": 0.18,
+      "report-audit-error": null,
+      "report-audit-digest": "f75c8e6099101070b0d9a8f2924dbfe50538a16d370b17f7820f82f44b43c31d"
+    },
+    {
+      "job": "extended--coder-one-tunable--cancel-async-tasks-3",
+      "trial": "cancel-async-tasks__Jo4st5E",
+      "task": "terminal-bench/cancel-async-tasks",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.17,
+      "execution-audit-error": null,
+      "execution-audit-digest": "6bac5ac082f5a8705d40787af1e02d03ee2908a968592f0c691238b663232e8f",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "12254b6770c623969fd311576e0719d7fe3803e7092be0659d6cb6443cfe7b93"
+    },
+    {
+      "job": "extended--coder-one-tunable--log-summary-date-ranges",
+      "trial": "log-summary-date-ranges__xNufynH",
+      "task": "terminal-bench/log-summary-date-ranges",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.08,
+      "execution-audit-error": null,
+      "execution-audit-digest": "4064491f176f1b8f54d095932268ad22447756386a442e79f562d1c51745cc5a",
+      "report-audit": 0.04,
+      "report-audit-error": null,
+      "report-audit-digest": "35a7c1c0f04caac76358542ebbfd68ca9d64e9fc97fa2e449d3cdccc862a7c4c"
+    },
+    {
+      "job": "extended--coder-one-tunable--log-summary-date-ranges-2",
+      "trial": "log-summary-date-ranges__DSX3Nnf",
+      "task": "terminal-bench/log-summary-date-ranges",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.07,
+      "execution-audit-error": null,
+      "execution-audit-digest": "70375b0fd5c845023df74783cffefa95f2e4196d95f6d308002aafb170fec36f",
+      "report-audit": 0.04,
+      "report-audit-error": null,
+      "report-audit-digest": "d06df30766a1cd9a5d24c66d58f8fefdffcc6da27640afa0b771af8892bb3140"
+    },
+    {
+      "job": "extended--coder-one-tunable--log-summary-date-ranges-3",
+      "trial": "log-summary-date-ranges__LmwAFaD",
+      "task": "terminal-bench/log-summary-date-ranges",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.11,
+      "execution-audit-error": null,
+      "execution-audit-digest": "ee52673db4a2c3824f666f3a92ccc81b67e47eedc63f6caf48cc554d403fac33",
+      "report-audit": 0.04,
+      "report-audit-error": null,
+      "report-audit-digest": "ca10e1cb71d09e6f9bf8400792bd1c42131a3bdaa2c77efb5b4a4876d8fe5e11"
+    },
+    {
+      "job": "extended--coder-one-tunable--sqlite-db-truncate",
+      "trial": "sqlite-db-truncate__ZCf74xb",
+      "task": "terminal-bench/sqlite-db-truncate",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.16,
+      "execution-audit-error": null,
+      "execution-audit-digest": "0dc18436105e3aae270fcd270ddbe85e3acdd9e7302d13a4953e0154510be923",
+      "report-audit": 0.09,
+      "report-audit-error": null,
+      "report-audit-digest": "79fab733ff559241eb185496e9031f7b5f45c0ef4da7b934e9c2567338679f38"
+    },
+    {
+      "job": "extended--coder-one-tunable--sqlite-db-truncate-2",
+      "trial": "sqlite-db-truncate__2YDS99z",
+      "task": "terminal-bench/sqlite-db-truncate",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.15,
+      "execution-audit-error": null,
+      "execution-audit-digest": "280dbc49b8edbb761f9d2700851efb219fefe61d5752ad9e9de7393a874f4f6d",
+      "report-audit": 0.07,
+      "report-audit-error": null,
+      "report-audit-digest": "f161d76820818c91aafa8a091f31583df328bb9a54d1a882fb5b5a6743b1a8db"
+    },
+    {
+      "job": "extended--coder-one-tunable--sqlite-db-truncate-3",
+      "trial": "sqlite-db-truncate__JfCXuyo",
+      "task": "terminal-bench/sqlite-db-truncate",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.1,
+      "execution-audit-error": null,
+      "execution-audit-digest": "58ba16f0b429bbdd90883b4aabe15fb81300a6939649907bdd67423d4bb2f400",
+      "report-audit": 0.06,
+      "report-audit-error": null,
+      "report-audit-digest": "b495979ea2b101ef41b6a864cba268f81f56aeb06e209be64bd9398bda2b0666"
+    },
+    {
+      "job": "extended--coder-one-tunable-luna--cancel-async-tasks",
+      "trial": "cancel-async-tasks__vkbVrBR",
+      "task": "terminal-bench/cancel-async-tasks",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.09,
+      "execution-audit-error": null,
+      "execution-audit-digest": "01c34065c07046b00b2fca5802c6b745ccc1f4b528c7f13eb20d79e539abcdd1",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "7a068aea057ae996b12f5dd2cb73fd40647a26ed2cf447ae1b5169d5244dddac"
+    },
+    {
+      "job": "extended--coder-one-tunable-luna--cancel-async-tasks-2",
+      "trial": "cancel-async-tasks__yteL4JF",
+      "task": "terminal-bench/cancel-async-tasks",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.34,
+      "execution-audit-error": null,
+      "execution-audit-digest": "cf0b0469328f0699e0c30fd2096aa33e1e30d6aca1a6807b93a024ea8e65af3c",
+      "report-audit": 0.15,
+      "report-audit-error": null,
+      "report-audit-digest": "0bd690d11dbed5d1b8cd4a4250b48817bb9be7add36ced6e0cda26a0751db0ef"
+    },
+    {
+      "job": "extended--coder-one-tunable-luna--cancel-async-tasks-3",
+      "trial": "cancel-async-tasks__TAoi72C",
+      "task": "terminal-bench/cancel-async-tasks",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.18,
+      "execution-audit-error": null,
+      "execution-audit-digest": "6785b53805da86807c669786e011d8c3fce03f5e03ef51015545cb4aefe0b318",
+      "report-audit": 0.19,
+      "report-audit-error": null,
+      "report-audit-digest": "938aa172d28d8ab1b4b70d1051b17969adfd14fb0448a894a1ac2674cafb7329"
+    },
+    {
+      "job": "extended--coder-one-tunable-luna--log-summary-date-ranges",
+      "trial": "log-summary-date-ranges__tWvowjq",
+      "task": "terminal-bench/log-summary-date-ranges",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.08,
+      "execution-audit-error": null,
+      "execution-audit-digest": "bf670412f09a657ec5ae3940ae9a43b7bb68527c6f80a9451e08596c8c6ce2a8",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "93432ee5df368ddd68c0b71cc7725f3fe5114fbd0cce981e85a4622690b6e54c"
+    },
+    {
+      "job": "extended--coder-one-tunable-luna--log-summary-date-ranges-2",
+      "trial": "log-summary-date-ranges__VZCxzYS",
+      "task": "terminal-bench/log-summary-date-ranges",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.08,
+      "execution-audit-error": null,
+      "execution-audit-digest": "1b124e230cccfb455e3a41cf0827a75d98c97e0a05ed1e6ae1bba2bfaf8a1c48",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "4bebb734342eb66c36c3444336b769a537a0bc5aaab9a34e5163fc67027a17d1"
+    },
+    {
+      "job": "extended--coder-one-tunable-luna--log-summary-date-ranges-3",
+      "trial": "log-summary-date-ranges__MGUR8qz",
+      "task": "terminal-bench/log-summary-date-ranges",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.08,
+      "execution-audit-error": null,
+      "execution-audit-digest": "38f620cbf6054763255254e535b4a3f9edb2f1ad03d17dfb62e8f7e1e05bd976",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "5b2220e0c375f10a777edb6970c220a62c0f5a3a4f244289743389ccb103f916"
+    },
+    {
+      "job": "extended--coder-one-tunable-luna--sqlite-db-truncate",
+      "trial": "sqlite-db-truncate__ewqDC5Z",
+      "task": "terminal-bench/sqlite-db-truncate",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.17,
+      "execution-audit-error": null,
+      "execution-audit-digest": "b6076770edb326ae8920255f8f0553fa5b564cff1103e2145bccbea366781095",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "38a985f6709fb01e4e5a2a852a012ebf78ab926df51904b34d1066e4134dfa21"
+    },
+    {
+      "job": "extended--coder-one-tunable-luna--sqlite-db-truncate-2",
+      "trial": "sqlite-db-truncate__MS4umyG",
+      "task": "terminal-bench/sqlite-db-truncate",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.37,
+      "execution-audit-error": null,
+      "execution-audit-digest": "8fcb8e9e569033be9f4031938c6aae78d421afecaa631559b4c10e17a6955fa1",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "5bd3233c54b54e768d807a76779a702fa0a7bd33d69de186400686cc8e6f2486"
+    },
+    {
+      "job": "extended--coder-one-tunable-luna--sqlite-db-truncate-3",
+      "trial": "sqlite-db-truncate__g2XMeQ6",
+      "task": "terminal-bench/sqlite-db-truncate",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.14,
+      "execution-audit-error": null,
+      "execution-audit-digest": "40798e61e2602f69184f839691e44a09e74d1935b6efada61bf1ce79779de7fe",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "e14ed137da709c805ca3cb1e01bd6ec24ee597dca7df55b0ae50556108a31c9c"
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-pack--cancel-async-tasks",
+      "trial": "cancel-async-tasks__U3HoBMX",
+      "task": "terminal-bench/cancel-async-tasks",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.17,
+      "execution-audit-error": null,
+      "execution-audit-digest": "b469e30f11b9d1a890db01056277b6e594bc7a319e970372fc7a749eaae2f291",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "e504ad656b045acc56938cc5d911afb076171405ad155c8bf529b4cbc7681e5e"
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-pack--cancel-async-tasks-2",
+      "trial": "cancel-async-tasks__C4WWS3V",
+      "task": "terminal-bench/cancel-async-tasks",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.1,
+      "execution-audit-error": null,
+      "execution-audit-digest": "42cc7cecc3c262b8e73f58918ef2f6f8299e0f6b51bcb3759481fcf195d85974",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "ba8e6204b3b1fd53b921f14f5f88a02e003128475e87c53bb582966a3d4c9690"
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-pack--cancel-async-tasks-3",
+      "trial": "cancel-async-tasks__yzE5pS9",
+      "task": "terminal-bench/cancel-async-tasks",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.26,
+      "execution-audit-error": null,
+      "execution-audit-digest": "a6588d989fa2192aa65a3f88c3be1aeed36f4c9d60d153ed15e438c864b0a33b",
+      "report-audit": 0.17,
+      "report-audit-error": null,
+      "report-audit-digest": "0ca976bdee6b0d8e0bb0d3fec177e4a9387e1a189d9408bf52482698f1a1f1d5"
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-pack--log-summary-date-ranges",
+      "trial": "log-summary-date-ranges__yVFhVDi",
+      "task": "terminal-bench/log-summary-date-ranges",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.07,
+      "execution-audit-error": null,
+      "execution-audit-digest": "646eae421d5e357c9201eff16d21cc92d86e7fdb6facb4334e3be4cbec21f8ba",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "89a32fd454dba3111eade753469303198dd03f05c28930889f44dd0107234cb8"
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-pack--log-summary-date-ranges-2",
+      "trial": "log-summary-date-ranges__t3tTZ7U",
+      "task": "terminal-bench/log-summary-date-ranges",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.07,
+      "execution-audit-error": null,
+      "execution-audit-digest": "38d7b79ca0c6c21a02949b46016f2ee67eee7af1b4026c55ef6282e5d59fad18",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "c621d360cf8247ab88fd2aaac37637869b5ea737aafd280310b33b2fb87532bd"
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-pack--log-summary-date-ranges-3",
+      "trial": "log-summary-date-ranges__7yPBBBk",
+      "task": "terminal-bench/log-summary-date-ranges",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.35,
+      "execution-audit-error": null,
+      "execution-audit-digest": "1757c0722dc5679ef11a3385990f41b1ca58f3f46e2def9504e66560e2298ad4",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "b1f9208637e4d7454d3432d9b49d9474936092146bfb3d0128764948317f260d"
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-pack--sqlite-db-truncate",
+      "trial": "sqlite-db-truncate__kmzasWS",
+      "task": "terminal-bench/sqlite-db-truncate",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.1,
+      "execution-audit-error": null,
+      "execution-audit-digest": "85dc7b1af810ba9ec0c8366c42cf3709eed49ac24ad510128a4286c903ef6e85",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "77736d42b83f98a2c68e6207a51f779fcff8ad19cf0e2bab1cfe0c5a00fa6edf"
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-pack--sqlite-db-truncate-2",
+      "trial": "sqlite-db-truncate__GojX4Yj",
+      "task": "terminal-bench/sqlite-db-truncate",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.11,
+      "execution-audit-error": null,
+      "execution-audit-digest": "162c61ccc86a3acba7e4aa621af0962878fdab346e019351c38be71b2d922e59",
+      "report-audit": 0.12,
+      "report-audit-error": null,
+      "report-audit-digest": "879c7037dc208e7b2a2eef6860b1fed4febaa8bd2ba36c041a20f7daf7d8ff05"
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-pack--sqlite-db-truncate-3",
+      "trial": "sqlite-db-truncate__FcVGhAK",
+      "task": "terminal-bench/sqlite-db-truncate",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.12,
+      "execution-audit-error": null,
+      "execution-audit-digest": "228355b95f3f3d58994fdfb3d1aeaadcc21c23a13aff3123b45bf90d4ed17ab8",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "c9d58449e2344a4a429443e5b7075a2b6fc8c89a68cf9ddf489caaa504218944"
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-v2--cancel-async-tasks",
+      "trial": "cancel-async-tasks__jR2MgS7",
+      "task": "terminal-bench/cancel-async-tasks",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.21,
+      "execution-audit-error": null,
+      "execution-audit-digest": "cc5d917417bb16e1ff74f4188a107ec941630cf8e132085129d72a3a752f0268",
+      "report-audit": 0.17,
+      "report-audit-error": null,
+      "report-audit-digest": "e2e5d8cb16eadf0ef942c7c30ff3e6d2376f2def7162340784ab063b5aab139f"
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-v2--cancel-async-tasks-2",
+      "trial": "cancel-async-tasks__LyPdBMp",
+      "task": "terminal-bench/cancel-async-tasks",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.24,
+      "execution-audit-error": null,
+      "execution-audit-digest": "a6c34094313bfcbbc487ad1d3fd571f488f97344ce0046b54a1f1d99d8e4913f",
+      "report-audit": 0.08,
+      "report-audit-error": null,
+      "report-audit-digest": "66d9e915c3010982426afc419974fb068ac363408ebf7feae86c08ae98940489"
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-v2--cancel-async-tasks-3",
+      "trial": "cancel-async-tasks__NNJ2abg",
+      "task": "terminal-bench/cancel-async-tasks",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.13,
+      "execution-audit-error": null,
+      "execution-audit-digest": "7f23b193014b9a034f9e168338c7616b229a8f62ccbdf55e5d40df51ea0b9719",
+      "report-audit": 0.13,
+      "report-audit-error": null,
+      "report-audit-digest": "c8799ddc46ad25c023e74ffa32159597619f036b24e08c7cb236c25ec7bc9dfb"
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-v2--log-summary-date-ranges",
+      "trial": "log-summary-date-ranges__8j6Nis3",
+      "task": "terminal-bench/log-summary-date-ranges",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.23,
+      "execution-audit-error": null,
+      "execution-audit-digest": "4e8df34b66fbc04489efca1d5e9c281564100b4003192d0fadda6ed76cc99b9d",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "8dc73295fad45ec847f06ac8570cc3074f0dfec604c8babd5fd5adb8277a6a49"
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-v2--log-summary-date-ranges-2",
+      "trial": "log-summary-date-ranges__8NBoYwo",
+      "task": "terminal-bench/log-summary-date-ranges",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.13,
+      "execution-audit-error": null,
+      "execution-audit-digest": "fc246e97242bff395f822a8cf55a13bf31870b7f42adb6babe509f4c5ffbe385",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "f11d425dde6152dff1a50441b7b6e136afb0cdd888d3f6fa2ebbb8b07b57dd3d"
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-v2--log-summary-date-ranges-3",
+      "trial": "log-summary-date-ranges__9z9Yuem",
+      "task": "terminal-bench/log-summary-date-ranges",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.21,
+      "execution-audit-error": null,
+      "execution-audit-digest": "97ed6f7af9e796b23de67b2057ebdd6468fa5b17c25f77048815c3318b61d13c",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "4ee358b8b186d905276544dd8d0fdc40eed3433cca03e38a61b2c0c409998c28"
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-v2--sqlite-db-truncate",
+      "trial": "sqlite-db-truncate__V5R5B6a",
+      "task": "terminal-bench/sqlite-db-truncate",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.12,
+      "execution-audit-error": null,
+      "execution-audit-digest": "ca18ef748914b73e3437c755e8dcf1459cf8de5192f45b16bc117b539bc7ae4d",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "287be850a1788f76ea82feae4a17986c6f729031ae8015619d33c7cfb8d3981b"
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-v2--sqlite-db-truncate-2",
+      "trial": "sqlite-db-truncate__L72MUVx",
+      "task": "terminal-bench/sqlite-db-truncate",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.16,
+      "execution-audit-error": null,
+      "execution-audit-digest": "631ed31882b1f92262e8ca11a801c2f7c149206385c762a91881a022340f5a5e",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "66cea36f09db1a02eb9a3e7a9b32ecdf894ea21b3a94b9c28c8a765edc958d4a"
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-v2--sqlite-db-truncate-3",
+      "trial": "sqlite-db-truncate__rGwQzog",
+      "task": "terminal-bench/sqlite-db-truncate",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.13,
+      "execution-audit-error": null,
+      "execution-audit-digest": "a8214eafe5567cb6f47d4105c058130a871a91040bd5c87621abee120898d27d",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "412d4cd36f43f609ae18d21dd3302423df6c91261f89e0a020b9894505036703"
+    },
+    {
+      "job": "matched-20260923--batched-eval-parity--r1--coder",
+      "trial": "batched-eval-parity__zAAp2Jy",
+      "task": "terminal-bench/batched-eval-parity",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.32,
+      "execution-audit-error": null,
+      "execution-audit-digest": "3d9c5d341463251f210856929f92436a2bfd853afd3f45619a77cc3f0b583f56",
+      "report-audit": 0.07,
+      "report-audit-error": null,
+      "report-audit-digest": "4f26755af5c1ab13b7e6f7a2ab4c76e795d82aad90e3c4f46a651cd6b9fb01ea"
+    },
+    {
+      "job": "matched-20260923--batched-eval-parity--r2--coder",
+      "trial": "batched-eval-parity__yMr4Wo4",
+      "task": "terminal-bench/batched-eval-parity",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.27,
+      "execution-audit-error": null,
+      "execution-audit-digest": "c95484a240b72c69c68fcba6abf5060ca5a1d27425affe4bf1ae464e27dc4f9f",
+      "report-audit": 0.09,
+      "report-audit-error": null,
+      "report-audit-digest": "9a6c556c2e3d6c49d571b3f7c8d3b00cb2939ced63ba4e65e43368ffa3c4b83f"
+    },
+    {
+      "job": "matched-20260923--batched-eval-parity--r3--coder",
+      "trial": "batched-eval-parity__MRdoTBa",
+      "task": "terminal-bench/batched-eval-parity",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.39,
+      "execution-audit-error": null,
+      "execution-audit-digest": "1dc1b60b15e68858dd5bdf60b1cd9a83e5152c86b60db5e118e922381caa2f83",
+      "report-audit": 0.13,
+      "report-audit-error": null,
+      "report-audit-digest": "36d8d4a3f8b65e33b4fb753ce48c6fca805cbc6d2f1aabe8e18662a0bb3a040b"
+    },
+    {
+      "job": "matched-20260923--nextjs-performance--r1--coder",
+      "trial": "nextjs-performance__ajfrZR6",
+      "task": "terminal-bench/nextjs-performance",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.24,
+      "execution-audit-error": null,
+      "execution-audit-digest": "b075d2ef07e94744bc75803dcfeb73d1ae324e17f5b6ab0336113dea47f1f7aa",
+      "report-audit": 0.04,
+      "report-audit-error": null,
+      "report-audit-digest": "4816fb6a7a7dc5a8eee1086d40c51ac22a3629b660820964396a8b1b67caae64"
+    },
+    {
+      "job": "matched-20260923--nextjs-performance--r2--coder",
+      "trial": "nextjs-performance__dhy6o9c",
+      "task": "terminal-bench/nextjs-performance",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.18,
+      "execution-audit-error": null,
+      "execution-audit-digest": "5e270008c7e5773c9b742ce110a5ba3c5903ce7a2b0440f232cf7c68c221eacb",
+      "report-audit": 0.06,
+      "report-audit-error": null,
+      "report-audit-digest": "48691526ecec1e5202d2cf2eeaa787f0001fb563089ed3b0ffb90d796f809285"
+    },
+    {
+      "job": "matched-20260923--nextjs-performance--r3--coder",
+      "trial": "nextjs-performance__ZdJvNTW",
+      "task": "terminal-bench/nextjs-performance",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.23,
+      "execution-audit-error": null,
+      "execution-audit-digest": "c4bae787a1968bb41048eceeddf958a8525c28a0266dd82d8a6086e8df6a5a6e",
+      "report-audit": 0.12,
+      "report-audit-error": null,
+      "report-audit-digest": "dda2b4d50fb0326bceef82f47def0a2a83dcbeee37a99a8607d9945a62f681ec"
+    },
+    {
+      "job": "panel--coder-one-tunable--build-cython-ext",
+      "trial": "build-cython-ext__iAGyfZv",
+      "task": "terminal-bench/build-cython-ext",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.2,
+      "execution-audit-error": null,
+      "execution-audit-digest": "9e6541e69c31612b91cdbcdaff22bdd76683991c6800e75080953503e962ab54",
+      "report-audit": 0.12,
+      "report-audit-error": null,
+      "report-audit-digest": "974f665ab922213161fd2e8498b3f3caaf2f8c3e415fcf7e906ba273ef5de39e"
+    },
+    {
+      "job": "panel--coder-one-tunable--build-cython-ext-2",
+      "trial": "build-cython-ext__GGKHcsF",
+      "task": "terminal-bench/build-cython-ext",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.15,
+      "execution-audit-error": null,
+      "execution-audit-digest": "9b6f6249e0deb05f149506c4b97f2574a2a471f6effabf0050bbe48e521de618",
+      "report-audit": 0.06,
+      "report-audit-error": null,
+      "report-audit-digest": "5bfc868f322fddad926bdd37567edb4411bacb09e803d55b0c82f91372bbf77f"
+    },
+    {
+      "job": "panel--coder-one-tunable--build-cython-ext-3",
+      "trial": "build-cython-ext__GBkZ3KY",
+      "task": "terminal-bench/build-cython-ext",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.1,
+      "execution-audit-error": null,
+      "execution-audit-digest": "bc4664efff81912d86b7cb661f8d831da192e643987d3a31ac10047f191eb009",
+      "report-audit": 0.13,
+      "report-audit-error": null,
+      "report-audit-digest": "5635b9b0fcee515f8c1065b5d5292fdaeb09f43c30ae5fa84d4993af06ee19b8"
+    },
+    {
+      "job": "panel--coder-one-tunable--headless-terminal",
+      "trial": "headless-terminal__5uCPA7c",
+      "task": "terminal-bench/headless-terminal",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.1,
+      "execution-audit-error": null,
+      "execution-audit-digest": "132f918e2cd06a7f009d4614aef6cc16620ca1c207e4e67b434c98b751df7cfd",
+      "report-audit": 0.09,
+      "report-audit-error": null,
+      "report-audit-digest": "bc4a73fa053ca41ab56ce31326a6902a07de84798c47a48cd33bf68010a68ce0"
+    },
+    {
+      "job": "panel--coder-one-tunable--headless-terminal-2",
+      "trial": "headless-terminal__AcjpX6e",
+      "task": "terminal-bench/headless-terminal",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.1,
+      "execution-audit-error": null,
+      "execution-audit-digest": "099db10cc8a2a2faddc192b6a52498a68d3cb307b3ca8923459e7d6109f9b745",
+      "report-audit": 0.07,
+      "report-audit-error": null,
+      "report-audit-digest": "f390645ce595a5b681097b41e98f1e5d126cc10e5aabd4fc2666977e86e32aea"
+    },
+    {
+      "job": "panel--coder-one-tunable--headless-terminal-3",
+      "trial": "headless-terminal__ENXuSCw",
+      "task": "terminal-bench/headless-terminal",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.09,
+      "execution-audit-error": null,
+      "execution-audit-digest": "b3abe9ca11ca55744559e57edfa395c110824d012e96e9b06892a259adb5ddd3",
+      "report-audit": 0.04,
+      "report-audit-error": null,
+      "report-audit-digest": "a5789e0af2e7bde4bd931559ac2e314d3eb4a2348ff42ec180a3e8f6364bf189"
+    },
+    {
+      "job": "panel--coder-one-tunable-luna--build-cython-ext",
+      "trial": "build-cython-ext__MbR5J5V",
+      "task": "terminal-bench/build-cython-ext",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.21,
+      "execution-audit-error": null,
+      "execution-audit-digest": "4db2439631a0b3e9588f3615212fd3358274c8c938a428e9917624e1b8b33861",
+      "report-audit": 0.05,
+      "report-audit-error": null,
+      "report-audit-digest": "35f210cbce5aef3feeda303f8b9f76105678f6b6da65aee8ade47dec3765b8c0"
+    },
+    {
+      "job": "panel--coder-one-tunable-luna--build-cython-ext-2",
+      "trial": "build-cython-ext__7wxMF82",
+      "task": "terminal-bench/build-cython-ext",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.13,
+      "execution-audit-error": null,
+      "execution-audit-digest": "3a1d929f59052aa6f09acd11ccd27620300e56d91b1ac1de3f057a1b6e5f0644",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "5eaff2a53fb15668ddb78efde5c754a192cd83ad38e79c04ba20b74845d70f18"
+    },
+    {
+      "job": "panel--coder-one-tunable-luna--build-cython-ext-3",
+      "trial": "build-cython-ext__rFonZts",
+      "task": "terminal-bench/build-cython-ext",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.09,
+      "execution-audit-error": null,
+      "execution-audit-digest": "b4e85b540aea52c9f75c3f7b06d3d8b196907ecc7577e6f51c14d09385d64eba",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "5266520f33993e03dfe36b89fc2c7e05d6a08d21bfea940862b67a737a3715aa"
+    },
+    {
+      "job": "panel--coder-one-tunable-luna--headless-terminal",
+      "trial": "headless-terminal__SGPFUYL",
+      "task": "terminal-bench/headless-terminal",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.09,
+      "execution-audit-error": null,
+      "execution-audit-digest": "75000a689ec02e2a887553a3e1339165da65f97ac7fd4a1c661209c3c31422b4",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "bd20d0a84e4372218f9ec8b8160845506068600be6a6b9fedfd5039ca8b77fc2"
+    },
+    {
+      "job": "panel--coder-one-tunable-luna--headless-terminal-2",
+      "trial": "headless-terminal__2UPEAzA",
+      "task": "terminal-bench/headless-terminal",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.1,
+      "execution-audit-error": null,
+      "execution-audit-digest": "78209fd363ab3dad7f41f5541a07160f97bd983b46f1fa69b3fb3ccd6bbb853b",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "1da7437861680ba4b93058d2efa817ec1ad412c62feda7a79d6d9c2613ba7d09"
+    },
+    {
+      "job": "panel--coder-one-tunable-luna--headless-terminal-3",
+      "trial": "headless-terminal__opQo8vp",
+      "task": "terminal-bench/headless-terminal",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.1,
+      "execution-audit-error": null,
+      "execution-audit-digest": "cefabe5326b69d9c03216e6df752b7b832cf730974143480b692e529eca9bad5",
+      "report-audit": 0.06,
+      "report-audit-error": null,
+      "report-audit-digest": "3a924f7c86e77ebf984611ae09c7cccf393c2d87113808fdf1f78876f42d8098"
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-pack--build-cython-ext",
+      "trial": "build-cython-ext__ierikWT",
+      "task": "terminal-bench/build-cython-ext",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.2,
+      "execution-audit-error": null,
+      "execution-audit-digest": "db72bb7746b447690b90cc83e9d3080fb42536e5b47cc843aaf754817d4f5fc9",
+      "report-audit": 0.07,
+      "report-audit-error": null,
+      "report-audit-digest": "a3a2eec2707c3505bbc877942f3ef4ff58d54458131b3d258064369b8daa9dfb"
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-pack--build-cython-ext-2",
+      "trial": "build-cython-ext__N4fdZAz",
+      "task": "terminal-bench/build-cython-ext",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.1,
+      "execution-audit-error": null,
+      "execution-audit-digest": "e8c5f402d98294dc78a45eebaacf595e883e61f1bc790799b1b89f2ddb8d7d75",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "bcf12cdbb13fa1228d7d462f179f3fc89770ae468f9cf6ed45b1bfcef8fec23e"
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-pack--build-cython-ext-3",
+      "trial": "build-cython-ext__TgHtSs7",
+      "task": "terminal-bench/build-cython-ext",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.15,
+      "execution-audit-error": null,
+      "execution-audit-digest": "8a47ecc64388ce450325aff9092c334a8f95143312c961252fed66d7158878d5",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "0ff472ca94bf2320814f9e7d2b2c884f343ef81f3ce9e729bd43cf24f658f805"
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-pack--headless-terminal",
+      "trial": "headless-terminal__4S7YkPk",
+      "task": "terminal-bench/headless-terminal",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.26,
+      "execution-audit-error": null,
+      "execution-audit-digest": "e5d04ff4adb0f847ba950d1f7cb9c89c39a3dae8ffd0ace7664316c3056de674",
+      "report-audit": 0.23,
+      "report-audit-error": null,
+      "report-audit-digest": "2374038d53f8153c8c300525b33f6b23cee27a0b31ec4fedd067c794bb39aabf"
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-pack--headless-terminal-2",
+      "trial": "headless-terminal__CE88DJ9",
+      "task": "terminal-bench/headless-terminal",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.08,
+      "execution-audit-error": null,
+      "execution-audit-digest": "62f680416a59f434a9eab7e03ef93f381a679fa5aed837d0cd455112c34146c3",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "47f27d583e9f2bee057fb11808e63acc2d024d893390dd6fac373dd09396d86f"
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-pack--headless-terminal-3",
+      "trial": "headless-terminal__XiqmqwN",
+      "task": "terminal-bench/headless-terminal",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.08,
+      "execution-audit-error": null,
+      "execution-audit-digest": "6c00b30026d9988e74fd82b7eabedb1a89b06d50335da7a1124361f0fbdd1f84",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "7b257c98b9fbf3b9bfa72da9e2900f139b692a2bcd4994eb17612485877cb0bb"
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-v2--build-cython-ext",
+      "trial": "build-cython-ext__zDAWX44",
+      "task": "terminal-bench/build-cython-ext",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.09,
+      "execution-audit-error": null,
+      "execution-audit-digest": "6149a7a14e178c7f089e6d8ccbb3d689024d93667166350540fb9476016e527b",
+      "report-audit": 0.04,
+      "report-audit-error": null,
+      "report-audit-digest": "346f8300ee3adfd9b62e3efb977a31a3ceb3a1ce9a726a6f4debfb362ed850bc"
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-v2--build-cython-ext-2",
+      "trial": "build-cython-ext__Z3xnp4Y",
+      "task": "terminal-bench/build-cython-ext",
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.38,
+      "execution-audit-error": null,
+      "execution-audit-digest": "6deabd96ce43f01bb69fd6a62debb0d6bb651b3528842f3c36e94b79222bda78",
+      "report-audit": 0.1,
+      "report-audit-error": null,
+      "report-audit-digest": "6b1289acd45aac975ac466091a94cec267ad47beec215a1d5814be4aa81938ee"
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-v2--build-cython-ext-3",
+      "trial": "build-cython-ext__jX8s8QE",
+      "task": "terminal-bench/build-cython-ext",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.14,
+      "execution-audit-error": null,
+      "execution-audit-digest": "8d57abf3126c94f6d883715417bc6c22f828ae02d4a15040df3f3bb5a4ebbf36",
+      "report-audit": 0.04,
+      "report-audit-error": null,
+      "report-audit-digest": "d5cc84ed758338709440628456f80394d8a0e871fc00c57af4615999f29b8063"
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-v2--headless-terminal",
+      "trial": "headless-terminal__vZba6b2",
+      "task": "terminal-bench/headless-terminal",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.17,
+      "execution-audit-error": null,
+      "execution-audit-digest": "42cd5e68050cf066624faf6493429fdf518380dbf7ea96a0b09e2fb160949bbb",
+      "report-audit": 0.04,
+      "report-audit-error": null,
+      "report-audit-digest": "eee7a33f04df81c1b9a9056b8ca859b94b3170c013853453c4e9ee1e378e5c98"
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-v2--headless-terminal-2",
+      "trial": "headless-terminal__6pBHBsf",
+      "task": "terminal-bench/headless-terminal",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.06,
+      "execution-audit-error": null,
+      "execution-audit-digest": "8b589d9df349a0012fcf51b3f94cd9a63c62747bb3c3b753d5229ba2a54cb140",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "b8210244c1613b5adbb5c2d742d607ced60ba50a293f266ff5c8bab73d057ea1"
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-v2--headless-terminal-3",
+      "trial": "headless-terminal__ichu42j",
+      "task": "terminal-bench/headless-terminal",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.3,
+      "execution-audit-error": null,
+      "execution-audit-digest": "a20f9d6170b612ae3dc2c8bc5cf50423449e9ad1f694eacee3989953933ab375",
+      "report-audit": 0.14,
+      "report-audit-error": null,
+      "report-audit-digest": "376a8f743ebd3e848c1806481230337b36300ccf3ff3135a7acad244f5fd3c47"
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--cad-model--matched-v8-9567-r1",
+      "trial": "cad-model__UpQfB2j",
+      "task": "terminal-bench/cad-model",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.12,
+      "execution-audit-error": null,
+      "execution-audit-digest": "fc8e01a1080ebff4f94361fd8fe1d3872d68af33b6f8bc28ebd3c576d37adbcd",
+      "report-audit": 0.08,
+      "report-audit-error": null,
+      "report-audit-digest": "efb28e7cb6f22dd0de5946e72b461d2c00fc239f98e459fc5b98d9f51503a5a6"
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--cad-model--matched-v8-9567-r2",
+      "trial": "cad-model__VXuQNL9",
+      "task": "terminal-bench/cad-model",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.18,
+      "execution-audit-error": null,
+      "execution-audit-digest": "0be04cbc9d91abf28911db96c5caf7104624372c506c44f9d15969fd721acf01",
+      "report-audit": 0.06,
+      "report-audit-error": null,
+      "report-audit-digest": "1047663311cc6513e979ffac3dbf56fb229068e9ddf35c18b5eacd4237dac13e"
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--cad-model--matched-v8-9567-r3",
+      "trial": "cad-model__PCPn5pW",
+      "task": "terminal-bench/cad-model",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.09,
+      "execution-audit-error": null,
+      "execution-audit-digest": "da0b0b609856bd965620c08a563d13a89d4c6a4eaefe9968570991d54af5d629",
+      "report-audit": 0.06,
+      "report-audit-error": null,
+      "report-audit-digest": "0c4273ea287cf63be5a5e06b2240647a5537914826b41c5f1c200226e2bed9f4"
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--embedding-drift-monitor--matched-v8-9567-r1",
+      "trial": "embedding-drift-monitor__eh9ex5r",
+      "task": "terminal-bench/embedding-drift-monitor",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.45,
+      "execution-audit-error": null,
+      "execution-audit-digest": "0d08dd5c9cc8e913f554f2341d42e8e387d917c42e2114cb5f5342b366f675c0",
+      "report-audit": 0.07,
+      "report-audit-error": null,
+      "report-audit-digest": "177e81a946150b086285be2459686b32ac1df0d6d4d94f5ae198a73aca9e78a4"
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--embedding-drift-monitor--matched-v8-9567-r2",
+      "trial": "embedding-drift-monitor__aGH4F34",
+      "task": "terminal-bench/embedding-drift-monitor",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.27,
+      "execution-audit-error": null,
+      "execution-audit-digest": "a2d8a05647b9ce5e55a4215d5bc7670ca2e9b864015173c11291a8b64f5304d5",
+      "report-audit": 0.44,
+      "report-audit-error": null,
+      "report-audit-digest": "d9b30ee051cd8481a99237081f2297df46c0e7c33407df147bfe68c73460ee19"
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--embedding-drift-monitor--matched-v8-9567-r3",
+      "trial": "embedding-drift-monitor__zsNLRYd",
+      "task": "terminal-bench/embedding-drift-monitor",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.25,
+      "execution-audit-error": null,
+      "execution-audit-digest": "c6c790c528a8f96284c5484479c18cfbbeaeb2cbc8a915065d71b0af71b9ce14",
+      "report-audit": 0.09,
+      "report-audit-error": null,
+      "report-audit-digest": "ab17f761c93ecaa44f0285e512555db477a862525cf53d5e1288f6495fe4adaf"
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--fin-saccr-rwa--matched-v8-9567-r1",
+      "trial": "fin-saccr-rwa__E3d7o4p",
+      "task": "terminal-bench/fin-saccr-rwa",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.2,
+      "execution-audit-error": null,
+      "execution-audit-digest": "7583878c975237f98c5779135db09e3c25d43c3e6d23ae77516104b908cbf831",
+      "report-audit": 0.08,
+      "report-audit-error": null,
+      "report-audit-digest": "6fa7dceecf87521817a70fc2ba34d429a5733da32fc5ac8041c3d3c02b54bb12"
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--fin-saccr-rwa--matched-v8-9567-r2",
+      "trial": "fin-saccr-rwa__89KPMs9",
+      "task": "terminal-bench/fin-saccr-rwa",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.28,
+      "execution-audit-error": null,
+      "execution-audit-digest": "9867fcc1b315aa4a5803ddbd5670a562c0642fc21afedbd26716a06495471311",
+      "report-audit": 0.04,
+      "report-audit-error": null,
+      "report-audit-digest": "0036dc793162685dfeaa3c868a5e91a65bfca6c2f992599f0d8f4269e18e08b9"
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--fin-saccr-rwa--matched-v8-9567-r3",
+      "trial": "fin-saccr-rwa__GPBRV5j",
+      "task": "terminal-bench/fin-saccr-rwa",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.1,
+      "execution-audit-error": null,
+      "execution-audit-digest": "a4a6e877a159d62442e841ed1b9b7c4b50a2f85a6c6a6dc673b262d31799a29a",
+      "report-audit": 0.05,
+      "report-audit-error": null,
+      "report-audit-digest": "40efe208df76d9afb0db364551c68314a5b7ff74faa2f43155d3a5871b14714c"
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--ks-solver-cpp--matched-v8-9567-r1",
+      "trial": "ks-solver-cpp__PDuFFLt",
+      "task": "terminal-bench/ks-solver-cpp",
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.07,
+      "execution-audit-error": null,
+      "execution-audit-digest": "4740d35daa32e0a2359a5df894491276a8070b754c96437e15be103f1becb7cd",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "32977a52e1d999581542157d0837073b000c1d8f3e3da885bf43ad246ea3e639"
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--ks-solver-cpp--matched-v8-9567-r2",
+      "trial": "ks-solver-cpp__Lt6izN8",
+      "task": "terminal-bench/ks-solver-cpp",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.1,
+      "execution-audit-error": null,
+      "execution-audit-digest": "05206cc63cb676c6c7ff279da8c975dac2ee461eb4ed4834fbc63f42c21901ac",
+      "report-audit": 0.08,
+      "report-audit-error": null,
+      "report-audit-digest": "5a4f8200e305cf6a9d6b738e5fb5068cd04fb02edb1af1e0ca33dda4920d50ff"
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--ks-solver-cpp--matched-v8-9567-r3",
+      "trial": "ks-solver-cpp__pFx79Ga",
+      "task": "terminal-bench/ks-solver-cpp",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.14,
+      "execution-audit-error": null,
+      "execution-audit-digest": "3c43f1da4fcc05391f3f8b06502c5ee9f49d31d433f6311734b0c5719cc2b7b3",
+      "report-audit": 0.09,
+      "report-audit-error": null,
+      "report-audit-digest": "57d375d06c7f0ef537d226dff97165d80e458831b384e196c76b60fb3a8dd867"
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--legacy-utility-triage--matched-v8-9567-r1",
+      "trial": "legacy-utility-triage__rHThFTx",
+      "task": "terminal-bench/legacy-utility-triage",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.16,
+      "execution-audit-error": null,
+      "execution-audit-digest": "fdac95fb69c48c2196dd84a343df33251f7051ac8963685eb7841f7f356584d1",
+      "report-audit": 0.11,
+      "report-audit-error": null,
+      "report-audit-digest": "333f40cbfdb1ed408f07d6946c6143598b119756e9dfb653ba8cf3c98a368850"
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--legacy-utility-triage--matched-v8-9567-r2",
+      "trial": "legacy-utility-triage__9KzpBTZ",
+      "task": "terminal-bench/legacy-utility-triage",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.24,
+      "execution-audit-error": null,
+      "execution-audit-digest": "9ebd694a77beda83835f9916f6dd35becda0e6fc6b23d86914038a36b2485a3d",
+      "report-audit": 0.06,
+      "report-audit-error": null,
+      "report-audit-digest": "50864f20835b49d2c069605e9f840e753c437c7c4c9948f78d21d4c8e8dcdcf7"
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--legacy-utility-triage--matched-v8-9567-r3",
+      "trial": "legacy-utility-triage__RiZTd3U",
+      "task": "terminal-bench/legacy-utility-triage",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.22,
+      "execution-audit-error": null,
+      "execution-audit-digest": "a5cd094ece4aa0f3e0e7ffcdae77a0293498c2b6d82b10b58f95c0f2926567dc",
+      "report-audit": 0.08,
+      "report-audit-error": null,
+      "report-audit-digest": "46f01ce2982aa5ce2d378c70ebeae0e6e74d30875c622c9c92ff57e75debc30f"
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--nextjs-performance--matched-v8-9567-r1",
+      "trial": "nextjs-performance__9eqHrN9",
+      "task": "terminal-bench/nextjs-performance",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.15,
+      "execution-audit-error": null,
+      "execution-audit-digest": "878adfd19433f98e1b248e7a9c111f11f9fa6960c96477083b8db981944133f3",
+      "report-audit": 0.11,
+      "report-audit-error": null,
+      "report-audit-digest": "14ff32f47958790b62c1ce20e938fc150c4b0122392a887945860f5bf90b5b6e"
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--nextjs-performance--matched-v8-9567-r2",
+      "trial": "nextjs-performance__S7ZZrQr",
+      "task": "terminal-bench/nextjs-performance",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.14,
+      "execution-audit-error": null,
+      "execution-audit-digest": "4ff2bfbe8714b8bccbbe365ff96dfd9ba072e96b772dd81c0ac35cbfe84dbaec",
+      "report-audit": 0.08,
+      "report-audit-error": null,
+      "report-audit-digest": "bef60a9077ba78fdaa43e8a4ee99b066253f7bd74bc56f84806e70e813d5ca6f"
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--nextjs-performance--matched-v8-9567-r3",
+      "trial": "nextjs-performance__sqxw84g",
+      "task": "terminal-bench/nextjs-performance",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.19,
+      "execution-audit-error": null,
+      "execution-audit-digest": "635668994d289a3e967ceeed884615a41bd25099b8b714634fd74b2143d191ff",
+      "report-audit": 0.05,
+      "report-audit-error": null,
+      "report-audit-digest": "459ed1d77e6ce1ce4b183f7ee980c1d7f85303c4dd8cd5bc9c08abab3a283f18"
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--sound-change-cascade--matched-v8-9567-r1",
+      "trial": "sound-change-cascade__Kk7csF5",
+      "task": "terminal-bench/sound-change-cascade",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.12,
+      "execution-audit-error": null,
+      "execution-audit-digest": "207ac6dbfe0baccc36cbd81e292fbe706f05a3e76f90609a2fa7568eaa5a0737",
+      "report-audit": 0.04,
+      "report-audit-error": null,
+      "report-audit-digest": "526fb596359a9a9e34689b60bf0baf076b0a48acc9750e93ad44573c264fab6e"
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--sound-change-cascade--matched-v8-9567-r2",
+      "trial": "sound-change-cascade__uaGad7W",
+      "task": "terminal-bench/sound-change-cascade",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.1,
+      "execution-audit-error": null,
+      "execution-audit-digest": "18a70057153e4127dd0664fd8b2ed531d5a5469b81bf64b3f6a15a442a5cd102",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "f0126e65ab9a90765cdd2f9c84b2578e36fa5cfc4a53310fde2fd70cbad737bf"
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--sound-change-cascade--matched-v8-9567-r3",
+      "trial": "sound-change-cascade__KUdjBfR",
+      "task": "terminal-bench/sound-change-cascade",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.14,
+      "execution-audit-error": null,
+      "execution-audit-digest": "1905401a2ec416843bcb8d3a33eb72327d84e303948d0cda948d35f179d7ada8",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "faae936a34e0c36739890d34e06ec47754ee1f2d9af343189dc8bb7bcfc413a0"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v10--production-planning--v10-persist-9570-r1",
+      "trial": "production-planning__sZAqAc6",
+      "task": "terminal-bench/production-planning",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.14,
+      "execution-audit-error": null,
+      "execution-audit-digest": "370c3dfdd86824311e585cc38365fff39e307f828fe76e7d00070eb3f158d873",
+      "report-audit": 0.05,
+      "report-audit-error": null,
+      "report-audit-digest": "1763597f905b701f324c938606eb4bce9ba7c1f61e241389365dd51851f82df0"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--batched-eval-parity",
+      "trial": "batched-eval-parity__CMa4h7f",
+      "task": "terminal-bench/batched-eval-parity",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.22,
+      "execution-audit-error": null,
+      "execution-audit-digest": "d5e1b659359fb522cd559f8082a8886e677ec32c716191f2d32677092613844b",
+      "report-audit": 0.08,
+      "report-audit-error": null,
+      "report-audit-digest": "9ea4416fd78464902ffb88cfc68ee929cf3cb10627b8b5780630c33c5a6511ab"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--cad-model",
+      "trial": "cad-model__93HTQVd",
+      "task": "terminal-bench/cad-model",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.24,
+      "execution-audit-error": null,
+      "execution-audit-digest": "55f8bd187121ba20708ed445d0f4ee84089f57fda7084b1b64952755ea46e800",
+      "report-audit": 0.11,
+      "report-audit-error": null,
+      "report-audit-digest": "a40ad52c4694daa61df4fec63cb418faa28b701712a89945176b308b96958ad6"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--cad-model--effort-9569-r1",
+      "trial": "cad-model__h4LVf5q",
+      "task": "terminal-bench/cad-model",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.11,
+      "execution-audit-error": null,
+      "execution-audit-digest": "1ddef9302d5ee3b20a372f661b7e64a67da0d3b5ce4afe1cb63b35651f6ffb72",
+      "report-audit": 0.04,
+      "report-audit-error": null,
+      "report-audit-digest": "02a420daeab91b9ca68b6f381cb03d857327ee3eaf3ac94cb20fd5febe977ce4"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--cad-model--effort-9569-r2",
+      "trial": "cad-model__dX5KRqB",
+      "task": "terminal-bench/cad-model",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": "fail"
+      },
+      "reward": 0.0,
+      "execution-audit": 0.58,
+      "execution-audit-error": null,
+      "execution-audit-digest": "1d0b9fdf41854e91955c1ccfe09aabc76e47de81946c493c2676482f99e8f71d",
+      "report-audit": 0.11,
+      "report-audit-error": null,
+      "report-audit-digest": "eac5218c8d05c369e6f0da8b3b26205bbe56bee5f667339863904924e915fe98"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--cad-model--effort-9569-r3",
+      "trial": "cad-model__LtnXxBX",
+      "task": "terminal-bench/cad-model",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.16,
+      "execution-audit-error": null,
+      "execution-audit-digest": "36af8673d02856a20b6db89c3be60cbcd443f601a0389b3c9d1fddfd65544731",
+      "report-audit": 0.05,
+      "report-audit-error": null,
+      "report-audit-digest": "b90925b826ae19e30380ec27704b4d5ba26956430b8c4d2cc3c8cf2d67ab915f"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--cumulative-layout-shift",
+      "trial": "cumulative-layout-shift__ceBid2H",
+      "task": "terminal-bench/cumulative-layout-shift",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.39,
+      "execution-audit-error": null,
+      "execution-audit-digest": "1aec8fd60b1355a67c5f5c2e63b6ec1dbc0156d2cebe43eca9225058eafeeae8",
+      "report-audit": 0.29,
+      "report-audit-error": null,
+      "report-audit-digest": "7f9366471cdec4431a71444e4ae19965a3fbdf017000a611c183e0a580e9ec33"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--data-anonymization",
+      "trial": "data-anonymization__nyv2W9N",
+      "task": "terminal-bench/data-anonymization",
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.22,
+      "execution-audit-error": null,
+      "execution-audit-digest": "cdff0d10c78e37b4e69203adb27a5d69ec5c33dec2f8c845b92844220f85d2b6",
+      "report-audit": 0.11,
+      "report-audit-error": null,
+      "report-audit-digest": "de90882c0bc6ae76e7b4f33f3dcd4689672c9ccfd8cec0428707bedff4f15ab6"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--embedding-drift-monitor",
+      "trial": "embedding-drift-monitor__W8tf8im",
+      "task": "terminal-bench/embedding-drift-monitor",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.3,
+      "execution-audit-error": null,
+      "execution-audit-digest": "d9a42049924e8660d61ac811746d40ef8a14c7f8a6e73f5546645d3d3956165c",
+      "report-audit": 0.17,
+      "report-audit-error": null,
+      "report-audit-digest": "a4011352ffd11f18a0f6f9cbb46cd5eef936025131332889b49668266d12f6c5"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--embedding-drift-monitor--effort-9569-r1",
+      "trial": "embedding-drift-monitor__H9citTy",
+      "task": "terminal-bench/embedding-drift-monitor",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": "fail"
+      },
+      "reward": 1.0,
+      "execution-audit": 0.6,
+      "execution-audit-error": null,
+      "execution-audit-digest": "3da55ef55d148d9377bea089f5e01e8fc690810ca4a49bd47fe2073194e6b251",
+      "report-audit": 0.11,
+      "report-audit-error": null,
+      "report-audit-digest": "19d50a6efdc73eb3453db16a49b84086d80326b497ac672dc73d0b918f01dc2c"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--embedding-drift-monitor--effort-9569-r2",
+      "trial": "embedding-drift-monitor__BNyAf9y",
+      "task": "terminal-bench/embedding-drift-monitor",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.46,
+      "execution-audit-error": null,
+      "execution-audit-digest": "83ac51e1acbb8b148f18bf06c753d59e5087adf3c798f4c44dcf71702f519ffb",
+      "report-audit": 0.08,
+      "report-audit-error": null,
+      "report-audit-digest": "6c4251bf3e661b5eaae8b300e643529c6a5685a52b4bb21622edf3f0621ee904"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--fin-saccr-rwa",
+      "trial": "fin-saccr-rwa__3udZRiv",
+      "task": "terminal-bench/fin-saccr-rwa",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.48,
+      "execution-audit-error": null,
+      "execution-audit-digest": "f4c64f2379f239ccedd16b7fd469b2dc26e5dfd88462536a948871a341c34d72",
+      "report-audit": 0.23,
+      "report-audit-error": null,
+      "report-audit-digest": "a004d72a32663aff324ccedebd0d5e2494e60ce4d365dd2e39b892213bea2de9"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--fin-saccr-rwa--effort-9569-r1",
+      "trial": "fin-saccr-rwa__GXwFtf7",
+      "task": "terminal-bench/fin-saccr-rwa",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.32,
+      "execution-audit-error": null,
+      "execution-audit-digest": "8ee85bdafc751364e2be4f9ae2a90d3bb994f347f1ac9eda3eccccdf49a8687e",
+      "report-audit": 0.07,
+      "report-audit-error": null,
+      "report-audit-digest": "bd66ce51c09251070957055a7783cc3a966597dbaa2591f158f17330340a5ec3"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--fin-saccr-rwa--effort-9569-r2",
+      "trial": "fin-saccr-rwa__ccuiJu6",
+      "task": "terminal-bench/fin-saccr-rwa",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.35,
+      "execution-audit-error": null,
+      "execution-audit-digest": "9e34b28c27e180bb2d3a3b5c5b680b0a6acdd07aa731d260fc2e90e1556115a6",
+      "report-audit": 0.18,
+      "report-audit-error": null,
+      "report-audit-digest": "f79949e00decba05a3254a3a7afcf886dcca29e149567c820698d82dfd7ca8ec"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--foodstuff-beta-activity",
+      "trial": "foodstuff-beta-activity__E3RY23V",
+      "task": "terminal-bench/foodstuff-beta-activity",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.13,
+      "execution-audit-error": null,
+      "execution-audit-digest": "9fd0deec383705092c464a11f4fdec7bc4ffbc9249f6598ae588977e50508f01",
+      "report-audit": 0.04,
+      "report-audit-error": null,
+      "report-audit-digest": "bc99078a626082e681fd0fc87334200fa48a0f43f7dd9764350cd4c252288933"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--freight-dispatch-shift",
+      "trial": "freight-dispatch-shift__mD6mGp8",
+      "task": "terminal-bench/freight-dispatch-shift",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.35,
+      "execution-audit-error": null,
+      "execution-audit-digest": "3c1cb4829c4bb82877dafa3f5e7ece20392641e931eaeeadb35a168e50fc98e6",
+      "report-audit": 0.16,
+      "report-audit-error": null,
+      "report-audit-digest": "305a57a98e5ba1c4ccb975e332a9048d278f0a38660856a2725d7e2891a1bdc2"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--gsea-proteomics",
+      "trial": "gsea-proteomics__D6NCFzF",
+      "task": "terminal-bench/gsea-proteomics",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.23,
+      "execution-audit-error": null,
+      "execution-audit-digest": "86ff5d6281343fe4e403a20e008115020c1abf6f48436e29473afce94cba52b8",
+      "report-audit": 0.07,
+      "report-audit-error": null,
+      "report-audit-digest": "2eb459f46b1d1da135c724be556486e876863b5c984648f48ff17d1f570e37f8"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--gsea-proteomics--effort-9569-r1",
+      "trial": "gsea-proteomics__xSDYqJW",
+      "task": "terminal-bench/gsea-proteomics",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.17,
+      "execution-audit-error": null,
+      "execution-audit-digest": "015f85b54a820d5adc37f4c171c45e0a4bf6aaccb8454179700009562aaa1a73",
+      "report-audit": 0.21,
+      "report-audit-error": null,
+      "report-audit-digest": "5a5448f2820cc73862a7fa4d838f2487ef396a61a1dcb5f5a384e660c5a28b93"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--gsea-proteomics--effort-9569-r2",
+      "trial": "gsea-proteomics__YtXyrMb",
+      "task": "terminal-bench/gsea-proteomics",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.16,
+      "execution-audit-error": null,
+      "execution-audit-digest": "8557fdd83a18a006698774565fbd01367f5db6a8a3874d768bc6a5ae54512c75",
+      "report-audit": 0.17,
+      "report-audit-error": null,
+      "report-audit-digest": "dedf6bf7803c22d9a8ef7bd2ebd90a5e3eb89550301cff8134ebda358fdcf352"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--gsea-proteomics--effort-9569-r3",
+      "trial": "gsea-proteomics__G2xtweX",
+      "task": "terminal-bench/gsea-proteomics",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.42,
+      "execution-audit-error": null,
+      "execution-audit-digest": "ff61ac1da499d225adc7726271e0e2e784af0250eb43519b668bab7e3c12b643",
+      "report-audit": 0.09,
+      "report-audit-error": null,
+      "report-audit-digest": "d1722600165131277ed2c9a0d1c2b16a29739079bbfc58de794fb1c04bb92998"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--html-js-filter",
+      "trial": "html-js-filter__LCP4hV7",
+      "task": "terminal-bench/html-js-filter",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.16,
+      "execution-audit-error": null,
+      "execution-audit-digest": "a5908e8ba484f7fcb4c28219b009d30b9c3ac3d50e71898c0a5bd0aa379ddd53",
+      "report-audit": 0.06,
+      "report-audit-error": null,
+      "report-audit-digest": "e52a629eccb5c9ddd9291645558805315455e7de7cd64704e28c5107794b8ddd"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--intrastat-meldung",
+      "trial": "intrastat-meldung__kPAoUMb",
+      "task": "terminal-bench/intrastat-meldung",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.24,
+      "execution-audit-error": null,
+      "execution-audit-digest": "5f117d8498e2f2dcd7db01f5a2cfe23bc1afad159c249e952dddf2004cbccb37",
+      "report-audit": 0.43,
+      "report-audit-error": null,
+      "report-audit-digest": "4532b1257e2cd8ae4138d4954a689b32490a44d303e6939f89c9da5f152c94bb"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--ks-solver-cpp",
+      "trial": "ks-solver-cpp__VoHECwg",
+      "task": "terminal-bench/ks-solver-cpp",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.14,
+      "execution-audit-error": null,
+      "execution-audit-digest": "65891aa2b9e9089c975e9106bc17a9a79dc7b83f07c61c2e67ef2db4d76f39b7",
+      "report-audit": 0.11,
+      "report-audit-error": null,
+      "report-audit-digest": "f2163556df5d0aab1e0b976acfd827028d46883df91a5165861c3fdbe09bb417"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--kv-live-surgery",
+      "trial": "kv-live-surgery__LFqoK6L",
+      "task": "terminal-bench/kv-live-surgery",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.22,
+      "execution-audit-error": null,
+      "execution-audit-digest": "75a2935975c0336a24bbd3134f2a27bec4f4806f5b31b4eb8e2cf1a3522d1635",
+      "report-audit": 0.05,
+      "report-audit-error": null,
+      "report-audit-digest": "25d264f3fdd01535e29e4a49c837f825e509ae23732d48a241f675615117d69d"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--layout-config-recreation2",
+      "trial": "layout-config-recreation2__dKArjvs",
+      "task": "terminal-bench/layout-config-recreation2",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.33,
+      "execution-audit-error": null,
+      "execution-audit-digest": "c7b9e96f559e41d8ad6e33104c270b355defa7f0f65d075250adcdf4c3ab1481",
+      "report-audit": 0.09,
+      "report-audit-error": null,
+      "report-audit-digest": "7723863742c00a3b314b8d8de598c6bccea2c7301b56263c6ecd30c72c01abdd"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--legacy-utility-triage",
+      "trial": "legacy-utility-triage__UzgKrwV",
+      "task": "terminal-bench/legacy-utility-triage",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.25,
+      "execution-audit-error": null,
+      "execution-audit-digest": "1fceb416b903938e2d87d63282d5bd1d95a40dede09ae728a3a56d528199a33d",
+      "report-audit": 0.12,
+      "report-audit-error": null,
+      "report-audit-digest": "3a614c66ce79851ddedfefbe3ffe0edc39b2c8ada87a36f822263e57f7431b9b"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--mp-checkpoint-consolidation",
+      "trial": "mp-checkpoint-consolidation__JwHGCSm",
+      "task": "terminal-bench/mp-checkpoint-consolidation",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.14,
+      "execution-audit-error": null,
+      "execution-audit-digest": "4e5b8a6aa5e7ed25f91c626aae7b3ff61a1dd88b51209b413695e4e35dc578cb",
+      "report-audit": 0.09,
+      "report-audit-error": null,
+      "report-audit-digest": "bfcc8f6255a7e9784c28b76a6cea97a13b1d1409dd218e0f08319443a58b958e"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--music-harmony",
+      "trial": "music-harmony__foosfLn",
+      "task": "terminal-bench/music-harmony",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.32,
+      "execution-audit-error": null,
+      "execution-audit-digest": "8b50e1f406b43b7b8d09f9f642d23dfcb25bae8cce40d7e3451ddc814dba0a18",
+      "report-audit": 0.04,
+      "report-audit-error": null,
+      "report-audit-digest": "aef46308e8537789c11e0f7fd83d2384ed47cfa67446ab37f1185d1d06f30f6d"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--nextjs-performance",
+      "trial": "nextjs-performance__9mhSdgu",
+      "task": "terminal-bench/nextjs-performance",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.21,
+      "execution-audit-error": null,
+      "execution-audit-digest": "240ef5bb7bf3eb71362839241cb3408a53176117443966c1bbcd773e3f181df8",
+      "report-audit": 0.16,
+      "report-audit-error": null,
+      "report-audit-digest": "17e9761656e85885f6b3bf88ba03ab68f6612ea17ecb0d5ecd4fafd5415f6ae5"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--ontology-kg-querying",
+      "trial": "ontology-kg-querying__iZQFjNF",
+      "task": "terminal-bench/ontology-kg-querying",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.24,
+      "execution-audit-error": null,
+      "execution-audit-digest": "086e56a6aca8d32afa77c9c107604b196a1a304ef227b07dd34b8eeeaafb0348",
+      "report-audit": 0.04,
+      "report-audit-error": null,
+      "report-audit-digest": "3d88babe604d864a7dc517aa7a2af7e0e1e635c44abea236e12d59dc61ab2b29"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--payments-pipeline-fix",
+      "trial": "payments-pipeline-fix__gbaYqCg",
+      "task": "terminal-bench/payments-pipeline-fix",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.2,
+      "execution-audit-error": null,
+      "execution-audit-digest": "c5693b2c7ba294d6c40d69272a20971952cdd3c3427ae9d886a73e332b519078",
+      "report-audit": 0.07,
+      "report-audit-error": null,
+      "report-audit-digest": "cb4b4214f7deb9a2338b9337baaa807fe52b89d65efb18e64ca285fdfe68a83d"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--photonic-waveguide-routing",
+      "trial": "photonic-waveguide-routing__JYAGpSt",
+      "task": "terminal-bench/photonic-waveguide-routing",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.13,
+      "execution-audit-error": null,
+      "execution-audit-digest": "63fb215dbd55470f35bdf54c1efc076600e108dc8c55136a10201ba921f75672",
+      "report-audit": 0.04,
+      "report-audit-error": null,
+      "report-audit-digest": "2b4ba0e5d8ed72626df2b1f55b9425af3679427064a6f035a64cf4eafd9b52e4"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--production-planning",
+      "trial": "production-planning__c6E8jPq",
+      "task": "terminal-bench/production-planning",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.31,
+      "execution-audit-error": null,
+      "execution-audit-digest": "69894534db80c8a01c52e749328f7a1f1b3ee87cf0b7c21ec647befbdad2a21c",
+      "report-audit": 0.05,
+      "report-audit-error": null,
+      "report-audit-digest": "1dbf52b1a064f03bcff17895b57f81eeb9b550b22f994857e4eae84a8add3b9b"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--protein-autointerp-disulfide",
+      "trial": "protein-autointerp-disulfide__mFaPwNz",
+      "task": "terminal-bench/protein-autointerp-disulfide",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.18,
+      "execution-audit-error": null,
+      "execution-audit-digest": "fb0b2742a4ab80c9bfe90eba1bfed0da37be3a97d6849592157274b92b19c5f5",
+      "report-audit": 0.07,
+      "report-audit-error": null,
+      "report-audit-digest": "58b7b5f43ea0d141198369e1669c99b60df37b39679d2cf36cd7b0ef348b32a7"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--satb-audio-transcription",
+      "trial": "satb-audio-transcription__4hNhXf2",
+      "task": "terminal-bench/satb-audio-transcription",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.26,
+      "execution-audit-error": null,
+      "execution-audit-digest": "9394bfc4a9e746f10a2042780883d92bc6574bf2475816fd50282304c5a0fe24",
+      "report-audit": 0.06,
+      "report-audit-error": null,
+      "report-audit-digest": "fb89eb527cb65812ad6a223d63eae24d5cc70067172e21f9695e849cca1def02"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--sound-change-cascade",
+      "trial": "sound-change-cascade__9pSQecy",
+      "task": "terminal-bench/sound-change-cascade",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.15,
+      "execution-audit-error": null,
+      "execution-audit-digest": "864c3c3956d88dfb171ac1deeaa5b06d88b83e0b8a3f6f46e2fc7f5f8ff8924f",
+      "report-audit": 0.04,
+      "report-audit-error": null,
+      "report-audit-digest": "18de84923115d34aef0ecd79b6cb125bd93eb673b13dcbee7a8dd102f709bc9b"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--telecom-entity-resolution",
+      "trial": "telecom-entity-resolution__QkWGffc",
+      "task": "terminal-bench/telecom-entity-resolution",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.2,
+      "execution-audit-error": null,
+      "execution-audit-digest": "d2dbbcdb5beb5d749fe8247d946bc0854dbe7a12b9ae2626278d72efa2da656a",
+      "report-audit": 0.5,
+      "report-audit-error": null,
+      "report-audit-digest": "ada600e56a3c65af00e3b900740cb104f52267e85bc838bda0a982ad650b5da8"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--vf2-speedup-networkx",
+      "trial": "vf2-speedup-networkx__ArPJp6A",
+      "task": "terminal-bench/vf2-speedup-networkx",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.24,
+      "execution-audit-error": null,
+      "execution-audit-digest": "b4289808141960b83998c98a993e13af10836935daf0c7b8e107a24507a12c86",
+      "report-audit": 0.1,
+      "report-audit-error": null,
+      "report-audit-digest": "f06cc8cf0eb754eca12b30a9b0dfce7e8e8b12c1e6668f7a792d237f2ffdff49"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--cad-model",
+      "trial": "cad-model__CS37B9J",
+      "task": "terminal-bench/cad-model",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.1,
+      "execution-audit-error": null,
+      "execution-audit-digest": "494972237c001cd03b9aec72aed711873285ea3d41103b5fc18a64c22a2880fd",
+      "report-audit": 0.04,
+      "report-audit-error": null,
+      "report-audit-digest": "115e2b7de86b67013e5bd3fb15b27956cbfab3924c9b1ec8101f146aaeb5b3c8"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--cad-model--effort-9569-r1",
+      "trial": "cad-model__yHy7yE6",
+      "task": "terminal-bench/cad-model",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.15,
+      "execution-audit-error": null,
+      "execution-audit-digest": "3e06c26ab704093d5f17243f7f90bdbc9c38ac1cded374023333a145795f278f",
+      "report-audit": 0.06,
+      "report-audit-error": null,
+      "report-audit-digest": "312b0ed66833c4849596f8eb8d0903927b504108f3a662b7f895b6497001e3ce"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--cad-model--effort-9569-r2",
+      "trial": "cad-model__8yBCVk8",
+      "task": "terminal-bench/cad-model",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.12,
+      "execution-audit-error": null,
+      "execution-audit-digest": "bde7d597be5784661a2059f9aad6fb978a31d34f1e51addbc0bc9aa919b35268",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "a8492e3ec33bd923ecf583a7031291f2eaed59243beb997d8d0aa848d319913a"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--cad-model--effort-9569-r3",
+      "trial": "cad-model__iZrygzN",
+      "task": "terminal-bench/cad-model",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.19,
+      "execution-audit-error": null,
+      "execution-audit-digest": "fe5a7ec090c8fc2cda706215473403ae77f5de8d8926a37948441f0525918e80",
+      "report-audit": 0.09,
+      "report-audit-error": null,
+      "report-audit-digest": "34ce7f41739f3941bf5c0ea67e0dd5c5c4670ed2f3a5efd90aedfcc02cf3235f"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--embedding-drift-monitor--effort-9569-r1",
+      "trial": "embedding-drift-monitor__KDJ5PCL",
+      "task": "terminal-bench/embedding-drift-monitor",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.26,
+      "execution-audit-error": null,
+      "execution-audit-digest": "d6e96efc63e8ade0bf6d5a2a3f59af09e8b9b9b2ac0fe4457a8fb53f9a784bfb",
+      "report-audit": 0.17,
+      "report-audit-error": null,
+      "report-audit-digest": "1c82de8571044778430e98b99b609e0db8d4dc6d7cd2456f0629e896e5e96e73"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--embedding-drift-monitor--effort-9569-r2",
+      "trial": "embedding-drift-monitor__V5nyG7d",
+      "task": "terminal-bench/embedding-drift-monitor",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.44,
+      "execution-audit-error": null,
+      "execution-audit-digest": "6137d4e509070d689fa37e34c25cfebc568cce7ca830cef59b145f19898275ed",
+      "report-audit": 0.12,
+      "report-audit-error": null,
+      "report-audit-digest": "0e418fc8aeb68a98f035507c3ddcb96a107e141c062d0dd31582781a9c71a426"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--fin-saccr-rwa--effort-9569-r1",
+      "trial": "fin-saccr-rwa__uffrPxc",
+      "task": "terminal-bench/fin-saccr-rwa",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.32,
+      "execution-audit-error": null,
+      "execution-audit-digest": "bd3d05b787e10cbcd1e43a84abe1bdc7cb3c9dffec95fdf37af16ff02c16a619",
+      "report-audit": 0.04,
+      "report-audit-error": null,
+      "report-audit-digest": "fed8aac2e4d70c179d03decdf8735f649da52ad1f9c2f4bbfc9481b261ed6a65"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--fin-saccr-rwa--effort-9569-r2",
+      "trial": "fin-saccr-rwa__vghcgV7",
+      "task": "terminal-bench/fin-saccr-rwa",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.18,
+      "execution-audit-error": null,
+      "execution-audit-digest": "e3a40350d9c45fe29161a282b87284ecd48a8f634c2b0b5770f66c58c4c9c74d",
+      "report-audit": 0.04,
+      "report-audit-error": null,
+      "report-audit-digest": "f30950c883c848a6db610cf357d453e0e699dcc485a3108895ccad18ebf178b4"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--gsea-proteomics",
+      "trial": "gsea-proteomics__r4EXrRJ",
+      "task": "terminal-bench/gsea-proteomics",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.17,
+      "execution-audit-error": null,
+      "execution-audit-digest": "5231192b9fa9620497c39c41bf6f02a56e243141651e2815804b0660d600db7c",
+      "report-audit": 0.1,
+      "report-audit-error": null,
+      "report-audit-digest": "25ac31a17dc104144f7e23c29ecdb9a6b0c9474575718d358fe6806c3db58759"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--gsea-proteomics--effort-9569-r1",
+      "trial": "gsea-proteomics__xXWx55f",
+      "task": "terminal-bench/gsea-proteomics",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.19,
+      "execution-audit-error": null,
+      "execution-audit-digest": "beaf62ba831acd119c8a75722fafe3bf6a901f2ec44dd763e068680531af82fd",
+      "report-audit": 0.11,
+      "report-audit-error": null,
+      "report-audit-digest": "ea93ad851e43599dd6b58c415f82c5c15f820bc089aef3cdf1d29c73117fd98b"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--gsea-proteomics--effort-9569-r2",
+      "trial": "gsea-proteomics__4ACy62S",
+      "task": "terminal-bench/gsea-proteomics",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.18,
+      "execution-audit-error": null,
+      "execution-audit-digest": "078db2c31f408642ea0a6b865640bab52fd66b94d8bcb6e132aa1e1391f1dd8d",
+      "report-audit": 0.04,
+      "report-audit-error": null,
+      "report-audit-digest": "545ec11d25d06a83a56929e474c4ac8801154159103e35ae22ee14749b78945a"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--gsea-proteomics--effort-9569-r3",
+      "trial": "gsea-proteomics__dWAjmmk",
+      "task": "terminal-bench/gsea-proteomics",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.21,
+      "execution-audit-error": null,
+      "execution-audit-digest": "9bc449d39c10e5b11fac7e8513e3f7c8af4a2440416f12b409f7e87a338ef26d",
+      "report-audit": 0.05,
+      "report-audit-error": null,
+      "report-audit-digest": "cd750fba8113db8ada14db5782222175b313e030e01e514b99373a22571aa48c"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--html-js-filter",
+      "trial": "html-js-filter__eCVVDAg",
+      "task": "terminal-bench/html-js-filter",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.14,
+      "execution-audit-error": null,
+      "execution-audit-digest": "365d117c0f9328ad44beef47b1d967607ce5357528cb27d16b9bab3a73d9db3f",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "00c338efea6a6c31752f816e5de70ef313b87fc108f71bb5812ff360a1d4b52a"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--ks-solver-cpp",
+      "trial": "ks-solver-cpp__ZnfrMxv",
+      "task": "terminal-bench/ks-solver-cpp",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.13,
+      "execution-audit-error": null,
+      "execution-audit-digest": "d2f6845cee7f30492f58fef1a184251368c73f764e7846ecfb24975e936bd7d7",
+      "report-audit": 0.22,
+      "report-audit-error": null,
+      "report-audit-digest": "062a3d12c702ef7f0c9282bb36b01786a0f980e01eb484b48ce968e2775d7278"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--vf2-speedup-networkx",
+      "trial": "vf2-speedup-networkx__jgSFKBL",
+      "task": "terminal-bench/vf2-speedup-networkx",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.18,
+      "execution-audit-error": null,
+      "execution-audit-digest": "218589fcda25da706b9051c497dbb51f2b9f0c0f3279bb9e62e03d68c16e983f",
+      "report-audit": 0.09,
+      "report-audit-error": null,
+      "report-audit-digest": "76793c6dc23d7012288da2d68b84d79bd2187e044fbdea1fcd184e1876626bb3"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v4--cad-model",
+      "trial": "cad-model__kou5pbz",
+      "task": "terminal-bench/cad-model",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.15,
+      "execution-audit-error": null,
+      "execution-audit-digest": "d356ae0b6d5d916151ffe014a6db28a5edb746efce5bdfe44481c2b65ac76761",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "a8d06337f8f39e0b898ce17cd69b78ae5b7686b506bdd2c6fa57cbc253bee9d0"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v4--music-harmony",
+      "trial": "music-harmony__6Jk4UFX",
+      "task": "terminal-bench/music-harmony",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.32,
+      "execution-audit-error": null,
+      "execution-audit-digest": "0d2066e4e4c608a2443916443462668ab3b378597a329a043fb66141242104a2",
+      "report-audit": 0.07,
+      "report-audit-error": null,
+      "report-audit-digest": "3ed9b38c0697ef9a76ba841876df3bc91251fa9e507834d99c167554ddef917e"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v4--production-planning",
+      "trial": "production-planning__8AzrC5r",
+      "task": "terminal-bench/production-planning",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.3,
+      "execution-audit-error": null,
+      "execution-audit-digest": "fe67a7589aaf440eefffc8597b38ff8bf6695f455af9c27f4a6ab3b758d5c3e8",
+      "report-audit": 0.07,
+      "report-audit-error": null,
+      "report-audit-digest": "6a99027655ec3ac074558e94eba79dde6cc62be6182935a2a5f01f503341ccbd"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v6--batched-eval-parity",
+      "trial": "batched-eval-parity__fzyVtJh",
+      "task": "terminal-bench/batched-eval-parity",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.39,
+      "execution-audit-error": null,
+      "execution-audit-digest": "2ede7e90c19b3497bc34a8cd8a4416666e4ba851fded0921aa086ae93ff6c914",
+      "report-audit": 0.06,
+      "report-audit-error": null,
+      "report-audit-digest": "ece62a5b2a703be7f4b1dd3c4f0ebafdf1e9a6c2bb024ac693b9b91bbc90864a"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v7--production-planning--v10-persist-9570-r1",
+      "trial": "production-planning__bMzvLfm",
+      "task": "terminal-bench/production-planning",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.28,
+      "execution-audit-error": null,
+      "execution-audit-digest": "425cde0d233afa9bcc22e55d317409490dd2c7e5d9137ed100e7698dcd2b07f7",
+      "report-audit": 0.06,
+      "report-audit-error": null,
+      "report-audit-digest": "3127ede9db3691cd741026b5a6d3d146a0e04929654b195fb8b609bf899922ae"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v8--production-planning--v8-persist-9570-r2",
+      "trial": "production-planning__yzdyUnm",
+      "task": "terminal-bench/production-planning",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.24,
+      "execution-audit-error": null,
+      "execution-audit-digest": "c885bdc016c5dde61a45fff445c93b2ad1b9113cc6b127176f041b5ed67874fd",
+      "report-audit": 0.04,
+      "report-audit-error": null,
+      "report-audit-digest": "89c1b0759e4028733319af31cbf50ea299bb7d3ebf0d6e279346d40ebf80f487"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v8--production-planning--v8-persist-9570-r3",
+      "trial": "production-planning__Vb5Fddr",
+      "task": "terminal-bench/production-planning",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": null,
+      "execution-audit-error": "No such file or directory (os error 2)",
+      "execution-audit-digest": null,
+      "report-audit": 0.08,
+      "report-audit-error": null,
+      "report-audit-digest": "fd0393750973b9f18f1fd710450153b22f77bba06ef3f1008cc4de182ef8919e"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v8--production-planning--v8-persist-9570-r4",
+      "trial": "production-planning__FRFigLe",
+      "task": "terminal-bench/production-planning",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.33,
+      "execution-audit-error": null,
+      "execution-audit-digest": "fff28d2ec8f71f9f883a4c9881c2ea449aef0fe286a52c0530538e6d238e33db",
+      "report-audit": 0.06,
+      "report-audit-error": null,
+      "report-audit-digest": "c0b3132aaeb42ab28cc14b8f8f056c38fa0cce32c73923d61907bc21f7f6203f"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9--cad-model--effort-9569-r1",
+      "trial": "cad-model__WGki8Vq",
+      "task": "terminal-bench/cad-model",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.08,
+      "execution-audit-error": null,
+      "execution-audit-digest": "8a846360b94fa25833361b6614c5e9b95a376d33c14e1669726ed59408286b47",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "d50f11267210d3c747c35b2e82d28380c0385ebc3baeba7e44f614cae2fa38d2"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9--cad-model--effort-9569-r2",
+      "trial": "cad-model__KfKHTfT",
+      "task": "terminal-bench/cad-model",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.2,
+      "execution-audit-error": null,
+      "execution-audit-digest": "deba3522a23164cb40a603235c40ab91efefaa73df6d8c2cef887e6d85ebc66a",
+      "report-audit": 0.06,
+      "report-audit-error": null,
+      "report-audit-digest": "57fe14d561ce7f66d3afb99c8cd8500cca538024b7ce858348b4bf8fdbea8b75"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9--cad-model--effort-9569-r3",
+      "trial": "cad-model__MAcsWaj",
+      "task": "terminal-bench/cad-model",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.22,
+      "execution-audit-error": null,
+      "execution-audit-digest": "82c2d9ef8e6b1233fb3987662a6ebe5f412c0c249de74afbd372b732dc57cb92",
+      "report-audit": 0.19,
+      "report-audit-error": null,
+      "report-audit-digest": "c836d5f1f85a05dedcfbb9f07e4a928c2de9393afa023df5c05d2f3a1bd30712"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9--embedding-drift-monitor--effort-9569-r1",
+      "trial": "embedding-drift-monitor__9ba4fb6",
+      "task": "terminal-bench/embedding-drift-monitor",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.3,
+      "execution-audit-error": null,
+      "execution-audit-digest": "37a31d3204ec9610d836c06e4804f49d5a62eaa338ba6c2f2b5b4c1b67558f53",
+      "report-audit": 0.14,
+      "report-audit-error": null,
+      "report-audit-digest": "43bb06afe39469df7764942dfeeafeb853151348c75bbf2a86b464abf3c07ca0"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9--embedding-drift-monitor--effort-9569-r2",
+      "trial": "embedding-drift-monitor__jfqZgGA",
+      "task": "terminal-bench/embedding-drift-monitor",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.22,
+      "execution-audit-error": null,
+      "execution-audit-digest": "86f29765769a1f9f9ba13475955b4a83cd9e81bdfa7d51cd54a462b68b42d0d2",
+      "report-audit": 0.08,
+      "report-audit-error": null,
+      "report-audit-digest": "30de84719411aab626edfba65a02578c546b36762a8e081ccab7940c6d0df823"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9--fin-saccr-rwa--effort-9569-r1",
+      "trial": "fin-saccr-rwa__HvTn5Kj",
+      "task": "terminal-bench/fin-saccr-rwa",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.18,
+      "execution-audit-error": null,
+      "execution-audit-digest": "f7a6153c29b5ae0c8b9b8dfd81c45cd30f59414e8d23b3e7ba79db93a933bcc8",
+      "report-audit": 0.04,
+      "report-audit-error": null,
+      "report-audit-digest": "1f6c7d5b1fe6aaf7bd7decbc71afe7a61ccfe0968cf09c7de90566bb99e54edc"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9--fin-saccr-rwa--effort-9569-r2",
+      "trial": "fin-saccr-rwa__7tWMCpN",
+      "task": "terminal-bench/fin-saccr-rwa",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.23,
+      "execution-audit-error": null,
+      "execution-audit-digest": "c1ee8a558caf2e6d9dd66e55e43c79193d2a16ee0e13106e59ce45ce8f3e9b49",
+      "report-audit": 0.09,
+      "report-audit-error": null,
+      "report-audit-digest": "a6633a8a5f77dfeefa62d61df80a3a7851b37887d3d7970703975abe0fba5fbc"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9--gsea-proteomics--effort-9569-r1",
+      "trial": "gsea-proteomics__yhVXZAC",
+      "task": "terminal-bench/gsea-proteomics",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.3,
+      "execution-audit-error": null,
+      "execution-audit-digest": "3af4dcef63995e83dfd6aa68610d066e8b28b160ad6676bddf330bdb52168102",
+      "report-audit": 0.08,
+      "report-audit-error": null,
+      "report-audit-digest": "18683d9d0ef04faa36a06ea31daaba60ebd6dc5c30e9278c150c5788e62d4854"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9--gsea-proteomics--effort-9569-r2",
+      "trial": "gsea-proteomics__RmjVrEc",
+      "task": "terminal-bench/gsea-proteomics",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.19,
+      "execution-audit-error": null,
+      "execution-audit-digest": "280199b4dd0798d680de7a0e4e76f6f029a5a61d73165f2eda278920182b5e7c",
+      "report-audit": 0.19,
+      "report-audit-error": null,
+      "report-audit-digest": "cc76447ea7972b7012d88bdac0c283f09a5613399546b39db81e353879113112"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9--gsea-proteomics--effort-9569-r3",
+      "trial": "gsea-proteomics__Hr3aJZr",
+      "task": "terminal-bench/gsea-proteomics",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.17,
+      "execution-audit-error": null,
+      "execution-audit-digest": "5ccf0f0da7d2fb6f1a95e12345c7f16208f3d502a5a1d725845d6e48d8ef5a80",
+      "report-audit": 0.29,
+      "report-audit-error": null,
+      "report-audit-digest": "46c3380f2971f698804df2946fea6ec77997f467872ddfdf1518b4ca6ebc5977"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--data-anonymization--escalate-9571b-r1",
+      "trial": "data-anonymization__PAAihP5",
+      "task": "terminal-bench/data-anonymization",
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.26,
+      "execution-audit-error": null,
+      "execution-audit-digest": "92698737746d72e163ac61db9fa3bec94d050d44e3c27812a0c0d9a17fad4459",
+      "report-audit": 0.05,
+      "report-audit-error": null,
+      "report-audit-digest": "0cb63f1ac2d02241aea2c4fd54f2b053ea882087b7b385d06053d8945cc2d682"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--data-anonymization--escalate-9571b-r2",
+      "trial": "data-anonymization__apqf9W4",
+      "task": "terminal-bench/data-anonymization",
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.13,
+      "execution-audit-error": null,
+      "execution-audit-digest": "e6de6441daf6677fa18369653cd9c6ca6b88883073d99cee684e75088d7ff4a3",
+      "report-audit": 0.06,
+      "report-audit-error": null,
+      "report-audit-digest": "dd8b28555586a6051d0b4861c36a04fad5a6872a6f1bef61f35c30e426265a4d"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--data-anonymization--escalate-9571b-r3",
+      "trial": "data-anonymization__ciaS3xW",
+      "task": "terminal-bench/data-anonymization",
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.37,
+      "execution-audit-error": null,
+      "execution-audit-digest": "5085ebbf4b750fac7cdd0312b76928b57d1c0911c4d033360977d92a75b4fa13",
+      "report-audit": 0.04,
+      "report-audit-error": null,
+      "report-audit-digest": "211f6c347676f392e552fcdd9de2ca12550766b6a48c13ac8453448638101467"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--html-js-filter--escalate-9571b-r1",
+      "trial": "html-js-filter__oCNdp3f",
+      "task": "terminal-bench/html-js-filter",
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": "fail"
+      },
+      "reward": 1.0,
+      "execution-audit": 0.6,
+      "execution-audit-error": null,
+      "execution-audit-digest": "03d1f66c3d30964c20c48bb20ec371d00dbf67c25ad88a0ff2903e9bb8265525",
+      "report-audit": 0.04,
+      "report-audit-error": null,
+      "report-audit-digest": "662ceee3ce3807231f1c8af19ec8c3ad6b83790c3d33a2457ce341d4b8bc6f5e"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--html-js-filter--escalate-9571b-r2",
+      "trial": "html-js-filter__yzcGZLh",
+      "task": "terminal-bench/html-js-filter",
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": "fail"
+      },
+      "reward": 0.0,
+      "execution-audit": 0.54,
+      "execution-audit-error": null,
+      "execution-audit-digest": "fdb6361d46715a76e7d949653a1dd67fcff5e41207fc0ee895beb3ce801c4cad",
+      "report-audit": 0.16,
+      "report-audit-error": null,
+      "report-audit-digest": "4232e63f2dba42770202298f4ceb0b9307cfda3e416fedb3afefb8415da5d63f"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--html-js-filter--escalate-9571b-r3",
+      "trial": "html-js-filter__dTauU9w",
+      "task": "terminal-bench/html-js-filter",
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": "fail"
+      },
+      "reward": 1.0,
+      "execution-audit": 0.59,
+      "execution-audit-error": null,
+      "execution-audit-digest": "f8f5c06c1539bb2c5ec20292b9fccad2ba701d8387f4abf044b6f267275c86a6",
+      "report-audit": 0.07,
+      "report-audit-error": null,
+      "report-audit-digest": "3a52d8da817148bc612c00d177cc63a1ab1be3a81f7c4eb68f69f1fdb37ca46b"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--html-js-filter--escalate-9571c-r1",
+      "trial": "html-js-filter__dmYo4Ea",
+      "task": "terminal-bench/html-js-filter",
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": "fail"
+      },
+      "reward": 0.0,
+      "execution-audit": 0.69,
+      "execution-audit-error": null,
+      "execution-audit-digest": "6da3b37ac1cea98b5f883fc6a2f0bf1e19efff50ae0d9fd69d3599c09544c602",
+      "report-audit": 0.08,
+      "report-audit-error": null,
+      "report-audit-digest": "8e727f23e9d5f14c8c93f85a6b4aaf6836396895ee12ca5bc6075dc3346deafe"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--html-js-filter--escalate-9571c-r2",
+      "trial": "html-js-filter__DLLinwn",
+      "task": "terminal-bench/html-js-filter",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.47,
+      "execution-audit-error": null,
+      "execution-audit-digest": "8fd252dc30b0693641a8ca51cd83e4aa9f9e9f37453ee03380abd89374ddfb81",
+      "report-audit": 0.16,
+      "report-audit-error": null,
+      "report-audit-digest": "633c409922c9f27745bd4a3ae521ccc729ee65eb13a99048acb7ad81e3677534"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--ks-solver-cpp--escalate-9571b-r1",
+      "trial": "ks-solver-cpp__GiiPX4W",
+      "task": "terminal-bench/ks-solver-cpp",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.21,
+      "execution-audit-error": null,
+      "execution-audit-digest": "b83c59c103e1f80ab78f9032c5bc2d3c14f9f74d19cfa19643fa2b34bfce333c",
+      "report-audit": 0.17,
+      "report-audit-error": null,
+      "report-audit-digest": "8b0ced53a9c7b40dc63784fde4a8659f2b77a0349036a818852dda40cecabe16"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--ks-solver-cpp--escalate-9571b-r2",
+      "trial": "ks-solver-cpp__esTosjF",
+      "task": "terminal-bench/ks-solver-cpp",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.25,
+      "execution-audit-error": null,
+      "execution-audit-digest": "20cd8148ca1de14e81f7eda78626eb96b8526a450b97235e2c886ba50e6836e4",
+      "report-audit": 0.22,
+      "report-audit-error": null,
+      "report-audit-digest": "83c377a9db15586d6100d25679b37adaef0e33ebc6b97fd945aada0c83528b6f"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--ks-solver-cpp--escalate-9571b-r3",
+      "trial": "ks-solver-cpp__TMx3LP6",
+      "task": "terminal-bench/ks-solver-cpp",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.21,
+      "execution-audit-error": null,
+      "execution-audit-digest": "68b11c97a07ed15139749c867e5133ccecc853e1de04f8edf600f9ac0f420dc3",
+      "report-audit": 0.06,
+      "report-audit-error": null,
+      "report-audit-digest": "f1905d705a266ed100a1bce6b8b9c13e7b16fe7fc35ac6f15dbef3378eeeed15"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--music-harmony--escalate-9571c-r1",
+      "trial": "music-harmony__PYGQLHk",
+      "task": "terminal-bench/music-harmony",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.25,
+      "execution-audit-error": null,
+      "execution-audit-digest": "6a15b5c34c69973c45dbd5a937c53ae4c863de72d07f1cd989115b9df0638169",
+      "report-audit": 0.09,
+      "report-audit-error": null,
+      "report-audit-digest": "a066e86f5766c28305bf1476c338ba19d539eaf817eca36bd30bb4bd01bb2a61"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--music-harmony--escalate-9571c-r2",
+      "trial": "music-harmony__ELzKMKg",
+      "task": "terminal-bench/music-harmony",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.23,
+      "execution-audit-error": null,
+      "execution-audit-digest": "da7be09dd1599c6a8411d028ac9dbc06cc664c8d1f07f97d1146291b0cc1b159",
+      "report-audit": 0.04,
+      "report-audit-error": null,
+      "report-audit-digest": "a8c9ac1decda5ee5924d256d0105dd0bdfca0920fc9456a0dbc31dfa99b21a6e"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--production-planning--escalate-9571b-r1",
+      "trial": "production-planning__XpeUFiB",
+      "task": "terminal-bench/production-planning",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.24,
+      "execution-audit-error": null,
+      "execution-audit-digest": "a979c18c6a73110a79087b80c160449970233a11958200818d4d7e74aa8e19a5",
+      "report-audit": 0.54,
+      "report-audit-error": null,
+      "report-audit-digest": "db716873badec6bc99d349b0e7124ef51c1735389e6d7fd753286ab3e648900c"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--production-planning--escalate-9571b-r2",
+      "trial": "production-planning__ejuoUvx",
+      "task": "terminal-bench/production-planning",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.3,
+      "execution-audit-error": null,
+      "execution-audit-digest": "5841bf95878de8bdfef22b56252a53e771ce90e7d12edd2fed71762c5b9dcd3b",
+      "report-audit": 0.19,
+      "report-audit-error": null,
+      "report-audit-digest": "102576cde3fc97cea3e8c2ff51f4b5012e99f324e4cd8d9fab8c98eef4fe4619"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--production-planning--escalate-9571b-r3",
+      "trial": "production-planning__LQFfEx5",
+      "task": "terminal-bench/production-planning",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "verdict.observed": "fail"
+      },
+      "reward": 0.0,
+      "execution-audit": 0.6,
+      "execution-audit-error": null,
+      "execution-audit-digest": "aa5f0dfeef5ce13973190e929cb467eec01a96f4e2315396e3d5bdbff667f07b",
+      "report-audit": 0.32,
+      "report-audit-error": null,
+      "report-audit-digest": "4f61acf7fc5542e10929d0711a5510546d655db325acde530ec9d454d571cd0a"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--production-planning--escalate-9571c-r1",
+      "trial": "production-planning__bCXurew",
+      "task": "terminal-bench/production-planning",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.43,
+      "execution-audit-error": null,
+      "execution-audit-digest": "c97eab7dd92f1f96baeda3c8c60b9ec249122ba6088c32cb8a29700fdd3f90e8",
+      "report-audit": 0.17,
+      "report-audit-error": null,
+      "report-audit-digest": "db559091ac5f2b8d71899b64a4b90c7b90b245cc0e1270a1215a56d31e74742e"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--production-planning--escalate-9571c-r2",
+      "trial": "production-planning__iywETeW",
+      "task": "terminal-bench/production-planning",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.32,
+      "execution-audit-error": null,
+      "execution-audit-digest": "9a7269678e65185fb9a474e3400668b5e2d3c0feea3546891a51581f23cb7e13",
+      "report-audit": 0.05,
+      "report-audit-error": null,
+      "report-audit-digest": "ebe8962a2bc640f5197b15dd52d2e21efbfb2bdfc8512b2aed49a0a9b444e602"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--production-planning--escalate-9571c-r3",
+      "trial": "production-planning__9JYC3c8",
+      "task": "terminal-bench/production-planning",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.17,
+      "execution-audit-error": null,
+      "execution-audit-digest": "6d55d1ab1a8d78754ba2fd61dc4af3991ae792b14f0b2df084b76b1eec5a5e4b",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "e54fc92d16cc7362609a22e69c387aa0374e6376a1013d31448d8531cdb920dd"
+    },
+    {
+      "job": "tb4--luna-jev--cad-model--luna-tb4-9583-r1",
+      "trial": "cad-model__K6JXysv",
+      "task": "terminal-bench/cad-model",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.09,
+      "execution-audit-error": null,
+      "execution-audit-digest": "144bdb23961f4e1288ef6612ad07936f588cf38cbd5755ceb81bf178aa3fe368",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "64bd1967bcaccbe7a1050c611effa20baece01b36aa959644a7403e1cb8c4269"
+    },
+    {
+      "job": "tb4--luna-jev--embedding-drift-monitor--luna-tb4-9583-r1",
+      "trial": "embedding-drift-monitor__hgETELE",
+      "task": "terminal-bench/embedding-drift-monitor",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.38,
+      "execution-audit-error": null,
+      "execution-audit-digest": "55a8d932674b2427162ff04a0dfbe3e3b25456d43c0d6aca9d50244c05f68355",
+      "report-audit": 0.14,
+      "report-audit-error": null,
+      "report-audit-digest": "b9a944e20672b7d47949263ffc5517ea98be932086407daea1a0edffcd27fc24"
+    },
+    {
+      "job": "tb4--luna-jev--ks-solver-cpp--luna-tb4-9583-r1",
+      "trial": "ks-solver-cpp__J3takNd",
+      "task": "terminal-bench/ks-solver-cpp",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.2,
+      "execution-audit-error": null,
+      "execution-audit-digest": "431eec21e7efb0d6c81b030dd32604dfe5c094f264a6c4eed18596fb2eaf3b95",
+      "report-audit": 0.05,
+      "report-audit-error": null,
+      "report-audit-digest": "684360e4b135d9d4ec3a412515c122fc806aec14846a70a6ae005de2155a2be0"
+    },
+    {
+      "job": "tb4--luna-jev--nextjs-performance--luna-tb4-9583-r1",
+      "trial": "nextjs-performance__ZEDjfNL",
+      "task": "terminal-bench/nextjs-performance",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.25,
+      "execution-audit-error": null,
+      "execution-audit-digest": "f697eb46ee4af8f5865cfb524d1cce747d735ad687d118551833fcf5fd012fbb",
+      "report-audit": 0.23,
+      "report-audit-error": null,
+      "report-audit-digest": "d3a8251013983751f7f7655ce95275e7cf58384de54aa1b28d95bd5d0a95fe8d"
+    },
+    {
+      "job": "try--coder-one-tunable-v7--targets-9568b",
+      "trial": "html-js-filter__aZvBopx",
+      "task": "terminal-bench/html-js-filter",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.13,
+      "execution-audit-error": null,
+      "execution-audit-digest": "e2e0539f33a2382245264a9f23403c1ddd487a126b7aa1994dc2fc7ebaacd140",
+      "report-audit": 0.11,
+      "report-audit-error": null,
+      "report-audit-digest": "3bb1c52d030da3e4c416d57381a306da6ccd34a08fc688d8a82999705a73970d"
+    },
+    {
+      "job": "try--coder-one-tunable-v7--targets-9568b",
+      "trial": "ks-solver-cpp__z5fa8Zp",
+      "task": "terminal-bench/ks-solver-cpp",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": null,
+      "execution-audit-error": "No selected tool observations were retained",
+      "execution-audit-digest": null,
+      "report-audit": 0.15,
+      "report-audit-error": null,
+      "report-audit-digest": "82d19ffbc4e56b3352e0c0f8956343cdebb5068046aa67994356b9dcffe11584"
+    },
+    {
+      "job": "try--coder-one-tunable-v7--targets-9568b",
+      "trial": "production-planning__rmraruG",
+      "task": "terminal-bench/production-planning",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.25,
+      "execution-audit-error": null,
+      "execution-audit-digest": "ccd10c9adb2fe755948820a14ac0a384606b6a825c8a3a4f5b318bc81d1f6315",
+      "report-audit": 0.07,
+      "report-audit-error": null,
+      "report-audit-digest": "0536840bcd78b623c7f4153ae8a8d1a51b5f88b19c667cbbcd7a49be25086aad"
+    },
+    {
+      "job": "try--coder-one-tunable-v7--targets-9568b",
+      "trial": "protein-autointerp-disulfide__BTX75Mq",
+      "task": "terminal-bench/protein-autointerp-disulfide",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.14,
+      "execution-audit-error": null,
+      "execution-audit-digest": "115c2708e188d7dea69894d154abe9bd7a367df462fde46dbffd932e2e9e7cb8",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "b07a869a53e8b015a9bc02f80f2f16952a48d9d21bf8bd4be39d01b6fd090a31"
+    }
+  ]
+}

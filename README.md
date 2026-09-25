@@ -203,10 +203,10 @@ noninteractive view. The plain `gym-terminal` command without
 ## Coder One benchmark evidence
 
 The [candidate-review study](docs/terminal-bench/2026-09-25-candidate-review-validation.md)
-retains two failed source/report rules and a public executable-check experiment.
-Neither source rule improves both failure precision and recall; public programs
-have too little detection coverage. A separate completion assessment and eight
-fresh Microluna trials are under evaluation. #9584 remains open. The earlier
+retains negative source, report, observed-execution, and fitted-model experiments.
+None has established better failure precision and recall. The historical 317
+trials are now development data. Fresh Luna and Astra candidates are undergoing
+an executable review before their grades are opened. #9584 remains open. The earlier
 [Microluna evidence repair](docs/terminal-bench/2026-09-25-truthful-checks-microluna.md)
 recovers selected reports and reviews of unchanged submitted files.
 
