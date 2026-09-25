@@ -696,3 +696,14 @@ interval, or executor counts. It displays the prediction and label digests and
 the measurement's limitations. Reading a report does not verify the underlying
 artifacts, establish independent replication, or promote a runtime policy; use
 the experiment's sealed join and archive verification for those file checks.
+
+The literal-schema extension is tracked in
+[#9647](https://github.com/OpenAgentsInc/openagents/issues/9647). Synthetic controls
+cover both executor views, required protocol provenance, missing signals, and
+rejection of development-only schemas. The original 72-candidate report renders
+byte-for-byte as before. All five scoped Gym gate phases pass at `bb8f0a34e8`;
+this is partial workspace coverage. The
+[verification manifest](../../bench/terminal-bench/experiments/2026-09-25-literal-confirmation/records/literal-gym-files.json)
+and [nine-file proof bundle](../../bench/terminal-bench/experiments/2026-09-25-literal-confirmation/records/literal-gym.tar.gz)
+retain the gate and original-report compatibility check. The new prospective
+cohort has no measured result until its predictions are sealed and labels joined.

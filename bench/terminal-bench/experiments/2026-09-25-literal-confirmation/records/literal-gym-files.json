@@ -1,0 +1,54 @@
+{
+  "schema": "openagents.retained-files.v1",
+  "archive": "literal-gym.tar.gz",
+  "archive_sha256": "82fa510f1cbd1898d0347db9ad7a3c7cb82ef9e37ccf5a730a2ce1c366efed6b",
+  "exclusions": [],
+  "credential_scan": "exact local values, zero matches",
+  "files": [
+    {
+      "path": "archive-all.txt",
+      "bytes": 2956,
+      "sha256": "0a465d0e4037215a7ed28d2f6a85e5cf691e9423a77e6f8e31f7a94e271fc5ad"
+    },
+    {
+      "path": "build.log",
+      "bytes": 387,
+      "sha256": "e95f403b86f62c906cb1bdbc49939406a312f9d46db33cfa3d157c1df3a0bed3"
+    },
+    {
+      "path": "gate.log",
+      "bytes": 180116,
+      "sha256": "b7fd715954fac9d30295e450fea77177b2d19d0f25054ec68fd02b7d88867185"
+    },
+    {
+      "path": "verification/20260925T095758Z-de485c/clippy-features.log",
+      "bytes": 241,
+      "sha256": "c90056f2537963d3648d289db37101bc62dd8778b948009790dbcce6176378ce"
+    },
+    {
+      "path": "verification/20260925T095758Z-de485c/clippy.log",
+      "bytes": 241,
+      "sha256": "a6fb4727ef2cf0f62f8c2e4aba731c55e11197647ea64a32d4f0d2afa041a5d9"
+    },
+    {
+      "path": "verification/20260925T095758Z-de485c/fmt.log",
+      "bytes": 54,
+      "sha256": "51df71e9a81577e496914baa4f9188c14e66826d85324303d48813cb5ee53a06"
+    },
+    {
+      "path": "verification/20260925T095758Z-de485c/run.json",
+      "bytes": 3916,
+      "sha256": "c3d27f395e22bacb2dc8ec5f989dd4297b49734c975c0aea85a4970a9b26fcab"
+    },
+    {
+      "path": "verification/20260925T095758Z-de485c/tests-features.log",
+      "bytes": 93601,
+      "sha256": "e307d64d2f31f6245595cd22ba27904a8151d527cd8d4e57ab8eb21a5d024998"
+    },
+    {
+      "path": "verification/20260925T095758Z-de485c/tests.log",
+      "bytes": 85177,
+      "sha256": "ddc0b5a3f5f3590c01e3aec7306bbea4430ea46a250e94381b86e9d98051b57a"
+    }
+  ]
+}
