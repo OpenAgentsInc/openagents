@@ -1,0 +1,399 @@
+{
+  "set_digest": "b85ff8426d91c44f5f3382d396ffaeca3d9d408ea84ed2194772ba381203a104",
+  "entries": [
+    {
+      "entry": "9446-coderdev-launcher",
+      "part": "development",
+      "base": {
+        "verdict": "failed",
+        "detail": "0 of 3 checks passed; failed: fix-test-script, launcher-added, launcher-documented",
+        "passed": 0,
+        "total": 3,
+        "changed": [],
+        "checks": [
+          {
+            "id": "fix-test-script",
+            "group": "fix_tests",
+            "kind": "command",
+            "passed": false,
+            "detail": "`bash scripts/test-coderdev.sh` exited exit status: 127: ",
+            "milliseconds": 20
+          },
+          {
+            "id": "launcher-added",
+            "group": "deliverables",
+            "kind": "changed",
+            "passed": false,
+            "detail": "no changed path matches ^scripts/.*coderdev",
+            "milliseconds": 0
+          },
+          {
+            "id": "launcher-documented",
+            "group": "deliverables",
+            "kind": "contains",
+            "passed": false,
+            "detail": "README.md doesn't match coderdev",
+            "milliseconds": 0
+          }
+        ]
+      },
+      "fix": {
+        "verdict": "passed",
+        "detail": "all 3 checks passed",
+        "passed": 3,
+        "total": 3,
+        "changed": [
+          "README.md",
+          "scripts/coderdev",
+          "scripts/test-coderdev.sh"
+        ],
+        "checks": [
+          {
+            "id": "fix-test-script",
+            "group": "fix_tests",
+            "kind": "command",
+            "passed": true,
+            "detail": "`bash scripts/test-coderdev.sh` succeeded",
+            "milliseconds": 903
+          },
+          {
+            "id": "launcher-added",
+            "group": "deliverables",
+            "kind": "changed",
+            "passed": true,
+            "detail": "scripts/coderdev changed",
+            "milliseconds": 0
+          },
+          {
+            "id": "launcher-documented",
+            "group": "deliverables",
+            "kind": "contains",
+            "passed": true,
+            "detail": "README.md:108 matches coderdev",
+            "milliseconds": 0
+          }
+        ]
+      },
+      "discriminates": true
+    },
+    {
+      "entry": "9450-delegate-stale-bullet",
+      "part": "development",
+      "base": {
+        "verdict": "failed",
+        "detail": "1 of 4 checks passed; failed: only-delegate-md, stale-bullet-gone, reviewer-worktree",
+        "passed": 1,
+        "total": 4,
+        "changed": [],
+        "checks": [
+          {
+            "id": "only-delegate-md",
+            "group": "deliverables",
+            "kind": "only_changed",
+            "passed": false,
+            "detail": "nothing changed",
+            "milliseconds": 0
+          },
+          {
+            "id": "stale-bullet-gone",
+            "group": "deliverables",
+            "kind": "lacks",
+            "passed": false,
+            "detail": "docs/coder/delegate.md:330 matches Reaching a fan-out from an operator's sentence",
+            "milliseconds": 0
+          },
+          {
+            "id": "reviewer-worktree",
+            "group": "deliverables",
+            "kind": "contains",
+            "passed": false,
+            "detail": "docs/coder/delegate.md doesn't match (?s)git worktree list.{0,300}\\bmerg|\\bmerg.{0,300}git worktree list",
+            "milliseconds": 6
+          },
+          {
+            "id": "links-resolve",
+            "group": "deliverables",
+            "kind": "links",
+            "passed": true,
+            "detail": "3 relative links in docs/coder/delegate.md resolve",
+            "milliseconds": 0
+          }
+        ]
+      },
+      "fix": {
+        "verdict": "passed",
+        "detail": "all 4 checks passed",
+        "passed": 4,
+        "total": 4,
+        "changed": [
+          "docs/coder/delegate.md"
+        ],
+        "checks": [
+          {
+            "id": "only-delegate-md",
+            "group": "deliverables",
+            "kind": "only_changed",
+            "passed": true,
+            "detail": "changed only docs/coder/delegate.md",
+            "milliseconds": 0
+          },
+          {
+            "id": "stale-bullet-gone",
+            "group": "deliverables",
+            "kind": "lacks",
+            "passed": true,
+            "detail": "docs/coder/delegate.md doesn't match Reaching a fan-out from an operator's sentence",
+            "milliseconds": 0
+          },
+          {
+            "id": "reviewer-worktree",
+            "group": "deliverables",
+            "kind": "contains",
+            "passed": true,
+            "detail": "docs/coder/delegate.md:260 matches (?s)git worktree list.{0,300}\\bmerg|\\bmerg.{0,300}git worktree list",
+            "milliseconds": 5
+          },
+          {
+            "id": "links-resolve",
+            "group": "deliverables",
+            "kind": "links",
+            "passed": true,
+            "detail": "4 relative links in docs/coder/delegate.md resolve",
+            "milliseconds": 0
+          }
+        ]
+      },
+      "discriminates": true
+    },
+    {
+      "entry": "9451-delegate-answer-channel",
+      "part": "development",
+      "base": {
+        "verdict": "failed",
+        "detail": "1 of 3 checks passed; failed: fix-test-answer-channel, trace-keeps-transcript",
+        "passed": 1,
+        "total": 3,
+        "changed": [],
+        "checks": [
+          {
+            "id": "fix-test-answer-channel",
+            "group": "fix_tests",
+            "kind": "command",
+            "passed": false,
+            "detail": "`cargo test -q -p coder --lib issue_eval_` exited exit status: 101: error[E0599]: no method named `answer` found for struct `delegate::Delegation` in the current scope\n    --> crates/coder/src/delegate.rs:1889:27\n     |\n 821 | pub struct Delegation {\n     | --------------------- method `answer` not found for this struct\n...\n1889 |         assert_eq!(graded.answer(), \"done\");\n     |                           ^^^^^^\n     |\nhelp: there is a method `answered` with a similar name\n     |\n1889 |         assert_eq!(graded.answered(), \"done\");\n     |                                 ++\n\nerror[E0599]: no method named `transcript` found for struct `delegate::Delegation` in the current scope\n    --> crates/coder/src/delegate.rs:1892:20\n     |\n 821 | pub struct Delegation {\n     | --------------------- method `transcript` not found for this struct\n...\n1892 |             graded.transcript(),\n     |                    ^^^^^^^^^^ method not found in `delegate::Delegation`\n\nFor more information about this error, try `rustc --explain E0599`.\nerror: could not compile `coder` (lib test) due to 2 previous errors",
+            "milliseconds": 4122
+          },
+          {
+            "id": "delegate-tests",
+            "group": "fix_tests",
+            "kind": "command",
+            "passed": true,
+            "detail": "`cargo test -q -p coder --lib delegate::` passed 36 tests",
+            "milliseconds": 9919
+          },
+          {
+            "id": "trace-keeps-transcript",
+            "group": "deliverables",
+            "kind": "contains",
+            "passed": false,
+            "detail": "crates/coder/src/trace.rs doesn't match \"transcript\"",
+            "milliseconds": 0
+          }
+        ]
+      },
+      "fix": {
+        "verdict": "passed",
+        "detail": "all 3 checks passed",
+        "passed": 3,
+        "total": 3,
+        "changed": [
+          "crates/coder/src/delegate.rs",
+          "crates/coder/src/trace.rs",
+          "docs/programs.md",
+          "programs/burn-down.json"
+        ],
+        "checks": [
+          {
+            "id": "fix-test-answer-channel",
+            "group": "fix_tests",
+            "kind": "command",
+            "passed": true,
+            "detail": "`cargo test -q -p coder --lib issue_eval_` passed 1 tests",
+            "milliseconds": 4885
+          },
+          {
+            "id": "delegate-tests",
+            "group": "fix_tests",
+            "kind": "command",
+            "passed": true,
+            "detail": "`cargo test -q -p coder --lib delegate::` passed 38 tests",
+            "milliseconds": 8490
+          },
+          {
+            "id": "trace-keeps-transcript",
+            "group": "deliverables",
+            "kind": "contains",
+            "passed": true,
+            "detail": "crates/coder/src/trace.rs:336 matches \"transcript\"",
+            "milliseconds": 0
+          }
+        ]
+      },
+      "discriminates": true
+    },
+    {
+      "entry": "9597-minitask-explanation",
+      "part": "development",
+      "base": {
+        "verdict": "failed",
+        "detail": "2 of 8 checks passed; failed: view-names-tb4, view-gives-cost, view-gives-time, view-says-how-graded, guide-names-tb4, guide-changed",
+        "passed": 2,
+        "total": 8,
+        "changed": [],
+        "checks": [
+          {
+            "id": "gym-minitask-tests",
+            "group": "fix_tests",
+            "kind": "command",
+            "passed": true,
+            "detail": "`cargo test -q -p gym --lib coder_minitasks` passed 1 tests",
+            "milliseconds": 10558
+          },
+          {
+            "id": "view-names-tb4",
+            "group": "deliverables",
+            "kind": "command",
+            "passed": false,
+            "detail": "the output of `cargo run -q -p gym --bin gym -- coder minitasks --runs-dir \"$ISSUE_EVAL_TMP\"` doesn't match Terminal-Bench 4\\.0|TB4: Coder One mini-task runs · 0 runs · local episodes with their own graders, not Terminal-Bench attempts\nstarted           task                   executor                 outcome          grade          time\n  No runs. Record one with `coder-one minitask run ID`.",
+            "milliseconds": 9931
+          },
+          {
+            "id": "view-gives-cost",
+            "group": "deliverables",
+            "kind": "command",
+            "passed": false,
+            "detail": "the output of `cargo run -q -p gym --bin gym -- coder minitasks --runs-dir \"$ISSUE_EVAL_TMP\"` doesn't match \\$\\d: Coder One mini-task runs · 0 runs · local episodes with their own graders, not Terminal-Bench attempts\nstarted           task                   executor                 outcome          grade          time\n  No runs. Record one with `coder-one minitask run ID`.",
+            "milliseconds": 1010
+          },
+          {
+            "id": "view-gives-time",
+            "group": "deliverables",
+            "kind": "command",
+            "passed": false,
+            "detail": "the output of `cargo run -q -p gym --bin gym -- coder minitasks --runs-dir \"$ISSUE_EVAL_TMP\"` doesn't match (?i)\\bseconds?\\b: Coder One mini-task runs · 0 runs · local episodes with their own graders, not Terminal-Bench attempts\nstarted           task                   executor                 outcome          grade          time\n  No runs. Record one with `coder-one minitask run ID`.",
+            "milliseconds": 1000
+          },
+          {
+            "id": "view-says-how-graded",
+            "group": "deliverables",
+            "kind": "command",
+            "passed": false,
+            "detail": "the output of `cargo run -q -p gym --bin gym -- coder minitasks --runs-dir \"$ISSUE_EVAL_TMP\"` doesn't match (?i)grader (checks|runs|compares)|graded (by|against|on): Coder One mini-task runs · 0 runs · local episodes with their own graders, not Terminal-Bench attempts\nstarted           task                   executor                 outcome          grade          time\n  No runs. Record one with `coder-one minitask run ID`.",
+            "milliseconds": 1002
+          },
+          {
+            "id": "guide-names-tb4",
+            "group": "deliverables",
+            "kind": "contains",
+            "passed": false,
+            "detail": "docs/coder/guides/coder-one-minitasks.md doesn't match Terminal-Bench 4\\.0|TB4",
+            "milliseconds": 0
+          },
+          {
+            "id": "guide-changed",
+            "group": "deliverables",
+            "kind": "changed",
+            "passed": false,
+            "detail": "no changed path matches ^docs/coder/guides/coder-one-minitasks\\.md$",
+            "milliseconds": 0
+          },
+          {
+            "id": "guide-links",
+            "group": "deliverables",
+            "kind": "links",
+            "passed": true,
+            "detail": "6 relative links in docs/coder/guides/coder-one-minitasks.md resolve",
+            "milliseconds": 0
+          }
+        ]
+      },
+      "fix": {
+        "verdict": "passed",
+        "detail": "all 8 checks passed",
+        "passed": 8,
+        "total": 8,
+        "changed": [
+          "crates/gym/src/coder_minitasks.rs",
+          "docs/coder/guides/coder-one-minitasks.md"
+        ],
+        "checks": [
+          {
+            "id": "gym-minitask-tests",
+            "group": "fix_tests",
+            "kind": "command",
+            "passed": true,
+            "detail": "`cargo test -q -p gym --lib coder_minitasks` passed 1 tests",
+            "milliseconds": 10218
+          },
+          {
+            "id": "view-names-tb4",
+            "group": "deliverables",
+            "kind": "command",
+            "passed": true,
+            "detail": "`cargo run -q -p gym --bin gym -- coder minitasks --runs-dir \"$ISSUE_EVAL_TMP\"` succeeded",
+            "milliseconds": 9777
+          },
+          {
+            "id": "view-gives-cost",
+            "group": "deliverables",
+            "kind": "command",
+            "passed": true,
+            "detail": "`cargo run -q -p gym --bin gym -- coder minitasks --runs-dir \"$ISSUE_EVAL_TMP\"` succeeded",
+            "milliseconds": 1010
+          },
+          {
+            "id": "view-gives-time",
+            "group": "deliverables",
+            "kind": "command",
+            "passed": true,
+            "detail": "`cargo run -q -p gym --bin gym -- coder minitasks --runs-dir \"$ISSUE_EVAL_TMP\"` succeeded",
+            "milliseconds": 1016
+          },
+          {
+            "id": "view-says-how-graded",
+            "group": "deliverables",
+            "kind": "command",
+            "passed": true,
+            "detail": "`cargo run -q -p gym --bin gym -- coder minitasks --runs-dir \"$ISSUE_EVAL_TMP\"` succeeded",
+            "milliseconds": 1005
+          },
+          {
+            "id": "guide-names-tb4",
+            "group": "deliverables",
+            "kind": "contains",
+            "passed": true,
+            "detail": "docs/coder/guides/coder-one-minitasks.md:11 matches Terminal-Bench 4\\.0|TB4",
+            "milliseconds": 0
+          },
+          {
+            "id": "guide-changed",
+            "group": "deliverables",
+            "kind": "changed",
+            "passed": true,
+            "detail": "docs/coder/guides/coder-one-minitasks.md changed",
+            "milliseconds": 0
+          },
+          {
+            "id": "guide-links",
+            "group": "deliverables",
+            "kind": "links",
+            "passed": true,
+            "detail": "6 relative links in docs/coder/guides/coder-one-minitasks.md resolve",
+            "milliseconds": 0
+          }
+        ]
+      },
+      "discriminates": true
+    }
+  ]
+}

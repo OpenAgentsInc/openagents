@@ -112,3 +112,7 @@ retains the non-UTF-8 filename case. Five cancellation-dependent tests
 failed under Apple's Python 3.9. Selecting the installed Python 3.13 makes
 them pass unchanged. The [verification guide](../../verification.md)
 records that prerequisite.
+
+After integrating the concurrent main commits, the same five-phase gate
+passed again. Its [receipt](../../../bench/terminal-bench/experiments/2026-09-25-issue-flow-policies-read-confined/records/preflight/rust-gate/run.json)
+records the committed implementation used for the new comparison.

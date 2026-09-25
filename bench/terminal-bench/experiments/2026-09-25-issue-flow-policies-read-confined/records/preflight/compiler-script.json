@@ -1,0 +1,17 @@
+[
+  {
+    "call": "run_command",
+    "arguments": {
+      "command": "cargo check --offline --locked -p coder -j 6 && echo BUILD_PREFLIGHT_OK",
+      "timeout_seconds": 300
+    }
+  },
+  {
+    "call": "finish",
+    "arguments": {
+      "status": "done",
+      "summary": "Toolchain preflight only; no issue solution attempted.",
+      "answer": "Toolchain preflight completed."
+    }
+  }
+]

@@ -1,0 +1,12 @@
+{
+  "scripted": true,
+  "model_requests": 0,
+  "run": "/Users/christopherdavid/.openagents/coder-one/issue-flow-policies-read-confined-preflight/issue-eval-9451-delegate-answer-channel-scripted-toolchain-1790367314916",
+  "command": "cargo check --offline --locked -p coder -j 6 && echo BUILD_PREFLIGHT_OK",
+  "exit": 0,
+  "milliseconds": 46474,
+  "reads": "confined",
+  "marker_present": true,
+  "issue_grade_expected_to_fail": true,
+  "note": "Compiler-only preflight; intentionally does not solve the issue. Its failing issue grade is expected. Cost nulls in its script manifest are not treated as measured zero-cost model runs."
+}

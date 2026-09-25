@@ -1,0 +1,5 @@
+{
+  "build_commit": "b0991ab0392c02b90dd63b4db4c10a2b7d5ab867",
+  "binary_sha256": "917d1426a5a8a09203e81294a83276c9042238a1c30ada338db15aa873d81214",
+  "note": "Preflight executable before rebasing the same repair onto the concurrent fire-loop-only change 81318cf258."
+}
