@@ -1,0 +1,48 @@
+{
+  "schema": "openagents.tbench.candidates.v1",
+  "jobs": 2,
+  "deduplicate": false,
+  "deduplication_scope": "this batch only; assumes deterministic verifier and unchanged Docker environment",
+  "wall_seconds": 0.09556067502126098,
+  "errors": [
+    {
+      "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v15--mp-checkpoint-consolidation--family-a1-20260924T222001/mp-checkpoint-consolidation__EU5sYa2",
+      "error": "mp-checkpoint-consolidation__EU5sYa2: no retained sequential candidates"
+    },
+    {
+      "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v15--photonic-waveguide-routing--family-a1-20260924T225135/photonic-waveguide-routing__6HFMpZJ",
+      "error": "photonic-waveguide-routing__6HFMpZJ: no retained sequential candidates"
+    },
+    {
+      "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v15--telecom-entity-resolution--family-a1-20260924T225055/telecom-entity-resolution__XKpWnaL",
+      "error": "telecom-entity-resolution__XKpWnaL: no retained sequential candidates"
+    }
+  ],
+  "candidates": [],
+  "oracle": [
+    {
+      "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v15--mp-checkpoint-consolidation--family-a1-20260924T222001/mp-checkpoint-consolidation__EU5sYa2",
+      "original_reward": 0.0,
+      "candidates": 0,
+      "complete": false,
+      "any_candidate_passes": null
+    },
+    {
+      "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v15--photonic-waveguide-routing--family-a1-20260924T225135/photonic-waveguide-routing__6HFMpZJ",
+      "original_reward": 0.0,
+      "candidates": 0,
+      "complete": false,
+      "any_candidate_passes": null
+    },
+    {
+      "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v15--telecom-entity-resolution--family-a1-20260924T225055/telecom-entity-resolution__XKpWnaL",
+      "original_reward": 0.0,
+      "candidates": 0,
+      "complete": false,
+      "any_candidate_passes": null
+    }
+  ],
+  "verifier_executions": 0,
+  "reused_grades": 0,
+  "invalid_candidates": 0
+}

@@ -17,7 +17,16 @@ const FIRST: u32 = 32;
 const LAST: u32 = 126;
 /// Characters outside printable ASCII that the atlas also carries.
 const EXTRA: [char; 4] = ['·', '—', '…', '•'];
+/// Latin-1 letters and punctuation, for accented names and notes.
+const LATIN1: std::ops::RangeInclusive<u32> = 0xA1..=0xFF;
 const ATLAS_WIDTH: u32 = 1024;
+
+/// True when the atlas can draw `c`.
+#[must_use]
+pub fn drawable(c: char) -> bool {
+    let n = c as u32;
+    (FIRST..=LAST).contains(&n) || LATIN1.contains(&n) || EXTRA.contains(&c)
+}
 
 /// One UI vertex: pixel position, atlas coordinate, linear RGBA.
 #[repr(C)]
@@ -83,6 +92,7 @@ impl Atlas {
         let mut context = ScaleContext::new();
         let mut scaler = context.builder(font).size(px).hint(true).build();
         let chars: Vec<char> = (FIRST..=LAST)
+            .chain(LATIN1)
             .filter_map(char::from_u32)
             .chain(EXTRA)
             .collect();

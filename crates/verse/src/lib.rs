@@ -10,10 +10,12 @@
 pub mod agent;
 pub mod app;
 pub mod avatar;
+pub mod brain;
 pub mod camera;
 pub mod chat;
 pub mod controller;
 pub mod crowd;
+pub mod feed;
 pub mod hud;
 pub mod identity;
 pub mod mesh;

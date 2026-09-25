@@ -3,7 +3,7 @@
 //! The game thread never blocks on the network. It sends [`Out`] commands
 //! and drains [`In`] messages once per frame. The link thread connects,
 //! replays the live subscriptions after every reconnect, and reports
-//! connection changes. Plain `ws://` URLs only for now.
+//! connection changes. Both `ws://` and `wss://` URLs work.
 
 use std::collections::BTreeMap;
 use std::net::TcpStream;
@@ -128,9 +128,14 @@ fn run(url: &str, out: &Receiver<Out>, inbox: &Sender<In>) {
             }
         };
         backoff = Duration::from_millis(500);
-        if let MaybeTlsStream::Plain(stream) = socket.get_mut() {
-            let _ = stream.set_read_timeout(Some(Duration::from_millis(15)));
-            let _ = stream.set_nodelay(true);
+        let tcp = match socket.get_mut() {
+            MaybeTlsStream::Plain(stream) => Some(&*stream),
+            MaybeTlsStream::Rustls(stream) => Some(&stream.sock),
+            _ => None,
+        };
+        if let Some(tcp) = tcp {
+            let _ = tcp.set_read_timeout(Some(Duration::from_millis(15)));
+            let _ = tcp.set_nodelay(true);
         }
         if inbox.send(In::Connected).is_err() {
             return;

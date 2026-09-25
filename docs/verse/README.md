@@ -72,7 +72,7 @@ online and resting.
 wipes it; `VERSE_RELAY_BIND=0.0.0.0` lets other machines join). It raises
 the relay's rate limits, because the defaults (60 events a minute per
 pubkey) are far below pose-frame rates. `--relay <url>` or `VERSE_RELAY`
-points the game elsewhere; only `ws://` URLs work for now. The production
+points the game elsewhere; `ws://` and `wss://` URLs both work. The production
 relay keeps the default limits, so it cannot carry pose frames until it gets
 a per-second lane for these kinds, as NIP-MV recommends.
 
@@ -92,7 +92,11 @@ Chat follows Horse Isle 1:
 - Two chat windows along the bottom and one input line with a method
   selector.
 - `/` shortcuts and Horse Isle's limits.
-- RuneScape-style speech bubbles over speakers.
+- RuneScape-style speech bubbles over speakers, and your name over your
+  head.
+- An AGENT channel for talking to your own agent through a text model.
+- A NOSTR tab with live public notes from `relay.damus.io` and
+  `relay.primal.net`, whose posters appear as stand-ins on the plaza.
 
 [`chat.md`](chat.md) has the reference, the NIP review, and the details.
 
@@ -138,8 +142,10 @@ The agent has no behavior yet beyond following and emoting. Its game design is i
 | Right mouse drag | Mouselook: the character turns to face the camera, then turns with the mouse. |
 | Both mouse buttons | Run forward. |
 | Mouse wheel | Zoom between 2.5 m and 40 m. |
-| `Enter` | Open the chat line; `Enter` again sends. See [chat](chat.md). |
-| `Tab` | Change the chat channel: ALL, ADS, ZONE, NEAR, HERE, rooms, PM. |
+| `Enter` or click the input line | Open the chat line; `Enter` again sends. See [chat](chat.md). |
+| `Tab` or click a pill | Change the chat channel: ALL, ADS, ZONE, NEAR, HERE, rooms, PM, AGENT. |
+| `T` | Talk to your agent, privately. Its reply appears over the spade. |
+| `N` | Switch the world chat window between WORLD and live NOSTR notes. |
 | `/` | Open the chat line with a shortcut: `/a`, `/$`, `/z`, `/n`, `/h`, `/r room`, `/name`. |
 | `Esc` | Close the chat line, or quit when it is closed. |
 
@@ -229,6 +235,8 @@ The character collides with building footprints and the world edge.
 | [`src/identity.rs`](../../crates/verse/src/identity.rs) | Profile keys under `~/.openagents/verse/`. |
 | [`src/chat.rs`](../../crates/verse/src/chat.rs) | Channels, shortcut parsing, limits, zones, and the two chat windows' history. |
 | [`src/hud.rs`](../../crates/verse/src/hud.rs) | Chat windows, input line, name tags, and speech bubbles. |
+| [`src/brain.rs`](../../crates/verse/src/brain.rs) | The agent's side of AGENT chat: door choice, instructions, streamed replies. |
+| [`src/feed.rs`](../../crates/verse/src/feed.rs) | The NOSTR tab: public notes from damus and primal, filtering, pacing, and stand-ins. |
 | [`src/ui.rs`](../../crates/verse/src/ui.rs), [`src/ui.wgsl`](../../crates/verse/src/ui.wgsl) | Glyph atlas (Fira Mono, OFL) and screen-space quads. |
 | [`src/mesh.rs`](../../crates/verse/src/mesh.rs) | The shared vertex format and line, quad, cube, and ring builders. |
 | [`src/palette.rs`](../../crates/verse/src/palette.rs) | The amber ladder in linear light. |
@@ -251,6 +259,6 @@ These build on the direction in [`docs/game/README.md`](../game/README.md):
 - Put live OpenAgents objects in the world: Pylons, training windows,
   verified work, and sats, as the episode 240 board did.
 - Tab-targeting and a minimal HUD in the same amber.
-- A per-second lane on the production relay for NIP-MV frames, `wss://`
-  support, and cell-scoped subscriptions as the world grows.
+- A per-second lane on the production relay for NIP-MV frames, and
+  cell-scoped subscriptions as the world grows.
 - A web build over WebGPU, following Ruins of Atlantis.

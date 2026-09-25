@@ -290,6 +290,23 @@ result yet; it's what the next runs can now measure.
   digest, and win and loss thresholds fixed before any result.
 - **The closing check (`verify.close`) is off.**
 
+## Result, 2026-09-24: the Luna-sized family run is inconclusive
+
+The pre-registered family run of `microluna-v15` stopped as an invalid
+run: three of its six tasks (`payments-pipeline-fix`,
+`cumulative-layout-shift`, and `live-database-cutover`) can't start under
+the trial network allowlist, because Harbor's egress sidecar and a
+service that declares `expose:` can't share a network namespace. The
+three tasks that ran all failed: the confirmation task
+`telecom-entity-resolution` at 4 of 10 tests with a full self-score (a
+signal gap), and the development tasks `mp-checkpoint-consolidation`
+(3 of 4) and `photonic-waveguide-routing` (12 of 14) at the wall bound.
+Spend was $0.13, and wall time was 60 minutes. The cheaper-work claim
+stays unmeasured on this family. Rerunning it needs a harness that runs
+multi-service tasks under the allowlist, and so a new pre-registration.
+See the
+[results](../../../bench/terminal-bench/experiments/2026-09-25-luna-sized-family/results.md).
+
 ## Decisions for the operator
 
 - Close #9585 as done and #9558 as won't do in this form.

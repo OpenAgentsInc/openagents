@@ -92,6 +92,7 @@ them. Only PMs are private.
 | HERE (3 m) | CHAT HERE | kind `9`, `t=here`, `pos` | Right | Yes |
 | `#lounge`, `#trading-post`, `#builders` | (Horse Isle 3's clubs) | kind `9`, `h=<room>` (NIP-29) | Right | No |
 | PM | Private message | NIP-17 gift wrap | Right | No |
+| AGENT | (none) | Local only: the Open Responses door | Right | Over the spade |
 
 - **Zones.** Zones are Verse's isles: the Plaza (within 60 m of the center)
   and the North, South, East, and West Wards around it.
@@ -100,12 +101,64 @@ them. Only PMs are private.
 - **Buddies.** BUDDIES is not implemented. Mutual NIP-02 follows plus NIP-17
   is the likely shape.
 
+### Your agent
+
+Every player can talk to their own agent, the floating spade, on the
+AGENT channel:
+- Press `T`, click the `AGENT` pill, or type `/ai <text>`.
+- The line never goes to a Nostr relay. It goes to a text model through the
+  Open Responses door Coder uses:
+  - `CODER_DOOR_KEY` or `CODER_AI_GATEWAY_KEY` when set.
+  - Otherwise the OpenAgents bearer (`OPENAGENTS_API_KEY`, or
+    `~/.openagents/bearer` after signing in) on `openagents.com`'s `free`
+    lane.
+- The agent is told what it can see: your zone and position, the pylon,
+  nearby players and whether they are online, the last few public lines,
+  and the latest Nostr notes.
+- It turns to you, shows `…` over the spade while it thinks, streams its
+  reply into a bubble over the spade, and logs the exchange in the personal
+  window as `ai` lines.
+- The conversation keeps the last 20 turns for the session.
+- `cargo run -p verse --example ask_agent -- "hello?"` checks the door from
+  a terminal.
+
+### The NOSTR tab
+
+The world window has two tabs, WORLD and NOSTR. Click one or press `N` to
+switch. NOSTR shows live public notes (kind `1`) from `wss://relay.damus.io`
+and `wss://relay.primal.net`, read-only.
+
+- **Filtering.** The firehose is filtered for readable conversation:
+  - Skipped: `content-warning` and `nsfw`-tagged notes, JSON payloads, long
+    hex or base64 tokens, notes with more than one link or three hashtags,
+    notes with less than three words of prose, notes that are mostly script
+    the amber font cannot draw, and a short adult-word blocklist.
+  - Emoji are dropped, and links become `[link]`.
+  - Replies stay, marked `reply`.
+- **Pacing.** Notes drip in about one a second, at most one per poster per
+  minute.
+- **Stand-ins.** Each poster appears on the plaza as a dim stand-in avatar
+  in a ring around the pylon (up to 16), with a `name · nostr` tag and
+  their note in a speech bubble. Stand-ins are local to your client; they
+  are not NIP-MV entities.
+- **Checking it.** `cargo run -p verse --example nostr_feed` prints ten
+  seconds of the feed.
+
 ### Controls
 
-- `Enter` opens the chat line and `Enter` sends it. `Esc` cancels and
-  `Up` recalls the last line.
-- `Tab` cycles the method selector (`[ALL]`, `[ADS]`, `[ZONE]`, `[NEAR]`,
-  `[HERE]`, then the rooms, then the current PM target).
+- `Enter`, or a click on the input line, opens the chat line. `Enter` sends
+  it, `Esc` cancels, and `Up` recalls the last line.
+- The **Send to:** row shows every channel as a pill: ALL, ADS, ZONE, NEAR,
+  HERE, the rooms, the current PM target, and AGENT. Click a pill or press
+  `Tab` to pick one. This row replaces Horse Isle's dropdown, so the choice
+  is always visible.
+- The input line always says who will hear the message: for example "to
+  everyone in verse-plaza", "to 2 players within 40 m", or "to only your
+  agent (private)". ALL and ADS also show a character count such as
+  `42/150`.
+- Typing `/` or `!` lists the shortcuts with what each does.
+- Empty windows say what will appear in them.
+- `T` talks to your agent and `N` switches the world window to NOSTR.
 - `/` opens the line with a shortcut already typed:
   - `/a`, `/$`, `/z`, `/n`, and `/h` send to a channel.
   - `/r <room> <text>` sends to a room.
@@ -140,7 +193,8 @@ Refusals appear as `CHAT NOT SENT:` notices.
   name is full brightness and the text is three-quarter.
 - Your own copy of a line carries Horse Isle's audience note, such as
   `[3 near]`, `(1 here)`, or `[4 listening]`.
-- Other players carry a half-bright name tag over their heads within 60 m.
+- You carry your own name tag. Other players carry a half-bright name tag
+  within 60 m, a quarter-bright one when resting.
 - Public lines on ALL, ZONE, NEAR, and HERE float over the speaker in a
   framed bubble for seven seconds.
 
@@ -167,5 +221,4 @@ announces.
 - A profanity filter.
 - Scrolling back through chat history.
 - Private guilds with NIP-EE or Marmot.
-- Showing outside Nostr users (kind `1` posts) as bubbles over stand-in
-  avatars.
+- Replying to Nostr notes from the NOSTR tab.
