@@ -1,0 +1,28 @@
+diff --git a/docs/coder/delegate.md b/docs/coder/delegate.md
+index 9d24fcf..6c11ccc 100644
+--- a/docs/coder/delegate.md
++++ b/docs/coder/delegate.md
+@@ -265,6 +265,10 @@ writes into the directory it shares with five siblings, with
+ `isolation_required`. Both refusals land before anything spawns. Nothing
+ records `isolation: worktree` and runs in the shared directory.
+ 
++For a retained writing worktree, run `git worktree list` to find its path,
++inspect the edits, then merge or remove it. The program runs
++the delegate; you finish its work.
++
+ The worktrees go under the repository, in `.coder/worktrees`, rather than
+ under the system temporary directory. That is not tidiness: `devin`
+ declines a directory nobody has trusted interactively, and six of six
+@@ -327,5 +331,10 @@ repository the delegates run in, which matters because a git worktree under
+   the retained checkout keeps them, and `crates/coder-boundary` snapshots
+   observe a tree before and after a run; the CoderBench side that grades
+   a run against that observation is separate work.
+-- **Reaching a fan-out from an operator's sentence.** `coder::runtime` runs
+-  the program, and the program still runs from a caller in Rust.
++- **Reaching a fan-out from an operator's sentence.** `coder::turn::run`
++  asks `openagents.program.v1` before it classifies, and a program answer
++  starts `Runtime::run`. The `devin-fan-out-six` golden was recorded by
++  running `coder -p` on macOS. A separate Linux observation is documented
++  in [the measurement](measurements/2026-09-20-observed-fanout.md#second-observation-linux-host).
++  See [../programs.md](../programs.md), “How a sentence reaches it,” for
++  the route and its evidence.

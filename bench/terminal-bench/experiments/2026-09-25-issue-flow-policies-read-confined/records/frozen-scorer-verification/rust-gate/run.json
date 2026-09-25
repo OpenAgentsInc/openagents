@@ -1,0 +1,176 @@
+{
+  "schema": "openagents.gate-run.v1",
+  "run_id": "20260925T203501Z-1483fa",
+  "started_utc": "2026-09-25T20:35:01Z",
+  "finished_utc": "2026-09-25T20:37:44Z",
+  "elapsed_s": 163.6,
+  "tree": {
+    "head": "13cd3c07de4b56d4baae0095c385765373223d20",
+    "dirty": true,
+    "diff_digest": "31497d4170ec2c790050970bcb85b274c9ad9c109fdadff60687c0d13e86b0c2"
+  },
+  "requested": {
+    "phases": "fmt clippy clippy-features tests tests-features",
+    "crates": "coder-one microluna coder-boundary",
+    "workspace_scope": false,
+    "changed_ref": null,
+    "uncovered": "",
+    "keep_going": false,
+    "retry": true,
+    "postgres": true,
+    "metal": false,
+    "soak": false
+  },
+  "phases": [
+    {
+      "slug": "fmt",
+      "name": "Workspace formatting",
+      "command": [
+        "cargo",
+        "fmt",
+        "--all",
+        "--check"
+      ],
+      "status": "passed",
+      "attempts": 1,
+      "exit": 0,
+      "elapsed_s": 2.6,
+      "log": "/Users/christopherdavid/.codex/worktrees/issue-flow-default/verification-frozen-evaluator/20260925T203501Z-1483fa/fmt.log"
+    },
+    {
+      "slug": "clippy",
+      "name": "Default workspace Clippy",
+      "command": [
+        "cargo",
+        "clippy",
+        "--locked",
+        "-p",
+        "coder-one",
+        "-p",
+        "microluna",
+        "-p",
+        "coder-boundary",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "status": "passed",
+      "attempts": 1,
+      "exit": 0,
+      "elapsed_s": 9.5,
+      "log": "/Users/christopherdavid/.codex/worktrees/issue-flow-default/verification-frozen-evaluator/20260925T203501Z-1483fa/clippy.log"
+    },
+    {
+      "slug": "clippy-features",
+      "name": "Feature workspace Clippy",
+      "command": [
+        "cargo",
+        "clippy",
+        "--locked",
+        "-p",
+        "coder-one",
+        "-p",
+        "microluna",
+        "-p",
+        "coder-boundary",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "status": "passed",
+      "attempts": 1,
+      "exit": 0,
+      "elapsed_s": 0.2,
+      "log": "/Users/christopherdavid/.codex/worktrees/issue-flow-default/verification-frozen-evaluator/20260925T203501Z-1483fa/clippy-features.log"
+    },
+    {
+      "slug": "tests",
+      "name": "Default workspace tests",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "coder-one",
+        "-p",
+        "microluna",
+        "-p",
+        "coder-boundary",
+        "--",
+        "--nocapture"
+      ],
+      "status": "passed",
+      "attempts": 1,
+      "exit": 0,
+      "elapsed_s": 74.1,
+      "log": "/Users/christopherdavid/.codex/worktrees/issue-flow-default/verification-frozen-evaluator/20260925T203501Z-1483fa/tests.log"
+    },
+    {
+      "slug": "tests-features",
+      "name": "Feature workspace tests",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "coder-one",
+        "-p",
+        "microluna",
+        "-p",
+        "coder-boundary",
+        "--",
+        "--nocapture"
+      ],
+      "status": "passed",
+      "attempts": 1,
+      "exit": 0,
+      "elapsed_s": 75.4,
+      "log": "/Users/christopherdavid/.codex/worktrees/issue-flow-default/verification-frozen-evaluator/20260925T203501Z-1483fa/tests-features.log"
+    }
+  ],
+  "skipped": [
+    {
+      "slug": "preflight",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "gate-tooling",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "artifacts",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "delegation",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "backup",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "deps",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "postgres",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "metal-clippy",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "metal-tests",
+      "reason": "not in --phases"
+    },
+    {
+      "slug": "soak",
+      "reason": "not in --phases"
+    }
+  ],
+  "result": "partial"
+}

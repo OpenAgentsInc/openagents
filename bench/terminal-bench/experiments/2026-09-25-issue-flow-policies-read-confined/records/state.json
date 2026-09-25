@@ -1,0 +1,12 @@
+{
+  "started_at": "2026-09-25T20:18:29.935428+00:00",
+  "pid": 26480,
+  "status": "invalid",
+  "slot": 2,
+  "entry": "9450",
+  "arm": "requirements",
+  "counted_usd": 0.04608722,
+  "updated_at": "2026-09-25T20:30:35.537818+00:00",
+  "reason": "The lean session and finish hook could not read their frozen evaluator; the host scorer also lacked the seal. See #9663.",
+  "completed": 2
+}

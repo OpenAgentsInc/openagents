@@ -1,5 +1,10 @@
 # Issue-flow default policy: read-confined replication
 
+Execution status: **invalid, stopped after two attempts**. The new scope
+denied lean sessions access to their own frozen evaluator; the host scorer
+also omitted the evaluation seal. [Issue #9663](https://github.com/OpenAgentsInc/openagents/issues/9663)
+repairs both paths. These attempts are retained, with no default decision.
+
 Issue [#9624](https://github.com/OpenAgentsInc/openagents/issues/9624).
 
 This is a new comparison after [the original study](../2026-09-25-issue-flow-policies/protocol.md) stopped invalid after three attempts. Those attempts are retained and excluded here. Both arms use the repaired read boundary from #9661. No task, policy, order, grader, or decision rule changes. The original $0.047668704 counts toward the combined $5 budget.

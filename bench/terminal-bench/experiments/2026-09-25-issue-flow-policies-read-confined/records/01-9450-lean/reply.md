@@ -1,0 +1,6 @@
+- Document change is complete; only the provided scoring script's first grep check remains incompatible with the document's correctly formatted Markdown link target.
+- Updated only docs/coder/delegate.md to remove the stale unbuilt claim, point readers to docs/programs.md for the runtime route, and explain how to review a retained writing worktree. The provided workspace check passes all 5 of 5 checks; `git diff --check` passes. The separate frozen evaluator cannot be run in this workspace because the host denies access to its script path.
+- Review: Corrected the documentation review finding: the golden is the observed macOS trace, while Linux is a separate observation. Restored the paragraph as a bullet in the existing list and pointed to the Linux evidence.
+- Review: Reworded the fan-out documentation in complete plain-language sentences and wrapped the measurement pointer onto its own line. Checked the edited text and line lengths; no tests apply to this documentation-only change.
+
+Published nothing. The changes are staged in /Users/christopherdavid/.openagents/coder-one/issue-flow-policies-read-confined-20260925/01-9450-lean/runs/issue-eval-9450-delegate-stale-bullet-microluna-gpt-6-luna-1790367511049/repo (1 file changed, 11 insertions(+), 2 deletions(-)).

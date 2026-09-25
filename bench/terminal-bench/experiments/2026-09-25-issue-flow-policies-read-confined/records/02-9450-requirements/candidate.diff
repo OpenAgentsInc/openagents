@@ -1,0 +1,49 @@
+diff --git a/docs/coder/delegate.md b/docs/coder/delegate.md
+index 9d24fcf..3389711 100644
+--- a/docs/coder/delegate.md
++++ b/docs/coder/delegate.md
+@@ -4,15 +4,18 @@ Coder hands one bounded task to one executor, runs several at once under a
+ stated bound, and records each as an ATIF `Call` named `delegate`.
+ 
+ Status: implemented in `crates/coder` (`delegate.rs`, recorded by
+-`trace.rs`). The executor is `devin-local`, the Devin CLI on the operator's
+-computer. A `delegate` step of a program reaches this through
+-`coder::runtime`; what still runs from a caller in Rust is the program,
+-not the fan-out.
+-
+-Read [`../programs.md`](../programs.md) for why delegation is reached
+-through a program rather than offered to the model, and
+-[NIP-CAP](../../nips/openagents/NIP-CAP.md) for what a capability manifest
+-says about an executor.
++`trace.rs`). The executor is named `devin-local`. It is the Devin CLI
++running on your computer. A program can include a `delegate` step to reach
++that executor. The program runs through `coder::runtime`, which executes
++the program and its steps. The program performs the fan-out; the runtime
++does not perform it separately. A caller in Rust still runs the program,
++not the fan-out directly.
++
++Read [`../programs.md`](../programs.md) to learn why delegation is reached
++through a program rather than offered directly to the model, and how the
++runtime handles a `delegate` step. Read
++[NIP-CAP](../../nips/openagents/NIP-CAP.md) to learn what a capability
++manifest says about an executor.
+ 
+ ## Why this exists
+ 
+@@ -259,6 +262,10 @@ is removed when the delegation ends; a writing delegation's stays where
+ the executor left it — its edits are owed to a reviewer, not silently
+ merged or discarded — and the recorded call names the retained path.
+ 
++The program runs the writing delegate; you finish its work. Run
++`git worktree list` to find the retained checkout. Inspect its changes, then
++merge them into your branch or remove the worktree when you do not need them.
++
+ A delegator that was **not** told refuses a task asking for a worktree with
+ `isolation_unavailable`, and any delegator refuses a task that says it
+ writes into the directory it shares with five siblings, with
+@@ -327,5 +334,3 @@ repository the delegates run in, which matters because a git worktree under
+   the retained checkout keeps them, and `crates/coder-boundary` snapshots
+   observe a tree before and after a run; the CoderBench side that grades
+   a run against that observation is separate work.
+-- **Reaching a fan-out from an operator's sentence.** `coder::runtime` runs
+-  the program, and the program still runs from a caller in Rust.

@@ -1462,6 +1462,128 @@ fn lean_policy(lean: lean::Lean) -> Policy {
     }
 }
 
+#[tokio::test]
+async fn a_sealed_lean_session_and_its_finish_hook_can_run_only_their_frozen_evaluator() {
+    let dir = tempfile::tempdir().unwrap();
+    let work = dir.path().join("work");
+    std::fs::create_dir_all(&work).unwrap();
+    if coder_boundary::Boundary::writing(&work)
+        .confining_reads()
+        .offline()
+        .build()
+        .is_err()
+    {
+        eprintln!("skipped: this host cannot enforce the evaluation boundary");
+        return;
+    }
+    let private = dir.path().join("artifacts/private.txt");
+    std::fs::create_dir_all(private.parent().unwrap()).unwrap();
+    std::fs::write(&private, "outside the task").unwrap();
+    let frozen = dir.path().join("artifacts/lean-1/evaluator/score.sh");
+    let score = format!(
+        "if cat {private:?} >/dev/null 2>&1; then echo PRIVATE_READ_ESCAPED; exit 1; fi\nif gh --version >/dev/null 2>&1; then echo GITHUB_STUB_MISSING; exit 1; fi\nif test -f hello.txt; then echo SCORE 1 1; else echo SCORE 0 1; fi\n"
+    );
+    let mut policy = lean_policy(lean::Lean {
+        sessions: 2,
+        self_check: false,
+        keep_best: true,
+        retain_candidates: true,
+        persist: Some(lean::LeanPersist {
+            max_returns: 1,
+            reserve_turns: 1,
+            reserve_sec: 0,
+            not_done: false,
+            answerless: false,
+            split_stalled: false,
+        }),
+        ..lean_shape()
+    });
+    policy.session_turns = 3;
+    let mut executor = micro(
+        dir.path(),
+        vec![
+            call(
+                "a1",
+                "write_file",
+                &json!({"path": ".microluna-eval/score.sh", "contents": score}),
+                usage(100, 0, 10),
+            ),
+            call(
+                "a2",
+                "read_file",
+                &json!({"path": ".microluna-eval/score.sh"}),
+                usage(100, 0, 10),
+            ),
+            finish(
+                "a3",
+                "blocked",
+                "The score is ready; the solution still needs work.",
+            ),
+            call(
+                "b1",
+                "run_command",
+                &json!({"command": format!(
+                "printf hello > hello.txt && sh {frozen:?} && ! cat {private:?} && ! {{ printf tampered > {frozen:?}; }} && echo EVALUATOR_SCOPE_OK"
+            ), "timeout_seconds": 20}),
+                usage(100, 0, 10),
+            ),
+            finish("b2", "done", "The frozen score passes."),
+            finish(
+                "b3",
+                "failed",
+                "A broken finish hook wrongly consumed this reply.",
+            ),
+        ],
+        policy,
+    );
+    executor.isolation = Isolation::Boundary;
+    executor.seal = Some(
+        microluna::Seal::create(&dir.path().join("seal"), true)
+            .unwrap()
+            .with_read_scope(microluna::seal::ReadScope {
+                readable: Vec::new(),
+                writable: Vec::new(),
+                environment: Vec::new(),
+            }),
+    );
+    executor.prepared = Some(prepared());
+    executor.execute(&briefing(TASK)).await;
+    let record = executor.last.as_ref().unwrap();
+    let sessions = record["sessions"].as_array().unwrap();
+    assert_eq!(sessions.len(), 2);
+    let scores: Vec<&Value> = record["moves"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|m| m["kind"] == "lean")
+        .collect();
+    assert_eq!(
+        scores[0]["score"]["passed"], 0,
+        "the host runs the sealed scorer"
+    );
+    assert_eq!(scores[1]["score"]["passed"], 1);
+    assert_eq!(sessions[1]["status"], "done");
+    assert_eq!(
+        sessions[1]["turns"], 2,
+        "the valid frozen score lets the finish stand"
+    );
+    assert_eq!(std::fs::read_to_string(&frozen).unwrap(), score);
+    let trace =
+        std::fs::read_to_string(dir.path().join("artifacts/microluna-1-2.atif.jsonl")).unwrap();
+    let command = trace
+        .lines()
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .find(|record| record["step"]["call"]["id"] == "b1")
+        .unwrap();
+    assert_eq!(command["step"]["call"]["extra"]["exit"], 0);
+    assert!(
+        command["step"]["call"]["output"]
+            .as_str()
+            .unwrap()
+            .contains("EVALUATOR_SCOPE_OK")
+    );
+}
+
 fn lean_shape() -> lean::Lean {
     lean::Lean {
         sessions: 1,

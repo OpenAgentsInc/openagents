@@ -1,0 +1,11 @@
+- Removed the stale fan-out limitation from the “What is not built” list; the existing overview points readers to docs/programs.md for the current runtime path. Checked the documentation diff with git diff --check.
+- Updated docs/coder/delegate.md: removed the stale fan-out limitation from “What is not built” and added reviewer steps for locating, inspecting, merging, or removing a retained worktree. Checked with git diff --check.
+- Updated the overview to state that an operator’s sentence reaches fan-out through a program and link to docs/programs.md. Preserved the reviewer instructions for locating, inspecting, merging, or removing a retained worktree. `git diff --check` passed.
+- Refined the runtime overview and retained-worktree instructions to use direct, reader-focused prose. Confirmed the not-built section contains only the grading item, and ran git diff --check plus documentation assertions.
+- Refined the runtime overview in docs/coder/delegate.md to use direct, reader-focused language; the not-built section retains only the grading gap. Verified retained-worktree reviewer instructions and ran git diff --check plus documentation assertions.
+- Review: Reviewed the documentation diff against the runtime and program documentation; found one factual omission.
+- Review: Reworded both flagged sentences in docs/coder/delegate.md into complete, plain wording and added line breaks. Checked with git diff --check and reviewed the resulting diff; no tests were relevant to this documentation-only change.
+- Review: Rewrote the delegation documentation in complete, plain sentences, restoring the runtime and Rust-caller details removed by the diff. `git diff --check` passed.
+- Review: Rewrote the flagged delegation documentation in complete, plain language and restored the explanation of why delegation is reached through a program rather than offered directly to the model. Checked the diff with `git diff --check`.
+
+Published nothing. The changes are staged in /Users/christopherdavid/.openagents/coder-one/issue-flow-policies-read-confined-20260925/02-9450-requirements/runs/issue-eval-9450-delegate-stale-bullet-microluna-gpt-6-luna-1790367890698/repo (1 file changed, 16 insertions(+), 11 deletions(-)). The host's tests and checks still find 7 problems.

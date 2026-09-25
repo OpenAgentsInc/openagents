@@ -1153,6 +1153,8 @@ struct Place {
     command_max: Option<Duration>,
     /// An observational review can read files and finish, but cannot run commands.
     observe_only: bool,
+    /// Host-selected inputs added read-only to an existing evaluation scope.
+    readable: Vec<PathBuf>,
 }
 
 impl Place {
@@ -1169,6 +1171,7 @@ impl Place {
             "parallel_with": self.parallel_with,
             "alongside": self.alongside,
             "workspace": self.workdir.as_deref().unwrap_or(workdir).display().to_string(),
+            "readable": self.readable,
         })
     }
 }
@@ -2050,6 +2053,11 @@ impl Micro {
             let workspace = match &self.seal {
                 Some(seal) => workspace.sealed_by(seal.clone()),
                 None => workspace,
+            };
+            let workspace = if workspace.confines_reads() && !place.readable.is_empty() {
+                workspace.confining_reads(place.readable.clone())
+            } else {
+                workspace
             };
             let workspace = match place.command_max {
                 Some(max) => workspace.commands_within(max),
@@ -4455,6 +4463,7 @@ impl Micro {
                 spend_usd: None,
                 command_max: None,
                 observe_only: false,
+                readable: Vec::new(),
             };
             let focus = lane.requirements.clone();
             let number = numbers[i];

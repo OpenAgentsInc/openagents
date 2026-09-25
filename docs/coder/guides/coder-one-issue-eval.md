@@ -200,7 +200,10 @@ how the tests ran, and `gate_incomplete` says whether they didn't.
 
 **Reads are confined too.** Sessions and the gate can read their candidate,
 their own writable scratch and tool state, the system program directories,
-installed Rust tools, and prefetched registry sources. Cargo's credentials
+installed Rust tools, prefetched registry sources, and the host-selected
+frozen evaluator. That evaluator is readable but not writable; sibling
+artifacts stay outside the scope. The host's frozen-score runner applies
+the same seal. Cargo's credentials
 and configuration, sibling checkouts, the grader's build output, and the
 operator's conversation histories are outside that scope. Cargo metadata
 is private to the run; registry sources are read-only. The host supplies

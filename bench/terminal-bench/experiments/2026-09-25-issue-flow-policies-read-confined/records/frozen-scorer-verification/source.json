@@ -1,0 +1,5 @@
+{
+  "crates/coder-one/src/micro.rs": "b39a210973cf3d84ca7a4c37057fd378c74a18c4fb6afd09a687b5d802cbf48d",
+  "crates/coder-one/src/micro/lean.rs": "1df6c386e2475989361e9563fa5cb377d8f96aa5858e0977ed67c64f205a9eb7",
+  "crates/coder-one/src/micro/tests.rs": "85650564c24d7fca26e7aeec3e55fe0222bffd3294f56ae05312a885b7ed671d"
+}

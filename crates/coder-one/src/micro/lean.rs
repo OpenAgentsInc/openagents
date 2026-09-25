@@ -2220,6 +2220,13 @@ impl Micro {
             );
         }
         let ended = match self.isolation {
+            Isolation::TaskContainer if self.seal.is_some() => {
+                return (
+                    None,
+                    "A task container cannot enforce this evaluation's host seal.".to_string(),
+                    String::new(),
+                );
+            }
             Isolation::TaskContainer => {
                 let mut command = std::process::Command::new("/bin/sh");
                 command.arg(&script).current_dir(dir);
@@ -2234,6 +2241,13 @@ impl Micro {
                     coder_boundary::Boundary::readonly()
                 } else {
                     coder_boundary::Boundary::writing(dir)
+                };
+                let spec = match &self.seal {
+                    Some(seal) => {
+                        let spec = if seal.offline() { spec.offline() } else { spec };
+                        seal.constrain_reads(spec).readable(dir).readable(frozen)
+                    }
+                    None => spec,
                 };
                 let boundary = match spec.owned_scratch_under(std::env::temp_dir()).build() {
                     Ok(boundary) => boundary,
@@ -2251,6 +2265,20 @@ impl Micro {
                 };
                 command.current_dir(dir);
                 microluna::tools::withhold_credentials(&mut command);
+                if let Some(seal) = &self.seal {
+                    seal.apply(&mut command);
+                }
+                if boundary.confines_reads() {
+                    let path = command
+                        .get_envs()
+                        .find(|(name, _)| *name == "PATH")
+                        .and_then(|(_, value)| value.map(std::ffi::OsString::from))
+                        .unwrap_or_default();
+                    command.env("PATH", boundary.search_path(&path));
+                    if let Some(scratch) = boundary.scratch() {
+                        command.env("HOME", scratch);
+                    }
+                }
                 supervise::Job::from_command(command)
                     .bounded(supervise::Limits::within(wall).keeping(64 * 1024))
                     .run_holding(boundary.hold())
@@ -3068,6 +3096,11 @@ impl Micro {
                     checking && lean.observe_review,
                     Place {
                         observe_only: checking && lean.observe_review,
+                        readable: if have_score {
+                            vec![frozen.clone()]
+                        } else {
+                            Vec::new()
+                        },
                         persist: persist(lean, checking, have_score, &eval, &frozen),
                         finish_rule: finish_rule(lean, &baseline),
                         deadline: wall_left(),

@@ -1,0 +1,18 @@
+[
+  {
+    "slot": 1,
+    "entry": "9450",
+    "arm": "lean",
+    "archive": "records/01-9450-lean/traces.tar.gz",
+    "sha256": "2db923b962f4fa08b420655d1858a01d456717f1826d5efeec7aa56087583433",
+    "bytes": 12680667
+  },
+  {
+    "slot": 2,
+    "entry": "9450",
+    "arm": "requirements",
+    "archive": "records/02-9450-requirements/traces.tar.gz",
+    "sha256": "9999e539e7bc2346bef4abe435ccd10ed60ec5bfde2eefbc077bc22934e449af",
+    "bytes": 275366
+  }
+]

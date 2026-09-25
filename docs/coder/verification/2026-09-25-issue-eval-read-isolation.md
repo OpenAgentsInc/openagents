@@ -116,3 +116,58 @@ records that prerequisite.
 After integrating the concurrent main commits, the same five-phase gate
 passed again. Its [receipt](../../../bench/terminal-bench/experiments/2026-09-25-issue-flow-policies-read-confined/records/preflight/rust-gate/run.json)
 records the committed implementation used for the new comparison.
+
+
+## Frozen-evaluator integration correction
+
+The first read-confined comparison also stopped invalid, after its first
+pair. Lean's sessions and finish hook could not run their own frozen score
+script outside the candidate. The host scorer could run it, but an audit
+found that this path did not apply the evaluation seal. Issue
+[#9663](https://github.com/OpenAgentsInc/openagents/issues/9663) corrects both
+paths before the next comparison. The first repair's small compiler test
+did not exercise this cross-session path.
+
+| Slot | Entry | Policy | Graded checks | Flow outcome | Total seconds | Estimated cost |
+| --- | --- | --- | --- | --- | ---: | ---: |
+| 1 | 9450, stale documentation | Lean | 3/4, failed | Finished | 379.5 | $0.022076576 |
+| 2 | 9450, stale documentation | Requirements | 4/4, passed | Stuck | 344.8 | $0.024010644 |
+
+The pair cost **$0.046087220**. Together, both invalid studies cost
+**$0.093755924**. The new protocol carries that spend forward against the
+original $5 budget. [Full evidence](../../../bench/terminal-bench/experiments/2026-09-25-issue-flow-policies-read-confined/records/evidence.json)
+retains both attempts. Neither had a recorded outside-information exposure;
+the lean scorer's actual source reads only the task documentation. The
+comparison is invalid because its implementation broke lean's finish hook,
+not because its outcome was unfavorable.
+
+The trace still supports specific diagnoses. Lean's generated checker
+insisted on literal Markdown link text and a particular phrase. It then
+scored the candidate 5/5, but the outer review put the stale feature bullet
+back under "What is not built," causing the independent grader to fail.
+The requirements arm produced a passing artifact but used ten work
+sessions and called the result `stuck`. Neither observation alone selects
+a better default.
+
+The correction grants sessions the host-selected frozen evaluator directory
+read-only, not its parent artifacts tree. The host's score runner applies
+the same read, network, credential, and toolchain scope. Its task-container
+branch refuses a host evaluation seal it cannot enforce. Session records
+name the extra readable directory. Ordinary unsealed sessions retain their
+existing access behavior.
+
+A two-session scripted regression writes a failing scorer, freezes it,
+then fixes the candidate and executes that frozen scorer in the second
+session. The generated scorer itself tries to read a planted private
+sibling artifact and invoke the real GitHub CLI; those attempts must fail
+for both host scoring and the finish hook. The session also tries to
+replace the evaluator and cannot. A valid full score must let the second
+session finish without consuming a third scripted reply. This directly
+exercises the path the compiler preflight missed.
+
+The corrected scripted test fails against the preceding implementation and
+passes with the repair. The [retained verification records](../../../bench/terminal-bench/experiments/2026-09-25-issue-flow-policies-read-confined/records/frozen-scorer-verification/)
+contain both outputs, source digests, and the manual gate. Formatting,
+Clippy, and tests in both configurations passed for `coder-one`,
+`microluna`, and `coder-boundary` on macOS. Both published trial archives
+also passed archive and member-by-member SHA-256 verification.
