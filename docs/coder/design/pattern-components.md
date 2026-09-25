@@ -272,6 +272,19 @@ The next step follows from the design's fourth change: map Fable's winning
 runs on five to ten other tasks to components first, and build only the
 patterns that recur, instead of building from the one task we studied.
 
+## Mining ten more winning runs
+
+The [pattern map](../../terminal-bench/2026-09-25-fable-pattern-map.md)
+reads Fable 5.1's passing runs on ten more tasks. None of
+`embedding-drift-monitor`'s specific patterns recurs. What recurs, in 10 of
+11 tasks, is an acceptance check that doesn't depend on the candidate: the
+provided checker, a reference program, or an oracle written once from the
+task's own definition. Around it sits a mechanical loop code can own:
+localize the first failure, fix, rerun, then measure the stated target and
+keep only improvements that still pass. The map's build list starts with
+`checks.oracle`, `checks.metric_target` with `control.optimize`, and failure
+localization.
+
 ## Tracking
 
 - #9652
