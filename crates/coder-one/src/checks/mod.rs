@@ -36,6 +36,7 @@ pub mod behavior;
 pub mod cancel;
 pub mod cli;
 pub mod data;
+pub mod execution_audit;
 pub mod generic;
 pub mod html;
 pub mod interactive;
