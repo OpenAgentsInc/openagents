@@ -322,6 +322,7 @@ See the [relay measurement](docs/coder/measurements/relay-transport.md) and
 
 For further design and operation:
 
+- [Roadmap](docs/roadmap.md): one ordered plan from the transcript archive, folding the legacy threads (plugins, payments, Nostr, compute, products) into the current direction.
 - [Coder documentation](docs/coder/README.md), [TypeSafe-agent analysis](docs/coder/design/typesafe-agent-analysis.md), and [delivery roadmap](docs/coder/design/typesafe-agent-roadmap.md).
 - [Project supervision](docs/coder/guides/project-supervision.md) and [Devin delegation](docs/coder/guides/devin-delegation-runbook.md).
 - [Programs](docs/programs.md), [extensions](docs/extensions/README.md), and [optimization proposals](docs/optimization/proposed-issues.md). The full DSPy/GEPA integration remains proposed.
