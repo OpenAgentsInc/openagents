@@ -13,10 +13,10 @@ native = {}
 unknown = []
 jev = defaultdict(int)
 for path in sorted(a.records.rglob('*.json')):
-    if path.name not in {'review.json','program.json','assessment.json'} and not path.parent.name.startswith('report-audit-'):
+    if path.name not in {'review.json','program.json','assessment.json'} and not path.parent.name.startswith(('report-audit-','report-features-','execution-audit-')):
         continue
     value = json.loads(path.read_text())
-    if value.get('schema') not in {'openagents.coder-one.candidate-review.v1','openagents.coder-one.public-program.v1','openagents.coder-one.readiness.v1','openagents.coder-one.report-audit.v1'}:
+    if value.get('schema') not in {'openagents.coder-one.candidate-review.v1','openagents.coder-one.public-program.v1','openagents.coder-one.readiness.v1','openagents.coder-one.report-audit.v1','openagents.coder-one.report-features.v1','openagents.coder-one.execution-audit.v1'}:
         continue
     relative = str(path.relative_to(a.records))
     reply = value.get('reply')
@@ -32,7 +32,7 @@ for path in sorted(a.records.rglob('*.json')):
         jev[path.parent.name] += sum(f.get('jev_input_tokens') or 0 for f in value.get('findings',[]))
     elif path.name == 'program.json':
         jev['public-'+path.parent.name] += value.get('jev_input_tokens') or 0
-    elif path.parent.name.startswith('report-audit-'):
+    elif path.parent.name.startswith(('report-audit-','report-features-','execution-audit-')):
         jev[path.parent.name] += value.get('input_tokens') or 0
 summary = dict(schema='openagents.truth-check-costs.v1',
     native_requests_with_usage=len(native), known_native_list_price_usd=sum(r['cost_usd'] or 0 for r in native.values()),
