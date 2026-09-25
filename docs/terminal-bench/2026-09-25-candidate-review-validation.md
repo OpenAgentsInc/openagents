@@ -659,3 +659,32 @@ previously absent receipt directories themselves. The
 retains the test log, JUnit report, source commit, and both clean receipts;
 the [manifest](../../bench/terminal-bench/experiments/2026-09-25-candidate-review/records/truth9643-files.json)
 verifies the restored files. No model or candidate was rerun for this fix.
+
+## Separate review-environment repair (#9644)
+
+The optional `owner-exec` profile runs as the restored snapshot's UID/GID and
+allows executable scratch in the existing bounded tmpfs. The original profile
+remains the default, including for the running 72-candidate confirmation. Every
+new-profile review needs a separate record name; a profile mismatch cannot reuse
+an existing record. This is an environment repair, not a measured accuracy gain.
+
+A synthetic fixture on the pinned public circuit image reproduces both limits:
+the original profile cannot read an owner-only `0600` file and cannot execute a
+compiled scratch test. Both operations succeed under `owner-exec`. Both profiles
+refuse candidate and root-filesystem writes; candidate hashes, modes, and
+ownership stay identical. The fixture verifies Docker's read-only mounts,
+network denial, dropped capabilities, no-new-privileges, and unchanged resource
+bounds. It makes zero model calls and reads no benchmark grades.
+
+Fifteen focused Python tests pass on the harness Python runtime. The first local
+attempt used macOS's Python 3.9, which lacks `tomllib`; its eight restoration
+tests passed, but the seven archive tests could not import. The first live
+fixture also rejected Docker's null default user before starting a container;
+the corrected fixture accepts that equivalent root-default representation.
+Both live attempts remain in the
+[11-file proof](../../bench/terminal-bench/experiments/2026-09-25-candidate-review/records/truth9644-records.tar.gz),
+alongside source identities, test output, and complete probe results. The
+[manifest](../../bench/terminal-bench/experiments/2026-09-25-candidate-review/records/truth9644-files.json)
+verifies the restored archive, with zero exact credential matches. No Rust
+behavior changed. Missing runtimes and changes the executor made outside the
+retained workspace remain review limitations.

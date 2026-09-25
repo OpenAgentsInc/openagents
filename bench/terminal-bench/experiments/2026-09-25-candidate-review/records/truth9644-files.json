@@ -1,0 +1,64 @@
+{
+  "schema": "openagents.retained-files.v1",
+  "archive": "truth9644-records.tar.gz",
+  "archive_sha256": "7ae6b074ba1aca7367e35ab34be46571a2dde4ba13b3d7de34b48c9642935243",
+  "exclusions": [],
+  "credential_scan": "exact local values, zero matches",
+  "files": [
+    {
+      "path": "fixture/image.json",
+      "bytes": 266,
+      "sha256": "dafb5da02a924a095118b45bcf1ce526b637c3c797c2b6ef73fdcd3606ccd43c"
+    },
+    {
+      "path": "fixture-v2/candidate-before.json",
+      "bytes": 165,
+      "sha256": "019545302663268493a1c0d5b8b52d2e9106ab61f7d36b142f0907f41278bc74"
+    },
+    {
+      "path": "fixture-v2/image.json",
+      "bytes": 266,
+      "sha256": "dafb5da02a924a095118b45bcf1ce526b637c3c797c2b6ef73fdcd3606ccd43c"
+    },
+    {
+      "path": "fixture-v2/original.json",
+      "bytes": 2869,
+      "sha256": "c96d4a23dad4c0f36c6aeb89778310ae21ea95fd3d3e44d425453a76282ed615"
+    },
+    {
+      "path": "fixture-v2/owner-exec.json",
+      "bytes": 2879,
+      "sha256": "fcad4a7401b566833b59800f7bbd54a03dfcda20d1aa3ede83eefa55d080f79f"
+    },
+    {
+      "path": "fixture-v2/result.json",
+      "bytes": 304,
+      "sha256": "0778404e3677b00e5aa0bb3283a79f05a8fc1e65a52d30b1c04b7e5ce71a5bf3"
+    },
+    {
+      "path": "fixture-v2.log",
+      "bytes": 84,
+      "sha256": "e234a553161155ccd0100a1290d96d58fe22fda3192b92087f3c8c2b4def932f"
+    },
+    {
+      "path": "fixture.log",
+      "bytes": 588,
+      "sha256": "401212ddd58ff1e39eea5951e0ba64d64b49f0a4ba6f6fbe10677fd5462c7ec8"
+    },
+    {
+      "path": "source-v2.txt",
+      "bytes": 41,
+      "sha256": "8be8dc07944193c5ce42e53219b9e25cf9f866d7380ba614204be66977c91b77"
+    },
+    {
+      "path": "source.txt",
+      "bytes": 41,
+      "sha256": "5337da80a3dbb8499e7b737055a2742ebb389f6950a71d1e3f19d9802e896082"
+    },
+    {
+      "path": "tests.log",
+      "bytes": 114,
+      "sha256": "edecde55c6deed9a44f005853dbf1b80bb79f5daf63b49aa23fa401cf6e41cc0"
+    }
+  ]
+}
