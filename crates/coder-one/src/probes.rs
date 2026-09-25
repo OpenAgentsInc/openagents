@@ -48,6 +48,10 @@ pub struct Facts {
     /// README files at the top of the working directory.
     pub readmes: Vec<String>,
     pub named: Vec<Named>,
+    /// Programs the task's files imply (`evidence.environment`), gathered
+    /// only when the presence probes are on.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub implied: Vec<String>,
 }
 
 /// The most paths from the instruction the planner probes.
@@ -87,6 +91,7 @@ pub fn facts(workdir: &Path, instruction: &str) -> Facts {
         is_git: in_work_tree(workdir),
         readmes,
         named,
+        implied: Vec::new(),
     }
 }
 
@@ -111,6 +116,11 @@ pub struct PlanParams {
     /// Whether to list the working directory one level deep beside its
     /// three-level listing, as the original battery did.
     pub shallow_listing: bool,
+    /// `evidence.environment`: probe the presence of the fixed program set
+    /// and of the programs in [`Facts::implied`]. Left out when off, so
+    /// the planner's digest is what it was before the field existed.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub environment: bool,
 }
 
 impl Default for PlanParams {
@@ -118,6 +128,7 @@ impl Default for PlanParams {
         Self {
             v2: true,
             shallow_listing: false,
+            environment: false,
         }
     }
 }
@@ -125,15 +136,18 @@ impl Default for PlanParams {
 /// The planner's identity and parameters, digested.
 #[must_use]
 pub fn implementation(params: PlanParams) -> Implementation {
-    Implementation::new(
-        "evidence.probes.planner",
-        "typed battery v2",
-        &json!({
-            "params": params,
-            "named_max": NAMED_MAX,
-            "operations": "list depth 3 (150), readme heads (120 lines), test listing depth 4 (40), python3 --version, pip list (60), git status/branches/log 40/reflog 40/stashes in a work tree, named directories listed (200) and, with v2, their repositories' git state, named files read (200 lines)",
-        }),
-    )
+    let mut parameters = json!({
+        "params": params,
+        "named_max": NAMED_MAX,
+        "operations": "list depth 3 (150), readme heads (120 lines), test listing depth 4 (40), python3 --version, pip list (60), git status/branches/log 40/reflog 40/stashes in a work tree, named directories listed (200) and, with v2, their repositories' git state, named files read (200 lines)",
+    });
+    if params.environment {
+        parameters["presence"] = json!({
+            "fixed": crate::environment::FIXED,
+            "implied": crate::environment::IMPLIED,
+        });
+    }
+    Implementation::new("evidence.probes.planner", "typed battery v2", &parameters)
 }
 
 /// One operation the planner chose, and why.
@@ -209,6 +223,14 @@ pub fn plan(facts: &Facts, params: PlanParams) -> Vec<Planned> {
         },
         "installed Python packages",
     );
+    if params.environment {
+        for program in crate::environment::programs(&facts.implied) {
+            add(
+                Operation::Presence { program },
+                "whether a program the task may need is installed",
+            );
+        }
+    }
     if facts.is_git {
         for query in git_battery() {
             add(
@@ -364,6 +386,7 @@ pub fn facts_from_battery(instruction: &str, probes: &[(String, String)]) -> Fac
         is_git: ran("git status"),
         readmes,
         named,
+        implied: Vec::new(),
     }
 }
 
@@ -404,5 +427,44 @@ mod tests {
         for p in &planned {
             assert!(scope.check(&p.operation).is_ok(), "{}", p.operation.label());
         }
+        assert!(!labels.iter().any(|l| l.starts_with("presence of")));
+    }
+
+    #[test]
+    fn the_environment_switch_adds_the_presence_set_and_the_implied_tools() {
+        let facts = Facts {
+            workdir: "/app".to_string(),
+            is_git: false,
+            readmes: Vec::new(),
+            named: Vec::new(),
+            implied: vec!["coqc".to_string()],
+        };
+        let off = PlanParams::default();
+        let on = PlanParams {
+            environment: true,
+            ..off
+        };
+        let programs = |params| -> Vec<String> {
+            plan(&facts, params)
+                .iter()
+                .filter_map(|p| match &p.operation {
+                    Operation::Presence { program } => Some(program.clone()),
+                    _ => None,
+                })
+                .collect()
+        };
+        assert!(programs(off).is_empty());
+        let mut want: Vec<String> = crate::environment::FIXED
+            .iter()
+            .map(ToString::to_string)
+            .collect();
+        want.push("coqc".to_string());
+        assert_eq!(programs(on), want);
+        // Off, the parameters serialize as every earlier record holds them.
+        assert_eq!(
+            serde_json::to_value(off).unwrap(),
+            json!({ "v2": true, "shallow_listing": false })
+        );
+        assert_ne!(implementation(on).digest, implementation(off).digest);
     }
 }

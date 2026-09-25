@@ -25,6 +25,10 @@
 //!    it was shown, what it informs, and how to read the rest; names every
 //!    omission with a route to expand it; and replaces the blanket
 //!    "complete and current" direction with that per-item account.
+//!
+//! The `evidence.environment` line ([`crate::environment::LABEL`]) is not
+//! ranked, sliced, or trimmed: it goes whole in the fixed part, ahead of
+//! the task text, where the cap can't reach it.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -101,6 +105,8 @@ pub enum Source {
     Span,
     Commands,
     LastOutput,
+    /// The `evidence.environment` line: delivered whole, always.
+    Environment,
 }
 
 /// One piece of evidence the packer may deliver.
@@ -166,6 +172,7 @@ impl Item {
             Source::Span | Source::Commands | Source::LastOutput => {
                 "the explorer's full output is in the trajectory".to_string()
             }
+            Source::Environment => "it is never trimmed".to_string(),
         }
     }
 }
@@ -189,7 +196,9 @@ pub fn whole(state: &crate::state::State, inputs: &BriefingInputs) -> BriefingIn
 pub fn items(inputs: &BriefingInputs) -> Vec<Item> {
     let mut out = Vec::new();
     for (path, p, text) in &inputs.files {
-        let source = if path.contains("(setup the host already ran") {
+        let source = if path == crate::environment::LABEL {
+            Source::Environment
+        } else if path.contains("(setup the host already ran") {
             Source::Setup
         } else if path.starts_with("$ ") {
             Source::Probe
@@ -477,6 +486,10 @@ pub fn pack(
     let cap = params.cap;
     let all = items(inputs);
     let informed = informs(&all, map, coverage, params);
+    // The environment line: whole, in the fixed part, never ranked.
+    let environment: Vec<usize> = (0..all.len())
+        .filter(|&i| all[i].source == Source::Environment)
+        .collect();
     let constants: Vec<String> = map
         .requirements
         .iter()
@@ -491,7 +504,9 @@ pub fn pack(
         let n = informed.get(&item.id).map_or(0, Vec::len).min(3) as f64;
         item.p.unwrap_or(0.3) + 0.15 * n + if item.is_data() { 0.1 } else { 0.0 }
     };
-    let mut order: Vec<usize> = (0..all.len()).collect();
+    let mut order: Vec<usize> = (0..all.len())
+        .filter(|i| !environment.contains(i))
+        .collect();
     order.sort_by(|&a, &b| score(&all[b]).total_cmp(&score(&all[a])));
 
     // Remove listing lines an earlier-ranked listing already holds.
@@ -566,7 +581,11 @@ pub fn pack(
         })
         .collect();
     let opening = crate::delegate::head_for(inputs);
-    let mut fixed = format!("{opening}## The task\n\n{instruction}\n");
+    let facts: String = environment
+        .iter()
+        .map(|&i| format!("## Environment\n\n{}\n\n", all[i].text.trim()))
+        .collect();
+    let mut fixed = format!("{opening}{facts}## The task\n\n{instruction}\n");
     if !requirement_lines.is_empty() {
         fixed.push_str(&format!(
             "\n## Requirements from the task's own words\n\n{}\n",
@@ -693,6 +712,24 @@ pub fn pack(
     let mut packed: Vec<Packed> = Vec::new();
     let mut included = vec!["instruction".to_string()];
     let mut omitted = Vec::new();
+    for &i in &environment {
+        let chars = all[i].text.trim().chars().count();
+        packed.push(Packed {
+            id: all[i].id.clone(),
+            source: Source::Environment,
+            label: all[i].label.clone(),
+            p: all[i].p,
+            selected: true,
+            original_chars: chars,
+            delivered_chars: chars,
+            state: "complete".to_string(),
+            reason: None,
+            route: None,
+            informs: Vec::new(),
+            duplicate_lines: 0,
+        });
+        included.push(name(&all[i]));
+    }
     for &i in &order {
         let item = &all[i];
         let text = &texts[i];
@@ -861,7 +898,9 @@ pub fn pack(
 /// the first packer's naming.
 fn name(item: &Item) -> String {
     match item.source {
-        Source::Probe | Source::Setup | Source::File => format!("file {}", item.label),
+        Source::Probe | Source::Setup | Source::File | Source::Environment => {
+            format!("file {}", item.label)
+        }
         Source::Span => format!("output span from {}", item.label),
         Source::Commands => "commands".to_string(),
         Source::LastOutput => "last command output".to_string(),
@@ -914,6 +953,10 @@ pub async fn judge_coverage(
         return (coverage, asked);
     }
     for item in items(inputs) {
+        // A fact every session gets whole; Jev isn't asked about it.
+        if item.source == Source::Environment {
+            continue;
+        }
         let (state, questions) = coverage_request(title, body, &item, map);
         let one = crate::component::jev::ask(
             mode,
@@ -1044,7 +1087,7 @@ pub fn delivered_by_sections(
         .into_iter()
         .map(|item| {
             let named = match item.source {
-                Source::Probe | Source::Setup | Source::File => {
+                Source::Probe | Source::Setup | Source::File | Source::Environment => {
                     briefing.included.contains(&format!("file {}", item.label))
                 }
                 Source::Span => briefing
@@ -1066,6 +1109,14 @@ pub fn delivered_by_pack(inputs: &BriefingInputs, pack: &Pack) -> Vec<(Item, Opt
     items(inputs)
         .into_iter()
         .map(|item| {
+            if item.source == Source::Environment {
+                let text = pack
+                    .briefing
+                    .text
+                    .contains(item.text.trim())
+                    .then(|| item.text.trim().to_string());
+                return (item, text);
+            }
             let record = pack.record.items.iter().find(|p| p.id == item.id);
             // A duplicate listing's entries are delivered by the listing
             // that holds them.
@@ -1135,6 +1186,81 @@ mod tests {
             conclusion: "The explorer reached its 0-step bound without a conclusion.".to_string(),
             directions: "Complete the task. The files, command outputs, and setup results in this briefing were gathered just before you started and are complete and current: do not list, read, or run them again. End with a summary.".to_string(),
         }
+    }
+
+    /// Issue #9632: under any cap, both packers deliver the environment
+    /// line whole, and the coverage packer asks Jev nothing about it.
+    #[test]
+    fn the_environment_line_is_never_trimmed_or_left_out() {
+        let line = "Available: python3 3.12.3, pip 24.0. Absent: python, git, make.";
+        let mut inputs = inputs();
+        inputs.files.insert(
+            0,
+            (
+                crate::environment::LABEL.to_string(),
+                Some(1.0),
+                line.to_string(),
+            ),
+        );
+        // A long task, so the task text itself is trimmed at small caps.
+        inputs
+            .instruction
+            .push_str(&"Count every line. ".repeat(400));
+        let map = crate::requirements::mechanical(&inputs.instruction);
+        for cap in [1_000, 2_000, 4_000, 12_000, 40_000] {
+            let packed = pack(
+                &inputs,
+                &map,
+                None,
+                Params {
+                    cap,
+                    ..Params::default()
+                },
+            );
+            // The final clip marks a cut with one character.
+            assert!(packed.briefing.chars() <= cap + 1, "cap {cap}");
+            assert!(
+                packed
+                    .briefing
+                    .text
+                    .contains(&format!("## Environment\n\n{line}\n")),
+                "cap {cap}: {}",
+                packed.briefing.text
+            );
+            let record = packed
+                .record
+                .items
+                .iter()
+                .find(|p| p.source == Source::Environment)
+                .unwrap();
+            assert_eq!(record.state, "complete");
+            assert_eq!(record.delivered_chars, line.chars().count());
+            assert!(
+                !packed
+                    .briefing
+                    .omitted
+                    .iter()
+                    .any(|o| o.contains(crate::environment::LABEL))
+            );
+            let delivered = delivered_by_pack(&inputs, &packed);
+            assert_eq!(delivered[0].1.as_deref(), Some(line));
+
+            let sections = Briefing::build(&inputs, cap);
+            assert!(sections.chars() <= cap, "sections cap {cap}");
+            assert!(
+                sections
+                    .included
+                    .contains(&format!("file {}", crate::environment::LABEL)),
+                "sections cap {cap}: {:?}",
+                sections.omitted
+            );
+            assert!(sections.text.contains(line));
+        }
+        // Without the line the packers do what they did.
+        let plain = crate::pack::tests::inputs();
+        let map = crate::requirements::mechanical(&plain.instruction);
+        let packed = pack(&plain, &map, None, Params::default());
+        assert!(!packed.briefing.text.contains("## Environment"));
     }
 
     #[test]

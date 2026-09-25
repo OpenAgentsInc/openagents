@@ -1371,25 +1371,36 @@ pub fn constraints(map: &crate::requirements::RequirementMap) -> Vec<String> {
 
 /// The evidence one group's sessions read: the items that inform any of
 /// its requirements, by relevance, within `chars`. With none, the three
-/// most relevant items.
+/// most relevant items. The `evidence.environment` line comes first,
+/// whole, in every group's evidence, and isn't counted against `chars`.
 #[must_use]
 pub fn evidence_for(prepared: &Prepared, group: &Group, chars: usize) -> Vec<Evidence> {
+    let is_environment = |item: &crate::pack::Item| item.source == crate::pack::Source::Environment;
     let informs = |id: &str| {
         prepared
             .informs
             .get(id)
             .is_some_and(|ids| ids.iter().any(|r| group.ids.contains(r)))
     };
+    let facts: Vec<Evidence> = prepared
+        .items
+        .iter()
+        .filter(|item| is_environment(item) && !item.text.trim().is_empty())
+        .map(|item| Evidence {
+            label: item.label.clone(),
+            text: item.text.trim().to_string(),
+        })
+        .collect();
     let mut chosen: Vec<&crate::pack::Item> = prepared
         .items
         .iter()
-        .filter(|item| informs(&item.id) && !item.text.trim().is_empty())
+        .filter(|item| !is_environment(item) && informs(&item.id) && !item.text.trim().is_empty())
         .collect();
     if chosen.is_empty() {
         chosen = prepared
             .items
             .iter()
-            .filter(|item| !item.text.trim().is_empty())
+            .filter(|item| !is_environment(item) && !item.text.trim().is_empty())
             .collect();
         chosen.sort_by(|a, b| b.p.unwrap_or(0.0).total_cmp(&a.p.unwrap_or(0.0)));
         chosen.truncate(3);
@@ -1398,7 +1409,7 @@ pub fn evidence_for(prepared: &Prepared, group: &Group, chars: usize) -> Vec<Evi
     }
     let share = (chars / chosen.len().max(1)).max(1_500);
     let mut left = chars;
-    let mut out = Vec::new();
+    let mut out = facts;
     for item in chosen {
         if left < 400 {
             break;

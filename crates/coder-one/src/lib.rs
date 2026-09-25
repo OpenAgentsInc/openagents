@@ -35,6 +35,7 @@ pub mod deadline;
 pub mod delegate;
 pub mod departures;
 pub mod effort;
+pub mod environment;
 pub mod episode;
 pub mod generate;
 pub mod guests;

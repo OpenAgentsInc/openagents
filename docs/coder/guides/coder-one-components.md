@@ -16,6 +16,7 @@ The design is in [Coder as a tunable system](../../optimization/coder-components
 | `task.requirements` | The requirement map: each span of the instruction as a deliverable, behavior, constraint, check, or context. | One request per 20 spans |
 | `evidence.setup` | Which setup commands the task names should run first. The isolated run judges only; it never runs a command. | One request |
 | `evidence.probes.planner` | Which typed, read-only operations the host runs before the work. The isolated run plans only; it never runs an operation. | None |
+| `evidence.environment` | Which programs the task container has, from presence probes, as one briefing line that no packer trims. Off unless a manifest sets `policy.evidence.environment`. The isolated run renders the line from recorded captures. [Measured offline](../../terminal-bench/2026-09-25-environment-facts-offline.md). | None |
 | `evidence.probes.selector` | Which finished probe outputs the briefing carries. | One request |
 | `evidence.select` | Which candidate files the survey reads into the briefing. | One request per 20 files |
 | `evidence.pack` | The briefing within its character budget, packed by requirement coverage, with every omission named. The suite measures the first packer beside it. | One request per item with Jev coverage judgments; none without |

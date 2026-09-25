@@ -1,0 +1,25 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "evidence.environment",
+  "source": {
+    "kind": "synthetic",
+    "note": "A task with a `.v` file: the fixed set plus `coqc`, which the file implies. The versions are illustrative, not from a retained run."
+  },
+  "input": {
+    "probes": [
+      { "program": "python", "exit": 127, "output": "python: not on PATH" },
+      { "program": "python3", "argv": ["/usr/bin/python3", "--version"], "exit": 0, "output": "Python 3.11.2" },
+      { "program": "pip", "exit": 127, "output": "pip: not on PATH" },
+      { "program": "git", "argv": ["/usr/bin/git", "--version"], "exit": 0, "output": "git version 2.39.5" },
+      { "program": "make", "argv": ["/usr/bin/make", "--version"], "exit": 0, "output": "GNU Make 4.3\nBuilt for x86_64-pc-linux-gnu" },
+      { "program": "node", "exit": 127, "output": "node: not on PATH" },
+      { "program": "cargo", "exit": 127, "output": "cargo: not on PATH" },
+      { "program": "pytest", "exit": 127, "output": "pytest: not on PATH" },
+      { "program": "docker", "exit": 127, "output": "docker: not on PATH" },
+      { "program": "coqc", "argv": ["/usr/bin/coqc", "--version"], "exit": 0, "output": "The Coq Proof Assistant, version 8.18.0\ncompiled with OCaml 4.14.1" }
+    ]
+  },
+  "retained": {
+    "line": "Available: python3 3.11.2, git 2.39.5, make 4.3, coqc 8.18.0. Absent: python, pip, node, cargo, pytest, docker."
+  }
+}

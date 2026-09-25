@@ -135,6 +135,10 @@ pub enum Operation {
     Git { repo: String, query: GitQuery },
     /// A read-only question about the installed tools.
     Tool { query: ToolQuery },
+    /// Whether a program is on `PATH` and, when it is, the version it
+    /// prints (`evidence.environment`). Only a program
+    /// [`crate::environment::known`] names is probed.
+    Presence { program: String },
     /// A shallow clone of a public HTTPS repository into the writable
     /// scope.
     Clone {
@@ -206,7 +210,8 @@ impl Operation {
             Operation::List { .. }
             | Operation::Read { .. }
             | Operation::Git { .. }
-            | Operation::Tool { .. } => Effects {
+            | Operation::Tool { .. }
+            | Operation::Presence { .. } => Effects {
                 class: EffectClass::Observe,
                 network: false,
                 writes: Vec::new(),
@@ -259,6 +264,7 @@ impl Operation {
                 ToolQuery::Python => "python3 --version".to_string(),
                 ToolQuery::PipList { .. } => "pip list".to_string(),
             },
+            Operation::Presence { program } => format!("presence of {program}"),
             Operation::Clone {
                 url, branch, dest, ..
             } => match branch {
@@ -506,6 +512,14 @@ pub enum Checked {
         max_lines: Option<usize>,
         wall: Duration,
     },
+    /// A program looked up on `PATH`, then run with `args` when found and
+    /// `args` isn't empty.
+    Presence {
+        program: String,
+        args: Vec<String>,
+        cwd: PathBuf,
+        wall: Duration,
+    },
 }
 
 impl Scope {
@@ -615,6 +629,20 @@ impl Scope {
                     cwd: self.workdir.clone(),
                     max_lines,
                     wall: Duration::from_secs(10),
+                })
+            }
+            Operation::Presence { program } => {
+                if !crate::environment::known(program) {
+                    return Err(Refusal::new(
+                        program,
+                        "not a program the presence probe asks about",
+                    ));
+                }
+                Ok(Checked::Presence {
+                    program: program.clone(),
+                    args: crate::environment::version_args(program),
+                    cwd: self.workdir.clone(),
+                    wall: Duration::from_secs(crate::environment::VERSION_SEC),
                 })
             }
             Operation::Clone {
@@ -863,45 +891,80 @@ pub async fn run_within(
             wall,
         }) => {
             let wall = limit.map_or(wall, |limit| wall.min(limit));
-            let mut command = std::process::Command::new(&argv[0]);
-            command.args(&argv[1..]).current_dir(cwd);
-            quiet_environment(&mut command);
-            let ended = supervise::Job::from_command(command)
-                .bounded(supervise::Limits::within(wall).keeping(16 * 1024))
-                .run()
-                .await;
-            let mut output = ended.stdout.marked();
-            if !ended.stderr.is_empty() {
-                if !output.is_empty() {
-                    output.push('\n');
-                }
-                output.push_str(&ended.stderr.marked());
-            }
-            if let supervise::Ending::TimedOut = ended.ending {
-                output.push_str(&format!("\n[ended: the {}s bound passed]", wall.as_secs()));
-            }
-            if let supervise::Ending::Failed(why) = &ended.ending {
-                output.push_str(&format!("[could not run: {why}]"));
-            }
-            let mut truncated = ended.truncated();
-            if let Some(max) = max_lines {
-                let lines = output.lines().count();
-                if lines > max {
-                    output = output.lines().take(max).collect::<Vec<_>>().join("\n");
-                    output.push_str(&format!("\n…{} more lines", lines - max));
-                    truncated = true;
-                }
-            }
-            capture.argv = Some(argv);
-            capture.exit = ended.ending.code();
-            capture.bytes = ended.bytes();
-            capture.truncated = truncated;
-            capture.output = output.trim_end().to_string();
+            run_program(&mut capture, argv, &cwd, max_lines, wall).await;
         }
+        Ok(Checked::Presence {
+            program,
+            args,
+            cwd,
+            wall,
+        }) => match crate::environment::find(&program) {
+            None => {
+                capture.exit = Some(127);
+                capture.output = crate::environment::absent_output(&program);
+            }
+            Some(found) if args.is_empty() => {
+                capture.argv = Some(vec![found.to_string_lossy().into_owned()]);
+                capture.exit = Some(0);
+                capture.output = found.to_string_lossy().into_owned();
+            }
+            Some(found) => {
+                let wall = limit.map_or(wall, |limit| wall.min(limit));
+                let argv = std::iter::once(found.to_string_lossy().into_owned())
+                    .chain(args)
+                    .collect();
+                run_program(&mut capture, argv, &cwd, Some(3), wall).await;
+            }
+        },
     }
     capture.sha256 = hex(&Sha256::digest(capture.output.as_bytes()));
     capture.milliseconds = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
     capture
+}
+
+/// Runs `argv` in `cwd` under `wall`, holding its output to `max_lines`,
+/// and fills in `capture`.
+async fn run_program(
+    capture: &mut Capture,
+    argv: Vec<String>,
+    cwd: &Path,
+    max_lines: Option<usize>,
+    wall: Duration,
+) {
+    let mut command = std::process::Command::new(&argv[0]);
+    command.args(&argv[1..]).current_dir(cwd);
+    quiet_environment(&mut command);
+    let ended = supervise::Job::from_command(command)
+        .bounded(supervise::Limits::within(wall).keeping(16 * 1024))
+        .run()
+        .await;
+    let mut output = ended.stdout.marked();
+    if !ended.stderr.is_empty() {
+        if !output.is_empty() {
+            output.push('\n');
+        }
+        output.push_str(&ended.stderr.marked());
+    }
+    if let supervise::Ending::TimedOut = ended.ending {
+        output.push_str(&format!("\n[ended: the {}s bound passed]", wall.as_secs()));
+    }
+    if let supervise::Ending::Failed(why) = &ended.ending {
+        output.push_str(&format!("[could not run: {why}]"));
+    }
+    let mut truncated = ended.truncated();
+    if let Some(max) = max_lines {
+        let lines = output.lines().count();
+        if lines > max {
+            output = output.lines().take(max).collect::<Vec<_>>().join("\n");
+            output.push_str(&format!("\n…{} more lines", lines - max));
+            truncated = true;
+        }
+    }
+    capture.argv = Some(argv);
+    capture.exit = ended.ending.code();
+    capture.bytes = ended.bytes();
+    capture.truncated = truncated;
+    capture.output = output.trim_end().to_string();
 }
 
 /// Runs operations concurrently, in their order, each program held to
@@ -1386,6 +1449,36 @@ mod tests {
         }
     }
 
+    /// A presence probe agrees with a `PATH` lookup for every program in
+    /// the fixed set, and refuses a program the set doesn't name.
+    #[tokio::test(flavor = "current_thread")]
+    async fn presence_probes_agree_with_the_path_and_refuse_unknown_programs() {
+        let (_dir, scope) = scope();
+        let operations: Vec<(String, Operation)> = crate::environment::FIXED
+            .iter()
+            .chain(["rm"].iter())
+            .enumerate()
+            .map(|(i, program)| {
+                (
+                    format!("op_{i}"),
+                    Operation::Presence {
+                        program: (*program).to_string(),
+                    },
+                )
+            })
+            .collect();
+        let captures = run_all(&operations, &scope, None).await;
+        let refused = captures.last().unwrap();
+        assert!(refused.refused.is_some(), "{refused:?}");
+        let presence = crate::environment::presence(&captures);
+        assert_eq!(presence.len(), crate::environment::FIXED.len());
+        for (fact, capture) in presence.iter().zip(&captures) {
+            let on_path = crate::environment::find(&fact.program).is_some();
+            assert_eq!(fact.present, on_path, "{}: {capture:?}", fact.program);
+            assert_eq!(capture.effects.class, EffectClass::Observe);
+        }
+    }
+
     #[tokio::test(flavor = "current_thread")]
     async fn native_operations_bound_their_output() {
         let (dir, scope) = scope();
@@ -1455,6 +1548,7 @@ mod tests {
             crate::probes::PlanParams {
                 v2: true,
                 shallow_listing: true,
+                environment: false,
             },
         );
         let mut operations: Vec<(String, Operation)> =

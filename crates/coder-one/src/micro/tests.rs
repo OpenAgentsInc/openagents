@@ -1409,6 +1409,51 @@ fn outputs_the_task_names_but_nobody_wrote_are_missing() {
     assert_eq!(missing_outputs(task, &work, Some(&base)), ["report.md"]);
 }
 
+/// Issue #9632: every group's evidence opens with the environment line,
+/// whole, however small the evidence budget and whatever the group.
+#[test]
+fn the_environment_line_opens_every_group_s_evidence_whole() {
+    let line = "Available: python3 3.12.3, pip 24.0. Absent: python, git, make.";
+    let mut prepared = prepared();
+    prepared.items.push(crate::pack::Item {
+        id: "e2".to_string(),
+        source: crate::pack::Source::Environment,
+        label: crate::environment::LABEL.to_string(),
+        p: Some(1.0),
+        text: line.to_string(),
+    });
+    prepared.items.push(crate::pack::Item {
+        id: "e3".to_string(),
+        source: crate::pack::Source::File,
+        label: "big.py".to_string(),
+        p: Some(0.95),
+        text: "x = 1\n".repeat(2_000),
+    });
+    for group in [
+        Group {
+            ids: vec!["R1".to_string()],
+            lines: Vec::new(),
+        },
+        Group {
+            ids: Vec::new(),
+            lines: Vec::new(),
+        },
+    ] {
+        for chars in [0, 500, 12_000] {
+            let evidence = evidence_for(&prepared, &group, chars);
+            assert_eq!(evidence[0].label, crate::environment::LABEL);
+            assert_eq!(evidence[0].text, line);
+            assert_eq!(
+                evidence
+                    .iter()
+                    .filter(|e| e.label == crate::environment::LABEL)
+                    .count(),
+                1
+            );
+        }
+    }
+}
+
 fn lean_policy(lean: lean::Lean) -> Policy {
     Policy {
         lean: Some(lean),

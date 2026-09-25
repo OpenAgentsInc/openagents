@@ -156,6 +156,12 @@ pub struct EvidencePolicy {
     /// what it was before this field existed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub guests: Option<crate::guests::Policy>,
+    /// `evidence.environment`: presence probes for a fixed program set and
+    /// the programs the task's files imply, delivered as one briefing line
+    /// under this template. Needs `probes`. Absent, as in every manifest
+    /// before it, nothing is probed and the digest is unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub environment: Option<crate::environment::Params>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -541,6 +547,7 @@ impl Manifest {
                     probes: Probes::Off,
                     survey_files: crate::judge::SURVEY_FILES,
                     guests: None,
+                    environment: None,
                 },
                 control: ControlPolicy {
                     delegate: DelegateMode::Off,
@@ -635,6 +642,14 @@ impl Manifest {
             }
             if let Err(problem) = guests.validate() {
                 problems.push(format!("evidence.guests: {problem}"));
+            }
+        }
+        if let Some(environment) = &policy.evidence.environment {
+            if policy.evidence.probes == Probes::Off {
+                problems.push("evidence.environment needs evidence.probes".to_string());
+            }
+            if let Err(problem) = environment.validate() {
+                problems.push(problem);
             }
         }
         if !(1..=crate::judge::SURVEY_FILES).contains(&policy.evidence.survey_files) {
@@ -975,6 +990,13 @@ impl Manifest {
             .deep(self.deep())
             .probing(self.deep() && probes != Probes::Off)
             .probe_v2(self.deep() && probes == Probes::V2)
+            .environment(
+                self.policy
+                    .evidence
+                    .environment
+                    .clone()
+                    .filter(|_| self.deep() && probes != Probes::Off),
+            )
             .survey_files(self.policy.evidence.survey_files)
             .guests(self.policy.evidence.guests.clone())
     }
@@ -1805,6 +1827,59 @@ mod tests {
             let on_disk = std::fs::read_to_string(reference_dir().join(file)).unwrap();
             assert_eq!(&on_disk, text);
         }
+    }
+
+    #[test]
+    fn the_environment_switch_is_off_by_default_and_needs_the_probes() {
+        let (_, text) = REFERENCE
+            .iter()
+            .find(|(file, _)| *file == "microluna-v15.json")
+            .unwrap();
+        let v15 = Manifest::parse(text).unwrap();
+        assert!(v15.policy.evidence.environment.is_none());
+        let issue = crate::state::Issue {
+            url: String::new(),
+            title: "t".to_string(),
+            body: "b".to_string(),
+            labels: Vec::new(),
+        };
+        let judge = |manifest: &Manifest| {
+            manifest.judge(
+                None,
+                PathBuf::from("/app"),
+                &issue,
+                crate::record::Recorder::default(),
+            )
+        };
+        assert!(judge(&v15).environment_params().is_none());
+
+        let mut on = v15.clone();
+        let mut raw: Value = serde_json::from_str(text).unwrap();
+        raw["policy"]["evidence"]["environment"] = json!({});
+        on.policy.evidence.environment = Some(crate::environment::Params::default());
+        on.validate().unwrap();
+        assert_ne!(on.digest(), v15.digest());
+        // `{}` in a manifest reads as the default template.
+        assert_eq!(Manifest::parse(&raw.to_string()).unwrap().policy, on.policy);
+        assert_eq!(
+            judge(&on).environment_params(),
+            Some(&crate::environment::Params::default())
+        );
+
+        let mut unprobed = on.clone();
+        unprobed.policy.evidence.probes = Probes::Off;
+        assert!(
+            unprobed
+                .validate()
+                .unwrap_err()
+                .contains("evidence.environment needs evidence.probes")
+        );
+        let mut dropped = on;
+        dropped.policy.evidence.environment = Some(crate::environment::Params {
+            line: "Available: {available}.".to_string(),
+            ..crate::environment::Params::default()
+        });
+        assert!(dropped.validate().unwrap_err().contains("{absent}"));
     }
 
     #[test]
