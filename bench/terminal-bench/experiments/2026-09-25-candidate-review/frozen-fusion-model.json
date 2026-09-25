@@ -1,0 +1,90 @@
+{
+  "schema": "openagents.evidence-fusion.v1",
+  "features": [
+    "report.strict_grader_accepts",
+    "report.admits_unmet",
+    "report.rests_on_reading",
+    "report.left_untested",
+    "report.checked_against_task",
+    "report.admitted",
+    "execution.observed",
+    "execution.unresolved",
+    "execution.required",
+    "audit.observed",
+    "audit.current",
+    "audit.required",
+    "source",
+    "readiness"
+  ],
+  "weights": [
+    -0.3860455446656425,
+    0.8421293957708882,
+    -1.4382179141063902,
+    -0.6908298331400613,
+    -1.080541880200426,
+    0.6608182122637574,
+    0.35590782948647187,
+    0.8203682542108097,
+    -0.26079430087521077,
+    0.7557506329553547,
+    1.213040420992952,
+    -0.12761905922024414,
+    0.30781830547204814,
+    0.17113337934052728,
+    0.04163692524022455,
+    0.04163692524022455,
+    0.04163692524022455,
+    0.04163692524022455,
+    0.04163692524022455,
+    0.04163692524022455,
+    -0.35773251306138343,
+    -0.35773251306138343,
+    -0.35773251306138343,
+    0.04163692524022455,
+    0.04163692524022455,
+    0.04163692524022455,
+    0.9232001803089962,
+    -0.4692400377509137
+  ],
+  "bias": 0.7716545376360077,
+  "fail_at": 0.6,
+  "ridge": 1.0,
+  "family": 2,
+  "out_of_fold": {
+    "fail_precision": {
+      "correct": 24,
+      "total": 26,
+      "value": 0.9230769230769231,
+      "wilson_95": [
+        0.7585805251948495,
+        0.9786453608166245
+      ]
+    },
+    "failure_recall": {
+      "correct": 24,
+      "total": 62,
+      "value": 0.3870967741935484,
+      "wilson_95": [
+        0.2758446342699068,
+        0.5115238379421901
+      ]
+    },
+    "pass_precision": {
+      "correct": 0,
+      "total": 0,
+      "value": null,
+      "wilson_95": null
+    },
+    "unknown": 106
+  },
+  "selection": "Task-held-out calibration predictions only; equal task weight; otherwise unknown.",
+  "protocol_commit": "a11d59494b",
+  "historical_comparison": "Reused validation; feature model fitted only to calibration.",
+  "prospective": "Official grades unopened.",
+  "feature_versions": "Corrected report/execution/admission features; previously retained source and readiness packets remain versioned inputs.",
+  "digests": {
+    "bench/terminal-bench/experiments/2026-09-25-candidate-review/feature_fit.py": "01bdb3698abb26e9707750f480a1ef6ffc2e53c203ce7dbfc7a366078a855a1a",
+    "crates/coder-one/src/checks/report_audit.rs": "f917dc1e8e5fb5d3b60799701dc637e740fb26ba44182bd2dae65bc0ed23e03f",
+    "crates/coder-one/src/checks/truth_selected.rs": "e0a716477ac1f1a37119561d151e24d373f9b4d9973dd30b7fcc1ad99fd44819"
+  }
+}
