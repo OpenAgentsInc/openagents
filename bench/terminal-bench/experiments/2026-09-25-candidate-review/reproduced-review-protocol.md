@@ -67,3 +67,12 @@ reproduction and mandatory-scope questions at the unchanged 0.8 cutoff. Record
 new Jev costs, citation mode, original-record digest, and original candidate
 identity. Measure strict and recovered arms separately. This is an implementation
 correction discovered from unlabeled records, not permission to tune on grades.
+
+A second citation-format correction retains nonadjacent output lines when each
+quoted line (at least eight characters) appears in the actual named observation,
+in the same order. A paraphrase, invented line, reordered line, or unmatched
+requirement quote still fails. `quoted-passages-v2` records this variant; the
+first recovery remains under `reproduced-quoted`. No outcome has been opened.
+This correction addresses the spring-clip review, which quoted two measured
+lines but omitted intervening output. Jev still receives the complete retained
+observation and unchanged semantic questions.

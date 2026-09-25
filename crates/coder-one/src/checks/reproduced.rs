@@ -113,6 +113,29 @@ fn cited_requirement(task: &str, requirement: &str) -> bool {
     }
     cited
 }
+// A reviewer can quote separate output lines without copying intervening output.
+// Keep their order and reject any line that was not actually observed.
+fn cited_output(text: &str, quotation: &str) -> bool {
+    if quoted(text, quotation) {
+        return true;
+    }
+    let normalize = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ");
+    let normalized = normalize(text);
+    let mut rest = normalized.as_str();
+    let mut count = 0;
+    for line in quotation.lines().filter(|line| !line.trim().is_empty()) {
+        if line.trim().chars().count() < 8 {
+            return false;
+        }
+        let line = normalize(line);
+        let Some(at) = rest.find(&line) else {
+            return false;
+        };
+        rest = &rest[at + line.len()..];
+        count += 1;
+    }
+    count > 0
+}
 fn grounded(input: &Input, finding: &Finding, observations: &BTreeMap<String, Value>) -> bool {
     quoted(&input.candidate.task, &finding.requirement)
         && observations.get(&finding.call_id).is_some_and(|v| {
@@ -445,7 +468,7 @@ pub async fn rejudge_command(args: &[String]) -> Result<i32, String> {
         .enumerate()
     {
         let actual_output = observations.get(&finding.call_id).is_some_and(|v| {
-            quoted(
+            cited_output(
                 &format!(
                     "{}\n{}",
                     v["stdout"].as_str().unwrap_or_default(),
@@ -494,7 +517,7 @@ pub async fn rejudge_command(args: &[String]) -> Result<i32, String> {
         .iter()
         .filter_map(|f| f["score"].as_f64())
         .max_by(f64::total_cmp);
-    let value = json!({"schema":SCHEMA,"citation_mode":"quoted-passages-v1","candidate_identity":input.candidate_identity,
+    let value = json!({"schema":SCHEMA,"citation_mode":"quoted-passages-v2","candidate_identity":input.candidate_identity,
         "input_digest":original["input_digest"],"reviewer_source":source,"source_digest":atif::digest(&original),
         "review":review,"observations":observations,"findings":findings,"steps":recorder.steps(),
         "score":best,"call":if best.is_some_and(|p|p>=0.8){"fail"}else{"unknown"},
@@ -526,6 +549,22 @@ mod tests {
         assert!(!cited_requirement(
             task,
             "The task says \"total must equal 42"
+        ));
+    }
+    #[test]
+    fn output_passages_must_be_real_and_in_order() {
+        let output = "first result is 4\nintervening output\nsecond result is 5";
+        assert!(cited_output(
+            output,
+            "first result is 4\nsecond result is 5"
+        ));
+        assert!(!cited_output(
+            output,
+            "second result is 5\nfirst result is 4"
+        ));
+        assert!(!cited_output(
+            output,
+            "first result is 4\ninvented result is 6"
         ));
     }
     #[test]
