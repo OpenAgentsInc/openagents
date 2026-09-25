@@ -26,6 +26,8 @@ fn refuses_optional_conditional_reference_and_unsafe_contexts() {
         "If needed, create `/app/no.csv`.",
         "Read '/app/input.csv'.",
         "Write a summary mentioning '/app/input.csv'.",
+        "Write either '/app/first.csv' or '/app/second.csv'.",
+        "Generate at least one sample file named \"/app/normal.txt\" or \"/app/exponential.txt\" containing your samples.",
         "Write a function that creates '/app/later.csv'.",
         "Write a command `echo data > /app/later.csv`.",
         "Write the contents of `/app/input.txt` to `/app/output.txt`.",

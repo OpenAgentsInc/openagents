@@ -107,6 +107,8 @@ fn uncertain(text: &str) -> bool {
             matches!(
                 s.to_ascii_lowercase().as_str(),
                 "if" | "unless"
+                    | "either"
+                    | "or"
                     | "optional"
                     | "optionally"
                     | "may"
