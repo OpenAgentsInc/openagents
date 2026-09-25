@@ -1,0 +1,79 @@
+{
+  "schema": "openagents.retained-files.v1",
+  "archive": "truth9584-gym-final-v2.tar.gz",
+  "archive_sha256": "f8262e7ff40a74997a6753012bdf4f7731f31542c3ae4d947cd5a5dc9f4896d4",
+  "exclusions": [],
+  "credential_scan": "exact local values, zero matches",
+  "files": [
+    {
+      "path": "gate/20260925T073553Z-f20056/clippy-features.log",
+      "bytes": 2967,
+      "sha256": "37884985dd5cf7274d0eb2813ffa38a4f4b433cfbbc5a12fc1bee827c4c47a5e"
+    },
+    {
+      "path": "gate/20260925T073553Z-f20056/clippy.log",
+      "bytes": 4091,
+      "sha256": "6290dfda20bf8f5d068f1108bff1fbf11123e65477f4beae5ba9fab48f824c3d"
+    },
+    {
+      "path": "gate/20260925T073553Z-f20056/fmt.log",
+      "bytes": 54,
+      "sha256": "94851e0a586e3b0a27a4283cde1f225f1ca166d7c0d7e3f2d71ba68c0486e7fb"
+    },
+    {
+      "path": "gate/20260925T073553Z-f20056/run.json",
+      "bytes": 3838,
+      "sha256": "51d65c113a0c611be3d478c0e17affc6dcc993a8221af99b13a839449c1f057f"
+    },
+    {
+      "path": "gate/20260925T073553Z-f20056/tests-features.log",
+      "bytes": 95586,
+      "sha256": "6912023469f21cde9c82f66a7e625d38273a8b56cef94d90b48d3ca425c76bb7"
+    },
+    {
+      "path": "gate/20260925T073553Z-f20056/tests.log",
+      "bytes": 88146,
+      "sha256": "86693af5834fd6d60bb8115de4c877f2c48678de67930ea4e0c6b44d551b64cd"
+    },
+    {
+      "path": "gate-wilson/20260925T075057Z-6f45aa/clippy-features.log",
+      "bytes": 241,
+      "sha256": "449049682afb8f47e8ce366c0388d514f5bb6b369d615eb91cf54adb09c6116e"
+    },
+    {
+      "path": "gate-wilson/20260925T075057Z-6f45aa/clippy.log",
+      "bytes": 241,
+      "sha256": "a1fb09defadb89b90dd877b72dd8c75cbbd7a599796fb293eee8847209aaf22c"
+    },
+    {
+      "path": "gate-wilson/20260925T075057Z-6f45aa/fmt.log",
+      "bytes": 54,
+      "sha256": "77eda01241ac255b4608c923cae2f226d92b976541be7ef3fbf526e48576173a"
+    },
+    {
+      "path": "gate-wilson/20260925T075057Z-6f45aa/run.json",
+      "bytes": 3871,
+      "sha256": "a83d122a48836d15f592df023dd4ba6e3c3351e616135182cbc94e85cad85ca3"
+    },
+    {
+      "path": "gate-wilson/20260925T075057Z-6f45aa/tests-features.log",
+      "bytes": 93400,
+      "sha256": "767c215fdbe399af7eddac7b4102118f8187b1e359940c4b12c3084a5e8861ed"
+    },
+    {
+      "path": "gate-wilson/20260925T075057Z-6f45aa/tests.log",
+      "bytes": 84976,
+      "sha256": "398318cda052f641e08cff631674711a18bab06e7cad8aa64f30f0e32eb2a2c9"
+    },
+    {
+      "path": "latest-source-astra/contamination-static.json",
+      "bytes": 277,
+      "sha256": "2542843de070f8e080a753e2ccff7fd67ac89c936945ecc2ebd0b369d0374cb4"
+    },
+    {
+      "path": "latest-source-luna/contamination-static.json",
+      "bytes": 277,
+      "sha256": "2542843de070f8e080a753e2ccff7fd67ac89c936945ecc2ebd0b369d0374cb4"
+    }
+  ]
+}

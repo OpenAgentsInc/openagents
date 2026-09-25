@@ -129,11 +129,13 @@ def describe(report: dict[str, Any], limit: int = 5) -> str:
     return "; ".join(clauses) + (f"; and {more} more" if more > 0 else "")
 
 
-def _write(path: Path, body: dict[str, Any]) -> None:
+def _write(path: Path, body: dict[str, Any]) -> str | None:
     try:
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(body, indent=2) + "\n")
-    except OSError:
-        pass
+    except OSError as exc:
+        return f"cannot retain contamination record {path}: {exc}"
+    return None
 
 
 def static_check(
@@ -147,7 +149,9 @@ def static_check(
     except ContaminationError as exc:
         _write(Path(logs_dir) / STATIC_RECORD, {"clean": None, "error": str(exc)})
         raise
-    _write(Path(logs_dir) / STATIC_RECORD, report)
+    record_error = _write(Path(logs_dir) / STATIC_RECORD, report)
+    if record_error:
+        raise ContaminationError(record_error)
     if not report["clean"]:
         raise ContaminationError(
             f"the contamination check refused this trial: {describe(report)}; "
@@ -163,7 +167,9 @@ def run_check(
     bundle = Path(logs_dir) / "episode"
     if not (bundle / "episode.atif.jsonl").is_file():
         body = {"clean": None, "error": f"no episode log under {bundle}"}
-        _write(Path(logs_dir) / RUN_RECORD, body)
+        record_error = _write(Path(logs_dir) / RUN_RECORD, body)
+        if record_error:
+            body["record_error"] = record_error
         return body
     try:
         with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as handle:
@@ -178,7 +184,9 @@ def run_check(
             os.unlink(instruction_file)
     except (ContaminationError, OSError) as exc:
         body = {"clean": None, "error": str(exc)}
-    _write(Path(logs_dir) / RUN_RECORD, body)
+    record_error = _write(Path(logs_dir) / RUN_RECORD, body)
+    if record_error:
+        return {"clean": None, "error": record_error, "unretained_result": body}
     return body
 
 

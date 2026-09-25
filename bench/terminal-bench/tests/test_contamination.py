@@ -8,6 +8,7 @@ import json
 import os
 import shutil
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -63,6 +64,61 @@ def test_a_clean_static_check_passes_and_is_recorded(tmp_path, fake_checker):
     assert report["clean"] is True
     assert json.loads((logs / contamination.STATIC_RECORD).read_text())["clean"] is True
     assert f"--policy {policy}" in calls.read_text()
+
+
+def test_static_check_creates_a_new_receipt_directory(tmp_path, fake_checker):
+    reply, _ = fake_checker
+    reply("static", CLEAN, 0)
+    logs = tmp_path / "new" / "logs"
+    assert contamination.static_check(logs, policy=None)["clean"] is True
+    assert json.loads((logs / contamination.STATIC_RECORD).read_text()) == CLEAN
+
+
+def test_setup_refuses_a_clean_check_when_its_receipt_cannot_be_written(
+    tmp_path, fake_checker, monkeypatch
+):
+    reply, _ = fake_checker
+    reply("static", CLEAN, 0)
+    original = Path.write_text
+
+    def unavailable(path, *args, **kwargs):
+        if path.name == contamination.STATIC_RECORD:
+            raise OSError("forced storage failure")
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", unavailable)
+    artifact = tmp_path / "artifact"
+    artifact.write_bytes(b"test artifact")
+    agent = CoderOne(
+        logs_dir=tmp_path / "logs",
+        artifact_path=str(artifact),
+        artifact_sha256=hashlib.sha256(artifact.read_bytes()).hexdigest(),
+    )
+    # A clean check without its receipt must fail before environment setup.
+    with pytest.raises(contamination.ContaminationError, match="cannot retain.*forced storage failure"):
+        asyncio.run(agent.setup(environment=None))
+
+
+def test_post_run_storage_failure_stays_explicit_and_does_not_raise(
+    tmp_path, fake_checker, monkeypatch
+):
+    reply, _ = fake_checker
+    reply("run", CLEAN, 0)
+    logs = tmp_path / "logs"
+    (logs / "episode").mkdir(parents=True)
+    (logs / "episode/episode.atif.jsonl").write_text("{}\n")
+    original = Path.write_text
+
+    def unavailable(path, *args, **kwargs):
+        if path.name == contamination.RUN_RECORD:
+            raise OSError("forced storage failure")
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", unavailable)
+    body = contamination.run_check(logs, instruction="Fix it.")
+    assert body["clean"] is None
+    assert "forced storage failure" in body["error"]
+    assert body["unretained_result"] == CLEAN
 
 
 def test_a_finding_refuses_the_trial(tmp_path, fake_checker):

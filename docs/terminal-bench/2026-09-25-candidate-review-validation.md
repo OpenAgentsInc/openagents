@@ -634,7 +634,19 @@ point can put the Wilson upper endpoint at `0.9999999999999999` for a perfect
 rate, or its lower endpoint just above zero for zero hits. The reader now tolerates
 that rounding. The scoped Gym gate passes again at `eec5d3b026`, including a
 regression using the actual retained formula's edge cases. The
-[final verification bundle](../../bench/terminal-bench/experiments/2026-09-25-candidate-review/records/truth9584-gym-final.tar.gz)
+[final verification bundle](../../bench/terminal-bench/experiments/2026-09-25-candidate-review/records/truth9584-gym-final-v2.tar.gz)
 retains both gate runs and two clean contamination checks on the later merged
-source tree. The [manifest](../../bench/terminal-bench/experiments/2026-09-25-candidate-review/records/truth9584-gym-final-files.json)
+source tree. The [manifest](../../bench/terminal-bench/experiments/2026-09-25-candidate-review/records/truth9584-gym-final-v2-files.json)
 verifies every restored file. The candidate-generating checkout stayed unchanged.
+
+
+The first final-verification archive contained both gates but lacked the two
+standalone source-check receipts: the harness writer silently ignored a missing
+parent directory. The checks had run. Their receipts were retained by explicitly
+creating the directories and rerunning the unchanged guard. The original
+12-file archive remains available; the corrected 14-file `final-v2` archive
+includes both clean receipts and was restored and hash-verified.
+[#9643](https://github.com/OpenAgentsInc/openagents/issues/9643) fixes the helper
+so new receipt directories are created, static setup refuses an unrecordable
+check, and post-run record failures remain explicit without throwing away the
+completed trial. This is outside the running cohort's unchanged checkout.
