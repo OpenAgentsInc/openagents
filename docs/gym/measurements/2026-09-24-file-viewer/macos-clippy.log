@@ -1,0 +1,13 @@
+    Checking rustix v1.1.5
+    Checking supervise v0.1.0 (/Users/christopherdavid/.codex/worktrees/gym-transcript-files/openagents/crates/supervise)
+    Checking fastrand v2.5.0
+    Checking atif v0.1.0 (/Users/christopherdavid/.codex/worktrees/gym-transcript-files/openagents/crates/atif)
+    Checking getrandom v0.4.3
+    Checking jev v0.1.0 (/Users/christopherdavid/.codex/worktrees/gym-transcript-files/openagents/crates/jev)
+    Checking crossterm v0.29.0
+    Checking tempfile v3.27.0
+    Checking ratatui-crossterm v0.1.2
+    Checking ratatui v0.30.2
+    Checking coder-terminal v0.1.0 (/Users/christopherdavid/.codex/worktrees/gym-transcript-files/openagents/crates/coder-terminal)
+    Checking gym v0.1.0 (/Users/christopherdavid/.codex/worktrees/gym-transcript-files/openagents/crates/gym)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 8.75s

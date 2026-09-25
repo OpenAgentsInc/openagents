@@ -1,0 +1,27 @@
+{
+  "task": "session-window-debug",
+  "trial": "session-window-debug__3KVqBUz",
+  "path": "/app/app/gc.py",
+  "versions": 4,
+  "snapshot_default_hidden": true,
+  "sources": [
+    {
+      "label": "Retained candidate lean-1, session 2; capture time unknown, may be later than this step. Source: /Users/christopherdavid/.codex/worktrees/gym-transcript-files/openagents/crates/gym/../../bench/terminal-bench/traces/tb4--coder-one-microluna-v13-retained--session-window-debug-3/session-window-debug__3KVqBUz.episode/artifacts/lean-1/session-2/app/gc.py. SHA-256 is checked before display.",
+      "bytes": 2217,
+      "sha256": "d46af3165d70f4128f599f976dc49ff1123003203bec75492002c645690ed771",
+      "read_ok": true
+    },
+    {
+      "label": "Retained candidate lean-1, session 1; capture time unknown, may be later than this step. Source: /Users/christopherdavid/.codex/worktrees/gym-transcript-files/openagents/crates/gym/../../bench/terminal-bench/traces/tb4--coder-one-microluna-v13-retained--session-window-debug-3/session-window-debug__3KVqBUz.episode/artifacts/lean-1/session-1/app/gc.py. SHA-256 is checked before display.",
+      "bytes": 2217,
+      "sha256": "d46af3165d70f4128f599f976dc49ff1123003203bec75492002c645690ed771",
+      "read_ok": true
+    },
+    {
+      "label": "Final exported artifact; not the file at the selected step. Source: /Users/christopherdavid/.codex/worktrees/gym-transcript-files/openagents/crates/gym/../../bench/terminal-bench/traces/tb4--coder-one-microluna-v13-retained--session-window-debug-3/session-window-debug__3KVqBUz.episode/produced/app/app/gc.py. SHA-256 is checked before display.",
+      "bytes": 2217,
+      "sha256": "d46af3165d70f4128f599f976dc49ff1123003203bec75492002c645690ed771",
+      "read_ok": true
+    }
+  ]
+}

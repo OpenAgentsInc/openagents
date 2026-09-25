@@ -1,0 +1,15 @@
+    Checking futures-task v0.3.34
+    Checking slab v0.4.12
+    Checking tokio v1.53.1
+    Checking futures-util v0.3.34
+    Checking hyper v1.11.1
+    Checking tokio-rustls v0.26.5
+    Checking tower v0.5.3
+    Checking tower-http v0.6.11
+    Checking hyper-util v0.1.20
+    Checking hyper-rustls v0.27.9
+    Checking reqwest v0.12.28
+    Checking jev v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/jev)
+    Checking gym v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/gym)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 11.69s
+PHASE END: Default workspace Clippy; elapsed 11.8s; exit 0

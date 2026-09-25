@@ -1,0 +1,14 @@
+{
+  "source": "native PTY, 180 columns by 42 rows",
+  "trial": "session-window-debug__3KVqBUz",
+  "path": "app/events.py",
+  "click": [
+    18,
+    37
+  ],
+  "viewer_opened": true,
+  "page_down_and_end_exercised": true,
+  "escape_returned": true,
+  "exit_code": 0,
+  "model_calls": 0
+}

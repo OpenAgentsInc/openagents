@@ -87,3 +87,7 @@ It reads `session-window-debug__3KVqBUz`, opens `/app/app/gc.py`, and checks bot
 candidate copies and the final export against their recorded hashes. It saves
 the initial missing-at-step screen, the explicitly selected candidate screen,
 and a JSON inventory. No benchmark or model is rerun.
+
+The [September 24 verification record](measurements/2026-09-24-file-viewer/README.md)
+retains the scoped Rust gate, real TB4 artifact checks, and native terminal
+click-through screens.

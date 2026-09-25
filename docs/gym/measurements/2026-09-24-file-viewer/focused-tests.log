@@ -1,0 +1,110 @@
+   Compiling gym v0.1.0 (/Users/christopherdavid/.codex/worktrees/gym-transcript-files/openagents/crates/gym)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.19s
+     Running unittests src/lib.rs (/Users/christopherdavid/.cache/openagents/target-gym-transcript-files/debug/deps/gym-6a4c45699b1736e8)
+
+running 12 tests
+test runs_files::tests::file_viewer_retained_acceptance ... ignored, reads the retained TB4 bundle and optionally writes an acceptance record
+test runs_files::tests::file_viewer_labels_partial_reads_patches_and_unsuccessful_writes ... ok
+test runs_files::tests::file_viewer_path_clicks_follow_wide_characters_and_line_suffixes ... ok
+test runs_files::tests::file_viewer_clicks_resolve_wrapped_paths_spaces_and_extensionless_names ... ok
+test runs_files::tests::file_viewer_refuses_missing_binary_large_and_escaping_files ... ok
+test runs_files::tests::file_viewer_reads_only_observations_up_to_the_clicked_step ... ok
+test runs_files::tests::file_viewer_wraps_scrolls_resizes_and_escapes_control_bytes ... ok
+test runs_files::tests::file_viewer_matches_absolute_reads_using_only_the_recorded_workdir ... ok
+test runs_tui::tests::file_viewer_opens_from_a_transcript_click_and_returns_to_the_same_step ... ok
+test runs_files::tests::file_viewer_rebases_final_exports_and_finds_retained_facts ... ok
+test runs_files::tests::file_viewer_requires_explicit_selection_of_snapshots_and_checks_hashes ... ok
+test runs_replay_tui::tests::file_viewer_in_replay_pauses_both_sides_and_preserves_the_clock ... ok
+
+test result: ok. 11 passed; 0 failed; 1 ignored; 0 measured; 562 filtered out; finished in 0.18s
+
+     Running unittests src/bin/gym.rs (/Users/christopherdavid/.cache/openagents/target-gym-transcript-files/debug/deps/gym-1d39ad9a8e236f6b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 39 filtered out; finished in 0.00s
+
+     Running unittests src/bin/gym_terminal.rs (/Users/christopherdavid/.cache/openagents/target-gym-transcript-files/debug/deps/gym_terminal-e4593282e005b36e)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/caller_suite_v1.rs (/Users/christopherdavid/.cache/openagents/target-gym-transcript-files/debug/deps/caller_suite_v1-41e3cbc69139490b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/external_jevbench_v1.rs (/Users/christopherdavid/.cache/openagents/target-gym-transcript-files/debug/deps/external_jevbench_v1-f17b321253bb52ea)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/gate_digest.rs (/Users/christopherdavid/.cache/openagents/target-gym-transcript-files/debug/deps/gate_digest-fa319f7788240cb1)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 28 filtered out; finished in 0.00s
+
+     Running tests/kev_variant_rows.rs (/Users/christopherdavid/.cache/openagents/target-gym-transcript-files/debug/deps/kev_variant_rows-8b68303a4c912786)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/locked_ledger.rs (/Users/christopherdavid/.cache/openagents/target-gym-transcript-files/debug/deps/locked_ledger-cf222da7ff9d4cb6)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
+     Running tests/program_selection_v2.rs (/Users/christopherdavid/.cache/openagents/target-gym-transcript-files/debug/deps/program_selection_v2-5bb8aa4dd94ca844)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/program_selection_v3.rs (/Users/christopherdavid/.cache/openagents/target-gym-transcript-files/debug/deps/program_selection_v3-6e96c8fdc2bce43e)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/recipes.rs (/Users/christopherdavid/.cache/openagents/target-gym-transcript-files/debug/deps/recipes-8a83e9ff4559eb1e)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/rederived_floors.rs (/Users/christopherdavid/.cache/openagents/target-gym-transcript-files/debug/deps/rederived_floors-941f1a3b099a8fd5)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+
+     Running tests/replay_acceptance.rs (/Users/christopherdavid/.cache/openagents/target-gym-transcript-files/debug/deps/replay_acceptance-80d12a91a05cb423)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/selected_rows.rs (/Users/christopherdavid/.cache/openagents/target-gym-transcript-files/debug/deps/selected_rows-3e057de292b82636)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/voyager_v1.rs (/Users/christopherdavid/.cache/openagents/target-gym-transcript-files/debug/deps/voyager_v1-06fbc6bc80c4baf0)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/winner_inversion.rs (/Users/christopherdavid/.cache/openagents/target-gym-transcript-files/debug/deps/winner_inversion-492775bbd44aa426)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 10 filtered out; finished in 0.00s
+

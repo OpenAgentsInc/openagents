@@ -1,0 +1,972 @@
+   Compiling gym v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/gym)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.82s
+     Running unittests src/lib.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/gym-356ec0bd8498f575)
+
+running 481 tests
+test ab::tests::a_confirmation_plan_draws_blocks_the_screening_did_not ... ok
+test ab::tests::a_rule_that_lets_confident_errors_earn_a_win_is_refused ... ok
+test ab::tests::an_unmeasured_floor_still_refuses_to_earn_a_win ... ok
+test ab::tests::every_ordered_metric_carries_a_measured_floor ... ok
+test ab::tests::interleaving_is_deterministic_and_covers_both_orders ... ok
+test ab::tests::the_calibration_floors_are_the_measured_block_spreads ... ok
+test ab::tests::the_effect_size_is_the_measured_block_spread_and_not_a_carried_constant ... ok
+test ab::tests::the_schema_tag_belongs_to_this_crate ... ok
+test ab::tests::the_verdict_precedence_carries_into_the_decision ... ok
+test ab::tests::a_harness_failure_requeues_once_and_never_enters_the_comparison ... ok
+test ab::tests::a_confirmation_over_different_families_is_not_the_same_experiment ... ok
+test ab::tests::a_door_refusal_enters_the_comparison_as_a_refusal ... ok
+test build::tests::the_partition_draw_matches_cpythons ... ok
+test ab::tests::an_unmeasured_metric_leaves_the_round_undecided_rather_than_passing_by_default ... ok
+test calibrate::tests::a_base_fitted_record_refuses_an_adapted_door_and_names_the_field ... ok
+test calibrate::tests::a_band_table_separates_what_the_frequency_alone_cannot ... ok
+test calibrate::tests::a_distribution_keeps_its_shape_when_it_is_rescaled ... ok
+test calibrate::tests::a_document_tagged_as_something_else_does_not_serve ... ok
+test calibrate::tests::a_map_reports_what_a_bin_actually_did ... ok
+test calibrate::tests::a_record_refuses_a_host_it_was_not_fitted_on ... ok
+test calibrate::tests::a_refused_map_does_not_serve_and_says_the_verdict ... ok
+test calibrate::tests::a_small_unanimous_bin_does_not_claim_certainty ... ok
+test calibrate::tests::a_unanimous_estimate_spreads_the_remainder_evenly ... ok
+test calibrate::tests::a_thin_band_falls_back_to_the_pooled_table ... ok
+test calibrate::tests::an_empty_bin_falls_back_to_the_base_rate_rather_than_inventing_one ... ok
+test calibrate::tests::a_well_calibrated_set_scores_near_zero_error ... ok
+test calibrate::tests::an_unknown_band_reads_the_pooled_table ... ok
+test calibrate::tests::a_record_round_trips_and_carries_its_provenance ... ok
+test calibrate::tests::checkpoint_replacement_and_execution_changes_invalidate_calibration ... ok
+test calibrate::tests::metrics_convert_to_the_shape_a_gate_judges ... ok
+test ab::tests::an_increase_in_confident_errors_rejects_whatever_else_improved ... ok
+test calibrate::tests::nothing_verifiable_serves_nothing ... ok
+test calibrate::tests::perfect_confidence_that_is_always_wrong_scores_as_badly_as_it_should ... ok
+test calibrate::tests::a_directory_of_records_reads_in_order_and_an_absent_one_reads_as_none ... ok
+test ab::tests::unknown_confident_errors_are_unverifiable_and_never_zero ... ok
+test build::tests::a_family_too_small_to_fill_fails ... ok
+test calibrate::tests::the_bin_count_follows_the_evidence ... ok
+test calibrate::tests::legacy_calibration_records_keep_their_version_and_existing_matches ... ok
+test ab::tests::the_committed_rule_validates_and_carries_a_digest ... ok
+test ab::tests::a_win_inside_the_noise_is_undecided_rather_than_kept_or_reverted ... ok
+test coder_calls::tests::unknown_charges_stay_apart_from_zero_and_cuts_are_named ... ok
+test ab::tests::the_rule_names_the_measurements_it_refuses_to_invent ... ok
+test coder_briefing::tests::a_pack_record_reads_as_items_with_their_fates ... ok
+test coder_composition::tests::a_parallel_loop_lists_which_sessions_overlapped ... ok
+test coder_composition::tests::a_v4_attempt_shows_its_family_self_report_and_second_executor ... ok
+test ab::tests::two_blocks_a_side_is_below_the_floor_the_median_criterion_needs ... ok
+test coder_composition::tests::a_v8_attempt_shows_each_rounds_delta_and_the_ladder ... ok
+test coder_composition::tests::a_v5_attempt_shows_each_persist_round ... ok
+test ab::tests::changing_a_threshold_or_its_provenance_produces_a_new_rule ... ok
+test coder_composition::tests::a_composed_attempt_shows_its_route_dispatches_checks_and_repair ... ok
+test coder_components::tests::deadline_use_and_cuts_are_summed_across_attempts ... ok
+test ab::tests::a_win_on_one_metric_confirmed_on_a_different_one_is_reverted ... ok
+test ab::tests::a_win_that_repeats_on_its_own_metric_is_kept ... ok
+test ab::tests::a_confirmation_that_redraws_a_screening_block_is_refused ... ok
+test coder_composition::tests::a_v9_attempt_shows_the_effort_it_chose_and_why ... ok
+test coder_composition::tests::no_composed_attempt_says_how_to_make_one ... ok
+test coder_composition::tests::no_escalation_says_so ... ok
+test coder_matrix::tests::the_wilson_interval_matches_the_harness ... ok
+test ab::tests::a_cell_that_fails_twice_leaves_the_round_undecided ... ok
+test coder_matrix::tests::oracles_pick_the_cheapest_and_fastest_reliable_cells ... ok
+test coder_matrix::tests::tb4_attempts_stay_under_their_profile_with_the_leaderboard_beside ... ok
+test coder_coverage::tests::a_report_renders_requirements_scenarios_and_packets ... ok
+test ab::tests::a_pooled_ece_is_unknown_rather_than_an_item_weighted_invention ... ok
+test coder_policy::tests::the_digest_ignores_labels_and_key_order ... ok
+test coder_families::tests::a_family_sums_its_matched_tasks_and_checks_the_policy ... ok
+test ab::tests::a_mean_that_improves_while_the_median_does_not_is_reverted ... ok
+test coder_composition::tests::best_of_separates_what_selection_loses_from_what_generation_lacks ... ok
+test coder_policy::tests::comparisons_group_by_policy_digest_when_present ... ok
+test coder_recall::tests::the_view_shows_recall_false_alarms_and_the_failed_scenarios ... ok
+test coder_policy::tests::the_reference_manifests_differ_in_executor_and_directions_only ... ok
+test ab::tests::a_candidate_that_improves_overall_while_wrecking_one_family_is_refused ... ok
+test build::tests::the_caller_fixture_rebuilds_to_its_pinned_digest ... ok
+test coder_requirements::tests::a_map_reads_as_spans_with_their_requirements ... ok
+test ab::tests::a_full_ab_produces_an_evidence_document_carrying_its_own_rule ... ok
+test coder_capabilities::tests::the_matrix_reads_as_text_and_json ... ok
+test coder_router::tests::the_held_out_task_shapes_nothing_in_its_own_fold ... ok
+test coder_asks::tests::studies_list_side_by_side_and_one_prints_its_rows ... ok
+test coder_router::tests::the_stump_learns_the_split_and_routes_each_held_out_task ... ok
+test coder_asks::tests::asks_list_newest_first_and_one_reads_with_its_marks ... ok
+test coder_prompt::tests::an_attempt_without_a_record_shows_its_executors_default ... ok
+test coder_repair::tests::the_latest_study_reads_and_renders_each_arm ... ok
+test coder_recall::tests::the_command_reads_the_summary_and_prints_json ... ok
+test coverage::tests::a_full_pass_is_complete ... ok
+test coder_study::tests::the_study_view_shows_tiers_results_frontier_promotions_and_spend ... ok
+test coder_coverage::tests::support_states_show_beside_the_scenarios ... ok
+test build::tests::a_built_suite_loads_and_asks ... ok
+test coverage::tests::a_missing_item_is_named_and_never_scored ... ok
+test coverage::tests::a_refusal_is_a_recorded_outcome_not_a_gap ... ok
+test coverage::tests::duplicates_and_unexpected_rows_are_named ... ok
+test coverage::tests::rows_under_two_identities_form_two_groups ... ok
+test eval::tests::a_code_mentioned_in_prose_is_not_a_refusal ... ok
+test eval::tests::a_failure_with_no_code_is_the_harness_and_writes_no_row ... ok
+test coder_truth::tests::the_view_shows_each_signal_and_the_verdict_against_todays_checks ... ok
+test coder_composition::tests::escalations_report_their_triggers_outcomes_and_conditional_success ... ok
+test eval::tests::a_named_selected_overrides_what_the_numbers_imply ... ok
+test eval::tests::a_refused_row_stays_in_the_denominator_with_no_score ... ok
+test eval::tests::a_permutation_reorders_the_options_and_nothing_else ... ok
+test eval::tests::a_score_is_scored_on_its_argmax_level_not_its_weighted_mean ... ok
+test eval::tests::a_tied_score_is_the_highest_tied_level_and_it_is_not_a_refusal ... ok
+test eval::tests::a_timestamp_reads_as_rfc_3339_in_utc ... ok
+test eval::tests::a_scored_row_carries_the_verdict_and_the_whole_distribution ... ok
+test eval::tests::a_typed_refusal_is_the_door_declining_whatever_the_code_is ... ok
+test eval::tests::an_unnamed_code_is_kept_rather_than_bucketed ... ok
+test eval::tests::every_row_of_a_run_pins_the_question_set_it_served ... ok
+test eval::tests::only_a_choice_has_an_order_to_permute ... ok
+test coder_proposals::tests::a_person_approves_or_rejects_and_the_view_shows_finding_change_result ... ok
+test eval::tests::the_table_is_computed_from_the_rows ... ok
+test gate::tests::a_bound_with_a_value_and_no_basis_behind_it_is_refused ... ok
+test gate::tests::a_door_that_is_less_accurate_fails_the_decision_gate ... ok
+test gate::tests::a_door_that_declines_a_tenth_of_the_workload_fails_its_ceiling ... ok
+test gate::tests::a_ceiling_nobody_stated_is_unverifiable_rather_than_passed ... ok
+test coder_prompt::tests::a_recorded_variant_shows_its_sections_and_digest ... ok
+test gate::tests::a_gate_with_an_unreadable_schema_is_refused ... ok
+test gate::tests::a_gate_judges_only_the_measurement_it_reads ... ok
+test coder_proposals::tests::an_edited_proposal_can_not_be_decided ... ok
+test gate::tests::a_gate_whose_file_name_is_not_its_id_is_refused ... ok
+test coder_truth::tests::the_command_reads_the_summary_and_prints_json ... ok
+test gate::tests::a_percentile_is_always_a_call_that_happened ... ok
+test gate::tests::a_latency_rise_inside_the_noise_is_unverifiable_rather_than_failed ... ok
+test gate::tests::a_map_fitted_on_eighteen_items_is_unverifiable_not_failed ... ok
+test gate::tests::a_map_that_hedges_everything_into_the_middle_fails ... ok
+test eval::tests::a_family_is_fitted_on_one_partition_and_judged_on_another ... ok
+test gate::tests::a_map_whose_brier_rose_is_failed ... ok
+test gate::tests::a_seed_floor_measured_over_no_items_is_refused ... ok
+test gate::tests::a_metered_lane_over_its_ceiling_fails ... ok
+test gate::tests::an_unknown_field_is_refused_rather_than_ignored ... ok
+test gate::tests::a_smaller_win_on_the_same_suite_is_unverifiable_rather_than_failed ... ok
+test gate::tests::a_map_that_improves_ece_too_little_is_unverifiable ... ok
+test gate::tests::an_unmeasured_bound_reports_unverifiable_and_never_passes ... ok
+test gate::tests::an_uncounted_refusal_is_not_a_refusal_of_zero ... ok
+test gate::tests::binning_cannot_lose_more_brier_than_twice_the_bin_width ... ok
+test gate::tests::an_unmetered_lane_is_not_a_price_of_zero ... ok
+test gate::tests::fewer_than_twenty_timed_calls_cannot_produce_a_percentile ... ok
+test gate::tests::an_unmeasured_seed_floor_leaves_confident_errors_unverifiable ... ok
+test gate::tests::a_rise_beyond_the_seed_floor_still_fails_probability_v2 ... ok
+test gate::tests::every_committed_bound_says_where_it_came_from ... ok
+test gate::tests::the_adapter_is_the_better_decision_and_the_worse_probability ... ok
+test gate::tests::the_case_that_widened_the_brier_tolerance ... ok
+test gate::tests::the_committed_gate_cannot_refuse_a_door_on_a_clock_yet ... ok
+test gate::tests::the_decision_bound_records_what_it_does_not_cover ... ok
+test gate::tests::the_digest_is_stable_across_serialization_order ... ok
+test gate::tests::the_digest_ignores_comment ... ok
+test gate::tests::the_four_way_table_kept_the_statistic_that_hides_the_tail ... ok
+test gate::tests::the_router_and_the_batch_job_disagree_about_the_same_door ... ok
+test coder_handoff::tests::the_checked_in_comparison_reads_as_a_matrix_of_patterns ... ok
+test gate::tests::the_verdict_precedence_is_failed_then_unverifiable_then_passed ... ok
+test gate::tests::every_committed_gate_loads_and_validates ... ok
+test gate::tests::the_same_case_with_confident_errors_unrecorded_is_unverifiable ... ok
+test gate::tests::thirteen_points_of_accuracy_clears_the_noise_and_says_what_it_covers ... ok
+test gate::tests::the_twelve_item_maps_the_small_suite_produced_are_unverifiable ... ok
+test gate::tests::one_failed_group_beats_any_number_of_passed_ones ... ok
+test index::tests::a_nested_recording_reports_its_files_to_the_outer_one ... ok
+test index::tests::a_file_that_appears_invalidates_the_entry_that_saw_it_absent ... ok
+test build::tests::agreement_lands_in_provenance_and_validates ... ok
+test index::tests::two_scopes_keep_two_files_and_no_dir_keeps_nothing ... ok
+test gate::tests::widening_a_tolerance_produces_a_new_rule ... ok
+test jobs::tests::a_second_writer_is_refused ... ok
+test index::tests::a_unit_not_asked_for_is_dropped_and_an_unkept_one_is_never_stored ... ok
+test gate::tests::uncounted_confident_errors_are_unverifiable_under_both_probability_gates ... ok
+test index::tests::an_unchanged_file_is_read_from_the_index_and_a_changed_one_again ... ok
+test gate::tests::the_seed_floor_scales_with_the_items_under_judgment ... ok
+test gate::tests::the_seed_floor_is_inside_probability_v2s_identity_and_absent_from_v1s ... ok
+test build::tests::validation_refuses_the_same_records ... ok
+test commitment::tests::a_store_verifies_against_its_commitment ... ok
+test commitment::tests::a_refusal_is_recorded_in_the_committed_coverage ... ok
+test commitment::tests::a_dropped_tail_breaks_against_the_commitment ... ok
+test questions::tests::a_set_loads_from_a_file_named_after_it ... ok
+test coverage::tests::a_subset_outside_the_selection_is_refused ... ok
+test commitment::tests::an_edited_commitment_does_not_self_verify ... ok
+test questions::tests::a_set_tagged_with_another_schema_is_refused ... ok
+test questions::tests::a_set_with_no_text_is_refused ... ok
+test jobs::tests::the_same_key_with_the_same_content_is_idempotent ... ok
+test jobs::tests::the_same_key_with_changed_content_conflicts ... ok
+test jobs::tests::submit_persists_the_manifest_before_it_acknowledges ... ok
+test coverage::tests::a_subset_is_the_declared_selection_not_a_gap ... ok
+test questions::tests::each_routing_candidate_is_its_own_text ... ok
+test jobs::tests::marks_outside_the_manifest_refuse ... ok
+test questions::tests::the_committed_suite_file_still_carries_its_question_text ... ok
+test coder_policy::tests::a_query_finds_a_manifest_by_prefix_name_or_file ... ok
+test questions::tests::a_suite_with_no_inline_text_has_no_set_to_derive ... ok
+test commitment::tests::a_recomputed_chain_over_different_rows_breaks_against_the_commitment ... ok
+test regress::tests::a_changed_door_refuses_the_comparison_and_names_the_field ... ok
+test regress::tests::a_changed_suite_refuses_the_comparison ... ok
+test regress::tests::a_different_number_of_draws_refuses_the_comparison ... ok
+test questions::tests::the_authored_digest_is_recorded_literally ... ok
+test regress::tests::a_different_seed_block_refuses_the_comparison ... ok
+test regress::tests::a_door_that_answered_nothing_reports_unknown_and_never_zero ... ok
+test questions::tests::a_set_that_misses_a_family_is_refused_rather_than_asked ... ok
+test regress::tests::a_door_that_begins_declining_fails_even_when_accuracy_rises ... ok
+test regress::tests::a_door_that_stops_declining_passes_and_names_the_items ... ok
+test regress::tests::a_fall_inside_the_floor_holds_and_says_it_is_inside ... ok
+test questions::tests::a_variant_set_replaces_the_text_the_items_carry ... ok
+test regress::tests::a_gain_larger_than_the_floor_is_reported_as_one ... ok
+test regress::tests::a_refusal_renders_as_neither_a_pass_nor_a_failure ... ok
+test regress::tests::a_fall_larger_than_the_floor_is_a_regression ... ok
+test regress::tests::a_reversed_pass_is_a_run_of_its_own ... ok
+test regress::tests::a_group_that_passed_leads_with_the_accuracy_rather_than_the_item_count ... ok
+test regress::tests::a_metric_with_no_measured_spread_is_reported_and_not_judged ... ok
+test questions::tests::renaming_a_set_leaves_its_digest_alone ... ok
+test regress::tests::one_recorded_run_has_nothing_to_compare_against ... ok
+test questions::tests::the_committed_set_is_the_text_the_suite_carries_inline ... ok
+test regress::tests::a_rerun_that_changed_nothing_passes ... ok
+test questions::tests::the_routing_candidates_reword_one_family_and_freeze_the_answer_space ... ok
+test regress::tests::reworded_question_text_refuses_the_comparison ... ok
+test regress::tests::a_rise_in_confident_errors_is_a_regression ... ok
+test regress::tests::the_schema_tag_belongs_to_this_crate ... ok
+test regress::tests::every_door_in_the_store_is_answered_for ... ok
+test gate::tests::probability_v1_refuses_the_unchanged_door_about_half_the_time ... ok
+test row::content_identity_tests::discovered_content_identity_retains_separate_execution_settings ... ok
+test row::content_identity_tests::legacy_identity_round_trips_without_inventing_checkpoint_provenance ... ok
+test row::tests::a_coherent_row_passes_its_check ... ok
+test row::tests::a_hosted_identity_round_trips_without_inventing_a_signature ... ok
+test row::tests::a_named_answer_requires_its_distribution ... ok
+test row::tests::a_refusal_clears_a_score_that_was_already_set ... ok
+test row::tests::a_measured_zero_is_kept_apart_from_an_unknown ... ok
+test row::tests::a_refusal_that_carries_a_score_is_rejected ... ok
+test row::tests::a_refused_row_is_distinguishable_from_a_scored_one ... ok
+test row::tests::a_row_for_a_hosted_door_carries_the_unverified_identity ... ok
+test row::tests::a_row_naming_an_option_the_distribution_lacks_is_rejected ... ok
+test row::tests::a_row_must_name_its_item_and_may_omit_what_is_unknown ... ok
+test row::tests::a_row_round_trips_through_json ... ok
+test row::tests::a_row_tagged_as_another_document_is_rejected ... ok
+test row::tests::a_row_serializes_to_the_named_fields_in_order ... ok
+test regress::tests::the_newest_run_is_the_one_judged ... ok
+test regress::tests::each_family_is_judged_on_its_own ... ok
+test row::tests::a_row_that_answered_and_refused_is_rejected ... ok
+test row::tests::a_row_with_no_outcome_is_rejected ... ok
+test row::tests::a_score_takes_the_top_probability_from_the_distribution ... ok
+test regress::tests::one_store_holding_two_runs_needs_no_second_store ... ok
+test row::tests::a_scored_row_keeps_the_named_answer_over_the_argmax ... ok
+test row::tests::an_answered_row_without_a_verdict_is_rejected ... ok
+test row::tests::an_empty_distribution_leaves_the_top_probability_unknown ... ok
+test row::tests::a_row_that_pins_no_question_set_omits_both_fields ... ok
+test row::tests::an_identity_without_a_signature_is_not_verified ... ok
+test row::tests::an_unnamed_refusal_code_is_kept_rather_than_bucketed ... ok
+test row::tests::an_on_device_identity_round_trips_with_its_signature ... ok
+test row::tests::every_named_refusal_code_round_trips_on_its_wire_label ... ok
+test row::tests::an_unknown_number_renders_as_null_and_never_as_zero ... ok
+test row::tests::the_schema_tag_belongs_to_this_crate ... ok
+test row::tests::the_label_source_travels_with_the_row ... ok
+test row::tests::the_perturbation_axes_record_what_was_varied ... ok
+test row::tests::the_gate_and_the_chain_are_declared_but_not_computed_here ... ok
+test regress::tests::the_limit_is_on_the_report_and_on_the_output ... ok
+test runs::tests::a_filter_narrows_by_agent_outcome_and_words ... ok
+test regress::tests::two_runs_over_different_items_are_two_measurements ... ok
+test runs::tests::an_exception_says_why_a_run_was_not_graded ... ok
+test row::tests::historical_rows_keep_their_schema_and_omit_new_provenance ... ok
+test runs::tests::pytest_counts_read_from_its_summary_line ... ok
+test runs::tests::the_ask_is_the_sentence_that_asks ... ok
+test regress::tests::the_report_carries_the_rule_that_set_its_floors ... ok
+test questions::tests::two_spellings_of_one_family_cannot_be_lifted_out_of_the_items ... ok
+test runs::tests::times_and_money_read_plainly ... ok
+test runs::tests::a_trial_names_its_agent_network_and_a_public_one_is_flagged ... ok
+test questions::tests::the_committed_suite_names_the_committed_set ... ok
+test coder_minitasks::tests::a_run_reads_with_its_timeline_grade_and_coverage ... ok
+test runs_analysis::tests::a_run_without_coder_one_records_still_reads ... ok
+test gate::tests::probability_v2_passes_the_unchanged_door_on_every_pair_of_blocks ... ok
+test runs_analysis::tests::the_parsers_read_what_the_tools_wrote ... ok
+test runs_analysis::tests::a_guard_driven_revert_and_its_restore_are_found ... ok
+test runs::tests::a_run_nobody_has_touched_for_hours_is_not_left_running ... ok
+test runs_fingerprint::tests::the_task_s_example_is_a_command_or_script_in_backticks ... ok
+test runs_group::tests::a_reason_parses_with_and_without_a_threshold ... ok
+test runs_analysis::tests::the_outcome_cost_and_time_come_from_the_records ... ok
+test runs_highlights::tests::a_large_cost_difference_on_a_task_both_arms_pass_is_a_claim_with_its_caveats ... ok
+test questions::tests::a_reworded_question_is_a_candidate_against_the_same_items ... ok
+test runs_highlights::tests::a_task_the_top_rows_fail_is_a_claim_and_one_pass_is_labeled_n1 ... ok
+test runs_learning::tests::a_check_that_looked_in_the_wrong_place_says_so ... ok
+test runs::tests::a_run_is_found_by_job_trial_or_task ... ok
+test runs_highlights::tests::a_failure_several_agents_share_and_a_surprise_are_claims ... ok
+test runs_learning::tests::an_answer_reads_as_a_value_reasons_and_tags ... ok
+test coder_study::tests::the_retained_first_study_reads_back ... ok
+test runs_learning::tests::the_question_set_is_valid_and_versioned ... ok
+test runs::tests::the_catalog_reads_every_kind_of_retained_run ... ok
+test runs_analysis::tests::the_timeline_places_sessions_and_walks_the_critical_path ... ok
+test runs_marks::tests::a_target_splits_off_a_numbered_step ... ok
+test runs_analysis::tests::the_suite_mapping_asks_jev_only_about_open_pairs_and_caches_the_answer ... ok
+test runs_marks::tests::marks_refuse_what_they_cannot_mean ... ok
+test questions::tests::rewording_a_question_moves_the_question_digest_and_nothing_else ... ok
+test runs_marks::tests::agreement_counts_labels_and_says_when_they_are_too_few ... ok
+test runs_marks::tests::with_no_marks_the_report_says_so ... ok
+test runs_moves::tests::cliffs_delta_counts_pairs ... ok
+test runs_phases::tests::a_codex_script_yields_each_command_and_patch ... ok
+test runs_phases::tests::a_heredoc_body_is_not_read_as_commands ... ok
+test runs_phases::tests::a_repeated_failed_command_is_marked ... ok
+test runs_marks::tests::an_edited_line_breaks_its_digest ... ok
+test runs_phases::tests::claude_stream_results_pair_with_their_calls ... ok
+test runs_phases::tests::commands_fall_into_phases_by_their_programs ... ok
+test runs_marks::tests::the_store_appends_replaces_removes_and_survives_a_reopen ... ok
+test runs_phases::tests::reading_an_edited_file_after_an_edit_is_verification ... ok
+test runs_phases::tests::the_question_set_asks_one_choice_and_three_nouls ... ok
+test runs_replay::tests::claude_and_codex_messages_render_markdown_but_results_remain_literal ... ok
+test runs_replay::tests::image_bytes_remain_in_the_source_without_flooding_the_screen ... ok
+test runs_replay::tests::markdown_prose_and_literal_tools_share_a_timestamp_without_sharing_a_parser ... ok
+test runs_replay::tests::microluna_logs_sort_by_session_number ... ok
+test runs_analysis::tests::write_keeps_markdown_and_json_beside_the_run ... ok
+test runs_phases::tests::a_step_state_is_stable_and_names_the_rule_phases_before_it ... ok
+test runs_replay::tests::missing_native_timestamps_use_later_receipts_and_are_labeled ... ok
+test runs_replay::tests::native_tool_result_appears_at_its_own_receipt_time ... ok
+test runs_replay::tests::public_bytes_are_verified_and_system_and_tool_text_are_kept ... ok
+test runs_replay::tests::the_clock_preserves_pause_speed_seek_and_end ... ok
+test runs_replay::tests::two_calendar_dates_align_to_the_same_elapsed_clock ... ok
+test runs_replay::tests::text_is_complete_and_unknown_times_are_explicit ... ok
+test runs_replay::tests::microluna_session_logs_replace_the_host_s_executor_events ... ok
+test runs_story::tests::a_first_sentence_drops_markdown_emphasis ... ok
+test runs::tests::the_startup_index_keeps_finished_runs_and_follows_new_changed_and_deleted_ones ... ok
+test runs_story::tests::a_failed_story_names_the_failing_tests ... ok
+test runs_story::tests::a_story_without_records_says_less_rather_than_guessing ... ok
+test runs_story::tests::test_names_read_as_words ... ok
+test runs_transcript::tests::a_claude_stream_pairs_each_call_with_its_result ... ok
+test runs_story::tests::a_story_the_harness_could_not_grade_says_so ... ok
+test runs_transcript::tests::a_codex_stream_unwraps_its_shell_and_keeps_file_changes ... ok
+test runs_transcript::tests::a_delegation_message_reads_as_who_and_why ... ok
+test runs_transcript::tests::a_harbor_trajectory_reads_as_one_session ... ok
+test runs_transcript::tests::a_lane_says_its_group_and_what_ran_beside_it ... ok
+test runs_transcript::tests::long_output_is_cut_with_a_count ... ok
+test runs_transcript::tests::model_names_read_the_way_people_say_them ... ok
+test coder_live::tests::a_trial_is_followed_through_its_host_tail ... ok
+test spread::tests::a_bin_edge_lands_in_the_bin_it_opens ... ok
+test spread::tests::a_line_that_is_not_a_draw_is_refused_by_line_number ... ok
+test spread::tests::a_spread_needs_two_blocks ... ok
+test spread::tests::a_block_missing_an_item_is_named_rather_than_averaged_over ... ok
+test spread::tests::a_suite_ece_is_not_the_item_weighted_mean_of_its_families ... ok
+test spread::tests::another_schema_is_refused_rather_than_read_as_a_draw ... ok
+test spread::tests::frozen_ece_equals_live_ece_when_the_reference_is_the_block_itself ... ok
+test spread::tests::frozen_ece_holds_membership_when_an_item_crosses_an_edge ... ok
+test spread::tests::observations_come_back_in_item_order_so_two_blocks_pair ... ok
+test spread::tests::one_block_is_not_a_spread_but_is_a_complete_grid ... ok
+test spread::tests::the_bootstrap_keeps_each_stratum_at_its_own_size ... ok
+test spread::tests::the_detectable_difference_falls_as_blocks_are_added ... ok
+test spread::tests::the_mean_signal_is_taken_item_by_item_across_blocks ... ok
+test spread::tests::the_bootstrap_reproduces_from_its_seed ... ok
+test store::tests::a_duplicate_perturbation_is_refused ... ok
+test store::tests::a_chain_round_trips_and_reports_its_head ... ok
+test store::tests::a_line_that_is_not_json_is_refused ... ok
+test jobs::tests::a_duplicate_mark_noops_and_a_divergent_mark_conflicts ... ok
+test jobs::tests::a_torn_tail_truncates_honestly ... ok
+test store::tests::a_measured_float_that_does_not_round_trip_still_verifies ... ok
+test store::tests::a_receipt_does_not_depend_on_the_order_the_fields_were_written_in ... ok
+test store::tests::a_perturbation_key_ignores_the_order_of_a_nested_field ... ok
+test store::tests::a_receipt_covers_every_field_including_the_one_before_it ... ok
+test store::tests::a_receipt_that_does_not_match_its_contents_is_refused ... ok
+test jobs::tests::recover_preserves_work_orphans_unsettled_attempts_and_never_resettles ... ok
+test store::tests::a_row_sealed_against_the_wrong_head_is_refused ... ok
+test store::tests::a_new_perturbation_of_the_same_item_is_accepted ... ok
+test store::tests::a_row_with_no_schema_is_refused_rather_than_skipped ... ok
+test store::tests::a_run_that_does_not_say_what_it_asked_is_not_a_text_comparison ... ok
+test runs_story::tests::a_running_story_says_where_it_stands ... ok
+test store::tests::a_reworded_question_is_a_second_trial_and_not_a_repeat ... ok
+test store::tests::a_side_that_scored_two_suites_is_not_one_side ... ok
+test store::tests::a_second_writer_is_refused_while_the_lock_is_held ... ok
+test store::tests::a_value_that_is_not_an_object_is_not_a_row ... ok
+test store::tests::a_row_that_does_not_extend_the_head_leaves_the_file_byte_identical ... ok
+test store::tests::an_empty_side_is_not_a_comparison ... ok
+test store::tests::an_inserted_row_reads_as_a_resequence ... ok
+test store::tests::a_removed_row_reads_as_a_resequence_and_not_as_an_edit ... ok
+test store::tests::a_truncated_file_is_repaired_before_it_is_appended_to ... ok
+test store::tests::a_reordered_pair_reads_as_a_resequence ... ok
+test store::tests::an_edited_row_names_the_row_and_the_digest ... ok
+test store::tests::the_allowlist_names_schemas_rather_than_types ... ok
+test store::tests::re_scoring_the_same_trial_is_refused_even_when_the_score_changed ... ok
+test store::tests::two_runs_over_the_same_items_and_different_text_are_a_question_text_comparison ... ok
+test store::tests::two_runs_over_the_same_items_and_the_same_text_are_a_door_comparison ... ok
+test store::tests::two_runs_whose_items_differ_are_still_refused ... ok
+test store::tests::an_unknown_schema_is_a_hard_error_that_says_what_to_do ... ok
+test store::tests::an_edit_and_a_resequence_are_two_different_messages ... ok
+test runs_highlights::tests::the_command_reads_the_fixture_runs ... ok
+test coder_monitor::tests::the_checked_in_replay_reports_precision_and_cost ... ok
+test suite::tests::a_dangling_symlinked_ledger_is_refused ... ok
+test store::tests::concurrent_appends_do_not_interleave_into_a_broken_chain ... ok
+test suite::tests::a_hardlinked_ledger_is_refused ... ok
+test runs_learning::tests::without_jev_nothing_is_asked_and_the_report_says_why ... ok
+test runs_transcript::tests::a_coder_one_transcript_splices_each_session_in_its_place ... ok
+test suite::tests::a_read_that_does_not_say_why_is_refused ... ok
+test suite::tests::a_suite_tagged_with_another_schema_is_refused ... ok
+test jobs::tests::illegal_transitions_refuse_by_name ... ok
+test suite::tests::a_commit_that_fails_returns_no_items_and_spends_nothing ... ok
+test suite::tests::a_locked_read_hands_back_the_items_and_records_itself ... ok
+test suite::tests::an_exposed_locked_partition_is_refused_to_an_adapted_door_and_not_recorded ... ok
+test runs_story::tests::a_coder_one_story_tells_the_episode_in_order ... ok
+test runs_learning::tests::recorded_answers_rank_the_fixture_runs_and_a_second_pass_asks_nothing ... ok
+test suite::tests::a_tampered_suite_is_refused ... ok
+test runs_replay::tests::retained_coder_and_native_fixtures_load ... ok
+test suite::tests::a_different_suite_has_its_own_read_to_spend ... ok
+test coder_coverage::tests::recovered_attempts_list_and_show_one ... ok
+test runs_learning::tests::changed_evidence_is_asked_again_and_only_that_run ... ok
+test suite::tests::a_refused_read_leaves_no_lock_and_no_record ... ok
+test suite::tests::a_second_read_without_an_override_is_refused ... ok
+test suite::tests::every_label_of_every_family_appears_in_every_partition ... ok
+test suite::tests::an_override_with_nothing_to_override_is_refused ... ok
+test suite::tests::a_record_that_lost_its_newline_still_counts_and_the_next_append_repairs_it ... ok
+test suite::tests::every_family_appears_in_every_partition_in_the_same_proportion ... ok
+test runs::tests::reasons_filter_and_groups_read_the_recorded_answers ... ok
+test suite::tests::moving_one_item_between_partitions_is_refused ... ok
+test runs_learning::tests::evidence_is_deterministic_bounded_and_pathless ... ok
+test coder_live::tests::a_run_without_a_manifest_is_in_progress_with_its_current_component ... ok
+test suite::tests::pointing_the_gate_elsewhere_leaves_the_digest_alone ... ok
+test jobs::tests::done_is_completed_not_complete_coverage ... ok
+test suite::tests::an_extreme_lock_wait_neither_panics_nor_waits_on_a_free_ledger ... ok
+test suite::tests::an_exposed_locked_partition_still_serves_a_door_that_never_trained ... ok
+test runs::tests::gym_runs_rank_fills_the_cache_once_and_the_learning_order_reads_it ... ok
+test suite::tests::a_ledger_under_new_directories_is_created_and_committed ... ok
+test suite::tests::the_two_way_suite_does_not_load_as_a_three_way_one ... ok
+test suite::tests::rewording_a_question_in_the_set_does_not_touch_the_suite ... ok
+test terminal_bench::tests::a_coder_one_episode_brings_its_policy_ledger_and_deadline ... ok
+test terminal_bench::tests::absent_collection_failure_marker_does_not_make_a_success_unhealthy ... ok
+test terminal_bench::tests::a_usage_limited_attempt_is_counted_apart_and_never_graded ... ok
+test terminal_bench::tests::edited_and_missing_bytes_do_not_disappear ... ok
+test terminal_bench::tests::elapsed_reads_rfc3339_fraction_and_offset ... ok
+test suite::tests::the_locked_partition_is_not_reachable_through_partition ... ok
+test suite::tests::the_three_way_suite_says_its_locked_partition_is_exposed ... ok
+test terminal_bench::tests::retention_reports_missing_and_edited_files ... ok
+test terminal_bench::tests::saved_report_is_labeled_and_staleness_is_visible ... ok
+test suite::tests::the_committed_digest_did_not_move_when_the_gate_became_a_reference ... ok
+test terminal_bench::tests::unknown_reward_is_not_a_task_failure ... ok
+test terminal_bench_experiment::tests::a_file_that_isnt_an_experiment_status_is_refused ... ok
+test terminal_bench_experiment::tests::an_id_resolves_under_the_experiments_directory ... ok
+test terminal_bench_experiment::tests::arms_count_graded_attempts_only_and_pair_by_task_and_attempt ... ok
+test terminal_bench_experiment::tests::the_exact_binomial_test_matches_known_values ... ok
+test suite::tests::the_committed_suite_loads_and_its_digest_matches ... ok
+test suite::tests::an_interrupted_append_fails_closed_until_the_line_is_repaired ... ok
+test terminal_bench_pulse::tests::auc_counts_ties_half ... ok
+test terminal_bench::tests::checked_samples_keep_reward_status_and_evidence_distinct ... ok
+test terminal_bench_pulse::tests::fisher_matches_known_tables ... ok
+test terminal_bench_pulse::tests::short_names_cut_the_shared_prefix ... ok
+test terminal_bench_pulse::tests::stop_reasons_group_by_their_words ... ok
+test suite::tests::renaming_the_suite_leaves_the_digest_alone ... ok
+test suite::tests::the_three_partitions_are_disjoint_and_cover_every_item ... ok
+test terminal_bench_reference::tests::a_reference_document_reads_per_task_rows ... ok
+test terminal_bench_reference::tests::another_schema_is_refused ... ok
+test suite::tests::the_manifest_names_its_gate_and_does_not_restate_it ... ok
+test terminal_bench_stop::tests::a_control_arm_never_enters_the_rule ... ok
+test suite::tests::aliased_spellings_of_one_ledger_share_one_first_read ... ok
+test terminal_bench_pulse::tests::a_pulse_reads_arms_signals_components_and_notables ... ok
+test terminal_bench_stop::tests::cells_follow_the_status_rows ... ok
+test terminal_bench::tests::the_startup_index_reads_unchanged_attempts_and_parses_changed_ones ... ok
+test suite::tests::an_override_is_allowed_and_recorded_as_one ... ok
+test terminal_bench_pulse_jev::tests::a_running_trial_without_a_live_tail_is_noted_not_judged ... ok
+test terminal_bench_stop::tests::a_replay_stops_where_the_rule_first_holds_and_counts_what_it_saves ... ok
+test timeline::tests::a_repair_shows_its_brief_and_fresh_session_under_its_row ... ok
+test terminal_bench_stop::tests::replay_does_not_treat_a_priced_subset_as_the_arm_cost ... ok
+test views::tests::a_metered_price_needs_its_source_and_unit ... ok
+test terminal_bench_stop::tests::every_shared_case_gives_the_expected_verdict ... ok
+test views::tests::a_missing_item_is_partial_never_complete ... ok
+test views::tests::a_complete_run_reads_complete ... ok
+test views::tests::a_refusal_is_reported_not_hidden ... ok
+test views::tests::a_workload_the_rows_cannot_reproduce_is_named ... ok
+test views::tests::a_tampered_claim_is_a_named_divergence ... ok
+test suite::tests::naming_a_question_set_leaves_the_digest_alone ... ok
+test views::tests::an_undeclared_selection_cannot_read_as_complete ... ok
+test views::tests::rfc3339_seconds_inverts_utc_from_unix ... ok
+test views::tests::mixed_identities_are_separate_workloads_never_ranked ... ok
+test terminal_bench_pulse::tests::an_unknown_total_never_becomes_a_partial_quota_or_arm_mean ... ok
+test terminal_bench_pulse::tests::the_command_prints_pulse_replay_and_list ... ok
+test views::tests::label_provenance_and_agreement_travel_with_the_rows ... ok
+test views::tests::the_manifest_reproduces_its_claims ... ok
+test timeline::tests::a_retained_v3_trial_derives_the_same_timeline_twice ... ok
+test jobs::tests::every_outcome_is_counted ... ok
+test suite::tests::a_held_lock_is_reported_after_the_wait ... ok
+test views::tests::the_page_carries_only_aggregates_and_safe_metadata ... ok
+test views::tests::unmetered_is_not_zero_and_unmeasured_is_unmeasured ... ok
+test views::tests::untimed_is_not_a_zero ... ok
+test views::tests::status_is_separate_and_its_freshness_is_stated ... ok
+test suite::tests::a_suite_carries_its_question_text_on_every_item_or_on_none ... ok
+test timeline::tests::a_killed_episode_reads_as_an_incomplete_prefix ... ok
+test suite::tests::an_exposure_that_does_not_describe_its_suite_is_refused ... ok
+test suite::tests::sixteen_callers_get_exactly_one_first_read ... ok
+test suite::tests::the_unseen_suite_is_the_three_way_suite_minus_what_the_adapters_saw ... ok
+test terminal_bench_pulse_jev::tests::experiment_questions_are_asked_once_where_they_apply_and_grouped_by_arm ... ok
+test terminal_bench_reference::tests::the_checked_reference_covers_every_tb4_task ... ok
+test timeline::tests::executor_events_appear_inline_between_invocations ... ok
+test suite::tests::the_coder_suite_carries_both_kinds_of_evidence_and_says_which ... ok
+test suite::tests::the_coder_suite_loads_and_its_digest_matches ... ok
+test runs_marks::tests::the_command_line_marks_filters_shows_and_measures ... ok
+test suite::tests::one_state_never_straddles_two_partitions ... ok
+test runs_analysis::tests::the_command_prints_and_writes ... ok
+test runs::tests::gym_runs_prints_the_list_and_one_run ... ok
+test coder_router::tests::the_checked_in_features_route_the_development_tasks ... ok
+test terminal_bench::tests::retained_v3_failures_pass_the_completeness_check ... ok
+test terminal_bench::tests::retained_traces_include_component_cost_and_manual_price ... ok
+test coder_matrix::tests::the_retained_trials_reproduce_the_documented_oracles ... ok
+test coder_components::tests::isolated_runs_and_retained_episodes_show_side_by_side ... ok
+
+test result: ok. 481 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 18.99s
+
+     Running unittests src/bin/gym.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/gym-c5a6506302a0df60)
+
+running 39 tests
+test tests::a_file_of_comments_names_no_items ... ok
+test tests::a_refused_row_names_no_option ... ok
+test tests::admission_profile_does_not_invent_cost_or_drop_missing_timings ... ok
+test tests::a_recorded_row_names_the_option_it_chose ... ok
+test tests::model_discovery_selects_the_requested_variant_or_alias ... ok
+test tests::item_ids_skip_comments_and_blank_lines ... ok
+test terminal_bench_cli::tests::experiment_report_reads_a_status_file_and_other_verbs_reach_the_harness ... ok
+test terminal_bench_cli::tests::run_forwards_flags_and_exit_status_to_an_executable_without_a_shell ... ok
+Wrote `/tmp/gym-report-886163/record.md`.
+`/tmp/gym-report-886163/store.jsonl`: 3 rows, receipt chain unbroken, last receipt `receipt:6fb7cb04a99557ed99193f9f0cb59567696e46795b93125e7ad391e091e19cc3`.
+test tests::report_renders_a_store_as_a_record ... ok
+test tests::the_same_door_name_keeps_checkpoint_and_execution_comparisons_separate ... ok
+Wrote `/tmp/gym-report-sub-886163/record.md`.
+test tests::report_treats_a_declared_subset_as_the_selection ... ok
+`/tmp/gym-verify-886163/store.jsonl`: chain broken at row 0 (edited).
+test tests::verify_names_a_broken_chain ... ok
+Wrote snapshot `/tmp/.tmp8c2MNj/snapshots/20260925T004117Z-0767f8b1` — coverage partial. Verify with `gym verify --store /tmp/.tmp8c2MNj/store.jsonl --snapshot /tmp/.tmp8c2MNj/snapshots/20260925T004117Z-0767f8b1`.
+Wrote `/tmp/gym-report-tail-886163/record.md`.
+test tests::a_snapshot_with_missing_work_is_published_partial ... ok
+Wrote `/tmp/gym-report-gap-886163/record.md`.
+test tests::eval_subsets_preserve_order_and_reject_locked_or_unknown_items ... ok
+test tests::report_names_a_missing_final_item ... ok
+test tests::report_names_a_missing_middle_item ... ok
+Wrote `/tmp/gym-report-open-886163/record.md`.
+test tests::report_without_a_declared_selection_says_so_first ... ok
+Wrote snapshot `/tmp/.tmpTHrUbc/snapshots/20260925T004117Z-d0e00c9e` — coverage undeclared. Verify with `gym verify --store /tmp/.tmpTHrUbc/store.jsonl --snapshot /tmp/.tmpTHrUbc/snapshots/20260925T004117Z-d0e00c9e`.
+test tests::a_snapshot_without_a_suite_is_undeclared ... ok
+Wrote snapshot `/tmp/.tmpCPxh5t/snapshots/20260925T004117Z-d0e00c9e` — coverage complete. Verify with `gym verify --store /tmp/.tmpCPxh5t/store.jsonl --snapshot /tmp/.tmpCPxh5t/snapshots/20260925T004117Z-d0e00c9e`.
+Wrote snapshot `/tmp/.tmp4dj4aa/snapshots/20260925T004117Z-d0e00c9e` — coverage complete. Verify with `gym verify --store /tmp/.tmp4dj4aa/store.jsonl --snapshot /tmp/.tmp4dj4aa/snapshots/20260925T004117Z-d0e00c9e`.
+test tests::an_unsourced_price_is_refused ... ok
+Wrote `/tmp/gym-report-door-886163/record.md`.
+Wrote snapshot `/tmp/.tmpxiYicp/snapshots/20260925T004117Z-d0e00c9e` — coverage complete. Verify with `gym verify --store /tmp/.tmpxiYicp/store.jsonl --snapshot /tmp/.tmpxiYicp/snapshots/20260925T004117Z-d0e00c9e`.
+Wrote `/tmp/gym-report-full-886163/record.md`.
+test tests::report_counts_an_expected_door_that_left_nothing ... ok
+test tests::a_commitment_needs_the_declared_selection ... ok
+test tests::report_marks_a_covered_selection_complete ... ok
+`/tmp/.tmpCPxh5t/store.jsonl`: 10 rows, receipt chain unbroken, last receipt `receipt:d0e00c9e23b04c264caecabbd30607fdb824df0970ca7c88ed970f773d439ff8`.
+`/tmp/.tmp4dj4aa/store.jsonl`: 10 rows, receipt chain unbroken, last receipt `receipt:d0e00c9e23b04c264caecabbd30607fdb824df0970ca7c88ed970f773d439ff8`.
+test tests::admission_retained_report_refuses_changed_rows_tail_and_selection ... ok
+test tests::the_store_refuses_a_second_recording_of_an_item ... ok
+`/tmp/.tmpCPxh5t/store.jsonl` reproduces the snapshot in `/tmp/.tmpCPxh5t/snapshots/20260925T004117Z-d0e00c9e`.
+test tests::an_edited_page_fails_verification ... ok
+test tests::a_published_snapshot_verifies_against_its_store ... ok
+Wrote commitment `/tmp/gym-report-com-886163/commitment.json` — digest `6c7a0326a91726b9b78d76411059074932aadba26e8a5164e8e57c6253d7aabc`.
+Wrote `/tmp/gym-report-com-886163/record.md`.
+`/tmp/gym-report-com-886163/store.jsonl`: 10 rows, receipt chain unbroken, last receipt `receipt:d0e00c9e23b04c264caecabbd30607fdb824df0970ca7c88ed970f773d439ff8`.
+`/tmp/gym-report-com-886163/store.jsonl` matches commitment `/tmp/gym-report-com-886163/commitment.json` (digest `6c7a0326a91726b9b78d76411059074932aadba26e8a5164e8e57c6253d7aabc`).
+Wrote `/tmp/gym-report-mix-886163/record.md`.
+Wrote commitment `/tmp/.tmp13qcgn/commitment.json` — digest `98e04bac778e8e951050243ddceda64dc10ef67bed0041c103404b36fb280aa1`.
+# `caller-v1` — the measured record
+
+Store `/tmp/.tmp13qcgn/other.jsonl` holds 8 rows; the receipt chain verifies to head `receipt:a679ed8105c2dae88ea611c05f2921c1665dd9810928b76f0204e27292b7679f`.
+Recorded 2026-09-20T00:00:00Z through 2026-09-20T00:00:00Z.
+
+A row the harness never wrote is not here: items lost to timeouts or dead doors leave no row, and where the selection is declared they are named as missing — never scored as wrong answers. A refused item counts against the door that refused it.
+
+Suite `caller-v1` — digest `ea00961656b2dac6ff9fb38297330f9946c38425250c33a65eb05097bf757572`.
+Question set `caller-v1` — digest `question-digest`.
+
+**Coverage: incomplete** — `stub` is missing 2 of the expected items. This is a partial record, not a completed evaluation.
+
+Declared selection: 10 items, doors `stub`.
+
+## `stub`
+
+Identity: incomplete identity.
+Trials: estimator `greedy`.
+Coverage: 8 of 10 expected items recorded — 8 answered, 0 refused; 2 missing or unattempted.
+Missing: `development/routing/003`, `development/routing/005`.
+
+8 items recorded: 8 scored, 0 refused by the door.
+Median latency unknown.
+
+| Set | Accuracy | ECE | Brier | NLL | Confident errors | Items |
+| --- | --- | --- | --- | --- | --- | --- |
+| development | 0.00 | 0.000 | 0.000 | 0.000 | 0 | 0 |
+
+| Family | Accuracy | ECE | Brier | NLL | Confident errors | Items | Ceiling |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `routing` | 0.00 | 0.000 | 0.000 | 0.000 | 0 | 0 | unstated |
+| `severity` | 0.00 | 0.000 | 0.000 | 0.000 | 0 | 0 | unstated |
+| `facts` | 0.00 | 0.000 | 0.000 | 0.000 | 0 | 0 | unstated |
+
+| Family | Expected | Recorded | Answered | Refused | Missing |
+| --- | --- | --- | --- | --- | --- |
+| `routing` | 4 | 2 | 2 | 0 | 2 |
+| `severity` | 3 | 3 | 3 | 0 | 0 |
+| `facts` | 3 | 3 | 3 | 0 | 0 |
+
+Label evidence:
+
+- `routing` — author — rule "written for the intake test"
+- `severity` — author — rule "written for the intake test"
+- `facts` — author — rule "written for the intake test"
+
+## Checking this record
+
+Every row pins the suite digest, the question-set digest, and the gate digest, and carries a receipt over its contents chained to the row before it. Every store-reading command walks that chain and refuses a broken one; `gym verify --store` walks it without rendering the tables. The suite digests itself on load, and the named gate lives in `crates/gym/gates/`.
+
+A verified chain proves these rows were not edited or resequenced inside this file; it does not prove the file is whole or that this is the only store. Completeness comes from the declared selection above, and permanence comes from the commitment written beside this record — check a later copy of the store against it with `gym verify --store … --commitment …`.
+
+test tests::report_separates_mixed_run_identities ... ok
+`/tmp/gym-report-com-886163/trimmed.jsonl`: 9 rows, receipt chain unbroken, last receipt `receipt:6029574828d81da875d7391238af8e837712b06154b6cfbf6e8576791f438e6c`.
+compared with `/tmp/gym-report-com-886163/commitment.json`: the store holds 9 rows; the commitment covers 10
+test tests::a_commitment_verifies_the_store_and_names_a_dropped_tail ... ok
+test tests::publish_refuses_a_commitment_from_another_record ... ok
+test terminal_bench_cli::tests::text_comparison_keeps_trials_and_development_denominators ... ok
+test terminal_bench_cli::tests::evidence_missing_lists_unretained_files_per_attempt ... ok
+test coder_cli::tests::policy_diff_names_exactly_the_executor_profile_and_directions ... ok
+test terminal_bench_cli::tests::compare_reports_setup_by_cache_state_and_setup_failures ... ok
+test terminal_bench_cli::tests::json_keeps_missing_reward_separate_from_zero_cost_and_refusal ... ok
+test terminal_bench_cli::tests::a_tb4_profile_groups_apart_and_shows_the_leaderboard ... ok
+test coder_cli::tests::policy_show_and_list_read_the_checked_in_manifests ... ok
+test terminal_bench_cli::tests::attempt_and_evidence_select_the_same_job_and_trial ... ok
+Wrote snapshot `/tmp/.tmpxiYicp/snapshots/20260925T004118Z-d0e00c9e` — coverage complete. Verify with `gym verify --store /tmp/.tmpxiYicp/store.jsonl --snapshot /tmp/.tmpxiYicp/snapshots/20260925T004118Z-d0e00c9e`.
+test tests::earlier_snapshots_are_preserved ... ok
+test terminal_bench_cli::tests::a_retained_v3_attempt_renders_its_timeline_as_text_and_json ... ok
+
+test result: ok. 39 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 23.31s
+
+     Running tests/caller_suite_v1.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/caller_suite_v1-212bcdadb5fce478)
+
+running 1 test
+test caller_v1_loads_and_resolves_both_keyings ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/external_jevbench_v1.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/external_jevbench_v1-8fad8e2a24efff1f)
+
+running 1 test
+test external_jevbench_v1_loads_and_asks_every_item_by_id ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/gate_digest.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/gate_digest-e919c2f9e2204cae)
+
+running 28 tests
+test a_bare_string_in_previously_is_refused ... ok
+test a_binding_without_record_provenance_is_refused ... ok
+test a_binding_with_a_malformed_digest_is_refused ... ok
+test a_binding_to_a_stale_identity_is_refused ... ok
+test a_pending_object_with_an_unknown_field_is_refused ... ok
+test a_v1_document_is_refused_by_name_not_as_a_syntax_error ... ok
+test a_v2_pending_string_is_refused_for_carrying_no_why ... ok
+test a_correctly_bound_alias_attributes ... ok
+test the_enums_that_say_what_a_statistic_covers_are_identity ... ok
+test a_changed_policy_cannot_inherit_the_previous_encodings_identity ... ok
+test evidence_names_a_record_not_the_file_holding_it ... ok
+test prose_edits_keep_the_previous_encodings_identity ... ok
+test the_recorded_v1_digest_still_attributes_to_probability_v1 ... ok
+test every_shipped_gate_loads_under_v2_and_digests ... ok
+test editing_a_pending_why_does_not_re_identify_a_gate ... ok
+test editing_the_question_does_not_re_identify_a_gate ... ok
+test decision_and_deployment_carried_no_recorded_digest_forward ... ok
+test the_shipped_gates_are_different_rules ... ok
+test the_schema_is_inside_the_identity ... ok
+test a_threshold_change_is_a_different_gate ... ok
+test editing_a_bounds_prose_does_not_re_identify_a_gate ... ok
+test changing_a_rules_evidence_is_a_different_gate ... ok
+test editing_the_comment_does_not_re_identify_a_gate ... ok
+test renaming_the_gate_is_a_different_gate ... ok
+test relabelling_a_bounds_basis_is_a_different_gate ... ok
+test no_policy_edit_inherits_the_previous_encodings_identity ... ok
+test changing_pending_identity_is_a_different_gate ... ok
+test a_digest_no_gate_recorded_does_not_attribute ... ok
+
+test result: ok. 28 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/kev_variant_rows.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/kev_variant_rows-c29787d50b13886b)
+
+running 1 test
+test kev_variant_rows_reconcile_against_the_pinned_suite ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.20s
+
+     Running tests/locked_ledger.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/locked_ledger-a736e08eb363dc8e)
+
+running 7 tests
+test child_process ... ignored
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+test a_relative_ledger_path_is_created_and_committed ... ok
+
+running 1 test
+
+running 1 test
+test racing_processes_get_exactly_one_first_read ... ok
+test aliased_spellings_of_one_ledger_share_one_first_read ... ok
+test each_digest_spends_its_own_first_read ... ok
+
+running 1 test
+
+running 1 test
+test an_override_keeps_its_authority_and_reason_across_processes ... ok
+test the_state_a_killed_writer_leaves_fails_closed_and_recovers ... ok
+
+test result: ok. 6 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.17s
+
+     Running tests/program_selection_v2.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/program_selection_v2-545b1d35a2d5c168)
+
+running 1 test
+test current_program_suite_preserves_open_history_and_reserves_new_locked_items ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/program_selection_v3.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/program_selection_v3-ec520e36aebe04ba)
+
+running 1 test
+test the_five_option_suite_keeps_every_v2_item_and_covers_review_runs ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/recipes.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/recipes-cf9d8cbcb4f87740)
+
+running 1 test
+test every_recipe_is_versioned_typed_and_fixture_verified ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/rederived_floors.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/rederived_floors-8427b5707487e76e)
+
+running 6 tests
+test the_two_sigma_bounds_are_derived_quantities_not_the_spreads_themselves ... ok
+test the_band_conditioned_claim_on_lev_band_reproduces ... ok
+test the_raw_block_spreads_reproduce_from_the_draws ... ok
+test the_fixed_map_claims_on_lev_base_reproduce ... ok
+test mapped_observations_and_the_draw_path_agree_where_they_overlap ... ok
+lev-adapted@1 routing mapped brier: stored 0.04762046400951813, recomputed 0.047620464009518124 (Δ 6.938893903907228e-18, within tolerance)
+lev-adapted@1 routing: regenerated (admitted)
+lev-adapted@1 severity raw ece: stored 0.24999999999999992, recomputed 0.24999999999999994 (Δ 2.7755575615628914e-17, within tolerance)
+lev-adapted@1 severity: regenerated (not admitted)
+lev-adapted@1 urgency: regenerated (not admitted)
+lev-base routing mapped ece: stored 0.10670731707317029, recomputed 0.10670731707317027 (Δ 1.3877787807814457e-17, within tolerance)
+lev-base routing: regenerated (admitted)
+lev-base severity raw ece: stored 0.11607142857142856, recomputed 0.11607142857142855 (Δ 1.3877787807814457e-17, within tolerance)
+lev-base severity raw nll: stored 0.4929959869784256, recomputed 0.49299598697842556 (Δ 5.551115123125783e-17, within tolerance)
+lev-base severity mapped ece: stored 0.221938775510204, recomputed 0.22193877551020402 (Δ 2.7755575615628914e-17, within tolerance)
+lev-base severity: regenerated (not admitted)
+lev-base urgency raw brier: stored 0.20052083333333337, recomputed 0.20052083333333334 (Δ 2.7755575615628914e-17, within tolerance)
+lev-base urgency mapped brier: stored 0.2076, recomputed 0.20759999999999998 (Δ 2.7755575615628914e-17, within tolerance)
+lev-base urgency: regenerated (not admitted)
+test every_committed_calibration_record_regenerates_from_the_store ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+
+     Running tests/replay_acceptance.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/replay_acceptance-83285eb0467f64db)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/selected_rows.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/selected_rows-78185b19d607b021)
+
+running 1 test
+test a_v2_row_extends_a_v1_chain_without_rewriting_it ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/voyager_v1.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/voyager_v1-3e15e8996c9a59dd)
+
+running 3 tests
+test print_voyager_digest ... ignored, prints the digest the file records; run on suite edits
+test the_voyager_suite_loads ... ok
+test the_voyager_question_set_covers_its_families ... ok
+
+test result: ok. 2 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/winner_inversion.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/winner_inversion-81f1a5024aa23180)
+
+running 10 tests
+test a_rescale_moves_the_argmax_in_principle ... ok
+test a_row_without_a_named_answer_reads_its_own_argmax ... ok
+test an_observation_reads_the_selected_options_probability_rather_than_the_largest ... ok
+test a_stored_calibrated_row_maps_around_its_named_answer ... ok
+test no_map_moves_the_accuracy_of_the_rows_it_scores ... ok
+test a_gate_verdict_over_scores_alone_cannot_see_a_map_that_moves_the_argmax ... ok
+the fitted table is [Bin { lo: 0.0, hi: 0.5, fitted: 0.25, count: 0 }, Bin { lo: 0.5, hi: 1.0, fitted: 0.25609756097560976, count: 40 }]
+raw Metrics { accuracy: 0.25, ece: 0.75, brier: 0.75, nll: 20.72326583694641, confident_errors: 30, items: 40 }
+through the map Metrics { accuracy: 0.25, ece: 0.006097560975609595, brier: 0.18753718024985128, nll: 0.562433239703414, confident_errors: 0, items: 40 }
+test the_probability_gate_admits_a_map_that_moves_the_argmax ... ok
+test the_argmax_moves_exactly_when_the_calibrated_probability_falls_below_the_runner_ups_share ... ok
+coder-turns-v1.jsonl jev (hosted) action: fitted on 16, scored 16, lowest bin 0.853, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 16, below the floor of 30, which is too few to tell)
+coder-turns-v1.jsonl jev (hosted) damage: fitted on 22, scored 22, lowest bin 0.978, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 22, below the floor of 30, which is too few to tell)
+coder-turns-v1.jsonl jev (hosted) needs_code: fitted on 16, scored 16, lowest bin 0.794, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 16, below the floor of 30, which is too few to tell)
+coder-turns-v1.jsonl jev (hosted) progress: fitted on 16, scored 16, lowest bin 0.500, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 16, below the floor of 30, which is too few to tell)
+coder-turns-v1.jsonl jev (hosted) risk: fitted on 16, scored 16, lowest bin 0.367, 10 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 16, below the floor of 30, which is too few to tell)
+coder-turns-v1.jsonl jev (hosted) shell_outcome: fitted on 22, scored 22, lowest bin 0.761, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 22, below the floor of 30, which is too few to tell)
+coder-turns-v1.jsonl jev (hosted) useful: fitted on 22, scored 22, lowest bin 0.364, 22 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 22, below the floor of 30, which is too few to tell)
+coder-turns-v2-kev-update-candidate.jsonl kev-4b-c4bfa11 action: fitted on 8, scored 10, lowest bin 0.625, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 8, below the floor of 30, which is too few to tell)
+coder-turns-v2-kev-update-candidate.jsonl kev-4b-c4bfa11 shell_outcome: fitted on 22, scored 22, lowest bin 0.750, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 22, below the floor of 30, which is too few to tell)
+coder-turns-v2-kev-update-historical.jsonl kev-4b-historical-1a0cb0a action: fitted on 8, scored 10, lowest bin 0.250, 3 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 8, below the floor of 30, which is too few to tell)
+coder-turns-v2-kev-update-historical.jsonl kev-4b-historical-1a0cb0a shell_outcome: fitted on 22, scored 22, lowest bin 0.717, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 22, below the floor of 30, which is too few to tell)
+coder-turns-v2-kev-update-jev.jsonl jev (hosted) action: fitted on 16, scored 16, lowest bin 0.853, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 16, below the floor of 30, which is too few to tell)
+coder-turns-v2-kev-update-jev.jsonl jev (hosted) shell_outcome: fitted on 22, scored 22, lowest bin 0.761, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 22, below the floor of 30, which is too few to tell)
+coder-turns-v2.jsonl jev (hosted) action: fitted on 16, scored 16, lowest bin 0.853, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 16, below the floor of 30, which is too few to tell)
+coder-turns-v2.jsonl jev (hosted) shell_outcome: fitted on 22, scored 22, lowest bin 0.750, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 22, below the floor of 30, which is too few to tell)
+external-v1-kev-update-candidate.jsonl kev-4b-c4bfa11 boolq: fitted on 40, scored 40, lowest bin 0.915, 0 argmax moves, failed: log_loss_does_not_rise (log loss 0.331 to 0.386)
+external-v1-kev-update-candidate.jsonl kev-4b-c4bfa11 mnli: fitted on 40, scored 40, lowest bin 0.915, 0 argmax moves, failed: confident_errors_do_not_rise (confident errors 4 to 6 over 40 items)
+external-v1-kev-update-historical.jsonl kev-4b-historical-1a0cb0a boolq: fitted on 40, scored 40, lowest bin 0.866, 0 argmax moves, failed: log_loss_does_not_rise (log loss 0.287 to 0.377)
+external-v1-kev-update-historical.jsonl kev-4b-historical-1a0cb0a mnli: fitted on 40, scored 40, lowest bin 0.890, 0 argmax moves, passed: log loss 1.068 to 0.430, confident errors 3 to 0 over 40 items
+external-v1-kev-update-jev.jsonl jev (hosted) boolq: fitted on 40, scored 40, lowest bin 0.866, 0 argmax moves, failed: log_loss_does_not_rise (log loss 0.251 to 0.284)
+external-v1-kev-update-jev.jsonl jev (hosted) mnli: fitted on 40, scored 40, lowest bin 0.866, 0 argmax moves, failed: log_loss_does_not_rise (log loss 0.390 to 0.564)
+external-v1-laya.jsonl english boolq: fitted on 40, scored 40, lowest bin 0.793, 0 argmax moves, passed: log loss 0.658 to 0.568, confident errors 7 to 0 over 40 items
+external-v1-laya.jsonl english mnli: fitted on 40, scored 40, lowest bin 0.167, 0 argmax moves, failed: log_loss_does_not_rise (log loss 0.310 to 0.424)
+external-v1-laya.jsonl multilingual boolq: fitted on 40, scored 40, lowest bin 0.744, 0 argmax moves, passed: log loss 0.833 to 0.616, confident errors 6 to 0 over 40 items
+external-v1-laya.jsonl multilingual mnli: fitted on 40, scored 40, lowest bin 0.793, 0 argmax moves, passed: log loss 0.792 to 0.568, confident errors 7 to 0 over 40 items
+external-v1-laya.jsonl typed-decisions boolq: fitted on 40, scored 40, lowest bin 0.768, 0 argmax moves, failed: log_loss_does_not_rise (log loss 0.501 to 0.533)
+external-v1-laya.jsonl typed-decisions mnli: fitted on 40, scored 40, lowest bin 0.250, 4 argmax moves, failed: log_loss_does_not_rise (log loss 0.357 to 0.380)
+external-v1.jsonl jev (hosted) boolq: fitted on 40, scored 40, lowest bin 0.866, 0 argmax moves, failed: log_loss_does_not_rise (log loss 0.252 to 0.284)
+external-v1.jsonl jev (hosted) mnli: fitted on 40, scored 40, lowest bin 0.841, 0 argmax moves, failed: log_loss_does_not_rise (log loss 0.404 to 0.550)
+external-v1.jsonl kev-0.5b boolq: fitted on 40, scored 40, lowest bin 0.720, 0 argmax moves, passed: log loss 0.767 to 0.682, confident errors 5 to 0 over 40 items
+external-v1.jsonl kev-0.5b mnli: fitted on 40, scored 40, lowest bin 0.278, 4 argmax moves, failed: log_loss_does_not_rise (log loss 0.735 to 0.808)
+external-v1.jsonl kev-0.6b boolq: fitted on 40, scored 40, lowest bin 0.768, 0 argmax moves, passed: log loss 1.211 to 0.563, confident errors 3 to 0 over 40 items
+external-v1.jsonl kev-0.6b mnli: fitted on 40, scored 40, lowest bin 0.817, 0 argmax moves, passed: log loss 1.209 to 0.539, confident errors 5 to 0 over 40 items
+independence-eval-v1.jsonl jev (hosted) independence: fitted on 12, scored 10, lowest bin 0.885, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 12, below the floor of 30, which is too few to tell)
+program-selection-v1.jsonl jev (hosted) program: fitted on 16, scored 28, lowest bin 0.853, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 16, below the floor of 30, which is too few to tell)
+program-selection-v1.jsonl kev-0.5b program: fitted on 16, scored 28, lowest bin 0.971, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 16, below the floor of 30, which is too few to tell)
+program-selection-v1.jsonl kev-0.6b program: fitted on 16, scored 28, lowest bin 0.853, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 16, below the floor of 30, which is too few to tell)
+program-selection-v1.jsonl kev-4b program: fitted on 16, scored 28, lowest bin 0.912, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 16, below the floor of 30, which is too few to tell)
+program-selection-v2-historical-4b.jsonl kev-4b-historical-1a0cb0a program: fitted on 28, scored 40, lowest bin 0.810, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 28, below the floor of 30, which is too few to tell)
+program-selection-v2-jev.jsonl jev (hosted) program: fitted on 28, scored 40, lowest bin 0.845, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 28, below the floor of 30, which is too few to tell)
+program-selection-v2-kev-update-candidate.jsonl kev-4b-c4bfa11 program: fitted on 28, scored 40, lowest bin 0.879, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 28, below the floor of 30, which is too few to tell)
+program-selection-v3-jev.jsonl jev (hosted) program: fitted on 33, scored 45, lowest bin 0.250, 4 argmax moves, failed: log_loss_does_not_rise (log loss 0.307 to 0.323)
+restatement-v1.jsonl jev (hosted) count_and_files: fitted on 8, scored 8, lowest bin 0.944, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 8, below the floor of 30, which is too few to tell)
+restatement-v1.jsonl jev (hosted) count_six: fitted on 8, scored 8, lowest bin 0.944, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 8, below the floor of 30, which is too few to tell)
+restatement-v1.jsonl jev (hosted) distinct_files: fitted on 8, scored 8, lowest bin 0.944, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 8, below the floor of 30, which is too few to tell)
+restatement-v1.jsonl jev (hosted) independent: fitted on 8, scored 8, lowest bin 0.944, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 8, below the floor of 30, which is too few to tell)
+restatement-v1.jsonl jev (hosted) readonly_conjunction: fitted on 8, scored 8, lowest bin 0.944, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 8, below the floor of 30, which is too few to tell)
+restatement-v1.jsonl jev (hosted) readonly_simple: fitted on 8, scored 8, lowest bin 0.944, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 8, below the floor of 30, which is too few to tell)
+restatement-v1.jsonl jev (hosted) writes_none: fitted on 8, scored 8, lowest bin 0.944, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 8, below the floor of 30, which is too few to tell)
+restatement-v1.jsonl jev (hosted) writes_some: fitted on 8, scored 8, lowest bin 0.944, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 8, below the floor of 30, which is too few to tell)
+restatement-v1.jsonl kev-0.5b count_and_files: fitted on 8, scored 8, lowest bin 0.833, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 8, below the floor of 30, which is too few to tell)
+restatement-v1.jsonl kev-0.5b count_six: fitted on 8, scored 8, lowest bin 0.833, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 8, below the floor of 30, which is too few to tell)
+restatement-v1.jsonl kev-0.5b distinct_files: fitted on 8, scored 8, lowest bin 0.833, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 8, below the floor of 30, which is too few to tell)
+restatement-v1.jsonl kev-0.5b independent: fitted on 8, scored 8, lowest bin 0.375, 8 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 8, below the floor of 30, which is too few to tell)
+restatement-v1.jsonl kev-0.5b readonly_conjunction: fitted on 8, scored 8, lowest bin 0.500, 8 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 8, below the floor of 30, which is too few to tell)
+restatement-v1.jsonl kev-0.5b readonly_simple: fitted on 8, scored 8, lowest bin 0.611, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 8, below the floor of 30, which is too few to tell)
+restatement-v1.jsonl kev-0.5b writes_none: fitted on 8, scored 8, lowest bin 0.500, 8 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 8, below the floor of 30, which is too few to tell)
+restatement-v1.jsonl kev-0.5b writes_some: fitted on 8, scored 8, lowest bin 0.833, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 8, below the floor of 30, which is too few to tell)
+restatement-v1.jsonl kev-4b count_and_files: fitted on 8, scored 8, lowest bin 0.500, 2 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 8, below the floor of 30, which is too few to tell)
+restatement-v1.jsonl kev-4b count_six: fitted on 8, scored 8, lowest bin 0.375, 8 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 8, below the floor of 30, which is too few to tell)
+restatement-v1.jsonl kev-4b distinct_files: fitted on 8, scored 8, lowest bin 0.722, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 8, below the floor of 30, which is too few to tell)
+restatement-v1.jsonl kev-4b independent: fitted on 8, scored 8, lowest bin 0.722, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 8, below the floor of 30, which is too few to tell)
+restatement-v1.jsonl kev-4b readonly_conjunction: fitted on 8, scored 8, lowest bin 0.500, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 8, below the floor of 30, which is too few to tell)
+restatement-v1.jsonl kev-4b readonly_simple: fitted on 8, scored 8, lowest bin 0.125, 8 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 8, below the floor of 30, which is too few to tell)
+restatement-v1.jsonl kev-4b writes_none: fitted on 8, scored 8, lowest bin 0.000, 8 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 8, below the floor of 30, which is too few to tell)
+restatement-v1.jsonl kev-4b writes_some: fitted on 8, scored 8, lowest bin 0.944, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 8, below the floor of 30, which is too few to tell)
+restatement-v1.jsonl kev-8b count_and_files: fitted on 8, scored 8, lowest bin 0.944, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 8, below the floor of 30, which is too few to tell)
+restatement-v1.jsonl kev-8b count_six: fitted on 8, scored 8, lowest bin 0.944, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 8, below the floor of 30, which is too few to tell)
+restatement-v1.jsonl kev-8b distinct_files: fitted on 8, scored 8, lowest bin 0.833, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 8, below the floor of 30, which is too few to tell)
+restatement-v1.jsonl kev-8b independent: fitted on 8, scored 8, lowest bin 0.722, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 8, below the floor of 30, which is too few to tell)
+restatement-v1.jsonl kev-8b readonly_conjunction: fitted on 8, scored 8, lowest bin 0.611, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 8, below the floor of 30, which is too few to tell)
+restatement-v1.jsonl kev-8b readonly_simple: fitted on 8, scored 8, lowest bin 0.500, 4 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 8, below the floor of 30, which is too few to tell)
+restatement-v1.jsonl kev-8b writes_none: fitted on 8, scored 8, lowest bin 0.611, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 8, below the floor of 30, which is too few to tell)
+restatement-v1.jsonl kev-8b writes_some: fitted on 8, scored 8, lowest bin 0.944, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 8, below the floor of 30, which is too few to tell)
+support-v2-laya.jsonl english routing: fitted on 40, scored 40, lowest bin 0.346, 5 argmax moves, failed: log_loss_does_not_rise (log loss 0.506 to 0.578)
+support-v2-laya.jsonl english severity: fitted on 15, scored 14, lowest bin 0.062, 4 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 15, below the floor of 30, which is too few to tell)
+support-v2-laya.jsonl english urgency: fitted on 24, scored 24, lowest bin 0.740, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 24, below the floor of 30, which is too few to tell)
+support-v2-laya.jsonl multilingual routing: fitted on 40, scored 40, lowest bin 0.679, 0 argmax moves, passed: log loss 2.125 to 0.649, confident errors 8 to 0 over 40 items
+support-v2-laya.jsonl multilingual severity: fitted on 15, scored 14, lowest bin 0.267, 14 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 15, below the floor of 30, which is too few to tell)
+support-v2-laya.jsonl multilingual urgency: fitted on 24, scored 24, lowest bin 0.580, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 24, below the floor of 30, which is too few to tell)
+support-v2-laya.jsonl typed-decisions routing: fitted on 40, scored 40, lowest bin 0.344, 11 argmax moves, failed: confident_errors_do_not_rise (confident errors 0 to 3 over 40 items)
+support-v2-laya.jsonl typed-decisions severity: fitted on 15, scored 14, lowest bin 0.250, 10 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 15, below the floor of 30, which is too few to tell)
+support-v2-laya.jsonl typed-decisions urgency: fitted on 24, scored 24, lowest bin 0.700, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 24, below the floor of 30, which is too few to tell)
+support-v2-three-way-kev-update-candidate.jsonl kev-4b-c4bfa11 routing: fitted on 40, scored 40, lowest bin 0.793, 0 argmax moves, failed: log_loss_does_not_rise (log loss 0.289 to 0.469)
+support-v2-three-way-kev-update-candidate.jsonl kev-4b-c4bfa11 severity: fitted on 15, scored 14, lowest bin 0.833, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 15, below the floor of 30, which is too few to tell)
+support-v2-three-way-kev-update-candidate.jsonl kev-4b-c4bfa11 urgency: fitted on 24, scored 24, lowest bin 0.780, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 24, below the floor of 30, which is too few to tell)
+support-v2-three-way-kev-update-historical.jsonl kev-4b-historical-1a0cb0a routing: fitted on 40, scored 40, lowest bin 0.250, 2 argmax moves, failed: brier_stays_within_tolerance (Brier 0.142 to 0.193, compared with a ceiling of 0.156, the 10% the binning is allowed to cost)
+support-v2-three-way-kev-update-historical.jsonl kev-4b-historical-1a0cb0a severity: fitted on 15, scored 14, lowest bin 0.167, 4 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 15, below the floor of 30, which is too few to tell)
+support-v2-three-way-kev-update-historical.jsonl kev-4b-historical-1a0cb0a urgency: fitted on 24, scored 24, lowest bin 0.700, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 24, below the floor of 30, which is too few to tell)
+support-v2-three-way-kev-update-jev.jsonl jev (hosted) routing: fitted on 40, scored 40, lowest bin 0.250, 0 argmax moves, failed: log_loss_does_not_rise (log loss 0.146 to 0.363)
+support-v2-three-way-kev-update-jev.jsonl jev (hosted) severity: fitted on 15, scored 14, lowest bin 0.750, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 15, below the floor of 30, which is too few to tell)
+support-v2-three-way-kev-update-jev.jsonl jev (hosted) urgency: fitted on 24, scored 24, lowest bin 0.900, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 24, below the floor of 30, which is too few to tell)
+support-v2-three-way-quiet.jsonl jev (hosted) routing: fitted on 40, scored 40, lowest bin 0.988, 0 argmax moves, failed: log_loss_does_not_rise (log loss 0.154 to 0.562)
+support-v2-three-way-quiet.jsonl jev (hosted) severity: fitted on 15, scored 14, lowest bin 0.844, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 15, below the floor of 30, which is too few to tell)
+support-v2-three-way-quiet.jsonl jev (hosted) urgency: fitted on 24, scored 24, lowest bin 0.900, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 24, below the floor of 30, which is too few to tell)
+support-v2-three-way-quiet.jsonl kev-0.5b routing: fitted on 40, scored 40, lowest bin 0.756, 0 argmax moves, failed: log_loss_does_not_rise (log loss 0.511 to 0.544)
+support-v2-three-way-quiet.jsonl kev-0.5b severity: fitted on 15, scored 14, lowest bin 0.250, 7 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 15, below the floor of 30, which is too few to tell)
+support-v2-three-way-quiet.jsonl kev-0.5b urgency: fitted on 24, scored 24, lowest bin 0.740, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 24, below the floor of 30, which is too few to tell)
+support-v2-three-way-quiet.jsonl kev-0.6b routing: fitted on 40, scored 40, lowest bin 0.744, 0 argmax moves, failed: log_loss_does_not_rise (log loss 0.329 to 0.510)
+support-v2-three-way-quiet.jsonl kev-0.6b severity: fitted on 15, scored 14, lowest bin 0.333, 14 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 15, below the floor of 30, which is too few to tell)
+support-v2-three-way-quiet.jsonl kev-0.6b urgency: fitted on 24, scored 24, lowest bin 0.660, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 24, below the floor of 30, which is too few to tell)
+support-v2-three-way.jsonl baseline-bge routing: fitted on 40, scored 40, lowest bin 0.988, 0 argmax moves, failed: log_loss_does_not_rise (log loss 0.241 to 0.812)
+support-v2-three-way.jsonl baseline-bge severity: fitted on 0, scored 0, lowest bin 0.000, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 0, below the floor of 30, which is too few to tell)
+support-v2-three-way.jsonl baseline-bge urgency: fitted on 0, scored 0, lowest bin 0.000, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 0, below the floor of 30, which is too few to tell)
+support-v2-three-way.jsonl jev (hosted) routing: fitted on 40, scored 40, lowest bin 0.988, 0 argmax moves, failed: log_loss_does_not_rise (log loss 0.156 to 0.562)
+support-v2-three-way.jsonl jev (hosted) severity: fitted on 15, scored 14, lowest bin 0.906, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 15, below the floor of 30, which is too few to tell)
+support-v2-three-way.jsonl jev (hosted) urgency: fitted on 24, scored 24, lowest bin 0.900, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 24, below the floor of 30, which is too few to tell)
+support-v2-three-way.jsonl kev-0.5b routing: fitted on 40, scored 40, lowest bin 0.756, 0 argmax moves, failed: log_loss_does_not_rise (log loss 0.511 to 0.544)
+support-v2-three-way.jsonl kev-0.5b severity: fitted on 15, scored 14, lowest bin 0.250, 7 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 15, below the floor of 30, which is too few to tell)
+support-v2-three-way.jsonl kev-0.5b urgency: fitted on 24, scored 24, lowest bin 0.740, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 24, below the floor of 30, which is too few to tell)
+support-v2-three-way.jsonl kev-0.6b routing: fitted on 40, scored 40, lowest bin 0.744, 0 argmax moves, failed: log_loss_does_not_rise (log loss 0.329 to 0.510)
+support-v2-three-way.jsonl kev-0.6b severity: fitted on 15, scored 14, lowest bin 0.333, 14 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 15, below the floor of 30, which is too few to tell)
+support-v2-three-way.jsonl kev-0.6b urgency: fitted on 24, scored 24, lowest bin 0.660, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 24, below the floor of 30, which is too few to tell)
+support-v2-three-way.jsonl kev-4b routing: fitted on 40, scored 40, lowest bin 0.250, 2 argmax moves, failed: brier_stays_within_tolerance (Brier 0.143 to 0.193, compared with a ceiling of 0.157, the 10% the binning is allowed to cost)
+support-v2-three-way.jsonl kev-4b severity: fitted on 15, scored 14, lowest bin 0.167, 4 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 15, below the floor of 30, which is too few to tell)
+support-v2-three-way.jsonl kev-4b urgency: fitted on 24, scored 24, lowest bin 0.700, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 24, below the floor of 30, which is too few to tell)
+support-v2-three-way.jsonl kev-8b routing: fitted on 40, scored 40, lowest bin 0.750, 0 argmax moves, failed: log_loss_does_not_rise (log loss 0.289 to 0.338)
+support-v2-three-way.jsonl kev-8b severity: fitted on 15, scored 14, lowest bin 0.906, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 15, below the floor of 30, which is too few to tell)
+support-v2-three-way.jsonl kev-8b urgency: fitted on 24, scored 24, lowest bin 0.820, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 24, below the floor of 30, which is too few to tell)
+support-v2-three-way.jsonl lev-adapted@1 routing: fitted on 40, scored 40, lowest bin 0.939, 0 argmax moves, passed: log loss 1.397 to 0.200, confident errors 2 to 2 over 40 items
+support-v2-three-way.jsonl lev-adapted@1 severity: fitted on 15, scored 14, lowest bin 0.969, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 15, below the floor of 30, which is too few to tell)
+support-v2-three-way.jsonl lev-adapted@1 urgency: fitted on 24, scored 24, lowest bin 0.900, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 24, below the floor of 30, which is too few to tell)
+support-v2-three-way.jsonl lev-base routing: fitted on 40, scored 40, lowest bin 0.768, 0 argmax moves, passed: log loss 3.493 to 0.413, confident errors 5 to 0 over 40 items
+support-v2-three-way.jsonl lev-base severity: fitted on 15, scored 14, lowest bin 0.500, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 15, below the floor of 30, which is too few to tell)
+support-v2-three-way.jsonl lev-base urgency: fitted on 24, scored 24, lowest bin 0.740, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 24, below the floor of 30, which is too few to tell)
+support-v2-unseen-laya.jsonl english routing: fitted on 20, scored 20, lowest bin 0.278, 5 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 20, below the floor of 30, which is too few to tell)
+support-v2-unseen-laya.jsonl english severity: fitted on 8, scored 7, lowest bin 0.100, 2 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 8, below the floor of 30, which is too few to tell)
+support-v2-unseen-laya.jsonl english urgency: fitted on 12, scored 12, lowest bin 0.654, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 12, below the floor of 30, which is too few to tell)
+support-v2-unseen-laya.jsonl multilingual routing: fitted on 20, scored 20, lowest bin 0.675, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 20, below the floor of 30, which is too few to tell)
+support-v2-unseen-laya.jsonl multilingual severity: fitted on 8, scored 7, lowest bin 0.250, 7 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 8, below the floor of 30, which is too few to tell)
+support-v2-unseen-laya.jsonl multilingual urgency: fitted on 12, scored 12, lowest bin 0.577, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 12, below the floor of 30, which is too few to tell)
+support-v2-unseen-laya.jsonl typed-decisions routing: fitted on 20, scored 20, lowest bin 0.458, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 20, below the floor of 30, which is too few to tell)
+support-v2-unseen-laya.jsonl typed-decisions severity: fitted on 8, scored 7, lowest bin 0.250, 5 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 8, below the floor of 30, which is too few to tell)
+support-v2-unseen-laya.jsonl typed-decisions urgency: fitted on 12, scored 12, lowest bin 0.654, 0 argmax moves, unverifiable: fitted_on>=30 (fitted_on is 12, below the floor of 30, which is too few to tell)
+test no_map_the_gate_admits_over_the_committed_store_moves_an_argmax ... ok
+39186 map-and-row pairs over 6 committed records
+test no_committed_map_moves_the_argmax_of_any_committed_row ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.33s
+
+   Doc-tests gym
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+PHASE END: Default workspace tests; elapsed 48.8s; exit 0
