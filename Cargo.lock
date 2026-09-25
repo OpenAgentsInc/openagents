@@ -6243,8 +6243,12 @@ dependencies = [
  "bytemuck",
  "coder-terminal",
  "glam",
+ "nostr",
  "png",
  "pollster",
+ "serde",
+ "serde_json",
+ "tungstenite",
  "wgpu",
  "winit",
 ]

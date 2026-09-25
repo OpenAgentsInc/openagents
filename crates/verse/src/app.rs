@@ -17,17 +17,37 @@ use crate::avatar::{self, Gait};
 use crate::camera::FollowCamera;
 use crate::controller::{InputState, PlayerController};
 use crate::render::{self, Renderer, View};
+use crate::session::{self, Session, Status};
 use crate::world::{self, World};
+
+/// How the window joins the shared world.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Options {
+    /// Profile name; each profile is its own player key.
+    pub profile: String,
+    /// Relay URL, or `None` to play offline.
+    pub relay: Option<String>,
+}
+
+impl Default for Options {
+    fn default() -> Self {
+        Self {
+            profile: "default".into(),
+            relay: Some(session::DEFAULT_RELAY.into()),
+        }
+    }
+}
 
 /// Opens the Verse window and runs until it closes.
 ///
 /// # Errors
 ///
-/// Returns a message when the event loop or the renderer cannot start.
-pub fn run() -> Result<(), String> {
+/// Returns a message when the identity, the event loop, or the renderer
+/// cannot start.
+pub fn run(options: &Options) -> Result<(), String> {
     let event_loop = EventLoop::new().map_err(|e| format!("cannot start the event loop: {e}"))?;
     event_loop.set_control_flow(ControlFlow::Poll);
-    let mut app = App::new();
+    let mut app = App::new(options)?;
     event_loop
         .run_app(&mut app)
         .map_err(|e| format!("the event loop failed: {e}"))?;
@@ -103,21 +123,97 @@ struct App {
     keys: Keys,
     last: Instant,
     error: Option<String>,
+    session: Option<Session>,
+    title: String,
+    frames: u64,
 }
 
 impl App {
-    fn new() -> Self {
-        Self {
+    fn new(options: &Options) -> Result<Self, String> {
+        let world = world::build();
+        let mut player = PlayerController::new(world::SPAWN, 0.0);
+        let mut session = match &options.relay {
+            Some(relay) => Some(Session::start(&options.profile, relay)?),
+            None => None,
+        };
+        let spawn = match &mut session {
+            Some(s) => s.spawn(
+                &world.blockers,
+                world::HALF,
+                std::time::Duration::from_millis(1500),
+            ),
+            None => session::Spawn {
+                pos: session::random_spawn(&world.blockers),
+                yaw: 0.0,
+                resumed: false,
+            },
+        };
+        player.pos = spawn.pos;
+        player.yaw = spawn.yaw;
+        if let Some(s) = &session {
+            eprintln!(
+                "verse: {} ({}…) on {}; {}",
+                s.profile(),
+                &s.pubkey()[..12],
+                s.relay(),
+                if spawn.resumed {
+                    "resumed where you left"
+                } else {
+                    "new spawn on the plaza"
+                }
+            );
+        }
+        Ok(Self {
             window: None,
             renderer: None,
-            world: world::build(),
-            player: PlayerController::new(world::SPAWN, 0.0),
-            agent: Agent::new(&PlayerController::new(world::SPAWN, 0.0)),
+            agent: Agent::new(&player),
+            world,
+            player,
             camera: FollowCamera::default(),
             gait: Gait::default(),
             keys: Keys::default(),
             last: Instant::now(),
             error: None,
+            session,
+            title: String::new(),
+            frames: 0,
+        })
+    }
+
+    /// Records the player as offline on the relay before quitting.
+    fn quit(&mut self, event_loop: &ActiveEventLoop) {
+        if let Some(session) = &mut self.session {
+            session.leave(&self.player, &self.agent);
+        }
+        self.session = None;
+        event_loop.exit();
+    }
+
+    fn update_title(&mut self) {
+        let title = match &self.session {
+            None => "Verse — offline".to_owned(),
+            Some(s) => {
+                let status = match s.status {
+                    Status::Connecting => "connecting",
+                    Status::Online => "online",
+                    Status::Offline => "relay unreachable, retrying",
+                };
+                let shown = s.crowd.shown(Instant::now());
+                let avatars = shown.iter().filter(|e| e.role == "avatar");
+                let online = avatars.clone().filter(|e| e.online).count();
+                let resting = avatars.count() - online;
+                format!(
+                    "Verse — {} — {} — {online} other players online, {resting} resting",
+                    s.profile(),
+                    status,
+                )
+            }
+        };
+        if title != self.title
+            && let Some(window) = &self.window
+        {
+            window.set_title(&title);
+            self.title = title;
         }
     }
 
@@ -131,7 +227,7 @@ impl App {
             KeyCode::KeyE => self.keys.e = pressed,
             KeyCode::ShiftLeft | KeyCode::ShiftRight => self.keys.shift = pressed,
             KeyCode::Space if pressed => self.keys.jump = true,
-            KeyCode::Escape if pressed => event_loop.exit(),
+            KeyCode::Escape if pressed => self.quit(event_loop),
             _ => {}
         }
     }
@@ -188,12 +284,32 @@ impl App {
             .advance(self.player.speed, self.player.airborne(), dt);
         self.agent.update(&self.player, dt);
 
+        // The look-around is the agent assessing what is near: it asks the
+        // relay for entity states around it, then glances at what it found.
+        if self.agent.take_scan() {
+            match &mut self.session {
+                Some(session) => session.request_scan(self.agent.pos),
+                None => self.agent.look_around(&[]),
+            }
+        }
+        let mut dynamic = avatar::mesh(&self.player, &self.gait);
+        dynamic.extend(&self.agent.mesh());
+        if let Some(session) = &mut self.session {
+            session.tick(now, &self.player, &self.agent);
+            if let Some(found) = session.scan_result(now, &self.agent) {
+                self.agent.look_around(&found);
+            }
+            dynamic.extend(&session.crowd.mesh(now, dt));
+        }
+        if self.frames.is_multiple_of(30) {
+            self.update_title();
+        }
+        self.frames = self.frames.wrapping_add(1);
+
         let Some(renderer) = &mut self.renderer else {
             return;
         };
         let view = view(&self.camera, &self.player, renderer.aspect());
-        let mut dynamic = avatar::mesh(&self.player, &self.gait);
-        dynamic.extend(&self.agent.mesh());
         renderer.draw(view, &dynamic);
     }
 }
@@ -229,7 +345,7 @@ impl ApplicationHandler for App {
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _: WindowId, event: WindowEvent) {
         match event {
-            WindowEvent::CloseRequested => event_loop.exit(),
+            WindowEvent::CloseRequested => self.quit(event_loop),
             WindowEvent::Resized(size) => {
                 if let Some(renderer) = &mut self.renderer {
                     renderer.resize(size.width, size.height);

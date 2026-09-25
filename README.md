@@ -296,7 +296,7 @@ failure without regressions. The v8 results above do not evaluate v10.
 | [plugin](crates/plugin/), [plugin-pdk](crates/plugin-pdk/), [plugin-outline](crates/plugin-outline/) | Bounded plugin host, shared packet ABI, and diagnostic guest. |
 | [nostr](crates/nostr/), [nostr-relay](crates/nostr-relay/) | Protocol verification and the self-hostable PostgreSQL-backed relay. |
 | [voyager](crates/voyager/) | Minecraft curriculum, bounded programs, critics, skill retention, and traces through the separate [nightly Rust bridge](mc-bridge/). |
-| [verse](crates/verse/) | The Verse desktop world: an amber line city, a WoW-style player controller, and a `wgpu` renderer with headless PNG capture. |
+| [verse](crates/verse/) | The Verse desktop world: an amber line city, a WoW-style player controller, a following agent, and multiplayer over Nostr with [NIP-MV](nips/openagents/NIP-MV.md). |
 
 The host owns permissions, deadlines, budgets, and execution boundaries.
 Typed judgments inform decisions; their shape does not establish correctness

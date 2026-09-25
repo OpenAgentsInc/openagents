@@ -7,13 +7,17 @@
 //! frequencies, so the motion never settles into an exact repeat.
 //!
 //! On top of that motion the agent plays [`Emote`]s. After it chases a
-//! running player and catches up, it looks left and right. While it idles
+//! running player and catches up, it asks for a scan of its surroundings
+//! ([`Agent::take_scan`]); the game queries the relay and hands back what
+//! is nearby ([`Agent::look_around`]), and the agent looks toward it, left
+//! and then right. While it idles
 //! beside a still player, it now and then spins, looks up and down, or
 //! does a barrel roll.
 
 use coder_terminal::Intensity;
 use glam::{Mat4, Quat, Vec2, Vec3};
 
+use crate::avatar::dim;
 use crate::controller::PlayerController;
 use crate::mesh::Mesh;
 
@@ -160,6 +164,31 @@ fn ease(t: f32) -> f32 {
 struct Playing {
     emote: Emote,
     elapsed: f32,
+    /// Look-around glance angles, left then right, in radians.
+    glance: [f32; 2],
+}
+
+/// The look-around glances when nothing nearby is known.
+pub const DEFAULT_GLANCE: [f32; 2] = [0.85, -0.85];
+
+/// Look-around pose at `u` with custom glance angles.
+fn look_pose(u: f32, glance: [f32; 2]) -> Pose {
+    let u = u.clamp(0.0, 1.0);
+    let (a, b) = (glance[0], glance[1]);
+    Pose {
+        yaw: keys(
+            u,
+            &[
+                (0.0, 0.0),
+                (0.2, a),
+                (0.4, a),
+                (0.62, b),
+                (0.8, b),
+                (1.0, 0.0),
+            ],
+        ),
+        ..Pose::REST
+    }
 }
 
 /// The agent's motion state.
@@ -174,6 +203,8 @@ pub struct Agent {
     playing: Option<Playing>,
     chased: f32,
     owed_look: bool,
+    scan_wanted: bool,
+    scanning: bool,
     idle_wait: f32,
     rng: u64,
 }
@@ -190,6 +221,8 @@ impl Agent {
             playing: None,
             chased: 0.0,
             owed_look: false,
+            scan_wanted: false,
+            scanning: false,
             idle_wait: IDLE_WAIT.0,
             rng: 0x5eed_a6e7,
         }
@@ -204,8 +237,54 @@ impl Agent {
     /// The current emote pose, or rest.
     #[must_use]
     pub fn pose(&self) -> Pose {
-        self.playing
-            .map_or(Pose::REST, |p| p.emote.pose(p.elapsed / p.emote.duration()))
+        self.playing.map_or(Pose::REST, |p| {
+            let u = p.elapsed / p.emote.duration();
+            if p.emote == Emote::LookAround {
+                look_pose(u, p.glance)
+            } else {
+                p.emote.pose(u)
+            }
+        })
+    }
+
+    /// True once when the agent has caught up after a chase and wants to
+    /// assess its surroundings. The caller answers with
+    /// [`Agent::look_around`].
+    pub fn take_scan(&mut self) -> bool {
+        std::mem::take(&mut self.scan_wanted)
+    }
+
+    /// True between a scan request and its answer.
+    #[must_use]
+    pub fn scanning(&self) -> bool {
+        self.scanning
+    }
+
+    /// Plays the look-around toward `targets`, world positions the scan
+    /// found, nearest first. With none, it glances a default left and right.
+    pub fn look_around(&mut self, targets: &[Vec3]) {
+        self.scanning = false;
+        let mut angles: Vec<f32> = targets
+            .iter()
+            .take(2)
+            .map(|t| {
+                let d = *t - self.pos;
+                let heading = d.x.atan2(d.z);
+                crate::controller::wrap(heading - self.yaw).clamp(-1.4, 1.4)
+            })
+            .collect();
+        angles.sort_by(|a, b| b.total_cmp(a));
+        let glance = match angles.as_slice() {
+            [a, b] if (a - b).abs() > 0.2 => [*a, *b],
+            [a, ..] if *a >= 0.0 => [*a, DEFAULT_GLANCE[1]],
+            [a, ..] => [DEFAULT_GLANCE[0], *a],
+            [] => DEFAULT_GLANCE,
+        };
+        self.playing = Some(Playing {
+            emote: Emote::LookAround,
+            elapsed: 0.0,
+            glance,
+        });
     }
 
     /// Advances the agent by `dt` seconds toward its place beside `player`.
@@ -246,12 +325,13 @@ impl Agent {
         if !still || !caught_up {
             return;
         }
-        if self.owed_look {
+        if self.owed_look && !self.scanning {
             self.owed_look = false;
-            self.play(Emote::LookAround);
+            self.scan_wanted = true;
+            self.scanning = true;
             return;
         }
-        if self.playing.is_none() {
+        if self.playing.is_none() && !self.scanning {
             self.idle_wait -= dt;
             if self.idle_wait <= 0.0 {
                 let pick = Emote::IDLE[(self.random() * 3.0) as usize % 3];
@@ -265,6 +345,7 @@ impl Agent {
         self.playing = Some(Playing {
             emote,
             elapsed: 0.0,
+            glance: DEFAULT_GLANCE,
         });
     }
 
@@ -292,7 +373,7 @@ impl Agent {
     /// The agent's geometry for this frame: the spade and its ground ring.
     #[must_use]
     pub fn mesh(&self) -> Mesh {
-        let mut mesh = spade(self.transform());
+        let mut mesh = spade(self.transform(), Intensity::Full);
         let ground = Vec3::new(self.pos.x, 0.02, self.pos.z);
         let pulse = 0.28 + (self.time * 1.9).sin() * 0.03;
         mesh.ring(ground, pulse, 24, Intensity::Quarter);
@@ -342,9 +423,9 @@ fn outline() -> (Vec<Vec2>, Vec<Vec2>, [Vec2; 4]) {
     (body, arc, stem)
 }
 
-/// Builds the spade under `transform`: near-black faces front, back, and
+/// Builds the spade under `transform`, its front edge at `bright`: near-black faces front, back, and
 /// sides, a bright front and back outline, and quieter edges joining them.
-fn spade(transform: Mat4) -> Mesh {
+pub fn spade(transform: Mat4, bright: Intensity) -> Mesh {
     let mut mesh = Mesh::default();
     let (body, arc, stem) = outline();
     let at = |p: Vec2, z: f32| transform.transform_point3(Vec3::new(p.x, p.y, z) * SIZE);
@@ -364,10 +445,10 @@ fn spade(transform: Mat4) -> Mesh {
     for i in 0..rim.len() {
         let (p, q) = (rim[i], rim[(i + 1) % rim.len()]);
         mesh.quad([at(p, front), at(q, front), at(q, back), at(p, back)]);
-        mesh.line(at(p, front), at(q, front), Intensity::Full);
-        mesh.line(at(p, back), at(q, back), Intensity::ThreeQuarters);
+        mesh.line(at(p, front), at(q, front), bright);
+        mesh.line(at(p, back), at(q, back), dim(bright));
         if i % 6 == 0 {
-            mesh.line(at(p, front), at(p, back), Intensity::Half);
+            mesh.line(at(p, front), at(p, back), dim(dim(bright)));
         }
     }
 
@@ -375,7 +456,7 @@ fn spade(transform: Mat4) -> Mesh {
     mesh.line(
         at(Vec2::new(0.0, 0.34), front * 1.01),
         at(Vec2::new(0.0, 0.02), front * 1.01),
-        Intensity::ThreeQuarters,
+        dim(bright),
     );
     mesh
 }
@@ -436,11 +517,17 @@ mod tests {
             assert_eq!(agent.emote(), None, "no emote mid-chase");
         }
         let mut seen = false;
+        let mut scans = 0;
         for _ in 0..240 {
             pc.update(&InputState::default(), dt, &[], 1000.0);
             agent.update(&pc, dt);
+            if agent.take_scan() {
+                scans += 1;
+                agent.look_around(&[agent.pos + Vec3::new(5.0, 0.0, 5.0)]);
+            }
             seen |= agent.emote() == Some(Emote::LookAround);
         }
+        assert_eq!(scans, 1, "one scan per catch-up");
         assert!(seen, "the agent looks around once it catches up");
     }
 
@@ -501,6 +588,19 @@ mod tests {
     }
 
     #[test]
+    fn the_look_around_faces_what_the_scan_found() {
+        let pc = PlayerController::new(Vec3::ZERO, 0.0);
+        let mut agent = Agent::new(&pc);
+        // Heading +Z: +X is to the agent's left.
+        let left = agent.pos + Vec3::new(10.0, 0.0, 10.0);
+        let right = agent.pos + Vec3::new(-10.0, 0.0, 3.0);
+        agent.look_around(&[right, left]);
+        let playing = agent.playing.expect("playing");
+        assert!((playing.glance[0] - std::f32::consts::FRAC_PI_4).abs() < 0.05);
+        assert!(playing.glance[1] < -1.0);
+    }
+
+    #[test]
     fn the_look_around_goes_left_then_right() {
         let left = Emote::LookAround.pose(0.3).yaw;
         let right = Emote::LookAround.pose(0.7).yaw;
@@ -511,7 +611,7 @@ mod tests {
     fn the_spade_is_its_size_and_amber() {
         let pc = PlayerController::new(Vec3::ZERO, 0.0);
         let agent = Agent::new(&pc);
-        let mesh = spade(Mat4::IDENTITY);
+        let mesh = spade(Mat4::IDENTITY, Intensity::Full);
         let ys: Vec<f32> = mesh.lines.iter().map(|v| v.pos[1]).collect();
         let height = ys.iter().copied().fold(f32::MIN, f32::max)
             - ys.iter().copied().fold(f32::MAX, f32::min);
