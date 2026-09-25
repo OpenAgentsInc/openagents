@@ -507,3 +507,18 @@ fn votes_before_a_turned_back_finish_do_not_count() {
     });
     assert!(judge::jev_stop(&run, &rules).is_some());
 }
+
+#[test]
+fn the_fire_experiment_protocol_is_frozen_at_its_digest() {
+    use sha2::{Digest, Sha256};
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    for experiment in super::experiment::EXPERIMENTS {
+        let bytes = std::fs::read(root.join(experiment.protocol)).unwrap();
+        let digest = format!("{:x}", Sha256::digest(&bytes));
+        assert_eq!(
+            digest, experiment.protocol_sha256,
+            "{}",
+            experiment.protocol
+        );
+    }
+}

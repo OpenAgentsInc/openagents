@@ -26,6 +26,7 @@
 
 pub mod card;
 pub mod events;
+pub mod experiment;
 pub mod judge;
 pub mod report;
 pub mod show;

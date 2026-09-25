@@ -266,6 +266,12 @@ pub struct Lean {
     /// absent, as in every manifest before it, nothing runs.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub method_conformance: bool,
+    /// A fire loop development experiment
+    /// ([`crate::fire::experiment::EXPERIMENTS`]) this manifest runs under.
+    /// It lets `method_conformance` and `oracle` run before admission, on
+    /// the in-sample terms of `bench/terminal-bench/fire/protocol.md`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub experiment: Option<OracleExperiment>,
     /// Failure localization (issue #9658): after every work session, the
     /// source lines the failing output names (`evidence.error_context`),
     /// the first failing case of a check (`evidence.mismatch_trace`), and a
@@ -726,7 +732,23 @@ impl Lean {
                     .to_string(),
             );
         }
-        if self.method_conformance && !crate::checks::conformance::ADMITTED {
+        let fire = match &self.experiment {
+            None => false,
+            Some(e) => {
+                let known =
+                    crate::fire::experiment::preregistered(&e.id, &e.protocol_sha256).is_some();
+                if !known {
+                    problems.push(format!(
+                        "executor.microluna.lean.experiment names {} with protocol digest {}, \
+                         which isn't a registered fire loop experiment \
+                         (fire::experiment::EXPERIMENTS)",
+                        e.id, e.protocol_sha256
+                    ));
+                }
+                known
+            }
+        };
+        if self.method_conformance && !crate::checks::conformance::ADMITTED && !fire {
             problems.push(
                 "executor.microluna.lean.method_conformance isn't admitted: the offline \
                  measurement didn't admit verify.method_conformance \
@@ -738,7 +760,7 @@ impl Lean {
             problems.extend(localize.validate());
         }
         if let Some(oracle) = &self.oracle {
-            if !crate::checks::oracle::ADMITTED {
+            if !crate::checks::oracle::ADMITTED && !fire {
                 match &oracle.experiment {
                     None => problems.push(
                         "executor.microluna.lean.oracle isn't admitted: the offline measurement \

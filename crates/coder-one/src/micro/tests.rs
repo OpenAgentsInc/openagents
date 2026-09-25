@@ -1501,6 +1501,7 @@ fn lean_shape() -> lean::Lean {
         review_rule: None,
         grade: false,
         method_conformance: false,
+        experiment: None,
         localize: None,
         oracle: None,
         metric_target: None,
@@ -3125,6 +3126,46 @@ fn method_conformance_is_off_by_default_and_refused_until_admitted() {
     };
     assert_eq!(
         on.validate()
+            .iter()
+            .any(|p| p.contains("method_conformance isn't admitted")),
+        !crate::checks::conformance::ADMITTED
+    );
+}
+
+#[test]
+fn the_fire_loop_experiment_lets_method_conformance_run_and_a_wrong_digest_is_refused() {
+    let registered = crate::fire::experiment::EXPERIMENTS[0];
+    let fire = lean::Lean {
+        method_conformance: true,
+        experiment: Some(lean::OracleExperiment {
+            id: registered.id.to_string(),
+            protocol_sha256: registered.protocol_sha256.to_string(),
+        }),
+        ..lean_shape()
+    };
+    assert!(
+        !fire
+            .validate()
+            .iter()
+            .any(|p| p.contains("method_conformance")),
+        "{:?}",
+        fire.validate()
+    );
+    let wrong = lean::Lean {
+        experiment: Some(lean::OracleExperiment {
+            id: registered.id.to_string(),
+            protocol_sha256: "0".repeat(64),
+        }),
+        ..fire
+    };
+    let problems = wrong.validate();
+    assert!(
+        problems
+            .iter()
+            .any(|p| p.contains("isn't a registered fire loop experiment"))
+    );
+    assert_eq!(
+        problems
             .iter()
             .any(|p| p.contains("method_conformance isn't admitted")),
         !crate::checks::conformance::ADMITTED
