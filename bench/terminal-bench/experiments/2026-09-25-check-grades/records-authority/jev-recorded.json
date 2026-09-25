@@ -1,0 +1,1505 @@
+{
+  "schema": "openagents.coder-one.jev-recorded.v1",
+  "entries": {
+    "04bc5ee55c94a031eda1e7bed1afb3b091750e631476f5cbec9c8cc8fb3bf7cc": {
+      "name": "jev_check_grade",
+      "model": "jev-1.13.0",
+      "answers": {
+        "task_0": {
+          "type": "noul",
+          "noul": 0.35
+        },
+        "standard_0": {
+          "type": "noul",
+          "noul": 0.53
+        },
+        "task_1": {
+          "type": "noul",
+          "noul": 0.66
+        },
+        "standard_1": {
+          "type": "noul",
+          "noul": 0.51
+        },
+        "task_2": {
+          "type": "noul",
+          "noul": 0.38
+        },
+        "standard_2": {
+          "type": "noul",
+          "noul": 0.33
+        },
+        "task_3": {
+          "type": "noul",
+          "noul": 0.36
+        },
+        "standard_3": {
+          "type": "noul",
+          "noul": 0.52
+        }
+      },
+      "input_tokens": 1674,
+      "output_tokens": 148,
+      "milliseconds": 148,
+      "source": "live accept.grade offline#grade-embedding-drift-monitor__y2bahob-1"
+    },
+    "0ecafffcb039f284c796f97d4ac85d68e4bb19efc66c257da077ad5fcda53571": {
+      "name": "jev_check_grade_authority",
+      "model": "jev-1.13.0",
+      "answers": {
+        "separate_route": {
+          "type": "noul",
+          "noul": 0.34
+        },
+        "expected_correct": {
+          "type": "noul",
+          "noul": 0.88
+        }
+      },
+      "input_tokens": 736,
+      "output_tokens": 40,
+      "milliseconds": 173,
+      "source": "live accept.grade offline#grade-embedding-drift-monitor__6zRjd9n-authority-6"
+    },
+    "151d169f84469b27b29441654840bb7ab5530e9cc51d382e493000ba85c08dd0": {
+      "name": "jev_check_grade",
+      "model": "jev-1.13.0",
+      "answers": {
+        "task_0": {
+          "type": "noul",
+          "noul": 0.24
+        },
+        "standard_0": {
+          "type": "noul",
+          "noul": 0.92
+        },
+        "task_1": {
+          "type": "noul",
+          "noul": 0.23
+        },
+        "standard_1": {
+          "type": "noul",
+          "noul": 0.45
+        },
+        "task_2": {
+          "type": "noul",
+          "noul": 0.35
+        },
+        "standard_2": {
+          "type": "noul",
+          "noul": 0.61
+        },
+        "task_3": {
+          "type": "noul",
+          "noul": 0.38
+        },
+        "standard_3": {
+          "type": "noul",
+          "noul": 0.61
+        },
+        "task_4": {
+          "type": "noul",
+          "noul": 0.79
+        },
+        "standard_4": {
+          "type": "noul",
+          "noul": 0.56
+        },
+        "task_5": {
+          "type": "noul",
+          "noul": 0.31
+        },
+        "standard_5": {
+          "type": "noul",
+          "noul": 0.35
+        }
+      },
+      "input_tokens": 2315,
+      "output_tokens": 220,
+      "milliseconds": 175,
+      "source": "live accept.grade offline#grade-embedding-drift-monitor__KDeY8Bf-1"
+    },
+    "1f8e8e3067be1116d3445ec7195ebbd2ec4b62b1c125c96c93a355e8582b0ba4": {
+      "name": "jev_check_grade",
+      "model": "jev-1.13.0",
+      "answers": {
+        "task_0": {
+          "type": "noul",
+          "noul": 0.62
+        },
+        "standard_0": {
+          "type": "noul",
+          "noul": 0.73
+        },
+        "task_1": {
+          "type": "noul",
+          "noul": 0.22
+        },
+        "standard_1": {
+          "type": "noul",
+          "noul": 0.54
+        },
+        "task_2": {
+          "type": "noul",
+          "noul": 0.16
+        },
+        "standard_2": {
+          "type": "noul",
+          "noul": 0.61
+        },
+        "task_3": {
+          "type": "noul",
+          "noul": 0.71
+        },
+        "standard_3": {
+          "type": "noul",
+          "noul": 0.45
+        },
+        "task_4": {
+          "type": "noul",
+          "noul": 0.77
+        },
+        "standard_4": {
+          "type": "noul",
+          "noul": 0.53
+        }
+      },
+      "input_tokens": 1976,
+      "output_tokens": 184,
+      "milliseconds": 236,
+      "source": "live accept.grade offline#grade-embedding-drift-monitor__mVNMcMn-1"
+    },
+    "22235a923e2a1a9a40f1d85fa352572fed3080f45cbb70b9a426eb1f946b8bfd": {
+      "name": "jev_check_grade_authority",
+      "model": "jev-1.13.0",
+      "answers": {
+        "separate_route": {
+          "type": "noul",
+          "noul": 0.29
+        },
+        "expected_correct": {
+          "type": "noul",
+          "noul": 0.67
+        }
+      },
+      "input_tokens": 832,
+      "output_tokens": 40,
+      "milliseconds": 142,
+      "source": "live accept.grade offline#grade-session-window-debug__3KVqBUz-authority-0"
+    },
+    "231880ea9fbfcf2d30edb81f864a18db3e7f4c8e62f1437e6354ed82f5ef3131": {
+      "name": "jev_check_grade_authority",
+      "model": "jev-1.13.0",
+      "answers": {
+        "separate_route": {
+          "type": "noul",
+          "noul": 0.47
+        },
+        "expected_correct": {
+          "type": "noul",
+          "noul": 0.76
+        }
+      },
+      "input_tokens": 856,
+      "output_tokens": 40,
+      "milliseconds": 142,
+      "source": "live accept.grade offline#grade-embedding-drift-monitor__mVNMcMn-authority-0"
+    },
+    "25765e82855d354f4a8d764a7a981327e243395dbfab77bd4c291b269fecef42": {
+      "name": "jev_check_grade_authority",
+      "model": "jev-1.13.0",
+      "answers": {
+        "separate_route": {
+          "type": "noul",
+          "noul": 0.44
+        },
+        "expected_correct": {
+          "type": "noul",
+          "noul": 0.77
+        }
+      },
+      "input_tokens": 808,
+      "output_tokens": 40,
+      "milliseconds": 128,
+      "source": "live accept.grade offline#grade-session-window-debug__PacT86C-authority-1"
+    },
+    "270cdaeeb46556108b359353103ada1f13a82bd1d7dbc72392607c2a292fffd3": {
+      "name": "jev_check_grade_authority",
+      "model": "jev-1.13.0",
+      "answers": {
+        "separate_route": {
+          "type": "noul",
+          "noul": 0.25
+        },
+        "expected_correct": {
+          "type": "noul",
+          "noul": 0.68
+        }
+      },
+      "input_tokens": 721,
+      "output_tokens": 40,
+      "milliseconds": 162,
+      "source": "live accept.grade offline#grade-embedding-drift-monitor__y2bahob-authority-6"
+    },
+    "280702901f04f9010c9d513a3ed3eddbefccb97da4ec1a0e9e9836e03dcda995": {
+      "name": "jev_check_grade_authority",
+      "model": "jev-1.13.0",
+      "answers": {
+        "separate_route": {
+          "type": "noul",
+          "noul": 0.45
+        },
+        "expected_correct": {
+          "type": "noul",
+          "noul": 0.7
+        }
+      },
+      "input_tokens": 794,
+      "output_tokens": 40,
+      "milliseconds": 190,
+      "source": "live accept.grade offline#grade-session-window-debug__vbWCjBZ-authority-1"
+    },
+    "2b8af6280c4e89753d8cbfe3b2f4ea4fe5bfcfcba89d01d8122b292b4ef7e18f": {
+      "name": "jev_check_grade_authority",
+      "model": "jev-1.13.0",
+      "answers": {
+        "separate_route": {
+          "type": "noul",
+          "noul": 0.26
+        },
+        "expected_correct": {
+          "type": "noul",
+          "noul": 0.79
+        }
+      },
+      "input_tokens": 728,
+      "output_tokens": 40,
+      "milliseconds": 132,
+      "source": "live accept.grade offline#grade-embedding-drift-monitor__KDeY8Bf-authority-8"
+    },
+    "2e9038e08b4a9213d418d8992e01308e72dd8a975507e65de7f638832a4e969c": {
+      "name": "jev_check_grade_authority",
+      "model": "jev-1.13.0",
+      "answers": {
+        "separate_route": {
+          "type": "noul",
+          "noul": 0.41
+        },
+        "expected_correct": {
+          "type": "noul",
+          "noul": 0.91
+        }
+      },
+      "input_tokens": 728,
+      "output_tokens": 40,
+      "milliseconds": 128,
+      "source": "live accept.grade offline#grade-embedding-drift-monitor__6zRjd9n-authority-5"
+    },
+    "2f71ff47592b2cf2bdaf7a06ff7e6e9fb585502b3e2cc0b30b31700f2ac5a835": {
+      "name": "jev_check_grade_authority",
+      "model": "jev-1.13.0",
+      "answers": {
+        "separate_route": {
+          "type": "noul",
+          "noul": 0.34
+        },
+        "expected_correct": {
+          "type": "noul",
+          "noul": 0.72
+        }
+      },
+      "input_tokens": 704,
+      "output_tokens": 40,
+      "milliseconds": 128,
+      "source": "live accept.grade offline#grade-embedding-drift-monitor__QAHE7De-authority-2"
+    },
+    "3017f7dfb02d12f298479e8e11fed22073756c7a1be2178ab5856edcb9520969": {
+      "name": "jev_check_grade",
+      "model": "jev-1.13.0",
+      "answers": {
+        "task_0": {
+          "type": "noul",
+          "noul": 0.46
+        },
+        "standard_0": {
+          "type": "noul",
+          "noul": 0.54
+        },
+        "task_1": {
+          "type": "noul",
+          "noul": 0.53
+        },
+        "standard_1": {
+          "type": "noul",
+          "noul": 0.72
+        },
+        "task_2": {
+          "type": "noul",
+          "noul": 0.23
+        },
+        "standard_2": {
+          "type": "noul",
+          "noul": 0.4
+        }
+      },
+      "input_tokens": 1569,
+      "output_tokens": 112,
+      "milliseconds": 175,
+      "source": "live accept.grade offline#grade-session-window-debug__3v9FKP5-0"
+    },
+    "425e351209e2639722484fecee30b612a90ac713cac51d80b8a3730381d9fd26": {
+      "name": "jev_check_grade_authority",
+      "model": "jev-1.13.0",
+      "answers": {
+        "separate_route": {
+          "type": "noul",
+          "noul": 0.55
+        },
+        "expected_correct": {
+          "type": "noul",
+          "noul": 0.79
+        }
+      },
+      "input_tokens": 812,
+      "output_tokens": 40,
+      "milliseconds": 145,
+      "source": "live accept.grade offline#grade-session-window-debug__a7stmvT-authority-1"
+    },
+    "466f58cbbf572492aff2e19018e3f23765cc8aabd3158d43e4db35d827319cb7": {
+      "name": "jev_check_grade_authority",
+      "model": "jev-1.13.0",
+      "answers": {
+        "separate_route": {
+          "type": "noul",
+          "noul": 0.23
+        },
+        "expected_correct": {
+          "type": "noul",
+          "noul": 0.63
+        }
+      },
+      "input_tokens": 818,
+      "output_tokens": 40,
+      "milliseconds": 157,
+      "source": "live accept.grade offline#grade-session-window-debug__vbWCjBZ-authority-0"
+    },
+    "4c80aef2f2b09ef270ef834720048490ff6257c9825b3e8a741386117893f5cc": {
+      "name": "jev_check_grade",
+      "model": "jev-1.13.0",
+      "answers": {
+        "task_0": {
+          "type": "noul",
+          "noul": 0.31
+        },
+        "standard_0": {
+          "type": "noul",
+          "noul": 0.58
+        },
+        "task_1": {
+          "type": "noul",
+          "noul": 0.33
+        },
+        "standard_1": {
+          "type": "noul",
+          "noul": 0.76
+        },
+        "task_2": {
+          "type": "noul",
+          "noul": 0.31
+        },
+        "standard_2": {
+          "type": "noul",
+          "noul": 0.51
+        },
+        "task_3": {
+          "type": "noul",
+          "noul": 0.25
+        },
+        "standard_3": {
+          "type": "noul",
+          "noul": 0.56
+        },
+        "task_4": {
+          "type": "noul",
+          "noul": 0.37
+        },
+        "standard_4": {
+          "type": "noul",
+          "noul": 0.8
+        }
+      },
+      "input_tokens": 2204,
+      "output_tokens": 184,
+      "milliseconds": 166,
+      "source": "live accept.grade offline#grade-session-window-debug__vbWCjBZ-0"
+    },
+    "5181c2ec6a9e04a2ef58b68042e5b746ade649e1ef505d480c76a5a38fe2694d": {
+      "name": "jev_check_grade_authority",
+      "model": "jev-1.13.0",
+      "answers": {
+        "separate_route": {
+          "type": "noul",
+          "noul": 0.27
+        },
+        "expected_correct": {
+          "type": "noul",
+          "noul": 0.73
+        }
+      },
+      "input_tokens": 852,
+      "output_tokens": 40,
+      "milliseconds": 153,
+      "source": "live accept.grade offline#grade-session-window-debug__3v9FKP5-authority-0"
+    },
+    "559bd049b8eb4108c83590b0446e753b117243ab23d4ef2c4dffdc973bd8813b": {
+      "name": "jev_check_grade_authority",
+      "model": "jev-1.13.0",
+      "answers": {
+        "separate_route": {
+          "type": "noul",
+          "noul": 0.28
+        },
+        "expected_correct": {
+          "type": "noul",
+          "noul": 0.71
+        }
+      },
+      "input_tokens": 708,
+      "output_tokens": 40,
+      "milliseconds": 131,
+      "source": "live accept.grade offline#grade-embedding-drift-monitor__KDeY8Bf-authority-2"
+    },
+    "56e5215c77c703fc45aa95e7d2609e1d8a530190a7084078d7d87edd5cdb0ddf": {
+      "name": "jev_check_grade",
+      "model": "jev-1.13.0",
+      "answers": {
+        "task_0": {
+          "type": "noul",
+          "noul": 0.4
+        },
+        "standard_0": {
+          "type": "noul",
+          "noul": 0.36
+        }
+      },
+      "input_tokens": 740,
+      "output_tokens": 40,
+      "milliseconds": 146,
+      "source": "live accept.grade offline#grade-embedding-drift-monitor__KDeY8Bf-2"
+    },
+    "5736e92de978a8ab00d9853fa40b888c06376371dc97ab98e2b815e8de2bc6de": {
+      "name": "jev_check_grade",
+      "model": "jev-1.13.0",
+      "answers": {
+        "task_0": {
+          "type": "noul",
+          "noul": 0.41
+        },
+        "standard_0": {
+          "type": "noul",
+          "noul": 0.53
+        },
+        "task_1": {
+          "type": "noul",
+          "noul": 0.26
+        },
+        "standard_1": {
+          "type": "noul",
+          "noul": 0.74
+        },
+        "task_2": {
+          "type": "noul",
+          "noul": 0.41
+        },
+        "standard_2": {
+          "type": "noul",
+          "noul": 0.4
+        },
+        "task_3": {
+          "type": "noul",
+          "noul": 0.28
+        },
+        "standard_3": {
+          "type": "noul",
+          "noul": 0.4
+        }
+      },
+      "input_tokens": 1932,
+      "output_tokens": 148,
+      "milliseconds": 168,
+      "source": "live accept.grade offline#grade-session-window-debug__3KVqBUz-0"
+    },
+    "62bbf7c9954b09a664ca156daa4daf7bbe49e1116e5ee2d40b6df52959281679": {
+      "name": "jev_check_grade",
+      "model": "jev-1.13.0",
+      "answers": {
+        "task_0": {
+          "type": "noul",
+          "noul": 0.69
+        },
+        "standard_0": {
+          "type": "noul",
+          "noul": 0.51
+        },
+        "task_1": {
+          "type": "noul",
+          "noul": 0.62
+        },
+        "standard_1": {
+          "type": "noul",
+          "noul": 0.61
+        },
+        "task_2": {
+          "type": "noul",
+          "noul": 0.39
+        },
+        "standard_2": {
+          "type": "noul",
+          "noul": 0.66
+        },
+        "task_3": {
+          "type": "noul",
+          "noul": 0.25
+        },
+        "standard_3": {
+          "type": "noul",
+          "noul": 0.52
+        },
+        "task_4": {
+          "type": "noul",
+          "noul": 0.26
+        },
+        "standard_4": {
+          "type": "noul",
+          "noul": 0.63
+        },
+        "task_5": {
+          "type": "noul",
+          "noul": 0.21
+        },
+        "standard_5": {
+          "type": "noul",
+          "noul": 0.85
+        }
+      },
+      "input_tokens": 2446,
+      "output_tokens": 220,
+      "milliseconds": 146,
+      "source": "live accept.grade offline#grade-embedding-drift-monitor__6zRjd9n-0"
+    },
+    "631a8feef1e07c2616298a64dbf2ee3a72d09e6236ffcaf23c6e459db2829d33": {
+      "name": "jev_check_grade_authority",
+      "model": "jev-1.13.0",
+      "answers": {
+        "separate_route": {
+          "type": "noul",
+          "noul": 0.21
+        },
+        "expected_correct": {
+          "type": "noul",
+          "noul": 0.61
+        }
+      },
+      "input_tokens": 721,
+      "output_tokens": 40,
+      "milliseconds": 230,
+      "source": "live accept.grade offline#grade-embedding-drift-monitor__mVNMcMn-authority-7"
+    },
+    "6932675ac86a1235ca88ef759f530d6a5938a829eb5d5d59e9fe6d29fa1a70e8": {
+      "name": "jev_check_grade",
+      "model": "jev-1.13.0",
+      "answers": {
+        "task_0": {
+          "type": "noul",
+          "noul": 0.81
+        },
+        "standard_0": {
+          "type": "noul",
+          "noul": 0.42
+        },
+        "task_1": {
+          "type": "noul",
+          "noul": 0.56
+        },
+        "standard_1": {
+          "type": "noul",
+          "noul": 0.48
+        },
+        "task_2": {
+          "type": "noul",
+          "noul": 0.42
+        },
+        "standard_2": {
+          "type": "noul",
+          "noul": 0.49
+        },
+        "task_3": {
+          "type": "noul",
+          "noul": 0.62
+        },
+        "standard_3": {
+          "type": "noul",
+          "noul": 0.42
+        },
+        "task_4": {
+          "type": "noul",
+          "noul": 0.4
+        },
+        "standard_4": {
+          "type": "noul",
+          "noul": 0.57
+        }
+      },
+      "input_tokens": 2036,
+      "output_tokens": 184,
+      "milliseconds": 324,
+      "source": "live accept.grade offline#grade-embedding-drift-monitor__UfYFodd-0"
+    },
+    "70e596ea79e03789b922ecdcb7a54ecb644f913ff151011b6d0147dce3a0305f": {
+      "name": "jev_check_grade_authority",
+      "model": "jev-1.13.0",
+      "answers": {
+        "separate_route": {
+          "type": "noul",
+          "noul": 0.2
+        },
+        "expected_correct": {
+          "type": "noul",
+          "noul": 0.8
+        }
+      },
+      "input_tokens": 805,
+      "output_tokens": 40,
+      "milliseconds": 152,
+      "source": "live accept.grade offline#grade-embedding-drift-monitor__y2bahob-authority-0"
+    },
+    "71394e51ab4a71b51f99e28c979124e3577551a15dd337ff47ff5d40538867b9": {
+      "name": "jev_check_grade_authority",
+      "model": "jev-1.13.0",
+      "answers": {
+        "separate_route": {
+          "type": "noul",
+          "noul": 0.15
+        },
+        "expected_correct": {
+          "type": "noul",
+          "noul": 0.8
+        }
+      },
+      "input_tokens": 738,
+      "output_tokens": 40,
+      "milliseconds": 127,
+      "source": "live accept.grade offline#grade-embedding-drift-monitor__mVNMcMn-authority-8"
+    },
+    "744cf07ec8d26290739e3cc55b5412e139f9aaf56de272675887d65aaed93daa": {
+      "name": "jev_check_grade",
+      "model": "jev-1.13.0",
+      "answers": {
+        "task_0": {
+          "type": "noul",
+          "noul": 0.3
+        },
+        "standard_0": {
+          "type": "noul",
+          "noul": 0.81
+        },
+        "task_1": {
+          "type": "noul",
+          "noul": 0.23
+        },
+        "standard_1": {
+          "type": "noul",
+          "noul": 0.92
+        },
+        "task_2": {
+          "type": "noul",
+          "noul": 0.23
+        },
+        "standard_2": {
+          "type": "noul",
+          "noul": 0.88
+        },
+        "task_3": {
+          "type": "noul",
+          "noul": 0.39
+        },
+        "standard_3": {
+          "type": "noul",
+          "noul": 0.87
+        },
+        "task_4": {
+          "type": "noul",
+          "noul": 0.29
+        },
+        "standard_4": {
+          "type": "noul",
+          "noul": 0.92
+        },
+        "task_5": {
+          "type": "noul",
+          "noul": 0.57
+        },
+        "standard_5": {
+          "type": "noul",
+          "noul": 0.83
+        }
+      },
+      "input_tokens": 2358,
+      "output_tokens": 220,
+      "milliseconds": 144,
+      "source": "live accept.grade offline#grade-embedding-drift-monitor__mVNMcMn-0"
+    },
+    "7699c490473021379091356beee73ee6dd434efcf2671feb8c1ddfa144ef32e2": {
+      "name": "jev_check_grade_authority",
+      "model": "jev-1.13.0",
+      "answers": {
+        "separate_route": {
+          "type": "noul",
+          "noul": 0.51
+        },
+        "expected_correct": {
+          "type": "noul",
+          "noul": 0.74
+        }
+      },
+      "input_tokens": 795,
+      "output_tokens": 40,
+      "milliseconds": 169,
+      "source": "live accept.grade offline#grade-session-window-debug__3v9FKP5-authority-1"
+    },
+    "7b426f76278d47c9267931575443f3e748d5ba634c77b87438651cc37a34da37": {
+      "name": "jev_check_grade",
+      "model": "jev-1.13.0",
+      "answers": {
+        "task_0": {
+          "type": "noul",
+          "noul": 0.45
+        },
+        "standard_0": {
+          "type": "noul",
+          "noul": 0.57
+        },
+        "task_1": {
+          "type": "noul",
+          "noul": 0.37
+        },
+        "standard_1": {
+          "type": "noul",
+          "noul": 0.78
+        },
+        "task_2": {
+          "type": "noul",
+          "noul": 0.4
+        },
+        "standard_2": {
+          "type": "noul",
+          "noul": 0.52
+        }
+      },
+      "input_tokens": 1604,
+      "output_tokens": 112,
+      "milliseconds": 164,
+      "source": "live accept.grade offline#grade-session-window-debug__arofNZN-0"
+    },
+    "88bf88d901d2caaec91966ce8f47ef8ac07d15f79e045bd8be1e83b98f624f9e": {
+      "name": "jev_check_grade_authority",
+      "model": "jev-1.13.0",
+      "answers": {
+        "separate_route": {
+          "type": "noul",
+          "noul": 0.21
+        },
+        "expected_correct": {
+          "type": "noul",
+          "noul": 0.63
+        }
+      },
+      "input_tokens": 864,
+      "output_tokens": 40,
+      "milliseconds": 128,
+      "source": "live accept.grade offline#grade-session-window-debug__arofNZN-authority-0"
+    },
+    "8d6809a9dd01264badf7f8e41c761f742ee69523ff9ebff30ba95a8e2f54145f": {
+      "name": "jev_check_grade_authority",
+      "model": "jev-1.13.0",
+      "answers": {
+        "separate_route": {
+          "type": "noul",
+          "noul": 0.73
+        },
+        "expected_correct": {
+          "type": "noul",
+          "noul": 0.57
+        }
+      },
+      "input_tokens": 740,
+      "output_tokens": 40,
+      "milliseconds": 172,
+      "source": "live accept.grade offline#grade-embedding-drift-monitor__y2bahob-authority-5"
+    },
+    "91eb92df69bb131a7295e7ebc55d6611e8256bd3e9498096df91f9f13e6b5276": {
+      "name": "jev_check_grade_authority",
+      "model": "jev-1.13.0",
+      "answers": {
+        "separate_route": {
+          "type": "noul",
+          "noul": 0.42
+        },
+        "expected_correct": {
+          "type": "noul",
+          "noul": 0.78
+        }
+      },
+      "input_tokens": 737,
+      "output_tokens": 40,
+      "milliseconds": 162,
+      "source": "live accept.grade offline#grade-embedding-drift-monitor__UfYFodd-authority-4"
+    },
+    "93a9b6220356b7c0c7e7652efdb47ae9c6a35bb5450002d169d6773fb554ed17": {
+      "name": "jev_check_grade_authority",
+      "model": "jev-1.13.0",
+      "answers": {
+        "separate_route": {
+          "type": "noul",
+          "noul": 0.35
+        },
+        "expected_correct": {
+          "type": "noul",
+          "noul": 0.81
+        }
+      },
+      "input_tokens": 702,
+      "output_tokens": 40,
+      "milliseconds": 127,
+      "source": "live accept.grade offline#grade-embedding-drift-monitor__mVNMcMn-authority-9"
+    },
+    "96e6e5f52d1db5d5d3587825eece97261866b166a1ced966a78dad9feb25b679": {
+      "name": "jev_check_grade",
+      "model": "jev-1.13.0",
+      "answers": {
+        "task_0": {
+          "type": "noul",
+          "noul": 0.19
+        },
+        "standard_0": {
+          "type": "noul",
+          "noul": 0.89
+        },
+        "task_1": {
+          "type": "noul",
+          "noul": 0.27
+        },
+        "standard_1": {
+          "type": "noul",
+          "noul": 0.7
+        }
+      },
+      "input_tokens": 1099,
+      "output_tokens": 76,
+      "milliseconds": 137,
+      "source": "live accept.grade offline#grade-embedding-drift-monitor__6zRjd9n-1"
+    },
+    "9dc3be4205a120847118f81c6a4ec7664ca81951780233b9b68ea22eae5396e7": {
+      "name": "jev_check_grade_authority",
+      "model": "jev-1.13.0",
+      "answers": {
+        "separate_route": {
+          "type": "noul",
+          "noul": 0.22
+        },
+        "expected_correct": {
+          "type": "noul",
+          "noul": 0.7
+        }
+      },
+      "input_tokens": 697,
+      "output_tokens": 40,
+      "milliseconds": 134,
+      "source": "live accept.grade offline#grade-embedding-drift-monitor__UfYFodd-authority-3"
+    },
+    "a4cdd1214ab52c2d3945e6927c9d8f008499b65bd43a0114716de890a8cba792": {
+      "name": "jev_check_grade_authority",
+      "model": "jev-1.13.0",
+      "answers": {
+        "separate_route": {
+          "type": "noul",
+          "noul": 0.5
+        },
+        "expected_correct": {
+          "type": "noul",
+          "noul": 0.79
+        }
+      },
+      "input_tokens": 805,
+      "output_tokens": 40,
+      "milliseconds": 133,
+      "source": "live accept.grade offline#grade-session-window-debug__3KVqBUz-authority-1"
+    },
+    "aac0a483037a57eaa47b57f6923198cca8b2a3224d7022fa32ce07967a795817": {
+      "name": "jev_check_grade_authority",
+      "model": "jev-1.13.0",
+      "answers": {
+        "separate_route": {
+          "type": "noul",
+          "noul": 0.34
+        },
+        "expected_correct": {
+          "type": "noul",
+          "noul": 0.72
+        }
+      },
+      "input_tokens": 704,
+      "output_tokens": 40,
+      "milliseconds": 159,
+      "source": "live accept.grade offline#grade-embedding-drift-monitor__6zRjd9n-authority-2"
+    },
+    "af367eda8a254de22cf3c83ab30241bf274391a7bd67cb05153e7452cbddabe6": {
+      "name": "jev_check_grade_authority",
+      "model": "jev-1.13.0",
+      "answers": {
+        "separate_route": {
+          "type": "noul",
+          "noul": 0.18
+        },
+        "expected_correct": {
+          "type": "noul",
+          "noul": 0.88
+        }
+      },
+      "input_tokens": 727,
+      "output_tokens": 40,
+      "milliseconds": 137,
+      "source": "live accept.grade offline#grade-embedding-drift-monitor__6zRjd9n-authority-4"
+    },
+    "b87a50858288ff0cdc54c6b1a181aa85c3fac8792a495b612c1bd9e392185f31": {
+      "name": "jev_check_grade_authority",
+      "model": "jev-1.13.0",
+      "answers": {
+        "separate_route": {
+          "type": "noul",
+          "noul": 0.26
+        },
+        "expected_correct": {
+          "type": "noul",
+          "noul": 0.77
+        }
+      },
+      "input_tokens": 693,
+      "output_tokens": 40,
+      "milliseconds": 154,
+      "source": "live accept.grade offline#grade-embedding-drift-monitor__mVNMcMn-authority-1"
+    },
+    "bf3185df3a76c7d9692c6d996e2ba08185c8a0376a9873a51b8070688483ed73": {
+      "name": "jev_check_grade_authority",
+      "model": "jev-1.13.0",
+      "answers": {
+        "separate_route": {
+          "type": "noul",
+          "noul": 0.26
+        },
+        "expected_correct": {
+          "type": "noul",
+          "noul": 0.7
+        }
+      },
+      "input_tokens": 797,
+      "output_tokens": 40,
+      "milliseconds": 130,
+      "source": "live accept.grade offline#grade-session-window-debug__a7stmvT-authority-2"
+    },
+    "c4be3bceaecb8416c454ec6f3207da64634059d2f595c9ad9223025601d07d2e": {
+      "name": "jev_check_grade",
+      "model": "jev-1.13.0",
+      "answers": {
+        "task_0": {
+          "type": "noul",
+          "noul": 0.23
+        },
+        "standard_0": {
+          "type": "noul",
+          "noul": 0.73
+        },
+        "task_1": {
+          "type": "noul",
+          "noul": 0.23
+        },
+        "standard_1": {
+          "type": "noul",
+          "noul": 0.94
+        },
+        "task_2": {
+          "type": "noul",
+          "noul": 0.19
+        },
+        "standard_2": {
+          "type": "noul",
+          "noul": 0.63
+        },
+        "task_3": {
+          "type": "noul",
+          "noul": 0.25
+        },
+        "standard_3": {
+          "type": "noul",
+          "noul": 0.72
+        },
+        "task_4": {
+          "type": "noul",
+          "noul": 0.19
+        },
+        "standard_4": {
+          "type": "noul",
+          "noul": 0.45
+        },
+        "task_5": {
+          "type": "noul",
+          "noul": 0.29
+        },
+        "standard_5": {
+          "type": "noul",
+          "noul": 0.86
+        }
+      },
+      "input_tokens": 2395,
+      "output_tokens": 220,
+      "milliseconds": 267,
+      "source": "live accept.grade offline#grade-embedding-drift-monitor__KDeY8Bf-0"
+    },
+    "c4cdaaa18b997aa43cacd2bfb0eaa37a4ac075a7ee4fe6adf4f02e8af718a7a6": {
+      "name": "jev_check_grade_authority",
+      "model": "jev-1.13.0",
+      "answers": {
+        "separate_route": {
+          "type": "noul",
+          "noul": 0.21
+        },
+        "expected_correct": {
+          "type": "noul",
+          "noul": 0.55
+        }
+      },
+      "input_tokens": 895,
+      "output_tokens": 40,
+      "milliseconds": 167,
+      "source": "live accept.grade offline#grade-session-window-debug__a7stmvT-authority-0"
+    },
+    "c9d117d256c37f3881ea90d2d56f39fee40189b4feed897256c876872d20d6b5": {
+      "name": "jev_check_grade_authority",
+      "model": "jev-1.13.0",
+      "answers": {
+        "separate_route": {
+          "type": "noul",
+          "noul": 0.28
+        },
+        "expected_correct": {
+          "type": "noul",
+          "noul": 0.72
+        }
+      },
+      "input_tokens": 704,
+      "output_tokens": 40,
+      "milliseconds": 126,
+      "source": "live accept.grade offline#grade-embedding-drift-monitor__y2bahob-authority-9"
+    },
+    "cdee928ef81830e73e4e456723604043b88b5227d0300bbfb2459504958f72a3": {
+      "name": "jev_check_grade",
+      "model": "jev-1.13.0",
+      "answers": {
+        "task_0": {
+          "type": "noul",
+          "noul": 0.29
+        },
+        "standard_0": {
+          "type": "noul",
+          "noul": 0.83
+        },
+        "task_1": {
+          "type": "noul",
+          "noul": 0.18
+        },
+        "standard_1": {
+          "type": "noul",
+          "noul": 0.8
+        },
+        "task_2": {
+          "type": "noul",
+          "noul": 0.23
+        },
+        "standard_2": {
+          "type": "noul",
+          "noul": 0.93
+        },
+        "task_3": {
+          "type": "noul",
+          "noul": 0.3
+        },
+        "standard_3": {
+          "type": "noul",
+          "noul": 0.86
+        },
+        "task_4": {
+          "type": "noul",
+          "noul": 0.25
+        },
+        "standard_4": {
+          "type": "noul",
+          "noul": 0.75
+        },
+        "task_5": {
+          "type": "noul",
+          "noul": 0.16
+        },
+        "standard_5": {
+          "type": "noul",
+          "noul": 0.64
+        }
+      },
+      "input_tokens": 2374,
+      "output_tokens": 220,
+      "milliseconds": 156,
+      "source": "live accept.grade offline#grade-embedding-drift-monitor__y2bahob-0"
+    },
+    "d178fdc843cf27bd90d8c9a5583efd80c3dae8ea15edf1e452019fb1d9bc0536": {
+      "name": "jev_check_grade_authority",
+      "model": "jev-1.13.0",
+      "answers": {
+        "separate_route": {
+          "type": "noul",
+          "noul": 0.38
+        },
+        "expected_correct": {
+          "type": "noul",
+          "noul": 0.74
+        }
+      },
+      "input_tokens": 853,
+      "output_tokens": 40,
+      "milliseconds": 146,
+      "source": "live accept.grade offline#grade-embedding-drift-monitor__KDeY8Bf-authority-0"
+    },
+    "d3ed219066c372b96f77f938ea22f4770849aee3d9af9442ebcc74d0b9c55695": {
+      "name": "jev_check_grade_authority",
+      "model": "jev-1.13.0",
+      "answers": {
+        "separate_route": {
+          "type": "noul",
+          "noul": 0.24
+        },
+        "expected_correct": {
+          "type": "noul",
+          "noul": 0.62
+        }
+      },
+      "input_tokens": 760,
+      "output_tokens": 40,
+      "milliseconds": 124,
+      "source": "live accept.grade offline#grade-session-window-debug__vbWCjBZ-authority-3"
+    },
+    "d9dd0b77a61ca1e2a0c5137b3fc2ec2d30de6432d1a5257b22a105fabfe5465e": {
+      "name": "jev_check_grade_authority",
+      "model": "jev-1.13.0",
+      "answers": {
+        "separate_route": {
+          "type": "noul",
+          "noul": 0.19
+        },
+        "expected_correct": {
+          "type": "noul",
+          "noul": 0.6
+        }
+      },
+      "input_tokens": 795,
+      "output_tokens": 40,
+      "milliseconds": 133,
+      "source": "live accept.grade offline#grade-session-window-debug__arofNZN-authority-2"
+    },
+    "d9e764673f1218ca7ad3d3325dc0b4979504616b4d5945e7f054986f285867cd": {
+      "name": "jev_check_grade_authority",
+      "model": "jev-1.13.0",
+      "answers": {
+        "separate_route": {
+          "type": "noul",
+          "noul": 0.31
+        },
+        "expected_correct": {
+          "type": "noul",
+          "noul": 0.73
+        }
+      },
+      "input_tokens": 792,
+      "output_tokens": 40,
+      "milliseconds": 125,
+      "source": "live accept.grade offline#grade-session-window-debug__PacT86C-authority-2"
+    },
+    "dc7fff601d3204af7295e070fc327505c04f35107a6a56ad4936f5819ec3e9c6": {
+      "name": "jev_check_grade",
+      "model": "jev-1.13.0",
+      "answers": {
+        "task_0": {
+          "type": "noul",
+          "noul": 0.79
+        },
+        "standard_0": {
+          "type": "noul",
+          "noul": 0.58
+        },
+        "task_1": {
+          "type": "noul",
+          "noul": 0.42
+        },
+        "standard_1": {
+          "type": "noul",
+          "noul": 0.41
+        },
+        "task_2": {
+          "type": "noul",
+          "noul": 0.43
+        },
+        "standard_2": {
+          "type": "noul",
+          "noul": 0.74
+        },
+        "task_3": {
+          "type": "noul",
+          "noul": 0.21
+        },
+        "standard_3": {
+          "type": "noul",
+          "noul": 0.55
+        },
+        "task_4": {
+          "type": "noul",
+          "noul": 0.29
+        },
+        "standard_4": {
+          "type": "noul",
+          "noul": 0.74
+        },
+        "task_5": {
+          "type": "noul",
+          "noul": 0.4
+        },
+        "standard_5": {
+          "type": "noul",
+          "noul": 0.88
+        }
+      },
+      "input_tokens": 2383,
+      "output_tokens": 220,
+      "milliseconds": 182,
+      "source": "live accept.grade offline#grade-embedding-drift-monitor__QAHE7De-0"
+    },
+    "df3688393078d098dca6e40bf93965c20da6eab76eaaed8f6fd652c1f5d97068": {
+      "name": "jev_check_grade_authority",
+      "model": "jev-1.13.0",
+      "answers": {
+        "separate_route": {
+          "type": "noul",
+          "noul": 0.23
+        },
+        "expected_correct": {
+          "type": "noul",
+          "noul": 0.74
+        }
+      },
+      "input_tokens": 698,
+      "output_tokens": 40,
+      "milliseconds": 146,
+      "source": "live accept.grade offline#grade-embedding-drift-monitor__y2bahob-authority-2"
+    },
+    "e59973294afac636924ef9af231e77e5e30b850249bcb9c679e2218bcb10b129": {
+      "name": "jev_check_grade",
+      "model": "jev-1.13.0",
+      "answers": {
+        "task_0": {
+          "type": "noul",
+          "noul": 0.33
+        },
+        "standard_0": {
+          "type": "noul",
+          "noul": 0.5
+        },
+        "task_1": {
+          "type": "noul",
+          "noul": 0.27
+        },
+        "standard_1": {
+          "type": "noul",
+          "noul": 0.72
+        },
+        "task_2": {
+          "type": "noul",
+          "noul": 0.24
+        },
+        "standard_2": {
+          "type": "noul",
+          "noul": 0.53
+        }
+      },
+      "input_tokens": 1612,
+      "output_tokens": 112,
+      "milliseconds": 133,
+      "source": "live accept.grade offline#grade-session-window-debug__PacT86C-0"
+    },
+    "e820eaf04944d59207cb0b811f8df014ea88f1dd0b898e71f66031eb8dc29c4d": {
+      "name": "jev_check_grade_authority",
+      "model": "jev-1.13.0",
+      "answers": {
+        "separate_route": {
+          "type": "noul",
+          "noul": 0.41
+        },
+        "expected_correct": {
+          "type": "noul",
+          "noul": 0.71
+        }
+      },
+      "input_tokens": 794,
+      "output_tokens": 40,
+      "milliseconds": 124,
+      "source": "live accept.grade offline#grade-session-window-debug__arofNZN-authority-1"
+    },
+    "e86275006a366705f5f9db53946447261acf4162431c17c55e3c6643c6c9c0a1": {
+      "name": "jev_check_grade_authority",
+      "model": "jev-1.13.0",
+      "answers": {
+        "separate_route": {
+          "type": "noul",
+          "noul": 0.24
+        },
+        "expected_correct": {
+          "type": "noul",
+          "noul": 0.68
+        }
+      },
+      "input_tokens": 860,
+      "output_tokens": 40,
+      "milliseconds": 145,
+      "source": "live accept.grade offline#grade-session-window-debug__PacT86C-authority-0"
+    },
+    "ea9040a6b81135ed9883306d495658586eaa672d4e9c30eabade77764b20b312": {
+      "name": "jev_check_grade_authority",
+      "model": "jev-1.13.0",
+      "answers": {
+        "separate_route": {
+          "type": "noul",
+          "noul": 0.43
+        },
+        "expected_correct": {
+          "type": "noul",
+          "noul": 0.67
+        }
+      },
+      "input_tokens": 785,
+      "output_tokens": 40,
+      "milliseconds": 175,
+      "source": "live accept.grade offline#grade-session-window-debug__vbWCjBZ-authority-4"
+    },
+    "ec6064b8265c08026371c97c41c0af410d7f77ac95a6f23560fab5877a63bc80": {
+      "name": "jev_check_grade_authority",
+      "model": "jev-1.13.0",
+      "answers": {
+        "separate_route": {
+          "type": "noul",
+          "noul": 0.29
+        },
+        "expected_correct": {
+          "type": "noul",
+          "noul": 0.8
+        }
+      },
+      "input_tokens": 723,
+      "output_tokens": 40,
+      "milliseconds": 130,
+      "source": "live accept.grade offline#grade-embedding-drift-monitor__KDeY8Bf-authority-9"
+    },
+    "f7c7bffd3e79e93521f255362319be40c1218806f6ad064d81331170196d5084": {
+      "name": "jev_check_grade",
+      "model": "jev-1.13.0",
+      "answers": {
+        "task_0": {
+          "type": "noul",
+          "noul": 0.37
+        },
+        "standard_0": {
+          "type": "noul",
+          "noul": 0.51
+        },
+        "task_1": {
+          "type": "noul",
+          "noul": 0.37
+        },
+        "standard_1": {
+          "type": "noul",
+          "noul": 0.67
+        },
+        "task_2": {
+          "type": "noul",
+          "noul": 0.22
+        },
+        "standard_2": {
+          "type": "noul",
+          "noul": 0.52
+        }
+      },
+      "input_tokens": 1656,
+      "output_tokens": 112,
+      "milliseconds": 178,
+      "source": "live accept.grade offline#grade-session-window-debug__a7stmvT-0"
+    },
+    "fa93a5164668bf3e3b6472ee1ce4b91c856caea70761523d8c5836020e3861d1": {
+      "name": "jev_check_grade_authority",
+      "model": "jev-1.13.0",
+      "answers": {
+        "separate_route": {
+          "type": "noul",
+          "noul": 0.33
+        },
+        "expected_correct": {
+          "type": "noul",
+          "noul": 0.69
+        }
+      },
+      "input_tokens": 737,
+      "output_tokens": 40,
+      "milliseconds": 140,
+      "source": "live accept.grade offline#grade-embedding-drift-monitor__6zRjd9n-authority-3"
+    },
+    "fe2799551dcf0cb57b5c86de796bb3be72d4b1274e1d9208ca414a696d30758e": {
+      "name": "jev_check_grade_authority",
+      "model": "jev-1.13.0",
+      "answers": {
+        "separate_route": {
+          "type": "noul",
+          "noul": 0.26
+        },
+        "expected_correct": {
+          "type": "noul",
+          "noul": 0.87
+        }
+      },
+      "input_tokens": 704,
+      "output_tokens": 40,
+      "milliseconds": 135,
+      "source": "live accept.grade offline#grade-embedding-drift-monitor__KDeY8Bf-authority-1"
+    },
+    "ffbd0b6817212661e0d2c4289a8dd637c1c3a2adbafdd6a23c7849d5b7803241": {
+      "name": "jev_check_grade_authority",
+      "model": "jev-1.13.0",
+      "answers": {
+        "separate_route": {
+          "type": "noul",
+          "noul": 0.4
+        },
+        "expected_correct": {
+          "type": "noul",
+          "noul": 0.82
+        }
+      },
+      "input_tokens": 738,
+      "output_tokens": 40,
+      "milliseconds": 136,
+      "source": "live accept.grade offline#grade-embedding-drift-monitor__QAHE7De-authority-3"
+    }
+  }
+}

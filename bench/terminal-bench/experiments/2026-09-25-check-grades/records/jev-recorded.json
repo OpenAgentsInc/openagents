@@ -1,0 +1,767 @@
+{
+  "schema": "openagents.coder-one.jev-recorded.v1",
+  "entries": {
+    "04bc5ee55c94a031eda1e7bed1afb3b091750e631476f5cbec9c8cc8fb3bf7cc": {
+      "name": "jev_check_grade",
+      "model": "jev-1.13.0",
+      "answers": {
+        "task_0": {
+          "type": "noul",
+          "noul": 0.35
+        },
+        "standard_0": {
+          "type": "noul",
+          "noul": 0.53
+        },
+        "task_1": {
+          "type": "noul",
+          "noul": 0.68
+        },
+        "standard_1": {
+          "type": "noul",
+          "noul": 0.55
+        },
+        "task_2": {
+          "type": "noul",
+          "noul": 0.37
+        },
+        "standard_2": {
+          "type": "noul",
+          "noul": 0.35
+        },
+        "task_3": {
+          "type": "noul",
+          "noul": 0.38
+        },
+        "standard_3": {
+          "type": "noul",
+          "noul": 0.56
+        }
+      },
+      "input_tokens": 1674,
+      "output_tokens": 148,
+      "milliseconds": 134,
+      "source": "live accept.grade offline#grade-embedding-drift-monitor__y2bahob-1"
+    },
+    "151d169f84469b27b29441654840bb7ab5530e9cc51d382e493000ba85c08dd0": {
+      "name": "jev_check_grade",
+      "model": "jev-1.13.0",
+      "answers": {
+        "task_0": {
+          "type": "noul",
+          "noul": 0.21
+        },
+        "standard_0": {
+          "type": "noul",
+          "noul": 0.92
+        },
+        "task_1": {
+          "type": "noul",
+          "noul": 0.22
+        },
+        "standard_1": {
+          "type": "noul",
+          "noul": 0.4
+        },
+        "task_2": {
+          "type": "noul",
+          "noul": 0.37
+        },
+        "standard_2": {
+          "type": "noul",
+          "noul": 0.59
+        },
+        "task_3": {
+          "type": "noul",
+          "noul": 0.37
+        },
+        "standard_3": {
+          "type": "noul",
+          "noul": 0.62
+        },
+        "task_4": {
+          "type": "noul",
+          "noul": 0.74
+        },
+        "standard_4": {
+          "type": "noul",
+          "noul": 0.56
+        },
+        "task_5": {
+          "type": "noul",
+          "noul": 0.33
+        },
+        "standard_5": {
+          "type": "noul",
+          "noul": 0.34
+        }
+      },
+      "input_tokens": 2315,
+      "output_tokens": 220,
+      "milliseconds": 162,
+      "source": "live accept.grade offline#grade-embedding-drift-monitor__KDeY8Bf-1"
+    },
+    "1f8e8e3067be1116d3445ec7195ebbd2ec4b62b1c125c96c93a355e8582b0ba4": {
+      "name": "jev_check_grade",
+      "model": "jev-1.13.0",
+      "answers": {
+        "task_0": {
+          "type": "noul",
+          "noul": 0.65
+        },
+        "standard_0": {
+          "type": "noul",
+          "noul": 0.72
+        },
+        "task_1": {
+          "type": "noul",
+          "noul": 0.25
+        },
+        "standard_1": {
+          "type": "noul",
+          "noul": 0.5
+        },
+        "task_2": {
+          "type": "noul",
+          "noul": 0.17
+        },
+        "standard_2": {
+          "type": "noul",
+          "noul": 0.6
+        },
+        "task_3": {
+          "type": "noul",
+          "noul": 0.71
+        },
+        "standard_3": {
+          "type": "noul",
+          "noul": 0.45
+        },
+        "task_4": {
+          "type": "noul",
+          "noul": 0.77
+        },
+        "standard_4": {
+          "type": "noul",
+          "noul": 0.48
+        }
+      },
+      "input_tokens": 1976,
+      "output_tokens": 184,
+      "milliseconds": 191,
+      "source": "live accept.grade offline#grade-embedding-drift-monitor__mVNMcMn-1"
+    },
+    "3017f7dfb02d12f298479e8e11fed22073756c7a1be2178ab5856edcb9520969": {
+      "name": "jev_check_grade",
+      "model": "jev-1.13.0",
+      "answers": {
+        "task_0": {
+          "type": "noul",
+          "noul": 0.49
+        },
+        "standard_0": {
+          "type": "noul",
+          "noul": 0.54
+        },
+        "task_1": {
+          "type": "noul",
+          "noul": 0.54
+        },
+        "standard_1": {
+          "type": "noul",
+          "noul": 0.74
+        },
+        "task_2": {
+          "type": "noul",
+          "noul": 0.24
+        },
+        "standard_2": {
+          "type": "noul",
+          "noul": 0.36
+        }
+      },
+      "input_tokens": 1569,
+      "output_tokens": 112,
+      "milliseconds": 131,
+      "source": "live accept.grade offline#grade-session-window-debug__3v9FKP5-0"
+    },
+    "4c80aef2f2b09ef270ef834720048490ff6257c9825b3e8a741386117893f5cc": {
+      "name": "jev_check_grade",
+      "model": "jev-1.13.0",
+      "answers": {
+        "task_0": {
+          "type": "noul",
+          "noul": 0.32
+        },
+        "standard_0": {
+          "type": "noul",
+          "noul": 0.56
+        },
+        "task_1": {
+          "type": "noul",
+          "noul": 0.36
+        },
+        "standard_1": {
+          "type": "noul",
+          "noul": 0.78
+        },
+        "task_2": {
+          "type": "noul",
+          "noul": 0.29
+        },
+        "standard_2": {
+          "type": "noul",
+          "noul": 0.5
+        },
+        "task_3": {
+          "type": "noul",
+          "noul": 0.25
+        },
+        "standard_3": {
+          "type": "noul",
+          "noul": 0.58
+        },
+        "task_4": {
+          "type": "noul",
+          "noul": 0.36
+        },
+        "standard_4": {
+          "type": "noul",
+          "noul": 0.85
+        }
+      },
+      "input_tokens": 2204,
+      "output_tokens": 184,
+      "milliseconds": 124,
+      "source": "live accept.grade offline#grade-session-window-debug__vbWCjBZ-0"
+    },
+    "56e5215c77c703fc45aa95e7d2609e1d8a530190a7084078d7d87edd5cdb0ddf": {
+      "name": "jev_check_grade",
+      "model": "jev-1.13.0",
+      "answers": {
+        "task_0": {
+          "type": "noul",
+          "noul": 0.44
+        },
+        "standard_0": {
+          "type": "noul",
+          "noul": 0.38
+        }
+      },
+      "input_tokens": 740,
+      "output_tokens": 40,
+      "milliseconds": 148,
+      "source": "live accept.grade offline#grade-embedding-drift-monitor__KDeY8Bf-2"
+    },
+    "5736e92de978a8ab00d9853fa40b888c06376371dc97ab98e2b815e8de2bc6de": {
+      "name": "jev_check_grade",
+      "model": "jev-1.13.0",
+      "answers": {
+        "task_0": {
+          "type": "noul",
+          "noul": 0.4
+        },
+        "standard_0": {
+          "type": "noul",
+          "noul": 0.47
+        },
+        "task_1": {
+          "type": "noul",
+          "noul": 0.28
+        },
+        "standard_1": {
+          "type": "noul",
+          "noul": 0.75
+        },
+        "task_2": {
+          "type": "noul",
+          "noul": 0.42
+        },
+        "standard_2": {
+          "type": "noul",
+          "noul": 0.44
+        },
+        "task_3": {
+          "type": "noul",
+          "noul": 0.33
+        },
+        "standard_3": {
+          "type": "noul",
+          "noul": 0.42
+        }
+      },
+      "input_tokens": 1932,
+      "output_tokens": 148,
+      "milliseconds": 154,
+      "source": "live accept.grade offline#grade-session-window-debug__3KVqBUz-0"
+    },
+    "62bbf7c9954b09a664ca156daa4daf7bbe49e1116e5ee2d40b6df52959281679": {
+      "name": "jev_check_grade",
+      "model": "jev-1.13.0",
+      "answers": {
+        "task_0": {
+          "type": "noul",
+          "noul": 0.68
+        },
+        "standard_0": {
+          "type": "noul",
+          "noul": 0.52
+        },
+        "task_1": {
+          "type": "noul",
+          "noul": 0.67
+        },
+        "standard_1": {
+          "type": "noul",
+          "noul": 0.6
+        },
+        "task_2": {
+          "type": "noul",
+          "noul": 0.39
+        },
+        "standard_2": {
+          "type": "noul",
+          "noul": 0.66
+        },
+        "task_3": {
+          "type": "noul",
+          "noul": 0.26
+        },
+        "standard_3": {
+          "type": "noul",
+          "noul": 0.51
+        },
+        "task_4": {
+          "type": "noul",
+          "noul": 0.26
+        },
+        "standard_4": {
+          "type": "noul",
+          "noul": 0.63
+        },
+        "task_5": {
+          "type": "noul",
+          "noul": 0.22
+        },
+        "standard_5": {
+          "type": "noul",
+          "noul": 0.87
+        }
+      },
+      "input_tokens": 2446,
+      "output_tokens": 220,
+      "milliseconds": 188,
+      "source": "live accept.grade offline#grade-embedding-drift-monitor__6zRjd9n-0"
+    },
+    "6932675ac86a1235ca88ef759f530d6a5938a829eb5d5d59e9fe6d29fa1a70e8": {
+      "name": "jev_check_grade",
+      "model": "jev-1.13.0",
+      "answers": {
+        "task_0": {
+          "type": "noul",
+          "noul": 0.78
+        },
+        "standard_0": {
+          "type": "noul",
+          "noul": 0.45
+        },
+        "task_1": {
+          "type": "noul",
+          "noul": 0.53
+        },
+        "standard_1": {
+          "type": "noul",
+          "noul": 0.47
+        },
+        "task_2": {
+          "type": "noul",
+          "noul": 0.43
+        },
+        "standard_2": {
+          "type": "noul",
+          "noul": 0.58
+        },
+        "task_3": {
+          "type": "noul",
+          "noul": 0.65
+        },
+        "standard_3": {
+          "type": "noul",
+          "noul": 0.42
+        },
+        "task_4": {
+          "type": "noul",
+          "noul": 0.37
+        },
+        "standard_4": {
+          "type": "noul",
+          "noul": 0.53
+        }
+      },
+      "input_tokens": 2036,
+      "output_tokens": 184,
+      "milliseconds": 399,
+      "source": "live accept.grade offline#grade-embedding-drift-monitor__UfYFodd-0"
+    },
+    "744cf07ec8d26290739e3cc55b5412e139f9aaf56de272675887d65aaed93daa": {
+      "name": "jev_check_grade",
+      "model": "jev-1.13.0",
+      "answers": {
+        "task_0": {
+          "type": "noul",
+          "noul": 0.31
+        },
+        "standard_0": {
+          "type": "noul",
+          "noul": 0.85
+        },
+        "task_1": {
+          "type": "noul",
+          "noul": 0.26
+        },
+        "standard_1": {
+          "type": "noul",
+          "noul": 0.92
+        },
+        "task_2": {
+          "type": "noul",
+          "noul": 0.23
+        },
+        "standard_2": {
+          "type": "noul",
+          "noul": 0.89
+        },
+        "task_3": {
+          "type": "noul",
+          "noul": 0.39
+        },
+        "standard_3": {
+          "type": "noul",
+          "noul": 0.86
+        },
+        "task_4": {
+          "type": "noul",
+          "noul": 0.27
+        },
+        "standard_4": {
+          "type": "noul",
+          "noul": 0.92
+        },
+        "task_5": {
+          "type": "noul",
+          "noul": 0.58
+        },
+        "standard_5": {
+          "type": "noul",
+          "noul": 0.81
+        }
+      },
+      "input_tokens": 2358,
+      "output_tokens": 220,
+      "milliseconds": 168,
+      "source": "live accept.grade offline#grade-embedding-drift-monitor__mVNMcMn-0"
+    },
+    "7b426f76278d47c9267931575443f3e748d5ba634c77b87438651cc37a34da37": {
+      "name": "jev_check_grade",
+      "model": "jev-1.13.0",
+      "answers": {
+        "task_0": {
+          "type": "noul",
+          "noul": 0.46
+        },
+        "standard_0": {
+          "type": "noul",
+          "noul": 0.54
+        },
+        "task_1": {
+          "type": "noul",
+          "noul": 0.37
+        },
+        "standard_1": {
+          "type": "noul",
+          "noul": 0.72
+        },
+        "task_2": {
+          "type": "noul",
+          "noul": 0.45
+        },
+        "standard_2": {
+          "type": "noul",
+          "noul": 0.5
+        }
+      },
+      "input_tokens": 1604,
+      "output_tokens": 112,
+      "milliseconds": 165,
+      "source": "live accept.grade offline#grade-session-window-debug__arofNZN-0"
+    },
+    "96e6e5f52d1db5d5d3587825eece97261866b166a1ced966a78dad9feb25b679": {
+      "name": "jev_check_grade",
+      "model": "jev-1.13.0",
+      "answers": {
+        "task_0": {
+          "type": "noul",
+          "noul": 0.18
+        },
+        "standard_0": {
+          "type": "noul",
+          "noul": 0.88
+        },
+        "task_1": {
+          "type": "noul",
+          "noul": 0.28
+        },
+        "standard_1": {
+          "type": "noul",
+          "noul": 0.69
+        }
+      },
+      "input_tokens": 1099,
+      "output_tokens": 76,
+      "milliseconds": 183,
+      "source": "live accept.grade offline#grade-embedding-drift-monitor__6zRjd9n-1"
+    },
+    "c4be3bceaecb8416c454ec6f3207da64634059d2f595c9ad9223025601d07d2e": {
+      "name": "jev_check_grade",
+      "model": "jev-1.13.0",
+      "answers": {
+        "task_0": {
+          "type": "noul",
+          "noul": 0.27
+        },
+        "standard_0": {
+          "type": "noul",
+          "noul": 0.69
+        },
+        "task_1": {
+          "type": "noul",
+          "noul": 0.21
+        },
+        "standard_1": {
+          "type": "noul",
+          "noul": 0.94
+        },
+        "task_2": {
+          "type": "noul",
+          "noul": 0.16
+        },
+        "standard_2": {
+          "type": "noul",
+          "noul": 0.71
+        },
+        "task_3": {
+          "type": "noul",
+          "noul": 0.27
+        },
+        "standard_3": {
+          "type": "noul",
+          "noul": 0.73
+        },
+        "task_4": {
+          "type": "noul",
+          "noul": 0.18
+        },
+        "standard_4": {
+          "type": "noul",
+          "noul": 0.43
+        },
+        "task_5": {
+          "type": "noul",
+          "noul": 0.32
+        },
+        "standard_5": {
+          "type": "noul",
+          "noul": 0.85
+        }
+      },
+      "input_tokens": 2395,
+      "output_tokens": 220,
+      "milliseconds": 140,
+      "source": "live accept.grade offline#grade-embedding-drift-monitor__KDeY8Bf-0"
+    },
+    "cdee928ef81830e73e4e456723604043b88b5227d0300bbfb2459504958f72a3": {
+      "name": "jev_check_grade",
+      "model": "jev-1.13.0",
+      "answers": {
+        "task_0": {
+          "type": "noul",
+          "noul": 0.29
+        },
+        "standard_0": {
+          "type": "noul",
+          "noul": 0.79
+        },
+        "task_1": {
+          "type": "noul",
+          "noul": 0.19
+        },
+        "standard_1": {
+          "type": "noul",
+          "noul": 0.85
+        },
+        "task_2": {
+          "type": "noul",
+          "noul": 0.23
+        },
+        "standard_2": {
+          "type": "noul",
+          "noul": 0.92
+        },
+        "task_3": {
+          "type": "noul",
+          "noul": 0.3
+        },
+        "standard_3": {
+          "type": "noul",
+          "noul": 0.87
+        },
+        "task_4": {
+          "type": "noul",
+          "noul": 0.25
+        },
+        "standard_4": {
+          "type": "noul",
+          "noul": 0.79
+        },
+        "task_5": {
+          "type": "noul",
+          "noul": 0.17
+        },
+        "standard_5": {
+          "type": "noul",
+          "noul": 0.66
+        }
+      },
+      "input_tokens": 2374,
+      "output_tokens": 220,
+      "milliseconds": 177,
+      "source": "live accept.grade offline#grade-embedding-drift-monitor__y2bahob-0"
+    },
+    "dc7fff601d3204af7295e070fc327505c04f35107a6a56ad4936f5819ec3e9c6": {
+      "name": "jev_check_grade",
+      "model": "jev-1.13.0",
+      "answers": {
+        "task_0": {
+          "type": "noul",
+          "noul": 0.8
+        },
+        "standard_0": {
+          "type": "noul",
+          "noul": 0.61
+        },
+        "task_1": {
+          "type": "noul",
+          "noul": 0.44
+        },
+        "standard_1": {
+          "type": "noul",
+          "noul": 0.46
+        },
+        "task_2": {
+          "type": "noul",
+          "noul": 0.44
+        },
+        "standard_2": {
+          "type": "noul",
+          "noul": 0.69
+        },
+        "task_3": {
+          "type": "noul",
+          "noul": 0.19
+        },
+        "standard_3": {
+          "type": "noul",
+          "noul": 0.54
+        },
+        "task_4": {
+          "type": "noul",
+          "noul": 0.23
+        },
+        "standard_4": {
+          "type": "noul",
+          "noul": 0.72
+        },
+        "task_5": {
+          "type": "noul",
+          "noul": 0.39
+        },
+        "standard_5": {
+          "type": "noul",
+          "noul": 0.87
+        }
+      },
+      "input_tokens": 2383,
+      "output_tokens": 220,
+      "milliseconds": 172,
+      "source": "live accept.grade offline#grade-embedding-drift-monitor__QAHE7De-0"
+    },
+    "e59973294afac636924ef9af231e77e5e30b850249bcb9c679e2218bcb10b129": {
+      "name": "jev_check_grade",
+      "model": "jev-1.13.0",
+      "answers": {
+        "task_0": {
+          "type": "noul",
+          "noul": 0.35
+        },
+        "standard_0": {
+          "type": "noul",
+          "noul": 0.52
+        },
+        "task_1": {
+          "type": "noul",
+          "noul": 0.28
+        },
+        "standard_1": {
+          "type": "noul",
+          "noul": 0.73
+        },
+        "task_2": {
+          "type": "noul",
+          "noul": 0.22
+        },
+        "standard_2": {
+          "type": "noul",
+          "noul": 0.54
+        }
+      },
+      "input_tokens": 1612,
+      "output_tokens": 112,
+      "milliseconds": 159,
+      "source": "live accept.grade offline#grade-session-window-debug__PacT86C-0"
+    },
+    "f7c7bffd3e79e93521f255362319be40c1218806f6ad064d81331170196d5084": {
+      "name": "jev_check_grade",
+      "model": "jev-1.13.0",
+      "answers": {
+        "task_0": {
+          "type": "noul",
+          "noul": 0.25
+        },
+        "standard_0": {
+          "type": "noul",
+          "noul": 0.53
+        },
+        "task_1": {
+          "type": "noul",
+          "noul": 0.39
+        },
+        "standard_1": {
+          "type": "noul",
+          "noul": 0.62
+        },
+        "task_2": {
+          "type": "noul",
+          "noul": 0.2
+        },
+        "standard_2": {
+          "type": "noul",
+          "noul": 0.5
+        }
+      },
+      "input_tokens": 1656,
+      "output_tokens": 112,
+      "milliseconds": 132,
+      "source": "live accept.grade offline#grade-session-window-debug__a7stmvT-0"
+    }
+  }
+}
