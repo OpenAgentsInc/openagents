@@ -330,6 +330,20 @@ fn oracle_usd() -> f64 {
     crate::checks::oracle::write::Bounds::default().usd
 }
 
+/// Names the task's image for the oracle writer's own container.
+pub const ORACLE_IMAGE_ENV: &str = "CODER_ONE_TASK_IMAGE";
+
+/// The task's image for the oracle writer's container: the one the harness
+/// names in [`ORACLE_IMAGE_ENV`], or else the task's kept image on this
+/// machine. `None` when neither is known, which refuses the writer.
+fn oracle_image(task: &str) -> Option<String> {
+    std::env::var(ORACLE_IMAGE_ENV)
+        .ok()
+        .map(|image| image.trim().to_string())
+        .filter(|image| !image.is_empty())
+        .or_else(|| crate::accept::offline::image(task))
+}
+
 /// The oracle beside the lean loop, once it's ready.
 pub(super) struct OracleState {
     pub oracle: crate::checks::oracle::Oracle,
@@ -1871,12 +1885,21 @@ impl Micro {
                          stated definition",
                     );
                     // The writer's reads are confined, which a task
-                    // container can't enforce: there it runs no command.
+                    // container can't enforce: there it runs in a fresh
+                    // container of the task's image, or is refused.
+                    let container = (self.isolation == Isolation::TaskContainer).then(|| {
+                        oracle::contain::Image {
+                            reference: oracle_image(&prepared.title).unwrap_or_default(),
+                            withheld: vec![self.workdir.clone(), base.clone()],
+                            docker: std::sync::Arc::new(oracle::contain::Cli),
+                        }
+                    });
                     let bounds = write::Bounds {
                         turns: settings.writer_turns,
                         wall: Duration::from_secs(settings.writer_sec).min(self.deadline),
                         usd: settings.writer_usd,
                         isolation: self.isolation,
+                        container,
                         ..write::Bounds::default()
                     };
                     match write::write(wire, &made, &dir, &bounds, Some(&self.artifacts)).await {

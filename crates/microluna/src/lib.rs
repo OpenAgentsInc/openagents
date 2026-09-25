@@ -27,12 +27,14 @@ pub mod fake;
 pub mod finish;
 pub mod patch;
 pub mod price;
+pub mod remote;
 pub mod seal;
 pub mod session;
 pub mod tools;
 pub mod transport;
 
 pub use finish::FinishRule;
+pub use remote::Remote;
 pub use seal::Seal;
 pub use session::{
     Brief, Config, Ending, Evidence, Intervention, NoWatch, Persist, Recorder, Report, Watch, run,

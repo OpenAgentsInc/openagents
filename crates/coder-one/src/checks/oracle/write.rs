@@ -16,11 +16,18 @@
 //! `find /` finds none of them. A host that can't confine reads refuses
 //! every command rather than run it with reads open.
 //!
+//! A task whose boundary is a task container can't confine reads that
+//! way: the container holds the candidate. There the writer runs in a
+//! fresh container of the task's image instead ([`super::contain`], set by
+//! [`Bounds::container`]), and only `oracle.py` comes out. Without one, a
+//! writer in a task container is refused before any model call.
+//!
 //! It writes `oracle.py`, which a host later runs as
 //! `python3 oracle.py WORKDIR CASES` against a finished workspace. The
 //! oracle prints one JSON line per case ([`PROTOCOL`]).
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 
 use microluna::{Brief, Config, Ending, Evidence, Isolation, Transport};
@@ -81,8 +88,13 @@ pub struct Bounds {
     pub effort: Option<String>,
     /// How the session's commands are confined: a writing boundary on its
     /// own directory. Their reads are always confined too, so a task
-    /// container, which can't confine reads, refuses every command.
+    /// container, which can't confine reads, refuses the writer unless
+    /// [`Bounds::container`] gives it a container of its own.
     pub isolation: Isolation,
+    /// When set, the writer runs in a fresh container of this image, with
+    /// no network and nothing from the host, instead of a boundary on the
+    /// host ([`super::contain`]).
+    pub container: Option<super::contain::Image>,
     /// What else the writer's commands may read, besides its own
     /// directory: the task's instruction and the untouched task files it
     /// may see. Never a candidate workspace or another trial's records.
@@ -97,10 +109,17 @@ impl Default for Bounds {
             usd: 0.08,
             effort: Some("high".to_string()),
             isolation: Isolation::Boundary,
+            container: None,
             readable: Vec::new(),
         }
     }
 }
+
+/// What the writer in its own container is told about where it is.
+pub const CONTAINED: &str = "Your commands run in a fresh container of the task's image, with no \
+network. The task's files there are untouched, as the image ships them: no solution has been \
+written in that container. Test your oracle there, but keep everything you make in your working \
+directory: only `oracle.py` is kept.";
 
 /// The brief the writer reads: the task and the protocol, then the spec's
 /// parts as evidence.
@@ -177,11 +196,15 @@ pub fn brief(spec: &Spec) -> Brief {
 
 /// Runs the writer session in `dir`, which it creates empty but for
 /// `spec.json` and `cases.json`, and returns the oracle when the session
-/// left an `oracle.py`.
+/// left an `oracle.py`. With [`Bounds::container`], the session runs in a
+/// fresh container of the task's image and `oracle.py` is copied out of
+/// it. A writer that can't be confined is refused before any model call:
+/// the record says why under `refused`, and no oracle comes back.
 ///
 /// # Errors
 ///
 /// A message when the directory can't be prepared.
+#[allow(clippy::too_many_lines)]
 pub async fn write<T: Transport>(
     transport: &T,
     spec: &Spec,
@@ -192,17 +215,80 @@ pub async fn write<T: Transport>(
     let _ = std::fs::remove_dir_all(dir);
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     let cases = serde_json::to_string_pretty(&spec.cases_file()).map_err(|e| e.to_string())?;
-    std::fs::write(dir.join("cases.json"), format!("{cases}\n")).map_err(|e| e.to_string())?;
+    let cases = format!("{cases}\n");
     let spec_text = serde_json::to_string_pretty(spec).map_err(|e| e.to_string())?;
-    std::fs::write(dir.join("spec.json"), format!("{spec_text}\n")).map_err(|e| e.to_string())?;
-    let seal_dir = dir.with_extension("seal");
-    let seal = microluna::Seal::create(&seal_dir, true).map_err(|e| e.to_string())?;
-    let workspace = microluna::Workspace::new(dir)
-        .map_err(|e| e.to_string())?
-        .isolated_by(bounds.isolation)
-        .sealed_by(seal)
-        .confining_reads(bounds.readable.clone());
+    let spec_text = format!("{spec_text}\n");
     let name = format!("oracle-writer-{}", spec.task);
+    let refused = |why: String, isolation: &str| {
+        crate::say::line(&format!("  microluna ▸ {why}"));
+        json!({
+            "name": name,
+            "refused": why,
+            "isolation": isolation,
+            "turns": 0,
+            "usd": 0.0,
+        })
+    };
+    let contained = match &bounds.container {
+        Some(image) => {
+            let label = format!(
+                "oracle-writer-{}-{}-{}",
+                &spec.digest[..12.min(spec.digest.len())],
+                std::process::id(),
+                atif::now_ms()
+            );
+            match super::contain::WriterContainer::start(image, &label) {
+                Ok(container) => Some(Arc::new(container)),
+                Err(why) => return Ok((None, refused(why, super::contain::ISOLATION))),
+            }
+        }
+        None if bounds.isolation == Isolation::TaskContainer => {
+            return Ok((
+                None,
+                refused(
+                    "The oracle writer did not run: in a task container its commands could \
+                     read the candidate's files, and no separate container was given for it."
+                        .to_string(),
+                    Isolation::TaskContainer.word(),
+                ),
+            ));
+        }
+        None => None,
+    };
+    std::fs::write(dir.join("cases.json"), &cases).map_err(|e| e.to_string())?;
+    std::fs::write(dir.join("spec.json"), &spec_text).map_err(|e| e.to_string())?;
+    let seal_dir = dir.with_extension("seal");
+    let workspace = microluna::Workspace::new(dir).map_err(|e| e.to_string())?;
+    let mut brief = brief(spec);
+    let workspace = match &contained {
+        Some(container) => {
+            let put = container
+                .put("cases.json", cases.as_bytes())
+                .and_then(|()| container.put("spec.json", spec_text.as_bytes()));
+            if let Err(error) = put {
+                return Ok((
+                    None,
+                    refused(
+                        format!(
+                            "The oracle writer did not run: the spec couldn't be put in its \
+                             container ({error})."
+                        ),
+                        super::contain::ISOLATION,
+                    ),
+                ));
+            }
+            brief.guidance = format!("{}\n\n{CONTAINED}", brief.guidance);
+            let remote: Arc<dyn microluna::Remote> = container.clone();
+            workspace.in_remote(remote)
+        }
+        None => {
+            let seal = microluna::Seal::create(&seal_dir, true).map_err(|e| e.to_string())?;
+            workspace
+                .isolated_by(bounds.isolation)
+                .sealed_by(seal)
+                .confining_reads(bounds.readable.clone())
+        }
+    };
     let config = Config {
         max_turns: bounds.turns,
         deadline: Some(bounds.wall),
@@ -229,13 +315,24 @@ pub async fn write<T: Transport>(
             trace = Some(path);
         }
     }
-    let report = microluna::run(transport, &workspace, &brief(spec), &config, &mut recorder).await;
+    let report = microluna::run(transport, &workspace, &brief, &config, &mut recorder).await;
     recorder.close(match report.ending {
         Ending::Finished => atif::log::ENDED,
         _ => atif::log::INTERRUPTED,
     });
     let _ = std::fs::remove_dir_all(&seal_dir);
-    let record = json!({
+    let copied = contained
+        .as_ref()
+        .map(|container| container.copy_out(&dir.join("oracle.py")));
+    if let Some(container) = &contained {
+        container.remove();
+    }
+    let isolation = if contained.is_some() {
+        super::contain::ISOLATION
+    } else {
+        "boundary"
+    };
+    let mut record = json!({
         "name": name,
         "model": config.model,
         "ending": match &report.ending {
@@ -255,21 +352,33 @@ pub async fn write<T: Transport>(
         "output_tokens": report.usage.output,
         "milliseconds": report.milliseconds,
         "trace": trace,
+        "isolation": isolation,
         "bounds": {
             "turns": bounds.turns,
             "wall_sec": bounds.wall.as_secs(),
             "usd": bounds.usd,
             "effort": bounds.effort,
-            "reads": "confined",
-            "readable": bounds.readable,
+            "reads": if contained.is_some() { "container" } else { "confined" },
+            "readable": if contained.is_some() { Vec::new() } else { bounds.readable.clone() },
         },
     });
-    let Ok(program) = std::fs::read_to_string(dir.join("oracle.py")) else {
+    if let Some(container) = &contained {
+        record["container"] = container.describe();
+    }
+    let program = match copied {
+        Some(Ok(program)) => program,
+        Some(Err(error)) => {
+            record["copy_out"] = json!(error);
+            None
+        }
+        None => std::fs::read_to_string(dir.join("oracle.py")).ok(),
+    };
+    let Some(program) = program else {
         return Ok((None, record));
     };
     let mut files = std::collections::BTreeMap::new();
     files.insert("oracle.py".to_string(), program);
-    files.insert("cases.json".to_string(), format!("{cases}\n"));
+    files.insert("cases.json".to_string(), cases);
     let oracle = Oracle {
         schema: String::new(),
         task: spec.task.clone(),

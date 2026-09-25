@@ -22,8 +22,13 @@
 //! The three file tools run in this process, and apply the same policy by
 //! path: every path resolves inside the workspace root, `..` can't climb
 //! out of it, and a symbolic link that leads out is refused.
+//!
+//! A workspace given a [`crate::remote::Remote`] ([`Workspace::in_remote`])
+//! runs all four tools there instead, such as in a fresh container, and
+//! the host's root holds nothing the session sees.
 
 use std::path::{Component, Path, PathBuf};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use serde::Deserialize;
@@ -326,6 +331,14 @@ pub struct Workspace {
     /// When set, commands may read only these paths, the workspace root,
     /// their scratch, and the system's program directories.
     reads: Option<Vec<PathBuf>>,
+    /// When set, every tool runs there instead of on the host.
+    remote: Option<Arc<dyn crate::remote::Remote>>,
+}
+
+/// Where a file tool's path leads: the host, or a remote's own file.
+enum Target {
+    Host(PathBuf),
+    Remote(String),
 }
 
 impl Workspace {
@@ -343,6 +356,7 @@ impl Workspace {
             command_max: COMMAND_WALL_MAX,
             seal: None,
             reads: None,
+            remote: None,
         })
     }
 
@@ -408,6 +422,18 @@ impl Workspace {
     #[must_use]
     pub fn confines_reads(&self) -> bool {
         self.reads.is_some()
+    }
+
+    /// The same workspace, with every tool run in `remote` instead of on
+    /// the host: commands, reads, writes, and patches. The host's root
+    /// then only holds what the caller puts there. Isolation and read
+    /// confinement don't apply; the remote is the boundary. A seal still
+    /// applies in one way: an offline seal refuses a command when the
+    /// remote has a network.
+    #[must_use]
+    pub fn in_remote(mut self, remote: Arc<dyn crate::remote::Remote>) -> Self {
+        self.remote = Some(remote);
+        self
     }
 
     /// The same workspace, with commands confined by `isolation`.
@@ -535,8 +561,19 @@ impl Workspace {
             .timeout_seconds
             .map_or(COMMAND_WALL, |seconds| Duration::from_secs(seconds.max(1)))
             .min(self.command_max);
-        let ended = match self.isolation {
-            Isolation::Boundary | Isolation::ReadOnly => {
+        if let Some(remote) = &self.remote
+            && self.seal.as_ref().is_some_and(crate::Seal::offline)
+            && !remote.offline()
+        {
+            return Outcome::refused(
+                "The command did not run: this session is sealed offline, and the place \
+                 its commands run has a network."
+                    .to_string(),
+            );
+        }
+        let ended = match (&self.remote, self.isolation) {
+            (Some(remote), _) => remote.run(&args.command, wall).await,
+            (None, Isolation::Boundary | Isolation::ReadOnly) => {
                 let spec = if self.isolation == Isolation::ReadOnly {
                     coder_boundary::Boundary::readonly()
                 } else {
@@ -603,7 +640,7 @@ impl Workspace {
                     .run_holding(boundary.hold())
                     .await
             }
-            Isolation::TaskContainer => {
+            (None, Isolation::TaskContainer) => {
                 if self.reads.is_some() {
                     return Outcome::refused(
                         "The command did not run: this session may read only its own files, \
@@ -665,10 +702,19 @@ impl Workspace {
         .noting("exit", json!(ended.ending.code()))
         .noting("bytes", json!(ended.bytes()))
         .noting("truncated", json!(ended.truncated()))
-        .noting("boundary", json!(self.isolation.word()))
+        .noting(
+            "boundary",
+            json!(
+                self.remote
+                    .as_ref()
+                    .map_or(self.isolation.word(), |remote| remote.word())
+            ),
+        )
         .noting(
             "reads",
-            json!(if self.reads.is_some() {
+            json!(if self.remote.is_some() {
+                "remote"
+            } else if self.reads.is_some() {
                 "confined"
             } else {
                 "open"
@@ -684,13 +730,59 @@ impl Workspace {
         )
     }
 
+    /// Resolves a path the model named to the file a tool acts on.
+    fn target(&self, path: &str) -> Result<Target, String> {
+        match &self.remote {
+            Some(remote) => crate::remote::resolve(remote.root(), path).map(Target::Remote),
+            None => self.resolve(path).map(Target::Host),
+        }
+    }
+
+    fn load(&self, target: &Target) -> Result<String, String> {
+        match (target, &self.remote) {
+            (Target::Remote(path), Some(remote)) => remote
+                .read(path, crate::remote::READ_MAX)
+                .map(|bytes| String::from_utf8_lossy(&bytes).into_owned()),
+            (Target::Host(path), _) => std::fs::read(path)
+                .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+                .map_err(|error| error.to_string()),
+            (Target::Remote(_), None) => Err("no remote to read from".to_string()),
+        }
+    }
+
+    fn store(&self, target: &Target, contents: Option<&str>) -> Result<(), String> {
+        match (target, &self.remote) {
+            (Target::Remote(path), Some(remote)) => remote.write(path, contents.map(str::as_bytes)),
+            (Target::Host(path), _) => match contents {
+                Some(contents) => write(path, contents),
+                None => std::fs::remove_file(path),
+            }
+            .map_err(|error| error.to_string()),
+            (Target::Remote(_), None) => Err("no remote to write to".to_string()),
+        }
+    }
+
+    fn is_file(&self, target: &Target) -> bool {
+        match target {
+            Target::Host(path) => path.is_file(),
+            Target::Remote(_) => self.load(target).is_ok(),
+        }
+    }
+
+    fn named(target: &Target) -> String {
+        match target {
+            Target::Host(path) => path.display().to_string(),
+            Target::Remote(path) => path.clone(),
+        }
+    }
+
     fn read_file(&self, args: &ReadFile) -> Outcome {
-        let path = match self.resolve(&args.path) {
+        let path = match self.target(&args.path) {
             Ok(path) => path,
             Err(why) => return Outcome::refused(why),
         };
-        let text = match std::fs::read(&path) {
-            Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
+        let text = match self.load(&path) {
+            Ok(text) => text,
             Err(error) => return Outcome::failed(format!("can't read {}: {error}", args.path)),
         };
         let start = args.start_line.unwrap_or(1).max(1);
@@ -723,11 +815,11 @@ impl Workspace {
     }
 
     fn write_file(&self, args: &WriteFile) -> Outcome {
-        let path = match self.resolve(&args.path) {
+        let path = match self.target(&args.path) {
             Ok(path) => path,
             Err(why) => return Outcome::refused(why),
         };
-        match write(&path, &args.contents) {
+        match self.store(&path, Some(&args.contents)) {
             Ok(()) => Outcome::done(format!(
                 "Wrote {} ({} bytes).",
                 args.path,
@@ -745,15 +837,15 @@ impl Workspace {
         };
         // Compute every new file before writing any, so a patch that fails
         // halfway leaves the workspace as it was.
-        let mut writes: Vec<(PathBuf, Option<String>)> = Vec::new();
+        let mut writes: Vec<(Target, Option<String>)> = Vec::new();
         let mut touched = Vec::new();
         for hunk in &hunks {
             let planned = match hunk {
                 Hunk::Add { path, contents } => self
-                    .resolve(path)
+                    .target(path)
                     .map(|target| vec![(target, Some(contents.clone()))]),
-                Hunk::Delete { path } => self.resolve(path).and_then(|target| {
-                    if target.is_file() {
+                Hunk::Delete { path } => self.target(path).and_then(|target| {
+                    if self.is_file(&target) {
                         Ok(vec![(target, None)])
                     } else {
                         Err(format!("{path} is not a file"))
@@ -763,14 +855,15 @@ impl Workspace {
                     path,
                     move_to,
                     chunks,
-                } => self.resolve(path).and_then(|source| {
-                    let original = std::fs::read_to_string(&source)
+                } => self.target(path).and_then(|source| {
+                    let original = self
+                        .load(&source)
                         .map_err(|error| format!("can't read {path}: {error}"))?;
                     let updated = patch::apply(&original, chunks)
                         .map_err(|error| format!("{path}: {error}"))?;
                     match move_to {
                         Some(to) => {
-                            let target = self.resolve(to)?;
+                            let target = self.target(to)?;
                             Ok(vec![(target, Some(updated)), (source, None)])
                         }
                         None => Ok(vec![(source, Some(updated))]),
@@ -797,14 +890,10 @@ impl Workspace {
             });
         }
         for (path, contents) in &writes {
-            let result = match contents {
-                Some(contents) => write(path, contents),
-                None => std::fs::remove_file(path),
-            };
-            if let Err(error) = result {
+            if let Err(error) = self.store(path, contents.as_deref()) {
                 return Outcome::failed(format!(
                     "The patch stopped partway at {}: {error}",
-                    path.display()
+                    Self::named(path)
                 ));
             }
         }
@@ -1204,5 +1293,128 @@ mod tests {
         assert!(ran.output.contains("keep"), "{}", ran.output);
         assert_eq!(ran.status, atif::Outcome::Failed, "{}", ran.output);
         assert!(!workspace.root().join("made.txt").exists());
+    }
+
+    /// A remote that holds files in memory and records the commands it
+    /// was asked to run.
+    #[derive(Debug, Default)]
+    struct Held {
+        files: std::sync::Mutex<std::collections::BTreeMap<String, Vec<u8>>>,
+        ran: std::sync::Mutex<Vec<String>>,
+        online: bool,
+    }
+
+    impl crate::remote::Remote for Held {
+        fn word(&self) -> &'static str {
+            "held"
+        }
+        fn root(&self) -> &str {
+            "/w"
+        }
+        fn offline(&self) -> bool {
+            !self.online
+        }
+        fn run(&self, command: &str, _wall: Duration) -> crate::remote::Running<'_> {
+            self.ran.lock().unwrap().push(command.to_string());
+            Box::pin(async {
+                supervise::Ended {
+                    ending: supervise::Ending::Exited(Some(0)),
+                    stdout: supervise::Captured {
+                        text: "ran there".to_string(),
+                        bytes: 9,
+                        truncated: false,
+                    },
+                    stderr: supervise::Captured::default(),
+                    elapsed: Duration::ZERO,
+                    memory: None,
+                }
+            })
+        }
+        fn read(&self, path: &str, _max: usize) -> Result<Vec<u8>, String> {
+            self.files
+                .lock()
+                .unwrap()
+                .get(path)
+                .cloned()
+                .ok_or_else(|| format!("{path}: no such file"))
+        }
+        fn write(&self, path: &str, contents: Option<&[u8]>) -> Result<(), String> {
+            let mut files = self.files.lock().unwrap();
+            match contents {
+                Some(bytes) => {
+                    files.insert(path.to_string(), bytes.to_vec());
+                }
+                None => {
+                    files.remove(path);
+                }
+            }
+            Ok(())
+        }
+    }
+
+    /// In a remote, every tool acts there: the host's root stays empty.
+    #[tokio::test]
+    async fn a_remote_session_runs_every_tool_there() {
+        let (_dir, workspace) = workspace();
+        let held = Arc::new(Held::default());
+        let workspace = workspace
+            .isolated_by(Isolation::TaskContainer)
+            .confining_reads(Vec::new())
+            .in_remote(held.clone());
+        let wrote = workspace
+            .call(
+                "write_file",
+                r#"{"path":"/w/a.py","contents":"one\ntwo\n"}"#,
+            )
+            .await;
+        assert_eq!(wrote.status, atif::Outcome::Completed, "{}", wrote.output);
+        let patch = "*** Begin Patch\n*** Update File: a.py\n@@\n one\n-two\n+three\n*** End Patch";
+        let patched = workspace
+            .call("apply_patch", &json!({ "patch": patch }).to_string())
+            .await;
+        assert_eq!(
+            patched.status,
+            atif::Outcome::Completed,
+            "{}",
+            patched.output
+        );
+        let read = workspace.call("read_file", r#"{"path":"a.py"}"#).await;
+        assert!(read.output.contains("three"), "{}", read.output);
+        let ran = workspace
+            .call("run_command", r#"{"command":"ls","timeout_seconds":5}"#)
+            .await;
+        assert_eq!(ran.status, atif::Outcome::Completed, "{}", ran.output);
+        assert_eq!(ran.extra["boundary"], json!("held"));
+        assert_eq!(ran.extra["reads"], json!("remote"));
+        assert_eq!(*held.ran.lock().unwrap(), vec!["ls".to_string()]);
+        let outside = workspace
+            .call("read_file", r#"{"path":"/app/out.txt"}"#)
+            .await;
+        assert_eq!(
+            outside.status,
+            atif::Outcome::Cancelled,
+            "{}",
+            outside.output
+        );
+        assert_eq!(std::fs::read_dir(workspace.root()).unwrap().count(), 0);
+    }
+
+    /// An offline seal refuses a command in a remote that has a network.
+    #[tokio::test]
+    async fn an_offline_seal_refuses_a_remote_with_a_network() {
+        let (_dir, workspace) = workspace();
+        let seal_dir = tempfile::tempdir().unwrap();
+        let held = Arc::new(Held {
+            online: true,
+            ..Held::default()
+        });
+        let workspace = workspace
+            .sealed_by(crate::Seal::create(seal_dir.path(), true).unwrap())
+            .in_remote(held.clone());
+        let ran = workspace
+            .call("run_command", r#"{"command":"ls","timeout_seconds":5}"#)
+            .await;
+        assert_eq!(ran.status, atif::Outcome::Cancelled, "{}", ran.output);
+        assert!(held.ran.lock().unwrap().is_empty());
     }
 }
