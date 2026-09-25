@@ -1,0 +1,185 @@
+{
+  "schema": "openagents.tbench.cohort.v1",
+  "id": "oracle-live-20260925",
+  "budget_usd": "5.00",
+  "reservation_usd": "0.20",
+  "concurrency": 2,
+  "retries": 1,
+  "cost_rule": {
+    "version": "microluna-open-request-v1",
+    "luna_bound_usd": "0.09"
+  },
+  "artifact_path": "/home/christopherdavid/.cache/openagents/artifacts/coder-one-oracle-live-1009ad0fd3ce",
+  "artifact_sha256": "7873a407f93b906c9953187237a6b74c69ffc63582f87c9d1d55f1f68a3dd27d",
+  "policy_path": "/home/christopherdavid/openagents/.claude/worktrees/oracle-live-run/crates/coder-one/policies/microluna-oracle-live-off.json",
+  "schedule": [
+    {
+      "id": "hof-r1-on",
+      "profile": "tb4",
+      "agent": "coder-one-microluna-oracle-live-on",
+      "task_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/hof-topology-interpenetration",
+      "policy_path": "/home/christopherdavid/openagents/.claude/worktrees/oracle-live-run/crates/coder-one/policies/microluna-oracle-live-on.json"
+    },
+    {
+      "id": "hof-r1-off",
+      "profile": "tb4",
+      "agent": "coder-one-microluna-oracle-live-off",
+      "task_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/hof-topology-interpenetration",
+      "policy_path": "/home/christopherdavid/openagents/.claude/worktrees/oracle-live-run/crates/coder-one/policies/microluna-oracle-live-off.json"
+    },
+    {
+      "id": "takens-r1-off",
+      "profile": "tb4",
+      "agent": "coder-one-microluna-oracle-live-off",
+      "task_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/takens-embedding-lean",
+      "policy_path": "/home/christopherdavid/openagents/.claude/worktrees/oracle-live-run/crates/coder-one/policies/microluna-oracle-live-off.json"
+    },
+    {
+      "id": "takens-r1-on",
+      "profile": "tb4",
+      "agent": "coder-one-microluna-oracle-live-on",
+      "task_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/takens-embedding-lean",
+      "policy_path": "/home/christopherdavid/openagents/.claude/worktrees/oracle-live-run/crates/coder-one/policies/microluna-oracle-live-on.json"
+    },
+    {
+      "id": "satb-r1-on",
+      "profile": "tb4",
+      "agent": "coder-one-microluna-oracle-live-on",
+      "task_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/satb-audio-transcription",
+      "policy_path": "/home/christopherdavid/openagents/.claude/worktrees/oracle-live-run/crates/coder-one/policies/microluna-oracle-live-on.json"
+    },
+    {
+      "id": "satb-r1-off",
+      "profile": "tb4",
+      "agent": "coder-one-microluna-oracle-live-off",
+      "task_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/satb-audio-transcription",
+      "policy_path": "/home/christopherdavid/openagents/.claude/worktrees/oracle-live-run/crates/coder-one/policies/microluna-oracle-live-off.json"
+    },
+    {
+      "id": "hof-r2-off",
+      "profile": "tb4",
+      "agent": "coder-one-microluna-oracle-live-off",
+      "task_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/hof-topology-interpenetration",
+      "policy_path": "/home/christopherdavid/openagents/.claude/worktrees/oracle-live-run/crates/coder-one/policies/microluna-oracle-live-off.json"
+    },
+    {
+      "id": "hof-r2-on",
+      "profile": "tb4",
+      "agent": "coder-one-microluna-oracle-live-on",
+      "task_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/hof-topology-interpenetration",
+      "policy_path": "/home/christopherdavid/openagents/.claude/worktrees/oracle-live-run/crates/coder-one/policies/microluna-oracle-live-on.json"
+    },
+    {
+      "id": "takens-r2-on",
+      "profile": "tb4",
+      "agent": "coder-one-microluna-oracle-live-on",
+      "task_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/takens-embedding-lean",
+      "policy_path": "/home/christopherdavid/openagents/.claude/worktrees/oracle-live-run/crates/coder-one/policies/microluna-oracle-live-on.json"
+    },
+    {
+      "id": "takens-r2-off",
+      "profile": "tb4",
+      "agent": "coder-one-microluna-oracle-live-off",
+      "task_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/takens-embedding-lean",
+      "policy_path": "/home/christopherdavid/openagents/.claude/worktrees/oracle-live-run/crates/coder-one/policies/microluna-oracle-live-off.json"
+    },
+    {
+      "id": "satb-r2-off",
+      "profile": "tb4",
+      "agent": "coder-one-microluna-oracle-live-off",
+      "task_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/satb-audio-transcription",
+      "policy_path": "/home/christopherdavid/openagents/.claude/worktrees/oracle-live-run/crates/coder-one/policies/microluna-oracle-live-off.json"
+    },
+    {
+      "id": "satb-r2-on",
+      "profile": "tb4",
+      "agent": "coder-one-microluna-oracle-live-on",
+      "task_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/satb-audio-transcription",
+      "policy_path": "/home/christopherdavid/openagents/.claude/worktrees/oracle-live-run/crates/coder-one/policies/microluna-oracle-live-on.json"
+    },
+    {
+      "id": "hof-r3-on",
+      "profile": "tb4",
+      "agent": "coder-one-microluna-oracle-live-on",
+      "task_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/hof-topology-interpenetration",
+      "policy_path": "/home/christopherdavid/openagents/.claude/worktrees/oracle-live-run/crates/coder-one/policies/microluna-oracle-live-on.json"
+    },
+    {
+      "id": "hof-r3-off",
+      "profile": "tb4",
+      "agent": "coder-one-microluna-oracle-live-off",
+      "task_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/hof-topology-interpenetration",
+      "policy_path": "/home/christopherdavid/openagents/.claude/worktrees/oracle-live-run/crates/coder-one/policies/microluna-oracle-live-off.json"
+    },
+    {
+      "id": "takens-r3-off",
+      "profile": "tb4",
+      "agent": "coder-one-microluna-oracle-live-off",
+      "task_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/takens-embedding-lean",
+      "policy_path": "/home/christopherdavid/openagents/.claude/worktrees/oracle-live-run/crates/coder-one/policies/microluna-oracle-live-off.json"
+    },
+    {
+      "id": "takens-r3-on",
+      "profile": "tb4",
+      "agent": "coder-one-microluna-oracle-live-on",
+      "task_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/takens-embedding-lean",
+      "policy_path": "/home/christopherdavid/openagents/.claude/worktrees/oracle-live-run/crates/coder-one/policies/microluna-oracle-live-on.json"
+    },
+    {
+      "id": "satb-r3-on",
+      "profile": "tb4",
+      "agent": "coder-one-microluna-oracle-live-on",
+      "task_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/satb-audio-transcription",
+      "policy_path": "/home/christopherdavid/openagents/.claude/worktrees/oracle-live-run/crates/coder-one/policies/microluna-oracle-live-on.json"
+    },
+    {
+      "id": "satb-r3-off",
+      "profile": "tb4",
+      "agent": "coder-one-microluna-oracle-live-off",
+      "task_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/satb-audio-transcription",
+      "policy_path": "/home/christopherdavid/openagents/.claude/worktrees/oracle-live-run/crates/coder-one/policies/microluna-oracle-live-off.json"
+    },
+    {
+      "id": "hof-r4-off",
+      "profile": "tb4",
+      "agent": "coder-one-microluna-oracle-live-off",
+      "task_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/hof-topology-interpenetration",
+      "policy_path": "/home/christopherdavid/openagents/.claude/worktrees/oracle-live-run/crates/coder-one/policies/microluna-oracle-live-off.json"
+    },
+    {
+      "id": "hof-r4-on",
+      "profile": "tb4",
+      "agent": "coder-one-microluna-oracle-live-on",
+      "task_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/hof-topology-interpenetration",
+      "policy_path": "/home/christopherdavid/openagents/.claude/worktrees/oracle-live-run/crates/coder-one/policies/microluna-oracle-live-on.json"
+    },
+    {
+      "id": "takens-r4-on",
+      "profile": "tb4",
+      "agent": "coder-one-microluna-oracle-live-on",
+      "task_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/takens-embedding-lean",
+      "policy_path": "/home/christopherdavid/openagents/.claude/worktrees/oracle-live-run/crates/coder-one/policies/microluna-oracle-live-on.json"
+    },
+    {
+      "id": "takens-r4-off",
+      "profile": "tb4",
+      "agent": "coder-one-microluna-oracle-live-off",
+      "task_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/takens-embedding-lean",
+      "policy_path": "/home/christopherdavid/openagents/.claude/worktrees/oracle-live-run/crates/coder-one/policies/microluna-oracle-live-off.json"
+    },
+    {
+      "id": "satb-r4-off",
+      "profile": "tb4",
+      "agent": "coder-one-microluna-oracle-live-off",
+      "task_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/satb-audio-transcription",
+      "policy_path": "/home/christopherdavid/openagents/.claude/worktrees/oracle-live-run/crates/coder-one/policies/microluna-oracle-live-off.json"
+    },
+    {
+      "id": "satb-r4-on",
+      "profile": "tb4",
+      "agent": "coder-one-microluna-oracle-live-on",
+      "task_path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/satb-audio-transcription",
+      "policy_path": "/home/christopherdavid/openagents/.claude/worktrees/oracle-live-run/crates/coder-one/policies/microluna-oracle-live-on.json"
+    }
+  ]
+}

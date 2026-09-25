@@ -1,0 +1,65 @@
+{
+  "schema": "openagents.tbench.oracle-live-pins.v1",
+  "experiment": "2026-09-25-oracle-live",
+  "protocol": {
+    "path": "bench/terminal-bench/experiments/2026-09-25-oracle-live/protocol.md",
+    "sha256": "2c4a5521bd40c7419d1d904f4ea25c52ab0462ad813a4f932afc0cb21b3d1d94",
+    "commit": "b246443ed1"
+  },
+  "source_commit": "1009ad0fd3ce",
+  "artifact": {
+    "path": "/home/christopherdavid/.cache/openagents/artifacts/coder-one-oracle-live-1009ad0fd3ce",
+    "sha256": "7873a407f93b906c9953187237a6b74c69ffc63582f87c9d1d55f1f68a3dd27d",
+    "version": "coder-one 0.1.0 (1009ad0fd3ce)",
+    "build": "CODER_ONE_TARGET_DIR=<scratch> ./scripts/build-coder-one-linux.sh at 1009ad0fd3ce"
+  },
+  "manifests": {
+    "on": {
+      "path": "crates/coder-one/policies/microluna-oracle-live-on.json",
+      "sha256": "dbb5a7e040cde4997c86a9fb4fcf81c8dfbcc30a58c34ac7305093c78ecd63af",
+      "resolved_digest": "1bda34010b6c83c43401cc7645af93a29fb0fe02d703583de23d3f59c26c8ef8",
+      "profile": "coder-one-microluna-oracle-live-on"
+    },
+    "off": {
+      "path": "crates/coder-one/policies/microluna-oracle-live-off.json",
+      "sha256": "67ffb40812557fe12351d52b312f0e57c72d75a039efc42deaa6fa2fc8614afd",
+      "resolved_digest": "a6893591fbbede2cb2abf3a1f58aa7287822ad326b13eff101abfc2fba669e62",
+      "profile": "coder-one-microluna-oracle-live-off"
+    }
+  },
+  "base_manifest": {
+    "path": "crates/coder-one/policies/microluna-v18.json",
+    "sha256": "4da78507d84a67bbc18886ba9e6975d1f8b0bd15962dde8901f4186f9b1ba912"
+  },
+  "oracle_sources": {
+    "define.rs": "522d37d229afc8acc31888959a8f3cc8e4bed4d273217183483d3b5906ce22e4",
+    "write.rs": "a1cf85da8e04a7faefeb40bc4591f8fc1c0ab7a215e21f4ac5f3d514795abf04",
+    "find.rs": "edfb2ad8e2c2a5babfaa98cdcc8611c771ffde0bc1bbc9ef61c1aa1e8e6a02d3",
+    "mod.rs": "acba4f7678149be798620a590352f4fa37746151e0591feebcb5c93db2d6b3fd",
+    "host.rs": "992242083d12392c3e2602adb9ceb228bb492cd9e19ffd77d57192157c3c2367",
+    "deliver.rs": "ae004fd0d962b176f6471545d873b91a4d890b5e67bc7b78a4451e9d5d95eb04",
+    "contain.rs": "d32ca73c607733899db4a459b0fa03a238979c2c5a99348437a1e15a05e44c01"
+  },
+  "harness_sources": {
+    "cohort.py": "7d4396b0f9100cb653c924c6fa6dd8495526b872f8359a2e1668657469b52241",
+    "oracle_host.py": "96caf4103c2e308f898488d4502f3dda72298a03b29386487db0730aa943eada",
+    "coder_one.py": "887452f4bad8cea8354c026a736b54f3c234ac080a770235a7d2536fb75ba3de",
+    "candidate_capture.py": "48e16c1f8979a67491b6c2f9b05efb38bc6e8a05ee016f062c38eeafb6dab966",
+    "agents.py": "d0c32cee2365c5ef4456f3b8ef2019fbfb902231ce35ff3b7aea7bb8ce8e5714",
+    "jobconfig.py": "dff3b4328f19819314ae2688a8b9039ecb88589f49511be8625f258e2cf86e93"
+  },
+  "cohort_spec": {
+    "path": "bench/terminal-bench/experiments/2026-09-25-oracle-live/cohort.json",
+    "sha256": "c296240075b6d0fee85f280f51f529f5efd8ce673fe92e2b0830f85c8d343a5f"
+  },
+  "pool": {
+    "select.py": "86bc8b72457fbe6417bf8271b6bfc8db0344d5ef4dfffe86b77a9aeeceb41841",
+    "pool.json": "b8d8b4bc33591d46b6a84fa48e48fee989e2a136f8e17652ebe0c9519de8e087"
+  },
+  "tb4": {
+    "checkout": "terminal-bench-v4.0.0",
+    "commit": "452bf305c6da"
+  },
+  "ledger": "/home/christopherdavid/.openagents/terminal-bench/cohorts/oracle-live-20260925",
+  "run_checkout": "/home/christopherdavid/openagents/.claude/worktrees/oracle-live-run"
+}
