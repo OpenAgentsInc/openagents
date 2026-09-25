@@ -1,7 +1,7 @@
 {
   "schema": "openagents.coder-one.policy.v1",
   "name": "coder-one-microluna-v19-xlong",
-  "note": "microluna-v19 with six times the time: the lean loop may run 120 minutes over up to 16 sessions of up to 20 minutes and 100 turns each, within $0.60 of Luna spend. A 60-minute run reached the wall with its own score still rising.",
+  "note": "microluna-v19 with six times the time: the lean loop may run 120 minutes over up to 12 sessions of up to 20 minutes and 100 turns each, within $0.60 of Luna spend. A 60-minute run reached the wall with its own score still rising.",
   "policy": {
     "jev": {
       "mode": "deep",
@@ -64,7 +64,7 @@
         "accept": false,
         "parallel_tools": true,
         "lean": {
-          "sessions": 16,
+          "sessions": 12,
           "source_chars": 40000,
           "sample_chars": 6000,
           "self_check": true,
