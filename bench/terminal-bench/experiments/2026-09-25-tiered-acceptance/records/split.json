@@ -1,0 +1,23 @@
+{
+  "schema": "openagents.tiered-acceptance.split.v1",
+  "frozen_at": "2026-09-25T06:15:00Z",
+  "rule": "Each task falls on the side coder_one::checks::truth::split_of gives it (the parity of the last hex digit of its name's digest, fixed before any signal was measured). The tasks whose v6 to v8 failures the authority classes were designed from move to the calibration side.",
+  "in_sample": [
+    "embedding-drift-monitor",
+    "sound-change-cascade",
+    "interleaved-vigenere"
+  ],
+  "thresholds": {
+    "faithful_min": 0.25,
+    "hardcoded_max": 0.7,
+    "separate_min": 0.5,
+    "correct_min": 0.5
+  },
+  "bar": {
+    "min_tasks": 2,
+    "hold": "passes kept green, Wilson low end >= 0.8; failures called red, Wilson low end >= 0.2",
+    "rank": "pairs ordered right among untied, Wilson low end > 0.5",
+    "read_on": "graded workspaces of held-out tasks, within groups of one task and one suite that hold both a pass and a failure"
+  },
+  "note": "Written before any class was joined with a verifier label. The published 2026-09-24 tables, which report whole-suite results, had been read."
+}

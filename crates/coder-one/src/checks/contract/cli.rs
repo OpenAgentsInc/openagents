@@ -1,6 +1,7 @@
 //! `coder-one checks contract …`.
 
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use super::host::Local;
 use super::{Plan, extract, report, run};
@@ -17,6 +18,8 @@ pub const USAGE: &str = "usage: coder-one checks contract plan --instruction FIL
                                        [--kinds snapshot,final,candidate,reconstruction]
                                        [--trials NAME,...] [--exclude-job TEXT]...
                                        [--workers N] [--jev off|recorded|live] [--reuse-plan]
+       coder-one checks contract executed TASK... --out DIR [the offline options]
+                                       [--command-sec N] [--budget-sec N]
 
 plan extracts, by code, the items a task's instruction states (commands,
 example invocations, output paths, formats, and exit statuses) from the
@@ -29,7 +32,11 @@ fresh container of its image and runs it on every retained workspace that
 network; it writes <out>/<task>/plan.json, contract.json, and labels.json.
 Jev settles only what the words leave open, recorded in
 <out>/jev-recorded.json (or --recorded) and replayed from it; --jev off
-leaves those items not executable.";
+leaves those items not executable. executed is verify.executed on the same
+workspaces, with no model: in the untouched container it runs the commands
+the instruction names and a compile or import of the package, then runs
+them on every retained workspace and judges each against its untouched
+outcome; it writes <out>/<task>/executed.json and labels.json.";
 
 fn jev_modes(word: &str, recorded: &Recorded) -> Result<(JevMode, Option<JevMode>), String> {
     let replay = JevMode::Recorded(recorded.clone());
@@ -136,6 +143,8 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
         "--trials",
         "--exclude-job",
         "--workers",
+        "--command-sec",
+        "--budget-sec",
     ];
     if let Some((unknown, _)) = flags.iter().find(|(k, _)| !known.contains(&k.as_str())) {
         return Err(format!("unknown option {unknown}\n{USAGE}"));
@@ -196,11 +205,11 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
             }
             Ok(0)
         }
-        "offline" => {
+        "offline" | "executed" => {
             if positional.is_empty() {
-                return Err(format!("offline needs at least one TASK\n{USAGE}"));
+                return Err(format!("{verb} needs at least one TASK\n{USAGE}"));
             }
-            let out = PathBuf::from(one("--out").ok_or("offline needs --out")?);
+            let out = PathBuf::from(one("--out").ok_or(format!("{verb} needs --out"))?);
             let home = std::env::var_os("HOME")
                 .map(PathBuf::from)
                 .ok_or("HOME is not set")?
@@ -233,6 +242,29 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
                 workers: one("--workers").and_then(|w| w.parse().ok()).unwrap_or(2),
                 reuse_plan,
             };
+            if verb == "executed" {
+                let seconds = |name: &str, default: u64| -> Result<u64, String> {
+                    one(name).map_or(Ok(default), |v| {
+                        v.parse()
+                            .ok()
+                            .filter(|n| *n > 0)
+                            .ok_or(format!("{name} is a whole number of seconds, not {v}"))
+                    })
+                };
+                let wall =
+                    Duration::from_secs(seconds("--command-sec", super::executed::COMMAND_SEC)?);
+                let budget = Duration::from_secs(seconds("--budget-sec", 300)?);
+                let mut failed = 0;
+                for task in &positional {
+                    if let Err(error) =
+                        super::offline::executed_task(task, &options, wall, budget).await
+                    {
+                        failed += 1;
+                        crate::say::line(&format!("executed ▸ {task}: {error}"));
+                    }
+                }
+                return Ok(i32::from(failed > 0));
+            }
             let recorded_path =
                 one("--recorded").map_or_else(|| out.join("jev-recorded.json"), PathBuf::from);
             let mut recorded = Recorded::load(&recorded_path)?;

@@ -1,0 +1,2947 @@
+{
+  "schema": "openagents.coder-one.acceptance-authority.v1",
+  "thresholds": {
+    "faithful_min": 0.25,
+    "hardcoded_max": 0.7,
+    "separate_min": 0.5,
+    "correct_min": 0.5
+  },
+  "suites": {
+    "0ccd29cde74a275c054055cbb3f0bbdb4075aafdefd94e85ed1c308b7a92fe45": {
+      "task": "production-planning",
+      "record": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/production-planning/suite.accept.json",
+      "tests": {
+        "T1": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.28), with no independent support for its expected values (separate route 0.29, matches the rule 0.59)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.28,
+            "faithful_from": "define",
+            "hardcoded": 0.18,
+            "separate_route": 0.29,
+            "expected_correct": 0.59,
+            "jev_key": "e1e2c9d8e61f50a447612335b5879871e00a5b279321e97e37fd368c6a3522be"
+          }
+        },
+        "T10": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.51), with no independent support for its expected values (separate route 0.30, matches the rule 0.70)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.51,
+            "faithful_from": "define",
+            "hardcoded": 0.16,
+            "separate_route": 0.3,
+            "expected_correct": 0.7,
+            "jev_key": "fcff53fe674880e0e88997b711a3d59a826bfc4e45d86f0f2253c2f068eb082f"
+          }
+        },
+        "T2": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.36), with no independent support for its expected values (separate route 0.37, matches the rule 0.63)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.36,
+            "faithful_from": "define",
+            "hardcoded": 0.16,
+            "separate_route": 0.37,
+            "expected_correct": 0.63,
+            "jev_key": "042db2ea87092b0220802301a31c1b7ac549c51e87016a30bc7f07d1d221b862"
+          }
+        },
+        "T3": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.29), with no independent support for its expected values (separate route 0.29, matches the rule 0.63)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.29,
+            "faithful_from": "define",
+            "hardcoded": 0.15,
+            "separate_route": 0.29,
+            "expected_correct": 0.63,
+            "jev_key": "8eb9ccdef2b7b054f07055838475b434cb20682df8fe1d5273043e4cd55fe743"
+          }
+        },
+        "T4": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.54), with no independent support for its expected values (separate route 0.29, matches the rule 0.63)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.54,
+            "faithful_from": "define",
+            "hardcoded": 0.14,
+            "separate_route": 0.29,
+            "expected_correct": 0.63,
+            "jev_key": "a74974bcc9327a785c457e153ced56cc0905ca621dfd29fef6ec11d3c141e61d"
+          }
+        },
+        "T5": {
+          "class": "independently_supported",
+          "why": "red on the untouched workspace; Jev reads its expected values as coming from a separate route (0.86) and matching the task's rule (0.85)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.69,
+            "faithful_from": "define",
+            "hardcoded": 0.08,
+            "separate_route": 0.86,
+            "expected_correct": 0.85,
+            "jev_key": "3d2c4fdd8f904121ed9c2ce1f4bbd06af637a93598e5c508e5dc9c639becafcc"
+          }
+        },
+        "T7": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.27), with no independent support for its expected values (separate route 0.30, matches the rule 0.60)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.27,
+            "faithful_from": "define",
+            "hardcoded": 0.17,
+            "separate_route": 0.3,
+            "expected_correct": 0.6,
+            "jev_key": "c71eb34a278ea8c0a949ea169cad6d7af75670926ac2bf1219154eedcb58cc06"
+          }
+        },
+        "T8": {
+          "class": "independently_supported",
+          "why": "red on the untouched workspace; Jev reads its expected values as coming from a separate route (0.66) and matching the task's rule (0.72)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.59,
+            "faithful_from": "define",
+            "hardcoded": 0.14,
+            "separate_route": 0.66,
+            "expected_correct": 0.72,
+            "jev_key": "db164341fb0d7b91fafbf71eef7de0e061de552ca2fc966ebfdd27245f55c1f7"
+          }
+        }
+      },
+      "jev_requests": 8,
+      "jev_usd": 0.000590436
+    },
+    "1060feb71499eb3f587c2a0bf63301948df8d8634ca97792b6fc86e00ba5545c": {
+      "task": "sound-change-cascade",
+      "record": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/sound-change-cascade/suite.accept.json",
+      "tests": {
+        "T1": {
+          "class": "independently_supported",
+          "why": "red on the untouched workspace; Jev reads its expected values as coming from a separate route (0.70) and matching the task's rule (0.80)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.85,
+            "faithful_from": "define",
+            "hardcoded": 0.14,
+            "separate_route": 0.7,
+            "expected_correct": 0.8,
+            "routes": [
+              "cmp"
+            ],
+            "jev_key": "ce209f642facaa5be2288c7ff9735b2871179f5da95ac35e3692f4df257f0481"
+          }
+        },
+        "T2": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.34), with no independent support for its expected values (separate route 0.28, matches the rule 0.76)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.34,
+            "faithful_from": "define",
+            "hardcoded": 0.09,
+            "separate_route": 0.28,
+            "expected_correct": 0.76,
+            "jev_key": "1a00428aee09a74e4b2b9e48d5ab61cf3db0f2a4faf80db8db75bba71ddefda0"
+          }
+        },
+        "T3": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.42), with no independent support for its expected values (separate route 0.14, matches the rule 0.65)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.42,
+            "faithful_from": "define",
+            "hardcoded": 0.12,
+            "separate_route": 0.14,
+            "expected_correct": 0.65,
+            "routes": [
+              "cmp"
+            ],
+            "jev_key": "35398528854e41ecb6984dc3fad33ac459f562e937d08839915a19da57e2b6ba"
+          }
+        },
+        "T4": {
+          "class": "independently_supported",
+          "why": "red on the untouched workspace; Jev reads its expected values as coming from a separate route (0.64) and matching the task's rule (0.92)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.71,
+            "faithful_from": "define",
+            "hardcoded": 0.07,
+            "separate_route": 0.64,
+            "expected_correct": 0.92,
+            "jev_key": "0aa0f261759be66fd688373714bd207ed0b3f31c27413f521fcf49cc95e5dbb9"
+          }
+        },
+        "T5": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.54), with no independent support for its expected values (separate route 0.42, matches the rule 0.80)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.54,
+            "faithful_from": "define",
+            "hardcoded": 0.12,
+            "separate_route": 0.42,
+            "expected_correct": 0.8,
+            "jev_key": "9f5ea2e32295dcf28446586d911f420169cdc8e40c3b704a005b26dafccfe347"
+          }
+        },
+        "T6": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.58), with no independent support for its expected values (separate route 0.36, matches the rule 0.74)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.58,
+            "faithful_from": "define",
+            "hardcoded": 0.46,
+            "separate_route": 0.36,
+            "expected_correct": 0.74,
+            "routes": [
+              "cmp"
+            ],
+            "jev_key": "9a14782bd84666e68394520cc6b41754831172b9946615cd764c26e6f53b2485"
+          }
+        },
+        "T7": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.52), with no independent support for its expected values (separate route 0.48, matches the rule 0.70)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.52,
+            "faithful_from": "define",
+            "hardcoded": 0.26,
+            "separate_route": 0.48,
+            "expected_correct": 0.7,
+            "jev_key": "17a33263e5b4a1a0dba886c1b28aaa28b0236516fce083e6383ba5f5fc4a5019"
+          }
+        },
+        "T8": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.74), with no independent support for its expected values (separate route 0.29, matches the rule 0.84)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.74,
+            "faithful_from": "define",
+            "hardcoded": 0.1,
+            "separate_route": 0.29,
+            "expected_correct": 0.84,
+            "jev_key": "cbf150b042896d5eff97f7e7586bec7a4a2398efe8853e590bdb88916226b7b3"
+          }
+        }
+      },
+      "jev_requests": 8,
+      "jev_usd": 0.000396438
+    },
+    "1075a39234a8dda499a9af633236819b21255940bdf27b3607c54f33184088b1": {
+      "task": "ks-solver-cpp",
+      "record": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass3-facts/ks-solver-cpp/suite.accept.json",
+      "tests": {
+        "T1": {
+          "class": "independently_supported",
+          "why": "red on the untouched workspace; Jev reads its expected values as coming from a separate route (0.65) and matching the task's rule (0.82)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.62,
+            "faithful_from": "define",
+            "hardcoded": 0.1,
+            "separate_route": 0.65,
+            "expected_correct": 0.82,
+            "jev_key": "92cc0cde22bf0bd89bf9ef552c34699d1d0013f6758a14641c0df31250f5049b"
+          }
+        },
+        "T2": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.47), with no independent support for its expected values (separate route 0.29, matches the rule 0.53)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.47,
+            "faithful_from": "define",
+            "hardcoded": 0.18,
+            "separate_route": 0.29,
+            "expected_correct": 0.53,
+            "jev_key": "39932ec45526c2ac435b8b561a4f605c92d72a7e027a0d41242acee0bc921495"
+          }
+        },
+        "T3": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.39), with no independent support for its expected values (separate route 0.32, matches the rule 0.64)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.39,
+            "faithful_from": "define",
+            "hardcoded": 0.17,
+            "separate_route": 0.32,
+            "expected_correct": 0.64,
+            "jev_key": "2a8b77b0fc2c5582537903a7f21a789908c55b55de573288c6e4b44f60befeeb"
+          }
+        }
+      },
+      "jev_requests": 3,
+      "jev_usd": 0.000264894
+    },
+    "18d93f9be3440c32de5c7952bdadab29025e21e73aaadf003698a4ed18c92255": {
+      "task": "interleaved-vigenere",
+      "record": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v8--interleaved-vigenere--manual-20260924T123904/interleaved-vigenere__MoPZqbY/agent/episode/accept-suite-1.accept.json",
+      "tests": {
+        "T1": {
+          "class": "independently_supported",
+          "why": "red on the untouched workspace; Jev reads its expected values as coming from a separate route (0.58) and matching the task's rule (0.78)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.49,
+            "faithful_from": "define",
+            "hardcoded": 0.13,
+            "separate_route": 0.58,
+            "expected_correct": 0.78,
+            "jev_key": "e791d951871a95079474fe73a1a5bb04b84296a7a58cd1d925ee690ff28da53f"
+          }
+        },
+        "T10": {
+          "class": "independently_supported",
+          "why": "red on the untouched workspace; Jev reads its expected values as coming from a separate route (0.50) and matching the task's rule (0.70)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 2,
+            "faithful": 0.52,
+            "faithful_from": "define",
+            "hardcoded": 0.21,
+            "separate_route": 0.5,
+            "expected_correct": 0.7,
+            "jev_key": "16b626704bf1d03ca7a2cafb3a2dc459d8444a121e0fe06a6f5410af2c062381"
+          }
+        },
+        "T11": {
+          "class": "independently_supported",
+          "why": "red on the untouched workspace; Jev reads its expected values as coming from a separate route (0.84) and matching the task's rule (0.86)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 2,
+            "faithful": 0.86,
+            "faithful_from": "classify",
+            "separate_route": 0.84,
+            "expected_correct": 0.86,
+            "routes": [
+              "cmp"
+            ],
+            "jev_key": "92e91bbb3b569be862efbaa384a398c61c536469298e15ea35b5aecfd18936f8"
+          }
+        },
+        "T12": {
+          "class": "independently_supported",
+          "why": "red on the untouched workspace; Jev reads its expected values as coming from a separate route (0.84) and matching the task's rule (0.85)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 2,
+            "faithful": 0.8,
+            "faithful_from": "classify",
+            "separate_route": 0.84,
+            "expected_correct": 0.85,
+            "jev_key": "74ccac6a3af5c414c7cd27cf7107a3477600f4c247f924ad86aaa650f704d6bf"
+          }
+        },
+        "T13": {
+          "class": "independently_supported",
+          "why": "red on the untouched workspace; Jev reads its expected values as coming from a separate route (0.70) and matching the task's rule (0.58)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 2,
+            "faithful": 0.64,
+            "faithful_from": "classify",
+            "separate_route": 0.7,
+            "expected_correct": 0.58,
+            "routes": [
+              "cmp"
+            ],
+            "jev_key": "5f9ba3c1eb7cf79f66a912434c6d25cbd47f796b2991bec39e0d6f3c57a62d44"
+          }
+        },
+        "T2": {
+          "class": "independently_supported",
+          "why": "red on the untouched workspace; Jev reads its expected values as coming from a separate route (0.65) and matching the task's rule (0.76)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 2,
+            "faithful": 0.53,
+            "faithful_from": "define",
+            "hardcoded": 0.14,
+            "separate_route": 0.65,
+            "expected_correct": 0.76,
+            "jev_key": "2224589ad63d04f45afe4c67ed6bf3f69a0ba2daae9ccd252df846e0480e295d"
+          }
+        },
+        "T3": {
+          "class": "independently_supported",
+          "why": "red on the untouched workspace; Jev reads its expected values as coming from a separate route (0.87) and matching the task's rule (0.87)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 2,
+            "faithful": 0.5,
+            "faithful_from": "define",
+            "hardcoded": 0.09,
+            "separate_route": 0.87,
+            "expected_correct": 0.87,
+            "jev_key": "02e9f8a8941510448781ec00b7cca9c6d263fdbdc6fe5913004dc47add70c0e6"
+          }
+        },
+        "T4": {
+          "class": "guard",
+          "why": "it passed on the untouched workspace",
+          "evidence": {
+            "green_at_start": true,
+            "start_exit": 0,
+            "faithful": 0.71,
+            "faithful_from": "define",
+            "hardcoded": 0.1,
+            "separate_route": null,
+            "expected_correct": null
+          }
+        },
+        "T5": {
+          "class": "guard",
+          "why": "it passed on the untouched workspace",
+          "evidence": {
+            "green_at_start": true,
+            "start_exit": 0,
+            "faithful": 0.81,
+            "faithful_from": "define",
+            "hardcoded": 0.09,
+            "separate_route": null,
+            "expected_correct": null
+          }
+        },
+        "T6": {
+          "class": "unsupported",
+          "why": "Jev reads it as unfaithful to the task (0.17)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.17,
+            "faithful_from": "define",
+            "hardcoded": 0.1,
+            "separate_route": 0.46,
+            "expected_correct": 0.45,
+            "jev_key": "58a4f95e7c17db97b918cc12954bdee124c8f92011e5130d4e0c5e95844e4bd4"
+          }
+        },
+        "T7": {
+          "class": "independently_supported",
+          "why": "red on the untouched workspace; Jev reads its expected values as coming from a separate route (0.65) and matching the task's rule (0.76)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 2,
+            "faithful": 0.79,
+            "faithful_from": "define",
+            "hardcoded": 0.08,
+            "separate_route": 0.65,
+            "expected_correct": 0.76,
+            "jev_key": "d553dff70e8543b8ae44c4f852702ddf08a6b71e25bb45b1ec6e4bad3b3fc1c2"
+          }
+        },
+        "T8": {
+          "class": "independently_supported",
+          "why": "red on the untouched workspace; Jev reads its expected values as coming from a separate route (0.67) and matching the task's rule (0.89)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 2,
+            "faithful": 0.78,
+            "faithful_from": "define",
+            "hardcoded": 0.09,
+            "separate_route": 0.67,
+            "expected_correct": 0.89,
+            "jev_key": "4932866ae6081f8eb06e3e592ff996f6844aeec41008ea9ca213d9d4e5323154"
+          }
+        },
+        "T9": {
+          "class": "independently_supported",
+          "why": "red on the untouched workspace; Jev reads its expected values as coming from a separate route (0.64) and matching the task's rule (0.89)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.88,
+            "faithful_from": "define",
+            "hardcoded": 0.09,
+            "separate_route": 0.64,
+            "expected_correct": 0.89,
+            "jev_key": "4b73686e0f5ee5528350565a87d0389120ea2b80e7d8c14cf7ae57ae15cabc48"
+          }
+        }
+      },
+      "jev_requests": 11,
+      "jev_usd": 0.000554778
+    },
+    "1ca09f4f866a4f7641941e892b4e5ddac0841874d1c7765f49c3cbd1a27c256f": {
+      "task": "embedding-drift-monitor",
+      "record": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v7--embedding-drift-monitor--manual-20260924T124146/embedding-drift-monitor__es2dWha/agent/episode/accept-suite-1.accept.json",
+      "tests": {
+        "T1": {
+          "class": "guard",
+          "why": "it passed on the untouched workspace",
+          "evidence": {
+            "green_at_start": true,
+            "start_exit": 0,
+            "faithful": 0.46,
+            "faithful_from": "define",
+            "hardcoded": 0.13,
+            "separate_route": null,
+            "expected_correct": null
+          }
+        },
+        "T10": {
+          "class": "guard",
+          "why": "it passed on the untouched workspace",
+          "evidence": {
+            "green_at_start": true,
+            "start_exit": 0,
+            "faithful": 0.42,
+            "faithful_from": "define",
+            "hardcoded": 0.12,
+            "separate_route": null,
+            "expected_correct": null
+          }
+        },
+        "T11": {
+          "class": "unsupported",
+          "why": "Jev reads it as unfaithful to the task (0.19)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.19,
+            "faithful_from": "define",
+            "hardcoded": 0.23,
+            "separate_route": 0.39,
+            "expected_correct": 0.74,
+            "jev_key": "25a3c8f986a2a780db266fe44de734b6121f7a7d4bf1334d5538c9458d67a4a7"
+          }
+        },
+        "T12": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.40), with no independent support for its expected values (separate route 0.36, matches the rule 0.72)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.4,
+            "faithful_from": "define",
+            "hardcoded": 0.17,
+            "separate_route": 0.36,
+            "expected_correct": 0.72,
+            "jev_key": "253c7fab7d155d041737c62ea4d339b9ddcfba93b5b824d10636cac0e393b07c"
+          }
+        },
+        "T13": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.48), with no independent support for its expected values (separate route 0.39, matches the rule 0.77)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.48,
+            "faithful_from": "define",
+            "hardcoded": 0.11,
+            "separate_route": 0.39,
+            "expected_correct": 0.77,
+            "jev_key": "714e603a74959dda13f9660131ab6fd2dcabde869a6c4fddb0d7cb1983436102"
+          }
+        },
+        "T14": {
+          "class": "independently_supported",
+          "why": "red on the untouched workspace; Jev reads its expected values as coming from a separate route (0.73) and matching the task's rule (0.81)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.6,
+            "faithful_from": "define",
+            "hardcoded": 0.14,
+            "separate_route": 0.73,
+            "expected_correct": 0.81,
+            "jev_key": "e2305a3dddee3c50cf57a97429b36bda7ac8f9fd1b269896ed060bb209e025e6"
+          }
+        },
+        "T15": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.36), with no independent support for its expected values (separate route 0.29, matches the rule 0.56)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.36,
+            "faithful_from": "define",
+            "hardcoded": 0.33,
+            "separate_route": 0.29,
+            "expected_correct": 0.56,
+            "jev_key": "19d1cda98c5cd04a0e9da1c8f2cecb5140d0f98940ed72cf0217e36560089cc3"
+          }
+        },
+        "T16": {
+          "class": "guard",
+          "why": "it passed on the untouched workspace",
+          "evidence": {
+            "green_at_start": true,
+            "start_exit": 0,
+            "faithful": 0.57,
+            "faithful_from": "define",
+            "hardcoded": 0.09,
+            "separate_route": null,
+            "expected_correct": null
+          }
+        },
+        "T17": {
+          "class": "guard",
+          "why": "it passed on the untouched workspace",
+          "evidence": {
+            "green_at_start": true,
+            "start_exit": 0,
+            "faithful": 0.55,
+            "faithful_from": "define",
+            "hardcoded": 0.09,
+            "separate_route": null,
+            "expected_correct": null
+          }
+        },
+        "T18": {
+          "class": "guard",
+          "why": "it passed on the untouched workspace",
+          "evidence": {
+            "green_at_start": true,
+            "start_exit": 0,
+            "faithful": 0.56,
+            "faithful_from": "define",
+            "hardcoded": 0.17,
+            "separate_route": null,
+            "expected_correct": null
+          }
+        },
+        "T19": {
+          "class": "guard",
+          "why": "it passed on the untouched workspace",
+          "evidence": {
+            "green_at_start": true,
+            "start_exit": 0,
+            "faithful": 0.2,
+            "faithful_from": "define",
+            "hardcoded": 0.22,
+            "separate_route": null,
+            "expected_correct": null
+          }
+        },
+        "T2": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.60), with no independent support for its expected values (separate route 0.42, matches the rule 0.81)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.6,
+            "faithful_from": "define",
+            "hardcoded": 0.14,
+            "separate_route": 0.42,
+            "expected_correct": 0.81,
+            "jev_key": "c70ecfc35a00573d01f61093bf44b6920518b4c9b38661ee55d2c84e405d85e7"
+          }
+        },
+        "T20": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.34), with no independent support for its expected values (separate route 0.17, matches the rule 0.57)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.34,
+            "faithful_from": "define",
+            "hardcoded": 0.28,
+            "separate_route": 0.17,
+            "expected_correct": 0.57,
+            "jev_key": "481efef434711f91de55bf3b555b9a19264d75299f41323644efb0a7a3331391"
+          }
+        },
+        "T21": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.61), with no independent support for its expected values (separate route 0.33, matches the rule 0.78)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.61,
+            "faithful_from": "classify",
+            "separate_route": 0.33,
+            "expected_correct": 0.78,
+            "jev_key": "a25692eb8d4a0f6591120941143dc97ebedaeacee34213aaa748e8f490c64a3a"
+          }
+        },
+        "T22": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.32), with no independent support for its expected values (separate route 0.26, matches the rule 0.85)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.32,
+            "faithful_from": "classify",
+            "separate_route": 0.26,
+            "expected_correct": 0.85,
+            "jev_key": "d76e8bbc00034f11a6f8eec52fccee63f2ed68d4dd16adae8858bdc6aa628be6"
+          }
+        },
+        "T23": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.26), with no independent support for its expected values (separate route 0.31, matches the rule 0.87)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.26,
+            "faithful_from": "classify",
+            "separate_route": 0.31,
+            "expected_correct": 0.87,
+            "jev_key": "a330b327c35df71f437f7b3fdaea0db0c0f170fc9399370d7ce0e66e13e1fb54"
+          }
+        },
+        "T24": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.44), with no independent support for its expected values (separate route 0.15, matches the rule 0.63)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.44,
+            "faithful_from": "classify",
+            "separate_route": 0.15,
+            "expected_correct": 0.63,
+            "jev_key": "f2c5b6bbb26cbae94af2da6c1ad797a401bc885ad9e5417c606fb410e93de722"
+          }
+        },
+        "T25": {
+          "class": "independently_supported",
+          "why": "red on the untouched workspace; Jev reads its expected values as coming from a separate route (0.86) and matching the task's rule (0.90)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.39,
+            "faithful_from": "classify",
+            "separate_route": 0.86,
+            "expected_correct": 0.9,
+            "jev_key": "f60e3e7c78a85259217bbe9537c3c0ba97b67fc8706cf8695d2b2253f3bf8009"
+          }
+        },
+        "T26": {
+          "class": "independently_supported",
+          "why": "red on the untouched workspace; Jev reads its expected values as coming from a separate route (0.72) and matching the task's rule (0.78)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.29,
+            "faithful_from": "classify",
+            "separate_route": 0.72,
+            "expected_correct": 0.78,
+            "jev_key": "c4f6a53be9c3a8138a08d4ba8fc41da1af4bc466a05734715d8be13ef714f3d1"
+          }
+        },
+        "T27": {
+          "class": "unsupported",
+          "why": "Jev reads it as unfaithful to the task (0.20)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.2,
+            "faithful_from": "classify",
+            "separate_route": 0.31,
+            "expected_correct": 0.68,
+            "jev_key": "482da5a25c876776ed1494991bc9ecbe3186a85cc54a8aa0db3b52c2510926bf"
+          }
+        },
+        "T3": {
+          "class": "guard",
+          "why": "it passed on the untouched workspace",
+          "evidence": {
+            "green_at_start": true,
+            "start_exit": 0,
+            "faithful": 0.51,
+            "faithful_from": "define",
+            "hardcoded": 0.27,
+            "separate_route": null,
+            "expected_correct": null
+          }
+        },
+        "T4": {
+          "class": "guard",
+          "why": "it passed on the untouched workspace",
+          "evidence": {
+            "green_at_start": true,
+            "start_exit": 0,
+            "faithful": 0.54,
+            "faithful_from": "define",
+            "hardcoded": 0.18,
+            "separate_route": null,
+            "expected_correct": null
+          }
+        },
+        "T5": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.43), with no independent support for its expected values (separate route 0.32, matches the rule 0.82)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.43,
+            "faithful_from": "define",
+            "hardcoded": 0.3,
+            "separate_route": 0.32,
+            "expected_correct": 0.82,
+            "jev_key": "f1e8abc9c106beee7e416797a09d49e1a98ff629f89833668620b37760f5d124"
+          }
+        },
+        "T6": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.44), with no independent support for its expected values (separate route 0.26, matches the rule 0.81)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.44,
+            "faithful_from": "define",
+            "hardcoded": 0.13,
+            "separate_route": 0.26,
+            "expected_correct": 0.81,
+            "jev_key": "0d0aac05340134c2af6a6b1015dc63e3e2fe8b85f5a8efbc3ea28c2953275f4b"
+          }
+        },
+        "T7": {
+          "class": "unsupported",
+          "why": "Jev reads it as unfaithful to the task (0.23)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.23,
+            "faithful_from": "define",
+            "hardcoded": 0.45,
+            "separate_route": 0.3,
+            "expected_correct": 0.69,
+            "jev_key": "d103b893f8a268257ff74c7d0894792381fe5452975b35a32a18667d2f4b303d"
+          }
+        },
+        "T8": {
+          "class": "guard",
+          "why": "it passed on the untouched workspace",
+          "evidence": {
+            "green_at_start": true,
+            "start_exit": 0,
+            "faithful": 0.38,
+            "faithful_from": "define",
+            "hardcoded": 0.12,
+            "separate_route": null,
+            "expected_correct": null
+          }
+        },
+        "T9": {
+          "class": "guard",
+          "why": "it passed on the untouched workspace",
+          "evidence": {
+            "green_at_start": true,
+            "start_exit": 0,
+            "faithful": 0.49,
+            "faithful_from": "define",
+            "hardcoded": 0.24,
+            "separate_route": null,
+            "expected_correct": null
+          }
+        }
+      },
+      "jev_requests": 17,
+      "jev_usd": 0.000672588
+    },
+    "1eff782e7de94c9a0f094404dbf19d5c4608d36c6d7b3a80c507cb5e2245886f": {
+      "task": "sound-change-cascade",
+      "record": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v8--sound-change-cascade--manual-20260924T123903/sound-change-cascade__zVHhMHC/agent/episode/accept-suite-1.accept.json",
+      "tests": {
+        "T1": {
+          "class": "independently_supported",
+          "why": "red on the untouched workspace; Jev reads its expected values as coming from a separate route (0.73) and matching the task's rule (0.82)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.81,
+            "faithful_from": "define",
+            "hardcoded": 0.24,
+            "separate_route": 0.73,
+            "expected_correct": 0.82,
+            "jev_key": "6ca7f12d966a7391b472e488bf819a3412e6fd956c882338b10b8fa575f175ff"
+          }
+        },
+        "T10": {
+          "class": "unsupported",
+          "why": "Jev reads it as unfaithful to the task (0.24)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.24,
+            "faithful_from": "classify",
+            "separate_route": 0.19,
+            "expected_correct": 0.68,
+            "jev_key": "1d53d52464fb12b8cf8e3cc5430dccb6fe3a5d1650c6afc28f656b1dd264f6b7"
+          }
+        },
+        "T2": {
+          "class": "guard",
+          "why": "it passed on the untouched workspace",
+          "evidence": {
+            "green_at_start": true,
+            "start_exit": 0,
+            "faithful": 0.6,
+            "faithful_from": "define",
+            "hardcoded": 0.09,
+            "separate_route": null,
+            "expected_correct": null,
+            "routes": [
+              "cmp"
+            ]
+          }
+        },
+        "T3": {
+          "class": "guard",
+          "why": "it passed on the untouched workspace",
+          "evidence": {
+            "green_at_start": true,
+            "start_exit": 0,
+            "faithful": 0.69,
+            "faithful_from": "define",
+            "hardcoded": 0.08,
+            "separate_route": null,
+            "expected_correct": null,
+            "routes": [
+              "cmp"
+            ]
+          }
+        },
+        "T4": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.75), with no independent support for its expected values (separate route 0.48, matches the rule 0.90)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.75,
+            "faithful_from": "define",
+            "hardcoded": 0.08,
+            "separate_route": 0.48,
+            "expected_correct": 0.9,
+            "jev_key": "5474240b87c8092dc1b794df4c43dcd9d2ec314503a691c037cfb52a12309b44"
+          }
+        },
+        "T5": {
+          "class": "independently_supported",
+          "why": "red on the untouched workspace; Jev reads its expected values as coming from a separate route (0.65) and matching the task's rule (0.81)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.48,
+            "faithful_from": "define",
+            "hardcoded": 0.1,
+            "separate_route": 0.65,
+            "expected_correct": 0.81,
+            "jev_key": "5017f705f339552d9e66d6971814baa52e3a52ca510a6ec7af8c5b4b5be9a327"
+          }
+        },
+        "T6": {
+          "class": "independently_supported",
+          "why": "red on the untouched workspace; Jev reads its expected values as coming from a separate route (0.73) and matching the task's rule (0.85)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.74,
+            "faithful_from": "define",
+            "hardcoded": 0.17,
+            "separate_route": 0.73,
+            "expected_correct": 0.85,
+            "jev_key": "436b212ea06c42d34fd1d6ee85ca4183da107d0f3fef69c3e9cf845395f1d9d8"
+          }
+        },
+        "T7": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.69), with no independent support for its expected values (separate route 0.45, matches the rule 0.82)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.69,
+            "faithful_from": "define",
+            "hardcoded": 0.11,
+            "separate_route": 0.45,
+            "expected_correct": 0.82,
+            "jev_key": "097abbe2969a995236f5708ef5e311e0d3a6a8ace5567bbf59b7540d5096c679"
+          }
+        },
+        "T8": {
+          "class": "independently_supported",
+          "why": "red on the untouched workspace; Jev reads its expected values as coming from a separate route (0.83) and matching the task's rule (0.86)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.76,
+            "faithful_from": "define",
+            "hardcoded": 0.18,
+            "separate_route": 0.83,
+            "expected_correct": 0.86,
+            "jev_key": "7146995f8778189645dde11fb1cadfdaa0cefdcd873fb8a38265dd19adda658a"
+          }
+        },
+        "T9": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.75), with no independent support for its expected values (separate route 0.31, matches the rule 0.84)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.75,
+            "faithful_from": "classify",
+            "separate_route": 0.31,
+            "expected_correct": 0.84,
+            "jev_key": "6402c1f06692d0fb8e3770bfd72e608ca13b1b380a1ab0c15488e8492d750be7"
+          }
+        }
+      },
+      "jev_requests": 8,
+      "jev_usd": 0.000416514
+    },
+    "2596d17724631232288de71d2b6cb8847a993314b5b39bcb77ac64c265bf0d9c": {
+      "task": "sound-change-cascade",
+      "record": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass3-facts/sound-change-cascade/suite.accept.json",
+      "tests": {
+        "T1": {
+          "class": "independently_supported",
+          "why": "red on the untouched workspace; Jev reads its expected values as coming from a separate route (0.78) and matching the task's rule (0.84)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.68,
+            "faithful_from": "define",
+            "hardcoded": 0.15,
+            "separate_route": 0.78,
+            "expected_correct": 0.84,
+            "jev_key": "756d3c724e012fe68369165c6cbd1b363fc8db64f8aad1d1c8310f31a0f44e90"
+          }
+        },
+        "T3": {
+          "class": "independently_supported",
+          "why": "red on the untouched workspace; Jev reads its expected values as coming from a separate route (0.67) and matching the task's rule (0.81)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.64,
+            "faithful_from": "define",
+            "hardcoded": 0.08,
+            "separate_route": 0.67,
+            "expected_correct": 0.81,
+            "jev_key": "cb5e6ad9cf811c467cc85393eb7b2c3f48ae40384794d7320537ca3277e53df7"
+          }
+        },
+        "T5": {
+          "class": "independently_supported",
+          "why": "red on the untouched workspace; Jev reads its expected values as coming from a separate route (0.55) and matching the task's rule (0.77)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.38,
+            "faithful_from": "define",
+            "hardcoded": 0.21,
+            "separate_route": 0.55,
+            "expected_correct": 0.77,
+            "jev_key": "7c3c86b2c4fb77d93fef1bb9c4f2dbb3bbc305f27e6c6aeb374a690ee627014f"
+          }
+        },
+        "T6": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.31), with no independent support for its expected values (separate route 0.31, matches the rule 0.69)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.31,
+            "faithful_from": "define",
+            "hardcoded": 0.11,
+            "separate_route": 0.31,
+            "expected_correct": 0.69,
+            "jev_key": "030bf75f3c25eda8961e94331b4e4a1c1f5cb30d7568b6a4eac7221233101f9c"
+          }
+        }
+      },
+      "jev_requests": 4,
+      "jev_usd": 0.00020815200000000002
+    },
+    "26a2f723ec12f90e455e2a5b88ecd7b111645cdf11161eb3c08dc05957851e70": {
+      "task": "mvcc-lsm-compaction",
+      "record": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/mvcc-lsm-compaction/suite.accept.json",
+      "tests": {
+        "T2": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.69), with no independent support for its expected values (separate route 0.35, matches the rule 0.70)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 2,
+            "faithful": 0.69,
+            "faithful_from": "define",
+            "hardcoded": 0.17,
+            "separate_route": 0.35,
+            "expected_correct": 0.7,
+            "jev_key": "8a43e90ac57ba1be5e77ab4a85766cf906e7ca9f342a077d081b0825170ee44d"
+          }
+        },
+        "T3": {
+          "class": "independently_supported",
+          "why": "red on the untouched workspace; Jev reads its expected values as coming from a separate route (0.59) and matching the task's rule (0.84)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 2,
+            "faithful": 0.82,
+            "faithful_from": "define",
+            "hardcoded": 0.11,
+            "separate_route": 0.59,
+            "expected_correct": 0.84,
+            "jev_key": "968395786c85ecf1e44644119242dc2851473b476e2a833dafc9c4f90bd71163"
+          }
+        }
+      },
+      "jev_requests": 2,
+      "jev_usd": 0.000071316
+    },
+    "26d5e84e9fbd780433ab6c79910c1dc6dbcbd5c1e29f078bcd55b323a2442a52": {
+      "task": "risk-scorer-replay",
+      "record": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/risk-scorer-replay/suite.accept.json",
+      "tests": {
+        "T1": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.32), with no independent support for its expected values (separate route 0.27, matches the rule 0.82)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.32,
+            "faithful_from": "define",
+            "hardcoded": 0.17,
+            "separate_route": 0.27,
+            "expected_correct": 0.82,
+            "jev_key": "0a525f716f31e91f3c2125ab90cb1d566c19dd5d8e4e9ffa54cee6655a833ec6"
+          }
+        },
+        "T2": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.38), with no independent support for its expected values (separate route 0.37, matches the rule 0.82)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.38,
+            "faithful_from": "define",
+            "hardcoded": 0.21,
+            "separate_route": 0.37,
+            "expected_correct": 0.82,
+            "routes": [
+              "sha256sum",
+              "cmp"
+            ],
+            "jev_key": "765eeada7ba44446425ecc1efd871dedf30b32d83ecba2e11f0ca2d5e6e1089c"
+          }
+        }
+      },
+      "jev_requests": 2,
+      "jev_usd": 0.000100884
+    },
+    "2b5b907a557001d075284c59117e0b2cb67e5af60454d235f242b85afca24c32": {
+      "task": "interleaved-vigenere",
+      "record": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/interleaved-vigenere/suite.accept.json",
+      "tests": {
+        "T1": {
+          "class": "independently_supported",
+          "why": "red on the untouched workspace; Jev reads its expected values as coming from a separate route (0.71) and matching the task's rule (0.78)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.59,
+            "faithful_from": "define",
+            "hardcoded": 0.18,
+            "separate_route": 0.71,
+            "expected_correct": 0.78,
+            "jev_key": "6c72c3ffcbe587ce5af35058e1495c15e42e69d180147b4e6e286ce5250c5085"
+          }
+        },
+        "T2": {
+          "class": "independently_supported",
+          "why": "red on the untouched workspace; Jev reads its expected values as coming from a separate route (0.75) and matching the task's rule (0.93)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.77,
+            "faithful_from": "define",
+            "hardcoded": 0.09,
+            "separate_route": 0.75,
+            "expected_correct": 0.93,
+            "jev_key": "1f4e5d46394b4b9345e08e3e53b424010eb7811e9bc63829da966ea11d35e97e"
+          }
+        },
+        "T3": {
+          "class": "independently_supported",
+          "why": "red on the untouched workspace; Jev reads its expected values as coming from a separate route (0.73) and matching the task's rule (0.94)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.75,
+            "faithful_from": "define",
+            "hardcoded": 0.08,
+            "separate_route": 0.73,
+            "expected_correct": 0.94,
+            "jev_key": "3377c3c9b4b44f8bf2104a13fe7efcd2f59b0b65b98387e587d03bc9e09e8dfc"
+          }
+        },
+        "T4": {
+          "class": "independently_supported",
+          "why": "red on the untouched workspace; Jev reads its expected values as coming from a separate route (0.87) and matching the task's rule (0.90)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.83,
+            "faithful_from": "define",
+            "hardcoded": 0.1,
+            "separate_route": 0.87,
+            "expected_correct": 0.9,
+            "jev_key": "71496c4e5a3bbcf7df1ff2a193abf91d41c18a36b3bb53f54f48d0dbaa07a853"
+          }
+        },
+        "T5": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.57), with no independent support for its expected values (separate route 0.49, matches the rule 0.76)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.57,
+            "faithful_from": "define",
+            "hardcoded": 0.12,
+            "separate_route": 0.49,
+            "expected_correct": 0.76,
+            "jev_key": "772870146b4a65972d851efc65e71f968416f27fbca185569d557fa8fdac96c9"
+          }
+        },
+        "T6": {
+          "class": "independently_supported",
+          "why": "red on the untouched workspace; Jev reads its expected values as coming from a separate route (0.59) and matching the task's rule (0.87)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.76,
+            "faithful_from": "define",
+            "hardcoded": 0.11,
+            "separate_route": 0.59,
+            "expected_correct": 0.87,
+            "jev_key": "ba7f04da160beaddac5f3f6f35af2221d2b098432bc1d9887ba49f23f77772a6"
+          }
+        }
+      },
+      "jev_requests": 6,
+      "jev_usd": 0.00030672600000000006
+    },
+    "3715650972be3db0ab2ef91e1d3c15717da1f39ef095a66facfae1fd407206aa": {
+      "task": "embedding-drift-monitor",
+      "record": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v8--embedding-drift-monitor--manual-20260924T122714/embedding-drift-monitor__26QyeXD/agent/episode/accept-suite-1.accept.json",
+      "tests": {
+        "T1": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.40), with no independent support for its expected values (separate route 0.36, matches the rule 0.80)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.4,
+            "faithful_from": "define",
+            "hardcoded": 0.21,
+            "separate_route": 0.36,
+            "expected_correct": 0.8,
+            "jev_key": "2ce9e73a368291c7fe26ef6817808cb8e17b1e88c5da384662f65e33d402864c"
+          }
+        },
+        "T10": {
+          "class": "unsupported",
+          "why": "Jev reads it as unfaithful to the task (0.22)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.22,
+            "faithful_from": "define",
+            "hardcoded": 0.23,
+            "separate_route": 0.52,
+            "expected_correct": 0.92,
+            "jev_key": "835254389f597273b3407bd590d033ea0c6be8917fd489e33fd45e62d8a4ad2f"
+          }
+        },
+        "T11": {
+          "class": "unsupported",
+          "why": "Jev reads it as unfaithful to the task (0.16)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.16,
+            "faithful_from": "define",
+            "hardcoded": 0.48,
+            "separate_route": 0.17,
+            "expected_correct": 0.55,
+            "jev_key": "c14ae03906afdf7d8d4e0123dc9044beba85eb0580d2c28ac3acba6e33f0e7c0"
+          }
+        },
+        "T12": {
+          "class": "guard",
+          "why": "it passed on the untouched workspace",
+          "evidence": {
+            "green_at_start": true,
+            "start_exit": 0,
+            "faithful": 0.14,
+            "faithful_from": "define",
+            "hardcoded": 0.28,
+            "separate_route": null,
+            "expected_correct": null
+          }
+        },
+        "T13": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.53), with no independent support for its expected values (separate route 0.26, matches the rule 0.90)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.53,
+            "faithful_from": "define",
+            "hardcoded": 0.12,
+            "separate_route": 0.26,
+            "expected_correct": 0.9,
+            "jev_key": "a9346be6947cb84ddb8497a2137d95bb3b8c7f3934f8b15b17ce55ba5f30bf05"
+          }
+        },
+        "T14": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.43), with no independent support for its expected values (separate route 0.38, matches the rule 0.74)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.43,
+            "faithful_from": "define",
+            "hardcoded": 0.19,
+            "separate_route": 0.38,
+            "expected_correct": 0.74,
+            "jev_key": "3cbd0e0a1fb0cbc07497e28e53eecb4796be1a89d2a627d105ba5a826d406ed0"
+          }
+        },
+        "T15": {
+          "class": "guard",
+          "why": "it passed on the untouched workspace",
+          "evidence": {
+            "green_at_start": true,
+            "start_exit": 0,
+            "faithful": 0.41,
+            "faithful_from": "define",
+            "hardcoded": 0.11,
+            "separate_route": null,
+            "expected_correct": null
+          }
+        },
+        "T16": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.41), with no independent support for its expected values (separate route 0.25, matches the rule 0.67)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.41,
+            "faithful_from": "define",
+            "hardcoded": 0.11,
+            "separate_route": 0.25,
+            "expected_correct": 0.67,
+            "jev_key": "a3cbad2055f3d51afaf6b811612c90eeebc46828f401719e9a14617488b4b681"
+          }
+        },
+        "T17": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.40), with no independent support for its expected values (separate route 0.46, matches the rule 0.77)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.4,
+            "faithful_from": "define",
+            "hardcoded": 0.16,
+            "separate_route": 0.46,
+            "expected_correct": 0.77,
+            "jev_key": "69beea9b3f6f55014bf7812e38ef850314e4ec16afc6350633586c623ec37201"
+          }
+        },
+        "T18": {
+          "class": "guard",
+          "why": "it passed on the untouched workspace",
+          "evidence": {
+            "green_at_start": true,
+            "start_exit": 0,
+            "faithful": 0.42,
+            "faithful_from": "define",
+            "hardcoded": 0.13,
+            "separate_route": null,
+            "expected_correct": null
+          }
+        },
+        "T19": {
+          "class": "guard",
+          "why": "it passed on the untouched workspace",
+          "evidence": {
+            "green_at_start": true,
+            "start_exit": 0,
+            "faithful": 0.32,
+            "faithful_from": "define",
+            "hardcoded": 0.12,
+            "separate_route": null,
+            "expected_correct": null
+          }
+        },
+        "T2": {
+          "class": "guard",
+          "why": "it passed on the untouched workspace",
+          "evidence": {
+            "green_at_start": true,
+            "start_exit": 0,
+            "faithful": 0.64,
+            "faithful_from": "define",
+            "hardcoded": 0.2,
+            "separate_route": null,
+            "expected_correct": null
+          }
+        },
+        "T20": {
+          "class": "guard",
+          "why": "it passed on the untouched workspace",
+          "evidence": {
+            "green_at_start": true,
+            "start_exit": 0,
+            "faithful": 0.21,
+            "faithful_from": "define",
+            "hardcoded": 0.18,
+            "separate_route": null,
+            "expected_correct": null
+          }
+        },
+        "T21": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.36), with no independent support for its expected values (separate route 0.39, matches the rule 0.80)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.36,
+            "faithful_from": "classify",
+            "separate_route": 0.39,
+            "expected_correct": 0.8,
+            "jev_key": "d9ac74a45f5b383165f9913820965a20a7e4979e2fbf38b5a4262f7ff4d8ad44"
+          }
+        },
+        "T22": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.46), with no independent support for its expected values (separate route 0.24, matches the rule 0.71)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.46,
+            "faithful_from": "classify",
+            "separate_route": 0.24,
+            "expected_correct": 0.71,
+            "jev_key": "ee7fb28330ded23a0466142e3bbc627d9f314346865be235b11515f35d2b6d0a"
+          }
+        },
+        "T23": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.33), with no independent support for its expected values (separate route 0.16, matches the rule 0.88)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.33,
+            "faithful_from": "classify",
+            "separate_route": 0.16,
+            "expected_correct": 0.88,
+            "jev_key": "12275746cd8030aa9063e61b39033e2946b1cdd2de9e6c3bfa2473001bd70b55"
+          }
+        },
+        "T3": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.28), with no independent support for its expected values (separate route 0.34, matches the rule 0.75)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.28,
+            "faithful_from": "define",
+            "hardcoded": 0.15,
+            "separate_route": 0.34,
+            "expected_correct": 0.75,
+            "jev_key": "3e25180dfb577313724d4e9571a571ea8f648c8de07b3a1f3d78ee99a6693895"
+          }
+        },
+        "T4": {
+          "class": "guard",
+          "why": "it passed on the untouched workspace",
+          "evidence": {
+            "green_at_start": true,
+            "start_exit": 0,
+            "faithful": 0.66,
+            "faithful_from": "define",
+            "hardcoded": 0.18,
+            "separate_route": null,
+            "expected_correct": null
+          }
+        },
+        "T5": {
+          "class": "unsupported",
+          "why": "Jev reads it as unfaithful to the task (0.18)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.18,
+            "faithful_from": "define",
+            "hardcoded": 0.36,
+            "separate_route": 0.54,
+            "expected_correct": 0.86,
+            "jev_key": "262fb1164d106180119b947cf54a6cbe79f575b4ca9158947cc19d3aae5f1c4d"
+          }
+        },
+        "T6": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.27), with no independent support for its expected values (separate route 0.32, matches the rule 0.67)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.27,
+            "faithful_from": "define",
+            "hardcoded": 0.2,
+            "separate_route": 0.32,
+            "expected_correct": 0.67,
+            "jev_key": "6d5446f9db87f5949e25bca16024ff32a4ad4818671e34a26512e67306ae104c"
+          }
+        },
+        "T7": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.35), with no independent support for its expected values (separate route 0.30, matches the rule 0.93)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.35,
+            "faithful_from": "define",
+            "hardcoded": 0.14,
+            "separate_route": 0.3,
+            "expected_correct": 0.93,
+            "jev_key": "4854c1594b62997758ce9fe02a99e52f9c2d8b3bed997a916935d7cf25dde518"
+          }
+        },
+        "T8": {
+          "class": "guard",
+          "why": "it passed on the untouched workspace",
+          "evidence": {
+            "green_at_start": true,
+            "start_exit": 0,
+            "faithful": 0.39,
+            "faithful_from": "define",
+            "hardcoded": 0.09,
+            "separate_route": null,
+            "expected_correct": null
+          }
+        },
+        "T9": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.48), with no independent support for its expected values (separate route 0.15, matches the rule 0.77)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.48,
+            "faithful_from": "define",
+            "hardcoded": 0.12,
+            "separate_route": 0.15,
+            "expected_correct": 0.77,
+            "jev_key": "0c70ff8148a6a5382184a63b35a307552b063647d00f4ad69f8aa1a9ed32eb71"
+          }
+        }
+      },
+      "jev_requests": 15,
+      "jev_usd": 0.000572964
+    },
+    "48bd0d1bfc9e9503b064761c5e50b5cb99da5cb81bd67c903e58775fd744b513": {
+      "task": "ks-solver-cpp",
+      "record": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/ks-solver-cpp/suite.accept.json",
+      "tests": {
+        "T2": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.60), with no independent support for its expected values (separate route 0.30, matches the rule 0.71)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.6,
+            "faithful_from": "define",
+            "hardcoded": 0.19,
+            "separate_route": 0.3,
+            "expected_correct": 0.71,
+            "jev_key": "c4b7efaa3b5997274a3721e3f968f198abd93b26d9c794e5ba75c5dac26ca56f"
+          }
+        }
+      },
+      "jev_requests": 1,
+      "jev_usd": 0.000094752
+    },
+    "575710cbed8aa1ab969473e7585e40eaa7ef129aa1fc7e14facdd31af262f76f": {
+      "task": "embedding-drift-monitor",
+      "record": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v7--embedding-drift-monitor--manual-20260924T113920/embedding-drift-monitor__zzXmfSE/agent/episode/accept-suite-1.accept.json",
+      "tests": {
+        "T1": {
+          "class": "guard",
+          "why": "it passed on the untouched workspace",
+          "evidence": {
+            "green_at_start": true,
+            "start_exit": 0,
+            "faithful": 0.66,
+            "faithful_from": "define",
+            "hardcoded": 0.17,
+            "separate_route": null,
+            "expected_correct": null
+          }
+        },
+        "T10": {
+          "class": "guard",
+          "why": "it passed on the untouched workspace",
+          "evidence": {
+            "green_at_start": true,
+            "start_exit": 0,
+            "faithful": 0.53,
+            "faithful_from": "define",
+            "hardcoded": 0.09,
+            "separate_route": null,
+            "expected_correct": null
+          }
+        },
+        "T11": {
+          "class": "guard",
+          "why": "it passed on the untouched workspace",
+          "evidence": {
+            "green_at_start": true,
+            "start_exit": 0,
+            "faithful": 0.25,
+            "faithful_from": "define",
+            "hardcoded": 0.18,
+            "separate_route": null,
+            "expected_correct": null
+          }
+        },
+        "T12": {
+          "class": "guard",
+          "why": "it passed on the untouched workspace",
+          "evidence": {
+            "green_at_start": true,
+            "start_exit": 0,
+            "faithful": 0.3,
+            "faithful_from": "define",
+            "hardcoded": 0.15,
+            "separate_route": null,
+            "expected_correct": null
+          }
+        },
+        "T13": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.41), with no independent support for its expected values (separate route 0.40, matches the rule 0.92)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.41,
+            "faithful_from": "classify",
+            "separate_route": 0.4,
+            "expected_correct": 0.92,
+            "jev_key": "05647349f0ae0771e6cc90215d73c633d959e478c2b4e54c8e418dc77ab05322"
+          }
+        },
+        "T2": {
+          "class": "guard",
+          "why": "it passed on the untouched workspace",
+          "evidence": {
+            "green_at_start": true,
+            "start_exit": 0,
+            "faithful": 0.57,
+            "faithful_from": "define",
+            "hardcoded": 0.22,
+            "separate_route": null,
+            "expected_correct": null
+          }
+        },
+        "T3": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.30), with no independent support for its expected values (separate route 0.20, matches the rule 0.68)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.3,
+            "faithful_from": "define",
+            "hardcoded": 0.34,
+            "separate_route": 0.2,
+            "expected_correct": 0.68,
+            "jev_key": "a450e44ad94a10604dbdd4b4f87aac9c0314b941b7efe99f232b55805f0fdb1d"
+          }
+        },
+        "T4": {
+          "class": "guard",
+          "why": "it passed on the untouched workspace",
+          "evidence": {
+            "green_at_start": true,
+            "start_exit": 0,
+            "faithful": 0.76,
+            "faithful_from": "define",
+            "hardcoded": 0.11,
+            "separate_route": null,
+            "expected_correct": null
+          }
+        },
+        "T5": {
+          "class": "guard",
+          "why": "it passed on the untouched workspace",
+          "evidence": {
+            "green_at_start": true,
+            "start_exit": 0,
+            "faithful": 0.72,
+            "faithful_from": "define",
+            "hardcoded": 0.16,
+            "separate_route": null,
+            "expected_correct": null
+          }
+        },
+        "T6": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.29), with no independent support for its expected values (separate route 0.29, matches the rule 0.69)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.29,
+            "faithful_from": "define",
+            "hardcoded": 0.4,
+            "separate_route": 0.29,
+            "expected_correct": 0.69,
+            "jev_key": "b5d7abc131e7ccf434d4a6946d6dce20044793a09827fc7b623ddd5e344a01ae"
+          }
+        },
+        "T7": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.50), with no independent support for its expected values (separate route 0.21, matches the rule 0.88)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.5,
+            "faithful_from": "define",
+            "hardcoded": 0.12,
+            "separate_route": 0.21,
+            "expected_correct": 0.88,
+            "jev_key": "fd740283600867ac023e7d494da4d9153d50a74c49de521ecbec5fa3898092d4"
+          }
+        },
+        "T8": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.36), with no independent support for its expected values (separate route 0.25, matches the rule 0.80)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.36,
+            "faithful_from": "define",
+            "hardcoded": 0.17,
+            "separate_route": 0.25,
+            "expected_correct": 0.8,
+            "jev_key": "efb52dcb9a7f57a257d8d3843c0e587cbe97004251bc8ea8fd93add1c030bb47"
+          }
+        },
+        "T9": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.29), with no independent support for its expected values (separate route 0.34, matches the rule 0.84)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.29,
+            "faithful_from": "define",
+            "hardcoded": 0.41,
+            "separate_route": 0.34,
+            "expected_correct": 0.84,
+            "jev_key": "942aedfc115da81a9213518705aad9a6851ef83197c544ac25dd443a633bcac7"
+          }
+        }
+      },
+      "jev_requests": 6,
+      "jev_usd": 0.00022486800000000003
+    },
+    "7191f19cc11032ed50412d783de8876ef0b9cefb9a793c91834b7a6f82208a71": {
+      "task": "fin-saccr-rwa",
+      "record": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass3-facts/fin-saccr-rwa/suite.accept.json",
+      "tests": {
+        "T1": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.32), with no independent support for its expected values (separate route 0.41, matches the rule 0.68)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.32,
+            "faithful_from": "define",
+            "hardcoded": 0.12,
+            "separate_route": 0.41,
+            "expected_correct": 0.68,
+            "jev_key": "ad16eafd529bcc164c336b916f205f2abb2c6f7b03364f7c5f48b9fe8a2d69df"
+          }
+        },
+        "T2": {
+          "class": "independently_supported",
+          "why": "red on the untouched workspace; Jev reads its expected values as coming from a separate route (0.78) and matching the task's rule (0.79)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.67,
+            "faithful_from": "define",
+            "hardcoded": 0.08,
+            "separate_route": 0.78,
+            "expected_correct": 0.79,
+            "jev_key": "d1b80f0de5445358c153a17f2ee6b325218f120750bf65c03e3aaf150bb573aa"
+          }
+        },
+        "T4": {
+          "class": "independently_supported",
+          "why": "red on the untouched workspace; Jev reads its expected values as coming from a separate route (0.63) and matching the task's rule (0.68)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.72,
+            "faithful_from": "define",
+            "hardcoded": 0.1,
+            "separate_route": 0.63,
+            "expected_correct": 0.68,
+            "jev_key": "83182d694a10e2e1df4b01a8e6d32241fb3a0401d4a039b651e9c49c265c8251"
+          }
+        },
+        "T6": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.25), with no independent support for its expected values (separate route 0.39, matches the rule 0.65)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.25,
+            "faithful_from": "define",
+            "hardcoded": 0.1,
+            "separate_route": 0.39,
+            "expected_correct": 0.65,
+            "jev_key": "dce0770a42945ad6f974613347f08e55c2a2b4674bcbd263a1578aa4e65f6e3f"
+          }
+        },
+        "T7": {
+          "class": "independently_supported",
+          "why": "red on the untouched workspace; Jev reads its expected values as coming from a separate route (0.59) and matching the task's rule (0.82)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.53,
+            "faithful_from": "define",
+            "hardcoded": 0.13,
+            "separate_route": 0.59,
+            "expected_correct": 0.82,
+            "jev_key": "bf4f41952fb505d32e4930ffd9c6d048fe7931f1db4d6fa545456f80c42fed47"
+          }
+        }
+      },
+      "jev_requests": 5,
+      "jev_usd": 0.00037778999999999997
+    },
+    "73f1ddee3e2abfc993ff52e72b6ff1e372af3f4a550845a64bfe2a7791aa984a": {
+      "task": "bun-sourcemap-leak",
+      "record": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass3-facts/bun-sourcemap-leak/suite.accept.json",
+      "tests": {
+        "T2": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.47), with no independent support for its expected values (separate route 0.47, matches the rule 0.83)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.47,
+            "faithful_from": "define",
+            "hardcoded": 0.1,
+            "separate_route": 0.47,
+            "expected_correct": 0.83,
+            "jev_key": "2a57dc2480728372b916c50b73945db7d760d37758feed2589aa3514d51a5ae6"
+          }
+        },
+        "T3": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.31), with no independent support for its expected values (separate route 0.34, matches the rule 0.74)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.31,
+            "faithful_from": "define",
+            "hardcoded": 0.22,
+            "separate_route": 0.34,
+            "expected_correct": 0.74,
+            "jev_key": "db233ccda1288f0ddda96ec810853ee0df55380000f059baa7df3461f2e7492c"
+          }
+        },
+        "T4": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.56), with no independent support for its expected values (separate route 0.39, matches the rule 0.78)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.56,
+            "faithful_from": "define",
+            "hardcoded": 0.14,
+            "separate_route": 0.39,
+            "expected_correct": 0.78,
+            "jev_key": "a19ef05c1e23fda64a6dd608428c465edcc76d7aa185c1e1b4771bf8417b0cbe"
+          }
+        },
+        "T5": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.53), with no independent support for its expected values (separate route 0.24, matches the rule 0.78)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.53,
+            "faithful_from": "define",
+            "hardcoded": 0.2,
+            "separate_route": 0.24,
+            "expected_correct": 0.78,
+            "jev_key": "cbf25b98ba029669651db1edd6fe354bf66c250f22885af26dc720c513af0c02"
+          }
+        },
+        "T7": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.32), with no independent support for its expected values (separate route 0.28, matches the rule 0.58)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.32,
+            "faithful_from": "define",
+            "hardcoded": 0.19,
+            "separate_route": 0.28,
+            "expected_correct": 0.58,
+            "routes": [
+              "sha256sum"
+            ],
+            "jev_key": "4918a4130a7e07bbc716af12b115877ffd08580e7bc521e6308875f325b5a73d"
+          }
+        }
+      },
+      "jev_requests": 5,
+      "jev_usd": 0.00028135800000000005
+    },
+    "99aaf67eac67e4249b0501c083fe8ac63d0f09c8e6e8108a4cf78d2b715c7e14": {
+      "task": "html-js-filter",
+      "record": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/html-js-filter/suite.accept.json",
+      "tests": {
+        "T1": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.64), with no independent support for its expected values (separate route 0.29, matches the rule 0.86)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 2,
+            "faithful": 0.64,
+            "faithful_from": "define",
+            "hardcoded": 0.24,
+            "separate_route": 0.29,
+            "expected_correct": 0.86,
+            "jev_key": "f36cf8206833eac964af425d9e9208715b48c1f46ae5d23f3728edae3dd4ace5"
+          }
+        },
+        "T2": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.77), with no independent support for its expected values (separate route 0.27, matches the rule 0.84)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 2,
+            "faithful": 0.77,
+            "faithful_from": "define",
+            "hardcoded": 0.16,
+            "separate_route": 0.27,
+            "expected_correct": 0.84,
+            "jev_key": "7dc1a8fc60da3adba98c7f9e6dff5b8a84ce194964a05ccf3d1ea8eef58152a0"
+          }
+        },
+        "T3": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.53), with no independent support for its expected values (separate route 0.14, matches the rule 0.62)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 2,
+            "faithful": 0.53,
+            "faithful_from": "define",
+            "hardcoded": 0.51,
+            "separate_route": 0.14,
+            "expected_correct": 0.62,
+            "jev_key": "ae585fd81d58df6db3f4eea0f6620ea8d77b09d578aed39a65b5b113824cdbec"
+          }
+        },
+        "T4": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.44), with no independent support for its expected values (separate route 0.21, matches the rule 0.57)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 2,
+            "faithful": 0.44,
+            "faithful_from": "define",
+            "hardcoded": 0.18,
+            "separate_route": 0.21,
+            "expected_correct": 0.57,
+            "routes": [
+              "cmp"
+            ],
+            "jev_key": "c13bf799b486888a3b35882bf62d54a7e51f33c95a0fcc6f948851c704cc24c6"
+          }
+        },
+        "T5": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.55), with no independent support for its expected values (separate route 0.33, matches the rule 0.75)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 2,
+            "faithful": 0.55,
+            "faithful_from": "define",
+            "hardcoded": 0.19,
+            "separate_route": 0.33,
+            "expected_correct": 0.75,
+            "jev_key": "1989b0cd73eb02e636157f47be4de521ffeb78070fcaf75f3939562f9b3a8eb8"
+          }
+        },
+        "T6": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.55), with no independent support for its expected values (separate route 0.26, matches the rule 0.77)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 2,
+            "faithful": 0.55,
+            "faithful_from": "define",
+            "hardcoded": 0.25,
+            "separate_route": 0.26,
+            "expected_correct": 0.77,
+            "routes": [
+              "cmp"
+            ],
+            "jev_key": "bfa1884907009141811d4919bf31881f7a386ea557421c335a9e94ddcf80eb6a"
+          }
+        }
+      },
+      "jev_requests": 6,
+      "jev_usd": 0.00024565800000000005
+    },
+    "a0f9d0ca086a53b7cdee0698cf7156d2b97437b1746ed4e48971f5112034f3b4": {
+      "task": "interleaved-vigenere",
+      "record": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass3-facts/interleaved-vigenere/suite.accept.json",
+      "tests": {
+        "T1": {
+          "class": "independently_supported",
+          "why": "red on the untouched workspace; Jev reads its expected values as coming from a separate route (0.63) and matching the task's rule (0.75)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 2,
+            "faithful": 0.52,
+            "faithful_from": "define",
+            "hardcoded": 0.24,
+            "separate_route": 0.63,
+            "expected_correct": 0.75,
+            "jev_key": "599dc700c5b2c7a9da822ff87410cb0e5e4e1e23d17f6e33158abc0d3c2e9d91"
+          }
+        },
+        "T2": {
+          "class": "independently_supported",
+          "why": "red on the untouched workspace; Jev reads its expected values as coming from a separate route (0.86) and matching the task's rule (0.88)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 2,
+            "faithful": 0.85,
+            "faithful_from": "define",
+            "hardcoded": 0.09,
+            "separate_route": 0.86,
+            "expected_correct": 0.88,
+            "jev_key": "6b82b1185ae064aa5e1bb30e7c2f860f7497e1d310e727d0d6ac3607d27c874a"
+          }
+        },
+        "T4": {
+          "class": "independently_supported",
+          "why": "red on the untouched workspace; Jev reads its expected values as coming from a separate route (0.57) and matching the task's rule (0.83)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 2,
+            "faithful": 0.71,
+            "faithful_from": "define",
+            "hardcoded": 0.08,
+            "separate_route": 0.57,
+            "expected_correct": 0.83,
+            "routes": [
+              "cmp"
+            ],
+            "jev_key": "29cc0a3eb8a70d1afd14ebb4cdac2f28abf2dceaeac35b5994e821601cb80092"
+          }
+        },
+        "T5": {
+          "class": "independently_supported",
+          "why": "red on the untouched workspace; Jev reads its expected values as coming from a separate route (0.65) and matching the task's rule (0.88)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.66,
+            "faithful_from": "define",
+            "hardcoded": 0.1,
+            "separate_route": 0.65,
+            "expected_correct": 0.88,
+            "jev_key": "9ac8b8bae93a75ed64a7b48f248ddef7395d980a772073d1c368184de1411e34"
+          }
+        },
+        "T6": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.37), with no independent support for its expected values (separate route 0.41, matches the rule 0.61)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 2,
+            "faithful": 0.37,
+            "faithful_from": "define",
+            "hardcoded": 0.14,
+            "separate_route": 0.41,
+            "expected_correct": 0.61,
+            "jev_key": "5c580405b0e7b1c11f1345971440b9268d41759475915af43edb648a829f5709"
+          }
+        }
+      },
+      "jev_requests": 5,
+      "jev_usd": 0.00027056400000000005
+    },
+    "b5a5c7873a8ca24663e98dc1c0ccfec2e5739a2c3cdd89f3f4ac7d59255f11fa": {
+      "task": "embedding-drift-monitor",
+      "record": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass3-facts/embedding-drift-monitor/suite.accept.json",
+      "tests": {
+        "T1": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.30), with no independent support for its expected values (separate route 0.25, matches the rule 0.74)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.3,
+            "faithful_from": "define",
+            "hardcoded": 0.19,
+            "separate_route": 0.25,
+            "expected_correct": 0.74,
+            "jev_key": "9605d13f55e0a2c82de0c85eb6324780fe4c901a18c47dfb27cc5320c916be9a"
+          }
+        },
+        "T2": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.52), with no independent support for its expected values (separate route 0.09, matches the rule 0.80)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.52,
+            "faithful_from": "define",
+            "hardcoded": 0.33,
+            "separate_route": 0.09,
+            "expected_correct": 0.8,
+            "jev_key": "38342613418b76b2049358ab672fce431a9c2e241aeb7ea0f0365e190494d0c3"
+          }
+        },
+        "T3": {
+          "class": "independently_supported",
+          "why": "red on the untouched workspace; Jev reads its expected values as coming from a separate route (0.62) and matching the task's rule (0.82)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.31,
+            "faithful_from": "define",
+            "hardcoded": 0.2,
+            "separate_route": 0.62,
+            "expected_correct": 0.82,
+            "jev_key": "6c9832851d60178963a95ee93a80ba2b244bbd1b30cc83d495d897211fa0943e"
+          }
+        },
+        "T4": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.49), with no independent support for its expected values (separate route 0.32, matches the rule 0.84)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.49,
+            "faithful_from": "define",
+            "hardcoded": 0.21,
+            "separate_route": 0.32,
+            "expected_correct": 0.84,
+            "jev_key": "6518e4a031cb2163f5e8701f5d4f49a37c46ed13714c915d3763f10e3dd1a1f0"
+          }
+        },
+        "T5": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.66), with no independent support for its expected values (separate route 0.25, matches the rule 0.74)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.66,
+            "faithful_from": "define",
+            "hardcoded": 0.17,
+            "separate_route": 0.25,
+            "expected_correct": 0.74,
+            "jev_key": "421ea5951368db609f0bbb3b9f28f9c96512341e10aec55eb3ca702eab7dc534"
+          }
+        }
+      },
+      "jev_requests": 5,
+      "jev_usd": 0.00018034800000000002
+    },
+    "bfdae5e45f59f26167492adc5ef873cb8affb818466c19bec1d01fa0170421d3": {
+      "task": "fin-saccr-rwa",
+      "record": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/fin-saccr-rwa/suite.accept.json",
+      "tests": {
+        "T2": {
+          "class": "independently_supported",
+          "why": "red on the untouched workspace; Jev reads its expected values as coming from a separate route (0.78) and matching the task's rule (0.82)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.74,
+            "faithful_from": "define",
+            "hardcoded": 0.09,
+            "separate_route": 0.78,
+            "expected_correct": 0.82,
+            "jev_key": "f37b966d836c76502d299635f851350075717906dc3bb26fab440fb003fe625e"
+          }
+        },
+        "T3": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.32), with no independent support for its expected values (separate route 0.45, matches the rule 0.75)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.32,
+            "faithful_from": "define",
+            "hardcoded": 0.18,
+            "separate_route": 0.45,
+            "expected_correct": 0.75,
+            "jev_key": "1ea850986a2cdb78afa3e0d17ebda6188d96f2fa68f87f91c5ec4630934373e9"
+          }
+        },
+        "T7": {
+          "class": "independently_supported",
+          "why": "red on the untouched workspace; Jev reads its expected values as coming from a separate route (0.58) and matching the task's rule (0.76)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.39,
+            "faithful_from": "define",
+            "hardcoded": 0.11,
+            "separate_route": 0.58,
+            "expected_correct": 0.76,
+            "jev_key": "1787df1b42b9c2e62ff5be1c7f3c77cf4edfdf8a2b01612cce2be2281a44bef4"
+          }
+        },
+        "T8": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.37), with no independent support for its expected values (separate route 0.39, matches the rule 0.71)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.37,
+            "faithful_from": "define",
+            "hardcoded": 0.13,
+            "separate_route": 0.39,
+            "expected_correct": 0.71,
+            "jev_key": "04954ed5769669aae7f0cfd85e21560c16c6bbd0deac550a3d0638e7eba5facf"
+          }
+        },
+        "T9": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.41), with no independent support for its expected values (separate route 0.43, matches the rule 0.65)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.41,
+            "faithful_from": "define",
+            "hardcoded": 0.11,
+            "separate_route": 0.43,
+            "expected_correct": 0.65,
+            "jev_key": "e79431c88f9cbf16db7d61f443e072ae809638821633f811334701f44a2d3423"
+          }
+        }
+      },
+      "jev_requests": 5,
+      "jev_usd": 0.000373464
+    },
+    "c60a1a3a7686afc37f53b51bf8322b9fb6e6080d09f95cbb7e2df96ffebc5c0b": {
+      "task": "cad-model",
+      "record": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/cad-model/suite.accept.json",
+      "tests": {
+        "T1": {
+          "class": "independently_supported",
+          "why": "red on the untouched workspace; Jev reads its expected values as coming from a separate route (0.50) and matching the task's rule (0.83)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.67,
+            "faithful_from": "define",
+            "hardcoded": 0.11,
+            "separate_route": 0.5,
+            "expected_correct": 0.83,
+            "jev_key": "95fb564ebb729184761aa91dc0424c44a6d2e27337663774c8a94360797caf21"
+          }
+        },
+        "T2": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.43), with no independent support for its expected values (separate route 0.48, matches the rule 0.83)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.43,
+            "faithful_from": "define",
+            "hardcoded": 0.1,
+            "separate_route": 0.48,
+            "expected_correct": 0.83,
+            "jev_key": "ec23887a4a3efaae2f68772e4f0410208f774642d6afa63a2b71f479f578942b"
+          }
+        },
+        "T3": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.50), with no independent support for its expected values (separate route 0.34, matches the rule 0.74)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.5,
+            "faithful_from": "define",
+            "hardcoded": 0.12,
+            "separate_route": 0.34,
+            "expected_correct": 0.74,
+            "jev_key": "faeb10ed0fcc4a416d88a30c2289e52777d79736a1dafcb75731fc766c4385a7"
+          }
+        },
+        "T4": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.49), with no independent support for its expected values (separate route 0.23, matches the rule 0.74)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.49,
+            "faithful_from": "define",
+            "hardcoded": 0.13,
+            "separate_route": 0.23,
+            "expected_correct": 0.74,
+            "jev_key": "c21845c44e28563fa1cab845ae9a0b8ee8399d40026951808c4f69713fa641f0"
+          }
+        },
+        "T6": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.72), with no independent support for its expected values (separate route 0.38, matches the rule 0.83)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.72,
+            "faithful_from": "define",
+            "hardcoded": 0.09,
+            "separate_route": 0.38,
+            "expected_correct": 0.83,
+            "jev_key": "8df568bac9758ebbca55c80c58c7a846ae787fb181b410e3a99f7072d175d749"
+          }
+        }
+      },
+      "jev_requests": 5,
+      "jev_usd": 0.00017371200000000002
+    },
+    "c952739ed84b2c7c75141ef456ac1c798e68c0184cef92261c2d468ed98e7578": {
+      "task": "wal-recovery-ordering",
+      "record": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/wal-recovery-ordering/suite.accept.json",
+      "tests": {
+        "T1": {
+          "class": "guard",
+          "why": "it passed on the untouched workspace",
+          "evidence": {
+            "green_at_start": true,
+            "start_exit": 0,
+            "faithful": 0.49,
+            "faithful_from": "define",
+            "hardcoded": 0.11,
+            "separate_route": null,
+            "expected_correct": null
+          }
+        },
+        "T10": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.48), with no independent support for its expected values (separate route 0.34, matches the rule 0.79)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.48,
+            "faithful_from": "define",
+            "hardcoded": 0.11,
+            "separate_route": 0.34,
+            "expected_correct": 0.79,
+            "jev_key": "0cab9922d5c2d1953cfd72255c3eb7034310a5167834e9d1e01a5c84e1c76e23"
+          }
+        },
+        "T12": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.59), with no independent support for its expected values (separate route 0.31, matches the rule 0.81)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.59,
+            "faithful_from": "define",
+            "hardcoded": 0.1,
+            "separate_route": 0.31,
+            "expected_correct": 0.81,
+            "jev_key": "71d68f7a1094c20088becf03081dc9a3db7b3b39b6c6b561a5e0ba3468ac9947"
+          }
+        },
+        "T13": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.48), with no independent support for its expected values (separate route 0.37, matches the rule 0.79)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.48,
+            "faithful_from": "define",
+            "hardcoded": 0.11,
+            "separate_route": 0.37,
+            "expected_correct": 0.79,
+            "jev_key": "186efaa39b8c2d74b80301d37a4b8a220c3dba8522953160424744d3033b3fa7"
+          }
+        },
+        "T15": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.49), with no independent support for its expected values (separate route 0.33, matches the rule 0.82)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.49,
+            "faithful_from": "define",
+            "hardcoded": 0.1,
+            "separate_route": 0.33,
+            "expected_correct": 0.82,
+            "jev_key": "cb8279b4541da3f29297e6eca2577b08782c4b411e9915bb2e4b42c7ba60667e"
+          }
+        },
+        "T2": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.47), with no independent support for its expected values (separate route 0.38, matches the rule 0.82)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.47,
+            "faithful_from": "define",
+            "hardcoded": 0.1,
+            "separate_route": 0.38,
+            "expected_correct": 0.82,
+            "jev_key": "d0e85013239708ddd0b9f948df172e19ddb74b87f8a3e311598b8eb5d9097bd6"
+          }
+        },
+        "T3": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.50), with no independent support for its expected values (separate route 0.33, matches the rule 0.81)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.5,
+            "faithful_from": "define",
+            "hardcoded": 0.09,
+            "separate_route": 0.33,
+            "expected_correct": 0.81,
+            "jev_key": "05465cec4cb65a1524315d3c1e087b992becfbf237f7c49c4e155d92d1d1fea8"
+          }
+        },
+        "T4": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.51), with no independent support for its expected values (separate route 0.34, matches the rule 0.82)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.51,
+            "faithful_from": "define",
+            "hardcoded": 0.1,
+            "separate_route": 0.34,
+            "expected_correct": 0.82,
+            "jev_key": "e07d48105ec07fb4face3fe9c3d1e55fe5f1b75805c9dbb2b4ffd5f49f97e6e7"
+          }
+        },
+        "T5": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.53), with no independent support for its expected values (separate route 0.36, matches the rule 0.81)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.53,
+            "faithful_from": "define",
+            "hardcoded": 0.1,
+            "separate_route": 0.36,
+            "expected_correct": 0.81,
+            "jev_key": "27449564a1d524dffd65b4fda0c3458dc9a12bd865eef84479be2e6fb4d32acc"
+          }
+        },
+        "T6": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.55), with no independent support for its expected values (separate route 0.37, matches the rule 0.80)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.55,
+            "faithful_from": "define",
+            "hardcoded": 0.1,
+            "separate_route": 0.37,
+            "expected_correct": 0.8,
+            "jev_key": "da3af6b348ec36ac3e1703bf8d4846aec415ca0301aada9484b0e5c2964af765"
+          }
+        },
+        "T7": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.54), with no independent support for its expected values (separate route 0.34, matches the rule 0.80)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.54,
+            "faithful_from": "define",
+            "hardcoded": 0.1,
+            "separate_route": 0.34,
+            "expected_correct": 0.8,
+            "jev_key": "8bb8ce325d1ecec12feacb2e9191e45d8e23ef691cc68bc3865aa9ea1b409211"
+          }
+        },
+        "T8": {
+          "class": "guard",
+          "why": "it passed on the untouched workspace",
+          "evidence": {
+            "green_at_start": true,
+            "start_exit": 0,
+            "faithful": 0.43,
+            "faithful_from": "define",
+            "hardcoded": 0.12,
+            "separate_route": null,
+            "expected_correct": null
+          }
+        },
+        "T9": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.52), with no independent support for its expected values (separate route 0.31, matches the rule 0.81)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.52,
+            "faithful_from": "define",
+            "hardcoded": 0.1,
+            "separate_route": 0.31,
+            "expected_correct": 0.81,
+            "jev_key": "752694638868d4e6e6ac1a0860a46af46f071d0e76a2078136e067deb4b4c1e8"
+          }
+        }
+      },
+      "jev_requests": 11,
+      "jev_usd": 0.001421658
+    },
+    "cb9623ca284c4127aed65d8e90ab6fd7c3f7025ec0a19f23188635600acbee35": {
+      "task": "bun-sourcemap-leak",
+      "record": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/bun-sourcemap-leak/suite.accept.json",
+      "tests": {
+        "T1": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.33), with no independent support for its expected values (separate route 0.15, matches the rule 0.45)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.33,
+            "faithful_from": "define",
+            "hardcoded": 0.29,
+            "separate_route": 0.15,
+            "expected_correct": 0.45,
+            "jev_key": "59d268942bc710d2d8feb02243c0fd2ef33f7c017a3158e137eb56f3d98d08dc"
+          }
+        },
+        "T2": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.26), with no independent support for its expected values (separate route 0.36, matches the rule 0.73)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.26,
+            "faithful_from": "define",
+            "hardcoded": 0.14,
+            "separate_route": 0.36,
+            "expected_correct": 0.73,
+            "jev_key": "e22744db214f5dfab30e2dd47e20e8a8fd67e63f9f5d36ed3fa7d2e8560c9951"
+          }
+        },
+        "T3": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.31), with no independent support for its expected values (separate route 0.37, matches the rule 0.76)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.31,
+            "faithful_from": "define",
+            "hardcoded": 0.19,
+            "separate_route": 0.37,
+            "expected_correct": 0.76,
+            "jev_key": "3e5cf0ef1c2c59742c1081df9f987e3c6be1dbeacf530d7772f109519ee04bcb"
+          }
+        },
+        "T4": {
+          "class": "guard",
+          "why": "it passed on the untouched workspace",
+          "evidence": {
+            "green_at_start": true,
+            "start_exit": 0,
+            "faithful": 0.43,
+            "faithful_from": "define",
+            "hardcoded": 0.1,
+            "separate_route": null,
+            "expected_correct": null
+          }
+        },
+        "T5": {
+          "class": "guard",
+          "why": "it passed on the untouched workspace",
+          "evidence": {
+            "green_at_start": true,
+            "start_exit": 0,
+            "faithful": 0.76,
+            "faithful_from": "define",
+            "hardcoded": 0.13,
+            "separate_route": null,
+            "expected_correct": null
+          }
+        },
+        "T6": {
+          "class": "independently_supported",
+          "why": "red on the untouched workspace; Jev reads its expected values as coming from a separate route (0.65) and matching the task's rule (0.85)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.74,
+            "faithful_from": "define",
+            "hardcoded": 0.1,
+            "separate_route": 0.65,
+            "expected_correct": 0.85,
+            "jev_key": "0552fd8c3f668518ae4102f6e8369684966c620eeadd862ecddf425b171031c3"
+          }
+        },
+        "T7": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.48), with no independent support for its expected values (separate route 0.21, matches the rule 0.70)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.48,
+            "faithful_from": "define",
+            "hardcoded": 0.18,
+            "separate_route": 0.21,
+            "expected_correct": 0.7,
+            "jev_key": "e07697211302b13c79df46eccce098033eccadd5c8c4cc8a300bf21a61b6666e"
+          }
+        }
+      },
+      "jev_requests": 5,
+      "jev_usd": 0.000285474
+    },
+    "e61836e4fd3ad87f1900beb3a6af78923f8297381262bb2c8cea5c60eba129e6": {
+      "task": "embedding-drift-monitor",
+      "record": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v6--embedding-drift-monitor--manual-20260924T102404/embedding-drift-monitor__qyc6VQw/agent/episode/accept-suite-1.accept.json",
+      "tests": {
+        "T1": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.59), with no independent support for its expected values (separate route 0.46, matches the rule 0.82)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.59,
+            "faithful_from": "define",
+            "hardcoded": 0.14,
+            "separate_route": 0.46,
+            "expected_correct": 0.82,
+            "jev_key": "21aa72fa7516d938d71469c3b62f7e4e76e31445be6ba06d701783a29fdd795f"
+          }
+        },
+        "T2": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.67), with no independent support for its expected values (separate route 0.21, matches the rule 0.71)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.67,
+            "faithful_from": "define",
+            "hardcoded": 0.19,
+            "separate_route": 0.21,
+            "expected_correct": 0.71,
+            "jev_key": "b8b1774dac7f07a9bc5ae3827e75fc33e9f0d7854e37a6ac6748d6f3c15bbda6"
+          }
+        },
+        "T3": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.40), with no independent support for its expected values (separate route 0.39, matches the rule 0.51)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.4,
+            "faithful_from": "define",
+            "hardcoded": 0.19,
+            "separate_route": 0.39,
+            "expected_correct": 0.51,
+            "jev_key": "fcfbe5b221eafc95e02465a54bff0aa23fb8809ff7fd9ac9b313061c09538b8c"
+          }
+        },
+        "T4": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.42), with no independent support for its expected values (separate route 0.43, matches the rule 0.77)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.42,
+            "faithful_from": "define",
+            "hardcoded": 0.14,
+            "separate_route": 0.43,
+            "expected_correct": 0.77,
+            "jev_key": "bf7526d6e3f2cdfeb24f8f811dc90c111a32f42385af761408ff4072b73df915"
+          }
+        },
+        "T5": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.38), with no independent support for its expected values (separate route 0.47, matches the rule 0.84)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.38,
+            "faithful_from": "define",
+            "hardcoded": 0.12,
+            "separate_route": 0.47,
+            "expected_correct": 0.84,
+            "jev_key": "9c3ed08fd81386335a8292f5c0c45112a736d4eeb34eb5c40e49aa0eb28852c3"
+          }
+        },
+        "T6": {
+          "class": "independently_supported",
+          "why": "red on the untouched workspace; Jev reads its expected values as coming from a separate route (0.68) and matching the task's rule (0.90)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.43,
+            "faithful_from": "define",
+            "hardcoded": 0.16,
+            "separate_route": 0.68,
+            "expected_correct": 0.9,
+            "jev_key": "93c442a7d30056a60039e0f112c3fba64bb49da8e08f88c0e66133864d5bc1fa"
+          }
+        }
+      },
+      "jev_requests": 6,
+      "jev_usd": 0.000240198
+    },
+    "f2d2135f1a16664bb1435ea5f32ff2ade2b155ee7debb91b4fce02474351e2f0": {
+      "task": "embedding-drift-monitor",
+      "record": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/embedding-drift-monitor/suite.accept.json",
+      "tests": {
+        "T1": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.33), with no independent support for its expected values (separate route 0.15, matches the rule 0.73)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.33,
+            "faithful_from": "define",
+            "hardcoded": 0.24,
+            "separate_route": 0.15,
+            "expected_correct": 0.73,
+            "jev_key": "a9d802af721c14908aff085a1439d8bbf243da96bf359280a690896f93b3138a"
+          }
+        },
+        "T3": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.44), with no independent support for its expected values (separate route 0.31, matches the rule 0.72)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.44,
+            "faithful_from": "define",
+            "hardcoded": 0.24,
+            "separate_route": 0.31,
+            "expected_correct": 0.72,
+            "jev_key": "8532486606444eea5354d76a070a3a754fb0598bfbb5c12803caa92996c1f53e"
+          }
+        },
+        "T4": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.45), with no independent support for its expected values (separate route 0.31, matches the rule 0.76)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.45,
+            "faithful_from": "define",
+            "hardcoded": 0.18,
+            "separate_route": 0.31,
+            "expected_correct": 0.76,
+            "jev_key": "be62e065a03408e00dcaf654c702c00c1775dc1290196270e53c4be60b38a8dc"
+          }
+        },
+        "T5": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.31), with no independent support for its expected values (separate route 0.28, matches the rule 0.85)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.31,
+            "faithful_from": "define",
+            "hardcoded": 0.15,
+            "separate_route": 0.28,
+            "expected_correct": 0.85,
+            "jev_key": "23168047849c1160449c546f4eea34308947e8abc77527602ce32b7494d8b640"
+          }
+        },
+        "T6": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.29), with no independent support for its expected values (separate route 0.30, matches the rule 0.75)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.29,
+            "faithful_from": "define",
+            "hardcoded": 0.23,
+            "separate_route": 0.3,
+            "expected_correct": 0.75,
+            "jev_key": "54341bd4d53a7c596101218e2fc5cd280a751ca5a0f20170dcd2b3f7f0c7eef7"
+          }
+        },
+        "T7": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.39), with no independent support for its expected values (separate route 0.16, matches the rule 0.68)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.39,
+            "faithful_from": "define",
+            "hardcoded": 0.26,
+            "separate_route": 0.16,
+            "expected_correct": 0.68,
+            "jev_key": "e6b5ce230e1e0a6849e0630016f011cac7d6a4a3580fc507218aa1acc88bde41"
+          }
+        },
+        "T8": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.60), with no independent support for its expected values (separate route 0.40, matches the rule 0.80)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.6,
+            "faithful_from": "define",
+            "hardcoded": 0.16,
+            "separate_route": 0.4,
+            "expected_correct": 0.8,
+            "jev_key": "95df5fda11df13e1b2f4b11781b31353d3af6cb7e23a3c4c7a58b9b7ddbb1769"
+          }
+        }
+      },
+      "jev_requests": 7,
+      "jev_usd": 0.00025993800000000003
+    },
+    "f9582d3c257942ee4ce41e8ba04652391e72e2ba7056a7e07a830ae314d77eef": {
+      "task": "cargo-flight-dispatch",
+      "record": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/cargo-flight-dispatch/suite.accept.json",
+      "tests": {
+        "T1": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.28), with no independent support for its expected values (separate route 0.34, matches the rule 0.60)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.28,
+            "faithful_from": "define",
+            "hardcoded": 0.15,
+            "separate_route": 0.34,
+            "expected_correct": 0.6,
+            "jev_key": "095c2d6615f0011602a69636fd92ddf6d3cd23b1e91e31120cb227bd4825149a"
+          }
+        },
+        "T10": {
+          "class": "guard",
+          "why": "it passed on the untouched workspace",
+          "evidence": {
+            "green_at_start": true,
+            "start_exit": 0,
+            "faithful": 0.83,
+            "faithful_from": "define",
+            "hardcoded": 0.1,
+            "separate_route": null,
+            "expected_correct": null,
+            "routes": [
+              "sha256sum",
+              "cmp"
+            ]
+          }
+        },
+        "T11": {
+          "class": "independently_supported",
+          "why": "red on the untouched workspace; Jev reads its expected values as coming from a separate route (0.66) and matching the task's rule (0.66)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.36,
+            "faithful_from": "define",
+            "hardcoded": 0.18,
+            "separate_route": 0.66,
+            "expected_correct": 0.66,
+            "jev_key": "dab341b62833070ffc68e7e0f2cf67a433436bbad3a73fa021132ed4f391a4b6"
+          }
+        },
+        "T12": {
+          "class": "independently_supported",
+          "why": "red on the untouched workspace; Jev reads its expected values as coming from a separate route (0.52) and matching the task's rule (0.69)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.37,
+            "faithful_from": "define",
+            "hardcoded": 0.19,
+            "separate_route": 0.52,
+            "expected_correct": 0.69,
+            "jev_key": "de022a8495e6f7b161966776075f25df48086060d07d5d2fe4aac2784701e3f4"
+          }
+        },
+        "T2": {
+          "class": "independently_supported",
+          "why": "red on the untouched workspace; Jev reads its expected values as coming from a separate route (0.85) and matching the task's rule (0.71)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.51,
+            "faithful_from": "define",
+            "hardcoded": 0.1,
+            "separate_route": 0.85,
+            "expected_correct": 0.71,
+            "jev_key": "ae536be270923ba94073da5ed9b6d76bdb55da1166da6b1d093650b5a775449d"
+          }
+        },
+        "T4": {
+          "class": "writer_derived",
+          "why": "red on the untouched workspace and faithful (0.30), with no independent support for its expected values (separate route 0.46, matches the rule 0.66)",
+          "evidence": {
+            "green_at_start": false,
+            "start_exit": 1,
+            "faithful": 0.3,
+            "faithful_from": "define",
+            "hardcoded": 0.13,
+            "separate_route": 0.46,
+            "expected_correct": 0.66,
+            "jev_key": "71a870bf793a634c0b1749ae35f9ffb41a63ec3ed9ef620ab521f66e4e8e4163"
+          }
+        },
+        "T6": {
+          "class": "guard",
+          "why": "it passed on the untouched workspace",
+          "evidence": {
+            "green_at_start": true,
+            "start_exit": 0,
+            "faithful": 0.25,
+            "faithful_from": "define",
+            "hardcoded": 0.14,
+            "separate_route": null,
+            "expected_correct": null
+          }
+        }
+      },
+      "jev_requests": 5,
+      "jev_usd": 0.000266154
+    }
+  },
+  "jev_requests": 161,
+  "jev_usd": 0.008851626
+}

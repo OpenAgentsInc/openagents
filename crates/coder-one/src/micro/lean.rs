@@ -30,6 +30,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::*;
+use crate::accept::authority::{self, Authority, Powers};
+use crate::checks::contract::executed;
 
 /// File-content identity for candidate evidence. Match the merge inventory's
 /// exclusions, but refuse incomplete reads instead of comparing partial trees.
@@ -204,6 +206,42 @@ pub struct Lean {
     /// before it, nothing runs before the session.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub baseline: bool,
+    /// `verify.executed` (issue #9636): after every session, rerun the
+    /// baseline commands, the commands the instruction names, and a
+    /// compile or import of the package on a scratch copy of the
+    /// candidate ([`crate::checks::contract::executed`]), and reject a
+    /// candidate on which a command that exited 0 on the untouched
+    /// workspace now fails. A rejected candidate isn't kept, and the next
+    /// session is told why. Needs `keep_best`. Absent, as in every
+    /// manifest before it, no command runs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub executed: Option<LeanExecuted>,
+    /// A classified acceptance suite beside the loop, each test's power
+    /// set by its authority class ([`Tiered`], issue #9629). Absent, as in
+    /// every manifest before it, the loop runs as it did.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tiered: Option<Box<Tiered>>,
+}
+
+/// `executor.microluna.lean.executed`: the bounds of the commands the host
+/// reruns after every session.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LeanExecuted {
+    /// Each command's wall-time bound, in seconds.
+    #[serde(default = "executed_command_sec")]
+    pub command_sec: u64,
+    /// All of one run's commands together, in seconds.
+    #[serde(default = "executed_budget_sec")]
+    pub budget_sec: u64,
+}
+
+fn executed_command_sec() -> u64 {
+    crate::checks::contract::executed::COMMAND_SEC
+}
+
+fn executed_budget_sec() -> u64 {
+    300
 }
 
 /// `executor.microluna.lean.finish_rule`: how a `done` finish is held to
@@ -234,6 +272,77 @@ fn finish_rule(lean: &Lean, baseline: &[String]) -> Option<microluna::FinishRule
         baseline: baseline.to_vec(),
         max_refusals: rule.max_refusals,
     })
+}
+
+/// `executor.microluna.lean.tiered`: an acceptance suite, written and
+/// frozen before the first session, whose tests carry authority classes
+/// (`accept::authority`). The suite runs after every work session, and
+/// each class has only the power the policy grants it:
+///
+/// - A red test of a class in `hold` turns a finish back: the loop can't
+///   stop on it. Its green is necessary, never sufficient: the loop's own
+///   stopping rules still apply. Only an executed contract or an
+///   independently supported test may hold.
+/// - A class in `rank` breaks ties between candidates for keep-best, after
+///   the holding classes and the frozen score. It never makes the host
+///   restore an earlier workspace over the last one, and the sessions
+///   never see its tests.
+/// - A guard that turns red is a suspect: the next session reads it as
+///   possibly pinning the defect, never as an order to restore it.
+///
+/// A class may hold or rank only once it has passed the offline bar
+/// (`accept::authority::PROMOTED`). With `hold` and `rank` empty the suite
+/// only observes: it is written, classified, run, and recorded, and a red
+/// guard is named as a suspect.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Tiered {
+    /// How `accept.define` writes the suite.
+    pub writer: SuiteWriter,
+    /// The classes whose red tests hold the loop.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hold: Vec<Authority>,
+    /// The classes that break ties between candidates.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rank: Vec<Authority>,
+}
+
+impl Tiered {
+    fn validate(&self, lean: &Lean) -> Vec<String> {
+        let mut problems = self.writer.validate();
+        for class in &self.hold {
+            if !class.can_hold() {
+                problems.push(format!(
+                    "executor.microluna.lean.tiered.hold: a {} test can't hold the loop",
+                    class.word()
+                ));
+            }
+        }
+        for class in &self.rank {
+            if !class.can_rank() {
+                problems.push(format!(
+                    "executor.microluna.lean.tiered.rank: a {} test can't rank candidates",
+                    class.word()
+                ));
+            }
+        }
+        for class in self.hold.iter().chain(&self.rank) {
+            if !crate::accept::authority::PROMOTED.contains(class) {
+                problems.push(format!(
+                    "executor.microluna.lean.tiered: {} hasn't passed the offline bar, so it \
+                     can't hold power in a policy",
+                    class.word()
+                ));
+            }
+        }
+        if !self.rank.is_empty() && !lean.keep_best {
+            problems.push("executor.microluna.lean.tiered.rank requires keep_best".to_string());
+        }
+        if lean.lanes > 1 {
+            problems.push("executor.microluna.lean.tiered doesn't run with lanes".to_string());
+        }
+        problems
+    }
 }
 
 /// Added with `structure`. Written after reading the two search tasks'
@@ -401,6 +510,16 @@ impl Lean {
         if self.finish_rule.is_some() && !self.keep_best {
             problems.push("finish_rule requires keep_best".to_string());
         }
+        if let Some(executed) = &self.executed {
+            if !self.keep_best {
+                problems.push("executed requires keep_best".to_string());
+            }
+            if executed.command_sec == 0 || executed.budget_sec == 0 {
+                problems.push(
+                    "executor.microluna.lean.executed bounds must be at least 1 second".to_string(),
+                );
+            }
+        }
         for source in &self.departures {
             if !crate::departures::ADMITTED.contains(source) {
                 problems.push(format!(
@@ -412,6 +531,9 @@ impl Lean {
         }
         if !self.departures.is_empty() && !self.rationale {
             problems.push("executor.microluna.lean.departures requires rationale".to_string());
+        }
+        if let Some(tiered) = &self.tiered {
+            problems.extend(tiered.validate(self));
         }
         problems
     }
@@ -1237,6 +1359,18 @@ struct Best {
     session: u32,
     score: Option<(u64, u64)>,
     dir: PathBuf,
+    /// The tiered suite's holding tests red, and the share of its ranking
+    /// tests green, when a tiered suite ran on this candidate.
+    held: usize,
+    rank: f64,
+}
+
+/// The tiered suite beside the lean loop, and how it runs.
+struct Tier {
+    suite: crate::accept::AcceptanceSuite,
+    runner: crate::accept::Local,
+    hold: Vec<Authority>,
+    rank: Vec<Authority>,
 }
 
 impl Micro {
@@ -1266,6 +1400,163 @@ impl Micro {
             }
         }
         out
+    }
+
+    /// Writes, freezes, and classifies the tiered suite before the first
+    /// session. Returns the suite, or `None` when it can't be written or
+    /// has no tests, and the move that records it with its cost in `usd`.
+    async fn tiered_suite(&self, prepared: &Prepared, tiered: &Tiered) -> (Option<Tier>, Value) {
+        let Ok(wire) = &self.wire else {
+            return (
+                None,
+                json!({"kind": "lean.tiered_suite", "error": "no transport", "usd": 0.0}),
+            );
+        };
+        let base = self
+            .artifacts
+            .parent()
+            .map_or_else(|| self.artifacts.clone(), Path::to_path_buf);
+        let suite_dir = base.join(format!("accept-tiered-{}", self.dispatch()));
+        let task = crate::accept::Task {
+            title: prepared.title.clone(),
+            instruction: prepared.instruction.clone(),
+        };
+        let everything = Group {
+            ids: prepared
+                .requirements
+                .requirements
+                .iter()
+                .map(|r| r.id.clone())
+                .collect(),
+            lines: Vec::new(),
+        };
+        let evidence = evidence_for(prepared, &everything, self.policy.evidence_chars);
+        let key = format!("microluna-{}", &sha256(&prepared.instruction)[..16]);
+        let w = &tiered.writer;
+        let writer = crate::accept::MicrolunaWriter {
+            transport: wire,
+            config: Config {
+                model: self.model.clone(),
+                effort: w.effort.clone().or_else(|| self.effort.clone()),
+                max_turns: w.turns,
+                cache_key: format!("{key}-tiered-writer"),
+                deadline: Some(Duration::from_secs(self.policy.session_sec).min(self.deadline)),
+                orient_effort: None,
+                parallel_tools: self.policy.parallel_tools,
+                persist: None,
+                spend_usd: None,
+                finish_rule: None,
+            },
+            isolation: self.isolation,
+            seal: self.seal.clone(),
+            traces: Some(self.artifacts.clone()),
+            echo: false,
+        };
+        let confine = match self.isolation {
+            Isolation::TaskContainer => crate::accept::Confine::TaskContainer,
+            Isolation::ReadOnly => crate::accept::Confine::ReadOnly,
+            Isolation::Boundary => crate::accept::Confine::Writing,
+        };
+        let runner = crate::accept::Local {
+            confine,
+            test_sec: 120,
+            jobs: self.policy.test_jobs as usize,
+        };
+        let real = self.workdir.display().to_string();
+        let inputs = crate::accept::Inputs {
+            task: &task,
+            requirements: &prepared.requirements,
+            evidence: &evidence,
+            workspace: &self.workdir,
+            suite_dir: &suite_dir,
+            workspace_note: format!(
+                "the task's workspace, {real}, which your commands can read but you must not \
+                 change"
+            ),
+            target: None,
+        };
+        let mut options = w.options();
+        options.test_jobs = self.policy.test_jobs as usize;
+        options.authority = true;
+        crate::say::line("  microluna ▸ writing and classifying the tiered acceptance suite");
+        let suite = crate::accept::define(
+            &inputs,
+            &writer,
+            &runner,
+            &prepared.jev,
+            &self.recorder,
+            &options,
+        )
+        .await;
+        let mut classes: BTreeMap<&str, usize> = BTreeMap::new();
+        for classified in suite.authority.values() {
+            *classes.entry(classified.class.word()).or_default() += 1;
+        }
+        crate::say::line(&format!(
+            "  microluna ▸ {}; classes {}",
+            suite.headline(),
+            classes
+                .iter()
+                .map(|(k, n)| format!("{k} {n}"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+        let record = json!({
+            "kind": "lean.tiered_suite",
+            "headline": suite.headline(),
+            "digest": suite.digest,
+            "tests": suite.tests.len(),
+            "classes": classes,
+            "hold": tiered.hold,
+            "rank": tiered.rank,
+            "record": crate::accept::AcceptanceSuite::record_path(&suite_dir),
+            "usd": suite.writer_usd + suite.jev_usd,
+        });
+        let tier = (!suite.tests.is_empty()).then(|| Tier {
+            suite,
+            runner,
+            hold: tiered.hold.clone(),
+            rank: tiered.rank.clone(),
+        });
+        (tier, record)
+    }
+
+    /// Runs the tiered suite on the workspace after session `number`: the
+    /// powers its result carries, the record, and the lines the next
+    /// session reads. A suite edited since its freeze holds nothing and
+    /// says so.
+    async fn tier_run(&self, tier: &Tier, number: u32) -> (Powers, Value, Vec<String>) {
+        match crate::accept::run(
+            &tier.suite,
+            &self.workdir,
+            &tier.runner,
+            Some(&self.recorder),
+            &format!("after session {number}"),
+        )
+        .await
+        {
+            Ok(result) => {
+                let powers = Powers::of(&tier.suite, &result, &tier.hold, &tier.rank);
+                let notes = authority::brief_lines(&tier.suite, &result, &powers);
+                let record = json!({
+                    "passed": result.passed,
+                    "total": result.total,
+                    "held": powers.held,
+                    "hold_green": powers.hold_green,
+                    "hold_total": powers.hold_total,
+                    "rank_green": powers.rank_green,
+                    "rank_total": powers.rank_total,
+                    "suspects": powers.suspects,
+                    "unpowered_red": powers.unpowered_red,
+                });
+                (powers, record, notes)
+            }
+            Err(tampered) => (
+                Powers::default(),
+                json!({"error": tampered.to_string(), "held": []}),
+                Vec::new(),
+            ),
+        }
     }
 
     /// Runs the frozen score script against the workspace.
@@ -1539,6 +1830,55 @@ impl Micro {
         if !baseline_record.is_null() {
             moves.push(baseline_record);
         }
+        // `verify.executed` (issue #9636): the commands to rerun after every
+        // session, each with its outcome on the untouched workspace. The
+        // records go beside `evidence.baseline`'s, whose finished commands
+        // (`baseline`) come first.
+        let executed_file = self
+            .artifacts
+            .join(format!("lean-{}", self.dispatch()))
+            .join(crate::baseline::EXECUTED_FILE);
+        let executed_place = |rule: &LeanExecuted, left: Duration| executed::Place {
+            workdir: self.workdir.clone(),
+            contained: self.isolation == Isolation::TaskContainer,
+            wall: Duration::from_secs(rule.command_sec),
+            budget: Duration::from_secs(rule.budget_sec).min(left),
+        };
+        let mut executed_plan: Option<executed::Baseline> = None;
+        if let Some(rule) = lean.executed.as_ref().filter(|_| lean.keep_best) {
+            match &base {
+                Some(untouched) => {
+                    let known = executed::read(&executed_file);
+                    let from_records = known
+                        .iter()
+                        .filter(|r| r.stage == executed::Stage::Baseline)
+                        .count();
+                    let place = executed_place(rule, time_left());
+                    let (plan, records) = executed::prepare(
+                        &prepared.instruction,
+                        untouched,
+                        &place,
+                        &baseline,
+                        &known,
+                    )
+                    .await;
+                    let error = executed::append(&executed_file, &records).err();
+                    moves.push(json!({
+                        "kind": "lean.executed_baseline",
+                        "commands": plan.commands,
+                        "from_records": from_records,
+                        "ran": records.len(),
+                        "error": error,
+                    }));
+                    executed_plan = Some(plan);
+                }
+                None => moves.push(json!({
+                    "kind": "lean.executed_refused",
+                    "error": "the workspace couldn't be copied, so no command runs after a session",
+                })),
+            }
+        }
+        let mut reject_note: Option<String> = None;
         let mut history: Vec<String> = Vec::new();
         let mut flag_note: Option<String> = None;
         let mut last_tail: Option<String> = None;
@@ -1562,6 +1902,16 @@ impl Micro {
             ));
             moves.push(json!({"kind": "lean.lanes_refused", "lanes": lean.lanes, "error": error}));
         }
+        let tier = match &lean.tiered {
+            Some(tiered) => {
+                let (tier, record) = self.tiered_suite(prepared, tiered).await;
+                spent += record["usd"].as_f64().unwrap_or(0.0);
+                moves.push(record);
+                tier
+            }
+            None => None,
+        };
+        let mut tier_notes: Vec<String> = Vec::new();
         let mut offset = 0u32;
         if lanes > 1 {
             // The scorer session: the evaluation script only.
@@ -1664,6 +2014,8 @@ impl Micro {
                         session: if keep_evidence { kept.session } else { offset },
                         score: kept.score,
                         dir: kept.dir,
+                        held: 0,
+                        rank: 0.0,
                     });
                 }
                 moves.extend(record);
@@ -1755,12 +2107,16 @@ impl Micro {
                 if let Some(note) = &flag_note {
                     state.push(note.clone());
                 }
+                if let Some(note) = &reject_note {
+                    state.push(note.clone());
+                }
                 if let Some(tail) = &last_tail {
                     state.push(tail.clone());
                 }
                 if !checking {
                     state.extend(detect_notes.iter().cloned());
                 }
+                state.extend(tier_notes.iter().cloned());
                 let changes = match &base {
                     Some(base) => crate::delegate::changes_since(base, &self.workdir),
                     None => crate::delegate::changes(&self.workdir, None),
@@ -1911,6 +2267,58 @@ impl Micro {
                         )
                 )
             });
+            // `verify.executed`: rerun the commands on a scratch copy of the
+            // candidate. Any that exited 0 on the untouched workspace and
+            // fails now rejects it, whatever it scores.
+            let (rejected, executed_record, executed_records) =
+                match (lean.executed.as_ref(), executed_plan.as_ref()) {
+                    (Some(rule), Some(plan)) => {
+                        let place = executed_place(
+                            rule,
+                            time_left().min(wall_left().unwrap_or(Duration::MAX)),
+                        );
+                        let candidate_dir = keep_evidence
+                            .then(|| format!("lean-{}/session-{number}", self.dispatch()));
+                        match executed::after_session(plan, &place, number, candidate_dir).await {
+                            Ok(records) => {
+                                let rejected = executed::rejects(&records);
+                                let error = executed::append(&executed_file, &records).err();
+                                let count = |v: executed::Verdict| {
+                                    records.iter().filter(|r| r.verdict == Some(v)).count()
+                                };
+                                let record = json!({
+                                    "rejected": rejected,
+                                    "regressed": records
+                                        .iter()
+                                        .filter(|r| r.verdict == Some(executed::Verdict::Regressed))
+                                        .map(|r| json!({"command": r.command, "rule": r.rule}))
+                                        .collect::<Vec<_>>(),
+                                    "ok": count(executed::Verdict::Ok),
+                                    "not_a_regression": count(executed::Verdict::NotARegression),
+                                    "unknown": count(executed::Verdict::Unknown),
+                                    "error": error,
+                                });
+                                (rejected, record, records)
+                            }
+                            Err(error) => (
+                                false,
+                                json!({"rejected": false, "error": error}),
+                                Vec::new(),
+                            ),
+                        }
+                    }
+                    _ => (false, Value::Null, Vec::new()),
+                };
+            let powers = match &tier {
+                Some(tier) => {
+                    let (powers, record, notes) = self.tier_run(tier, number).await;
+                    tier_notes = notes;
+                    Some((powers, record))
+                }
+                None => None,
+            };
+            let held = powers.as_ref().map_or(0, |(p, _)| p.held.len());
+            let rank = powers.as_ref().map_or(0.0, |(p, _)| p.rank_fraction());
             if lean.failures && have_score {
                 last_tail = Some(format!(
                     "The host's evaluation output after session {number}, its tail:\n{}",
@@ -1922,6 +2330,8 @@ impl Micro {
                     "After session {number} the host's score was {p} of {t}{}.",
                     if flagged {
                         ", but the workspace was flagged"
+                    } else if rejected {
+                        ", but the host rejected the workspace: a command regressed"
                     } else {
                         ""
                     }
@@ -1956,9 +2366,19 @@ impl Micro {
             // scalar score cannot establish that a later edit is better.
             let mut kept = false;
             let mut keep_error = None;
-            if lean.keep_best && !flagged && (!lean.protect_candidates || snapshot.is_ok()) {
+            if lean.keep_best
+                && !flagged
+                && !rejected
+                && (!lean.protect_candidates || snapshot.is_ok())
+            {
                 let better = best.as_ref().is_none_or(|b| {
-                    if lean.protect_candidates {
+                    if tier.is_some() {
+                        authority::ranks_at_least(
+                            (held, fraction(score), rank),
+                            (b.held, fraction(b.score), b.rank),
+                            lean.protect_candidates,
+                        )
+                    } else if lean.protect_candidates {
                         fraction(score) > fraction(b.score)
                     } else {
                         fraction(score) >= fraction(b.score)
@@ -1986,6 +2406,8 @@ impl Micro {
                                 session: number,
                                 score,
                                 dir,
+                                held,
+                                rank,
                             });
                             kept = true;
                         }
@@ -2015,11 +2437,16 @@ impl Micro {
                 },
                 if kept {
                     "; kept as the best so far"
+                } else if rejected {
+                    "; rejected: a command that ran on the untouched workspace fails now"
                 } else {
                     ""
                 },
                 not_kept
             ));
+            reject_note = rejected.then(|| {
+                executed::note(number, &executed_records, best.as_ref().map(|b| b.session))
+            });
             moves.push(json!({
                 "kind": "lean",
                 "after_session": number,
@@ -2037,8 +2464,14 @@ impl Micro {
                 "workspace_files": keep_evidence.then(|| scope.identity(&self.workdir).ok()),
                 "evaluator_files": evaluator_digest,
             }));
+            if let (Some((_, record)), Some(last)) = (&powers, moves.last_mut()) {
+                last["tiered"] = record.clone();
+            }
             if let (Some(record), Some(last)) = (in_session, moves.last_mut()) {
                 last["in_session"] = record;
+            }
+            if let (false, Some(last)) = (executed_record.is_null(), moves.last_mut()) {
+                last["executed"] = executed_record;
             }
             if keep_evidence {
                 let evidence = serde_json::to_vec_pretty(&moves).unwrap_or_default();
@@ -2060,7 +2493,10 @@ impl Micro {
                 break;
             }
             let full = score.is_some_and(|(p, t)| p >= t);
-            let settled = status == "done" && !flagged && (!lean.keep_best || full);
+            // A holding test's red keeps the loop going; its green is
+            // necessary, never sufficient.
+            let settled =
+                status == "done" && !flagged && !rejected && (!lean.keep_best || full) && held == 0;
             if settled {
                 stopped = format!("session {number} ended done");
                 if !lean.self_check {
@@ -2095,17 +2531,26 @@ impl Micro {
         // flagged.
         if let Some(b) = &best {
             let last = moves.last();
-            let last_flagged = last.is_some_and(|m| m["hardcoded"]["flagged"] == true);
+            let last_flagged = last.is_some_and(|m| {
+                m["hardcoded"]["flagged"] == true || m["executed"]["rejected"] == true
+            });
             let last_score = last.and_then(|m| {
                 Some((
                     m["score"]["passed"].as_u64()?,
                     m["score"]["total"].as_u64()?,
                 ))
             });
+            // A tiered suite's ranking tests never restore an earlier
+            // workspace: only the holding tests and the score may.
+            let last_held = last.and_then(|m| m["tiered"]["held"].as_array().map(Vec::len));
+            let beaten = match (&tier, last_held) {
+                (Some(_), Some(last_held)) => {
+                    authority::beats(b.held, fraction(b.score), last_held, fraction(last_score))
+                }
+                _ => fraction(b.score) > fraction(last_score),
+            };
             if Some(b.session) != sessions.last().map(|r| r.number)
-                && (lean.protect_candidates
-                    || last_flagged
-                    || fraction(b.score) > fraction(last_score))
+                && (lean.protect_candidates || last_flagged || beaten)
             {
                 match scope.restore(&self.workdir, &b.dir) {
                     Ok(()) => {

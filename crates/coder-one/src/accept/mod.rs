@@ -40,7 +40,9 @@
 //! boundary, a task container directly, or a Docker image for the offline
 //! validity measurement.
 
+pub mod authority;
 pub mod cli;
+pub mod discriminate;
 pub mod minitask;
 pub mod offline;
 pub mod runner;
@@ -217,6 +219,11 @@ pub struct Options {
     /// edit sessions. 1 runs them one after another.
     #[serde(default = "one_job", skip_serializing_if = "is_one_job")]
     pub test_jobs: usize,
+    /// Classify every frozen test by how its expected value is supported
+    /// ([`authority`]): by code, and with two Jev questions for each test
+    /// red on the untouched workspace.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub authority: bool,
 }
 
 fn one_job() -> usize {
@@ -630,6 +637,7 @@ impl Default for Options {
             guards: false,
             general: false,
             test_jobs: 1,
+            authority: false,
         }
     }
 }
@@ -900,6 +908,11 @@ pub struct AcceptanceSuite {
     /// Everything else a reader of the record may want: the runner, the
     /// options, and the Jev answers per test.
     pub detail: Value,
+    /// Each test's authority class and the evidence for it
+    /// ([`authority`]), when the suite was classified. Not part of the
+    /// digest, which covers the suite's files.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub authority: BTreeMap<String, authority::Classified>,
 }
 
 /// What changed in a suite directory since its freeze.
@@ -1992,7 +2005,22 @@ async fn define_on<W: Writer, R: Runner>(
             "left": problems,
             "inventory": { "sweeps": sweeps, "modules": modules },
         }),
+        authority: BTreeMap::new(),
     };
+    let mut suite = suite;
+    if options.authority {
+        let spent = authority::classify_suite(
+            &mut suite,
+            inputs.task,
+            &BTreeMap::new(),
+            jev,
+            recorder,
+            &authority::Thresholds::default(),
+        )
+        .await;
+        suite.jev_usd += spent.jev_usd;
+        suite.detail["authority"] = json!(spent);
+    }
     let _ = suite.save(&AcceptanceSuite::record_path(&dir));
     recorder.push(
         atif::Step::said(
@@ -2283,6 +2311,15 @@ pub async fn extend<W: Writer, R: Runner>(
             })))
             .collect::<Vec<_>>()
     );
+    if options.authority {
+        // A gap round's tests have no Jev judgment of their own, so code
+        // classifies them from their run on the untouched workspace.
+        authority::classify_by_code(
+            &mut out,
+            &BTreeMap::new(),
+            &authority::Thresholds::default(),
+        );
+    }
     let _ = out.save(&AcceptanceSuite::record_path(&dir));
     recorder.push(
         atif::Step::said(

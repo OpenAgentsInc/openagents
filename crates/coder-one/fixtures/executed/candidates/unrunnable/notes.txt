@@ -1,0 +1,2 @@
+This candidate changes only its notes. It still has no report.sh, so
+`sh report.sh` fails here as it did on the untouched workspace.
