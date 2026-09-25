@@ -97,6 +97,9 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
     let Some((verb, rest)) = args.split_first() else {
         return Err(USAGE.to_string());
     };
+    if verb == "readiness" {
+        return super::readiness::command(rest).await;
+    }
     if verb == "public-program" {
         return super::public_program::command(rest).await;
     }

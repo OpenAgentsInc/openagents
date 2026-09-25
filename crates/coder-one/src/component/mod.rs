@@ -1227,7 +1227,9 @@ pub fn recorder(out: Option<&Path>, label: &str) -> Result<Recorder, String> {
         return Ok(Recorder::default());
     };
     let at = atif::now_ms();
-    let id = format!("component-{label}-{at}");
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let sequence = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let id = format!("component-{label}-{at}-{}-{sequence}", std::process::id());
     let session = atif::Session::opening(
         &id,
         crate::credentials::JEV_MODEL,
