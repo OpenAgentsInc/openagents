@@ -1,0 +1,20 @@
+{
+  "checked_at": "2026-09-25T10:37:57.353500+00:00",
+  "source_sha256": {
+    "bench/terminal-bench/experiments/2026-09-25-literal-confirmation/breakdown.py": "4e11c7b1b718e36b0ab5c21950807091ef65b84df2d9cfebf939728df051e117",
+    "bench/terminal-bench/experiments/2026-09-25-literal-confirmation/test_accounting.py": "20cba2ca87aad6f66113615919934435c06e4b500125a63f3459f90de2e115f3",
+    "bench/terminal-bench/experiments/2026-09-25-candidate-review/archive_executor_costs.py": "02a5b385663f0146551092c34a432fc2aa51c59c7933b7c1a3d6005d0d9cb675",
+    "bench/terminal-bench/experiments/2026-09-25-candidate-review/archive_resources.py": "b5bd1a34636fcc0f22bfc5090d0f83c1ce7cd174145e04c985f36a8ec0ee5775"
+  },
+  "tests": {
+    "exit": 0,
+    "count": 5,
+    "log_sha256": "d169ff0543bcf98f22c7a4b9b947eba95001735b1836a0677b2021607e661b77"
+  },
+  "byte_identical_original_reports": {
+    "archive-executor-costs.json": "9ec05d4e88284d562faf4e5ee1c7ca8002ef41dd5c788b174377a2eb9c922ea7",
+    "archive-resources.json": "f4264b669b5b0a1c545226e17c9c70d4da32bb5ef7a0b67890cf950669370d4b"
+  },
+  "model_calls": 0,
+  "decision_rule_changed": false
+}

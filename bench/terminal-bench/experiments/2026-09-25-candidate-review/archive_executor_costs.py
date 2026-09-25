@@ -6,16 +6,20 @@ import json
 from pathlib import Path
 
 from prepare import sha
-from seal_archive import population
+from seal_archive import TASKS, population
 
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     for name in ('manifest', 'jobs', 'out'):
         p.add_argument('--' + name, type=Path, required=True)
+    p.add_argument('--tasks-file', type=Path)
     a = p.parse_args()
     rows = json.loads(a.manifest.read_text())
-    population(rows)
+    tasks = a.tasks_file.read_text().splitlines() if a.tasks_file else TASKS
+    if not tasks or len(tasks) != len(set(tasks)) or any(not t.strip() for t in tasks):
+        raise ValueError("Declared tasks must be unique and nonempty")
+    population(rows, tasks)
     records = []
     for row in rows:
         path = a.jobs / row['job'] / row['trial'] / 'agent/episode/evaluation/usage.json'
@@ -45,8 +49,10 @@ def main():
                         'Each attempt contributes its one final ledger, including failed attempts.',
                         'Missing usage is unknown, never a zero-cost inference claim.',
                         'Reproduced review and Jev check costs are recorded separately.',
-                        'Original r1 setup refusals occurred before any model call.'],
+                        *([] if a.tasks_file else ['Original r1 setup refusals occurred before any model call.'])],
               'records': records}
+    if a.tasks_file:
+        result['tasks_sha256'] = sha(a.tasks_file)
     a.out.write_text(json.dumps(result, indent=2) + '\n')
     print(json.dumps(by_executor, indent=2))
 

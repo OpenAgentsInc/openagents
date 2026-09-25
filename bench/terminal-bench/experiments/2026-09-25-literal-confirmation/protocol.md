@@ -181,3 +181,21 @@ SHA-256 `b6b00bdc98db2a8c3736f016709d034289752cd113148a93439485a893a82935`.
 Its [manifest](records/literal-preparation-files.json) binds 260 credential-scanned,
 separately restored, hash-verified files. Public environment inputs remain in the
 previously retained preflight bundle.
+
+
+## Reporting tools
+
+After the verified grade join, `breakdown.py --protocol protocol.json --predictions
+sealed.json --labels labels.json --out task-breakdown.json` reports every task and
+executor, false alarms, missed failures, review coverage, and dependent within-task
+comparisons. It reads the already joined labels and verifies their prediction and
+protocol bindings. It does not refit a rule or replace the frozen bootstrap.
+
+The previous `archive_executor_costs.py` and `archive_resources.py` accept
+`--tasks-file selection.txt` for this 90-attempt population, retaining missing
+usage, unknown prices, failed-attempt costs, and undefined cost per pass. Their
+default 72-candidate reports reproduce byte-for-byte. Five focused tests pass,
+including missing-price/grade denominators and declaration mismatch rejection;
+see the [verification record](records/accounting-verification.json) and
+[test log](records/accounting-tests.log). These reporting changes leave all frozen
+orchestration hashes and predictions unchanged.

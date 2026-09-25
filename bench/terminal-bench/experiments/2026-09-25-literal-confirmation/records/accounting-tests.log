@@ -1,0 +1,10 @@
+test_custom_population_keeps_failed_costs_missing_usage_and_undefined_cost_per_pass (test_accounting.AccountingTests.test_custom_population_keeps_failed_costs_missing_usage_and_undefined_cost_per_pass) ... ok
+test_unknown_predictions_count_as_misses_but_unknown_grades_stay_separate (test_accounting.AccountingTests.test_unknown_predictions_count_as_misses_but_unknown_grades_stay_separate) ... ok
+test_literal_failure_requires_difference_identity_and_skipped_review (test_study.StudyTests.test_literal_failure_requires_difference_identity_and_skipped_review) ... ok
+test_reserved_population_rejects_missing_and_duplicate_attempts (test_study.StudyTests.test_reserved_population_rejects_missing_and_duplicate_attempts) ... ok
+test_unknown_candidate_stays_in_seal_without_grade_read (test_study.StudyTests.test_unknown_candidate_stays_in_seal_without_grade_read) ... ok
+
+----------------------------------------------------------------------
+Ran 5 tests in 0.106s
+
+OK
