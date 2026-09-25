@@ -1,0 +1,61 @@
+# Candidate review validation protocol
+
+Frozen before live reviews on 2026-09-25 for #9584.
+
+## Inputs and rule
+
+The review reads only the public instruction, bounded retained final output files,
+and a statement of coverage limits. It receives no writer report, verifier data,
+reward, task outcome, trial name, or prior verdict. Luna high makes one request
+with a native `submit_review` function and at most three counterexamples. Each
+must quote the public requirement and candidate file exactly. Code rejects
+ungrounded quotes. Jev judges the grounded counterexample's correctness and
+whether it violates a stated requirement; its score is the lower probability.
+A candidate's score is the maximum valid finding score. No valid finding means
+unknown, never pass. Missing files, an interrupted request, malformed output,
+and speculative concerns cannot establish failure.
+
+The exact prompt, question text, tool schema, limits, requests, replies, token
+usage, elapsed time, and findings are retained. Input JSON rejects unknown fields,
+including labels. The Rust component executes no commands or candidate code.
+Static counterexamples are not described as executed behavior tests.
+
+## Development and comparison
+
+Use the original 317-trial task-group partition: 132 calibration trials on 26
+tasks, 185 comparison trials on 32 different tasks. All rows remain in the
+coverage and recall denominator, including unavailable outputs. Candidate files
+come from Harbor's final output manifest, excluding logs; binary data and overly
+large files are explicitly unavailable. Retain up to 160 KB across at most 100
+files, ordered by path, and state every omission. Do not substitute the initial
+workspace for an unretained final output.
+
+Run the calibration partition first. Choose among thresholds 0.5, 0.7, 0.8, 0.9,
+and 0.95: maximize true failure detections while requiring at least five failure
+calls and at least 90% observed failure precision. Break ties with the higher
+threshold. If none qualifies, retain the negative result and revise only on
+calibration data before freezing a new rule. Do not inspect comparison reviews or
+join their grades until the prompt, thresholds, input construction, and
+combination rule are committed.
+
+The 32-task comparison partition was inspected during earlier report-only
+experiments. It is held out from this review's calibration, but is reused
+validation, not a never-observed test set. Report that limitation prominently.
+Do not use comparison results to tune this version. A separate prospective
+Microluna confirmation must freeze task groups and the complete procedure before
+running new candidates; previously studied task groups remain development data.
+
+## Measurements and continuation
+
+Compare failure precision and failure recall with the same candidates' final
+scenario checks and original report verdict. Report exact counts, Wilson 95%
+intervals, per-task results, and paired whole-task bootstrap differences (10,000
+resamples, seed 9584). Count unknowns in the failure-recall denominator. Report
+false alarms on correct candidates and coverage by available artifact type.
+Never infer a precision improvement against a baseline with no failure calls.
+
+Retain failures and unavailable reviews. Include total known costs and disclose
+unknown costs. Bound each Luna request to 180 seconds and each Jev request to its
+existing 60-second budget. Run at most four reviews concurrently. Preserve other
+coderos worktrees and running jobs. This first protocol is an experiment, not a
+new runtime default or grounds to close #9584 by itself.

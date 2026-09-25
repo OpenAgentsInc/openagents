@@ -43,6 +43,7 @@ pub mod labeled;
 pub mod place;
 pub mod recover;
 pub mod replay;
+pub mod review;
 pub mod selfreport;
 pub mod synthetic;
 pub mod truth;

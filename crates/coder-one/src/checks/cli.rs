@@ -9,7 +9,8 @@ use super::{Input, Report, check, recover, synthetic};
 use crate::record::Recorder;
 
 /// The checks commands' usage.
-pub const USAGE: &str = "usage: coder-one checks synthetic [NAME] [--json]
+pub const USAGE: &str = "usage: coder-one checks review --input FILE --out DIR
+       coder-one checks synthetic [NAME] [--json]
        coder-one checks run --input FILE [--json]
        coder-one checks recover --traces DIR [--arm ARM|all] [--out DIR] [--json]
        coder-one checks replay [--jobs DIR] [--match TEXT] [--policy FILE]
@@ -96,6 +97,9 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
     let Some((verb, rest)) = args.split_first() else {
         return Err(USAGE.to_string());
     };
+    if verb == "review" {
+        return super::review::command(rest).await;
+    }
     let mut positional = Vec::new();
     let mut input = None;
     let mut traces = None;
