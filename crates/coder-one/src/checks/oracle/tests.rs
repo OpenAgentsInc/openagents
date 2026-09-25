@@ -1007,3 +1007,42 @@ fn every_registered_experiment_names_its_frozen_protocol() {
     }
     assert!(preregistered("2026-09-25-oracle-live", "").is_none());
 }
+
+/// A directory the instruction names contributes the heads of its files,
+/// even a file too large to keep whole, so the writer sees the inputs'
+/// structure.
+#[tokio::test]
+async fn a_named_directory_gives_the_writer_its_files_heads() {
+    use crate::checks::contract::extract;
+    use crate::checks::contract::host::Local;
+    let dir = tempfile::tempdir().expect("a directory");
+    let data = dir.path().join("data");
+    std::fs::create_dir(&data).unwrap();
+    let mut big = String::from("record_id,ssn,name\n");
+    for i in 0..20_000 {
+        big.push_str(&format!("R{i:05},{:09},Name {i}\n", 100_000_000 + i));
+    }
+    assert!(big.len() > extract::TEXT_MAX);
+    std::fs::write(data.join("big.csv"), &big).unwrap();
+    std::fs::write(data.join("small.csv"), "id,value\n1,2\n").unwrap();
+    let workdir = dir.path().to_string_lossy().to_string();
+    let instruction = format!("Two CSV files at `{workdir}/data/` hold the records.");
+    let host = Local {
+        workdir: dir.path().to_path_buf(),
+    };
+    let pristine = extract::gather(&host, &instruction, &workdir).await;
+    let big_path = format!("{workdir}/data/big.csv");
+    let head = pristine
+        .heads
+        .get(&big_path)
+        .expect("the large file's head");
+    assert!(head.starts_with("record_id,ssn,name\nR00000,"));
+    assert!(head.len() <= extract::HEAD_MAX);
+    let inputs = super::define::input_heads(&pristine);
+    assert!(
+        inputs
+            .iter()
+            .any(|i| i.path == big_path && i.head.contains("record_id,ssn,name"))
+    );
+    assert!(inputs.iter().any(|i| i.path.ends_with("small.csv")));
+}

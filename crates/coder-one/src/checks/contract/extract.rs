@@ -446,7 +446,18 @@ pub(crate) fn stem_tokens(path: &str) -> BTreeSet<String> {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Pristine {
     pub entries: BTreeMap<String, Entry>,
+    /// The first lines of each file inside a directory the instruction
+    /// names, up to [`HEAD_MAX`] bytes cut at the last whole line. Only
+    /// the oracle's input heads read these; the contract checks read
+    /// `entries`.
+    pub heads: BTreeMap<String, String>,
 }
+
+/// Bytes of a listed file's head, at most.
+pub const HEAD_MAX: usize = 16 * 1024;
+
+/// Files listed from one named directory, at most.
+pub const LISTED_MAX: usize = 40;
 
 /// One path of the untouched workspace.
 #[derive(Clone, Debug, PartialEq)]
@@ -514,9 +525,47 @@ async fn fetch(host: &impl Host, path: &str, into: &mut Pristine) {
     into.entries.insert(key, Entry { stat, text });
 }
 
+/// Lists the files in `dir`, two levels deep, and keeps the head of each
+/// one not already read whole.
+async fn list_heads(host: &impl Host, dir: &str, into: &mut Pristine) {
+    let listed = host
+        .run(
+            &format!(
+                "find {} -maxdepth 2 -type f 2>/dev/null | sort | head -n {LISTED_MAX}",
+                quote(dir)
+            ),
+            std::time::Duration::from_secs(10),
+        )
+        .await;
+    for path in listed
+        .stdout
+        .lines()
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+    {
+        if into.heads.contains_key(path) || into.entries.get(path).is_some_and(|e| e.text.is_some())
+        {
+            continue;
+        }
+        let Ok(Some(bytes)) = host.read(path, HEAD_MAX).await else {
+            continue;
+        };
+        let text = String::from_utf8_lossy(&bytes);
+        let head = if bytes.len() >= HEAD_MAX {
+            text.rsplit_once('\n').map_or(&text[..], |(head, _)| head)
+        } else {
+            &text[..]
+        };
+        if !head.contains('\u{fffd}') {
+            into.heads.insert(path.to_string(), head.to_string());
+        }
+    }
+}
+
 /// Reads, from the untouched workspace on `host`, every path the
-/// instruction names, the `README` of every directory it names, and every
-/// file a command in a named document names.
+/// instruction names, the `README` of every directory it names, the head
+/// of every file in such a directory, and every file a command in a named
+/// document names.
 pub async fn gather(host: &impl Host, instruction: &str, workdir: &str) -> Pristine {
     let mut pristine = Pristine::default();
     for path in mentioned(instruction, workdir) {
@@ -532,6 +581,7 @@ pub async fn gather(host: &impl Host, instruction: &str, workdir: &str) -> Prist
         for name in ["README.md", "README", "README.txt", "readme.md"] {
             fetch(host, &format!("{dir}/{name}"), &mut pristine).await;
         }
+        list_heads(host, &dir, &mut pristine).await;
     }
     let docs: Vec<(String, String)> = pristine
         .entries

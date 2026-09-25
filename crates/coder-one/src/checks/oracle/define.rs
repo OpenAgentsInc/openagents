@@ -292,9 +292,19 @@ pub fn input_heads(pristine: &Pristine) -> Vec<InputHead> {
                 && !PROGRAM.iter().any(|x| p.to_lowercase().ends_with(x))
                 && !p.to_lowercase().contains("readme")
         })
+        .map(|(p, e)| (p, e.text.as_deref().unwrap_or_default()))
+        .chain(
+            pristine
+                .heads
+                .iter()
+                .filter(|(p, _)| {
+                    !PROGRAM.iter().any(|x| p.to_lowercase().ends_with(x))
+                        && !p.to_lowercase().contains("readme")
+                })
+                .map(|(p, h)| (p, h.as_str())),
+        )
         .take(8)
-        .map(|(p, e)| {
-            let text = e.text.as_deref().unwrap_or_default();
+        .map(|(p, text)| {
             let head: String = text.lines().take(60).collect::<Vec<_>>().join("\n");
             InputHead {
                 path: p.clone(),
