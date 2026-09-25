@@ -23,25 +23,35 @@ except BaseException as e:
 '''
 
 p = argparse.ArgumentParser(description=__doc__)
-p.add_argument('mode', choices=['generate', 'run'])
+p.add_argument('mode', choices=['generate', 'admit', 'run'])
 p.add_argument('--manifest', type=Path, required=True)
 p.add_argument('--partition', choices=['calibration', 'held-out', 'prospective'], required=True)
 p.add_argument('--binary', type=Path)
 p.add_argument('--programs', type=Path)
 p.add_argument('--image', help='Pinned local Docker image ID, required for execution')
+p.add_argument('--record', default='generated')
 a = p.parse_args()
 rows = [r for r in json.loads(a.manifest.read_text()) if r['split'] == a.partition]
 
 
 def generate(row):
     source = Path(row['input'])
-    out = source.parent / 'generated'
+    out = source.parent / a.record
     if (out / 'program.json').exists():
         return row['task'], 'retained'
     out.mkdir(exist_ok=True)
+    extra = []
+    if a.mode == 'admit':
+        original = source.parent / 'generated/program.json'
+        if not original.exists():
+            return row['task'], 'generator pending'
+        original_value = json.loads(original.read_text())
+        if not original_value.get('reply'):
+            return row['task'], 'generator unavailable'
+        extra = ['--replay', str(original), '--admission', 'bounded']
     with (out / 'process.log').open('w') as log:
         try:
-            result = subprocess.run([str(a.binary), 'checks', 'public-program', '--input', str(source), '--out', str(out)],
+            result = subprocess.run([str(a.binary), 'checks', 'public-program', '--input', str(source), '--out', str(out)] + extra,
                                     stdout=log, stderr=subprocess.STDOUT, timeout=260)
             status = 'exit ' + str(result.returncode)
         except subprocess.TimeoutExpired:
@@ -53,13 +63,13 @@ def run(row):
     if not row.get('input'):
         return row['trial'], 'no retained final packet'
     source = Path(row['input'])
-    dest = source.parent / 'public-program'
+    dest = source.parent / ('public-program' if a.record == 'generated' else 'public-program-' + a.record)
     output = dest / 'observation.json'
     if output.exists():
         return row['trial'], 'retained'
     dest.mkdir(exist_ok=True)
     task = a.programs / row['task'].split('/')[-1]
-    program_path = task / 'generated/program.json'
+    program_path = task / a.record / 'program.json'
     if not program_path.exists():
         return row['trial'], 'no completed generator'
     program = json.loads(program_path.read_text())
@@ -130,10 +140,10 @@ def run(row):
     return row['trial'], error or 'recorded'
 
 
-if a.mode == 'generate' and not a.binary:
-    p.error('generate requires --binary')
+if a.mode in ['generate', 'admit'] and not a.binary:
+    p.error('generate and admit require --binary')
 if a.mode == 'run' and (not a.programs or not a.image or not a.image.startswith('sha256:')):
     p.error('run requires --programs and a pinned --image sha256:...')
-with ThreadPoolExecutor(max_workers=4 if a.mode == 'generate' else 2) as pool:
-    for identity, status in pool.map(generate if a.mode == 'generate' else run, rows):
+with ThreadPoolExecutor(max_workers=4 if a.mode in ['generate','admit'] else 2) as pool:
+    for identity, status in pool.map(generate if a.mode in ['generate','admit'] else run, rows):
         print(identity, status, flush=True)
