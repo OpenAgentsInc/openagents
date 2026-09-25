@@ -67,6 +67,7 @@ pub async fn assess(
     )
     .await;
     json!({"schema":"openagents.coder-one.report-audit.v1","digest":digest,
+        "public_task":task,"selected_report":report,
         "state":state,"questions":questions(),"answers":asked.answers,
         "score":asked.answers.as_ref().and_then(score),"error":asked.error,
         "input_tokens":asked.input_tokens,"milliseconds":asked.milliseconds,
@@ -169,11 +170,21 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
         let digest = crate::component::jev::key(&state, &json!(questions()));
         let path = out.join(format!("{}.json", row.trial));
         if path.exists() {
-            let v: Value =
+            let mut v: Value =
                 serde_json::from_str(&std::fs::read_to_string(&path).map_err(|e| e.to_string())?)
                     .map_err(|e| e.to_string())?;
             if v["digest"] != digest {
                 return Err(format!("{} belongs to a different request", path.display()));
+            }
+            // Preserve full adapter inputs for exact replay of head/tail bounds.
+            // Adding these fields does not regenerate or alter any answer.
+            if v.get("selected_report").is_none() {
+                v["public_task"] = json!(task);
+                v["selected_report"] = json!(report);
+                crate::record::write_atomic(
+                    &path,
+                    &serde_json::to_vec_pretty(&v).map_err(|e| e.to_string())?,
+                )?;
             }
             continue;
         }
