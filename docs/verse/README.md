@@ -122,6 +122,11 @@ Test the crate with `cargo test -p verse`. Tests cover the controller rules,
 the camera limits, the world's determinism and clear spawn, and the palette
 guard. They do not need a GPU.
 
+## Game design
+
+The draft game design document is [`gdd.md`](gdd.md). It adds a companion
+agent to Verse: a pet with real-world powers, a wallet, and an economy.
+
 ## Next
 
 These build on the direction in [`docs/game/README.md`](../game/README.md):
