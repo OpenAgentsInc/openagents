@@ -14,7 +14,9 @@
 //!   ([`ANATOMY_PATH`]), matched as runs of [`SHINGLE`] consecutive words.
 //!
 //! Without `--run`, the check is static. It reads the policy manifests,
-//! the prompt files under `crates/coder-one/prompts/`, and every string
+//! the prompt files under `crates/coder-one/prompts/`, the Jev question
+//! sets under `questions/`, the data files the source embeds (such as
+//! `departures/standard-methods.json`), and every string
 //! literal in the non-test Rust under `crates/coder-one/src` and
 //! `crates/microluna/src`. A reviewed exemption ([`EXEMPT_PATH`]) lets
 //! code that no prompt reads, such as an offline study's task list, hold
@@ -25,9 +27,17 @@
 //! the task's instruction, or in any tool output the run received from
 //! its workspace, isn't a finding.
 //!
+//! The static check also compares phrase lists and prose with the
+//! lexicon of every task a policy was tuned on ([`lexicon`]), and lists
+//! which tasks each registered pattern may not count as evidence
+//! ([`patterns`]).
+//!
 //! The references stay in the repository and are read when the check
 //! runs. The binary embeds none of them, so a task container that holds
 //! the binary holds no benchmark facts.
+
+pub mod lexicon;
+pub mod patterns;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -40,24 +50,39 @@ pub const USAGE: &str =
     "usage: coder-one contamination check [--root DIR] [--policy FILE]... [--no-policies]
                                     [--run DIR] [--instruction FILE] [--json]
        coder-one contamination refs [--root DIR] [--jobs DIR]... [--out FILE]
+       coder-one contamination lexicon [--root DIR] [--tasks DIR] [--out FILE]
 
 check scans the text that can reach a model for Terminal-Bench task ids,
 verifier test names, and task-anatomy facts. Without --run it scans the
 policy manifests (every one, each --policy, or with --no-policies none;
 an episode gets its manifest through CODER_ONE_POLICY, so its note can
-reach a model), the prompt files, and the
-string literals in the non-test Rust of crates/coder-one and
+reach a model), the prompt files, the Jev question sets under questions/,
+the data files beside the source, and the string literals in the non-test
+Rust of crates/coder-one and
 crates/microluna, less the reviewed exemptions in
 crates/coder-one/contamination-exempt.json. With --run it scans one episode bundle's briefings and
 session messages, and ignores a match that the task's instruction
 (--instruction, or the episode's first User message) or the run's tool
-output also contains. check exits 0 when nothing matches, 1 with findings,
-and 2 when it can't run.
+output also contains.
+
+Without --run, check also compares every phrase-list entry and every
+window of prose with the lexicon of the tasks declared in
+crates/coder-one/contamination-tuned.json. A distinctive match needs an
+entry in crates/coder-one/contamination-provenance.json; an annotated
+match passes and is listed with its task, which can't count as evidence.
+check then lists, for each pattern under patterns/, the tasks it may not
+count as evidence. check exits 0 when nothing fails, 1 with findings, an
+unannotated match, or a registry problem, and 2 when it can't run.
 
 refs reads the verifier ctrf.json files under each --jobs directory
 (default: ~/.openagents/terminal-bench/jobs and the checkout's retained
 traces) and writes the verifier test names per task to --out (default:
 bench/terminal-bench/reference/verifier-tests.json under the root).
+
+lexicon reads every upstream task under --tasks (default:
+~/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks) and
+writes the tuned tasks' distinctive phrases, as digests, to --out
+(default: bench/terminal-bench/reference/tuned-lexicon.json).
 
 --root is the repository checkout; by default the nearest parent of the
 current directory that holds crates/coder-one.";
@@ -558,6 +583,26 @@ fn read_json(path: &Path) -> Result<Value, String> {
 /// they're skipped: a comment never reaches a model.
 #[must_use]
 pub fn rust_strings(source: &str) -> Vec<(usize, String)> {
+    rust_literals(source)
+        .into_iter()
+        .map(|literal| (literal.line, literal.text))
+        .collect()
+}
+
+/// One string literal in Rust source: the line it starts on, the
+/// character offsets of its opening and past its closing delimiter, and
+/// its text.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Literal {
+    pub line: usize,
+    pub start: usize,
+    pub end: usize,
+    pub text: String,
+}
+
+/// [`rust_strings`] with each literal's character span.
+#[must_use]
+pub fn rust_literals(source: &str) -> Vec<Literal> {
     let chars: Vec<char> = source.chars().collect();
     let mut out = Vec::new();
     let mut index = 0;
@@ -629,7 +674,12 @@ pub fn rust_strings(source: &str) -> Vec<(usize, String)> {
             '"' => {
                 let (text, end, lines) = cooked(&chars, index + 1);
                 if !skipping {
-                    out.push((line, text));
+                    out.push(Literal {
+                        line,
+                        start: index,
+                        end,
+                        text,
+                    });
                 }
                 line += lines;
                 index = end;
@@ -637,7 +687,12 @@ pub fn rust_strings(source: &str) -> Vec<(usize, String)> {
             'b' if !identifier_before && next == Some('"') => {
                 let (text, end, lines) = cooked(&chars, index + 2);
                 if !skipping {
-                    out.push((line, text));
+                    out.push(Literal {
+                        line,
+                        start: index,
+                        end,
+                        text,
+                    });
                 }
                 line += lines;
                 index = end;
@@ -651,7 +706,12 @@ pub fn rust_strings(source: &str) -> Vec<(usize, String)> {
                 match (chars[at] == 'r').then(|| raw(&chars, at)).flatten() {
                     Some((text, end, lines)) => {
                         if !skipping {
-                            out.push((line, text));
+                            out.push(Literal {
+                                line,
+                                start: index,
+                                end,
+                                text,
+                            });
                         }
                         line += lines;
                         index = end;
@@ -794,9 +854,27 @@ fn policy_files(root: &Path, policies: Option<&[PathBuf]>) -> Vec<PathBuf> {
     out
 }
 
+/// The non-test Rust source the static check reads.
+fn source_files(root: &Path) -> Vec<PathBuf> {
+    let mut sources = Vec::new();
+    for dir in ["crates/coder-one/src", "crates/microluna/src"] {
+        files_under(
+            &root.join(dir),
+            &|path| {
+                path.extension().is_some_and(|ext| ext == "rs")
+                    && path.file_name().is_some_and(|name| name != "tests.rs")
+                    && !path.components().any(|part| part.as_os_str() == "tests")
+            },
+            &mut sources,
+        );
+    }
+    sources
+}
+
 /// Every text the static check reads: the policy manifests, the prompt
-/// files, and the string literals of the non-test Rust. `policies` is as
-/// [`check`] takes it.
+/// files, the Jev question sets under `questions/`, the data files beside
+/// the source, and the string
+/// literals of the non-test Rust. `policies` is as [`check`] takes it.
 ///
 /// # Errors
 /// A named policy manifest can't be read.
@@ -816,24 +894,29 @@ pub fn static_texts(root: &Path, policies: Option<&[PathBuf]>) -> Result<Vec<Tex
         },
         &mut prompts,
     );
+    files_under(
+        &root.join("questions"),
+        &|path| path.extension().is_some_and(|ext| ext == "json"),
+        &mut prompts,
+    );
+    // Data the source embeds, such as the standard-method list a Jev
+    // question quotes.
+    for dir in ["crates/coder-one/src", "crates/microluna/src"] {
+        files_under(
+            &root.join(dir),
+            &|path| {
+                path.extension()
+                    .is_some_and(|ext| ext == "json" || ext == "md" || ext == "txt")
+            },
+            &mut prompts,
+        );
+    }
     for path in prompts {
         if let Ok(text) = std::fs::read_to_string(&path) {
             texts.push(Text::new(relative(root, &path), text));
         }
     }
-    let mut sources = Vec::new();
-    for dir in ["crates/coder-one/src", "crates/microluna/src"] {
-        files_under(
-            &root.join(dir),
-            &|path| {
-                path.extension().is_some_and(|ext| ext == "rs")
-                    && path.file_name().is_some_and(|name| name != "tests.rs")
-                    && !path.components().any(|part| part.as_os_str() == "tests")
-            },
-            &mut sources,
-        );
-    }
-    for path in sources {
+    for path in source_files(root) {
         let Ok(source) = std::fs::read_to_string(&path) else {
             continue;
         };
@@ -959,7 +1042,7 @@ fn report_text(report: &Value, findings: &[Finding]) -> String {
     ));
     if let Some(exempted) = report["exempted"].as_u64().filter(|&n| n > 0) {
         out.push_str(&format!(
-            "{exempted} matches in code no prompt reads are exempt ({EXEMPT_PATH})\n"
+            "{exempted} reviewed matches that no live run reads are exempt ({EXEMPT_PATH})\n"
         ));
     }
     if findings.is_empty() {
@@ -984,6 +1067,119 @@ fn report_text(report: &Value, findings: &[Finding]) -> String {
             finding.kind.word(),
             finding.matched,
             finding.excerpt
+        ));
+    }
+    out
+}
+
+/// The lexical comparison's and the registry's lines of a text report.
+fn provenance_text(part: &Value) -> String {
+    let mut out = String::new();
+    let count = |key: &str| part[key].as_array().map_or(0, Vec::len);
+    out.push_str(&format!(
+        "lexical provenance: {} phrase lists ({} entries) and {} texts against the lexicon of {} tuned tasks ({})\n",
+        part["phrase_lists"],
+        part["entries"],
+        part["prose_texts"],
+        part["tuned_tasks"],
+        part["lexicon"].as_str().unwrap_or_default(),
+    ));
+    let without: Vec<&str> = part["tuned_without_source"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .collect();
+    if !without.is_empty() {
+        out.push_str(&format!(
+            "  declared tasks with no retained source, not compared: {}\n",
+            without.join(", ")
+        ));
+    }
+    let line = |found: &Value| {
+        let list = found["list"]
+            .as_str()
+            .and_then(|l| l.rsplit("::").next())
+            .map(|name| format!(" {name}"))
+            .unwrap_or_default();
+        let mut text = format!(
+            "    {}{list} {:?} in {}",
+            found["location"].as_str().unwrap_or_default(),
+            found["phrase"].as_str().unwrap_or_default(),
+            found["task"].as_str().unwrap_or_default(),
+        );
+        if let Some(provenance) = found.get("provenance") {
+            let commits: Vec<&str> = provenance["commits"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .collect();
+            text.push_str(&format!(
+                " [{}{}{}]",
+                provenance["relation"].as_str().unwrap_or_default(),
+                if commits.is_empty() {
+                    String::new()
+                } else {
+                    format!(", {}", commits.join(" "))
+                },
+                provenance["pattern"]
+                    .as_str()
+                    .map(|p| format!(", pattern {p}"))
+                    .unwrap_or_default(),
+            ));
+        }
+        text.push('\n');
+        text
+    };
+    if count("annotated") > 0 {
+        out.push_str(&format!(
+            "  {} annotated matches; each task can't count as evidence:\n",
+            count("annotated")
+        ));
+        for found in part["annotated"].as_array().into_iter().flatten() {
+            out.push_str(&line(found));
+        }
+    }
+    if count("unannotated") == 0 {
+        out.push_str("  no unannotated match\n");
+    } else {
+        out.push_str(&format!(
+            "  {} unannotated matches fail the check; add each to {}:\n",
+            count("unannotated"),
+            lexicon::PROVENANCE_PATH
+        ));
+        for found in part["unannotated"].as_array().into_iter().flatten() {
+            out.push_str(&line(found));
+        }
+    }
+    for stale in part["stale_provenance"].as_array().into_iter().flatten() {
+        out.push_str(&format!(
+            "  stale provenance entry, no longer matched: {:?} in {}\n",
+            stale["phrase"].as_str().unwrap_or_default(),
+            stale["task"].as_str().unwrap_or_default(),
+        ));
+    }
+    let registry = &part["registry"];
+    for pattern in registry["patterns"].as_array().into_iter().flatten() {
+        let tasks: Vec<&str> = pattern["not_evidence"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .collect();
+        out.push_str(&format!(
+            "pattern {} ({}, {}): may not count as evidence: {}\n",
+            pattern["id"].as_str().unwrap_or_default(),
+            pattern["status"].as_str().unwrap_or_default(),
+            pattern["digest"].as_str().unwrap_or_default(),
+            tasks.join(", "),
+        ));
+    }
+    for problem in registry["problems"].as_array().into_iter().flatten() {
+        out.push_str(&format!(
+            "registry problem: {}\n",
+            problem.as_str().unwrap_or_default()
         ));
     }
     out
@@ -1069,6 +1265,7 @@ struct Flags {
     run: Option<PathBuf>,
     instruction: Option<PathBuf>,
     jobs: Vec<PathBuf>,
+    tasks: Option<PathBuf>,
     out: Option<PathBuf>,
     json: bool,
 }
@@ -1094,6 +1291,7 @@ fn parse(args: &[String]) -> Result<Flags, String> {
         run: None,
         instruction: None,
         jobs: Vec::new(),
+        tasks: None,
         out: None,
         json: false,
     };
@@ -1111,6 +1309,7 @@ fn parse(args: &[String]) -> Result<Flags, String> {
             "--run" => flags.run = Some(value("--run")?),
             "--instruction" => flags.instruction = Some(value("--instruction")?),
             "--jobs" => flags.jobs.push(value("--jobs")?),
+            "--tasks" => flags.tasks = Some(value("--tasks")?),
             "--out" => flags.out = Some(value("--out")?),
             "--json" => flags.json = true,
             other => return Err(format!("unknown flag {other}\n{USAGE}")),
@@ -1172,8 +1371,35 @@ impl Exemptions {
     }
 }
 
-/// Runs a check and returns its report and findings. `policies` names the
-/// manifests a static check reads: `None` for every manifest under
+/// The static check's lexical comparison and pattern registry: the
+/// report part and how many failures it holds (unannotated matches and
+/// registry problems).
+///
+/// # Errors
+/// The corpus, the provenance file, or a pattern can't be read.
+pub fn provenance_check(root: &Path, texts: Vec<Text>) -> Result<(Value, usize), String> {
+    let lexicon = lexicon::Lexicon::load(root)?;
+    let annotations = lexicon::provenance(root)?;
+    let scanned = lexicon::scanned(root, &source_files(root), texts);
+    let matches = lexicon::compare(&lexicon, &scanned, &annotations);
+    let stale = lexicon::unused(&annotations, &matches);
+    let registry = patterns::load(root)?;
+    let named: Vec<String> = annotations
+        .iter()
+        .filter_map(|entry| entry.pattern.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    let problems = patterns::problems(&registry, &matches, &named);
+    let unannotated = matches.iter().filter(|m| m.provenance.is_none()).count();
+    let mut part = lexicon::report(&lexicon, &scanned, &matches, &stale);
+    part["registry"] = patterns::report(&registry, &matches, &problems);
+    Ok((part, unannotated + problems.len()))
+}
+
+/// Runs a check and returns its report, its findings, and how many
+/// lexical or registry failures the static check found. `policies` names
+/// the manifests a static check reads: `None` for every manifest under
 /// `crates/coder-one/policies`, or exactly the given ones, possibly none.
 ///
 /// # Errors
@@ -1182,7 +1408,7 @@ pub fn check(
     root: &Path,
     policies: Option<&[PathBuf]>,
     run: Option<(&Path, Option<&str>)>,
-) -> Result<(Value, Vec<Finding>), String> {
+) -> Result<(Value, Vec<Finding>, usize), String> {
     let references = References::load(root)?;
     match run {
         None => {
@@ -1194,7 +1420,12 @@ pub fn check(
                 .partition(|finding| !exemptions.covers(finding));
             let mut report = report("static", &references, texts.len(), &findings);
             report["exempted"] = json!(exempted.len());
-            Ok((report, findings))
+            let (provenance, failures) = provenance_check(root, texts)?;
+            report["provenance"] = provenance;
+            if failures > 0 {
+                report["clean"] = json!(false);
+            }
+            Ok((report, findings, failures))
         }
         Some((dir, instruction)) => {
             let run = run_texts(dir, instruction)?;
@@ -1203,7 +1434,7 @@ pub fn check(
             let mut report = report("run", &references, run.briefings.len(), &findings);
             report["run"] = json!(dir.display().to_string());
             report["instruction_found"] = json!(run.instruction_found);
-            Ok((report, findings))
+            Ok((report, findings, 0))
         }
     }
 }
@@ -1238,7 +1469,7 @@ pub fn command(args: &[String]) -> Result<i32, String> {
                 .run
                 .as_deref()
                 .map(|dir| (dir, instruction.as_deref()));
-            let (report, findings) = check(&root, flags.policies(), run)?;
+            let (report, findings, failures) = check(&root, flags.policies(), run)?;
             if flags.json {
                 println!(
                     "{}",
@@ -1246,8 +1477,53 @@ pub fn command(args: &[String]) -> Result<i32, String> {
                 );
             } else {
                 print!("{}", report_text(&report, &findings));
+                if let Some(part) = report.get("provenance") {
+                    print!("{}", provenance_text(part));
+                }
             }
-            Ok(i32::from(!findings.is_empty()))
+            Ok(i32::from(!findings.is_empty() || failures > 0))
+        }
+        "lexicon" => {
+            let root = find_root(flags.root)?;
+            let tasks = match flags.tasks {
+                Some(tasks) => tasks,
+                None => std::env::var_os("HOME")
+                    .map(|home| PathBuf::from(home).join(lexicon::DEFAULT_TASKS))
+                    .ok_or_else(|| "no HOME; pass --tasks".to_owned())?,
+            };
+            let doc = lexicon::build(&root, &tasks)?;
+            let out = flags
+                .out
+                .unwrap_or_else(|| root.join(lexicon::LEXICON_PATH));
+            if let Some(parent) = out.parent() {
+                std::fs::create_dir_all(parent)
+                    .map_err(|error| format!("can't create {}: {error}", parent.display()))?;
+            }
+            std::fs::write(
+                &out,
+                serde_json::to_string_pretty(&doc).unwrap_or_default() + "\n",
+            )
+            .map_err(|error| format!("can't write {}: {error}", out.display()))?;
+            let kept = doc["tasks"].as_object().map_or(0, serde_json::Map::len);
+            let missing: Vec<&str> = doc["missing"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|m| m["task"].as_str())
+                .collect();
+            println!(
+                "wrote the lexicon of {kept} tuned tasks, against {} upstream tasks, to {}",
+                doc["background_tasks"],
+                out.display()
+            );
+            if !missing.is_empty() {
+                println!(
+                    "no retained source for {} declared tasks: {}",
+                    missing.len(),
+                    missing.join(", ")
+                );
+            }
+            Ok(0)
         }
         "refs" => {
             let root = find_root(flags.root)?;

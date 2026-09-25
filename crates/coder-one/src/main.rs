@@ -19,7 +19,7 @@
 //! coder-one repair study|brief …
 //! coder-one effort features|fit …
 //! coder-one capabilities [--demonstrate] [--json]
-//! coder-one contamination check|refs …
+//! coder-one contamination check|refs|lexicon …
 //! ```
 //!
 //! The `episode` commands implement the Terminal-Bench harness's headless
@@ -73,7 +73,7 @@ const USAGE: &str = "usage: coder-one doctor
        coder-one capabilities [--demonstrate] [--json]  (coder-one capabilities help)
        coder-one prompt list|show|capture           (coder-one prompt help)
        coder-one checks synthetic|run|recover       (coder-one checks help)
-       coder-one contamination check|refs           (coder-one contamination help)
+       coder-one contamination check|refs|lexicon   (coder-one contamination help)
        coder-one snapshot checks|subject            (coder-one snapshot help)
        coder-one study run|list                     (coder-one study help)
        coder-one support evaluate|run|fixtures      (coder-one support help)

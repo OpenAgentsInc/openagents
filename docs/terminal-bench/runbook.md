@@ -301,6 +301,59 @@ the tasks it targets (issue #9566). `tbench try` runs one arm on a few TB4
 tasks and takes minutes. A comparison you publish runs through
 `tbench experiment`, which repeats and interleaves the arms.
 
+### Check a change for contamination
+
+Run the contamination check before you commit a change to a policy, a
+prompt, a Jev question set, or any wording or phrase list in
+`crates/coder-one` or `crates/microluna`:
+
+```sh
+cargo run -p coder-one -- contamination check
+```
+
+The check exits 0 when nothing fails and 1 when something does. It fails
+on three kinds of finding:
+
+- **A task fact.** A Terminal-Bench task id, a verifier test name, or
+  seven consecutive words of a task-anatomy fact in text that can reach a
+  model. Remove it. Offline code that selects runs by task can hold exact
+  names through a reviewed entry in
+  `crates/coder-one/contamination-exempt.json`.
+- **A task's own wording.** A phrase that the text of a task a policy was
+  tuned on also holds (issue #9655). The check compares every entry of a
+  `const` or `static` string array, and every four-word window of prose,
+  with the comments, docstrings, and instructions of the tasks declared in
+  `crates/coder-one/contamination-tuned.json`. A match fails until an
+  entry in `crates/coder-one/contamination-provenance.json` names the
+  phrase, the task, the file, and whether the phrase was taken from that
+  task (`source`, with the commits) or came from elsewhere
+  (`coincident`). An annotated match passes, and the report lists it: that
+  task can't count as evidence for the phrase's policy or pattern.
+- **A registry problem.** A pattern under `patterns/` that is admitted
+  but measured only on tasks it may not count, or a provenance entry that
+  names a pattern the registry doesn't hold.
+
+A match counts only when the phrase is distinctive. An entry needs at
+least two words and a content word; a prose window needs three content
+words; and fewer than 5 of the 66 upstream Terminal-Bench 4.0 tasks may
+use the phrase. A content word has at least three letters, no digits, and
+isn't a common function word. One word is never distinctive on its own,
+so a provenance entry can declare one, and the check confirms that the
+task's text holds it.
+
+The comparison reads `bench/terminal-bench/reference/tuned-lexicon.json`,
+which stores digests only: each file's SHA-256 and a 12-digit hash of each
+distinctive phrase. When you add a task to
+`crates/coder-one/contamination-tuned.json`, rebuild it from the retained
+upstream tasks:
+
+```sh
+cargo run -p coder-one -- contamination lexicon
+```
+
+`docs/coder/design/pattern-components.md` explains why a phrase copied
+from a task makes that task in-sample.
+
 ### Run a targeted experiment
 
 `tbench experiment run` compares two or more arms on a few tasks, three

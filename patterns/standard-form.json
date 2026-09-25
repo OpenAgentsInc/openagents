@@ -1,0 +1,38 @@
+{
+  "schema": "openagents.pattern.v1",
+  "id": "standard-form",
+  "name": "A well-known method follows its standard form",
+  "summary": "Where the code implements a well-known method (a statistic, an algorithm, a protocol, or a format), the task asks for its standard definition unless it says otherwise, so a variant the code or a comment chooses is a suspect.",
+  "trigger": {
+    "kind": "instruction",
+    "detail": "Today an unconditional sentence in the session guidance (lean.standard_forms, micro::lean::STANDARD_FORMS) and in the suite writer's guidance (accept::STANDARD_METHODS and STANDARD_METHODS_GENERAL, the Jev question accept::verify::FAITHFUL_STANDARD). The departures step's per-method question (questions/departure-standard-method.json) already selects candidates by the method a function names."
+  },
+  "output": {
+    "kind": "instruction",
+    "detail": "An instruction to the model. Issue #9653 replaces it with verify.method_conformance: a library of well-known methods, each with executable property checks from its standard definition, so the output becomes a failing check."
+  },
+  "components": [
+    {"path": "crates/coder-one/src/micro/lean.rs", "item": "STANDARD_FORMS"},
+    {"path": "crates/coder-one/src/accept/mod.rs", "item": "STANDARD_METHODS"},
+    {"path": "crates/coder-one/src/accept/mod.rs", "item": "STANDARD_METHODS_GENERAL"},
+    {"path": "crates/coder-one/src/accept/verify.rs", "item": "FAITHFUL_STANDARD"},
+    {"path": "questions/departure-standard-method.json", "item": "per_finding"}
+  ],
+  "source_tasks": [
+    {
+      "task": "embedding-drift-monitor",
+      "how": "The v6 suite never decided the MMD estimator's bias, so 5cb9842d18 counted standard definitions as stated. v10 kept a statistic in the variant its docstring defended, and v12 added lean.standard_forms (c2e08e646e).",
+      "commits": ["5cb9842d18", "c2e08e646e"]
+    }
+  ],
+  "admission": {
+    "status": "candidate",
+    "record": "Not admitted. A general principle learned from one task and stated as an instruction, which breaks principle 4 of the tunable-system document. The lexical check finds no verbatim match of its sentences in any tuned task's text, so the risk is the principle's source, not its wording. Admission needs verify.method_conformance measured on tasks other than those listed as not evidence.",
+    "measured_on": [],
+    "issues": ["#9653", "#9655"],
+    "evidence": [
+      "docs/coder/design/pattern-components.md",
+      "docs/terminal-bench/2026-09-24-microluna-iterations.md"
+    ]
+  }
+}
