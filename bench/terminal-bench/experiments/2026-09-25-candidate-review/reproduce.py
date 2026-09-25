@@ -226,7 +226,7 @@ def main():
     env['CODEX_AUTH_JSON_PATH'] = str(Path.home() / '.codex/auth.json')
     images = {}
     for row in rows:
-        if row['task'] in images or (a.out / row['trial'] / 'reproduced/process.json').exists():
+        if row['task'] in images or (a.out / row['trial'] / a.record_name / 'process.json').exists():
             continue
         try:
             images[row['task']] = environment(row, a.jobs, a.out / 'reproduced-images')
