@@ -22,8 +22,14 @@ def write(path, value):
     path.write_text(json.dumps(value, indent=2) + '\n')
 
 
-def restore(archive, root):
-    """Restore only bounded regular /app files; refuse links and special files."""
+def restore(archive, root, extra_files=()):
+    """Restore bounded regular files; outside files need explicit attribution."""
+    extra_files = set(extra_files)
+    for name in extra_files:
+        p = PurePosixPath(name)
+        if (p.is_absolute() or '..' in p.parts or not p.parts or str(p) != name
+                or p.parts[0] == 'app'):
+            raise ValueError('Invalid outside snapshot path')
     with tarfile.open(archive) as tf:
         members = tf.getmembers()
         if len(members) > 50000 or sum(m.size for m in members) > 128 * 1024**2:
@@ -31,7 +37,10 @@ def restore(archive, root):
         seen = set()
         for m in members:
             p = PurePosixPath(m.name)
-            if (p.is_absolute() or '..' in p.parts or not p.parts or p.parts[0] != 'app'
+            outside_file = str(p) in extra_files and m.isfile()
+            outside_parent = m.isdir() and any(p in PurePosixPath(name).parents for name in extra_files)
+            if (p.is_absolute() or '..' in p.parts or not p.parts or str(p) != m.name.rstrip('/')
+                    or not (p.parts[0] == 'app' or outside_file or outside_parent)
                     or str(p) in seen or not (m.isfile() or m.isdir())):
                 raise ValueError('Snapshot contains an unsafe or unsupported member')
             seen.add(str(p))
@@ -46,13 +55,15 @@ def restore(archive, root):
                 p.chmod(m.mode & 0o777)
     if not (root / 'app').is_dir():
         raise ValueError('Snapshot has no app directory')
+    if any(not (root / name).is_file() for name in extra_files):
+        raise ValueError('Missing declared outside snapshot file')
 
 
 def tree(root):
     return {str(p.relative_to(root)): sha(p) for p in sorted(root.rglob('*')) if p.is_file()}
 
 
-def snapshot(trial, dest):
+def snapshot(trial, dest, allow_public_files=False):
     comp = json.loads((trial / 'agent/episode/artifacts/composition.json').read_text())
     # Snapshot is immediately after the only executor. Later writers invalidate it.
     branches = comp.get('branches') or []
@@ -60,14 +71,18 @@ def snapshot(trial, dest):
             or comp.get('repair') or comp.get('second') or comp.get('persist')):
         raise ValueError('Post-executor snapshot cannot be attributed after another writer')
     meta = json.loads((trial / 'agent/episode/snapshot/snapshot.json').read_text())
+    outside_files = meta.get('outside') or []
+    if any(not isinstance(p, str) or not p.startswith('/') or p.startswith('//') for p in outside_files):
+        raise ValueError('Invalid outside snapshot path')
+    extra_files = [p[1:] for p in outside_files]
     if (meta.get('taken') is not True or meta.get('stage') != 'post-executor'
-            or meta.get('workdir') != '/app' or meta.get('outside')
-            or meta.get('archive', {}).get('paths') != ['app']):
+            or meta.get('workdir') != '/app' or (outside_files and not allow_public_files)
+            or meta.get('archive', {}).get('paths') != ['app', *extra_files]):
         raise ValueError('No complete attributable app snapshot')
     archive = trial / 'agent/episode/snapshot/workspace.tar.gz'
     if sha(archive) != meta['archive']['sha256']:
         raise ValueError('Snapshot digest mismatch')
-    restore(archive, dest)
+    restore(archive, dest, extra_files)
     # Require every collected /app file to match the snapshot used for review.
     manifest = json.loads((trial / 'artifacts/manifest.json').read_text())
     outside = [e['source'] for e in manifest
@@ -92,7 +107,14 @@ def snapshot(trial, dest):
                 raise ValueError('Collected final artifact differs from snapshot')
             compared[str(relative)] = sha(p)
     return {'snapshot': meta, 'composition_sha256': sha(trial / 'agent/episode/artifacts/composition.json'),
-            'collected_files': compared, 'files': tree(dest)}
+            'collected_files': compared, 'files': tree(dest),
+            'public_files_to_verify': {p: sha(dest / p[1:]) for p in outside_files}}
+
+
+def public_files_match(expected, stdout):
+    """Every extra retained file must be byte-identical in the read-only image."""
+    actual = stdout.splitlines()
+    return len(actual) == len(expected) and set(actual) == {digest + '  ' + path for path, digest in expected.items()}
 
 
 def environment(row, jobs, out):
@@ -124,7 +146,7 @@ def environment(row, jobs, out):
 
 
 def run(row, args, images, env):
-    dest = args.out / row['trial'] / 'reproduced'
+    dest = args.out / row['trial'] / args.record_name
     if (dest / 'process.json').exists():
         return row['trial'] + ': retained'
     dest.mkdir(parents=True, exist_ok=True)
@@ -135,7 +157,7 @@ def run(row, args, images, env):
         scratch = Path(scratch)
         try:
             trial = args.jobs / row['job'] / row['trial']
-            identity = snapshot(trial, scratch)
+            identity = snapshot(trial, scratch, args.allow_public_files)
             write(dest / 'snapshot.json', identity)
             candidate = json.loads(Path(row['input']).read_text())
             candidate['coverage'] = ('The full retained final /app snapshot is mounted read-only. All collected /app artifacts match it. '
@@ -155,6 +177,16 @@ def run(row, args, images, env):
                    '--label', 'openagents.candidate-review=1', '--label', 'openagents.candidate-identity=' + packet['candidate_identity'],
                    '--entrypoint', 'sleep', images[row['task']], '400']
             container = subprocess.check_output(cmd, text=True, timeout=30).strip()
+            extra = identity['public_files_to_verify']
+            if extra:
+                verified = subprocess.run(['docker', 'exec', container, 'sha256sum', '--', *extra],
+                                          capture_output=True, text=True, timeout=30)
+                matches = verified.returncode == 0 and public_files_match(extra, verified.stdout)
+                write(dest / 'public-files.json', {'expected_sha256': extra, 'exit': verified.returncode,
+                                                  'stdout': verified.stdout, 'stderr': verified.stderr,
+                                                  'matches': matches, 'image': images[row['task']]})
+                if not matches:
+                    raise ValueError('Outside snapshot files do not match the immutable public image')
             with (dest / 'process.log').open('w') as log:
                 p = subprocess.run([str(args.binary), 'checks', 'reproduced-review', '--input', str(dest / 'input.json'),
                                     '--container', container, '--out', str(dest)], env=env, stdout=log,
@@ -181,7 +213,13 @@ def main():
     for name in ['manifest', 'jobs', 'out', 'binary']:
         p.add_argument('--' + name, type=Path, required=True)
     p.add_argument('--workers', type=int, default=2)
+    p.add_argument('--record-name', default='reproduced')
+    p.add_argument('--allow-public-files', action='store_true')
     a = p.parse_args()
+    if Path(a.record_name).name != a.record_name or a.record_name in ('.', '..'):
+        raise ValueError('The record name must be one path component')
+    if a.allow_public_files and a.record_name == 'reproduced':
+        raise ValueError('Public-file recovery needs a separate record name')
     rows = json.loads(a.manifest.read_text())
     env = dict(os.environ)
     env['TYPESAFE_API_KEY'] = json.loads((Path.home() / '.openagents/jev.json').read_text())['api_key']
