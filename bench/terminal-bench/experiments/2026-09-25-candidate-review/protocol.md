@@ -129,3 +129,23 @@ precision/minimum-five rule on calibration only. It does not ask the model to
 certify success. Keep its results separate from independent source review, and
 freeze any combination before comparison. This is a new question set, not a
 post-hoc relabeling of the original report verdict.
+
+## Combined development rule
+
+The completed Astra calibration qualifies at 0.9 (eight correct failure calls),
+and the concrete-report component qualifies at 0.5 (seven correct failure calls).
+Before opening comparison outputs, also score the existing Astra proposals with
+the same four scope questions already tried on Luna. This isolates the scope
+filter from the proposal model and makes no new Astra calls. Retain every arm.
+
+Choose each component's threshold with the original five-cutoff rule. Combine a
+qualifying source-review arm and the qualifying report audit with OR: either
+may establish failure. Select the source-review arm by greatest calibration
+true-failure detections for that union, requiring at least 90% union precision
+and five failure calls. Break ties by fewer false alarms, then lower measured
+model cost, then higher threshold. An unavailable or nonqualifying component
+contributes unknown. A candidate without either failure signal stays unknown;
+existing green checks do not establish pass. Freeze the chosen arm and thresholds
+in a separate artifact and commit before comparison. Report all development
+alternatives, including the audit's additionally inspected 0.1–0.6 cutoffs, which
+are excluded from this selection rule.
