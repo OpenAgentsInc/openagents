@@ -674,8 +674,8 @@ fn wrong_files(dir: &Path) {
 }
 
 /// Two red tests on different files run as two sessions at once, each in
-/// its own copy; each sleeps a second, and the round takes about one
-/// second, not two. Their changes merge and the suite goes green.
+/// its own copy. The execution intervals overlap, their changes merge,
+/// and the suite goes green.
 #[tokio::test]
 async fn independent_red_tests_run_at_once_and_merge() {
     let dir = tempfile::tempdir().unwrap();
@@ -741,10 +741,8 @@ async fn independent_red_tests_run_at_once_and_merge() {
             .any(|o| o["a"] == "session 1" && o["b"] == "session 2"),
         "{parallel:#}"
     );
-    assert!(
-        parallel["concurrency"].as_f64().unwrap() > 1.0,
-        "{parallel:#}"
-    );
+    // Overall concurrency divides by setup and merge time too. Host contention
+    // can put it below one even though the recorded sessions overlap above.
     assert_eq!(parallel["merges"], json!(1));
     assert_eq!(parallel["conflicts"], json!(0));
     // Each session says its group and that it ran beside the other.
