@@ -136,3 +136,25 @@ component logs include the process ID and a sequence number. Parallel tests now
 check actual overlap or their own retained paths instead of a loaded host's
 absolute latency or other tests' scratch directories. These changes improve the
 iteration loop; they do not change correctness labels or model answers.
+
+## Whole-task completion assessment
+
+A separate procedure asks Astra high to assess each deciding public requirement,
+then estimate whether the submitted result fails acceptance. It reads final
+source and the selected report, including rows without retained source. The
+input explicitly says that report-described tests are writer claims, not
+independently reproduced observations. The generated output cannot execute a
+command. The exact [protocol](../../bench/terminal-bench/experiments/2026-09-25-candidate-review/readiness-protocol.md)
+uses the same five-cutoff calibration rule and keeps comparison labels out of
+model inputs.
+
+This is a stronger and more expensive assessor for a cheap executor. Its cost
+must be included when comparing a configuration with a stronger agent. Neither
+the model's numerical confidence nor a promising calibration table establishes
+that the overall configuration is faster, cheaper, or more accurate.
+
+The scoped manual gate at `a5903a5e37` passed formatting, default and feature
+Clippy, and default and feature tests for `coder-one`. This is a partial gate,
+not a full-workspace result. The V1 component replay matches all 317 historical
+calls and scores with no model calls. Verification and prediction records are
+in the experiment's `records/` directory.
