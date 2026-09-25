@@ -1386,6 +1386,27 @@ mod tests {
     }
 
     #[test]
+    fn concurrent_component_recorders_keep_distinct_logs() {
+        let dir = super::handoff_scratch(atif::now_ms()).unwrap();
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(16));
+        let handles: Vec<_> = (0..16)
+            .map(|_| {
+                let dir = dir.clone();
+                let barrier = barrier.clone();
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    recorder(Some(&dir), "parallel").unwrap();
+                })
+            })
+            .collect();
+        for handle in handles {
+            handle.join().unwrap();
+        }
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 16);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
     fn concurrent_handoff_scratch_directories_do_not_share_a_millisecond() {
         let handles: Vec<_> = (0..16)
             .map(|_| std::thread::spawn(|| super::handoff_scratch(123).unwrap()))

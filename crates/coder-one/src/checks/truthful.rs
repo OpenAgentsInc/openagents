@@ -61,7 +61,7 @@ fn source_score(input: &Input) -> Option<Option<f64>> {
     let mut expected = review::request(&input.candidate);
     expected.model = REVIEW_MODEL.to_string();
     if record["schema"] != review::SCHEMA
-        || record["scope"] != false
+        || !(record["scope"].is_null() || record["scope"] == false)
         || record["reply"]["model"] != REVIEW_MODEL
         || record["input_digest"] != atif::digest(&json!(input.candidate))
         || record["request_digest"] != atif::digest(&review::request_value(&expected))
@@ -75,13 +75,22 @@ fn source_score(input: &Input) -> Option<Option<f64>> {
         return None;
     }
     let mut best: Option<f64> = None;
-    for (finding, observation) in parsed.findings.iter().zip(observed) {
+    for (index, (finding, observation)) in parsed.findings.iter().zip(observed).enumerate() {
         if !review::grounded(&input.candidate, finding) {
             continue;
         }
         let expected_state = json!({"task":input.candidate.task,"finding":finding,
             "file":input.candidate.files.get(&finding.path),"coverage":input.candidate.coverage});
         if observation["finding"] != json!(finding) || observation["state"] != expected_state {
+            return None;
+        }
+        let call_id = format!("review-{index}");
+        let recorded_call = record["decision_steps"].as_array()?.iter().find(|step| {
+            step["call"]["id"] == call_id && step["call"]["name"] == "jev_candidate_counterexample"
+        })?;
+        if recorded_call["call"]["arguments"]["state"] != expected_state
+            || recorded_call["call"]["arguments"]["questions"] != json!(review::questions())
+        {
             return None;
         }
         if let Some(score) = review::score(&observation["answers"]) {
@@ -241,10 +250,23 @@ mod tests {
             json!({"schema":review::SCHEMA,"scope":false,"reply":{"model":REVIEW_MODEL},
             "input_digest":atif::digest(&json!(input.candidate)),"request_digest":atif::digest(&review::request_value(&request)),
             "review":{"findings":[finding],"coverage":"Static review."},
+            "decision_steps":[{"call":{"id":"review-0","name":"jev_candidate_counterexample","arguments":{"state":state,"questions":review::questions()}}}],
             "findings":[{"finding":finding,"state":state,"answers":{"violation":{"noul":0.95},"consequential":{"noul":0.97}},"score":0.0}]}),
         );
         assert_eq!(judge(&input).call, "fail");
         let original = input.clone();
+        input
+            .review
+            .as_mut()
+            .unwrap()
+            .as_object_mut()
+            .unwrap()
+            .remove("scope");
+        assert_eq!(judge(&input).call, "fail");
+        input.review.as_mut().unwrap()["decision_steps"][0]["call"]["arguments"]["questions"] =
+            json!({});
+        assert_eq!(judge(&input).call, "unknown");
+        input = original.clone();
         input
             .candidate
             .files
