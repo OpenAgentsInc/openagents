@@ -1,0 +1,132 @@
+   Compiling gym v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/gym)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.51s
+     Running unittests src/lib.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/gym-aef9165ab770c146)
+
+running 2 tests
+test coder_truth::tests::the_view_shows_each_signal_and_the_verdict_against_todays_checks ... ok
+test coder_truth::tests::the_command_reads_the_summary_and_prints_json ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 573 filtered out; finished in 0.00s
+
+     Running unittests src/bin/gym.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/gym-8096656bded8ef03)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 39 filtered out; finished in 0.00s
+
+     Running unittests src/bin/gym_terminal.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/gym_terminal-c35060ae37927693)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/caller_suite_v1.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/caller_suite_v1-84ef094aad1233e7)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/external_jevbench_v1.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/external_jevbench_v1-32c1211e27a498d1)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/gate_digest.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/gate_digest-b2ac828835fa8857)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 28 filtered out; finished in 0.00s
+
+     Running tests/kev_variant_rows.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/kev_variant_rows-ede5eb7323996602)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/locked_ledger.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/locked_ledger-9ec4fb2addf86422)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
+     Running tests/program_selection_v2.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/program_selection_v2-74987c011d0745e5)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/program_selection_v3.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/program_selection_v3-f6d2c8ca88610dc4)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/recipes.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/recipes-47805a98e0958da3)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/rederived_floors.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/rederived_floors-7d77f69e4ad97878)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+
+     Running tests/replay_acceptance.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/replay_acceptance-f302e2462421def9)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/selected_rows.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/selected_rows-1d11143ac2b9b5e2)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/voyager_v1.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/voyager_v1-592c29ad0f76d917)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/winner_inversion.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/winner_inversion-52bbd05a5ec93553)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 10 filtered out; finished in 0.00s
+
+   Compiling coder-one v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/coder-one)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 9.73s
+     Running unittests src/lib.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/coder_one-7bbe5f3ea011f3be)
+
+running 9 tests
+test checks::truth::tests::wilson_matches_a_known_interval ... ok
+test checks::truth_micro::tests::ambiguous_submission_does_not_inherit_the_final_grade ... ok
+test checks::truth_micro::tests::missing_finish_does_not_mean_success ... ok
+test checks::truth_micro::tests::explicit_submission_wins_and_invalid_score_stays_unknown ... ok
+test checks::truth_micro::tests::restoration_uses_the_selected_report_and_score ... ok
+test checks::truth_micro::tests::unchanged_read_only_reviews_join_evidence_but_other_candidates_do_not ... ok
+test checks::truth::tests::imported_rows_refuse_alias_leakage_and_invalid_labels ... ok
+test checks::truth::tests::a_task_is_in_one_split_only ... ok
+test checks::truth::tests::retained_microluna_recovers_public_instruction_and_selected_report ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 531 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/coder_one-73812874d56e8aad)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/codex_login.rs (/home/christopherdavid/.cache/openagents/target-iteration-speed-verification/debug/deps/codex_login-d3b1770b932f3e72)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+   Compiling gym v0.1.0 (/home/christopherdavid/.cache/openagents/worktrees/iteration-speed-verification/crates/gym)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 4.67s
+Replayed 18 trials with identical rows and no live model calls.

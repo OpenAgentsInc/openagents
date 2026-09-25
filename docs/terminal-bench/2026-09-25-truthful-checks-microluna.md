@@ -217,7 +217,11 @@ reviews, missing evidence, invalid probabilities, task-alias leakage, per-check
 candidate attribution, and report verification with scenario checks disabled.
 The [cache-only acceptance output](../../bench/terminal-bench/experiments/2026-09-25-truthful-checks/records/replay.txt)
 reproduces all 18 corrected rows without inference. Later edits clarify UI wording
-and documentation; they do not refit the verdict.
+and documentation; they do not refit the verdict. At `2cfb2b3cae`, the
+[final focused checks](../../bench/terminal-bench/experiments/2026-09-25-truthful-checks/records/verification/final-targeted.log)
+passed the Gym truth-view tests and truth extraction tests, rebuilt both binaries,
+and repeated the identical 18-row cache replay. The [final Gym output](../../bench/terminal-bench/experiments/2026-09-25-truthful-checks/records/final-gym-view.txt)
+labels the old precision as a historical reference.
 
 ## What would complete #9584
 

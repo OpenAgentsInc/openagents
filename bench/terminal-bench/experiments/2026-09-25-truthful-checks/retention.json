@@ -1,0 +1,29 @@
+{
+  "schema": "openagents.experiment-retention.v1",
+  "files": {
+    "manifest.json": "30a4eae307b056f1ebdf89c91d86ae8e34776dfe6b8d735c8a5b107311fea7c5",
+    "measure.py": "482bb7592866d6e719e3f0f319fc1a0e9238c2a39680927c6ee51f90c3f6a66e",
+    "protocol.md": "8168a01c434ff4f60eb9517241f4a6d1fdf4dab6b616fc4fd005254fceea1e76",
+    "records/comparison.json": "b76b429af3dce38fd06ac3e5c5a2fc6c20cda5d52728e0bedac819265bcd2905",
+    "records/final-gym-view.txt": "90e1e260729cab08bd7fc19d83fb357d9c70cef2af05b648826e253385ecbe90",
+    "records/historical/summary.json": "7ea5557aee313df5dddb4583ba980527ce631cfd3259aece14f013b3ad547f40",
+    "records/microluna/jev-recorded.json": "4dd69ae3bd0338f9ba063982a3b97cfd79dc0777ff954957e238301f0ccc1540",
+    "records/microluna/rows.jsonl": "7d124e7c40aae31f2fb798e23428264f3cf56bacbb254a0ea4599965c9f912cd",
+    "records/microluna/summary.json": "8605bfd9085423f595622f1287b0555165759285cdccb7922bcb3b94922e0a88",
+    "records/microluna-before-reviews/jev-recorded.json": "2a6bae2089887d2455540af067ab5c496ab57a44c9a4f4263ad04f1027acf2c9",
+    "records/microluna-before-reviews/rows.jsonl": "a8219abaaa79a4f4746baf00aa3de4f22e44d30896a7f025e0a1d35310fc9b95",
+    "records/microluna-before-reviews/summary.json": "158f33607a0661d1ae5ff1afea04adf18490b1c8185778ab2bf726b4df1e4dd5",
+    "records/replay.txt": "b11e85dbae0b2ea9c1706e8bae455ba75964b1df35504fae621d8243ec437b51",
+    "records/verification/20260925T014016Z-15d8e0/clippy.log": "8f1c15761241e95dd21f35170300365502aff76d6ab19e83c6b60b548a6f4d7b",
+    "records/verification/20260925T014016Z-15d8e0/fmt.log": "6aedaefbe20c5e323dda33e14a085bbc87ce4fa1bec880d16f0daf5180ea1cd8",
+    "records/verification/20260925T014016Z-15d8e0/run.json": "ea30a8da325959ede7128fc40da60aea9f5fde2dcc9e67e54854f5fceb52e165",
+    "records/verification/20260925T014327Z-baa28e/clippy-features.log": "0d2f77309e667618392cf6559f756c42f3725c31dd5764d1b0b3aea9b4fd6ec1",
+    "records/verification/20260925T014327Z-baa28e/clippy.log": "b2be9e6e87e3d807ab4b1e3397c90e7bdded7d98015f3a545374a44a8c24450e",
+    "records/verification/20260925T014327Z-baa28e/fmt.log": "6aedaefbe20c5e323dda33e14a085bbc87ce4fa1bec880d16f0daf5180ea1cd8",
+    "records/verification/20260925T014327Z-baa28e/run.json": "621e4d2071c80af375454043578f18df98d9b0d48e4367d92d31a69e2f776bb2",
+    "records/verification/20260925T014327Z-baa28e/tests-features.log": "a3e0526392104f9eb9ab832672b2251255e6565d6800b4e8a852df277424c426",
+    "records/verification/20260925T014327Z-baa28e/tests.log": "3b5fe5f69a425525f0dc00657c07e117b962b277a0a6d6ca6956eb71917f7564",
+    "records/verification/final-targeted.log": "80a40042194667dcd0071e5c65c415945bb8c3346fa523d22fd9decf929e43fc",
+    "replay.py": "ce975498b1c5b8be81b2258f914d350a28605af370284272fd77acca0c18b52a"
+  }
+}
