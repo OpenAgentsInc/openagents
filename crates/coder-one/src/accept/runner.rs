@@ -544,6 +544,30 @@ pub struct Docker {
     pub setup: Option<String>,
 }
 
+static CONTAINER_PREFIX: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+/// Names every container this process's offline runs create after
+/// `prefix`, with a unique suffix, so an interrupted measurement's
+/// containers can be found and removed by name. The first call wins.
+pub fn name_containers(prefix: &str) {
+    let _ = CONTAINER_PREFIX.set(prefix.to_string());
+}
+
+/// A new container's name under the prefix [`name_containers`] set, or
+/// `None` to let Docker name it.
+#[must_use]
+pub fn container_name() -> Option<String> {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    CONTAINER_PREFIX.get().map(|prefix| {
+        format!(
+            "{prefix}-{}-{}-{}",
+            std::process::id(),
+            atif::now_ms(),
+            NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        )
+    })
+}
+
 /// Runs `docker` with `args` and returns its standard output.
 ///
 /// # Errors
@@ -617,7 +641,7 @@ impl Docker {
     }
 
     fn setup(&self, suite_dir: &Path) -> Result<String, String> {
-        let id = self.start(None)?;
+        let id = self.start(container_name().as_deref())?;
         let copied = docker(&["exec", "-u", "0", &id, "mkdir", "-p", "/accept"])
             .and_then(|_| {
                 docker(&[

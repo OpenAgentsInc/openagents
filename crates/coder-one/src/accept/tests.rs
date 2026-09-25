@@ -54,6 +54,9 @@ fn joined(trial: &str, kind: offline::Kind, reward: Option<f64>, green: bool) ->
         total: 1,
         checks: None,
         verdict: None,
+        digest: String::new(),
+        tests: Vec::new(),
+        reward_source: None,
     }
 }
 
@@ -1462,4 +1465,296 @@ fn the_general_scan_flags_defended_shortcuts_only() {
     assert_eq!(defended_choices(dir.path()).len(), 3);
     let evidence = defended_evidence(&general, true);
     assert!(!evidence.text.contains("standard definition"));
+}
+
+// Authority classes (issue #9629).
+
+fn evidence(green: Option<bool>, faithful: Option<f64>) -> authority::Evidence {
+    authority::Evidence {
+        green_at_start: green,
+        faithful,
+        ..authority::Evidence::default()
+    }
+}
+
+#[test]
+fn a_class_follows_how_the_expected_value_is_supported() {
+    use authority::{Authority, classify};
+    let t = authority::Thresholds::default();
+    let contract = authority::Evidence {
+        contract: Some(json!({"command": "python3 run.py", "stated": "42"})),
+        ..evidence(Some(true), None)
+    };
+    assert_eq!(classify(&contract, &t).0, Authority::ExecutedContract);
+    // Green on the untouched code is a guard, however faithful.
+    assert_eq!(
+        classify(&evidence(Some(true), Some(0.9)), &t).0,
+        Authority::Guard
+    );
+    assert_eq!(
+        classify(&evidence(None, Some(0.9)), &t).0,
+        Authority::Unsupported
+    );
+    assert_eq!(
+        classify(&evidence(Some(false), None), &t).0,
+        Authority::Unsupported
+    );
+    assert_eq!(
+        classify(&evidence(Some(false), Some(0.1)), &t).0,
+        Authority::Unsupported
+    );
+    assert_eq!(
+        classify(&evidence(Some(false), Some(0.5)), &t).0,
+        Authority::WriterDerived
+    );
+    let supported = authority::Evidence {
+        separate_route: Some(0.7),
+        expected_correct: Some(0.8),
+        hardcoded: Some(0.1),
+        ..evidence(Some(false), Some(0.5))
+    };
+    assert_eq!(
+        classify(&supported, &t).0,
+        Authority::IndependentlySupported
+    );
+    // One support question below its bound leaves it writer-derived.
+    let doubtful = authority::Evidence {
+        expected_correct: Some(0.3),
+        ..supported.clone()
+    };
+    assert_eq!(classify(&doubtful, &t).0, Authority::WriterDerived);
+    let hardcoded = authority::Evidence {
+        hardcoded: Some(0.9),
+        ..supported
+    };
+    assert_eq!(classify(&hardcoded, &t).0, Authority::WriterDerived);
+    for class in Authority::ALL {
+        assert_eq!(Authority::parse(class.word()).unwrap(), class);
+    }
+    assert!(Authority::parse("oracle").is_err());
+}
+
+#[test]
+fn reference_routes_ignore_comments_and_array_libraries() {
+    let source = "# uses scipy in a comment\nimport numpy as np\nfrom statistics import mean\n";
+    assert_eq!(authority::reference_routes(source), vec!["statistics"]);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn define_records_each_tests_class_with_its_evidence() {
+    let fx = fixture();
+    let writer = Scripted::new(vec![vec![
+        ("tests/T1.sh", Some(T1)),
+        ("tests/T2.sh", Some(T2_GREEN)),
+    ]]);
+    let options = Options {
+        guards: true,
+        authority: true,
+        max_rounds: 1,
+        ..Options::default()
+    };
+    let suite = define_with(&fx, &writer, &JevMode::Off, &options).await;
+    let t1 = &suite.authority["T1"];
+    let t2 = &suite.authority["T2"];
+    // With Jev off nothing is judged faithful, so the red test has no
+    // support; the green one is a guard by code alone.
+    assert_eq!(t1.class, authority::Authority::Unsupported);
+    assert_eq!(t1.evidence.green_at_start, Some(false));
+    assert_eq!(t2.class, authority::Authority::Guard);
+    assert_eq!(t2.evidence.green_at_start, Some(true));
+    // The classes are in the saved record, and the digest covers only the
+    // suite's files.
+    let saved = AcceptanceSuite::load(&AcceptanceSuite::record_path(&fx.suite)).unwrap();
+    assert_eq!(saved.authority, suite.authority);
+    assert_eq!(saved.digest, digest_of(&digest_files(&fx.suite)));
+    // Without the option, the record has no classes and no new field.
+    let fx = fixture();
+    let writer = Scripted::new(vec![vec![("tests/T1.sh", Some(T1))]]);
+    let plain = define_with(&fx, &writer, &JevMode::Off, &Options::default()).await;
+    assert!(plain.authority.is_empty());
+    let text = std::fs::read_to_string(AcceptanceSuite::record_path(&fx.suite)).unwrap();
+    assert!(!text.contains("\"authority\""));
+}
+
+fn classified(class: authority::Authority) -> authority::Classified {
+    authority::Classified {
+        class,
+        why: String::new(),
+        evidence: authority::Evidence::default(),
+    }
+}
+
+fn test_run(id: &str, green: bool) -> TestRun {
+    TestRun {
+        id: id.to_string(),
+        requirements: vec!["R1".to_string()],
+        green,
+        exit: Some(i32::from(!green)),
+        killed: false,
+        milliseconds: 1,
+        output: String::new(),
+        flaky: false,
+    }
+}
+
+#[test]
+fn each_class_has_only_the_power_the_policy_grants() {
+    use authority::{Authority, Powers};
+    let mut suite = AcceptanceSuite {
+        schema: SCHEMA.to_string(),
+        dir: std::path::PathBuf::from("/nowhere"),
+        status: Status::Partial,
+        instruction_sha256: String::new(),
+        tests: Vec::new(),
+        rejected: Vec::new(),
+        coverage: Vec::new(),
+        gaps: Vec::new(),
+        start: None,
+        files: BTreeMap::new(),
+        digest: "d".to_string(),
+        rounds: Vec::new(),
+        writer_usd: 0.0,
+        jev_usd: 0.0,
+        milliseconds: 0,
+        detail: Value::Null,
+        authority: BTreeMap::new(),
+    };
+    for (id, class) in [
+        ("C1", Authority::ExecutedContract),
+        ("I1", Authority::IndependentlySupported),
+        ("W1", Authority::WriterDerived),
+        ("W2", Authority::WriterDerived),
+        ("G1", Authority::Guard),
+        ("U1", Authority::Unsupported),
+    ] {
+        suite.authority.insert(id.to_string(), classified(class));
+    }
+    let result = RunResult::of(
+        "after session 1",
+        "d",
+        &["R1".to_string()],
+        vec![
+            test_run("C1", true),
+            test_run("I1", false),
+            test_run("W1", false),
+            test_run("W2", true),
+            test_run("G1", false),
+            test_run("U1", false),
+        ],
+        1,
+    );
+    let powers = Powers::of(
+        &suite,
+        &result,
+        &[
+            Authority::ExecutedContract,
+            Authority::IndependentlySupported,
+        ],
+        &[Authority::WriterDerived],
+    );
+    assert_eq!(powers.held, vec!["I1"]);
+    assert_eq!((powers.hold_green, powers.hold_total), (1, 2));
+    assert_eq!((powers.rank_green, powers.rank_total), (1, 2));
+    // A red guard is a suspect, never a hold.
+    assert_eq!(powers.suspects, vec!["G1"]);
+    assert_eq!(powers.unpowered_red["unsupported"], vec!["U1"]);
+    // A writer-derived test can't hold, even when a policy lists it.
+    let listed = Powers::of(&suite, &result, &[Authority::WriterDerived], &[]);
+    assert!(listed.held.is_empty());
+    assert_eq!(listed.unpowered_red["writer_derived"], vec!["W1"]);
+    // The brief names the held test and the suspect, not the ranking ones.
+    let lines = authority::brief_lines(&suite, &result, &powers).join("\n");
+    assert!(lines.contains("I1 fails"), "{lines}");
+    assert!(lines.contains("G1 passed on the untouched code"), "{lines}");
+    assert!(!lines.contains("W1"), "{lines}");
+}
+
+#[test]
+fn ranking_tests_break_ties_but_never_reverse_an_edit() {
+    use authority::{beats, ranks_at_least};
+    // More ranking tests green can't beat a better score or fewer holds.
+    assert!(!ranks_at_least((0, 0.5, 1.0), (0, 0.6, 0.0), false));
+    assert!(!ranks_at_least((1, 1.0, 1.0), (0, 0.0, 0.0), false));
+    // On a tie, they decide; a strict comparison keeps the earlier one.
+    assert!(ranks_at_least((0, 0.5, 0.8), (0, 0.5, 0.2), true));
+    assert!(!ranks_at_least((0, 0.5, 0.5), (0, 0.5, 0.5), true));
+    assert!(ranks_at_least((0, 0.5, 0.5), (0, 0.5, 0.5), false));
+    // Fewer holding tests red wins before the score.
+    assert!(ranks_at_least((0, 0.1, 0.0), (1, 1.0, 1.0), true));
+    // The restore decision reads holds and score only.
+    assert!(beats(0, 0.5, 1, 0.9));
+    assert!(!beats(0, 0.5, 0, 0.5));
+    assert!(beats(0, 0.6, 0, 0.5));
+}
+
+fn class_row(trial: &str, reward: f64, tests: &[(&str, bool)]) -> offline::Joined {
+    offline::Joined {
+        digest: "suite".to_string(),
+        tests: tests
+            .iter()
+            .map(|(id, g)| ((*id).to_string(), *g))
+            .collect(),
+        kind: offline::Kind::Final,
+        ..joined(trial, offline::Kind::Final, Some(reward), true)
+    }
+}
+
+#[test]
+fn discrimination_counts_within_a_task_not_across_tasks() {
+    use authority::Authority;
+    let mut record = authority::Record {
+        schema: authority::SCHEMA.to_string(),
+        ..authority::Record::default()
+    };
+    let mut classes = authority::SuiteClasses::default();
+    classes
+        .tests
+        .insert("W1".to_string(), classified(Authority::WriterDerived));
+    classes
+        .tests
+        .insert("G1".to_string(), classified(Authority::Guard));
+    record.suites.insert("suite".to_string(), classes);
+    let rows = [
+        class_row("p1", 1.0, &[("W1", true), ("G1", false)]),
+        class_row("p2", 1.0, &[("W1", false), ("G1", false)]),
+        class_row("f1", 0.0, &[("W1", false), ("G1", true)]),
+        class_row("f2", 0.0, &[("W1", true), ("G1", true)]),
+    ];
+    let refs: Vec<&offline::Joined> = rows.iter().collect();
+    let w = discriminate::counts(&refs, &record, Authority::WriterDerived);
+    assert_eq!(w.rows, 4);
+    assert_eq!((w.mixed_groups, w.mixed_tasks), (1, 1));
+    assert_eq!((w.passes_green.k, w.passes_green.n), (1, 2));
+    assert_eq!((w.failures_red.k, w.failures_red.n), (1, 2));
+    // p1 beats f1, p2 loses to f2, the other two pairs tie.
+    assert_eq!((w.concordant, w.discordant, w.tied), (1, 1, 2));
+    assert_eq!(w.separating_groups, 0);
+    // The guard is green on both failures and red on both passes: the T10
+    // shape, a guard that pins the defect.
+    let g = discriminate::counts(&refs, &record, Authority::Guard);
+    assert_eq!((g.passes_green.k, g.failures_red.k), (0, 0));
+    assert_eq!(g.discordant, 4);
+    // One task can't pass the bar, whatever it shows.
+    let (passes, why) = discriminate::bar(Authority::WriterDerived, &w);
+    assert!(!passes);
+    assert!(why.contains("1 held-out task"), "{why}");
+    let (passes, _) = discriminate::bar(Authority::Guard, &g);
+    assert!(!passes);
+    // A class absent from a suite says nothing.
+    let none = discriminate::counts(&refs, &record, Authority::IndependentlySupported);
+    assert_eq!(none.rows, 0);
+}
+
+#[test]
+fn a_task_named_in_sample_moves_to_calibration() {
+    use crate::checks::truth::{Split, split_of};
+    let held = ["a", "b", "c", "d", "e", "f"]
+        .into_iter()
+        .find(|t| split_of(t) == Split::HeldOut)
+        .unwrap();
+    assert_eq!(discriminate::split(held, &[]), Split::HeldOut);
+    assert_eq!(
+        discriminate::split(held, &[held.to_string()]),
+        Split::Calibration
+    );
 }

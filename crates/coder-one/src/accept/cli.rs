@@ -1,13 +1,14 @@
 //! `coder-one accept …`: define, run, and check acceptance suites, run the
 //! mini-task loop, and measure offline validity.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use serde_json::json;
 
 use super::minitask::{LoopOptions, default_out, run_minitask};
 use super::offline::{self, TaskOptions};
-use super::{AcceptanceSuite, Docker, Local, run};
+use super::{AcceptanceSuite, Docker, Local, Task, authority, discriminate, run};
 use crate::component::jev::JevMode;
 
 /// The accept commands' usage.
@@ -18,8 +19,11 @@ pub const USAGE: &str = "usage: coder-one accept minitask ID [--sessions N] [--r
                                   [--reconstruction DIR]… [--workers N]
                                   [--jobs DIR] [--rounds N] [--jev live|off]
                                   [--out DIR] [--reuse] [--facts ANATOMY.json]
-                                  [--echo]
-       coder-one accept validity DIR [--rows FILE] [--json]
+                                  [--containers PREFIX] [--echo]
+       coder-one accept classify RECORD… --out FILE [--jev live|off]
+                                  [--contract FILE] [--tasks DIR]
+       coder-one accept validity DIR… [--rows FILE] [--authority FILE]
+                                  [--in-sample TASK,…] [--json]
        coder-one accept run RECORD WORKSPACE [--docker IMAGE --workdir DIR
                                   [--candidate DIR]] [--json]
        coder-one accept check RECORD
@@ -44,11 +48,30 @@ grade record under a --grades directory matches them. --facts gives the
 writer a task-anatomy file's decisive facts and test ideas for the task,
 keeping only those the instruction or the workspace supports.
 
-validity joins the offline records under DIR with the check-truth label
-rows and prints how often a green suite, today's checks, and the
+offline names its containers after --containers, with a unique suffix,
+so an interrupted run's containers can be found and removed.
+
+classify gives every test of each frozen suite record an authority class
+(accept::authority): executed contract, independently supported,
+writer-derived, guard, or unsupported, with the evidence for it. Code
+reads each test's run on the untouched workspace; Jev answers two
+questions about each test that was red there. --contract names a JSON
+file of executed-contract items, {DIGEST: {TEST: ITEM}}, as an
+executed-contract extractor writes them. A suite already in --out keeps
+its classes, so a rerun asks nothing again. The task is the path
+component that names a task directory under --tasks (by default the
+Terminal-Bench 4.0 checkout's tasks).
+
+validity joins the offline records under each DIR with the check-truth
+label rows and prints how often a green suite, today's checks, and the
 combined verdict agree with the verifier, for Coder One snapshots,
 Microluna final workspaces, and Microluna candidates apart. A trial whose
 verifier reward is unknown is counted as unknown, never as a failure.
+With --authority, it also prints each class's discrimination within a
+task, with 95% Wilson intervals, on the digest-parity task split, and
+whether the class passes the bar for power in a policy. --in-sample
+moves the named tasks to the calibration side, such as the tasks whose
+failures the classes were designed from.
 
 run runs a frozen suite, from its record, on a workspace on this host
 (inside a coder-boundary writing boundary) or in a Docker image. check
@@ -93,6 +116,10 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
     let mut reconstructions = Vec::new();
     let mut workers = 4usize;
     let mut jobs = None;
+    let mut authority_file = None;
+    let mut in_sample: Vec<String> = Vec::new();
+    let mut contract = None;
+    let mut tasks = None;
     let mut iter = rest.iter();
     while let Some(arg) = iter.next() {
         let mut value = |name: &str| {
@@ -141,6 +168,16 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
                     .map_err(|_| "--workers takes a count")?;
             }
             "--jobs" => jobs = Some(PathBuf::from(value("--jobs")?)),
+            "--authority" => authority_file = Some(PathBuf::from(value("--authority")?)),
+            "--in-sample" => {
+                in_sample = value("--in-sample")?
+                    .split(',')
+                    .map(str::to_string)
+                    .collect();
+            }
+            "--tasks" => tasks = Some(PathBuf::from(value("--tasks")?)),
+            "--contract" => contract = Some(PathBuf::from(value("--contract")?)),
+            "--containers" => super::runner::name_containers(&value("--containers")?),
             other if other.starts_with("--") => return Err(format!("unknown option {other}")),
             other => positional.push(other.to_string()),
         }
@@ -233,15 +270,66 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
             );
             Ok(0)
         }
-        "validity" => {
-            let [dir] = positional.as_slice() else {
+        "classify" => {
+            if positional.is_empty() {
                 return Err(USAGE.to_string());
+            }
+            let out = out.ok_or("classify needs --out FILE")?;
+            let home = crate::credentials::openagents_dir()
+                .ok_or("no home directory")?
+                .join("terminal-bench");
+            let tasks_dir =
+                tasks.unwrap_or_else(|| home.join("upstream/terminal-bench-v4.0.0/tasks"));
+            let contract: Contract = match contract {
+                Some(path) => serde_json::from_str(
+                    &std::fs::read_to_string(&path)
+                        .map_err(|e| format!("cannot read {}: {e}", path.display()))?,
+                )
+                .map_err(|e| format!("{} is not a contract file: {e}", path.display()))?,
+                None => BTreeMap::new(),
             };
+            let record =
+                classify(&positional, &out, &tasks_dir, &contract, &jev_mode(&jev)?).await?;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&json!({
+                    "out": out,
+                    "suites": record.suites.iter().map(|(digest, s)| json!({
+                        "task": s.task,
+                        "digest": &digest[..digest.len().min(12)],
+                        "classes": authority::Authority::ALL.iter().filter_map(|a| {
+                            let n = s.tests.values().filter(|c| c.class == *a).count();
+                            (n > 0).then(|| (a.word(), n))
+                        }).collect::<BTreeMap<_, _>>(),
+                        "jev_usd": s.jev_usd,
+                    })).collect::<Vec<_>>(),
+                    "jev_requests": record.jev_requests,
+                    "jev_usd": record.jev_usd,
+                }))
+                .unwrap_or_default()
+            );
+            Ok(0)
+        }
+        "validity" => {
+            if positional.is_empty() {
+                return Err(USAGE.to_string());
+            }
             let rows = rows.unwrap_or_else(|| {
                 PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures/truth/rows.jsonl")
             });
-            let joined = offline::join(Path::new(dir), &rows)?;
-            let value = offline::validity(&joined);
+            let dirs: Vec<PathBuf> = positional.iter().map(PathBuf::from).collect();
+            let joined = offline::join_all(&dirs, &rows)?;
+            let mut value = offline::validity(&joined);
+            let classes = match &authority_file {
+                Some(path) => {
+                    let record = authority::Record::load(path)?;
+                    let measured = discriminate::measure(&joined, &record, &in_sample);
+                    value["authority"] = measured.clone();
+                    value["authority_rows"] = json!(discriminate::rows(&joined, &record));
+                    Some(measured)
+                }
+                None => None,
+            };
             if json_output {
                 println!(
                     "{}",
@@ -278,6 +366,9 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
                             a["unknown"]
                         );
                     }
+                }
+                if let Some(measured) = &classes {
+                    print_classes(measured);
                 }
                 for j in &joined {
                     println!(
@@ -354,6 +445,168 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
             Ok(i32::from(!integrity.intact))
         }
         _ => Err(USAGE.to_string()),
+    }
+}
+
+/// Executed-contract items by suite digest and test ID.
+type Contract = BTreeMap<String, BTreeMap<String, serde_json::Value>>;
+
+/// Classifies each suite record in `records` and writes the classes to
+/// `out`, keeping the suites `out` already holds.
+async fn classify(
+    records: &[String],
+    out: &Path,
+    tasks_dir: &Path,
+    contract: &Contract,
+    jev: &JevMode,
+) -> Result<authority::Record, String> {
+    let mut record = if out.is_file() {
+        authority::Record::load(out)?
+    } else {
+        authority::Record {
+            schema: authority::SCHEMA.to_string(),
+            thresholds: Some(authority::Thresholds::default()),
+            ..authority::Record::default()
+        }
+    };
+    let thresholds = record.thresholds.unwrap_or_default();
+    let none = BTreeMap::new();
+    for path in records {
+        let path = Path::new(path);
+        let mut suite = AcceptanceSuite::load(path)?;
+        let beside = path.with_file_name(
+            path.file_name()
+                .and_then(|n| n.to_str())
+                .and_then(|n| n.strip_suffix(".accept.json"))
+                .ok_or_else(|| format!("{} isn't a NAME.accept.json record", path.display()))?,
+        );
+        if beside.is_dir() && suite.dir != beside {
+            // A retained suite is read from where it is now; its digest
+            // still has to match its files.
+            suite.dir.clone_from(&beside);
+            for test in &mut suite.tests {
+                test.source = std::fs::read_to_string(beside.join(&test.path)).unwrap_or_default();
+            }
+        }
+        if !suite.integrity().intact {
+            return Err(format!(
+                "{}: the suite's files don't match its digest",
+                path.display()
+            ));
+        }
+        if record.suites.contains_key(&suite.digest) {
+            continue;
+        }
+        let task = task_of(path, tasks_dir)
+            .ok_or_else(|| format!("{}: no path component names a task", path.display()))?;
+        let instruction = std::fs::read_to_string(tasks_dir.join(&task).join("instruction.md"))
+            .map_err(|e| format!("cannot read {task}'s instruction: {e}"))?;
+        if super::sha256(instruction.as_bytes()) != suite.instruction_sha256 {
+            crate::say::line(&format!(
+                "accept ▸ {}: written from another version of {task}'s instruction",
+                path.display()
+            ));
+        }
+        let items = contract.get(&suite.digest).unwrap_or(&none);
+        let spent = authority::classify_suite(
+            &mut suite,
+            &Task {
+                title: task.clone(),
+                instruction,
+            },
+            items,
+            jev,
+            &crate::record::Recorder::default(),
+            &thresholds,
+        )
+        .await;
+        crate::say::line(&format!(
+            "accept ▸ {task} {}: {} tests classified, {} Jev requests, ${:.4}",
+            &suite.digest[..12],
+            suite.authority.len(),
+            spent.jev_requests,
+            spent.jev_usd
+        ));
+        record.jev_requests += spent.jev_requests;
+        record.jev_usd += spent.jev_usd;
+        record.suites.insert(
+            suite.digest.clone(),
+            authority::SuiteClasses {
+                task,
+                record: path.display().to_string(),
+                tests: suite.authority,
+                jev_requests: spent.jev_requests,
+                jev_usd: spent.jev_usd,
+            },
+        );
+        // Written after every suite, so an interrupted run keeps what it
+        // paid for.
+        let text = serde_json::to_string_pretty(&record).map_err(|e| e.to_string())?;
+        crate::record::write_atomic(out, format!("{text}\n").as_bytes())?;
+    }
+    Ok(record)
+}
+
+/// The task a record belongs to: the nearest path component, or the part
+/// of it before `__`, that names a directory under `tasks_dir`.
+fn task_of(path: &Path, tasks_dir: &Path) -> Option<String> {
+    path.ancestors().find_map(|dir| {
+        let name = dir.file_name()?.to_str()?;
+        let task = name.split("__").next()?;
+        (!task.is_empty() && tasks_dir.join(task).join("instruction.md").is_file())
+            .then(|| task.to_string())
+    })
+}
+
+/// Prints each class's discrimination, set by set and split by split.
+fn print_classes(measured: &serde_json::Value) {
+    let text = |r: &serde_json::Value| {
+        serde_json::from_value::<crate::checks::truth::Rate>(r.clone())
+            .map_or_else(|_| "-".to_string(), |r| r.text())
+    };
+    println!("authority classes, within task (groups of one task and one suite):");
+    for (set, label) in [
+        ("graded", "workspaces the verifier graded"),
+        ("known_reward", "every workspace with a known reward"),
+    ] {
+        for split in ["all", "calibration", "held_out"] {
+            println!("  {label}, {split}:");
+            for class in authority::Authority::ALL {
+                let c = &measured["sets"][set][split][class.word()];
+                if c["rows"] == 0 {
+                    continue;
+                }
+                println!(
+                    "    {:<24} rows {} tasks {}; mixed tasks {} groups {}; passes green {}; failures red {}; pairs +{} -{} ={} order {}; separating groups {}",
+                    class.word(),
+                    c["rows"],
+                    c["tasks"],
+                    c["mixed_tasks"],
+                    c["mixed_groups"],
+                    text(&c["passes_green"]),
+                    text(&c["failures_red"]),
+                    c["concordant"],
+                    c["discordant"],
+                    c["tied"],
+                    text(&c["order"]),
+                    c["separating_groups"]
+                );
+            }
+        }
+    }
+    println!("the bar, on graded workspaces of held-out tasks:");
+    for class in authority::Authority::ALL {
+        let v = &measured["verdicts"][class.word()];
+        println!(
+            "  {:<24} {}: {}",
+            class.word(),
+            if v["passes"] == true {
+                "passes"
+            } else {
+                "doesn't pass"
+            },
+            v["why"].as_str().unwrap_or_default()
+        );
     }
 }
 

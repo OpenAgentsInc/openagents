@@ -37,6 +37,14 @@ deciding test. Under the component's own rule, "done means complete"
 This measurement made no model calls. The suites were written earlier, on
 2026-09-24, for $0.352 in all; see [Spend](#spend).
 
+**Update, 2026-09-25.** [Tiered acceptance](2026-09-25-tiered-acceptance.md)
+classifies every test of these suites and the v6 to v8 suites by how its
+expected value is supported, and measures each class's discrimination
+within a task. No class passed the bar for power in a policy: no held-out
+task has graded workspaces that both pass and fail. The guards and wrong
+expected values that reversed v6 to v8 fall in classes that can't reverse
+an edit or stop the loop.
+
 ## What was measured
 
 `coder-one accept offline TASK` writes a suite for a Terminal-Bench 4.0

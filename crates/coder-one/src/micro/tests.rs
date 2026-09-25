@@ -1495,6 +1495,7 @@ fn lean_shape() -> lean::Lean {
         finish_rule: None,
         baseline: false,
         executed: None,
+        tiered: None,
     }
 }
 
@@ -2688,4 +2689,136 @@ async fn keep_best_snapshots_a_repository_with_big_ignored_build_output() {
     assert_eq!(submitted["selection_matches_workspace"], true);
     assert_eq!(submitted["candidate_scope"], "git");
     assert_eq!(submitted["identity_scope"], candidate::GIT_SCOPE);
+}
+
+fn tiered_writer() -> SuiteWriter {
+    SuiteWriter {
+        writers: 1,
+        rewrite: crate::accept::Rewrite::Hard,
+        rounds: 1,
+        turns: 10,
+        repair_turns: 5,
+        effort: None,
+        one_pass: false,
+        discover: false,
+        inventory: false,
+        standard_methods: false,
+        guards: true,
+        general: false,
+    }
+}
+
+#[test]
+fn a_tiered_policy_grants_power_only_to_promoted_classes() {
+    use crate::accept::authority::Authority;
+    let tiered = |hold: Vec<Authority>, rank: Vec<Authority>| lean::Lean {
+        keep_best: true,
+        tiered: Some(Box::new(lean::Tiered {
+            writer: tiered_writer(),
+            hold,
+            rank,
+        })),
+        ..lean_shape()
+    };
+    // Observation only: the suite runs and records, and nothing holds.
+    assert!(tiered(Vec::new(), Vec::new()).validate().is_empty());
+    // No class has passed the offline bar, so none may hold or rank.
+    let problems = tiered(vec![Authority::IndependentlySupported], Vec::new()).validate();
+    assert!(
+        problems.iter().any(|p| p.contains("offline bar")),
+        "{problems:?}"
+    );
+    let problems = tiered(vec![Authority::WriterDerived], Vec::new()).validate();
+    assert!(
+        problems.iter().any(|p| p.contains("can't hold")),
+        "{problems:?}"
+    );
+    let problems = tiered(Vec::new(), vec![Authority::Guard]).validate();
+    assert!(
+        problems.iter().any(|p| p.contains("can't rank")),
+        "{problems:?}"
+    );
+    let no_best = lean::Lean {
+        keep_best: false,
+        ..tiered(Vec::new(), vec![Authority::WriterDerived])
+    };
+    assert!(
+        no_best
+            .validate()
+            .iter()
+            .any(|p| p.contains("requires keep_best"))
+    );
+    // A manifest without the switch reads and writes as before.
+    let plain: lean::Lean =
+        serde_json::from_value(json!({"sessions": 2, "source_chars": 100})).unwrap();
+    assert!(plain.tiered.is_none());
+    assert!(!serde_json::to_string(&plain).unwrap().contains("tiered"));
+}
+
+#[tokio::test]
+async fn a_tiered_lean_loop_names_a_red_guard_as_a_suspect_and_still_stops() {
+    let dir = tempfile::tempdir().unwrap();
+    let work = dir.path().join("work");
+    std::fs::create_dir_all(&work).unwrap();
+    std::fs::write(work.join("keep.txt"), "keep\n").unwrap();
+    let guard = "#!/bin/sh\n# requirement: R2\n# kind: example\n# what: keep.txt holds keep\ngrep -qx keep keep.txt\n";
+    let mut executor = micro(
+        dir.path(),
+        vec![
+            // The suite writer, whose workspace is the suite directory.
+            call(
+                "w1",
+                "write_file",
+                &json!({ "path": "tests/T1.sh", "contents": HELLO_TEST }),
+                usage(900, 0, 40),
+            ),
+            call(
+                "w2",
+                "write_file",
+                &json!({ "path": "tests/T2.sh", "contents": guard }),
+                usage(900, 800, 40),
+            ),
+            finish("w3", "done", "Wrote T1 for R1 and the guard T2."),
+            // The work session writes hello.txt and removes keep.txt.
+            call(
+                "e1",
+                "write_file",
+                &json!({ "path": "hello.txt", "contents": "hello\n" }),
+                usage(900, 0, 40),
+            ),
+            call(
+                "e2",
+                "run_command",
+                &json!({ "command": "rm keep.txt && cat hello.txt", "timeout_seconds": null }),
+                usage(900, 800, 40),
+            ),
+            finish("e3", "done", "Wrote hello.txt; cat shows hello."),
+        ],
+        lean_policy(lean::Lean {
+            sessions: 2,
+            self_check: false,
+            tiered: Some(Box::new(lean::Tiered {
+                writer: tiered_writer(),
+                hold: Vec::new(),
+                rank: Vec::new(),
+            })),
+            ..lean_shape()
+        }),
+    );
+    executor.prepared = Some(prepared());
+    executor.execute(&briefing(TASK)).await;
+    let record = executor.last.clone().unwrap();
+    let moves = record["moves"].as_array().unwrap();
+    assert_eq!(moves[0]["kind"], "lean.tiered_suite", "{record:#}");
+    // With Jev off the red test has no support, and the green one is a
+    // guard by code alone.
+    assert_eq!(moves[0]["classes"]["guard"], 1, "{record:#}");
+    assert_eq!(moves[0]["classes"]["unsupported"], 1, "{record:#}");
+    let after = &moves[1];
+    assert_eq!(after["tiered"]["suspects"], json!(["T2"]), "{record:#}");
+    assert_eq!(after["tiered"]["held"], json!([]), "{record:#}");
+    // The red guard neither holds the loop nor restores keep.txt.
+    let stopped = record["stopped"].as_str().unwrap();
+    assert!(stopped.contains("session 1 ended done"), "{stopped}");
+    assert!(!work.join("keep.txt").exists());
 }

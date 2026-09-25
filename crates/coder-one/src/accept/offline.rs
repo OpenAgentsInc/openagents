@@ -583,7 +583,13 @@ pub fn materialize(trial: &Trial, image: &str, into: &Path) -> Result<(), String
     let image_workdir = || -> Result<(), String> {
         let parent = workdir.parent().ok_or("the working directory is /")?;
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-        let id = docker(&["create", "--entrypoint", "sleep", image, "infinity"])?;
+        let name = super::runner::container_name();
+        let mut args = vec!["create"];
+        if let Some(name) = &name {
+            args.extend(["--name", name.as_str()]);
+        }
+        args.extend(["--entrypoint", "sleep", image, "infinity"]);
+        let id = docker(&args)?;
         let copied = docker(&[
             "cp",
             &format!("{id}:{}", trial.workdir),
@@ -999,6 +1005,15 @@ pub struct Joined {
     pub checks: Option<Says>,
     /// The combined verdict, from the label row.
     pub verdict: Option<Says>,
+    /// The digest of the suite that ran.
+    #[serde(default)]
+    pub digest: String,
+    /// Each test's ID and whether it was green, in run order.
+    #[serde(default)]
+    pub tests: Vec<(String, bool)>,
+    /// Where a candidate's reward comes from ([`Trial::reward_source`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reward_source: Option<String>,
 }
 
 /// A signal's agreement with the verifier over some trials.
@@ -1075,8 +1090,24 @@ impl Agreement {
 ///
 /// A message when the rows don't read.
 pub fn join(dir: &Path, rows: &Path) -> Result<Vec<Joined>, String> {
+    join_all(&[dir.to_path_buf()], rows)
+}
+
+/// [`join`] over several directories of offline records, in order.
+///
+/// # Errors
+///
+/// A message when the rows or a directory don't read.
+pub fn join_all(dirs: &[PathBuf], rows: &Path) -> Result<Vec<Joined>, String> {
     let rows = truth::read_rows(rows)?;
     let mut out = Vec::new();
+    for dir in dirs {
+        join_into(dir, &rows, &mut out)?;
+    }
+    Ok(out)
+}
+
+fn join_into(dir: &Path, rows: &[truth::Row], out: &mut Vec<Joined>) -> Result<(), String> {
     let mut tasks: Vec<PathBuf> = std::fs::read_dir(dir)
         .map_err(|e| format!("cannot read {}: {e}", dir.display()))?
         .flatten()
@@ -1088,6 +1119,10 @@ pub fn join(dir: &Path, rows: &Path) -> Result<Vec<Joined>, String> {
         let text = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
         let value: Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
         let task = value["task"].as_str().unwrap_or_default().to_string();
+        let digest = value["suite"]["digest"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
         for entry in value["trials"].as_array().into_iter().flatten() {
             let Ok(trial) = serde_json::from_value::<Trial>(entry["trial"].clone()) else {
                 continue;
@@ -1122,10 +1157,18 @@ pub fn join(dir: &Path, rows: &Path) -> Result<Vec<Joined>, String> {
                 verdict: row.and_then(|r| {
                     verdict::judge(&verdict::Evidence::of_row(r), &verdict::fitted()).says()
                 }),
+                digest: run
+                    .as_ref()
+                    .map_or_else(|| digest.clone(), |r| r.digest.clone()),
+                tests: run
+                    .as_ref()
+                    .map(|r| r.tests.iter().map(|t| (t.id.clone(), t.green)).collect())
+                    .unwrap_or_default(),
+                reward_source: trial.reward_source.clone(),
             });
         }
     }
-    Ok(out)
+    Ok(())
 }
 
 /// The sets [`validity`] counts, by key, with a label and which joined

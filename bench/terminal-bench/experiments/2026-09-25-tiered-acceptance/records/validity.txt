@@ -1,0 +1,460 @@
+Coder One snapshots the verifier graded:
+  suite_green       spoke 16/16, agreed 15, fail right 6/6, pass right 9/10, failures caught 6/7, passes kept 9/9, unknown reward 0
+  suite_complete    spoke 16/16, agreed 7, fail right 7/16, pass right 0/0, failures caught 7/7, passes kept 0/9, unknown reward 0
+  todays_checks     spoke 4/16, agreed 1, fail right 1/1, pass right 0/3, failures caught 1/7, passes kept 0/9, unknown reward 0
+  combined_verdict  spoke 10/16, agreed 10, fail right 6/6, pass right 4/4, failures caught 6/7, passes kept 4/9, unknown reward 0
+every Coder One snapshot:
+  suite_green       spoke 81/81, agreed 49, fail right 27/47, pass right 22/34, failures caught 27/39, passes kept 22/42, unknown reward 6
+  suite_complete    spoke 81/81, agreed 39, fail right 39/81, pass right 0/0, failures caught 39/39, passes kept 0/42, unknown reward 6
+  todays_checks     spoke 12/81, agreed 6, fail right 4/5, pass right 2/7, failures caught 4/39, passes kept 2/42, unknown reward 6
+  combined_verdict  spoke 33/81, agreed 23, fail right 18/28, pass right 5/5, failures caught 18/39, passes kept 5/42, unknown reward 6
+Microluna final workspaces and reconstructions:
+  suite_green       spoke 236/236, agreed 143, fail right 141/211, pass right 2/25, failures caught 141/164, passes kept 2/72, unknown reward 12
+  suite_complete    spoke 236/236, agreed 156, fail right 155/226, pass right 1/10, failures caught 155/164, passes kept 1/72, unknown reward 12
+  todays_checks     spoke 0/236, agreed 0, fail right 0/0, pass right 0/0, failures caught 0/164, passes kept 0/72, unknown reward 12
+  combined_verdict  spoke 0/236, agreed 0, fail right 0/0, pass right 0/0, failures caught 0/164, passes kept 0/72, unknown reward 12
+Microluna retained candidates:
+  suite_green       spoke 66/66, agreed 30, fail right 30/60, pass right 0/6, failures caught 30/36, passes kept 0/30, unknown reward 6
+  suite_complete    spoke 66/66, agreed 32, fail right 32/62, pass right 0/4, failures caught 32/36, passes kept 0/30, unknown reward 6
+  todays_checks     spoke 0/66, agreed 0, fail right 0/0, pass right 0/0, failures caught 0/36, passes kept 0/30, unknown reward 6
+  combined_verdict  spoke 0/66, agreed 0, fail right 0/0, pass right 0/0, failures caught 0/36, passes kept 0/30, unknown reward 6
+authority classes, within task (groups of one task and one suite):
+  workspaces the verifier graded, all:
+    independently_supported  rows 165 tasks 7; mixed tasks 2 groups 6; passes green 42/42 100% (92–100%); failures red 44/84 52% (42–63%); pairs +208 -0 =440 order 208/208 100% (98–100%); separating groups 5
+    writer_derived           rows 241 tasks 9; mixed tasks 2 groups 9; passes green 30/78 38% (28–50%); failures red 92/132 70% (61–77%); pairs +354 -36 =834 order 354/390 91% (87–93%); separating groups 5
+    guard                    rows 110 tasks 4; mixed tasks 2 groups 4; passes green 4/38 11% (4–24%); failures red 6/60 10% (5–20%); pairs +6 -476 =118 order 6/482 1% (1–3%); separating groups 0
+    unsupported              rows 81 tasks 3; mixed tasks 2 groups 3; passes green 13/26 50% (32–68%); failures red 18/44 41% (28–56%); pairs +17 -39 =352 order 17/56 30% (20–43%); separating groups 1
+  workspaces the verifier graded, calibration:
+    independently_supported  rows 160 tasks 4; mixed tasks 2 groups 6; passes green 42/42 100% (92–100%); failures red 44/84 52% (42–63%); pairs +208 -0 =440 order 208/208 100% (98–100%); separating groups 5
+    writer_derived           rows 235 tasks 6; mixed tasks 2 groups 9; passes green 30/78 38% (28–50%); failures red 92/132 70% (61–77%); pairs +354 -36 =834 order 354/390 91% (87–93%); separating groups 5
+    guard                    rows 110 tasks 4; mixed tasks 2 groups 4; passes green 4/38 11% (4–24%); failures red 6/60 10% (5–20%); pairs +6 -476 =118 order 6/482 1% (1–3%); separating groups 0
+    unsupported              rows 81 tasks 3; mixed tasks 2 groups 3; passes green 13/26 50% (32–68%); failures red 18/44 41% (28–56%); pairs +17 -39 =352 order 17/56 30% (20–43%); separating groups 1
+  workspaces the verifier graded, held_out:
+    independently_supported  rows 5 tasks 3; mixed tasks 0 groups 0; passes green 0/0; failures red 0/0; pairs +0 -0 =0 order 0/0; separating groups 0
+    writer_derived           rows 6 tasks 3; mixed tasks 0 groups 0; passes green 0/0; failures red 0/0; pairs +0 -0 =0 order 0/0; separating groups 0
+  every workspace with a known reward, all:
+    independently_supported  rows 208 tasks 10; mixed tasks 4 groups 8; passes green 58/59 98% (91–100%); failures red 49/90 54% (44–64%); pairs +280 -0 =560 order 280/280 100% (99–100%); separating groups 6
+    writer_derived           rows 306 tasks 13; mixed tasks 5 groups 13; passes green 43/106 41% (32–50%); failures red 102/143 71% (63–78%); pairs +489 -45 =1031 order 489/534 92% (89–94%); separating groups 6
+    guard                    rows 134 tasks 6; mixed tasks 3 groups 5; passes green 10/49 20% (11–34%); failures red 6/64 9% (4–19%); pairs +18 -546 =196 order 18/564 3% (2–5%); separating groups 0
+    unsupported              rows 88 tasks 3; mixed tasks 2 groups 3; passes green 15/33 45% (30–62%); failures red 18/44 41% (28–56%); pairs +34 -88 =394 order 34/122 28% (21–36%); separating groups 1
+  every workspace with a known reward, calibration:
+    independently_supported  rows 187 tasks 6; mixed tasks 3 groups 7; passes green 54/55 98% (90–100%); failures red 48/88 55% (44–65%); pairs +276 -0 =556 order 276/276 100% (99–100%); separating groups 5
+    writer_derived           rows 280 tasks 8; mixed tasks 4 groups 12; passes green 39/102 38% (29–48%); failures red 101/141 72% (64–78%); pairs +485 -45 =1027 order 485/530 92% (89–94%); separating groups 5
+    guard                    rows 134 tasks 6; mixed tasks 3 groups 5; passes green 10/49 20% (11–34%); failures red 6/64 9% (4–19%); pairs +18 -546 =196 order 18/564 3% (2–5%); separating groups 0
+    unsupported              rows 88 tasks 3; mixed tasks 2 groups 3; passes green 15/33 45% (30–62%); failures red 18/44 41% (28–56%); pairs +34 -88 =394 order 34/122 28% (21–36%); separating groups 1
+  every workspace with a known reward, held_out:
+    independently_supported  rows 21 tasks 4; mixed tasks 1 groups 1; passes green 4/4 100% (51–100%); failures red 1/2 50% (9–91%); pairs +4 -0 =4 order 4/4 100% (51–100%); separating groups 1
+    writer_derived           rows 26 tasks 5; mixed tasks 1 groups 1; passes green 4/4 100% (51–100%); failures red 1/2 50% (9–91%); pairs +4 -0 =4 order 4/4 100% (51–100%); separating groups 1
+the bar, on graded workspaces of held-out tasks:
+  executed_contract        doesn't pass: 0 held-out tasks with both a pass and a failure; 2 needed
+  independently_supported  doesn't pass: 0 held-out tasks with both a pass and a failure; 2 needed
+  writer_derived           doesn't pass: 0 held-out tasks with both a pass and a failure; 2 needed
+  guard                    doesn't pass: this class never holds power
+  unsupported              doesn't pass: this class never holds power
+embedding-drift-monitor__26QyeXD                             final          reward 0    graded false suite fail  (5/6) checks -     verdict -
+embedding-drift-monitor__2y5CheP                             final          reward 0    graded false suite fail  (5/6) checks -     verdict -
+embedding-drift-monitor__6zRjd9n                             final          reward 1    graded false suite fail  (5/6) checks -     verdict -
+embedding-drift-monitor__6zRjd9n.lean-1.session-1            candidate      reward 1    graded false suite fail  (5/6) checks -     verdict -
+embedding-drift-monitor__6zRjd9n.lean-1.session-2            candidate      reward 1    graded false suite fail  (5/6) checks -     verdict -
+embedding-drift-monitor__9ZYbzjT                             final          reward 1    graded false suite fail  (5/6) checks -     verdict -
+embedding-drift-monitor__KDeY8Bf                             final          reward 0    graded false suite fail  (5/6) checks -     verdict -
+embedding-drift-monitor__KDeY8Bf.lean-1.session-1            candidate      reward 0    graded false suite fail  (5/6) checks -     verdict -
+embedding-drift-monitor__KDeY8Bf.lean-1.session-2            candidate      reward 0    graded false suite fail  (5/6) checks -     verdict -
+embedding-drift-monitor__MZYSp6A                             final          reward 0    graded false suite fail  (3/6) checks -     verdict -
+embedding-drift-monitor__NG9vQg5                             final          reward 1    graded false suite fail  (5/6) checks -     verdict -
+embedding-drift-monitor__PTsawB6                             final          reward 0    graded false suite fail  (5/6) checks -     verdict -
+embedding-drift-monitor__PemYnyR                             final          reward 1    graded false suite fail  (5/6) checks -     verdict -
+embedding-drift-monitor__QAHE7De                             final          reward 1    graded false suite fail  (5/6) checks -     verdict -
+embedding-drift-monitor__QAHE7De.lean-1.session-1            candidate      reward ?    graded false suite fail  (5/6) checks -     verdict -
+embedding-drift-monitor__QAHE7De.lean-1.session-2            candidate      reward 1    graded false suite fail  (5/6) checks -     verdict -
+embedding-drift-monitor__R7mX9UJ                             final          reward 0    graded false suite fail  (5/6) checks -     verdict -
+embedding-drift-monitor__REGuz3v                             final          reward 0    graded false suite fail  (3/6) checks -     verdict -
+embedding-drift-monitor__Uf8HNF3                             final          reward 0    graded false suite fail  (5/6) checks -     verdict -
+embedding-drift-monitor__UfYFodd                             final          reward 0    graded false suite fail  (3/6) checks -     verdict -
+embedding-drift-monitor__UfYFodd.lean-1.session-1            candidate      reward 0    graded false suite fail  (3/6) checks -     verdict -
+embedding-drift-monitor__UfYFodd.lean-1.session-2            candidate      reward 0    graded false suite fail  (3/6) checks -     verdict -
+embedding-drift-monitor__UtNMMsq                             final          reward 1    graded false suite fail  (5/6) checks -     verdict -
+embedding-drift-monitor__XhEFWEe                             final          reward ?    graded false suite fail  (5/6) checks -     verdict -
+embedding-drift-monitor__ZfDzwcs                             final          reward 0    graded false suite fail  (3/6) checks -     verdict -
+embedding-drift-monitor__aGH4F34                             snapshot       reward 1    graded false suite fail  (5/6) checks -     verdict fail
+embedding-drift-monitor__cPwtk4c                             final          reward 1    graded false suite fail  (5/6) checks -     verdict -
+embedding-drift-monitor__eh9ex5r                             snapshot       reward 1    graded false suite fail  (5/6) checks -     verdict -
+embedding-drift-monitor__es2dWha                             final          reward 0    graded false suite fail  (5/6) checks -     verdict -
+embedding-drift-monitor__fF4Yb3V                             final          reward 1    graded false suite fail  (5/6) checks -     verdict -
+embedding-drift-monitor__gQoArdr                             final          reward ?    graded false suite pass  (6/6) checks -     verdict -
+embedding-drift-monitor__mVNMcMn                             final          reward 0    graded false suite fail  (5/6) checks -     verdict -
+embedding-drift-monitor__mVNMcMn.lean-1.session-1            candidate      reward 0    graded false suite fail  (5/6) checks -     verdict -
+embedding-drift-monitor__mVNMcMn.lean-1.session-2            candidate      reward 0    graded false suite fail  (5/6) checks -     verdict -
+embedding-drift-monitor__qTyzkkg                             final          reward 1    graded false suite fail  (5/6) checks -     verdict -
+embedding-drift-monitor__qyc6VQw                             final          reward 0    graded false suite pass  (6/6) checks -     verdict -
+embedding-drift-monitor__uU3ZNb9                             final          reward 1    graded false suite fail  (5/6) checks -     verdict -
+embedding-drift-monitor__uU3ZNb9.reconstructed-v12-embedding-r1-before-review reconstruction reward 0    graded false suite fail  (3/6) checks -     verdict -
+embedding-drift-monitor__w2pYcZk                             final          reward 0    graded false suite fail  (3/6) checks -     verdict -
+embedding-drift-monitor__w8ebMvJ                             final          reward 0    graded false suite fail  (5/6) checks -     verdict -
+embedding-drift-monitor__y2bahob                             final          reward 1    graded false suite fail  (5/6) checks -     verdict -
+embedding-drift-monitor__y2bahob.lean-1.session-1            candidate      reward 1    graded false suite fail  (5/6) checks -     verdict -
+embedding-drift-monitor__y2bahob.lean-1.session-2            candidate      reward 1    graded false suite fail  (5/6) checks -     verdict -
+embedding-drift-monitor__zsNLRYd                             snapshot       reward 1    graded false suite fail  (5/6) checks -     verdict -
+embedding-drift-monitor__zzXmfSE                             final          reward 1    graded false suite fail  (5/6) checks -     verdict -
+embedding-drift-monitor__26QyeXD                             final          reward 0    graded false suite pass  (13/13) checks -     verdict -
+embedding-drift-monitor__2y5CheP                             final          reward 0    graded false suite pass  (13/13) checks -     verdict -
+embedding-drift-monitor__6zRjd9n                             final          reward 1    graded false suite fail  (12/13) checks -     verdict -
+embedding-drift-monitor__6zRjd9n.lean-1.session-1            candidate      reward 1    graded false suite fail  (12/13) checks -     verdict -
+embedding-drift-monitor__6zRjd9n.lean-1.session-2            candidate      reward 1    graded false suite fail  (12/13) checks -     verdict -
+embedding-drift-monitor__9ZYbzjT                             final          reward 1    graded false suite fail  (12/13) checks -     verdict -
+embedding-drift-monitor__KDeY8Bf                             final          reward 0    graded false suite pass  (13/13) checks -     verdict -
+embedding-drift-monitor__KDeY8Bf.lean-1.session-1            candidate      reward 0    graded false suite pass  (13/13) checks -     verdict -
+embedding-drift-monitor__KDeY8Bf.lean-1.session-2            candidate      reward 0    graded false suite pass  (13/13) checks -     verdict -
+embedding-drift-monitor__MZYSp6A                             final          reward 0    graded false suite fail  (12/13) checks -     verdict -
+embedding-drift-monitor__NG9vQg5                             final          reward 1    graded false suite fail  (12/13) checks -     verdict -
+embedding-drift-monitor__PTsawB6                             final          reward 0    graded false suite pass  (13/13) checks -     verdict -
+embedding-drift-monitor__PemYnyR                             final          reward 1    graded false suite fail  (12/13) checks -     verdict -
+embedding-drift-monitor__QAHE7De                             final          reward 1    graded false suite fail  (12/13) checks -     verdict -
+embedding-drift-monitor__QAHE7De.lean-1.session-1            candidate      reward ?    graded false suite fail  (12/13) checks -     verdict -
+embedding-drift-monitor__QAHE7De.lean-1.session-2            candidate      reward 1    graded false suite fail  (12/13) checks -     verdict -
+embedding-drift-monitor__R7mX9UJ                             final          reward 0    graded false suite pass  (13/13) checks -     verdict -
+embedding-drift-monitor__REGuz3v                             final          reward 0    graded false suite fail  (12/13) checks -     verdict -
+embedding-drift-monitor__Uf8HNF3                             final          reward 0    graded false suite pass  (13/13) checks -     verdict -
+embedding-drift-monitor__UfYFodd                             final          reward 0    graded false suite fail  (12/13) checks -     verdict -
+embedding-drift-monitor__UfYFodd.lean-1.session-1            candidate      reward 0    graded false suite fail  (12/13) checks -     verdict -
+embedding-drift-monitor__UfYFodd.lean-1.session-2            candidate      reward 0    graded false suite fail  (12/13) checks -     verdict -
+embedding-drift-monitor__UtNMMsq                             final          reward 1    graded false suite fail  (12/13) checks -     verdict -
+embedding-drift-monitor__XhEFWEe                             final          reward ?    graded false suite pass  (13/13) checks -     verdict -
+embedding-drift-monitor__ZfDzwcs                             final          reward 0    graded false suite fail  (11/13) checks -     verdict -
+embedding-drift-monitor__aGH4F34                             snapshot       reward 1    graded false suite pass  (13/13) checks -     verdict fail
+embedding-drift-monitor__cPwtk4c                             final          reward 1    graded false suite fail  (12/13) checks -     verdict -
+embedding-drift-monitor__eh9ex5r                             snapshot       reward 1    graded false suite fail  (12/13) checks -     verdict -
+embedding-drift-monitor__es2dWha                             final          reward 0    graded false suite pass  (13/13) checks -     verdict -
+embedding-drift-monitor__fF4Yb3V                             final          reward 1    graded false suite pass  (13/13) checks -     verdict -
+embedding-drift-monitor__gQoArdr                             final          reward ?    graded false suite fail  (12/13) checks -     verdict -
+embedding-drift-monitor__mVNMcMn                             final          reward 0    graded false suite fail  (12/13) checks -     verdict -
+embedding-drift-monitor__mVNMcMn.lean-1.session-1            candidate      reward 0    graded false suite fail  (12/13) checks -     verdict -
+embedding-drift-monitor__mVNMcMn.lean-1.session-2            candidate      reward 0    graded false suite fail  (12/13) checks -     verdict -
+embedding-drift-monitor__qTyzkkg                             final          reward 1    graded false suite fail  (12/13) checks -     verdict -
+embedding-drift-monitor__qyc6VQw                             final          reward 0    graded false suite fail  (12/13) checks -     verdict -
+embedding-drift-monitor__uU3ZNb9                             final          reward 1    graded false suite fail  (12/13) checks -     verdict -
+embedding-drift-monitor__uU3ZNb9.reconstructed-v12-embedding-r1-before-review reconstruction reward 0    graded false suite fail  (11/13) checks -     verdict -
+embedding-drift-monitor__w2pYcZk                             final          reward 0    graded false suite fail  (12/13) checks -     verdict -
+embedding-drift-monitor__w8ebMvJ                             final          reward 0    graded false suite pass  (13/13) checks -     verdict -
+embedding-drift-monitor__y2bahob                             final          reward 1    graded false suite fail  (12/13) checks -     verdict -
+embedding-drift-monitor__y2bahob.lean-1.session-1            candidate      reward 1    graded false suite fail  (12/13) checks -     verdict -
+embedding-drift-monitor__y2bahob.lean-1.session-2            candidate      reward 1    graded false suite fail  (12/13) checks -     verdict -
+embedding-drift-monitor__zsNLRYd                             snapshot       reward 1    graded false suite pass  (13/13) checks -     verdict -
+embedding-drift-monitor__zzXmfSE                             final          reward 1    graded false suite fail  (12/13) checks -     verdict -
+embedding-drift-monitor__26QyeXD                             final          reward 0    graded false suite pass  (27/27) checks -     verdict -
+embedding-drift-monitor__2y5CheP                             final          reward 0    graded false suite pass  (27/27) checks -     verdict -
+embedding-drift-monitor__6zRjd9n                             final          reward 1    graded false suite fail  (23/27) checks -     verdict -
+embedding-drift-monitor__6zRjd9n.lean-1.session-1            candidate      reward 1    graded false suite fail  (23/27) checks -     verdict -
+embedding-drift-monitor__6zRjd9n.lean-1.session-2            candidate      reward 1    graded false suite fail  (23/27) checks -     verdict -
+embedding-drift-monitor__9ZYbzjT                             final          reward 1    graded false suite fail  (25/27) checks -     verdict -
+embedding-drift-monitor__KDeY8Bf                             final          reward 0    graded false suite pass  (27/27) checks -     verdict -
+embedding-drift-monitor__KDeY8Bf.lean-1.session-1            candidate      reward 0    graded false suite pass  (27/27) checks -     verdict -
+embedding-drift-monitor__KDeY8Bf.lean-1.session-2            candidate      reward 0    graded false suite pass  (27/27) checks -     verdict -
+embedding-drift-monitor__MZYSp6A                             final          reward 0    graded false suite fail  (25/27) checks -     verdict -
+embedding-drift-monitor__NG9vQg5                             final          reward 1    graded false suite fail  (25/27) checks -     verdict -
+embedding-drift-monitor__PTsawB6                             final          reward 0    graded false suite pass  (27/27) checks -     verdict -
+embedding-drift-monitor__PemYnyR                             final          reward 1    graded false suite fail  (25/27) checks -     verdict -
+embedding-drift-monitor__QAHE7De                             final          reward 1    graded false suite fail  (25/27) checks -     verdict -
+embedding-drift-monitor__QAHE7De.lean-1.session-1            candidate      reward ?    graded false suite fail  (25/27) checks -     verdict -
+embedding-drift-monitor__QAHE7De.lean-1.session-2            candidate      reward 1    graded false suite fail  (25/27) checks -     verdict -
+embedding-drift-monitor__R7mX9UJ                             final          reward 0    graded false suite pass  (27/27) checks -     verdict -
+embedding-drift-monitor__REGuz3v                             final          reward 0    graded false suite fail  (25/27) checks -     verdict -
+embedding-drift-monitor__Uf8HNF3                             final          reward 0    graded false suite pass  (27/27) checks -     verdict -
+embedding-drift-monitor__UfYFodd                             final          reward 0    graded false suite fail  (25/27) checks -     verdict -
+embedding-drift-monitor__UfYFodd.lean-1.session-1            candidate      reward 0    graded false suite fail  (25/27) checks -     verdict -
+embedding-drift-monitor__UfYFodd.lean-1.session-2            candidate      reward 0    graded false suite fail  (25/27) checks -     verdict -
+embedding-drift-monitor__UtNMMsq                             final          reward 1    graded false suite fail  (25/27) checks -     verdict -
+embedding-drift-monitor__XhEFWEe                             final          reward ?    graded false suite pass  (27/27) checks -     verdict -
+embedding-drift-monitor__ZfDzwcs                             final          reward 0    graded false suite fail  (23/27) checks -     verdict -
+embedding-drift-monitor__aGH4F34                             snapshot       reward 1    graded false suite fail  (25/27) checks -     verdict fail
+embedding-drift-monitor__cPwtk4c                             final          reward 1    graded false suite fail  (25/27) checks -     verdict -
+embedding-drift-monitor__eh9ex5r                             snapshot       reward 1    graded false suite fail  (23/27) checks -     verdict -
+embedding-drift-monitor__es2dWha                             final          reward 0    graded false suite pass  (27/27) checks -     verdict -
+embedding-drift-monitor__fF4Yb3V                             final          reward 1    graded false suite pass  (27/27) checks -     verdict -
+embedding-drift-monitor__gQoArdr                             final          reward ?    graded false suite fail  (25/27) checks -     verdict -
+embedding-drift-monitor__mVNMcMn                             final          reward 0    graded false suite pass  (27/27) checks -     verdict -
+embedding-drift-monitor__mVNMcMn.lean-1.session-1            candidate      reward 0    graded false suite pass  (27/27) checks -     verdict -
+embedding-drift-monitor__mVNMcMn.lean-1.session-2            candidate      reward 0    graded false suite pass  (27/27) checks -     verdict -
+embedding-drift-monitor__qTyzkkg                             final          reward 1    graded false suite fail  (25/27) checks -     verdict -
+embedding-drift-monitor__qyc6VQw                             final          reward 0    graded false suite fail  (25/27) checks -     verdict -
+embedding-drift-monitor__uU3ZNb9                             final          reward 1    graded false suite fail  (25/27) checks -     verdict -
+embedding-drift-monitor__uU3ZNb9.reconstructed-v12-embedding-r1-before-review reconstruction reward 0    graded false suite fail  (22/27) checks -     verdict -
+embedding-drift-monitor__w2pYcZk                             final          reward 0    graded false suite fail  (25/27) checks -     verdict -
+embedding-drift-monitor__w8ebMvJ                             final          reward 0    graded false suite pass  (27/27) checks -     verdict -
+embedding-drift-monitor__y2bahob                             final          reward 1    graded false suite fail  (25/27) checks -     verdict -
+embedding-drift-monitor__y2bahob.lean-1.session-1            candidate      reward 1    graded false suite fail  (25/27) checks -     verdict -
+embedding-drift-monitor__y2bahob.lean-1.session-2            candidate      reward 1    graded false suite fail  (25/27) checks -     verdict -
+embedding-drift-monitor__zsNLRYd                             snapshot       reward 1    graded false suite fail  (25/27) checks -     verdict -
+embedding-drift-monitor__zzXmfSE                             final          reward 1    graded false suite fail  (25/27) checks -     verdict -
+embedding-drift-monitor__26QyeXD                             final          reward 0    graded false suite fail  (22/23) checks -     verdict -
+embedding-drift-monitor__2y5CheP                             final          reward 0    graded false suite fail  (20/23) checks -     verdict -
+embedding-drift-monitor__6zRjd9n                             final          reward 1    graded false suite fail  (18/23) checks -     verdict -
+embedding-drift-monitor__6zRjd9n.lean-1.session-1            candidate      reward 1    graded false suite fail  (18/23) checks -     verdict -
+embedding-drift-monitor__6zRjd9n.lean-1.session-2            candidate      reward 1    graded false suite fail  (18/23) checks -     verdict -
+embedding-drift-monitor__9ZYbzjT                             final          reward 1    graded false suite fail  (18/23) checks -     verdict -
+embedding-drift-monitor__KDeY8Bf                             final          reward 0    graded false suite fail  (20/23) checks -     verdict -
+embedding-drift-monitor__KDeY8Bf.lean-1.session-1            candidate      reward 0    graded false suite fail  (20/23) checks -     verdict -
+embedding-drift-monitor__KDeY8Bf.lean-1.session-2            candidate      reward 0    graded false suite fail  (20/23) checks -     verdict -
+embedding-drift-monitor__MZYSp6A                             final          reward 0    graded false suite fail  (18/23) checks -     verdict -
+embedding-drift-monitor__NG9vQg5                             final          reward 1    graded false suite fail  (18/23) checks -     verdict -
+embedding-drift-monitor__PTsawB6                             final          reward 0    graded false suite fail  (20/23) checks -     verdict -
+embedding-drift-monitor__PemYnyR                             final          reward 1    graded false suite fail  (18/23) checks -     verdict -
+embedding-drift-monitor__QAHE7De                             final          reward 1    graded false suite fail  (18/23) checks -     verdict -
+embedding-drift-monitor__QAHE7De.lean-1.session-1            candidate      reward ?    graded false suite fail  (18/23) checks -     verdict -
+embedding-drift-monitor__QAHE7De.lean-1.session-2            candidate      reward 1    graded false suite fail  (18/23) checks -     verdict -
+embedding-drift-monitor__R7mX9UJ                             final          reward 0    graded false suite fail  (20/23) checks -     verdict -
+embedding-drift-monitor__REGuz3v                             final          reward 0    graded false suite fail  (18/23) checks -     verdict -
+embedding-drift-monitor__Uf8HNF3                             final          reward 0    graded false suite fail  (20/23) checks -     verdict -
+embedding-drift-monitor__UfYFodd                             final          reward 0    graded false suite fail  (18/23) checks -     verdict -
+embedding-drift-monitor__UfYFodd.lean-1.session-1            candidate      reward 0    graded false suite fail  (18/23) checks -     verdict -
+embedding-drift-monitor__UfYFodd.lean-1.session-2            candidate      reward 0    graded false suite fail  (18/23) checks -     verdict -
+embedding-drift-monitor__UtNMMsq                             final          reward 1    graded false suite fail  (18/23) checks -     verdict -
+embedding-drift-monitor__XhEFWEe                             final          reward ?    graded false suite fail  (20/23) checks -     verdict -
+embedding-drift-monitor__ZfDzwcs                             final          reward 0    graded false suite fail  (17/23) checks -     verdict -
+embedding-drift-monitor__aGH4F34                             snapshot       reward 1    graded false suite fail  (20/23) checks -     verdict fail
+embedding-drift-monitor__cPwtk4c                             final          reward 1    graded false suite fail  (18/23) checks -     verdict -
+embedding-drift-monitor__eh9ex5r                             snapshot       reward 1    graded false suite fail  (18/23) checks -     verdict -
+embedding-drift-monitor__es2dWha                             final          reward 0    graded false suite fail  (20/23) checks -     verdict -
+embedding-drift-monitor__fF4Yb3V                             final          reward 1    graded false suite fail  (19/23) checks -     verdict -
+embedding-drift-monitor__gQoArdr                             final          reward ?    graded false suite fail  (19/23) checks -     verdict -
+embedding-drift-monitor__mVNMcMn                             final          reward 0    graded false suite fail  (20/23) checks -     verdict -
+embedding-drift-monitor__mVNMcMn.lean-1.session-1            candidate      reward 0    graded false suite fail  (20/23) checks -     verdict -
+embedding-drift-monitor__mVNMcMn.lean-1.session-2            candidate      reward 0    graded false suite fail  (20/23) checks -     verdict -
+embedding-drift-monitor__qTyzkkg                             final          reward 1    graded false suite fail  (18/23) checks -     verdict -
+embedding-drift-monitor__qyc6VQw                             final          reward 0    graded false suite fail  (21/23) checks -     verdict -
+embedding-drift-monitor__uU3ZNb9                             final          reward 1    graded false suite fail  (18/23) checks -     verdict -
+embedding-drift-monitor__uU3ZNb9.reconstructed-v12-embedding-r1-before-review reconstruction reward 0    graded false suite fail  (16/23) checks -     verdict -
+embedding-drift-monitor__w2pYcZk                             final          reward 0    graded false suite fail  (18/23) checks -     verdict -
+embedding-drift-monitor__w8ebMvJ                             final          reward 0    graded false suite fail  (20/23) checks -     verdict -
+embedding-drift-monitor__y2bahob                             final          reward 1    graded false suite fail  (18/23) checks -     verdict -
+embedding-drift-monitor__y2bahob.lean-1.session-1            candidate      reward 1    graded false suite fail  (18/23) checks -     verdict -
+embedding-drift-monitor__y2bahob.lean-1.session-2            candidate      reward 1    graded false suite fail  (18/23) checks -     verdict -
+embedding-drift-monitor__zsNLRYd                             snapshot       reward 1    graded false suite fail  (19/23) checks -     verdict -
+embedding-drift-monitor__zzXmfSE                             final          reward 1    graded false suite fail  (18/23) checks -     verdict -
+sound-change-cascade__HRb77dt                                final          reward 0    graded false suite fail  (2/10) checks -     verdict -
+sound-change-cascade__JdK4E2N                                final          reward 0    graded false suite fail  (7/10) checks -     verdict -
+sound-change-cascade__JyWbEai                                final          reward 0    graded false suite fail  (7/10) checks -     verdict -
+sound-change-cascade__KUdjBfR                                snapshot       reward 1    graded true  suite pass  (10/10) checks -     verdict pass
+sound-change-cascade__Kk7csF5                                snapshot       reward 1    graded true  suite pass  (10/10) checks -     verdict -
+sound-change-cascade__LjmbDpd                                final          reward 0    graded false suite fail  (7/10) checks -     verdict -
+sound-change-cascade__PLWMRFW                                final          reward 0    graded false suite fail  (7/10) checks -     verdict -
+sound-change-cascade__TJtdCHK                                final          reward 0    graded false suite fail  (7/10) checks -     verdict -
+sound-change-cascade__VeXHcfB                                final          reward 0    graded false suite fail  (2/10) checks -     verdict -
+sound-change-cascade__YwnnSDc                                final          reward 0    graded false suite fail  (7/10) checks -     verdict -
+sound-change-cascade__qAxKAFg                                final          reward 0    graded false suite fail  (7/10) checks -     verdict -
+sound-change-cascade__subesUU                                final          reward 0    graded false suite pass  (10/10) checks -     verdict -
+sound-change-cascade__uQscUgB                                final          reward 0    graded false suite fail  (6/10) checks -     verdict -
+sound-change-cascade__uaGad7W                                snapshot       reward 1    graded false suite pass  (10/10) checks -     verdict -
+sound-change-cascade__zVHhMHC                                final          reward 0    graded false suite pass  (10/10) checks -     verdict -
+interleaved-vigenere__FryxfnM                                snapshot       reward 0    graded true  suite fail  (8/13) checks pass  verdict fail
+interleaved-vigenere__KoqMppM                                final          reward 0    graded false suite fail  (2/13) checks -     verdict -
+interleaved-vigenere__LpxW5dB                                final          reward 0    graded false suite fail  (7/13) checks -     verdict -
+interleaved-vigenere__MoPZqbY                                final          reward 0    graded false suite fail  (11/13) checks -     verdict -
+interleaved-vigenere__P9nawsY                                final          reward 0    graded false suite fail  (7/13) checks -     verdict -
+interleaved-vigenere__WXSZXNq                                final          reward 0    graded false suite fail  (7/13) checks -     verdict -
+interleaved-vigenere__aV3x4ba                                final          reward 0    graded false suite fail  (7/13) checks -     verdict -
+interleaved-vigenere__gUswV9Y                                final          reward 0    graded false suite fail  (7/13) checks -     verdict -
+interleaved-vigenere__sbNeZhK                                final          reward 0    graded false suite fail  (7/13) checks -     verdict -
+interleaved-vigenere__u2w5Zb7                                final          reward 0    graded false suite fail  (7/13) checks -     verdict -
+interleaved-vigenere__zj5bwBL                                final          reward 0    graded false suite fail  (7/13) checks -     verdict -
+embedding-drift-monitor__26QyeXD                             final          reward 0    graded false suite fail  (5/7) checks -     verdict -
+embedding-drift-monitor__2y5CheP                             final          reward 0    graded false suite fail  (5/7) checks -     verdict -
+embedding-drift-monitor__6zRjd9n                             final          reward 1    graded false suite fail  (5/7) checks -     verdict -
+embedding-drift-monitor__6zRjd9n.lean-1.session-1            candidate      reward 1    graded false suite fail  (5/7) checks -     verdict -
+embedding-drift-monitor__6zRjd9n.lean-1.session-2            candidate      reward 1    graded false suite fail  (5/7) checks -     verdict -
+embedding-drift-monitor__9ZYbzjT                             final          reward 1    graded false suite fail  (5/7) checks -     verdict -
+embedding-drift-monitor__KDeY8Bf                             final          reward 0    graded false suite fail  (5/7) checks -     verdict -
+embedding-drift-monitor__KDeY8Bf.lean-1.session-1            candidate      reward 0    graded false suite fail  (5/7) checks -     verdict -
+embedding-drift-monitor__KDeY8Bf.lean-1.session-2            candidate      reward 0    graded false suite fail  (5/7) checks -     verdict -
+embedding-drift-monitor__MZYSp6A                             final          reward 0    graded false suite fail  (5/7) checks -     verdict -
+embedding-drift-monitor__NG9vQg5                             final          reward 1    graded false suite fail  (5/7) checks -     verdict -
+embedding-drift-monitor__PTsawB6                             final          reward 0    graded false suite fail  (5/7) checks -     verdict -
+embedding-drift-monitor__PemYnyR                             final          reward 1    graded false suite fail  (5/7) checks -     verdict -
+embedding-drift-monitor__QAHE7De                             final          reward 1    graded false suite fail  (5/7) checks -     verdict -
+embedding-drift-monitor__QAHE7De.lean-1.session-1            candidate      reward ?    graded false suite fail  (5/7) checks -     verdict -
+embedding-drift-monitor__QAHE7De.lean-1.session-2            candidate      reward 1    graded false suite fail  (5/7) checks -     verdict -
+embedding-drift-monitor__R7mX9UJ                             final          reward 0    graded false suite fail  (5/7) checks -     verdict -
+embedding-drift-monitor__REGuz3v                             final          reward 0    graded false suite fail  (5/7) checks -     verdict -
+embedding-drift-monitor__Uf8HNF3                             final          reward 0    graded false suite fail  (5/7) checks -     verdict -
+embedding-drift-monitor__UfYFodd                             final          reward 0    graded false suite fail  (5/7) checks -     verdict -
+embedding-drift-monitor__UfYFodd.lean-1.session-1            candidate      reward 0    graded false suite fail  (5/7) checks -     verdict -
+embedding-drift-monitor__UfYFodd.lean-1.session-2            candidate      reward 0    graded false suite fail  (5/7) checks -     verdict -
+embedding-drift-monitor__UtNMMsq                             final          reward 1    graded false suite fail  (5/7) checks -     verdict -
+embedding-drift-monitor__XhEFWEe                             final          reward ?    graded false suite fail  (5/7) checks -     verdict -
+embedding-drift-monitor__ZfDzwcs                             final          reward 0    graded false suite fail  (5/7) checks -     verdict -
+embedding-drift-monitor__aGH4F34                             snapshot       reward 1    graded false suite fail  (5/7) checks -     verdict fail
+embedding-drift-monitor__cPwtk4c                             final          reward 1    graded false suite fail  (5/7) checks -     verdict -
+embedding-drift-monitor__eh9ex5r                             snapshot       reward 1    graded false suite fail  (5/7) checks -     verdict -
+embedding-drift-monitor__es2dWha                             final          reward 0    graded false suite fail  (5/7) checks -     verdict -
+embedding-drift-monitor__fF4Yb3V                             final          reward 1    graded false suite fail  (5/7) checks -     verdict -
+embedding-drift-monitor__gQoArdr                             final          reward ?    graded false suite fail  (5/7) checks -     verdict -
+embedding-drift-monitor__mVNMcMn                             final          reward 0    graded false suite fail  (5/7) checks -     verdict -
+embedding-drift-monitor__mVNMcMn.lean-1.session-1            candidate      reward 0    graded false suite fail  (5/7) checks -     verdict -
+embedding-drift-monitor__mVNMcMn.lean-1.session-2            candidate      reward 0    graded false suite fail  (5/7) checks -     verdict -
+embedding-drift-monitor__qTyzkkg                             final          reward 1    graded false suite fail  (5/7) checks -     verdict -
+embedding-drift-monitor__qyc6VQw                             final          reward 0    graded false suite fail  (5/7) checks -     verdict -
+embedding-drift-monitor__uU3ZNb9                             final          reward 1    graded false suite fail  (5/7) checks -     verdict -
+embedding-drift-monitor__uU3ZNb9.reconstructed-v12-embedding-r1-before-review reconstruction reward 0    graded false suite fail  (4/7) checks -     verdict -
+embedding-drift-monitor__w2pYcZk                             final          reward 0    graded false suite fail  (5/7) checks -     verdict -
+embedding-drift-monitor__w8ebMvJ                             final          reward 0    graded false suite fail  (5/7) checks -     verdict -
+embedding-drift-monitor__y2bahob                             final          reward 1    graded false suite fail  (5/7) checks -     verdict -
+embedding-drift-monitor__y2bahob.lean-1.session-1            candidate      reward 1    graded false suite fail  (5/7) checks -     verdict -
+embedding-drift-monitor__y2bahob.lean-1.session-2            candidate      reward 1    graded false suite fail  (5/7) checks -     verdict -
+embedding-drift-monitor__zsNLRYd                             snapshot       reward 1    graded false suite fail  (5/7) checks -     verdict -
+embedding-drift-monitor__zzXmfSE                             final          reward 1    graded false suite fail  (5/7) checks -     verdict -
+fin-saccr-rwa__89KPMs9                                       snapshot       reward 0    graded false suite fail  (4/5) checks -     verdict -
+fin-saccr-rwa__E3d7o4p                                       snapshot       reward 0    graded false suite fail  (4/5) checks -     verdict -
+fin-saccr-rwa__GPBRV5j                                       snapshot       reward 0    graded false suite fail  (4/5) checks -     verdict -
+fin-saccr-rwa__uMNL3HS                                       final          reward 0    graded false suite pass  (5/5) checks -     verdict -
+interleaved-vigenere__FryxfnM                                snapshot       reward 0    graded true  suite fail  (3/6) checks pass  verdict fail
+interleaved-vigenere__KoqMppM                                final          reward 0    graded false suite fail  (0/6) checks -     verdict -
+interleaved-vigenere__LpxW5dB                                final          reward 0    graded false suite fail  (4/6) checks -     verdict -
+interleaved-vigenere__MoPZqbY                                final          reward 0    graded false suite fail  (4/6) checks -     verdict -
+interleaved-vigenere__P9nawsY                                final          reward 0    graded false suite fail  (3/6) checks -     verdict -
+interleaved-vigenere__WXSZXNq                                final          reward 0    graded false suite fail  (4/6) checks -     verdict -
+interleaved-vigenere__aV3x4ba                                final          reward 0    graded false suite fail  (4/6) checks -     verdict -
+interleaved-vigenere__gUswV9Y                                final          reward 0    graded false suite fail  (3/6) checks -     verdict -
+interleaved-vigenere__sbNeZhK                                final          reward 0    graded false suite fail  (4/6) checks -     verdict -
+interleaved-vigenere__u2w5Zb7                                final          reward 0    graded false suite fail  (3/6) checks -     verdict -
+interleaved-vigenere__zj5bwBL                                final          reward 0    graded false suite fail  (4/6) checks -     verdict -
+sound-change-cascade__HRb77dt                                final          reward 0    graded false suite fail  (0/8) checks -     verdict -
+sound-change-cascade__JdK4E2N                                final          reward 0    graded false suite fail  (6/8) checks -     verdict -
+sound-change-cascade__JyWbEai                                final          reward 0    graded false suite fail  (6/8) checks -     verdict -
+sound-change-cascade__KUdjBfR                                snapshot       reward 1    graded true  suite pass  (8/8) checks -     verdict pass
+sound-change-cascade__Kk7csF5                                snapshot       reward 1    graded true  suite pass  (8/8) checks -     verdict -
+sound-change-cascade__LjmbDpd                                final          reward 0    graded false suite fail  (7/8) checks -     verdict -
+sound-change-cascade__PLWMRFW                                final          reward 0    graded false suite fail  (7/8) checks -     verdict -
+sound-change-cascade__TJtdCHK                                final          reward 0    graded false suite fail  (7/8) checks -     verdict -
+sound-change-cascade__VeXHcfB                                final          reward 0    graded false suite fail  (0/8) checks -     verdict -
+sound-change-cascade__YwnnSDc                                final          reward 0    graded false suite fail  (6/8) checks -     verdict -
+sound-change-cascade__qAxKAFg                                final          reward 0    graded false suite fail  (6/8) checks -     verdict -
+sound-change-cascade__subesUU                                final          reward 0    graded false suite pass  (8/8) checks -     verdict -
+sound-change-cascade__uQscUgB                                final          reward 0    graded false suite fail  (6/8) checks -     verdict -
+sound-change-cascade__uaGad7W                                snapshot       reward 1    graded false suite pass  (8/8) checks -     verdict -
+sound-change-cascade__zVHhMHC                                final          reward 0    graded false suite pass  (8/8) checks -     verdict -
+embedding-drift-monitor__26QyeXD                             final          reward 0    graded false suite fail  (3/5) checks -     verdict -
+embedding-drift-monitor__2y5CheP                             final          reward 0    graded false suite fail  (3/5) checks -     verdict -
+embedding-drift-monitor__6zRjd9n                             final          reward 1    graded false suite fail  (3/5) checks -     verdict -
+embedding-drift-monitor__6zRjd9n.lean-1.session-1            candidate      reward 1    graded false suite fail  (3/5) checks -     verdict -
+embedding-drift-monitor__6zRjd9n.lean-1.session-2            candidate      reward 1    graded false suite fail  (3/5) checks -     verdict -
+embedding-drift-monitor__9ZYbzjT                             final          reward 1    graded false suite fail  (3/5) checks -     verdict -
+embedding-drift-monitor__KDeY8Bf                             final          reward 0    graded false suite fail  (3/5) checks -     verdict -
+embedding-drift-monitor__KDeY8Bf.lean-1.session-1            candidate      reward 0    graded false suite fail  (3/5) checks -     verdict -
+embedding-drift-monitor__KDeY8Bf.lean-1.session-2            candidate      reward 0    graded false suite fail  (3/5) checks -     verdict -
+embedding-drift-monitor__MZYSp6A                             final          reward 0    graded false suite fail  (2/5) checks -     verdict -
+embedding-drift-monitor__NG9vQg5                             final          reward 1    graded false suite fail  (3/5) checks -     verdict -
+embedding-drift-monitor__PTsawB6                             final          reward 0    graded false suite fail  (3/5) checks -     verdict -
+embedding-drift-monitor__PemYnyR                             final          reward 1    graded false suite fail  (3/5) checks -     verdict -
+embedding-drift-monitor__QAHE7De                             final          reward 1    graded false suite fail  (3/5) checks -     verdict -
+embedding-drift-monitor__QAHE7De.lean-1.session-1            candidate      reward ?    graded false suite fail  (3/5) checks -     verdict -
+embedding-drift-monitor__QAHE7De.lean-1.session-2            candidate      reward 1    graded false suite fail  (3/5) checks -     verdict -
+embedding-drift-monitor__R7mX9UJ                             final          reward 0    graded false suite fail  (3/5) checks -     verdict -
+embedding-drift-monitor__REGuz3v                             final          reward 0    graded false suite fail  (2/5) checks -     verdict -
+embedding-drift-monitor__Uf8HNF3                             final          reward 0    graded false suite fail  (3/5) checks -     verdict -
+embedding-drift-monitor__UfYFodd                             final          reward 0    graded false suite fail  (2/5) checks -     verdict -
+embedding-drift-monitor__UfYFodd.lean-1.session-1            candidate      reward 0    graded false suite fail  (2/5) checks -     verdict -
+embedding-drift-monitor__UfYFodd.lean-1.session-2            candidate      reward 0    graded false suite fail  (2/5) checks -     verdict -
+embedding-drift-monitor__UtNMMsq                             final          reward 1    graded false suite fail  (3/5) checks -     verdict -
+embedding-drift-monitor__XhEFWEe                             final          reward ?    graded false suite fail  (3/5) checks -     verdict -
+embedding-drift-monitor__ZfDzwcs                             final          reward 0    graded false suite fail  (2/5) checks -     verdict -
+embedding-drift-monitor__aGH4F34                             snapshot       reward 1    graded false suite fail  (4/5) checks -     verdict fail
+embedding-drift-monitor__cPwtk4c                             final          reward 1    graded false suite fail  (3/5) checks -     verdict -
+embedding-drift-monitor__eh9ex5r                             snapshot       reward 1    graded false suite fail  (3/5) checks -     verdict -
+embedding-drift-monitor__es2dWha                             final          reward 0    graded false suite fail  (3/5) checks -     verdict -
+embedding-drift-monitor__fF4Yb3V                             final          reward 1    graded false suite fail  (3/5) checks -     verdict -
+embedding-drift-monitor__gQoArdr                             final          reward ?    graded false suite fail  (3/5) checks -     verdict -
+embedding-drift-monitor__mVNMcMn                             final          reward 0    graded false suite fail  (3/5) checks -     verdict -
+embedding-drift-monitor__mVNMcMn.lean-1.session-1            candidate      reward 0    graded false suite fail  (3/5) checks -     verdict -
+embedding-drift-monitor__mVNMcMn.lean-1.session-2            candidate      reward 0    graded false suite fail  (3/5) checks -     verdict -
+embedding-drift-monitor__qTyzkkg                             final          reward 1    graded false suite fail  (3/5) checks -     verdict -
+embedding-drift-monitor__qyc6VQw                             final          reward 0    graded false suite fail  (3/5) checks -     verdict -
+embedding-drift-monitor__uU3ZNb9                             final          reward 1    graded false suite fail  (3/5) checks -     verdict -
+embedding-drift-monitor__uU3ZNb9.reconstructed-v12-embedding-r1-before-review reconstruction reward 0    graded false suite fail  (2/5) checks -     verdict -
+embedding-drift-monitor__w2pYcZk                             final          reward 0    graded false suite fail  (2/5) checks -     verdict -
+embedding-drift-monitor__w8ebMvJ                             final          reward 0    graded false suite fail  (3/5) checks -     verdict -
+embedding-drift-monitor__y2bahob                             final          reward 1    graded false suite fail  (3/5) checks -     verdict -
+embedding-drift-monitor__y2bahob.lean-1.session-1            candidate      reward 1    graded false suite fail  (3/5) checks -     verdict -
+embedding-drift-monitor__y2bahob.lean-1.session-2            candidate      reward 1    graded false suite fail  (3/5) checks -     verdict -
+embedding-drift-monitor__zsNLRYd                             snapshot       reward 1    graded false suite fail  (4/5) checks -     verdict -
+embedding-drift-monitor__zzXmfSE                             final          reward 1    graded false suite fail  (3/5) checks -     verdict -
+fin-saccr-rwa__89KPMs9                                       snapshot       reward 0    graded false suite fail  (2/5) checks -     verdict -
+fin-saccr-rwa__E3d7o4p                                       snapshot       reward 0    graded false suite fail  (2/5) checks -     verdict -
+fin-saccr-rwa__GPBRV5j                                       snapshot       reward 0    graded false suite fail  (2/5) checks -     verdict -
+fin-saccr-rwa__uMNL3HS                                       final          reward 0    graded false suite fail  (3/5) checks -     verdict -
+interleaved-vigenere__FryxfnM                                snapshot       reward 0    graded true  suite fail  (3/5) checks pass  verdict fail
+interleaved-vigenere__KoqMppM                                final          reward 0    graded false suite fail  (0/5) checks -     verdict -
+interleaved-vigenere__LpxW5dB                                final          reward 0    graded false suite fail  (3/5) checks -     verdict -
+interleaved-vigenere__MoPZqbY                                final          reward 0    graded false suite fail  (4/5) checks -     verdict -
+interleaved-vigenere__P9nawsY                                final          reward 0    graded false suite fail  (3/5) checks -     verdict -
+interleaved-vigenere__WXSZXNq                                final          reward 0    graded false suite fail  (3/5) checks -     verdict -
+interleaved-vigenere__aV3x4ba                                final          reward 0    graded false suite fail  (3/5) checks -     verdict -
+interleaved-vigenere__gUswV9Y                                final          reward 0    graded false suite fail  (3/5) checks -     verdict -
+interleaved-vigenere__sbNeZhK                                final          reward 0    graded false suite fail  (3/5) checks -     verdict -
+interleaved-vigenere__u2w5Zb7                                final          reward 0    graded false suite fail  (2/5) checks -     verdict -
+interleaved-vigenere__zj5bwBL                                final          reward 0    graded false suite fail  (3/5) checks -     verdict -
+sound-change-cascade__HRb77dt                                final          reward 0    graded false suite fail  (0/4) checks -     verdict -
+sound-change-cascade__JdK4E2N                                final          reward 0    graded false suite fail  (2/4) checks -     verdict -
+sound-change-cascade__JyWbEai                                final          reward 0    graded false suite fail  (1/4) checks -     verdict -
+sound-change-cascade__KUdjBfR                                snapshot       reward 1    graded true  suite pass  (4/4) checks -     verdict pass
+sound-change-cascade__Kk7csF5                                snapshot       reward 1    graded true  suite pass  (4/4) checks -     verdict -
+sound-change-cascade__LjmbDpd                                final          reward 0    graded false suite fail  (2/4) checks -     verdict -
+sound-change-cascade__PLWMRFW                                final          reward 0    graded false suite fail  (2/4) checks -     verdict -
+sound-change-cascade__TJtdCHK                                final          reward 0    graded false suite fail  (2/4) checks -     verdict -
+sound-change-cascade__VeXHcfB                                final          reward 0    graded false suite fail  (0/4) checks -     verdict -
+sound-change-cascade__YwnnSDc                                final          reward 0    graded false suite fail  (2/4) checks -     verdict -
+sound-change-cascade__qAxKAFg                                final          reward 0    graded false suite fail  (2/4) checks -     verdict -
+sound-change-cascade__subesUU                                final          reward 0    graded false suite fail  (2/4) checks -     verdict -
+sound-change-cascade__uQscUgB                                final          reward 0    graded false suite fail  (1/4) checks -     verdict -
+sound-change-cascade__uaGad7W                                snapshot       reward 1    graded false suite pass  (4/4) checks -     verdict -
+sound-change-cascade__zVHhMHC                                final          reward 0    graded false suite fail  (2/4) checks -     verdict -
+bun-sourcemap-leak__4KF3b8s                                  snapshot       reward ?    graded false suite fail  (3/7) checks -     verdict -
+bun-sourcemap-leak__5sZ7gks                                  snapshot       reward ?    graded false suite fail  (3/7) checks -     verdict -
+bun-sourcemap-leak__AhfCw5c                                  snapshot       reward 1    graded false suite fail  (3/7) checks -     verdict -
+bun-sourcemap-leak__F4t2d8w                                  snapshot       reward 0    graded false suite fail  (3/7) checks -     verdict -
+bun-sourcemap-leak__KSe7EpL                                  snapshot       reward 0    graded false suite fail  (3/7) checks -     verdict -
+bun-sourcemap-leak__YgVxiUg                                  snapshot       reward 0    graded false suite fail  (3/7) checks -     verdict -
+bun-sourcemap-leak__hTfpu6P                                  snapshot       reward 0    graded false suite fail  (3/7) checks -     verdict -
+bun-sourcemap-leak__wPKtee2                                  snapshot       reward ?    graded false suite fail  (3/7) checks -     verdict -
+cad-model__PCPn5pW                                           snapshot       reward 1    graded true  suite pass  (5/5) checks -     verdict pass
+cad-model__UpQfB2j                                           snapshot       reward 1    graded false suite pass  (5/5) checks -     verdict pass
+cad-model__VXuQNL9                                           snapshot       reward 1    graded true  suite pass  (5/5) checks -     verdict -
+cargo-flight-dispatch__M5T7oW8                               snapshot       reward 0    graded false suite pass  (7/7) checks pass  verdict fail
+cargo-flight-dispatch__anfUuvh                               snapshot       reward 0    graded false suite pass  (7/7) checks -     verdict fail
+cargo-flight-dispatch__eVK5hHc                               snapshot       reward 0    graded false suite pass  (7/7) checks fail  verdict fail
+cargo-flight-dispatch__gsjsQr3                               snapshot       reward 0    graded false suite pass  (7/7) checks -     verdict fail
+cargo-flight-dispatch__jTTHMeh                               snapshot       reward 0    graded false suite pass  (7/7) checks -     verdict fail
+cargo-flight-dispatch__kzGkiRi                               snapshot       reward 0    graded false suite pass  (7/7) checks -     verdict fail
+html-js-filter__aZvBopx                                      snapshot       reward 0    graded false suite pass  (6/6) checks pass  verdict fail
+ks-solver-cpp__Lt6izN8                                       snapshot       reward 0    graded false suite pass  (1/1) checks -     verdict -
+ks-solver-cpp__PDuFFLt                                       snapshot       reward 0    graded false suite pass  (1/1) checks fail  verdict -
+ks-solver-cpp__pFx79Ga                                       snapshot       reward 0    graded false suite pass  (1/1) checks -     verdict fail
+ks-solver-cpp__z5fa8Zp                                       snapshot       reward 0    graded true  suite pass  (1/1) checks -     verdict fail
+mvcc-lsm-compaction__4yfBDYL                                 snapshot       reward 1    graded false suite pass  (2/2) checks -     verdict -
+mvcc-lsm-compaction__JsFGzzJ                                 snapshot       reward 1    graded true  suite pass  (2/2) checks -     verdict -
+mvcc-lsm-compaction__cXLAxTv                                 snapshot       reward 1    graded false suite fail  (0/2) checks fail  verdict -
+mvcc-lsm-compaction__pkCidVR                                 snapshot       reward 1    graded false suite pass  (2/2) checks -     verdict -
+mvcc-lsm-compaction__s5z5Kwr                                 snapshot       reward 1    graded false suite pass  (2/2) checks -     verdict -
+production-planning__FRFigLe                                 snapshot       reward 1    graded false suite pass  (8/8) checks -     verdict fail
+production-planning__Vb5Fddr                                 snapshot       reward 1    graded false suite pass  (8/8) checks pass  verdict fail
+production-planning__bMzvLfm                                 snapshot       reward 1    graded false suite pass  (8/8) checks -     verdict fail
+production-planning__rmraruG                                 snapshot       reward 0    graded false suite fail  (0/8) checks -     verdict fail
+production-planning__sZAqAc6                                 snapshot       reward 1    graded false suite pass  (8/8) checks -     verdict -
+production-planning__yzdyUnm                                 snapshot       reward 0    graded false suite pass  (8/8) checks -     verdict -
+risk-scorer-replay__sSqd7oF                                  snapshot       reward 1    graded false suite fail  (0/2) checks pass  verdict fail
+risk-scorer-replay__xWMSei4                                  snapshot       reward 0    graded true  suite fail  (0/2) checks fail  verdict fail
+wal-recovery-ordering__DXqWif2                               snapshot       reward 0    graded false suite fail  (11/13) checks -     verdict -
+wal-recovery-ordering__qbhxq2M                               snapshot       reward 0    graded false suite fail  (11/13) checks -     verdict fail
+wal-recovery-ordering__rojNpSF                               snapshot       reward 0    graded true  suite fail  (11/13) checks -     verdict -
+wal-recovery-ordering__uoUwaHU                               snapshot       reward 0    graded false suite fail  (11/13) checks -     verdict fail
+bun-sourcemap-leak__4KF3b8s                                  snapshot       reward ?    graded false suite fail  (4/5) checks -     verdict -
+bun-sourcemap-leak__5sZ7gks                                  snapshot       reward ?    graded false suite fail  (4/5) checks -     verdict -
+bun-sourcemap-leak__AhfCw5c                                  snapshot       reward 1    graded false suite fail  (4/5) checks -     verdict -
+bun-sourcemap-leak__F4t2d8w                                  snapshot       reward 0    graded false suite fail  (2/5) checks -     verdict -
+bun-sourcemap-leak__KSe7EpL                                  snapshot       reward 0    graded false suite fail  (2/5) checks -     verdict -
+bun-sourcemap-leak__YgVxiUg                                  snapshot       reward 0    graded false suite fail  (4/5) checks -     verdict -
+bun-sourcemap-leak__hTfpu6P                                  snapshot       reward 0    graded false suite fail  (2/5) checks -     verdict -
+bun-sourcemap-leak__wPKtee2                                  snapshot       reward ?    graded false suite fail  (2/5) checks -     verdict -
+ks-solver-cpp__Lt6izN8                                       snapshot       reward 0    graded false suite fail  (0/3) checks -     verdict -
+ks-solver-cpp__PDuFFLt                                       snapshot       reward 0    graded false suite fail  (0/3) checks fail  verdict -
+ks-solver-cpp__pFx79Ga                                       snapshot       reward 0    graded false suite fail  (0/3) checks -     verdict fail
+ks-solver-cpp__z5fa8Zp                                       snapshot       reward 0    graded true  suite fail  (0/3) checks -     verdict fail
