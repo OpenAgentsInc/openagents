@@ -40,7 +40,7 @@ struct Review {
     coverage: String,
 }
 
-fn request(input: &Input) -> Request {
+fn request(input: &Input, literal_citations: bool) -> Request {
     let fields = [
         "requirement",
         "call_id",
@@ -51,13 +51,28 @@ fn request(input: &Input) -> Request {
     ];
     let properties: serde_json::Map<String, Value> = fields
         .iter()
-        .map(|s| ((*s).into(), json!({"type":"string"})))
+        .map(|s| {
+            let mut property = json!({"type":"string"});
+            if literal_citations {
+                match *s {
+                    "requirement" => property["description"] = json!("Copy one contiguous passage verbatim from the public task. Do not add quotation marks, escape characters, commentary, or ellipses. Put explanations in reasoning."),
+                    "output_quote" => property["description"] = json!("Copy one contiguous passage verbatim from the named command's stdout or stderr. Do not add quotation marks, commentary, repr formatting, or ellipses. Preserve the actual characters and newlines."),
+                    _ => {}
+                }
+            }
+            ((*s).into(), property)
+        })
         .collect();
     Request {
         model: "gpt-6-astra".into(),
         effort: Some("high".into()),
         instructions: INSTRUCTIONS.into(),
-        cache_key: "coder-one-reproduced-review-v1".into(),
+        cache_key: if literal_citations {
+            "coder-one-reproduced-review-literal-v2"
+        } else {
+            "coder-one-reproduced-review-v1"
+        }
+        .into(),
         parallel_tools: false,
         input: vec![
             json!({"role":"user","content":[{"type":"input_text","text":serde_json::to_string(input).expect("input serializes")} ]}),
@@ -200,6 +215,7 @@ fn save(out: &Path, name: &str, value: &Value) -> Result<(), String> {
 /// Model failures are retained with unknown usage where no response arrived.
 pub async fn command(args: &[String]) -> Result<i32, String> {
     let (mut input, mut out, mut container) = (None, None, None);
+    let mut literal_citations = false;
     let mut args = args.iter();
     while let Some(arg) = args.next() {
         let value = args
@@ -209,6 +225,11 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
             "--input" => input = Some(value),
             "--out" => out = Some(value),
             "--container" => container = Some(value),
+            "--prompt" => match value.as_str() {
+                "v1" => literal_citations = false,
+                "literal-v2" => literal_citations = true,
+                _ => return Err("--prompt takes v1 or literal-v2".into()),
+            },
             _ => return Err(format!("Unknown reproduced-review option {arg}")),
         }
     }
@@ -260,7 +281,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
     let home = crate::credentials::openagents_dir().ok_or("HOME is not set")?;
     let key = crate::credentials::jev_key(|name| std::env::var(name).ok(), &home)?;
     let mode = JevMode::Live(crate::credentials::jev_client(&key.secret)?);
-    let mut request = request(&input);
+    let mut request = request(&input, literal_citations);
     let started = Instant::now();
     let deadline = crate::deadline::Deadline::starting(
         started,
@@ -405,7 +426,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
         .iter()
         .filter_map(|f| f["score"].as_f64())
         .max_by(f64::total_cmp);
-    let record = json!({"schema":SCHEMA,"candidate_identity":input.candidate_identity,"input_digest":atif::digest(&json!(input)),"review":review,"findings":findings,"score":best,"call":if best.is_some_and(|p|p>=0.8){"fail"}else{"unknown"},"error":error,"replies":replies,"known_native_cost_usd":cost,"milliseconds":started.elapsed().as_millis(),"steps":recorder.steps(),"observations":observations});
+    let record = json!({"schema":SCHEMA,"reviewer_prompt":if literal_citations {"literal-v2"} else {"v1"},"candidate_identity":input.candidate_identity,"input_digest":atif::digest(&json!(input)),"review":review,"findings":findings,"score":best,"call":if best.is_some_and(|p|p>=0.8){"fail"}else{"unknown"},"error":error,"replies":replies,"known_native_cost_usd":cost,"milliseconds":started.elapsed().as_millis(),"steps":recorder.steps(),"observations":observations});
     save(out, "review.json", &record)?;
     println!(
         "{}",

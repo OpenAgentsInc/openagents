@@ -582,6 +582,15 @@ creates and removes that container, verifies candidate attribution and hashes,
 and retains every request and command. This is an experimental fail-or-unknown
 verdict; a clean review does not mean pass. See the linked protocol for bounds.
 
+Add `--prompt literal-v2` to require exact, contiguous public-task and command
+output passages in the citation fields. This experimental prompt keeps the
+original validator and semantic cutoff. The default remains `--prompt v1`.
+
+`coder-one checks reproduced-rejudge --input FILE --review FILE --out DIR`
+applies the separately recorded citation recovery to a retained review. It checks
+the input identity and reuses the original commands and outputs. It can make new
+Jev calls, but it does not run another reasoning-model review or another command.
+Keep its result separate from the original strict result.
 
 `verify.truthful` combines attributable retained source-review and report-audit
 records without inference. Its fixture contains `candidate`, `report`, `review`,

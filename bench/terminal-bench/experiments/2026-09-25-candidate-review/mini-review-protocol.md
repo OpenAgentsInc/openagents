@@ -20,3 +20,23 @@ named result. Never turn an absence of findings into a pass. Record correct and
 incorrect failure calls, failure recall, unknowns, per-family separation, cost,
 time, and every request, response, command, and candidate identity. Hash the
 candidate before and after review. Do not tune on a claimed held-out result here.
+
+## Second development pass after the original controls
+
+The original strict validator rejected every mini-task finding because the
+reviewer added quotation marks or prose to citation fields. Preserve those eight
+results and the separately rejudged `quoted-passages-v2` results. A new opt-in
+`literal-v2` request adds field descriptions that require one contiguous exact
+quotation without wrappers, commentary, or ellipses. It does not loosen the
+validator, change the semantic questions, or change the 0.8 cutoff.
+
+The review also reproduced a real defect in the scripted `cancel-cleanup` good
+candidate: after one interrupt, faster cleanup finishing triggers another cancel
+that interrupts slower cleanup. The mini-grader used equal cleanup delays and
+missed this. Issue #9641 fixes the fixture and strengthens that grader. Preserve
+the old passing label and report the discrepancy; do not revise it in place.
+
+Run all eight mini controls again with the new prompt and the corrected fixture
+and grader. Keep this second pass in a new directory with its exact binary and
+request identities. It is another development exercise. It is not an independent
+confirmation sample, a TB4 pass, or grounds to close #9584.

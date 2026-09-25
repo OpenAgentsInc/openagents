@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import time
 
@@ -22,7 +23,10 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--out', type=Path, required=True)
     p.add_argument('--binary', type=Path, required=True)
+    p.add_argument('--prompt', choices=['v1', 'literal-v2'], default='v1')
     a = p.parse_args()
+    if shutil.disk_usage(a.out.parent).free < 10 * 1024**3:
+        raise ValueError('Mini-task preflight needs 10 GiB free before building')
     a.out.mkdir(parents=True, exist_ok=True)
     context = a.out / 'environment'
     context.mkdir(exist_ok=True)
@@ -88,7 +92,8 @@ def main():
                 '--entrypoint', 'sleep', image, '400'], text=True, timeout=30).strip()
             with (out / 'review.log').open('w') as log:
                 result = subprocess.run([str(a.binary), 'checks', 'reproduced-review', '--input', str(out / 'input.json'),
-                                         '--container', container, '--out', str(out / 'reproduced')],
+                                         '--container', container, '--out', str(out / 'reproduced'),
+                                         '--prompt', a.prompt],
                                         env=env, stdout=log, stderr=subprocess.STDOUT, timeout=340)
             if tree(work) != original:
                 raise ValueError('Review changed a candidate')
