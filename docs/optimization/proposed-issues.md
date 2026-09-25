@@ -45,6 +45,12 @@ records exposure and cannot reset it by renaming the suite.
 
 ## OPT-03: Build a bounded DSPy and GEPA authoring bridge
 
+> **Superseded, 2026-09-25.** No Python tooling: the algorithms worth having
+> are ported to Rust instead. See #9659 (fitting decision settings, after DSPy
+> 3.4.0's ReAnchor), #9660 (decision settings in question-set files), and
+> [Is DSPy the tool?](coder-components.md#is-dspy-the-tool). The text below is
+> kept for the record.
+
 **Scope:** Offline infrastructure, compiler/exporter operations, CAP and EXT.
 
 Pin upstream dependencies and implement adapters from semantic contracts and

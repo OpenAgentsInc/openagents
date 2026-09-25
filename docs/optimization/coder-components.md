@@ -708,14 +708,30 @@ What doesn't transfer:
   thresholds, packing, and control flow carried today's gains.
 - **Jev isn't prompted by free text.** Its "prompt" is a question set and
   state, which the Gym already versions separately (`crates/gym/questions/`).
-- **Product code is Rust.** DSPy and GEPA can run as pinned, offline Python
-  tooling that proposes text candidates and hands them to the Rust runner,
-  as [OPT-03](proposed-issues.md#opt-03-build-a-bounded-dspy-and-gepa-authoring-bridge)
-  plans. They don't run inside an episode.
+- **Product code is Rust, and so is the tooling.** We port the algorithms
+  worth having to Rust instead of running DSPy or GEPA as Python tooling.
 
-So: borrow signatures, composition, metric-driven search, and GEPA's
-frontier. Use GEPA itself only for the text surfaces, the system prompt
-sections and directions, and only after the structural levers are measured.
+DSPy 3.4.0 (2026-09-25) added Jev support: `Noul`, `Choice`, and `Score`
+output types that run as Jev questions, decisions recomputed locally from
+the returned probabilities, and ReAnchor, an optimizer that fits
+thresholds, Score cuts, and Choice weights against a metric with a 5-fold
+held-out check, never changing the wording and never making new calls. Its
+GEPA still can't change a Jev question's wording or criteria. Two ideas are
+worth porting:
+
+- **Fitted decision settings** (#9659): ReAnchor's algorithm, reimplemented as
+  a study over recorded answers, at no Jev cost.
+- **Settings apart from wording** (#9660): a `decision` block in question-set
+  files, digested separately, so changing a setting leaves every request and
+  recorded answer unchanged.
+
+GEPA's reflective proposal and Pareto selection over examples come after
+those, ported into the study's archive and frontier, and only under the rule
+to tune on patterns, not wording. MIPROv2 is deferred: our question sets
+carry no demonstrations.
+
+So: borrow signatures, composition, metric-driven search, ReAnchor's
+fitting, and GEPA's frontier, all in Rust.
 
 ## What the Gym dashboard needs to show
 
