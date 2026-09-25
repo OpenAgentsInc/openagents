@@ -90,3 +90,18 @@ Do not inspect official labels until the complete review rule is frozen and
 reviews are retained. The other agent's previously announced shadow-relay failure
 is known; this task is new to the label fit but not globally unobserved. Report it
 separately from the seven other groups.
+
+## Stronger-reviewer development comparison
+
+Interim calibration results reject static Luna review alone: after 68 completed
+reviews, the 0.8 cutoff has seven true and seven false failure calls. False
+alarms include demanding a general cipher solver where the task asks to decrypt
+one supplied ciphertext, arithmetic/string mistakes, and speculative runtime
+inputs. Preserve this negative result.
+
+Before opening comparison outputs, run the identical packet and native review
+schema through `gpt-6-astra` at high effort on calibration only. This is an
+explicitly more expensive verifier for a cheap executor, not a Luna-only
+configuration. Bound each call to 180 seconds and record its list-price usage.
+Use the same threshold-selection rule. No model is promoted without reporting
+its full cost and comparing its own held-out behavior after calibration freezes.

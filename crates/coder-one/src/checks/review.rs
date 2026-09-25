@@ -156,6 +156,20 @@ pub async fn run<T: Transport>(
     jev: &JevMode,
     out: &Path,
 ) -> Result<Value, String> {
+    run_model(input, transport, jev, out, "gpt-6-luna").await
+}
+
+/// The same component with an explicitly selected reviewer model.
+///
+/// # Errors
+/// Returns invalid-input and storage failures as described by [`run`].
+pub async fn run_model<T: Transport>(
+    input: &Input,
+    transport: &T,
+    jev: &JevMode,
+    out: &Path,
+    model: &str,
+) -> Result<Value, String> {
     if input.task.is_empty()
         || input.task.len() > 64_000
         || input.files.len() > 100
@@ -164,7 +178,8 @@ pub async fn run<T: Transport>(
         return Err("Review input exceeds its task or file bounds".to_string());
     }
     std::fs::create_dir_all(out).map_err(|e| e.to_string())?;
-    let request = request(input);
+    let mut request = request(input);
+    request.model = model.to_string();
     let request_json = json!({"model":request.model, "effort":request.effort, "instructions":request.instructions,
         "input":request.input, "tools":request.tools, "cache_key":request.cache_key, "parallel_tools":request.parallel_tools});
     crate::record::write_atomic(
@@ -250,6 +265,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
     let mut input = None;
     let mut out = None;
     let mut replay = None;
+    let mut model = "gpt-6-luna";
     let mut args = args.iter();
     while let Some(arg) = args.next() {
         let value = args.next().ok_or("review needs --input FILE --out DIR")?;
@@ -257,6 +273,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
             "--input" => input = Some(value),
             "--out" => out = Some(value),
             "--replay" => replay = Some(value),
+            "--model" => model = value,
             _ => return Err(format!("Unknown review option {arg}")),
         }
     }
@@ -310,7 +327,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
         result
     } else {
         let transport = crate::micro::codex_wire(&format!("review-{}", atif::now_ms()))?;
-        run(&input, &transport, &jev, out).await?
+        run_model(&input, &transport, &jev, out, model).await?
     };
     println!("{}",serde_json::to_string(&json!({"output":out,"findings":result["findings"].as_array().map(Vec::len),"error":result["error"]})).map_err(|e|e.to_string())?);
     Ok(0)

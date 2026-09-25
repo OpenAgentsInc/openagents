@@ -17,6 +17,7 @@ p.add_argument('--rows', type=Path, required=True)
 p.add_argument('--baseline', type=Path, required=True)
 p.add_argument('--partition', choices=['calibration', 'held-out', 'prospective'], required=True)
 p.add_argument('--threshold', type=float)
+p.add_argument('--record', choices=['record','normalized'], default='record')
 p.add_argument('--out', type=Path, required=True)
 a = p.parse_args()
 manifest = json.loads(a.manifest.read_text())
@@ -30,7 +31,7 @@ for item in manifest:
     label = labels[key]
     record = None
     if item.get('input'):
-        path = Path(item['input']).parent / 'record/review.json'
+        path = Path(item['input']).parent / a.record / 'review.json'
         if path.exists():
             record = json.loads(path.read_text())
     scores = [f['score'] for f in record['findings'] if f['score'] is not None] if record else []
