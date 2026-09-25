@@ -270,6 +270,14 @@ uses, and marks which are implemented and which are only specified.
   store; `voyager evidence` renders a run's coverage matrix and metrics.
   The crate builds and tests without the helper. Read `docs/voyager/`
   before changing an episode, a world manifest, or the bridge protocol.
+- `crates/verse` — the Verse desktop world: a Tron-style city drawn in
+  amber lines on the terminal's near-black field, and a third-person
+  character with WoW-style movement and mouselook. The stack follows Ruins
+  of Atlantis (`wgpu`, `winit`, `glam`, a custom renderer); the controller
+  is reimplemented from its `client_core`, not copied. Every color comes
+  from `coder_terminal::Intensity`; a test refuses any other. `verse
+  --capture <file.png>` renders the spawn view without a window. Read
+  `docs/verse/` before changing the controller, the palette, or the world.
 - `crates/nostr` — pure Nostr protocol and verification primitives
   (events, filters, signatures, NIP-19/NIP-44, replacement and deletion,
   Block NIP validators). No storage, no network, no third-party Nostr

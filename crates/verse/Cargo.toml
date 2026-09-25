@@ -1,0 +1,20 @@
+[package]
+name = "verse"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Verse: the OpenAgents desktop world. A Tron-style amber line city with a WoW-style player controller, rendered with wgpu."
+publish.workspace = true
+
+[dependencies]
+bytemuck = { version = "1.25", features = ["derive"] }
+coder-terminal = { path = "../coder-terminal" }
+glam = "0.30.10"
+png = "0.18.1"
+pollster = "0.4"
+wgpu = "29.0.4"
+# `wayland-csd-adwaita` is off: it pulls BSD-2-Clause `arrayref`, which deny.toml refuses.
+winit = { version = "0.30.13", default-features = false, features = ["rwh_06", "x11", "wayland", "wayland-dlopen"] }
+
+[lints]
+workspace = true

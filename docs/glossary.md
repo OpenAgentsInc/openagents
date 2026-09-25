@@ -155,6 +155,14 @@ implement this shared context system.
 | Decision door | Implemented | A `POST /v1/systemone` endpoint a world's `relay.decision_url` names — a local `kev-serve` or a live TypeSafe door. A `choice` answer orders admitted work; every call is recorded under `decisions/` with state, questions, model, raw response, and transport. |
 | Achievement label | Implemented | A NIP-32 `kind:1985` event the host's relay-management key signs after a reconciled quest — `openagents.voyager` / `quest-complete` targeting the member's pubkey — published to the episode relay and kept as `quest/label.json`. |
 
+## Verse
+
+| Term | Status | Definition |
+| --- | --- | --- |
+| Verse | Partial | The OpenAgents desktop world, `crates/verse`: a walkable 3D city in the Coder terminal's amber, after the June 2026 Tassadar run board (episode 240) and on the Ruins of Atlantis engine family. The first slice is one world and one local player; multiplayer and live OpenAgents state are not implemented. See [verse](verse/README.md). |
+| Amber ladder | Implemented | The four `coder_terminal::Intensity` steps over one amber hue, plus the near-black field. Verse draws every line in a ladder step and every solid face in the field color. |
+| Mouselook | Implemented | Holding the right mouse button: the character turns to face the camera, then turns with the mouse, and `A`/`D` strafe instead of turning. Left drag orbits the camera without turning the character. |
+
 ## Capabilities and programs
 
 | Term | Status | Definition |
