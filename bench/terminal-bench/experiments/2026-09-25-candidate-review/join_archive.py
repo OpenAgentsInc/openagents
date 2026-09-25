@@ -28,9 +28,9 @@ def published_seal(path, commit, git_path):
         raise ValueError('Predictions differ from the published seal')
 
 
-def labels(predictions, jobs, checks):
+def labels(predictions, jobs, checks, tasks=None):
     rows = predictions['predictions']
-    population(rows)
+    population(rows) if tasks is None else population(rows, tasks)
     if tree(checks / 'plans') != predictions['plans_sha256']:
         raise ValueError('Public check plans changed after sealing')
     # Validate all evidence before opening even the first outcome.

@@ -10,11 +10,11 @@ from prepare import sha
 from reproduce import tree, write
 
 
-def population(rows):
+def population(rows, tasks=TASKS):
     keys = [(r['job'], r['trial']) for r in rows]
     if len(set(keys)) != len(keys):
         raise ValueError('Duplicate candidate identity')
-    expected = Counter({(task, arm): 3 for task in TASKS for arm in ('luna', 'astra')})
+    expected = Counter({(task, arm): 3 for task in tasks for arm in ('luna', 'astra')})
     if Counter((r['task'], r['executor']) for r in rows) != expected:
         raise ValueError('The seal requires every declared attempt, including unavailable candidates')
 

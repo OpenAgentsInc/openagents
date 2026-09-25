@@ -19,9 +19,9 @@ from tbench import agents, jobconfig, panel, runner
 ARTIFACT_SHA = '7df7cde47d0f16c8f9200cbd21899254588c0b587f3bbe6f2272fd2eedfb0f5d'
 
 
-def request(a, arm):
+def request(a, arm, task_names=TASKS):
     tasks = []
-    for name in TASKS:
+    for name in task_names:
         source = a.out / 'tasks/archive' / name
         config = tomllib.loads((source / 'task.toml').read_text())
         e = config['environment']
@@ -30,8 +30,10 @@ def request(a, arm):
                                 int(config['agent']['timeout_sec'])))
     population = panel.Panel('https://github.com/harbor-framework/terminal-bench', PIN, tuple(tasks))
     profile = replace(jobconfig.load_job_profile('smoke'), id='archive-truth-confirmation',
-                      description='Twelve unused archive tasks; three repetitions per executor.',
-                      task_ids=tuple(TASKS), n_attempts=3, n_concurrent_trials=2, controls=False,
+                      description=('Twelve unused archive tasks; three repetitions per executor.'
+                                   if task_names == TASKS else
+                                   f'{len(task_names)} archive tasks; three repetitions per executor.'),
+                      task_ids=tuple(task_names), n_attempts=3, n_concurrent_trials=2, controls=False,
                       environment={'type': 'docker', 'import_path': 'tbench.warm_docker:WarmDockerEnvironment',
                                    'delete': True, 'force_build': False,
                                    'cpu_enforcement_policy': 'auto', 'memory_enforcement_policy': 'auto'})
@@ -45,12 +47,12 @@ def request(a, arm):
                              checkout=a.out / 'tasks', jobs_dir=a.jobs, job_name=name)
 
 
-def prepare(a):
+def prepare(a, task_names=TASKS):
     head = subprocess.check_output(['git', '-C', str(a.upstream), 'rev-parse', 'HEAD'], text=True).strip()
     if head != PIN:
         raise ValueError('Upstream checkout changed after preflight')
     preflight = json.loads((a.preflight / 'preflight.json').read_text())
-    if {r['task'] for r in preflight} != set(TASKS) or any(r['status'] != 'available' for r in preflight):
+    if {r['task'] for r in preflight} != set(task_names) or any(r['status'] != 'available' for r in preflight):
         raise ValueError('All declared public environments must be available')
     if hashlib.sha256(a.binary.read_bytes()).hexdigest() != ARTIFACT_SHA:
         raise ValueError('Executor binary does not match the frozen artifact')

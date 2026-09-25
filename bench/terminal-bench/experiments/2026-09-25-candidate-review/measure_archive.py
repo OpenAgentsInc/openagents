@@ -9,8 +9,8 @@ from measure_prospective import digest, intervals, measure
 from seal_archive import population
 
 
-def paired_rows(predictions, labels):
-    population(predictions)
+def paired_rows(predictions, labels, tasks=None):
+    population(predictions) if tasks is None else population(predictions, tasks)
     by_key = {(r['job'], r['trial']): r for r in labels}
     if len(by_key) != len(labels):
         raise ValueError('Duplicate official outcome')
