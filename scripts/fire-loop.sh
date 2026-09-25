@@ -84,6 +84,11 @@ key="$(
   } | sha256sum | cut -c1-16
 )"
 cache="$HOME/.cache/openagents/fire-artifacts/$key"
+mkdir -p "$(dirname "$cache")"
+# One build at a time: fire loops started together share the build folder
+# and the cache, and a copy taken mid-build doesn't match its digest.
+exec 9>"$(dirname "$cache")/.lock"
+flock 9
 if [ -x "$cache/coder-one" ] && [ -s "$cache/sha256" ]; then
   artifact_path="$cache/coder-one"
   artifact_sha256="$(cat "$cache/sha256")"
@@ -99,6 +104,7 @@ else
 fi
 [ "$(sha256sum "$artifact_path" | cut -d' ' -f1)" = "$artifact_sha256" ] \
   || { echo "fire-loop: the trial binary doesn't match its recorded digest" >&2; exit 2; }
+flock -u 9
 
 policy_rel="$(jq -r --arg arm "$arm" '.agents[$arm].kwargs.policy // empty' "$bench/profiles/agents.json")"
 [ -n "$policy_rel" ] || { echo "fire-loop: arm $arm has no policy in profiles/agents.json" >&2; exit 2; }
