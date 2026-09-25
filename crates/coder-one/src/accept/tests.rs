@@ -1184,18 +1184,25 @@ async fn tests_run_at_once_and_keep_their_order() {
 fn the_parallel_run_sh_reports_in_order() {
     let dir = tempfile::tempdir().unwrap();
     let suite = dir.path().join("suite");
-    sleepers(&suite);
+    for test in sleepers(&suite) {
+        let source = test.source.replace(
+            "sleep 1",
+            &format!(
+                "printf 'start {}\\n' >> overlap.log\nsleep 1\nprintf 'end {}\\n' >> overlap.log",
+                test.id, test.id,
+            ),
+        );
+        std::fs::write(suite.join(test.path), source).unwrap();
+    }
     std::fs::write(
         suite.join("run.sh"),
         runner::local_run_sh_with(dir.path(), 20, 4),
     )
     .unwrap();
-    let started = std::time::Instant::now();
     let all = std::process::Command::new("sh")
         .arg(suite.join("run.sh"))
         .output()
         .unwrap();
-    let took = started.elapsed();
     let text = String::from_utf8_lossy(&all.stdout);
     assert!(!all.status.success(), "{text}");
     let lines: Vec<&str> = text
@@ -1215,8 +1222,20 @@ fn the_parallel_run_sh_reports_in_order() {
     );
     assert!(text.contains("      broken"), "{text}");
     assert!(text.trim_end().ends_with("4 green, 1 red"), "{text}");
-    // Two rounds of sleeps, and T3 once more alone.
-    assert!(took < std::time::Duration::from_millis(4_500), "{took:?}");
+    // Observe overlap directly; host scheduling and process startup can extend
+    // wall time without serializing the tests.
+    let events = std::fs::read_to_string(dir.path().join("overlap.log")).unwrap();
+    let (mut active, mut peak) = (0_usize, 0_usize);
+    for event in events.lines() {
+        if event.starts_with("start ") {
+            active += 1;
+            peak = peak.max(active);
+        } else {
+            active = active.checked_sub(1).expect("Every end follows a start");
+        }
+    }
+    assert_eq!(active, 0, "{events}");
+    assert!((2..=4).contains(&peak), "{events}");
     let some = std::process::Command::new("sh")
         .arg(suite.join("run.sh"))
         .args(["T1", "T4"])
