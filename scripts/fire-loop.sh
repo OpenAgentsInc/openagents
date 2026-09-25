@@ -64,16 +64,41 @@ export OPENAGENTS_API_KEY TYPESAFE_API_KEY CODEX_FORCE_AUTH_JSON=1
 unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN OPENAI_API_KEY
 echo "harbor, door key, Jev key, and Codex sign-in found"
 
-step "Building the watcher (the first build takes several minutes; later ones take seconds)"
+step "Building the watcher (the first build takes a few minutes; later ones take seconds)"
 watch_target="${FIRE_TARGET_DIR:-$root/target-fire}"
-CARGO_TARGET_DIR="$watch_target" cargo build -q --release -p coder-one --manifest-path "$root/Cargo.toml"
-watcher="$watch_target/release/coder-one"
+# A debug build: the watcher only reads logs and asks Jev, so speed of
+# compiling matters more than speed of running.
+CARGO_TARGET_DIR="$watch_target" cargo build -q -p coder-one --manifest-path "$root/Cargo.toml"
+watcher="$watch_target/debug/coder-one"
 echo "$watcher"
 
-step "Building the trial binary (also several minutes the first time)"
-built="$("$root/scripts/build-coder-one-linux.sh" | tee /dev/stderr)"
-artifact_path="$(printf '%s\n' "$built" | sed -n 's/^artifact_path=//p')"
-artifact_sha256="$(printf '%s\n' "$built" | sed -n 's/^artifact_sha256=//p')"
+step "The trial binary"
+# The trial binary is rebuilt only when something it runs has changed.
+# The fire loop's own code (crates/coder-one/src/fire/) runs on this
+# machine, never in the trial, so it's left out of the key.
+key="$(
+  cd "$root"
+  {
+    git ls-files -s -- crates Cargo.lock rust-toolchain.toml ':!crates/coder-one/src/fire'
+    git diff HEAD -- crates Cargo.lock rust-toolchain.toml ':!crates/coder-one/src/fire'
+  } | sha256sum | cut -c1-16
+)"
+cache="$HOME/.cache/openagents/fire-artifacts/$key"
+if [ -x "$cache/coder-one" ] && [ -s "$cache/sha256" ]; then
+  artifact_path="$cache/coder-one"
+  artifact_sha256="$(cat "$cache/sha256")"
+  echo "reusing $artifact_path (nothing the trial runs has changed)"
+else
+  echo "building it (several minutes when the code changed)"
+  built="$("$root/scripts/build-coder-one-linux.sh" | tee /dev/stderr)"
+  mkdir -p "$cache"
+  cp "$(printf '%s\n' "$built" | sed -n 's/^artifact_path=//p')" "$cache/coder-one"
+  printf '%s\n' "$built" | sed -n 's/^artifact_sha256=//p' > "$cache/sha256"
+  artifact_path="$cache/coder-one"
+  artifact_sha256="$(cat "$cache/sha256")"
+fi
+[ "$(sha256sum "$artifact_path" | cut -d' ' -f1)" = "$artifact_sha256" ] \
+  || { echo "fire-loop: the trial binary doesn't match its recorded digest" >&2; exit 2; }
 
 policy_rel="$(jq -r --arg arm "$arm" '.agents[$arm].kwargs.policy // empty' "$bench/profiles/agents.json")"
 [ -n "$policy_rel" ] || { echo "fire-loop: arm $arm has no policy in profiles/agents.json" >&2; exit 2; }
