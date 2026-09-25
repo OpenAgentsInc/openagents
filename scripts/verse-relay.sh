@@ -13,7 +13,9 @@
 #   VERSE_RELAY_DIR=/path scripts/verse-relay.sh      # choose the state directory
 #   scripts/verse-relay.sh --reset    # wipe the stored world first
 #
-# Requires initdb, pg_ctl, and createdb on PATH.
+# It also creates Verse's NIP-29 chat rooms as the relay.
+#
+# Requires initdb, pg_ctl, createdb, and curl on PATH.
 
 set -euo pipefail
 
@@ -48,9 +50,14 @@ if [[ ! -f "$state/relay.key" ]]; then
   (umask 077; od -An -tx1 -N32 /dev/urandom | tr -d ' \n' > "$state/relay.key")
 fi
 
-cargo build -q --release -p nostr-relay --bin nostr-relay --manifest-path "$root/Cargo.toml"
+cargo build -q --release -p nostr-relay --bin nostr-relay -p verse --bin verse \
+  --manifest-path "$root/Cargo.toml"
 
-stop() { pg_ctl -D "$state/data" -m fast stop >/dev/null 2>&1 || true; }
+relay_pid=""
+stop() {
+  [[ -n "$relay_pid" ]] && kill "$relay_pid" 2>/dev/null || true
+  pg_ctl -D "$state/data" -m fast stop >/dev/null 2>&1 || true
+}
 trap stop EXIT
 
 echo "verse-relay: ws://$bind:$port (state in $state)"
@@ -64,4 +71,15 @@ NOSTR_RELAY_RATE_EVENTS_PER_MIN_IP=60000 \
 NOSTR_RELAY_RATE_EVENTS_PER_MIN_PUBKEY=30000 \
 NOSTR_RELAY_RATE_REQ_PER_MIN_IP=6000 \
 NOSTR_RELAY_LOG_LEVEL="${NOSTR_RELAY_LOG_LEVEL:-warn}" \
-  "$root/target/release/nostr-relay"
+  "$root/target/release/nostr-relay" &
+relay_pid=$!
+
+# Create the NIP-29 chat rooms (lounge, trading-post, builders) once the
+# relay answers. Only the relay's own key may create groups.
+for _ in $(seq 1 100); do
+  curl -sf "http://127.0.0.1:$port/" -H 'Accept: application/nostr+json' >/dev/null && break
+  sleep 0.1
+done
+"$root/target/release/verse" --seed-rooms "$state/relay.key" --relay "ws://127.0.0.1:$port" || true
+
+wait "$relay_pid"

@@ -17,6 +17,8 @@ pub const STATE_KIND: u16 = 33_301;
 pub const FRAME_KIND: u16 = 23_300;
 /// Gesture, ephemeral.
 pub const GESTURE_KIND: u16 = 23_301;
+/// NIP-C7 chat message, used for world chat.
+pub const CHAT_KIND: u16 = 9;
 /// Default cell size in meters.
 pub const CELL: f32 = 64.0;
 /// Most entities one frame may carry.
@@ -289,6 +291,111 @@ pub fn gesture_event(
     signer.sign(now, GESTURE_KIND, tags, content)
 }
 
+/// A world chat line: NIP-C7 kind `9` scoped by NIP-MV tags. `channel` is
+/// the `t` value (`all`, `ads`, `zone`, `near`, `here`), `zone` the `z`
+/// value, and `pos` the speaker's position, carried as the `c` cell and a
+/// `pos` tag so listeners can apply distance scopes.
+#[must_use]
+pub fn world_chat_event(
+    signer: &RelaySigner,
+    world: &str,
+    channel: &str,
+    zone: &str,
+    pos: Vec3,
+    text: &str,
+    now: u64,
+) -> Event {
+    let tags = vec![
+        tag(&["w", world]),
+        tag(&["t", channel]),
+        tag(&["z", zone]),
+        tag(&["c", &cell(pos)]),
+        tag(&[
+            "pos",
+            &format!("{:.2}", pos.x),
+            &format!("{:.2}", pos.y),
+            &format!("{:.2}", pos.z),
+        ]),
+    ];
+    signer.sign(now, CHAT_KIND, tags, text.to_owned())
+}
+
+/// A NIP-29 group chat line: kind `9` with the group's `h` tag.
+#[must_use]
+pub fn room_chat_event(signer: &RelaySigner, room: &str, text: &str, now: u64) -> Event {
+    signer.sign(now, CHAT_KIND, vec![tag(&["h", room])], text.to_owned())
+}
+
+/// A decoded chat line.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ChatLine {
+    /// Speaker.
+    pub pubkey: String,
+    /// `t` channel for world chat, or `None` for a room line.
+    pub channel: Option<String>,
+    /// NIP-29 group for a room line.
+    pub room: Option<String>,
+    /// `z` zone.
+    pub zone: Option<String>,
+    /// Speaker position, when given.
+    pub pos: Option<Vec3>,
+    /// Text.
+    pub text: String,
+    /// Event time, seconds.
+    pub created_at: u64,
+    /// Event id.
+    pub id: String,
+}
+
+/// Validates and decodes a kind `9` world or room chat line.
+///
+/// # Errors
+///
+/// Returns why the event is not a usable chat line.
+pub fn decode_chat(event: &Event, world: &str) -> Result<ChatLine, String> {
+    if event.kind != CHAT_KIND {
+        return Err("not a chat line".into());
+    }
+    event.validate_id().map_err(|e| e.to_string())?;
+    event.validate_crypto().map_err(|e| e.to_string())?;
+    if event.content.chars().count() > 2_000 {
+        return Err("chat line too long".into());
+    }
+    let one = |name: &str| event.tag_values(name).next().map(str::to_owned);
+    let room = one("h");
+    let channel = one("t");
+    if room.is_none() {
+        let worlds: Vec<&str> = event.tag_values("w").collect();
+        if worlds != [world] || channel.is_none() {
+            return Err("not a chat line for this world".into());
+        }
+    }
+    let pos = event
+        .tags
+        .iter()
+        .find(|t| t.name() == Some("pos"))
+        .and_then(|t| {
+            let v = t.as_slice();
+            let n = |i: usize| {
+                v.get(i)?
+                    .parse::<f32>()
+                    .ok()
+                    .filter(|x| x.is_finite() && x.abs() < MAX_COORD)
+            };
+            Some(Vec3::new(n(1)?, n(2)?, n(3)?))
+        });
+    Ok(ChatLine {
+        pubkey: event.pubkey.clone(),
+        channel,
+        room,
+        zone: one("z"),
+        pos,
+        text: event.content.clone(),
+        created_at: event.created_at,
+        id: event.id.clone(),
+    })
+}
+
 /// A NIP-01 profile (kind 0) naming this player.
 ///
 /// # Panics
@@ -480,6 +587,29 @@ mod tests {
     fn cells_follow_the_floor() {
         assert_eq!(cell(Vec3::new(-0.5, 9.0, 64.0)), "-1,1");
         assert_eq!(cells_around(Vec3::ZERO, 1).len(), 9);
+    }
+
+    #[test]
+    fn world_chat_round_trips_with_its_scope() {
+        let event = world_chat_event(
+            &signer(),
+            WORLD,
+            "near",
+            "plaza",
+            Vec3::new(1.5, 0.0, -2.25),
+            "anyone here?",
+            1,
+        );
+        let line = decode_chat(&event, WORLD).expect("decodes");
+        assert_eq!(line.channel.as_deref(), Some("near"));
+        assert_eq!(line.zone.as_deref(), Some("plaza"));
+        assert_eq!(line.pos, Some(Vec3::new(1.5, 0.0, -2.25)));
+        assert!(decode_chat(&event, "elsewhere").is_err());
+        let room = room_chat_event(&signer(), "lounge", "hi", 1);
+        assert_eq!(
+            decode_chat(&room, WORLD).expect("decodes").room.as_deref(),
+            Some("lounge")
+        );
     }
 
     #[test]

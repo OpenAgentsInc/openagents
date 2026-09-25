@@ -230,6 +230,44 @@ not recognize. Two names are suggested for common interactions:
 | `look-around` | The entity surveyed its surroundings; `at` lists what it looked at. |
 | `greet` | The entity greeted another; `to` names it. A recipient MAY greet back once, and SHOULD NOT greet the same entity again for a cooldown, so two clients do not greet each other in a loop. |
 
+## World chat
+
+Chat inside a world uses [NIP-C7](../official/C7.md) kind `9` messages with
+this NIP's scoping tags, so any NIP-C7 client can read the text and a world
+client can place it:
+
+```json
+{
+  "kind": 9,
+  "tags": [
+    ["w", "<world identifier>"],
+    ["t", "near"],
+    ["z", "plaza"],
+    ["c", "0,-1"],
+    ["pos", "3.20", "0.00", "-10.50"]
+  ],
+  "content": "anyone around?"
+}
+```
+
+| Tag | Meaning |
+| --- | --- |
+| `w` | The world. |
+| `t` | The audience: `all` (whole world), `ads` (trades and announcements, whole world), `zone` (a named district), `near` (about one screen), or `here` (the speaker's spot). |
+| `z` | The speaker's zone, a world-defined district name. |
+| `c` | The speaker's cell. |
+| `pos` | The speaker's position when speaking, as three decimal strings. |
+
+Receivers filter by scope: `zone` lines reach listeners in the same zone,
+and `near` and `here` lines reach listeners within a world-chosen distance
+of `pos`. Scope is a display rule, not privacy; every subscriber to the
+world can read every line. Private conversation belongs in
+[NIP-17](../official/17.md), and group rooms in [NIP-29](../official/29.md)
+with an `h` tag and no `w` tag.
+
+Clients SHOULD show `all`, `zone`, `near`, and `here` lines briefly over
+the speaker's entity.
+
 ## Subscriptions
 
 Typical filters:
@@ -239,6 +277,7 @@ Typical filters:
 {"kinds": [33301], "#w": ["<world>"], "limit": 500}
 {"kinds": [23300, 23301, 33301], "#w": ["<world>"], "#c": ["0,-1", "1,-1", "0,0"]}
 {"kinds": [33301], "authors": ["<own pubkey>"], "#d": ["<world>/avatar"]}
+{"kinds": [9], "#w": ["<world>"], "limit": 100}
 ```
 
 A client SHOULD resubscribe with new `#c` values as it crosses cells.

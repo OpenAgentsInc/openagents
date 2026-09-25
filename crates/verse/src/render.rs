@@ -16,10 +16,12 @@ use winit::window::Window;
 
 use crate::mesh::{Mesh, Vertex};
 use crate::palette;
+use crate::ui::{Atlas, UiBatch, UiVertex};
 
 const DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 const CAPTURE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 const DYNAMIC_BYTES: u64 = 256 * 1024;
+const UI_BYTES: u64 = 2 * 1024 * 1024;
 /// Distance where fog starts, in meters.
 pub const FOG_START: f32 = 60.0;
 /// Distance where fog is total, in meters.
@@ -59,12 +61,17 @@ struct Scene {
     world_lines: Batch,
     dynamic_faces: Batch,
     dynamic_lines: Batch,
+    ui_pipeline: wgpu::RenderPipeline,
+    ui_bind_group: wgpu::BindGroup,
+    ui_screen: wgpu::Buffer,
+    ui: Batch,
 }
 
 /// Color and depth attachments at one size.
 struct Targets {
     msaa: Option<wgpu::TextureView>,
     depth: wgpu::TextureView,
+    size: [f32; 2],
 }
 
 /// The GPU state for one window.
@@ -83,7 +90,7 @@ impl Renderer {
     /// # Errors
     ///
     /// Returns a message when no adapter, device, or surface is available.
-    pub fn new(window: Arc<Window>, world: &Mesh) -> Result<Self, String> {
+    pub fn new(window: Arc<Window>, world: &Mesh, atlas: &Atlas) -> Result<Self, String> {
         let instance = instance();
         let surface = instance
             .create_surface(window.clone())
@@ -115,7 +122,7 @@ impl Renderer {
         };
         surface.configure(&device, &config);
 
-        let scene = Scene::new(&device, &adapter, format, world);
+        let scene = Scene::new(&device, &queue, &adapter, format, world, atlas);
         let targets = Targets::new(&device, format, config.width, config.height, scene.samples);
         Ok(Self {
             surface,
@@ -125,6 +132,12 @@ impl Renderer {
             scene,
             targets,
         })
+    }
+
+    /// Drawable size in physical pixels.
+    #[must_use]
+    pub fn size(&self) -> [f32; 2] {
+        [self.config.width as f32, self.config.height as f32]
     }
 
     /// Width over height of the drawable area.
@@ -150,8 +163,9 @@ impl Renderer {
         );
     }
 
-    /// Draws and presents one frame: the world, then `dynamic`.
-    pub fn draw(&mut self, view: View, dynamic: &Mesh) {
+    /// Draws and presents one frame: the world, then `dynamic`, then `ui`
+    /// over everything.
+    pub fn draw(&mut self, view: View, dynamic: &Mesh, ui: &UiBatch) {
         let frame = match self.surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(frame)
             | wgpu::CurrentSurfaceTexture::Suboptimal(frame) => frame,
@@ -176,6 +190,7 @@ impl Renderer {
             &self.targets,
             view,
             dynamic,
+            ui,
         );
         self.queue.submit([encoder.finish()]);
         frame.present();
@@ -187,6 +202,7 @@ impl Renderer {
 /// # Errors
 ///
 /// Returns a message when no GPU is available or the file cannot be written.
+#[allow(clippy::too_many_arguments)]
 pub fn capture(
     path: &Path,
     width: u32,
@@ -194,10 +210,12 @@ pub fn capture(
     world: &Mesh,
     view: View,
     dynamic: &Mesh,
+    ui: &UiBatch,
+    atlas: &Atlas,
 ) -> Result<(), String> {
     let instance = instance();
     let (adapter, device, queue) = open(&instance, None)?;
-    let mut scene = Scene::new(&device, &adapter, CAPTURE_FORMAT, world);
+    let mut scene = Scene::new(&device, &queue, &adapter, CAPTURE_FORMAT, world, atlas);
     let targets = Targets::new(&device, CAPTURE_FORMAT, width, height, scene.samples);
     let texture = device.create_texture(&wgpu::TextureDescriptor {
         label: Some("verse capture"),
@@ -223,7 +241,7 @@ pub fn capture(
     let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
         label: Some("verse capture"),
     });
-    scene.encode(&queue, &mut encoder, &output, &targets, view, dynamic);
+    scene.encode(&queue, &mut encoder, &output, &targets, view, dynamic, ui);
     encoder.copy_texture_to_buffer(
         wgpu::TexelCopyTextureInfo {
             texture: &texture,
@@ -297,9 +315,11 @@ fn open(
 impl Scene {
     fn new(
         device: &wgpu::Device,
+        queue: &wgpu::Queue,
         adapter: &wgpu::Adapter,
         format: wgpu::TextureFormat,
         world: &Mesh,
+        atlas: &Atlas,
     ) -> Self {
         let samples = if adapter
             .get_texture_format_features(format)
@@ -427,7 +447,22 @@ impl Scene {
             }),
             count: 0,
         };
+        let (ui_pipeline, ui_bind_group, ui_screen) =
+            ui_pipeline(device, queue, format, samples, atlas);
+        let ui = Batch {
+            buffer: device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("verse ui"),
+                size: UI_BYTES,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }),
+            count: 0,
+        };
         Self {
+            ui_pipeline,
+            ui_bind_group,
+            ui_screen,
+            ui,
             samples,
             globals,
             bind_group,
@@ -440,6 +475,7 @@ impl Scene {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn encode(
         &mut self,
         queue: &wgpu::Queue,
@@ -448,8 +484,21 @@ impl Scene {
         targets: &Targets,
         view: View,
         dynamic: &Mesh,
+        ui: &UiBatch,
     ) {
         let field = palette::field();
+        queue.write_buffer(
+            &self.ui_screen,
+            0,
+            bytemuck::cast_slice(&[targets.size[0], targets.size[1], 0.0, 0.0]),
+        );
+        let ui_bytes: &[u8] = bytemuck::cast_slice(&ui.vertices);
+        let fit = ui_bytes.len().min(UI_BYTES as usize);
+        let fit = fit - fit % std::mem::size_of::<UiVertex>();
+        if fit > 0 {
+            queue.write_buffer(&self.ui.buffer, 0, &ui_bytes[..fit]);
+        }
+        self.ui.count = (fit / std::mem::size_of::<UiVertex>()) as u32;
         let eye = view.eye;
         let globals = Globals {
             view_proj: view.view_proj.to_cols_array_2d(),
@@ -501,6 +550,11 @@ impl Scene {
         for batch in [&self.world_lines, &self.dynamic_lines] {
             draw_batch(&mut pass, batch);
         }
+        if self.ui.count > 0 {
+            pass.set_pipeline(&self.ui_pipeline);
+            pass.set_bind_group(0, &self.ui_bind_group, &[]);
+            draw_batch(&mut pass, &self.ui);
+        }
     }
 }
 
@@ -529,8 +583,159 @@ impl Targets {
         Self {
             msaa: (samples > 1).then(|| texture(format, "verse msaa")),
             depth: texture(DEPTH, "verse depth"),
+            size: [width as f32, height as f32],
         }
     }
+}
+
+/// The UI pipeline: screen-space quads sampling the glyph atlas, alpha
+/// blended, drawn last with no depth test.
+fn ui_pipeline(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    format: wgpu::TextureFormat,
+    samples: u32,
+    atlas: &Atlas,
+) -> (wgpu::RenderPipeline, wgpu::BindGroup, wgpu::Buffer) {
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("verse glyph atlas"),
+        size: extent(atlas.width, atlas.height),
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::R8Unorm,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+    queue.write_texture(
+        wgpu::TexelCopyTextureInfo {
+            texture: &texture,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        &atlas.pixels,
+        wgpu::TexelCopyBufferLayout {
+            offset: 0,
+            bytes_per_row: Some(atlas.width),
+            rows_per_image: Some(atlas.height),
+        },
+        extent(atlas.width, atlas.height),
+    );
+    let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+    let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+        label: Some("verse glyph sampler"),
+        mag_filter: wgpu::FilterMode::Nearest,
+        min_filter: wgpu::FilterMode::Nearest,
+        ..Default::default()
+    });
+    let screen = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("verse ui screen"),
+        size: 16,
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("verse ui"),
+        entries: &[
+            wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 2,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                count: None,
+            },
+        ],
+    });
+    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("verse ui"),
+        layout: &layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: screen.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::TextureView(&view),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: wgpu::BindingResource::Sampler(&sampler),
+            },
+        ],
+    });
+    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("verse ui"),
+        bind_group_layouts: &[Some(&layout)],
+        immediate_size: 0,
+    });
+    let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("verse ui"),
+        source: wgpu::ShaderSource::Wgsl(include_str!("ui.wgsl").into()),
+    });
+    let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some("verse ui"),
+        layout: Some(&pipeline_layout),
+        vertex: wgpu::VertexState {
+            module: &shader,
+            entry_point: Some("vs"),
+            compilation_options: Default::default(),
+            buffers: &[wgpu::VertexBufferLayout {
+                array_stride: std::mem::size_of::<UiVertex>() as u64,
+                step_mode: wgpu::VertexStepMode::Vertex,
+                attributes: &wgpu::vertex_attr_array![
+                    0 => Float32x2,
+                    1 => Float32x2,
+                    2 => Float32x4,
+                ],
+            }],
+        },
+        primitive: wgpu::PrimitiveState::default(),
+        depth_stencil: Some(wgpu::DepthStencilState {
+            format: DEPTH,
+            depth_write_enabled: Some(false),
+            depth_compare: Some(wgpu::CompareFunction::Always),
+            stencil: Default::default(),
+            bias: wgpu::DepthBiasState::default(),
+        }),
+        multisample: wgpu::MultisampleState {
+            count: samples,
+            ..Default::default()
+        },
+        fragment: Some(wgpu::FragmentState {
+            module: &shader,
+            entry_point: Some("fs"),
+            compilation_options: Default::default(),
+            targets: &[Some(wgpu::ColorTargetState {
+                format,
+                blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+        }),
+        multiview_mask: None,
+        cache: None,
+    });
+    (pipeline, bind_group, screen)
 }
 
 fn extent(width: u32, height: u32) -> wgpu::Extent3d {
