@@ -167,6 +167,9 @@ pub struct Run {
     pub judge_usd: f64,
     pub notes: Vec<String>,
     pub refused_finishes: usize,
+    /// Seconds at which the host last turned a finish back. Votes cast
+    /// before it don't count: the run is judged on its response.
+    pub turned_back: Option<f64>,
     pub judgments: Vec<Judgment>,
     /// Each score the run measured itself at, from a `SCORE got of` line
     /// in a command's output: seconds, got, of.
@@ -207,6 +210,7 @@ impl Run {
             {
                 if text.contains("turned this finish back") {
                     self.refused_finishes += 1;
+                    self.turned_back = Some(t);
                 }
                 self.notes.push(format!("[{t:.0}s] {}", clip(text, 400)));
             }
@@ -565,6 +569,7 @@ pub fn jev_stop(run: &Run, rules: &Rules) -> Option<Stop> {
         .judgments
         .iter()
         .filter(|j| j.actions >= rules.min_actions)
+        .filter(|j| run.turned_back.is_none_or(|t| j.t >= t))
         .collect();
     let newest = *counted.last()?;
     // `votes` of the last `votes + 1` judgments voted to stop.

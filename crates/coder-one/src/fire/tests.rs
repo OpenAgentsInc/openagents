@@ -467,3 +467,42 @@ fn scores_come_from_score_lines_and_reach_the_request() {
     let (state, _) = judge::request(&run, &card(), 3_000);
     assert_eq!(state["score_history"][0]["score"], "155/780");
 }
+
+#[test]
+fn votes_before_a_turned_back_finish_do_not_count() {
+    let rules = Rules::default();
+    let mut run = run_with(&[
+        (2_000, "run_command", json!({"command": "a"}), "1"),
+        (3_000, "run_command", json!({"command": "b"}), "2"),
+        (4_000, "run_command", json!({"command": "c"}), "3"),
+        (5_000, "run_command", json!({"command": "d"}), "4"),
+        (6_000, "run_command", json!({"command": "e"}), "5"),
+    ]);
+    let vote = Judgment {
+        vote: true,
+        stop: Some(0.9),
+        ..Judgment::default()
+    };
+    run.judgments.push(Judgment {
+        t: 5.0,
+        actions: 5,
+        ..vote.clone()
+    });
+    let note = line(
+        json!({"record": "step", "step": {"at": 7_000, "source": "System",
+        "message": "The host turned this finish back: keep working."}}),
+    );
+    run.see(&events::parse(&note, "microluna-1-1").unwrap());
+    run.judgments.push(Judgment {
+        t: 7.0,
+        actions: 6,
+        ..vote.clone()
+    });
+    assert!(judge::jev_stop(&run, &rules).is_none());
+    run.judgments.push(Judgment {
+        t: 8.0,
+        actions: 7,
+        ..vote
+    });
+    assert!(judge::jev_stop(&run, &rules).is_some());
+}
