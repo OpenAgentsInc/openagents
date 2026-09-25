@@ -189,7 +189,8 @@ def run(row, args, images, env):
                     raise ValueError('Outside snapshot files do not match the immutable public image')
             with (dest / 'process.log').open('w') as log:
                 p = subprocess.run([str(args.binary), 'checks', 'reproduced-review', '--input', str(dest / 'input.json'),
-                                    '--container', container, '--out', str(dest)], env=env, stdout=log,
+                                    '--container', container, '--out', str(dest),
+                                    '--prompt', getattr(args, 'prompt', 'v1')], env=env, stdout=log,
                                    stderr=subprocess.STDOUT, timeout=340)
             process.update(exit=p.returncode, image=images[row['task']], candidate_identity=packet['candidate_identity'])
             if (dest / 'review.json').exists():
@@ -214,6 +215,7 @@ def main():
         p.add_argument('--' + name, type=Path, required=True)
     p.add_argument('--workers', type=int, default=2)
     p.add_argument('--record-name', default='reproduced')
+    p.add_argument('--prompt', choices=['v1', 'literal-v2'], default='v1')
     p.add_argument('--allow-public-files', action='store_true')
     a = p.parse_args()
     if Path(a.record_name).name != a.record_name or a.record_name in ('.', '..'):
