@@ -198,3 +198,24 @@ fn old_plan_readers_cannot_mistake_literal_matches_for_completion() {
     let p = plan("fixture", "Write out.bin.", "/app");
     assert!(serde_json::from_value::<crate::checks::contract::Plan>(json!(p)).is_err());
 }
+
+#[tokio::test]
+async fn literal_cli_refuses_inference_and_unused_options_before_loading_files() {
+    for args in [
+        vec!["literal-plan", "--instruction", "/missing", "--jev", "live"],
+        vec![
+            "literal-plan",
+            "--instruction",
+            "/missing",
+            "--plan",
+            "/ignored",
+        ],
+        vec!["literal-run", "--plan", "/missing", "--task", "ignored"],
+    ] {
+        let args = args.into_iter().map(str::to_string).collect::<Vec<_>>();
+        let error = crate::checks::contract::cli::command(&args)
+            .await
+            .unwrap_err();
+        assert!(error.contains("documented file options"), "{error}");
+    }
+}

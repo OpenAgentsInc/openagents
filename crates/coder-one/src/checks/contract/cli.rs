@@ -159,12 +159,16 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
     let jev = one("--jev").unwrap_or_else(|| "recorded".to_string());
     match verb.as_str() {
         "literal-plan" | "literal-run" => {
+            let allowed: &[&str] = if verb == "literal-plan" {
+                &["--instruction", "--task", "--workdir", "--out"]
+            } else {
+                &["--plan", "--out"]
+            };
             if !positional.is_empty()
                 || reuse_plan
-                || flags.iter().any(|(name, _)| {
-                    !["--instruction", "--task", "--workdir", "--out", "--plan"]
-                        .contains(&name.as_str())
-                })
+                || flags
+                    .iter()
+                    .any(|(name, _)| !allowed.contains(&name.as_str()))
             {
                 return Err("literal artifact commands accept only their documented file options; they never ask Jev".into());
             }
