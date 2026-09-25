@@ -124,7 +124,7 @@ on is in-sample, and says so.
 
 | Prediction | Status |
 | --- | --- |
-| 1. A green suite predicts a pass | Invalidated for Luna-written suites (v6 to v8) and for the Luna-written self-score (green on every failure). No offline validity number has been published for `accept.define` (#9588). |
+| 1. A green suite predicts a pass | Invalidated for Luna-written suites (v6 to v8) and for the Luna-written self-score (green on every failure). The offline result for `accept.define` is published and negative: on Microluna's graded work, its suites were green twice, both on failures, and red on all 12 passes ([acceptance first](../../terminal-bench/2026-09-24-acceptance-first.md), #9588). |
 | 2. Luna's pass rate rises with the contract | Not shown. The passes that exist come from a correct first session, not from looping to green. |
 | 3. Cost per pass drops by an order of magnitude | True on the one task that passes: about 54 times cheaper than Fable low. |
 | 4. Failures become honest | Partly. The host now refuses early finishes and malformed scores, and the issue flow lists unresolved problems in the pull request. But the self-score still reports full marks on failing work. |
@@ -168,7 +168,7 @@ The biggest gaps:
 | --- | --- |
 | #9607 Microluna: repeatable wins on Fable failures and cheaper Fable successes | Keep; do next. The test-set run is its next step for the cheaper lane. |
 | #9584 Truthful checks, calibrated against graded runs | Keep; do next. The Codex agent's 2026-09-25 iteration recovered the read-only reviews (6 of 13 failures caught, 6 of 6 correct, development only) and keeps the issue open: the improvement on untouched task groups isn't established. It's still the bottleneck for everything below. |
-| #9588 `accept.define` | Publish its offline validity number, even though it's negative, then fold the rest into #9584 and close. |
+| #9588 `accept.define` | Done: the [offline validity result](../../terminal-bench/2026-09-24-acceptance-first.md) is published, not validated and not a default; the rest moved to #9584, and the issue is closed. |
 | #9587 Best-of-N Luna | Publish the partial `suite-9587` result now; rerun only after #9584 gives a selection signal. |
 | #9585 Microluna, a minimal Luna executor | Close as done: its "done when" is met. Iteration work lives in #9607. |
 | #9558 Coder One on the full TB4 suite | Close as won't do in this form: it depends on Opus, Astra, and escalation tiers, which the pivot sets aside. Reopen as a Microluna full-suite issue once the targeted gate passes. |

@@ -1,0 +1,1748 @@
+{
+ "schema": "openagents.acceptance-first.summary.v1",
+ "source": "records/<pass>/<task>/validity.json from coder-one accept offline",
+ "passes": [
+  {
+   "pass": "pass1-uncalibrated",
+   "suites": 9,
+   "spend_usd": {
+    "writer": 0.081184,
+    "jev": 0.011573,
+    "total": 0.092757
+   },
+   "snapshot_graded": {
+    "trials": 4,
+    "tasks": 3,
+    "green": 0,
+    "red": 4,
+    "green_and_passed": 0,
+    "green_and_failed": 0,
+    "red_and_passed": 2,
+    "red_and_failed": 2,
+    "pass_given_green": {
+     "k": 0,
+     "n": 0,
+     "value": null,
+     "wilson_95": null
+    },
+    "fail_given_red": {
+     "k": 2,
+     "n": 4,
+     "value": 0.5,
+     "wilson_95": [
+      0.15,
+      0.85
+     ]
+    },
+    "failures_caught": {
+     "k": 2,
+     "n": 2,
+     "value": 1.0,
+     "wilson_95": [
+      0.3424,
+      1.0
+     ]
+    },
+    "passes_kept": {
+     "k": 0,
+     "n": 2,
+     "value": 0.0,
+     "wilson_95": [
+      0.0,
+      0.6576
+     ]
+    },
+    "agreement": {
+     "k": 2,
+     "n": 4,
+     "value": 0.5,
+     "wilson_95": [
+      0.15,
+      0.85
+     ]
+    }
+   },
+   "all_snapshots": {
+    "trials": 20,
+    "tasks": 5,
+    "green": 11,
+    "red": 9,
+    "green_and_passed": 4,
+    "green_and_failed": 7,
+    "red_and_passed": 3,
+    "red_and_failed": 6,
+    "pass_given_green": {
+     "k": 4,
+     "n": 11,
+     "value": 0.3636,
+     "wilson_95": [
+      0.1517,
+      0.6462
+     ]
+    },
+    "fail_given_red": {
+     "k": 6,
+     "n": 9,
+     "value": 0.6667,
+     "wilson_95": [
+      0.3542,
+      0.8794
+     ]
+    },
+    "failures_caught": {
+     "k": 6,
+     "n": 13,
+     "value": 0.4615,
+     "wilson_95": [
+      0.2321,
+      0.7086
+     ]
+    },
+    "passes_kept": {
+     "k": 4,
+     "n": 7,
+     "value": 0.5714,
+     "wilson_95": [
+      0.2505,
+      0.8418
+     ]
+    },
+    "agreement": {
+     "k": 10,
+     "n": 20,
+     "value": 0.5,
+     "wilson_95": [
+      0.2993,
+      0.7007
+     ]
+    }
+   },
+   "tasks": [
+    {
+     "task": "cad-model",
+     "suite_status": "partial",
+     "tests": 0,
+     "rejected": 3,
+     "gaps": 3,
+     "writer_usd": 0.006233,
+     "jev_usd": 0.000359,
+     "counted_trials": 0,
+     "passed": 0,
+     "green": 0,
+     "green_and_passed": 0,
+     "red_and_passed": 0,
+     "same_call_for_every_trial": true
+    },
+    {
+     "task": "cargo-flight-dispatch",
+     "suite_status": "partial",
+     "tests": 1,
+     "rejected": 5,
+     "gaps": 11,
+     "writer_usd": 0.013521,
+     "jev_usd": 0.001516,
+     "counted_trials": 6,
+     "passed": 0,
+     "green": 6,
+     "green_and_passed": 0,
+     "red_and_passed": 0,
+     "same_call_for_every_trial": true
+    },
+    {
+     "task": "interleaved-vigenere",
+     "suite_status": "partial",
+     "tests": 5,
+     "rejected": 1,
+     "gaps": 5,
+     "writer_usd": 0.008245,
+     "jev_usd": 0.001974,
+     "counted_trials": 1,
+     "passed": 0,
+     "green": 0,
+     "green_and_passed": 0,
+     "red_and_passed": 0,
+     "same_call_for_every_trial": true
+    },
+    {
+     "task": "ks-solver-cpp",
+     "suite_status": "partial",
+     "tests": 1,
+     "rejected": 1,
+     "gaps": 17,
+     "writer_usd": 0.004469,
+     "jev_usd": 0.001362,
+     "counted_trials": 4,
+     "passed": 0,
+     "green": 0,
+     "green_and_passed": 0,
+     "red_and_passed": 0,
+     "same_call_for_every_trial": true
+    },
+    {
+     "task": "mvcc-lsm-compaction",
+     "suite_status": "partial",
+     "tests": 0,
+     "rejected": 3,
+     "gaps": 5,
+     "writer_usd": 0.010161,
+     "jev_usd": 0.00047,
+     "counted_trials": 0,
+     "passed": 0,
+     "green": 0,
+     "green_and_passed": 0,
+     "red_and_passed": 0,
+     "same_call_for_every_trial": true
+    },
+    {
+     "task": "production-planning",
+     "suite_status": "partial",
+     "tests": 1,
+     "rejected": 6,
+     "gaps": 13,
+     "writer_usd": 0.011716,
+     "jev_usd": 0.001763,
+     "counted_trials": 6,
+     "passed": 4,
+     "green": 5,
+     "green_and_passed": 4,
+     "red_and_passed": 0,
+     "same_call_for_every_trial": false
+    },
+    {
+     "task": "risk-scorer-replay",
+     "suite_status": "partial",
+     "tests": 0,
+     "rejected": 3,
+     "gaps": 8,
+     "writer_usd": 0.009309,
+     "jev_usd": 0.000676,
+     "counted_trials": 0,
+     "passed": 0,
+     "green": 0,
+     "green_and_passed": 0,
+     "red_and_passed": 0,
+     "same_call_for_every_trial": true
+    },
+    {
+     "task": "sound-change-cascade",
+     "suite_status": "partial",
+     "tests": 1,
+     "rejected": 2,
+     "gaps": 12,
+     "writer_usd": 0.007322,
+     "jev_usd": 0.000987,
+     "counted_trials": 3,
+     "passed": 3,
+     "green": 0,
+     "green_and_passed": 0,
+     "red_and_passed": 3,
+     "same_call_for_every_trial": true
+    },
+    {
+     "task": "wal-recovery-ordering",
+     "suite_status": "partial",
+     "tests": 0,
+     "rejected": 7,
+     "gaps": 24,
+     "writer_usd": 0.010209,
+     "jev_usd": 0.002466,
+     "counted_trials": 0,
+     "passed": 0,
+     "green": 0,
+     "green_and_passed": 0,
+     "red_and_passed": 0,
+     "same_call_for_every_trial": true
+    }
+   ],
+   "excluded": [
+    {
+     "task": "cad-model",
+     "trial": "cad-model__PCPn5pW",
+     "reason": "the suite has no tests"
+    },
+    {
+     "task": "cad-model",
+     "trial": "cad-model__UpQfB2j",
+     "reason": "the suite has no tests"
+    },
+    {
+     "task": "cad-model",
+     "trial": "cad-model__VXuQNL9",
+     "reason": "the suite has no tests"
+    },
+    {
+     "task": "mvcc-lsm-compaction",
+     "trial": "mvcc-lsm-compaction__4yfBDYL",
+     "reason": "the suite has no tests"
+    },
+    {
+     "task": "mvcc-lsm-compaction",
+     "trial": "mvcc-lsm-compaction__JsFGzzJ",
+     "reason": "the suite has no tests"
+    },
+    {
+     "task": "mvcc-lsm-compaction",
+     "trial": "mvcc-lsm-compaction__cXLAxTv",
+     "reason": "the suite has no tests"
+    },
+    {
+     "task": "mvcc-lsm-compaction",
+     "trial": "mvcc-lsm-compaction__pkCidVR",
+     "reason": "the suite has no tests"
+    },
+    {
+     "task": "mvcc-lsm-compaction",
+     "trial": "mvcc-lsm-compaction__s5z5Kwr",
+     "reason": "the suite has no tests"
+    },
+    {
+     "task": "risk-scorer-replay",
+     "trial": "risk-scorer-replay__sSqd7oF",
+     "reason": "the suite has no tests"
+    },
+    {
+     "task": "risk-scorer-replay",
+     "trial": "risk-scorer-replay__xWMSei4",
+     "reason": "the suite has no tests"
+    },
+    {
+     "task": "wal-recovery-ordering",
+     "trial": "wal-recovery-ordering__DXqWif2",
+     "reason": "the suite has no tests"
+    },
+    {
+     "task": "wal-recovery-ordering",
+     "trial": "wal-recovery-ordering__qbhxq2M",
+     "reason": "the suite has no tests"
+    },
+    {
+     "task": "wal-recovery-ordering",
+     "trial": "wal-recovery-ordering__rojNpSF",
+     "reason": "the suite has no tests"
+    },
+    {
+     "task": "wal-recovery-ordering",
+     "trial": "wal-recovery-ordering__uoUwaHU",
+     "reason": "the suite has no tests"
+    }
+   ],
+   "rows": [
+    {
+     "task": "cargo-flight-dispatch",
+     "trial": "cargo-flight-dispatch__M5T7oW8",
+     "job": "try--coder-one-tunable-luna-snapshot--20260923T162706Z",
+     "snapshot_graded": false,
+     "passed": false,
+     "green": true,
+     "tests_green": 1,
+     "tests": 1
+    },
+    {
+     "task": "cargo-flight-dispatch",
+     "trial": "cargo-flight-dispatch__anfUuvh",
+     "job": "tb4--coder-one-tunable-v10--cargo-flight-dispatch--v10-persist-9570-r1",
+     "snapshot_graded": false,
+     "passed": false,
+     "green": true,
+     "tests_green": 1,
+     "tests": 1
+    },
+    {
+     "task": "cargo-flight-dispatch",
+     "trial": "cargo-flight-dispatch__eVK5hHc",
+     "job": "tb4--coder-one-tunable-v7--cargo-flight-dispatch--v10-persist-9570-r1",
+     "snapshot_graded": false,
+     "passed": false,
+     "green": true,
+     "tests_green": 1,
+     "tests": 1
+    },
+    {
+     "task": "cargo-flight-dispatch",
+     "trial": "cargo-flight-dispatch__gsjsQr3",
+     "job": "tb4--coder-one-tunable-v8--cargo-flight-dispatch--v8-persist-9570-r4",
+     "snapshot_graded": false,
+     "passed": false,
+     "green": true,
+     "tests_green": 1,
+     "tests": 1
+    },
+    {
+     "task": "cargo-flight-dispatch",
+     "trial": "cargo-flight-dispatch__jTTHMeh",
+     "job": "tb4--coder-one-tunable-v8--cargo-flight-dispatch--v8-persist-9570-r2",
+     "snapshot_graded": false,
+     "passed": false,
+     "green": true,
+     "tests_green": 1,
+     "tests": 1
+    },
+    {
+     "task": "cargo-flight-dispatch",
+     "trial": "cargo-flight-dispatch__kzGkiRi",
+     "job": "tb4--coder-one-tunable-v8--cargo-flight-dispatch--v8-persist-9570-r3",
+     "snapshot_graded": false,
+     "passed": false,
+     "green": true,
+     "tests_green": 1,
+     "tests": 1
+    },
+    {
+     "task": "interleaved-vigenere",
+     "trial": "interleaved-vigenere__FryxfnM",
+     "job": "try--coder-one-tunable-luna-snapshot--20260923T162706Z",
+     "snapshot_graded": true,
+     "passed": false,
+     "green": false,
+     "tests_green": 3,
+     "tests": 5
+    },
+    {
+     "task": "ks-solver-cpp",
+     "trial": "ks-solver-cpp__Lt6izN8",
+     "job": "tb4--coder-one-matched-v8--ks-solver-cpp--matched-v8-9567-r2",
+     "snapshot_graded": false,
+     "passed": false,
+     "green": false,
+     "tests_green": 0,
+     "tests": 1
+    },
+    {
+     "task": "ks-solver-cpp",
+     "trial": "ks-solver-cpp__PDuFFLt",
+     "job": "tb4--coder-one-matched-v8--ks-solver-cpp--matched-v8-9567-r1",
+     "snapshot_graded": false,
+     "passed": false,
+     "green": false,
+     "tests_green": 0,
+     "tests": 1
+    },
+    {
+     "task": "ks-solver-cpp",
+     "trial": "ks-solver-cpp__pFx79Ga",
+     "job": "tb4--coder-one-matched-v8--ks-solver-cpp--matched-v8-9567-r3",
+     "snapshot_graded": false,
+     "passed": false,
+     "green": false,
+     "tests_green": 0,
+     "tests": 1
+    },
+    {
+     "task": "ks-solver-cpp",
+     "trial": "ks-solver-cpp__z5fa8Zp",
+     "job": "try--coder-one-tunable-v7--targets-9568b",
+     "snapshot_graded": true,
+     "passed": false,
+     "green": false,
+     "tests_green": 0,
+     "tests": 1
+    },
+    {
+     "task": "production-planning",
+     "trial": "production-planning__FRFigLe",
+     "job": "tb4--coder-one-tunable-v8--production-planning--v8-persist-9570-r4",
+     "snapshot_graded": false,
+     "passed": true,
+     "green": true,
+     "tests_green": 1,
+     "tests": 1
+    },
+    {
+     "task": "production-planning",
+     "trial": "production-planning__Vb5Fddr",
+     "job": "tb4--coder-one-tunable-v8--production-planning--v8-persist-9570-r3",
+     "snapshot_graded": false,
+     "passed": true,
+     "green": true,
+     "tests_green": 1,
+     "tests": 1
+    },
+    {
+     "task": "production-planning",
+     "trial": "production-planning__bMzvLfm",
+     "job": "tb4--coder-one-tunable-v7--production-planning--v10-persist-9570-r1",
+     "snapshot_graded": false,
+     "passed": true,
+     "green": true,
+     "tests_green": 1,
+     "tests": 1
+    },
+    {
+     "task": "production-planning",
+     "trial": "production-planning__rmraruG",
+     "job": "try--coder-one-tunable-v7--targets-9568b",
+     "snapshot_graded": false,
+     "passed": false,
+     "green": false,
+     "tests_green": 0,
+     "tests": 1
+    },
+    {
+     "task": "production-planning",
+     "trial": "production-planning__sZAqAc6",
+     "job": "tb4--coder-one-tunable-v10--production-planning--v10-persist-9570-r1",
+     "snapshot_graded": false,
+     "passed": true,
+     "green": true,
+     "tests_green": 1,
+     "tests": 1
+    },
+    {
+     "task": "production-planning",
+     "trial": "production-planning__yzdyUnm",
+     "job": "tb4--coder-one-tunable-v8--production-planning--v8-persist-9570-r2",
+     "snapshot_graded": false,
+     "passed": false,
+     "green": true,
+     "tests_green": 1,
+     "tests": 1
+    },
+    {
+     "task": "sound-change-cascade",
+     "trial": "sound-change-cascade__KUdjBfR",
+     "job": "tb4--coder-one-matched-v8--sound-change-cascade--matched-v8-9567-r3",
+     "snapshot_graded": true,
+     "passed": true,
+     "green": false,
+     "tests_green": 0,
+     "tests": 1
+    },
+    {
+     "task": "sound-change-cascade",
+     "trial": "sound-change-cascade__Kk7csF5",
+     "job": "tb4--coder-one-matched-v8--sound-change-cascade--matched-v8-9567-r1",
+     "snapshot_graded": true,
+     "passed": true,
+     "green": false,
+     "tests_green": 0,
+     "tests": 1
+    },
+    {
+     "task": "sound-change-cascade",
+     "trial": "sound-change-cascade__uaGad7W",
+     "job": "tb4--coder-one-matched-v8--sound-change-cascade--matched-v8-9567-r2",
+     "snapshot_graded": false,
+     "passed": true,
+     "green": false,
+     "tests_green": 0,
+     "tests": 1
+    }
+   ]
+  },
+  {
+   "pass": "pass2-calibrated",
+   "suites": 13,
+   "spend_usd": {
+    "writer": 0.141336,
+    "jev": 0.040547,
+    "total": 0.181883
+   },
+   "snapshot_graded": {
+    "trials": 9,
+    "tasks": 7,
+    "green": 6,
+    "red": 3,
+    "green_and_passed": 5,
+    "green_and_failed": 1,
+    "red_and_passed": 0,
+    "red_and_failed": 3,
+    "pass_given_green": {
+     "k": 5,
+     "n": 6,
+     "value": 0.8333,
+     "wilson_95": [
+      0.4365,
+      0.9699
+     ]
+    },
+    "fail_given_red": {
+     "k": 3,
+     "n": 3,
+     "value": 1.0,
+     "wilson_95": [
+      0.4385,
+      1.0
+     ]
+    },
+    "failures_caught": {
+     "k": 3,
+     "n": 4,
+     "value": 0.75,
+     "wilson_95": [
+      0.3006,
+      0.9544
+     ]
+    },
+    "passes_kept": {
+     "k": 5,
+     "n": 5,
+     "value": 1.0,
+     "wilson_95": [
+      0.5655,
+      1.0
+     ]
+    },
+    "agreement": {
+     "k": 8,
+     "n": 9,
+     "value": 0.8889,
+     "wilson_95": [
+      0.565,
+      0.9801
+     ]
+    }
+   },
+   "all_snapshots": {
+    "trials": 46,
+    "tasks": 13,
+    "green": 26,
+    "red": 20,
+    "green_and_passed": 14,
+    "green_and_failed": 12,
+    "red_and_passed": 6,
+    "red_and_failed": 14,
+    "pass_given_green": {
+     "k": 14,
+     "n": 26,
+     "value": 0.5385,
+     "wilson_95": [
+      0.3546,
+      0.7124
+     ]
+    },
+    "fail_given_red": {
+     "k": 14,
+     "n": 20,
+     "value": 0.7,
+     "wilson_95": [
+      0.481,
+      0.8545
+     ]
+    },
+    "failures_caught": {
+     "k": 14,
+     "n": 26,
+     "value": 0.5385,
+     "wilson_95": [
+      0.3546,
+      0.7124
+     ]
+    },
+    "passes_kept": {
+     "k": 14,
+     "n": 20,
+     "value": 0.7,
+     "wilson_95": [
+      0.481,
+      0.8545
+     ]
+    },
+    "agreement": {
+     "k": 28,
+     "n": 46,
+     "value": 0.6087,
+     "wilson_95": [
+      0.4646,
+      0.7361
+     ]
+    }
+   },
+   "tasks": [
+    {
+     "task": "bun-sourcemap-leak",
+     "suite_status": "partial",
+     "tests": 7,
+     "rejected": 1,
+     "gaps": 6,
+     "writer_usd": 0.010285,
+     "jev_usd": 0.003505,
+     "counted_trials": 5,
+     "passed": 1,
+     "green": 0,
+     "green_and_passed": 0,
+     "red_and_passed": 1,
+     "same_call_for_every_trial": true
+    },
+    {
+     "task": "cad-model",
+     "suite_status": "partial",
+     "tests": 5,
+     "rejected": 1,
+     "gaps": 2,
+     "writer_usd": 0.006717,
+     "jev_usd": 0.000932,
+     "counted_trials": 3,
+     "passed": 3,
+     "green": 3,
+     "green_and_passed": 3,
+     "red_and_passed": 0,
+     "same_call_for_every_trial": true
+    },
+    {
+     "task": "cargo-flight-dispatch",
+     "suite_status": "partial",
+     "tests": 7,
+     "rejected": 5,
+     "gaps": 9,
+     "writer_usd": 0.015303,
+     "jev_usd": 0.003041,
+     "counted_trials": 6,
+     "passed": 0,
+     "green": 6,
+     "green_and_passed": 0,
+     "red_and_passed": 0,
+     "same_call_for_every_trial": true
+    },
+    {
+     "task": "embedding-drift-monitor",
+     "suite_status": "partial",
+     "tests": 7,
+     "rejected": 5,
+     "gaps": 4,
+     "writer_usd": 0.011465,
+     "jev_usd": 0.002048,
+     "counted_trials": 3,
+     "passed": 3,
+     "green": 0,
+     "green_and_passed": 0,
+     "red_and_passed": 3,
+     "same_call_for_every_trial": true
+    },
+    {
+     "task": "fin-saccr-rwa",
+     "suite_status": "partial",
+     "tests": 5,
+     "rejected": 5,
+     "gaps": 11,
+     "writer_usd": 0.015162,
+     "jev_usd": 0.003985,
+     "counted_trials": 3,
+     "passed": 0,
+     "green": 0,
+     "green_and_passed": 0,
+     "red_and_passed": 0,
+     "same_call_for_every_trial": true
+    },
+    {
+     "task": "html-js-filter",
+     "suite_status": "partial",
+     "tests": 6,
+     "rejected": 0,
+     "gaps": 3,
+     "writer_usd": 0.007443,
+     "jev_usd": 0.002288,
+     "counted_trials": 1,
+     "passed": 0,
+     "green": 1,
+     "green_and_passed": 0,
+     "red_and_passed": 0,
+     "same_call_for_every_trial": true
+    },
+    {
+     "task": "interleaved-vigenere",
+     "suite_status": "partial",
+     "tests": 6,
+     "rejected": 2,
+     "gaps": 3,
+     "writer_usd": 0.00839,
+     "jev_usd": 0.002851,
+     "counted_trials": 1,
+     "passed": 0,
+     "green": 0,
+     "green_and_passed": 0,
+     "red_and_passed": 0,
+     "same_call_for_every_trial": true
+    },
+    {
+     "task": "ks-solver-cpp",
+     "suite_status": "partial",
+     "tests": 1,
+     "rejected": 1,
+     "gaps": 14,
+     "writer_usd": 0.006631,
+     "jev_usd": 0.002666,
+     "counted_trials": 4,
+     "passed": 0,
+     "green": 4,
+     "green_and_passed": 0,
+     "red_and_passed": 0,
+     "same_call_for_every_trial": true
+    },
+    {
+     "task": "mvcc-lsm-compaction",
+     "suite_status": "partial",
+     "tests": 2,
+     "rejected": 1,
+     "gaps": 3,
+     "writer_usd": 0.007947,
+     "jev_usd": 0.000615,
+     "counted_trials": 5,
+     "passed": 5,
+     "green": 4,
+     "green_and_passed": 4,
+     "red_and_passed": 1,
+     "same_call_for_every_trial": false
+    },
+    {
+     "task": "production-planning",
+     "suite_status": "partial",
+     "tests": 8,
+     "rejected": 4,
+     "gaps": 8,
+     "writer_usd": 0.016931,
+     "jev_usd": 0.004091,
+     "counted_trials": 6,
+     "passed": 4,
+     "green": 5,
+     "green_and_passed": 4,
+     "red_and_passed": 0,
+     "same_call_for_every_trial": false
+    },
+    {
+     "task": "risk-scorer-replay",
+     "suite_status": "partial",
+     "tests": 2,
+     "rejected": 3,
+     "gaps": 8,
+     "writer_usd": 0.013603,
+     "jev_usd": 0.001209,
+     "counted_trials": 2,
+     "passed": 1,
+     "green": 0,
+     "green_and_passed": 0,
+     "red_and_passed": 1,
+     "same_call_for_every_trial": true
+    },
+    {
+     "task": "sound-change-cascade",
+     "suite_status": "partial",
+     "tests": 8,
+     "rejected": 0,
+     "gaps": 3,
+     "writer_usd": 0.009931,
+     "jev_usd": 0.003559,
+     "counted_trials": 3,
+     "passed": 3,
+     "green": 3,
+     "green_and_passed": 3,
+     "red_and_passed": 0,
+     "same_call_for_every_trial": true
+    },
+    {
+     "task": "wal-recovery-ordering",
+     "suite_status": "partial",
+     "tests": 13,
+     "rejected": 2,
+     "gaps": 5,
+     "writer_usd": 0.011529,
+     "jev_usd": 0.009758,
+     "counted_trials": 4,
+     "passed": 0,
+     "green": 0,
+     "green_and_passed": 0,
+     "red_and_passed": 0,
+     "same_call_for_every_trial": true
+    }
+   ],
+   "excluded": [
+    {
+     "task": "bun-sourcemap-leak",
+     "trial": "bun-sourcemap-leak__4KF3b8s",
+     "reason": "the verifier reward is unknown"
+    },
+    {
+     "task": "bun-sourcemap-leak",
+     "trial": "bun-sourcemap-leak__5sZ7gks",
+     "reason": "the verifier reward is unknown"
+    },
+    {
+     "task": "bun-sourcemap-leak",
+     "trial": "bun-sourcemap-leak__wPKtee2",
+     "reason": "the verifier reward is unknown"
+    }
+   ],
+   "rows": [
+    {
+     "task": "bun-sourcemap-leak",
+     "trial": "bun-sourcemap-leak__AhfCw5c",
+     "job": "tb4--coder-one-tunable-v8--bun-sourcemap-leak--v8-persist-9570-ca-r3",
+     "snapshot_graded": false,
+     "passed": true,
+     "green": false,
+     "tests_green": 3,
+     "tests": 7
+    },
+    {
+     "task": "bun-sourcemap-leak",
+     "trial": "bun-sourcemap-leak__F4t2d8w",
+     "job": "tb4--coder-one-tunable-v8--bun-sourcemap-leak--v8-persist-9570-ca-r1",
+     "snapshot_graded": false,
+     "passed": false,
+     "green": false,
+     "tests_green": 3,
+     "tests": 7
+    },
+    {
+     "task": "bun-sourcemap-leak",
+     "trial": "bun-sourcemap-leak__KSe7EpL",
+     "job": "tb4--coder-one-tunable-v7--bun-sourcemap-leak--v10-persist-9570-r1",
+     "snapshot_graded": false,
+     "passed": false,
+     "green": false,
+     "tests_green": 3,
+     "tests": 7
+    },
+    {
+     "task": "bun-sourcemap-leak",
+     "trial": "bun-sourcemap-leak__YgVxiUg",
+     "job": "tb4--coder-one-tunable-v8--bun-sourcemap-leak--v8-persist-9570-ca-r2",
+     "snapshot_graded": false,
+     "passed": false,
+     "green": false,
+     "tests_green": 3,
+     "tests": 7
+    },
+    {
+     "task": "bun-sourcemap-leak",
+     "trial": "bun-sourcemap-leak__hTfpu6P",
+     "job": "tb4--coder-one-tunable-v10--bun-sourcemap-leak--v10-persist-9570-r1",
+     "snapshot_graded": false,
+     "passed": false,
+     "green": false,
+     "tests_green": 3,
+     "tests": 7
+    },
+    {
+     "task": "cad-model",
+     "trial": "cad-model__PCPn5pW",
+     "job": "tb4--coder-one-matched-v8--cad-model--matched-v8-9567-r3",
+     "snapshot_graded": true,
+     "passed": true,
+     "green": true,
+     "tests_green": 5,
+     "tests": 5
+    },
+    {
+     "task": "cad-model",
+     "trial": "cad-model__UpQfB2j",
+     "job": "tb4--coder-one-matched-v8--cad-model--matched-v8-9567-r1",
+     "snapshot_graded": false,
+     "passed": true,
+     "green": true,
+     "tests_green": 5,
+     "tests": 5
+    },
+    {
+     "task": "cad-model",
+     "trial": "cad-model__VXuQNL9",
+     "job": "tb4--coder-one-matched-v8--cad-model--matched-v8-9567-r2",
+     "snapshot_graded": true,
+     "passed": true,
+     "green": true,
+     "tests_green": 5,
+     "tests": 5
+    },
+    {
+     "task": "cargo-flight-dispatch",
+     "trial": "cargo-flight-dispatch__M5T7oW8",
+     "job": "try--coder-one-tunable-luna-snapshot--20260923T162706Z",
+     "snapshot_graded": false,
+     "passed": false,
+     "green": true,
+     "tests_green": 7,
+     "tests": 7
+    },
+    {
+     "task": "cargo-flight-dispatch",
+     "trial": "cargo-flight-dispatch__anfUuvh",
+     "job": "tb4--coder-one-tunable-v10--cargo-flight-dispatch--v10-persist-9570-r1",
+     "snapshot_graded": false,
+     "passed": false,
+     "green": true,
+     "tests_green": 7,
+     "tests": 7
+    },
+    {
+     "task": "cargo-flight-dispatch",
+     "trial": "cargo-flight-dispatch__eVK5hHc",
+     "job": "tb4--coder-one-tunable-v7--cargo-flight-dispatch--v10-persist-9570-r1",
+     "snapshot_graded": false,
+     "passed": false,
+     "green": true,
+     "tests_green": 7,
+     "tests": 7
+    },
+    {
+     "task": "cargo-flight-dispatch",
+     "trial": "cargo-flight-dispatch__gsjsQr3",
+     "job": "tb4--coder-one-tunable-v8--cargo-flight-dispatch--v8-persist-9570-r4",
+     "snapshot_graded": false,
+     "passed": false,
+     "green": true,
+     "tests_green": 7,
+     "tests": 7
+    },
+    {
+     "task": "cargo-flight-dispatch",
+     "trial": "cargo-flight-dispatch__jTTHMeh",
+     "job": "tb4--coder-one-tunable-v8--cargo-flight-dispatch--v8-persist-9570-r2",
+     "snapshot_graded": false,
+     "passed": false,
+     "green": true,
+     "tests_green": 7,
+     "tests": 7
+    },
+    {
+     "task": "cargo-flight-dispatch",
+     "trial": "cargo-flight-dispatch__kzGkiRi",
+     "job": "tb4--coder-one-tunable-v8--cargo-flight-dispatch--v8-persist-9570-r3",
+     "snapshot_graded": false,
+     "passed": false,
+     "green": true,
+     "tests_green": 7,
+     "tests": 7
+    },
+    {
+     "task": "embedding-drift-monitor",
+     "trial": "embedding-drift-monitor__aGH4F34",
+     "job": "tb4--coder-one-matched-v8--embedding-drift-monitor--matched-v8-9567-r2",
+     "snapshot_graded": false,
+     "passed": true,
+     "green": false,
+     "tests_green": 5,
+     "tests": 7
+    },
+    {
+     "task": "embedding-drift-monitor",
+     "trial": "embedding-drift-monitor__eh9ex5r",
+     "job": "tb4--coder-one-matched-v8--embedding-drift-monitor--matched-v8-9567-r1",
+     "snapshot_graded": false,
+     "passed": true,
+     "green": false,
+     "tests_green": 5,
+     "tests": 7
+    },
+    {
+     "task": "embedding-drift-monitor",
+     "trial": "embedding-drift-monitor__zsNLRYd",
+     "job": "tb4--coder-one-matched-v8--embedding-drift-monitor--matched-v8-9567-r3",
+     "snapshot_graded": false,
+     "passed": true,
+     "green": false,
+     "tests_green": 5,
+     "tests": 7
+    },
+    {
+     "task": "fin-saccr-rwa",
+     "trial": "fin-saccr-rwa__89KPMs9",
+     "job": "tb4--coder-one-matched-v8--fin-saccr-rwa--matched-v8-9567-r2",
+     "snapshot_graded": false,
+     "passed": false,
+     "green": false,
+     "tests_green": 4,
+     "tests": 5
+    },
+    {
+     "task": "fin-saccr-rwa",
+     "trial": "fin-saccr-rwa__E3d7o4p",
+     "job": "tb4--coder-one-matched-v8--fin-saccr-rwa--matched-v8-9567-r1",
+     "snapshot_graded": false,
+     "passed": false,
+     "green": false,
+     "tests_green": 4,
+     "tests": 5
+    },
+    {
+     "task": "fin-saccr-rwa",
+     "trial": "fin-saccr-rwa__GPBRV5j",
+     "job": "tb4--coder-one-matched-v8--fin-saccr-rwa--matched-v8-9567-r3",
+     "snapshot_graded": false,
+     "passed": false,
+     "green": false,
+     "tests_green": 4,
+     "tests": 5
+    },
+    {
+     "task": "html-js-filter",
+     "trial": "html-js-filter__aZvBopx",
+     "job": "try--coder-one-tunable-v7--targets-9568b",
+     "snapshot_graded": false,
+     "passed": false,
+     "green": true,
+     "tests_green": 6,
+     "tests": 6
+    },
+    {
+     "task": "interleaved-vigenere",
+     "trial": "interleaved-vigenere__FryxfnM",
+     "job": "try--coder-one-tunable-luna-snapshot--20260923T162706Z",
+     "snapshot_graded": true,
+     "passed": false,
+     "green": false,
+     "tests_green": 3,
+     "tests": 6
+    },
+    {
+     "task": "ks-solver-cpp",
+     "trial": "ks-solver-cpp__Lt6izN8",
+     "job": "tb4--coder-one-matched-v8--ks-solver-cpp--matched-v8-9567-r2",
+     "snapshot_graded": false,
+     "passed": false,
+     "green": true,
+     "tests_green": 1,
+     "tests": 1
+    },
+    {
+     "task": "ks-solver-cpp",
+     "trial": "ks-solver-cpp__PDuFFLt",
+     "job": "tb4--coder-one-matched-v8--ks-solver-cpp--matched-v8-9567-r1",
+     "snapshot_graded": false,
+     "passed": false,
+     "green": true,
+     "tests_green": 1,
+     "tests": 1
+    },
+    {
+     "task": "ks-solver-cpp",
+     "trial": "ks-solver-cpp__pFx79Ga",
+     "job": "tb4--coder-one-matched-v8--ks-solver-cpp--matched-v8-9567-r3",
+     "snapshot_graded": false,
+     "passed": false,
+     "green": true,
+     "tests_green": 1,
+     "tests": 1
+    },
+    {
+     "task": "ks-solver-cpp",
+     "trial": "ks-solver-cpp__z5fa8Zp",
+     "job": "try--coder-one-tunable-v7--targets-9568b",
+     "snapshot_graded": true,
+     "passed": false,
+     "green": true,
+     "tests_green": 1,
+     "tests": 1
+    },
+    {
+     "task": "mvcc-lsm-compaction",
+     "trial": "mvcc-lsm-compaction__4yfBDYL",
+     "job": "tb4--coder-one-matched-v8--mvcc-lsm-compaction--matched-v8-9567-r3",
+     "snapshot_graded": false,
+     "passed": true,
+     "green": true,
+     "tests_green": 2,
+     "tests": 2
+    },
+    {
+     "task": "mvcc-lsm-compaction",
+     "trial": "mvcc-lsm-compaction__JsFGzzJ",
+     "job": "tb4--coder-one-tunable-v7--mvcc-lsm-compaction--v10-persist-9570-r1",
+     "snapshot_graded": true,
+     "passed": true,
+     "green": true,
+     "tests_green": 2,
+     "tests": 2
+    },
+    {
+     "task": "mvcc-lsm-compaction",
+     "trial": "mvcc-lsm-compaction__cXLAxTv",
+     "job": "tb4--coder-one-tunable-v10--mvcc-lsm-compaction--v10-persist-9570-r1",
+     "snapshot_graded": false,
+     "passed": true,
+     "green": false,
+     "tests_green": 0,
+     "tests": 2
+    },
+    {
+     "task": "mvcc-lsm-compaction",
+     "trial": "mvcc-lsm-compaction__pkCidVR",
+     "job": "tb4--coder-one-matched-v8--mvcc-lsm-compaction--matched-v8-9567-r2",
+     "snapshot_graded": false,
+     "passed": true,
+     "green": true,
+     "tests_green": 2,
+     "tests": 2
+    },
+    {
+     "task": "mvcc-lsm-compaction",
+     "trial": "mvcc-lsm-compaction__s5z5Kwr",
+     "job": "tb4--coder-one-matched-v8--mvcc-lsm-compaction--matched-v8-9567-r1",
+     "snapshot_graded": false,
+     "passed": true,
+     "green": true,
+     "tests_green": 2,
+     "tests": 2
+    },
+    {
+     "task": "production-planning",
+     "trial": "production-planning__FRFigLe",
+     "job": "tb4--coder-one-tunable-v8--production-planning--v8-persist-9570-r4",
+     "snapshot_graded": false,
+     "passed": true,
+     "green": true,
+     "tests_green": 8,
+     "tests": 8
+    },
+    {
+     "task": "production-planning",
+     "trial": "production-planning__Vb5Fddr",
+     "job": "tb4--coder-one-tunable-v8--production-planning--v8-persist-9570-r3",
+     "snapshot_graded": false,
+     "passed": true,
+     "green": true,
+     "tests_green": 8,
+     "tests": 8
+    },
+    {
+     "task": "production-planning",
+     "trial": "production-planning__bMzvLfm",
+     "job": "tb4--coder-one-tunable-v7--production-planning--v10-persist-9570-r1",
+     "snapshot_graded": false,
+     "passed": true,
+     "green": true,
+     "tests_green": 8,
+     "tests": 8
+    },
+    {
+     "task": "production-planning",
+     "trial": "production-planning__rmraruG",
+     "job": "try--coder-one-tunable-v7--targets-9568b",
+     "snapshot_graded": false,
+     "passed": false,
+     "green": false,
+     "tests_green": 0,
+     "tests": 8
+    },
+    {
+     "task": "production-planning",
+     "trial": "production-planning__sZAqAc6",
+     "job": "tb4--coder-one-tunable-v10--production-planning--v10-persist-9570-r1",
+     "snapshot_graded": false,
+     "passed": true,
+     "green": true,
+     "tests_green": 8,
+     "tests": 8
+    },
+    {
+     "task": "production-planning",
+     "trial": "production-planning__yzdyUnm",
+     "job": "tb4--coder-one-tunable-v8--production-planning--v8-persist-9570-r2",
+     "snapshot_graded": false,
+     "passed": false,
+     "green": true,
+     "tests_green": 8,
+     "tests": 8
+    },
+    {
+     "task": "risk-scorer-replay",
+     "trial": "risk-scorer-replay__sSqd7oF",
+     "job": "try--coder-one-tunable-luna-snapshot--20260923T162706Z",
+     "snapshot_graded": false,
+     "passed": true,
+     "green": false,
+     "tests_green": 0,
+     "tests": 2
+    },
+    {
+     "task": "risk-scorer-replay",
+     "trial": "risk-scorer-replay__xWMSei4",
+     "job": "try--coder-one-tunable-v7--targets-9568b",
+     "snapshot_graded": true,
+     "passed": false,
+     "green": false,
+     "tests_green": 0,
+     "tests": 2
+    },
+    {
+     "task": "sound-change-cascade",
+     "trial": "sound-change-cascade__KUdjBfR",
+     "job": "tb4--coder-one-matched-v8--sound-change-cascade--matched-v8-9567-r3",
+     "snapshot_graded": true,
+     "passed": true,
+     "green": true,
+     "tests_green": 8,
+     "tests": 8
+    },
+    {
+     "task": "sound-change-cascade",
+     "trial": "sound-change-cascade__Kk7csF5",
+     "job": "tb4--coder-one-matched-v8--sound-change-cascade--matched-v8-9567-r1",
+     "snapshot_graded": true,
+     "passed": true,
+     "green": true,
+     "tests_green": 8,
+     "tests": 8
+    },
+    {
+     "task": "sound-change-cascade",
+     "trial": "sound-change-cascade__uaGad7W",
+     "job": "tb4--coder-one-matched-v8--sound-change-cascade--matched-v8-9567-r2",
+     "snapshot_graded": false,
+     "passed": true,
+     "green": true,
+     "tests_green": 8,
+     "tests": 8
+    },
+    {
+     "task": "wal-recovery-ordering",
+     "trial": "wal-recovery-ordering__DXqWif2",
+     "job": "tb4--coder-one-matched-v8--wal-recovery-ordering--matched-v8-9567-r1",
+     "snapshot_graded": false,
+     "passed": false,
+     "green": false,
+     "tests_green": 11,
+     "tests": 13
+    },
+    {
+     "task": "wal-recovery-ordering",
+     "trial": "wal-recovery-ordering__qbhxq2M",
+     "job": "tb4--coder-one-matched-v8--wal-recovery-ordering--matched-v8-9567-r2",
+     "snapshot_graded": false,
+     "passed": false,
+     "green": false,
+     "tests_green": 11,
+     "tests": 13
+    },
+    {
+     "task": "wal-recovery-ordering",
+     "trial": "wal-recovery-ordering__rojNpSF",
+     "job": "try--coder-one-tunable-v7--targets-9568b",
+     "snapshot_graded": true,
+     "passed": false,
+     "green": false,
+     "tests_green": 11,
+     "tests": 13
+    },
+    {
+     "task": "wal-recovery-ordering",
+     "trial": "wal-recovery-ordering__uoUwaHU",
+     "job": "tb4--coder-one-matched-v8--wal-recovery-ordering--matched-v8-9567-r3",
+     "snapshot_graded": false,
+     "passed": false,
+     "green": false,
+     "tests_green": 11,
+     "tests": 13
+    }
+   ]
+  },
+  {
+   "pass": "pass3-facts",
+   "suites": 6,
+   "spend_usd": {
+    "writer": 0.058941,
+    "jev": 0.018337,
+    "total": 0.077278
+   },
+   "snapshot_graded": {
+    "trials": 4,
+    "tasks": 3,
+    "green": 2,
+    "red": 2,
+    "green_and_passed": 2,
+    "green_and_failed": 0,
+    "red_and_passed": 0,
+    "red_and_failed": 2,
+    "pass_given_green": {
+     "k": 2,
+     "n": 2,
+     "value": 1.0,
+     "wilson_95": [
+      0.3424,
+      1.0
+     ]
+    },
+    "fail_given_red": {
+     "k": 2,
+     "n": 2,
+     "value": 1.0,
+     "wilson_95": [
+      0.3424,
+      1.0
+     ]
+    },
+    "failures_caught": {
+     "k": 2,
+     "n": 2,
+     "value": 1.0,
+     "wilson_95": [
+      0.3424,
+      1.0
+     ]
+    },
+    "passes_kept": {
+     "k": 2,
+     "n": 2,
+     "value": 1.0,
+     "wilson_95": [
+      0.3424,
+      1.0
+     ]
+    },
+    "agreement": {
+     "k": 4,
+     "n": 4,
+     "value": 1.0,
+     "wilson_95": [
+      0.5101,
+      1.0
+     ]
+    }
+   },
+   "all_snapshots": {
+    "trials": 19,
+    "tasks": 6,
+    "green": 3,
+    "red": 16,
+    "green_and_passed": 3,
+    "green_and_failed": 0,
+    "red_and_passed": 4,
+    "red_and_failed": 12,
+    "pass_given_green": {
+     "k": 3,
+     "n": 3,
+     "value": 1.0,
+     "wilson_95": [
+      0.4385,
+      1.0
+     ]
+    },
+    "fail_given_red": {
+     "k": 12,
+     "n": 16,
+     "value": 0.75,
+     "wilson_95": [
+      0.505,
+      0.8982
+     ]
+    },
+    "failures_caught": {
+     "k": 12,
+     "n": 12,
+     "value": 1.0,
+     "wilson_95": [
+      0.7575,
+      1.0
+     ]
+    },
+    "passes_kept": {
+     "k": 3,
+     "n": 7,
+     "value": 0.4286,
+     "wilson_95": [
+      0.1582,
+      0.7495
+     ]
+    },
+    "agreement": {
+     "k": 15,
+     "n": 19,
+     "value": 0.7895,
+     "wilson_95": [
+      0.5667,
+      0.9149
+     ]
+    }
+   },
+   "tasks": [
+    {
+     "task": "bun-sourcemap-leak",
+     "suite_status": "partial",
+     "tests": 5,
+     "rejected": 3,
+     "gaps": 8,
+     "writer_usd": 0.009357,
+     "jev_usd": 0.003204,
+     "counted_trials": 5,
+     "passed": 1,
+     "green": 0,
+     "green_and_passed": 0,
+     "red_and_passed": 1,
+     "same_call_for_every_trial": true
+    },
+    {
+     "task": "embedding-drift-monitor",
+     "suite_status": "partial",
+     "tests": 5,
+     "rejected": 4,
+     "gaps": 5,
+     "writer_usd": 0.008883,
+     "jev_usd": 0.001697,
+     "counted_trials": 3,
+     "passed": 3,
+     "green": 0,
+     "green_and_passed": 0,
+     "red_and_passed": 3,
+     "same_call_for_every_trial": true
+    },
+    {
+     "task": "fin-saccr-rwa",
+     "suite_status": "partial",
+     "tests": 5,
+     "rejected": 3,
+     "gaps": 9,
+     "writer_usd": 0.0131,
+     "jev_usd": 0.003954,
+     "counted_trials": 3,
+     "passed": 0,
+     "green": 0,
+     "green_and_passed": 0,
+     "red_and_passed": 0,
+     "same_call_for_every_trial": true
+    },
+    {
+     "task": "interleaved-vigenere",
+     "suite_status": "partial",
+     "tests": 5,
+     "rejected": 1,
+     "gaps": 3,
+     "writer_usd": 0.010277,
+     "jev_usd": 0.002587,
+     "counted_trials": 1,
+     "passed": 0,
+     "green": 0,
+     "green_and_passed": 0,
+     "red_and_passed": 0,
+     "same_call_for_every_trial": true
+    },
+    {
+     "task": "ks-solver-cpp",
+     "suite_status": "partial",
+     "tests": 3,
+     "rejected": 1,
+     "gaps": 9,
+     "writer_usd": 0.00791,
+     "jev_usd": 0.004542,
+     "counted_trials": 4,
+     "passed": 0,
+     "green": 0,
+     "green_and_passed": 0,
+     "red_and_passed": 0,
+     "same_call_for_every_trial": true
+    },
+    {
+     "task": "sound-change-cascade",
+     "suite_status": "partial",
+     "tests": 4,
+     "rejected": 3,
+     "gaps": 9,
+     "writer_usd": 0.009413,
+     "jev_usd": 0.002353,
+     "counted_trials": 3,
+     "passed": 3,
+     "green": 3,
+     "green_and_passed": 3,
+     "red_and_passed": 0,
+     "same_call_for_every_trial": true
+    }
+   ],
+   "excluded": [
+    {
+     "task": "bun-sourcemap-leak",
+     "trial": "bun-sourcemap-leak__4KF3b8s",
+     "reason": "the verifier reward is unknown"
+    },
+    {
+     "task": "bun-sourcemap-leak",
+     "trial": "bun-sourcemap-leak__5sZ7gks",
+     "reason": "the verifier reward is unknown"
+    },
+    {
+     "task": "bun-sourcemap-leak",
+     "trial": "bun-sourcemap-leak__wPKtee2",
+     "reason": "the verifier reward is unknown"
+    }
+   ],
+   "rows": [
+    {
+     "task": "bun-sourcemap-leak",
+     "trial": "bun-sourcemap-leak__AhfCw5c",
+     "job": "tb4--coder-one-tunable-v8--bun-sourcemap-leak--v8-persist-9570-ca-r3",
+     "snapshot_graded": false,
+     "passed": true,
+     "green": false,
+     "tests_green": 4,
+     "tests": 5
+    },
+    {
+     "task": "bun-sourcemap-leak",
+     "trial": "bun-sourcemap-leak__F4t2d8w",
+     "job": "tb4--coder-one-tunable-v8--bun-sourcemap-leak--v8-persist-9570-ca-r1",
+     "snapshot_graded": false,
+     "passed": false,
+     "green": false,
+     "tests_green": 2,
+     "tests": 5
+    },
+    {
+     "task": "bun-sourcemap-leak",
+     "trial": "bun-sourcemap-leak__KSe7EpL",
+     "job": "tb4--coder-one-tunable-v7--bun-sourcemap-leak--v10-persist-9570-r1",
+     "snapshot_graded": false,
+     "passed": false,
+     "green": false,
+     "tests_green": 2,
+     "tests": 5
+    },
+    {
+     "task": "bun-sourcemap-leak",
+     "trial": "bun-sourcemap-leak__YgVxiUg",
+     "job": "tb4--coder-one-tunable-v8--bun-sourcemap-leak--v8-persist-9570-ca-r2",
+     "snapshot_graded": false,
+     "passed": false,
+     "green": false,
+     "tests_green": 4,
+     "tests": 5
+    },
+    {
+     "task": "bun-sourcemap-leak",
+     "trial": "bun-sourcemap-leak__hTfpu6P",
+     "job": "tb4--coder-one-tunable-v10--bun-sourcemap-leak--v10-persist-9570-r1",
+     "snapshot_graded": false,
+     "passed": false,
+     "green": false,
+     "tests_green": 2,
+     "tests": 5
+    },
+    {
+     "task": "embedding-drift-monitor",
+     "trial": "embedding-drift-monitor__aGH4F34",
+     "job": "tb4--coder-one-matched-v8--embedding-drift-monitor--matched-v8-9567-r2",
+     "snapshot_graded": false,
+     "passed": true,
+     "green": false,
+     "tests_green": 4,
+     "tests": 5
+    },
+    {
+     "task": "embedding-drift-monitor",
+     "trial": "embedding-drift-monitor__eh9ex5r",
+     "job": "tb4--coder-one-matched-v8--embedding-drift-monitor--matched-v8-9567-r1",
+     "snapshot_graded": false,
+     "passed": true,
+     "green": false,
+     "tests_green": 3,
+     "tests": 5
+    },
+    {
+     "task": "embedding-drift-monitor",
+     "trial": "embedding-drift-monitor__zsNLRYd",
+     "job": "tb4--coder-one-matched-v8--embedding-drift-monitor--matched-v8-9567-r3",
+     "snapshot_graded": false,
+     "passed": true,
+     "green": false,
+     "tests_green": 4,
+     "tests": 5
+    },
+    {
+     "task": "fin-saccr-rwa",
+     "trial": "fin-saccr-rwa__89KPMs9",
+     "job": "tb4--coder-one-matched-v8--fin-saccr-rwa--matched-v8-9567-r2",
+     "snapshot_graded": false,
+     "passed": false,
+     "green": false,
+     "tests_green": 2,
+     "tests": 5
+    },
+    {
+     "task": "fin-saccr-rwa",
+     "trial": "fin-saccr-rwa__E3d7o4p",
+     "job": "tb4--coder-one-matched-v8--fin-saccr-rwa--matched-v8-9567-r1",
+     "snapshot_graded": false,
+     "passed": false,
+     "green": false,
+     "tests_green": 2,
+     "tests": 5
+    },
+    {
+     "task": "fin-saccr-rwa",
+     "trial": "fin-saccr-rwa__GPBRV5j",
+     "job": "tb4--coder-one-matched-v8--fin-saccr-rwa--matched-v8-9567-r3",
+     "snapshot_graded": false,
+     "passed": false,
+     "green": false,
+     "tests_green": 2,
+     "tests": 5
+    },
+    {
+     "task": "interleaved-vigenere",
+     "trial": "interleaved-vigenere__FryxfnM",
+     "job": "try--coder-one-tunable-luna-snapshot--20260923T162706Z",
+     "snapshot_graded": true,
+     "passed": false,
+     "green": false,
+     "tests_green": 3,
+     "tests": 5
+    },
+    {
+     "task": "ks-solver-cpp",
+     "trial": "ks-solver-cpp__Lt6izN8",
+     "job": "tb4--coder-one-matched-v8--ks-solver-cpp--matched-v8-9567-r2",
+     "snapshot_graded": false,
+     "passed": false,
+     "green": false,
+     "tests_green": 0,
+     "tests": 3
+    },
+    {
+     "task": "ks-solver-cpp",
+     "trial": "ks-solver-cpp__PDuFFLt",
+     "job": "tb4--coder-one-matched-v8--ks-solver-cpp--matched-v8-9567-r1",
+     "snapshot_graded": false,
+     "passed": false,
+     "green": false,
+     "tests_green": 0,
+     "tests": 3
+    },
+    {
+     "task": "ks-solver-cpp",
+     "trial": "ks-solver-cpp__pFx79Ga",
+     "job": "tb4--coder-one-matched-v8--ks-solver-cpp--matched-v8-9567-r3",
+     "snapshot_graded": false,
+     "passed": false,
+     "green": false,
+     "tests_green": 0,
+     "tests": 3
+    },
+    {
+     "task": "ks-solver-cpp",
+     "trial": "ks-solver-cpp__z5fa8Zp",
+     "job": "try--coder-one-tunable-v7--targets-9568b",
+     "snapshot_graded": true,
+     "passed": false,
+     "green": false,
+     "tests_green": 0,
+     "tests": 3
+    },
+    {
+     "task": "sound-change-cascade",
+     "trial": "sound-change-cascade__KUdjBfR",
+     "job": "tb4--coder-one-matched-v8--sound-change-cascade--matched-v8-9567-r3",
+     "snapshot_graded": true,
+     "passed": true,
+     "green": true,
+     "tests_green": 4,
+     "tests": 4
+    },
+    {
+     "task": "sound-change-cascade",
+     "trial": "sound-change-cascade__Kk7csF5",
+     "job": "tb4--coder-one-matched-v8--sound-change-cascade--matched-v8-9567-r1",
+     "snapshot_graded": true,
+     "passed": true,
+     "green": true,
+     "tests_green": 4,
+     "tests": 4
+    },
+    {
+     "task": "sound-change-cascade",
+     "trial": "sound-change-cascade__uaGad7W",
+     "job": "tb4--coder-one-matched-v8--sound-change-cascade--matched-v8-9567-r2",
+     "snapshot_graded": false,
+     "passed": true,
+     "green": true,
+     "tests_green": 4,
+     "tests": 4
+    }
+   ]
+  }
+ ]
+}

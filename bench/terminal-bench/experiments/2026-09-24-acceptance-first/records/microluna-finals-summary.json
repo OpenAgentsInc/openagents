@@ -1,0 +1,541 @@
+{
+ "errors": 0,
+ "suites": {
+  "pass2-calibrated": {
+   "all": {
+    "trials": 48,
+    "passed": 12,
+    "green": 2,
+    "pass_given_green": {
+     "k": 0,
+     "n": 2,
+     "value": 0.0,
+     "wilson_95": [
+      0.0,
+      0.6576
+     ]
+    },
+    "fail_given_red": {
+     "k": 34,
+     "n": 46,
+     "value": 0.7391,
+     "wilson_95": [
+      0.5974,
+      0.844
+     ]
+    },
+    "passes_kept_green": {
+     "k": 0,
+     "n": 12,
+     "value": 0.0,
+     "wilson_95": [
+      0.0,
+      0.2425
+     ]
+    },
+    "failures_caught_red": {
+     "k": 34,
+     "n": 36,
+     "value": 0.9444,
+     "wilson_95": [
+      0.8186,
+      0.9846
+     ]
+    },
+    "agreement": {
+     "k": 34,
+     "n": 48,
+     "value": 0.7083,
+     "wilson_95": [
+      0.5682,
+      0.8176
+     ]
+    }
+   },
+   "tasks": {
+    "embedding-drift-monitor": {
+     "trials": 26,
+     "passed": 12,
+     "green": 0,
+     "pass_given_green": {
+      "k": 0,
+      "n": 0,
+      "value": null,
+      "wilson_95": null
+     },
+     "fail_given_red": {
+      "k": 14,
+      "n": 26,
+      "value": 0.5385,
+      "wilson_95": [
+       0.3546,
+       0.7124
+      ]
+     },
+     "passes_kept_green": {
+      "k": 0,
+      "n": 12,
+      "value": 0.0,
+      "wilson_95": [
+       0.0,
+       0.2425
+      ]
+     },
+     "failures_caught_red": {
+      "k": 14,
+      "n": 14,
+      "value": 1.0,
+      "wilson_95": [
+       0.7847,
+       1.0
+      ]
+     },
+     "agreement": {
+      "k": 14,
+      "n": 26,
+      "value": 0.5385,
+      "wilson_95": [
+       0.3546,
+       0.7124
+      ]
+     },
+     "tests_green_when_passed": [
+      5
+     ],
+     "tests_green_when_failed": [
+      4,
+      5
+     ],
+     "tests": 7,
+     "red_on_passes": [
+      "T6",
+      "T7"
+     ]
+    },
+    "fin-saccr-rwa": {
+     "trials": 1,
+     "passed": 0,
+     "green": 1,
+     "pass_given_green": {
+      "k": 0,
+      "n": 1,
+      "value": 0.0,
+      "wilson_95": [
+       0.0,
+       0.7935
+      ]
+     },
+     "fail_given_red": {
+      "k": 0,
+      "n": 0,
+      "value": null,
+      "wilson_95": null
+     },
+     "passes_kept_green": {
+      "k": 0,
+      "n": 0,
+      "value": null,
+      "wilson_95": null
+     },
+     "failures_caught_red": {
+      "k": 0,
+      "n": 1,
+      "value": 0.0,
+      "wilson_95": [
+       0.0,
+       0.7935
+      ]
+     },
+     "agreement": {
+      "k": 0,
+      "n": 1,
+      "value": 0.0,
+      "wilson_95": [
+       0.0,
+       0.7935
+      ]
+     },
+     "tests_green_when_passed": [],
+     "tests_green_when_failed": [
+      5
+     ],
+     "tests": 5,
+     "red_on_passes": []
+    },
+    "interleaved-vigenere": {
+     "trials": 10,
+     "passed": 0,
+     "green": 0,
+     "pass_given_green": {
+      "k": 0,
+      "n": 0,
+      "value": null,
+      "wilson_95": null
+     },
+     "fail_given_red": {
+      "k": 10,
+      "n": 10,
+      "value": 1.0,
+      "wilson_95": [
+       0.7225,
+       1.0
+      ]
+     },
+     "passes_kept_green": {
+      "k": 0,
+      "n": 0,
+      "value": null,
+      "wilson_95": null
+     },
+     "failures_caught_red": {
+      "k": 10,
+      "n": 10,
+      "value": 1.0,
+      "wilson_95": [
+       0.7225,
+       1.0
+      ]
+     },
+     "agreement": {
+      "k": 10,
+      "n": 10,
+      "value": 1.0,
+      "wilson_95": [
+       0.7225,
+       1.0
+      ]
+     },
+     "tests_green_when_passed": [],
+     "tests_green_when_failed": [
+      0,
+      3,
+      4
+     ],
+     "tests": 6,
+     "red_on_passes": []
+    },
+    "sound-change-cascade": {
+     "trials": 11,
+     "passed": 0,
+     "green": 1,
+     "pass_given_green": {
+      "k": 0,
+      "n": 1,
+      "value": 0.0,
+      "wilson_95": [
+       0.0,
+       0.7935
+      ]
+     },
+     "fail_given_red": {
+      "k": 10,
+      "n": 10,
+      "value": 1.0,
+      "wilson_95": [
+       0.7225,
+       1.0
+      ]
+     },
+     "passes_kept_green": {
+      "k": 0,
+      "n": 0,
+      "value": null,
+      "wilson_95": null
+     },
+     "failures_caught_red": {
+      "k": 10,
+      "n": 11,
+      "value": 0.9091,
+      "wilson_95": [
+       0.6226,
+       0.9838
+      ]
+     },
+     "agreement": {
+      "k": 10,
+      "n": 11,
+      "value": 0.9091,
+      "wilson_95": [
+       0.6226,
+       0.9838
+      ]
+     },
+     "tests_green_when_passed": [],
+     "tests_green_when_failed": [
+      0,
+      6,
+      7,
+      8
+     ],
+     "tests": 8,
+     "red_on_passes": []
+    }
+   }
+  },
+  "pass3-facts": {
+   "all": {
+    "trials": 48,
+    "passed": 12,
+    "green": 0,
+    "pass_given_green": {
+     "k": 0,
+     "n": 0,
+     "value": null,
+     "wilson_95": null
+    },
+    "fail_given_red": {
+     "k": 36,
+     "n": 48,
+     "value": 0.75,
+     "wilson_95": [
+      0.6122,
+      0.8508
+     ]
+    },
+    "passes_kept_green": {
+     "k": 0,
+     "n": 12,
+     "value": 0.0,
+     "wilson_95": [
+      0.0,
+      0.2425
+     ]
+    },
+    "failures_caught_red": {
+     "k": 36,
+     "n": 36,
+     "value": 1.0,
+     "wilson_95": [
+      0.9036,
+      1.0
+     ]
+    },
+    "agreement": {
+     "k": 36,
+     "n": 48,
+     "value": 0.75,
+     "wilson_95": [
+      0.6122,
+      0.8508
+     ]
+    }
+   },
+   "tasks": {
+    "embedding-drift-monitor": {
+     "trials": 26,
+     "passed": 12,
+     "green": 0,
+     "pass_given_green": {
+      "k": 0,
+      "n": 0,
+      "value": null,
+      "wilson_95": null
+     },
+     "fail_given_red": {
+      "k": 14,
+      "n": 26,
+      "value": 0.5385,
+      "wilson_95": [
+       0.3546,
+       0.7124
+      ]
+     },
+     "passes_kept_green": {
+      "k": 0,
+      "n": 12,
+      "value": 0.0,
+      "wilson_95": [
+       0.0,
+       0.2425
+      ]
+     },
+     "failures_caught_red": {
+      "k": 14,
+      "n": 14,
+      "value": 1.0,
+      "wilson_95": [
+       0.7847,
+       1.0
+      ]
+     },
+     "agreement": {
+      "k": 14,
+      "n": 26,
+      "value": 0.5385,
+      "wilson_95": [
+       0.3546,
+       0.7124
+      ]
+     },
+     "tests_green_when_passed": [
+      3
+     ],
+     "tests_green_when_failed": [
+      2,
+      3
+     ],
+     "tests": 5,
+     "red_on_passes": [
+      "T1",
+      "T2"
+     ]
+    },
+    "fin-saccr-rwa": {
+     "trials": 1,
+     "passed": 0,
+     "green": 0,
+     "pass_given_green": {
+      "k": 0,
+      "n": 0,
+      "value": null,
+      "wilson_95": null
+     },
+     "fail_given_red": {
+      "k": 1,
+      "n": 1,
+      "value": 1.0,
+      "wilson_95": [
+       0.2065,
+       1.0
+      ]
+     },
+     "passes_kept_green": {
+      "k": 0,
+      "n": 0,
+      "value": null,
+      "wilson_95": null
+     },
+     "failures_caught_red": {
+      "k": 1,
+      "n": 1,
+      "value": 1.0,
+      "wilson_95": [
+       0.2065,
+       1.0
+      ]
+     },
+     "agreement": {
+      "k": 1,
+      "n": 1,
+      "value": 1.0,
+      "wilson_95": [
+       0.2065,
+       1.0
+      ]
+     },
+     "tests_green_when_passed": [],
+     "tests_green_when_failed": [
+      3
+     ],
+     "tests": 5,
+     "red_on_passes": []
+    },
+    "interleaved-vigenere": {
+     "trials": 10,
+     "passed": 0,
+     "green": 0,
+     "pass_given_green": {
+      "k": 0,
+      "n": 0,
+      "value": null,
+      "wilson_95": null
+     },
+     "fail_given_red": {
+      "k": 10,
+      "n": 10,
+      "value": 1.0,
+      "wilson_95": [
+       0.7225,
+       1.0
+      ]
+     },
+     "passes_kept_green": {
+      "k": 0,
+      "n": 0,
+      "value": null,
+      "wilson_95": null
+     },
+     "failures_caught_red": {
+      "k": 10,
+      "n": 10,
+      "value": 1.0,
+      "wilson_95": [
+       0.7225,
+       1.0
+      ]
+     },
+     "agreement": {
+      "k": 10,
+      "n": 10,
+      "value": 1.0,
+      "wilson_95": [
+       0.7225,
+       1.0
+      ]
+     },
+     "tests_green_when_passed": [],
+     "tests_green_when_failed": [
+      0,
+      2,
+      3,
+      4
+     ],
+     "tests": 5,
+     "red_on_passes": []
+    },
+    "sound-change-cascade": {
+     "trials": 11,
+     "passed": 0,
+     "green": 0,
+     "pass_given_green": {
+      "k": 0,
+      "n": 0,
+      "value": null,
+      "wilson_95": null
+     },
+     "fail_given_red": {
+      "k": 11,
+      "n": 11,
+      "value": 1.0,
+      "wilson_95": [
+       0.7412,
+       1.0
+      ]
+     },
+     "passes_kept_green": {
+      "k": 0,
+      "n": 0,
+      "value": null,
+      "wilson_95": null
+     },
+     "failures_caught_red": {
+      "k": 11,
+      "n": 11,
+      "value": 1.0,
+      "wilson_95": [
+       0.7412,
+       1.0
+      ]
+     },
+     "agreement": {
+      "k": 11,
+      "n": 11,
+      "value": 1.0,
+      "wilson_95": [
+       0.7412,
+       1.0
+      ]
+     },
+     "tests_green_when_passed": [],
+     "tests_green_when_failed": [
+      0,
+      1,
+      2
+     ],
+     "tests": 4,
+     "red_on_passes": []
+    }
+   }
+  }
+ }
+}
