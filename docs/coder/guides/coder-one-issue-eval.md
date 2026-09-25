@@ -175,11 +175,35 @@ and the docs entries build nothing. The run records what the fetch did,
 and a failed fetch leaves the network off, so a session that needs a crate
 the registry lacks fails to build rather than reaching out.
 
+**The gate's tests run sealed too.** The pre-pull-request gate runs
+`cargo test -p <package> --all-features` for each package the change
+touches, and a test the model wrote runs there. Each test command runs as
+follows:
+
+- Inside the `coder-boundary` write boundary, which lets it write only to
+  the clone, the gate's shared Cargo target directory
+  (`~/.openagents/coder-one/target`), and a scratch directory the boundary
+  owns for `TMPDIR`.
+- Through `supervise`, with a 1,200-second deadline and 1 MiB kept of each
+  output stream.
+- With the run's seal: no credential that Microluna withholds from a
+  session, no `GH_*` or `GITHUB_*` variable, the stub `gh`, and no Git
+  credential helper.
+- With the network off when the run's is, after the same
+  `cargo fetch --locked` the sessions build from. The gate fetches
+  nothing itself, so a manifest the model changed can't pull code in.
+
+A host that can't build the boundary doesn't run the tests. The gate
+records itself as incomplete, and no fix round follows, because a fix
+round can't give the host a boundary. The manifest's `gate_tests` records
+how the tests ran, and `gate_incomplete` says whether they didn't.
+
 What the seal doesn't cover:
 
-- The pre-pull-request gate runs the clone's tests and checks on the host,
-  outside any session, with the network open. A test the model wrote runs
-  there too, and its output reaches the fix round.
+- The gate's tests read what the operator's account can read: the
+  boundary confines writes and the network, not reads. With GitHub
+  withheld and the network off, what they read can reach only the fix
+  round.
 - The grader runs on the host after the flow, with the network open. The
   flow never sees what it does.
 - `--network on` leaves `curl`, `wget`, and `git clone` of a public URL
@@ -213,6 +237,12 @@ The manifest's `schema` is `openagents.coder-one.minitask-run.v1` and its
   for GitHub or the network, with the trace it's in, whether the seal
   blocked it, and the start of its output; `blocked`, the count the seal
   stopped; and `traces_read`.
+- `gate_tests`: how the gate ran its tests, or `null` when the gate never
+  ran. `mode` is `confined`, `refused` (no boundary on this host), or
+  `none` (no Rust package changed); the record also holds the sandbox
+  program, `network`, the writable paths, the deadline, the output cap,
+  and the packages. `gate_incomplete` is `true` when the mode is
+  `refused`.
 - `contaminated`: true when an attempt got past the seal, or might have.
   Don't count a contaminated pass.
 - `outcome`: `finished`, `unfinished`, or `stuck`.

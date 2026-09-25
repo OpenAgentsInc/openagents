@@ -182,7 +182,17 @@ When a request names a GitHub issue to work, such as "work on #9597", or
    and the host's gate runs the tests and checks the change's figures,
    links, style, plain language, and dependent code. Up to two fix rounds
    follow when the gate still finds problems. The review and the gate run
-   whichever loop the manifest names.
+   whichever loop the manifest names. The gate's tests may be ones the
+   model wrote, so each `cargo test` runs inside the `coder-boundary`
+   write boundary, writing only to the clone, the shared Cargo target
+   directory, and its own scratch directory, through `supervise` with a
+   1,200-second deadline and capped output. Every credential is withheld,
+   along with `GH_*` and `GITHUB_*` variables, the operator's `gh` login,
+   and Git's credential helpers. The network stays on unless
+   `CODER_ONE_GATE_NETWORK=off`. The tests can't write Cargo's cache, so
+   the host runs `cargo fetch` in the clone first. A host that can't build the boundary
+   prints a warning and runs the tests without it, credentials still
+   withheld. The pull request body says how the tests ran.
 1. When the loop finishes with changes, the host commits them, pushes the
    branch, and opens a draft pull request that closes the issue. A run
    that doesn't finish leaves its changes staged in the clone.
