@@ -99,6 +99,24 @@ fn questions(program: &Program) -> Questions {
     questions
 }
 
+fn admission_state(spec: &Spec, program: &Program, bounded: bool) -> Value {
+    if !bounded {
+        return json!({"task":spec.task,"provided":spec.provided,"program":program,"coverage":spec.coverage});
+    }
+    let mut references = BTreeMap::new();
+    let mut used = 0;
+    for (path, text) in &spec.provided {
+        let cited = program.checks.iter().any(|c| &c.source == path);
+        if (cited || path.ends_with(".md")) && used + text.len() <= 12_000 {
+            references.insert(path, text);
+            used += text.len();
+        }
+    }
+    json!({"task":spec.task,"program":program,"provided_contracts":references,
+        "provided_inventory":spec.provided.iter().map(|(p,t)|json!({"path":p,"bytes":t.len()})).collect::<Vec<_>>(),
+        "coverage":spec.coverage,"admission_limit":"Bulk input data is not repeated here. Judge the program's relation and failure branches against the complete task, code, and available contracts. Do not assume an omitted reference establishes a guessed requirement."})
+}
+
 /// Generate a program and retain all inputs and replies without executing it.
 ///
 /// # Errors
@@ -108,6 +126,7 @@ pub async fn generate<T: Transport>(
     transport: &T,
     jev: &JevMode,
     out: &Path,
+    bounded: bool,
 ) -> Result<Value, String> {
     if spec.task.is_empty()
         || spec.task.len() > 64_000
@@ -157,9 +176,31 @@ pub async fn generate<T: Transport>(
             })
     });
     let recorder = Recorder::default();
-    let asked = if let Some(p) = program.as_ref().filter(|p| !p.checks.is_empty()) {
-        Some(ask(jev,&recorder,Ask {component:"verify.public-program",name:"jev_public_check_soundness",id:"program-1".into(),
-            state:json!({"task":spec.task,"provided":spec.provided,"program":p,"coverage":spec.coverage}),questions:questions(p),parent:None,deadline:None}).await)
+    let state = program.as_ref().map(|p| admission_state(spec, p, bounded));
+    let state_within_bound = !bounded
+        || state
+            .as_ref()
+            .is_some_and(|s| s.to_string().len() <= 64_000);
+    let asked = if let Some(p) = program
+        .as_ref()
+        .filter(|p| !p.checks.is_empty() && state_within_bound)
+    {
+        Some(
+            ask(
+                jev,
+                &recorder,
+                Ask {
+                    component: "verify.public-program",
+                    name: "jev_public_check_soundness",
+                    id: "program-1".into(),
+                    state: state.clone().expect("program has state"),
+                    questions: questions(p),
+                    parent: None,
+                    deadline: None,
+                },
+            )
+            .await,
+        )
     } else {
         None
     };
@@ -169,6 +210,8 @@ pub async fn generate<T: Transport>(
     let record = json!({"schema":"openagents.coder-one.public-program.v1","spec_digest":atif::digest(&json!(spec)),
         "request_digest":atif::digest(&req),"program":program,"admissions":admissions,"reply":reply_value,
         "error":error.or_else(||program.is_none().then(||"No valid program arrived".into())),
+        "admission_mode":if bounded {"bounded"} else {"full"},"admission_state":state,
+        "admission_error":if state_within_bound {asked.as_ref().and_then(|a|a.error.clone())} else {Some("Admission state exceeds 64000 bytes".to_string())},
         "questions":program.as_ref().map(questions),"answers":asked.as_ref().and_then(|a|a.answers.clone()),
         "jev_input_tokens":asked.as_ref().and_then(|a|a.input_tokens),"milliseconds":began.elapsed().as_millis(),"steps":recorder.steps()});
     write("program.json", &record)?;
@@ -181,6 +224,7 @@ pub async fn generate<T: Transport>(
 /// Standalone generator; candidate execution is deliberately separate.
 pub async fn command(args: &[String]) -> Result<i32, String> {
     let (mut input, mut out) = (None, None);
+    let (mut replay, mut bounded) = (None, false);
     let mut args = args.iter();
     while let Some(arg) = args.next() {
         let value = args
@@ -189,6 +233,8 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
         match arg.as_str() {
             "--input" => input = Some(value),
             "--out" => out = Some(value),
+            "--replay" => replay = Some(value),
+            "--admission" if value == "bounded" => bounded = true,
             _ => return Err(format!("Unknown public-program option {arg}")),
         }
     }
@@ -199,19 +245,61 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
     let dir = crate::credentials::openagents_dir().ok_or("HOME is not set")?;
     let key = crate::credentials::jev_key(|name| std::env::var(name).ok(), &dir)?;
     let jev = JevMode::Live(crate::credentials::jev_client(&key.secret)?);
-    let transport = crate::micro::codex_wire(&format!("public-program-{}", atif::now_ms()))?;
-    let record = generate(
-        &spec,
-        &transport,
-        &jev,
-        Path::new(out.ok_or("Missing --out")?),
-    )
-    .await?;
+    let out = Path::new(out.ok_or("Missing --out")?);
+    let record = if let Some(path) = replay {
+        let original: Value =
+            serde_json::from_str(&std::fs::read_to_string(path).map_err(|e| e.to_string())?)
+                .map_err(|e| e.to_string())?;
+        if original["spec_digest"] != atif::digest(&json!(spec))
+            || original["request_digest"]
+                != atif::digest(&super::review::request_value(&request(&spec)))
+        {
+            return Err(
+                "Recorded program belongs to different inputs or generation request".into(),
+            );
+        }
+        let r = &original["reply"];
+        let usage = &r["usage"];
+        let transport = Recorded(microluna::Reply {
+            id: r["id"].as_str().map(str::to_string),
+            model: r["model"]
+                .as_str()
+                .ok_or("Recorded program has no reply")?
+                .to_string(),
+            items: r["items"]
+                .as_array()
+                .ok_or("Recorded program has no items")?
+                .clone(),
+            usage: microluna::TokenUsage {
+                input: usage["input"].as_u64().unwrap_or(0),
+                cached: usage["cached"].as_u64().unwrap_or(0),
+                output: usage["output"].as_u64().unwrap_or(0),
+                reasoning: usage["reasoning"].as_u64().unwrap_or(0),
+            },
+        });
+        let mut record = generate(&spec, &transport, &jev, out, bounded).await?;
+        record["generator_source"] = json!({"mode":"recorded","source":path,"network_calls":0});
+        crate::record::write_atomic(
+            &out.join("program.json"),
+            &serde_json::to_vec_pretty(&record).map_err(|e| e.to_string())?,
+        )?;
+        record
+    } else {
+        let transport = crate::micro::codex_wire(&format!("public-program-{}", atif::now_ms()))?;
+        generate(&spec, &transport, &jev, out, bounded).await?
+    };
     println!(
         "{}",
         json!({"error":record["error"],"checks":record["admissions"].as_array().map(Vec::len)})
     );
     Ok(0)
+}
+
+struct Recorded(microluna::Reply);
+impl Transport for Recorded {
+    async fn respond(&self, _: &Request) -> Result<microluna::Reply, microluna::TransportError> {
+        Ok(self.0.clone())
+    }
 }
 
 #[cfg(test)]

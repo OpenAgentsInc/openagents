@@ -39,3 +39,14 @@ tasks. That comparison is now explicitly reused development validation after two
 prior measurements. It is not pristine evidence. The eight fresh Microluna grades
 remain unopened, and their predictions must be retained before joining grades.
 Report every attempted arm and its costs; a negative outcome remains negative.
+
+## Admission input correction
+
+Before joining calibration grades, the full-data Jev request for the heat-pump
+program exceeded the service's input limit. Keep that refusal. Replay each fixed
+Astra program with a bounded admission state: the complete instruction and
+program, a path/size inventory of public inputs, and complete cited or Markdown
+contract files within 12 KB. If that state exceeds 64 KB, abstain without calling
+Jev. Bulk data remains available to actual check execution. Do not regenerate
+Astra proposals or treat an omitted reference as support for an unstated rule.
+Use this bounded state consistently for calibration and any later comparison.
