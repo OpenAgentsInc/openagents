@@ -19,8 +19,10 @@
 
 pub mod checks;
 pub mod cli;
+pub mod departures;
 pub mod evidence;
 pub mod extract;
+pub mod finish;
 pub mod jev;
 pub mod monitor;
 pub mod pack;
@@ -136,13 +138,16 @@ pub fn registry() -> Vec<Box<dyn Component>> {
         Box::new(Requirements),
         Box::new(SetupGate),
         Box::new(Planner),
+        Box::new(Environment),
         Box::new(ProbeKeep),
         Box::new(Select),
         Box::new(Pack),
+        Box::new(departures::Departures),
         Box::new(scripted::ScriptedAdapter),
         Box::new(monitor::MonitorComponent),
         Box::new(stall::StallComponent),
         Box::new(stall::NextComponent),
+        Box::new(finish::FinishComponent),
         Box::new(HandoffComponent),
         Box::new(SystemSelect),
         Box::new(checks::Checks),
@@ -425,6 +430,64 @@ impl Component for Planner {
                         "reason": p.reason,
                     })).collect::<Vec<_>>(),
                     "retained_missing": uncovered,
+                }),
+                metrics,
+            })
+        })
+    }
+}
+
+/// `evidence.environment`: the presence captures as one briefing line.
+/// The isolated run renders the line from recorded captures; it runs no
+/// program.
+struct Environment;
+
+impl Component for Environment {
+    fn id(&self) -> &'static str {
+        "evidence.environment"
+    }
+    fn implementation(&self) -> Implementation {
+        crate::environment::implementation(&crate::environment::Params::default())
+    }
+    fn about(&self) -> &'static str {
+        "Code states which programs the task container has, as one briefing line."
+    }
+    fn run<'a>(
+        &'a self,
+        fixture: &'a Fixture,
+        _jev: &'a JevMode,
+        _recorder: &'a Recorder,
+    ) -> LocalBoxFuture<'a, Result<Ran, String>> {
+        Box::pin(async move {
+            let input: crate::environment::Input = input(fixture)?;
+            input.params.validate()?;
+            let captures: Vec<crate::ops::Capture> = input
+                .probes
+                .iter()
+                .enumerate()
+                .map(|(i, probed)| probed.capture(i))
+                .collect();
+            let presence = crate::environment::presence(&captures);
+            let line = crate::environment::line(&presence, &input.params);
+            let mut metrics = Map::new();
+            metrics.insert("programs".to_string(), json!(presence.len()));
+            metrics.insert(
+                "available".to_string(),
+                json!(presence.iter().filter(|p| p.present).count()),
+            );
+            metrics.insert(
+                "absent".to_string(),
+                json!(presence.iter().filter(|p| !p.present).count()),
+            );
+            metrics.insert("chars".to_string(), json!(line.chars().count()));
+            if let Some(retained) = fixture.retained.get("line").and_then(Value::as_str) {
+                metrics.insert("reproduces_retained".to_string(), json!(retained == line));
+            }
+            Ok(Ran {
+                output: json!({
+                    "line": line,
+                    "presence": presence,
+                    "implementation": crate::environment::implementation(&input.params).digest,
                 }),
                 metrics,
             })

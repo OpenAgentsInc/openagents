@@ -1117,6 +1117,10 @@ struct Ran {
     place: Place,
     /// Model requests whose every call only read.
     read_turns: usize,
+    /// `done` finishes the finish rule refused.
+    refusals: u32,
+    /// The finish stood after the refusals ran out, unverified.
+    unverified: bool,
 }
 
 /// Where a session works and what it runs beside.
@@ -1135,6 +1139,8 @@ struct Place {
     alongside: Option<String>,
     /// When the host turns the session's finish back.
     persist: Option<microluna::Persist>,
+    /// The rule a `done` finish is held to.
+    finish_rule: Option<microluna::FinishRule>,
     /// A tighter wall-time bound than the policy's `session_sec`.
     deadline: Option<Duration>,
     /// The session's spend bound in dollars.
@@ -1216,6 +1222,8 @@ impl Ran {
             "milliseconds": self.milliseconds,
             "session_id": self.session_id,
             "trace": self.trace,
+            "finish_refusals": self.refusals,
+            "unverified": self.unverified,
             "commands": self.commands.iter().map(|(c, e)| json!({ "command": c, "exit": e })).collect::<Vec<_>>(),
             "changed": self.changed,
             "edited": self.edited,
@@ -1363,25 +1371,36 @@ pub fn constraints(map: &crate::requirements::RequirementMap) -> Vec<String> {
 
 /// The evidence one group's sessions read: the items that inform any of
 /// its requirements, by relevance, within `chars`. With none, the three
-/// most relevant items.
+/// most relevant items. The `evidence.environment` line comes first,
+/// whole, in every group's evidence, and isn't counted against `chars`.
 #[must_use]
 pub fn evidence_for(prepared: &Prepared, group: &Group, chars: usize) -> Vec<Evidence> {
+    let is_environment = |item: &crate::pack::Item| item.source == crate::pack::Source::Environment;
     let informs = |id: &str| {
         prepared
             .informs
             .get(id)
             .is_some_and(|ids| ids.iter().any(|r| group.ids.contains(r)))
     };
+    let facts: Vec<Evidence> = prepared
+        .items
+        .iter()
+        .filter(|item| is_environment(item) && !item.text.trim().is_empty())
+        .map(|item| Evidence {
+            label: item.label.clone(),
+            text: item.text.trim().to_string(),
+        })
+        .collect();
     let mut chosen: Vec<&crate::pack::Item> = prepared
         .items
         .iter()
-        .filter(|item| informs(&item.id) && !item.text.trim().is_empty())
+        .filter(|item| !is_environment(item) && informs(&item.id) && !item.text.trim().is_empty())
         .collect();
     if chosen.is_empty() {
         chosen = prepared
             .items
             .iter()
-            .filter(|item| !item.text.trim().is_empty())
+            .filter(|item| !is_environment(item) && !item.text.trim().is_empty())
             .collect();
         chosen.sort_by(|a, b| b.p.unwrap_or(0.0).total_cmp(&a.p.unwrap_or(0.0)));
         chosen.truncate(3);
@@ -1390,7 +1409,7 @@ pub fn evidence_for(prepared: &Prepared, group: &Group, chars: usize) -> Vec<Evi
     }
     let share = (chars / chosen.len().max(1)).max(1_500);
     let mut left = chars;
-    let mut out = Vec::new();
+    let mut out = facts;
     for item in chosen {
         if left < 400 {
             break;
@@ -1691,7 +1710,7 @@ fn millis(since: Instant) -> u64 {
 }
 
 /// The normalized events one Microluna step becomes.
-fn events_of(step: &Step) -> Vec<EventKind> {
+pub(crate) fn events_of(step: &Step) -> Vec<EventKind> {
     if let Some(call) = &step.call {
         let arguments = &call.arguments;
         let arg = |key: &str| arguments.get(key).and_then(Value::as_str).unwrap_or("");
@@ -2020,6 +2039,7 @@ impl Micro {
             parallel_tools: self.policy.parallel_tools,
             persist: place.persist.clone(),
             spend_usd: place.spend_usd,
+            finish_rule: place.finish_rule.clone(),
         };
         let workspace = microluna::Workspace::new(&workdir).map(|workspace| {
             let workspace = workspace.isolated_by(self.isolation);
@@ -2051,6 +2071,8 @@ impl Micro {
                 usage: TokenUsage::default(),
                 cost_usd: Some(0.0),
                 milliseconds: 0,
+                refusals: 0,
+                unverified: false,
             },
             (_, Err(error)) => microluna::Report {
                 ending: Ending::Transport(format!(
@@ -2063,6 +2085,8 @@ impl Micro {
                 usage: TokenUsage::default(),
                 cost_usd: Some(0.0),
                 milliseconds: 0,
+                refusals: 0,
+                unverified: false,
             },
         };
         recorder.close(match report.ending {
@@ -2093,6 +2117,8 @@ impl Micro {
             ended_at_ms: atif::now_ms(),
             place,
             read_turns: read_turns.get() + usize::from(turn_reads.get() == Some(true)),
+            refusals: report.refusals,
+            unverified: report.unverified,
         };
         // The dispatch's exec.session carries the sessions' cost, as it
         // does for a CLI; each session states its own share in its summary,
@@ -2119,6 +2145,10 @@ impl Micro {
                 "cause": ran.finish.as_ref().map(|f| f.cause.word()),
                 "group": ran.place.group,
                 "parallel_with": ran.place.parallel_with,
+                "finish_rule": ran.place.finish_rule.as_ref().map(|_| json!({
+                    "refusals": ran.refusals,
+                    "verified": !ran.unverified,
+                })),
             })),
         );
         crate::say::line(&format!(
@@ -2590,6 +2620,7 @@ impl Micro {
                 parallel_tools: self.policy.parallel_tools,
                 persist: None,
                 spend_usd: None,
+                finish_rule: None,
             },
             isolation: self.isolation,
             seal: self.seal.clone(),
@@ -4411,6 +4442,7 @@ impl Micro {
                 parallel_with,
                 alongside: None,
                 persist: None,
+                finish_rule: None,
                 deadline: None,
                 spend_usd: None,
                 command_max: None,

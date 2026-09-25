@@ -100,6 +100,10 @@ Code computes every number, and Jev judges only the acceptance-test and
 verifier-test pairs the rules leave open. See
 [Analyze a run when it ends](run-analysis.md).
 
+`gym runs characterize RUN` prints the run's card, and `gym runs
+characterize diff A B` compares two cards on one task row by row. See
+[Characterize a run with its card](run-card.md).
+
 ## Rank runs by what's worth learning from
 
 `gym runs rank` asks Jev, once per finished run, whether the run's records

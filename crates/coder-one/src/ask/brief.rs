@@ -24,8 +24,10 @@ a judgment. Each read costs time; most answers need a few reads or none.
 patterns first, then break it into claims. Every claim cites the runs it rests on, \
 exactly as `job/trial`, and where it helps, transcript step numbers from the run's \
 `step` field and judgment IDs such as `unearned_success`. Cite a judgment only for a \
-run whose probability for it is at or above 0.50. Code checks every citation, and a \
-claim whose citation doesn't check is shown as unverified.
+run whose probability for it is at or above 0.50. A number from a run's card (the \
+`Run card rows` below, or `gym runs characterize JOB/TRIAL --json`) is cited in \
+`card_rows` as the run and the row's ID, such as `session.1.model_share`. Code checks \
+every citation, and a claim whose citation doesn't check is shown as unverified.
 - Say what the evidence doesn't settle. Don't count or rank runs you haven't read; \
 the group counts below are exact, so use them for how many.
 - When the findings suggest a change to Coder One, a check, or a briefing, name it in \
@@ -55,7 +57,7 @@ A model name such as Opus 5.5 is a number the claim writes.
 - Call the `answer` tool once. Put one line in `answer`. Put each draft in `claims`: \
 `claim` is the draft, `highlight` is the claim's key, `runs` are the runs it rests on, \
 chosen from the claim's runs exactly as `job/trial`, and `steps`, `judgments`, `files`, \
-and `marks` are empty. Code checks every draft's numbers and citations.
+`marks`, and `card_rows` are empty. Code checks every draft's numbers and citations.
 - Everything you need is here; you don't need the `read` tool.";
 
 /// One run the briefing opens in full.
@@ -519,6 +521,25 @@ fn run_section(opened: &Opened) -> String {
     }
     for mark in opened.shown["marks"].as_array().into_iter().flatten() {
         out.push_str(&format!("A person's mark: {}\n", mark_line(mark)));
+    }
+    let card: Vec<String> = opened.shown["card"]["rows"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|row| !row["value"].is_null())
+        .filter_map(|row| {
+            Some(format!(
+                "{} = {}",
+                row["id"].as_str()?,
+                row["text"].as_str()?
+            ))
+        })
+        .collect();
+    if !card.is_empty() {
+        out.push_str(&format!(
+            "Run card rows (cite as card_rows; unknown rows left out): {}\n",
+            clip(&card.join("; "), 3_000)
+        ));
     }
     for paragraph in opened.shown["summary"].as_array().into_iter().flatten() {
         out.push_str(&format!(

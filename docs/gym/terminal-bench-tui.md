@@ -276,6 +276,12 @@ trial ended. When none was kept, it computes one from the records with
 Jev's cached answers only, and asks Jev nothing. `A` again returns to the
 summary. See [Analyze a run when it ends](run-analysis.md).
 
+`C` shows the run's card: identity, the phase timeline, each session's
+anatomy, which briefing items pointed at the edited code, the check's
+versions, waste, reversals, the review's changes, and the reference
+trajectory, every number from the trial's retained records. `C` again
+returns to the summary. See [Characterize a run with its card](run-card.md).
+
 The expert views below stay behind their keys; `Esc` in any of them returns
 to the Runs pane. `gym runs` prints the same list and summaries as text; see
 the [Gym CLI](terminal-bench-cli.md#read-recent-runs) and

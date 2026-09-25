@@ -1,0 +1,17 @@
+{
+  "v": 1,
+  "id": "openagents.departure-rationale.v1",
+  "name": "Whether a justifying comment names a likely defect",
+  "summary": "Asks, once per source comment that gives a reason for a choice, whether the behavior it describes or justifies could cause a problem the task describes. The wording is the v13 `rationale` question, unchanged.",
+  "per_finding": {
+    "type": "noul",
+    "instructions": "Could the behavior that the comment in `{finding}` describes or justifies cause one of the problems the task in `task` describes, or depart from what the task asks?"
+  },
+  "policy": {
+    "v": 1,
+    "evidence": [
+      "docs/terminal-bench/2026-09-25-microluna-v13-embedding-trials.md",
+      "docs/terminal-bench/2026-09-25-departures-offline.md"
+    ]
+  }
+}

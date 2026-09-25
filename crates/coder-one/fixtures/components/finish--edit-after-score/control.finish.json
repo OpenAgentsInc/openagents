@@ -1,0 +1,50 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "control.finish",
+  "source": {
+    "kind": "synthetic",
+    "issue": 9638,
+    "case": "An edit after the last score run is refused, and the refusal names the file."
+  },
+  "input": {
+    "rule": {
+      "score": [
+        "score.sh"
+      ],
+      "baseline": [
+        "python3 -m monitor --input data.csv"
+      ],
+      "max_refusals": 3
+    },
+    "marks": [
+      {
+        "edit": {
+          "path": "monitor.py"
+        }
+      },
+      {
+        "ran": {
+          "command": "sh score.sh",
+          "changed": []
+        }
+      },
+      {
+        "ran": {
+          "command": "python3 -m monitor --input data.csv",
+          "changed": []
+        }
+      },
+      {
+        "edit": {
+          "path": "statistical_tests.py"
+        }
+      }
+    ],
+    "status": "done",
+    "refusals": 0
+  },
+  "retained": {
+    "verdict": "refused",
+    "names": "statistical_tests.py"
+  }
+}

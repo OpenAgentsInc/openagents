@@ -1,0 +1,17 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "evidence.departures",
+  "source": {
+    "kind": "synthetic",
+    "about": "A small metrics package written for this fixture, with one planted departure per source: a comment that defends skipping a zero check, a docstring assumption its caller breaks, and a biased variance where the docstring names the sample variance. No task text."
+  },
+  "input": {
+    "task": "The metrics package gives wrong numbers. Scores for raw vectors come out outside [0, 2], a zero vector crashes the scorer, and the spread statistic is too small on small samples. Fix the package so every function returns the standard result.",
+    "files": {
+      "metrics/distance.py": "\"\"\"Distance metrics between vectors.\"\"\"\nimport math\n\n\ndef dot(a, b):\n    \"\"\"Dot product of two equal-length vectors.\"\"\"\n    return sum(x * y for x, y in zip(a, b))\n\n\ndef cosine_distance(a, b):\n    \"\"\"Cosine distance between two vectors (assumes unit-length input).\"\"\"\n    return 1.0 - dot(a, b)\n\n\ndef unit(v):\n    \"\"\"Scale a vector to length 1.\"\"\"\n    # No zero check: vectors are never zero, so this is sufficient.\n    n = math.sqrt(dot(v, v))\n    return [x / n for x in v]\n",
+      "metrics/stats.py": "\"\"\"Summary statistics.\"\"\"\n\n\ndef sample_variance(xs):\n    \"\"\"Sample variance of a list of numbers.\"\"\"\n    m = sum(xs) / len(xs)\n    return sum((x - m) ** 2 for x in xs) / len(xs)\n\n\ndef mean(xs):\n    \"\"\"Arithmetic mean of a list of numbers.\"\"\"\n    return sum(xs) / len(xs)\n",
+      "metrics/score.py": "from metrics.distance import cosine_distance\n\n\ndef score(raw_a, raw_b):\n    \"\"\"Distance between two raw embedding vectors.\"\"\"\n    return cosine_distance(raw_a, raw_b)\n"
+    }
+  },
+  "retained": null
+}

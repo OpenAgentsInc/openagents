@@ -1,0 +1,30 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "control.finish",
+  "source": {
+    "kind": "synthetic",
+    "issue": 9638,
+    "case": "A blocked finish is not gated."
+  },
+  "input": {
+    "rule": {
+      "score": [
+        "score.sh"
+      ],
+      "baseline": [],
+      "max_refusals": 3
+    },
+    "marks": [
+      {
+        "edit": {
+          "path": "monitor.py"
+        }
+      }
+    ],
+    "status": "blocked",
+    "refusals": 0
+  },
+  "retained": {
+    "verdict": "allowed"
+  }
+}

@@ -206,6 +206,7 @@ scripts, and hand arithmetic. The Gym stores everything needed; it
 doesn't compute any of it. This is the card a run should produce on its
 own, as one page and one JSON record, from the retained files alone. It
 is what `gym runs characterize <trial>` and `coder-one ask` should read.
+[The run card](../../gym/run-card.md) implements it.
 
 ### The card
 

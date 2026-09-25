@@ -160,6 +160,9 @@ pub struct Config {
     /// ends before a request once it has spent this much. `None` for no
     /// bound.
     pub spend_usd: Option<f64>,
+    /// The rule a `done` finish is held to ([`crate::finish`]), or `None`
+    /// to let it stand.
+    pub finish_rule: Option<crate::FinishRule>,
 }
 
 /// When the host turns a session's `finish` back. The model decides when
@@ -211,6 +214,7 @@ impl Config {
             parallel_tools: false,
             persist: None,
             spend_usd: None,
+            finish_rule: None,
         }
     }
 }
@@ -287,6 +291,11 @@ pub struct Report {
     pub cost_usd: Option<f64>,
     /// Wall time for the whole session.
     pub milliseconds: u64,
+    /// `done` finishes the finish rule refused.
+    pub refusals: u32,
+    /// The finish was accepted after the refusals ran out, without meeting
+    /// the finish rule: [`crate::finish::UNVERIFIED`].
+    pub unverified: bool,
 }
 
 /// A host's own handler for each step, such as its trajectory.
@@ -470,7 +479,10 @@ pub async fn run_watched<T: Transport, W: Watch>(
         usage: TokenUsage::default(),
         cost_usd: price::rates(&config.model).map(|_| 0.0),
         milliseconds: 0,
+        refusals: 0,
+        unverified: false,
     };
+    let mut ledger = crate::finish::Ledger::default();
     let mut nudged = false;
     let mut edited = false;
     let mut returned = 0u32;
@@ -629,7 +641,15 @@ pub async fn run_watched<T: Transport, W: Watch>(
             vec![None; calls.len()]
         };
         for (index, call) in calls.into_iter().enumerate() {
-            let outcome = match outcomes[index].take() {
+            // A command that writes is listed around, while the rule is on,
+            // so its changes to workspace files count as edits.
+            let listed = (config.finish_rule.is_some()
+                && outcomes[index].is_none()
+                && call.name == "run_command"
+                && !crate::tools::reads_only(&call.name, &call.arguments))
+            .then(|| crate::finish::listing(workspace.root()))
+            .flatten();
+            let mut outcome = match outcomes[index].take() {
                 Some(outcome) => outcome,
                 None => workspace.call(&call.name, &call.arguments).await,
             };
@@ -637,6 +657,17 @@ pub async fn run_watched<T: Transport, W: Watch>(
                 && outcome.status == atif::Outcome::Completed
             {
                 edited = true;
+            }
+            if let Some(rule) = &config.finish_rule {
+                fold(
+                    &mut ledger,
+                    rule,
+                    &call.name,
+                    &call.arguments,
+                    listed,
+                    workspace,
+                    &mut outcome,
+                );
             }
             report.calls += 1;
             let arguments = serde_json::from_str(&call.arguments)
@@ -651,6 +682,32 @@ pub async fn run_watched<T: Transport, W: Watch>(
                 purpose: None,
                 extra: outcome.extra.clone(),
             }));
+            if let (Some(finish), Some(rule)) = (&outcome.finish, &config.finish_rule) {
+                match crate::finish::verdict(&ledger, rule, finish.status, report.refusals) {
+                    crate::finish::Verdict::Allowed => {}
+                    crate::finish::Verdict::Refused(why) => {
+                        report.refusals += 1;
+                        recorder.record(atif::Step::said(atif::Source::System, &why));
+                        input.push(json!({
+                            "type": "function_call_output",
+                            "call_id": call.call_id,
+                            "output": why,
+                        }));
+                        continue;
+                    }
+                    crate::finish::Verdict::Unverified(why) => {
+                        report.unverified = true;
+                        recorder.record(atif::Step::said(
+                            atif::Source::System,
+                            &format!(
+                                "The host accepted this finish as {} after {} refusals: {why}.",
+                                crate::finish::UNVERIFIED,
+                                report.refusals
+                            ),
+                        ));
+                    }
+                }
+            }
             if let Some(finish) = &outcome.finish
                 && let Some(why) = turn_back(
                     config,
@@ -699,6 +756,68 @@ pub async fn run_watched<T: Transport, W: Watch>(
     }
     report.milliseconds = elapsed(started);
     report
+}
+
+/// Folds one call into the finish rule's ledger. A command's changed
+/// files, when it was listed around, go into its record as `changed`.
+fn fold(
+    ledger: &mut crate::finish::Ledger,
+    rule: &crate::FinishRule,
+    name: &str,
+    arguments: &str,
+    listed: Option<crate::finish::Listing>,
+    workspace: &Workspace,
+    outcome: &mut tools::Outcome,
+) {
+    let applied = outcome.status == atif::Outcome::Completed;
+    match name {
+        "apply_patch" | "write_file" if applied => {
+            let files: Vec<String> = outcome
+                .extra
+                .get("files")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .map(|line| {
+                    // `apply_patch` notes `M path` or `M from -> to`;
+                    // `write_file` notes the path alone.
+                    let path = match name {
+                        "apply_patch" => ["A ", "M ", "D "]
+                            .iter()
+                            .find_map(|mark| line.strip_prefix(mark))
+                            .unwrap_or(line),
+                        _ => line,
+                    };
+                    path.rsplit(" -> ").next().unwrap_or(path).to_string()
+                })
+                .collect();
+            if files.is_empty() {
+                ledger.edited(name);
+            }
+            for file in files {
+                ledger.edited(&file);
+            }
+        }
+        "run_command" if outcome.status != atif::Outcome::Cancelled => {
+            let command = serde_json::from_str::<Value>(arguments)
+                .ok()
+                .and_then(|v| v["command"].as_str().map(str::to_string))
+                .unwrap_or_default();
+            let changed = match (listed, crate::finish::listing(workspace.root())) {
+                (Some(before), Some(after)) => crate::finish::changed_files(&before, &after),
+                _ => Vec::new(),
+            };
+            let run = ledger.ran(rule, &command, &changed);
+            if !changed.is_empty() {
+                outcome.extra.insert("changed".to_string(), json!(changed));
+            }
+            if run != crate::finish::Run::Other {
+                outcome.extra.insert("finish_rule".to_string(), json!(run));
+            }
+        }
+        _ => {}
+    }
 }
 
 /// Why the host turns `finish` back, or `None` to let it stand.

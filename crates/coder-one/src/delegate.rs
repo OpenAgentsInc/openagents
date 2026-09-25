@@ -673,7 +673,9 @@ impl Briefing {
     /// Assembles the briefing in priority order, holding it to `cap`
     /// characters: the instruction and the closing directions always, then
     /// requirements, the explorer's conclusion, files, key output spans,
-    /// commands, and the last output, each item whole or not at all.
+    /// commands, and the last output, each item whole or not at all. The
+    /// `evidence.environment` line ([`crate::environment::LABEL`]) is never
+    /// left out: its room is reserved before anything else is placed.
     #[must_use]
     pub fn build(inputs: &BriefingInputs, cap: usize) -> Self {
         Self::build_under(head_for(inputs), inputs, cap)
@@ -689,14 +691,35 @@ impl Briefing {
         let room = cap.saturating_sub(fixed);
         let mut included = Vec::new();
         let mut omitted = Vec::new();
+        let file_section = |path: &str, p: Option<f64>, excerpt: &str| {
+            let p = p.map_or("not judged".to_string(), |p| format!("Jev p={p:.2}"));
+            format!("### {path} ({p})\n\n```\n{excerpt}\n```\n")
+        };
+        // The environment line's room, held back from everything placed
+        // before it.
+        let environment: Vec<&(String, Option<f64>, String)> = inputs
+            .files
+            .iter()
+            .filter(|(path, ..)| path == crate::environment::LABEL)
+            .collect();
+        let mut reserved = if environment.is_empty() {
+            0
+        } else {
+            environment
+                .iter()
+                .map(|(path, p, excerpt)| file_section(path, *p, excerpt).chars().count())
+                .sum::<usize>()
+                + "\n## Files by relevance\n\n".chars().count()
+        };
 
         let mut instruction = inputs.instruction.trim().to_string();
-        if instruction.chars().count() + 20 > room {
+        let instruction_room = room.saturating_sub(reserved);
+        if instruction.chars().count() + 20 > instruction_room {
             omitted.push(format!(
                 "instruction tail ({} characters)",
-                instruction.chars().count() + 20 - room
+                instruction.chars().count() + 20 - instruction_room
             ));
-            instruction = clip(&instruction, room.saturating_sub(20));
+            instruction = clip(&instruction, instruction_room.saturating_sub(20));
         }
         let mut body = format!("## The task\n\n{instruction}\n");
         included.push("instruction".to_string());
@@ -707,9 +730,18 @@ impl Briefing {
             } else {
                 format!("\n{heading}\n\n{text}")
             };
-            if body.chars().count() + section.chars().count() <= room {
+            let is_environment = name == format!("file {}", crate::environment::LABEL);
+            let limit = if is_environment {
+                room
+            } else {
+                room.saturating_sub(reserved)
+            };
+            if is_environment || body.chars().count() + section.chars().count() <= limit {
                 body.push_str(&section);
                 included.push(name);
+                if is_environment {
+                    reserved = 0;
+                }
             } else {
                 omitted.push(format!("{name} ({} characters)", section.chars().count()));
             }
@@ -731,11 +763,10 @@ impl Briefing {
             &mut body,
         );
         for (path, p, excerpt) in &inputs.files {
-            let p = p.map_or("not judged".to_string(), |p| format!("Jev p={p:.2}"));
             add(
                 format!("file {path}"),
                 "## Files by relevance",
-                format!("### {path} ({p})\n\n```\n{excerpt}\n```\n"),
+                file_section(path, *p, excerpt),
                 &mut body,
             );
         }

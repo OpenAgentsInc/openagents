@@ -89,6 +89,9 @@ pub struct JevJudge {
     /// Probe v2: a Jev-gated setup pack, git probes in the repositories the
     /// task names, and whole edit targets.
     v2: bool,
+    /// `evidence.environment`: presence probes and the briefing line
+    /// that states what they found, under this template. `None` is off.
+    environment: Option<crate::environment::Params>,
     /// The most files the deep survey judges.
     survey_files: usize,
     /// The evidence guests the probe stage runs, when the manifest turns
@@ -158,6 +161,7 @@ impl JevJudge {
             deep: false,
             probes: false,
             v2: false,
+            environment: None,
             survey_files: SURVEY_FILES,
             guests: None,
             deadline: Deadline::unbounded(),
@@ -212,6 +216,20 @@ impl JevJudge {
     pub fn probe_v2(mut self, v2: bool) -> Self {
         self.v2 = v2;
         self
+    }
+
+    /// Turns on `evidence.environment` with `params`, or off with `None`.
+    /// It runs with the probe battery, so it needs probe mode.
+    #[must_use]
+    pub fn environment(mut self, params: Option<crate::environment::Params>) -> Self {
+        self.environment = params;
+        self
+    }
+
+    /// The `evidence.environment` template, when it is on.
+    #[must_use]
+    pub fn environment_params(&self) -> Option<&crate::environment::Params> {
+        self.environment.as_ref()
     }
 
     /// The setup pack: commands the instruction itself names in code spans
@@ -531,10 +549,14 @@ impl JevJudge {
     async fn probe(&mut self, client: &jev::Client, state: &mut State) {
         let started = Instant::now();
         let text = format!("{}\n{}", state.issue.title, state.issue.body);
-        let facts = crate::probes::facts(&self.workdir, &text);
+        let mut facts = crate::probes::facts(&self.workdir, &text);
+        if self.environment.is_some() {
+            facts.implied = crate::environment::implied(&self.workdir, &text);
+        }
         let params = crate::probes::PlanParams {
             v2: self.v2,
             shallow_listing: false,
+            environment: self.environment.is_some(),
         };
         let planned = crate::probes::plan(&facts, params);
         let scope = crate::probes::scope(&facts, &self.workdir);
@@ -587,8 +609,12 @@ impl JevJudge {
                 "refused": captures.iter().filter(|c| c.refused.is_some()).count(),
             })),
         );
+        if let Some(environment) = self.environment.clone() {
+            self.environment_line(&environment, &captures, state);
+        }
         let mut outputs: Vec<Probe> = captures
             .iter()
+            .filter(|capture| !matches!(capture.operation, crate::ops::Operation::Presence { .. }))
             .filter(|capture| capture.refused.is_none() && !capture.output.trim().is_empty())
             .map(|capture| Probe {
                 command: capture.label.clone(),
@@ -667,6 +693,52 @@ impl JevJudge {
             Finish::new(Outcome::Completed).output(json!({ "selected": selected })),
         );
     }
+    /// `evidence.environment`: the presence captures become one line in
+    /// `state.survey` under [`crate::environment::LABEL`], first, so every
+    /// packer finds it. Jev isn't asked; presence is a fact.
+    fn environment_line(
+        &mut self,
+        params: &crate::environment::Params,
+        captures: &[crate::ops::Capture],
+        state: &mut State,
+    ) {
+        let presence = crate::environment::presence(captures);
+        let invocation = self.recorder.enter(
+            Start::new(
+                "evidence.environment",
+                crate::environment::implementation(params),
+            )
+            .named("presence line")
+            .reading(&json!(presence)),
+        );
+        if presence.is_empty() {
+            self.recorder.end(
+                &invocation,
+                Finish::new(Outcome::Skipped).summary(json!({ "probes": 0 })),
+            );
+            return;
+        }
+        let line = crate::environment::line(&presence, params);
+        crate::say::say!("  environment ▸ {line}");
+        state.survey.retain(|s| s.path != crate::environment::LABEL);
+        state.survey.insert(
+            0,
+            Surveyed {
+                path: crate::environment::LABEL.to_string(),
+                relevance: 1.0,
+                edit: 0.0,
+                content: line.clone(),
+            },
+        );
+        self.recorder.revise();
+        self.recorder.end(
+            &invocation,
+            Finish::new(Outcome::Completed)
+                .output(json!({ "line": line, "presence": presence }))
+                .cost(Cost::none()),
+        );
+    }
+
     /// Turns on deep mode.
     #[must_use]
     pub fn deep(mut self, deep: bool) -> Self {

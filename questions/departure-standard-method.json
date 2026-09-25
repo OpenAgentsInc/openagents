@@ -1,0 +1,16 @@
+{
+  "v": 1,
+  "id": "openagents.departure-standard-method.v1",
+  "name": "Whether a named method departs from its standard definition",
+  "summary": "Asks, once per function or class that names a well-known method, whether its body departs from that method's standard definition. The methods and their definitions come from the versioned list crates/coder-one/src/departures/standard-methods.json.",
+  "per_finding": {
+    "type": "noul",
+    "instructions": "The implementation in `{finding}.body` departs from the standard definition of a method it names: each entry of `{finding}.methods` gives a method's name and its standard `definition`. A departure is a result the standard method wouldn't give, such as a biased form where the unbiased one is standard, a missing edge case the definition handles, or a state change the definition rules out. A different but equivalent computation isn't a departure."
+  },
+  "policy": {
+    "v": 1,
+    "evidence": [
+      "docs/terminal-bench/2026-09-25-departures-offline.md"
+    ]
+  }
+}
