@@ -87,7 +87,10 @@ def confusion(pairs, name, params):
 
 def summarize(tp, fp, fn, tn):
     calls, stalls = tp + fp, tp + fn
+    n = tp + fp + fn + tn
     return {
+        "base_rate": round(stalls / n, 4) if n else None,
+        "base_rate_wilson": wilson(stalls, n),
         "calls": calls,
         "correct_calls": tp,
         "stalls": stalls,
@@ -204,6 +207,37 @@ def report(pairs, params):
     out = {}
     for name in ["code_suspect", "code_strong", "jev_alone", "cascade"]:
         out[name] = summarize(*confusion(pairs, name, params))
+        out[name]["calls_in_passing_trials"] = sum(
+            1 for row, label in pairs if label["passed"] and predictors(row, params)[name])
+    return out
+
+
+def actions(pairs, params):
+    """What the lean hook's rule would have done at each session end: the
+    first cascade stall re-briefs, and a stall right after a re-brief stops."""
+    by_trial = defaultdict(list)
+    for row, label in pairs:
+        if label["at"] == "session_end":
+            by_trial[label["trial"]].append((row, label))
+    out = {"session_ends": 0, "rebriefs": 0, "stops": 0,
+           "stops_before_later_progress": 0, "turns_after_stops": 0, "stopped_trials": []}
+    for trial, items in sorted(by_trial.items()):
+        items.sort(key=lambda p: p[1]["session"])
+        rebriefed = False
+        for row, label in items:
+            out["session_ends"] += 1
+            stalled = predictors(row, params)["cascade"]
+            if stalled and rebriefed:
+                out["stops"] += 1
+                out["stops_before_later_progress"] += int(not label["hindsight"]["stall"])
+                out["turns_after_stops"] += label["hindsight"]["later_turns"]
+                out["stopped_trials"].append({"trial": trial, "after_session": label["session"],
+                                              "later_turns": label["hindsight"]["later_turns"],
+                                              "later_progress": not label["hindsight"]["stall"]})
+                break
+            if stalled:
+                out["rebriefs"] += 1
+            rebriefed = stalled
     return out
 
 
@@ -243,6 +277,7 @@ def main():
                     **report(sub, params),
                 }
             section["bootstrap"] = bootstrap(pairs, params)
+            section["actions"] = actions(pairs, params)
             section["next_step"] = next_step(pairs)
             section["done_report_only"] = done_report(pairs)
             result["partitions"][part] = section

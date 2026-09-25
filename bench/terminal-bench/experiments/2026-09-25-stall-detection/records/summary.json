@@ -1,0 +1,1649 @@
+{
+  "params": {
+    "progress_below": 0.5,
+    "repeating_at": 0.5
+  },
+  "partitions": {
+    "calibration": {
+      "labeled_checkpoints": 327,
+      "all": {
+        "code_suspect": {
+          "base_rate": 0.6606,
+          "base_rate_wilson": [
+            0.6076,
+            0.7097
+          ],
+          "calls": 121,
+          "correct_calls": 109,
+          "stalls": 216,
+          "checkpoints": 327,
+          "precision": 0.9008,
+          "precision_wilson": [
+            0.8346,
+            0.9424
+          ],
+          "recall": 0.5046,
+          "recall_wilson": [
+            0.4385,
+            0.5706
+          ],
+          "calls_in_passing_trials": 0
+        },
+        "code_strong": {
+          "base_rate": 0.6606,
+          "base_rate_wilson": [
+            0.6076,
+            0.7097
+          ],
+          "calls": 10,
+          "correct_calls": 8,
+          "stalls": 216,
+          "checkpoints": 327,
+          "precision": 0.8,
+          "precision_wilson": [
+            0.4902,
+            0.9433
+          ],
+          "recall": 0.037,
+          "recall_wilson": [
+            0.0189,
+            0.0714
+          ],
+          "calls_in_passing_trials": 0
+        },
+        "jev_alone": {
+          "base_rate": 0.6606,
+          "base_rate_wilson": [
+            0.6076,
+            0.7097
+          ],
+          "calls": 131,
+          "correct_calls": 106,
+          "stalls": 216,
+          "checkpoints": 327,
+          "precision": 0.8092,
+          "precision_wilson": [
+            0.7334,
+            0.8673
+          ],
+          "recall": 0.4907,
+          "recall_wilson": [
+            0.4248,
+            0.557
+          ],
+          "calls_in_passing_trials": 4
+        },
+        "cascade": {
+          "base_rate": 0.6606,
+          "base_rate_wilson": [
+            0.6076,
+            0.7097
+          ],
+          "calls": 88,
+          "correct_calls": 80,
+          "stalls": 216,
+          "checkpoints": 327,
+          "precision": 0.9091,
+          "precision_wilson": [
+            0.8307,
+            0.9532
+          ],
+          "recall": 0.3704,
+          "recall_wilson": [
+            0.3088,
+            0.4365
+          ],
+          "calls_in_passing_trials": 0
+        }
+      },
+      "session_end": {
+        "code_suspect": {
+          "base_rate": 0.7727,
+          "base_rate_wilson": [
+            0.686,
+            0.8411
+          ],
+          "calls": 39,
+          "correct_calls": 37,
+          "stalls": 85,
+          "checkpoints": 110,
+          "precision": 0.9487,
+          "precision_wilson": [
+            0.8311,
+            0.9858
+          ],
+          "recall": 0.4353,
+          "recall_wilson": [
+            0.335,
+            0.5412
+          ],
+          "calls_in_passing_trials": 0
+        },
+        "code_strong": {
+          "base_rate": 0.7727,
+          "base_rate_wilson": [
+            0.686,
+            0.8411
+          ],
+          "calls": 3,
+          "correct_calls": 2,
+          "stalls": 85,
+          "checkpoints": 110,
+          "precision": 0.6667,
+          "precision_wilson": [
+            0.2077,
+            0.9385
+          ],
+          "recall": 0.0235,
+          "recall_wilson": [
+            0.0065,
+            0.0818
+          ],
+          "calls_in_passing_trials": 0
+        },
+        "jev_alone": {
+          "base_rate": 0.7727,
+          "base_rate_wilson": [
+            0.686,
+            0.8411
+          ],
+          "calls": 43,
+          "correct_calls": 38,
+          "stalls": 85,
+          "checkpoints": 110,
+          "precision": 0.8837,
+          "precision_wilson": [
+            0.7552,
+            0.9493
+          ],
+          "recall": 0.4471,
+          "recall_wilson": [
+            0.3459,
+            0.5528
+          ],
+          "calls_in_passing_trials": 2
+        },
+        "cascade": {
+          "base_rate": 0.7727,
+          "base_rate_wilson": [
+            0.686,
+            0.8411
+          ],
+          "calls": 28,
+          "correct_calls": 27,
+          "stalls": 85,
+          "checkpoints": 110,
+          "precision": 0.9643,
+          "precision_wilson": [
+            0.8229,
+            0.9937
+          ],
+          "recall": 0.3176,
+          "recall_wilson": [
+            0.2284,
+            0.4227
+          ],
+          "calls_in_passing_trials": 0
+        }
+      },
+      "in_session": {
+        "code_suspect": {
+          "base_rate": 0.6037,
+          "base_rate_wilson": [
+            0.5373,
+            0.6664
+          ],
+          "calls": 82,
+          "correct_calls": 72,
+          "stalls": 131,
+          "checkpoints": 217,
+          "precision": 0.878,
+          "precision_wilson": [
+            0.7899,
+            0.9324
+          ],
+          "recall": 0.5496,
+          "recall_wilson": [
+            0.4642,
+            0.6322
+          ],
+          "calls_in_passing_trials": 0
+        },
+        "code_strong": {
+          "base_rate": 0.6037,
+          "base_rate_wilson": [
+            0.5373,
+            0.6664
+          ],
+          "calls": 7,
+          "correct_calls": 6,
+          "stalls": 131,
+          "checkpoints": 217,
+          "precision": 0.8571,
+          "precision_wilson": [
+            0.4869,
+            0.9743
+          ],
+          "recall": 0.0458,
+          "recall_wilson": [
+            0.0212,
+            0.0963
+          ],
+          "calls_in_passing_trials": 0
+        },
+        "jev_alone": {
+          "base_rate": 0.6037,
+          "base_rate_wilson": [
+            0.5373,
+            0.6664
+          ],
+          "calls": 88,
+          "correct_calls": 68,
+          "stalls": 131,
+          "checkpoints": 217,
+          "precision": 0.7727,
+          "precision_wilson": [
+            0.6749,
+            0.8478
+          ],
+          "recall": 0.5191,
+          "recall_wilson": [
+            0.4342,
+            0.6029
+          ],
+          "calls_in_passing_trials": 2
+        },
+        "cascade": {
+          "base_rate": 0.6037,
+          "base_rate_wilson": [
+            0.5373,
+            0.6664
+          ],
+          "calls": 60,
+          "correct_calls": 53,
+          "stalls": 131,
+          "checkpoints": 217,
+          "precision": 0.8833,
+          "precision_wilson": [
+            0.7782,
+            0.9423
+          ],
+          "recall": 0.4046,
+          "recall_wilson": [
+            0.3244,
+            0.4902
+          ],
+          "calls_in_passing_trials": 0
+        }
+      },
+      "by_task": {
+        "embedding-drift-monitor": {
+          "trials": 28,
+          "passed_trials": 12,
+          "code_suspect": {
+            "base_rate": 0.6768,
+            "base_rate_wilson": [
+              0.6019,
+              0.7437
+            ],
+            "calls": 48,
+            "correct_calls": 48,
+            "stalls": 111,
+            "checkpoints": 164,
+            "precision": 1.0,
+            "precision_wilson": [
+              0.9259,
+              1.0
+            ],
+            "recall": 0.4324,
+            "recall_wilson": [
+              0.3441,
+              0.5253
+            ],
+            "calls_in_passing_trials": 0
+          },
+          "code_strong": {
+            "base_rate": 0.6768,
+            "base_rate_wilson": [
+              0.6019,
+              0.7437
+            ],
+            "calls": 0,
+            "correct_calls": 0,
+            "stalls": 111,
+            "checkpoints": 164,
+            "precision": null,
+            "precision_wilson": null,
+            "recall": 0.0,
+            "recall_wilson": [
+              0.0,
+              0.0335
+            ],
+            "calls_in_passing_trials": 0
+          },
+          "jev_alone": {
+            "base_rate": 0.6768,
+            "base_rate_wilson": [
+              0.6019,
+              0.7437
+            ],
+            "calls": 56,
+            "correct_calls": 52,
+            "stalls": 111,
+            "checkpoints": 164,
+            "precision": 0.9286,
+            "precision_wilson": [
+              0.8302,
+              0.9719
+            ],
+            "recall": 0.4685,
+            "recall_wilson": [
+              0.3783,
+              0.5608
+            ],
+            "calls_in_passing_trials": 4
+          },
+          "cascade": {
+            "base_rate": 0.6768,
+            "base_rate_wilson": [
+              0.6019,
+              0.7437
+            ],
+            "calls": 44,
+            "correct_calls": 44,
+            "stalls": 111,
+            "checkpoints": 164,
+            "precision": 1.0,
+            "precision_wilson": [
+              0.9197,
+              1.0
+            ],
+            "recall": 0.3964,
+            "recall_wilson": [
+              0.3103,
+              0.4894
+            ],
+            "calls_in_passing_trials": 0
+          }
+        },
+        "interleaved-vigenere": {
+          "trials": 10,
+          "passed_trials": 0,
+          "code_suspect": {
+            "base_rate": 0.8837,
+            "base_rate_wilson": [
+              0.799,
+              0.9356
+            ],
+            "calls": 52,
+            "correct_calls": 49,
+            "stalls": 76,
+            "checkpoints": 86,
+            "precision": 0.9423,
+            "precision_wilson": [
+              0.8436,
+              0.9802
+            ],
+            "recall": 0.6447,
+            "recall_wilson": [
+              0.5326,
+              0.743
+            ],
+            "calls_in_passing_trials": 0
+          },
+          "code_strong": {
+            "base_rate": 0.8837,
+            "base_rate_wilson": [
+              0.799,
+              0.9356
+            ],
+            "calls": 8,
+            "correct_calls": 8,
+            "stalls": 76,
+            "checkpoints": 86,
+            "precision": 1.0,
+            "precision_wilson": [
+              0.6756,
+              1.0
+            ],
+            "recall": 0.1053,
+            "recall_wilson": [
+              0.0543,
+              0.1942
+            ],
+            "calls_in_passing_trials": 0
+          },
+          "jev_alone": {
+            "base_rate": 0.8837,
+            "base_rate_wilson": [
+              0.799,
+              0.9356
+            ],
+            "calls": 52,
+            "correct_calls": 45,
+            "stalls": 76,
+            "checkpoints": 86,
+            "precision": 0.8654,
+            "precision_wilson": [
+              0.7473,
+              0.9332
+            ],
+            "recall": 0.5921,
+            "recall_wilson": [
+              0.4798,
+              0.6956
+            ],
+            "calls_in_passing_trials": 0
+          },
+          "cascade": {
+            "base_rate": 0.8837,
+            "base_rate_wilson": [
+              0.799,
+              0.9356
+            ],
+            "calls": 34,
+            "correct_calls": 31,
+            "stalls": 76,
+            "checkpoints": 86,
+            "precision": 0.9118,
+            "precision_wilson": [
+              0.7704,
+              0.9695
+            ],
+            "recall": 0.4079,
+            "recall_wilson": [
+              0.3044,
+              0.5202
+            ],
+            "calls_in_passing_trials": 0
+          }
+        },
+        "sound-change-cascade": {
+          "trials": 11,
+          "passed_trials": 0,
+          "code_suspect": {
+            "base_rate": 0.3766,
+            "base_rate_wilson": [
+              0.2767,
+              0.4883
+            ],
+            "calls": 21,
+            "correct_calls": 12,
+            "stalls": 29,
+            "checkpoints": 77,
+            "precision": 0.5714,
+            "precision_wilson": [
+              0.3655,
+              0.7553
+            ],
+            "recall": 0.4138,
+            "recall_wilson": [
+              0.2551,
+              0.5926
+            ],
+            "calls_in_passing_trials": 0
+          },
+          "code_strong": {
+            "base_rate": 0.3766,
+            "base_rate_wilson": [
+              0.2767,
+              0.4883
+            ],
+            "calls": 2,
+            "correct_calls": 0,
+            "stalls": 29,
+            "checkpoints": 77,
+            "precision": 0.0,
+            "precision_wilson": [
+              0.0,
+              0.6576
+            ],
+            "recall": 0.0,
+            "recall_wilson": [
+              0.0,
+              0.117
+            ],
+            "calls_in_passing_trials": 0
+          },
+          "jev_alone": {
+            "base_rate": 0.3766,
+            "base_rate_wilson": [
+              0.2767,
+              0.4883
+            ],
+            "calls": 23,
+            "correct_calls": 9,
+            "stalls": 29,
+            "checkpoints": 77,
+            "precision": 0.3913,
+            "precision_wilson": [
+              0.2216,
+              0.5921
+            ],
+            "recall": 0.3103,
+            "recall_wilson": [
+              0.1728,
+              0.4923
+            ],
+            "calls_in_passing_trials": 0
+          },
+          "cascade": {
+            "base_rate": 0.3766,
+            "base_rate_wilson": [
+              0.2767,
+              0.4883
+            ],
+            "calls": 10,
+            "correct_calls": 5,
+            "stalls": 29,
+            "checkpoints": 77,
+            "precision": 0.5,
+            "precision_wilson": [
+              0.2366,
+              0.7634
+            ],
+            "recall": 0.1724,
+            "recall_wilson": [
+              0.076,
+              0.3455
+            ],
+            "calls_in_passing_trials": 0
+          }
+        }
+      },
+      "bootstrap": {
+        "resamples": 10000,
+        "seed": 9627,
+        "unit": "task",
+        "tasks": 3,
+        "compared": "cascade minus code_suspect",
+        "intervals": {
+          "cascade_precision": [
+            0.5,
+            1.0
+          ],
+          "difference_precision": [
+            -0.0714,
+            0.0437
+          ],
+          "cascade_recall": [
+            0.1724,
+            0.4079
+          ],
+          "difference_recall": [
+            -0.2414,
+            -0.036
+          ]
+        },
+        "undefined": {}
+      },
+      "actions": {
+        "session_ends": 100,
+        "rebriefs": 19,
+        "stops": 3,
+        "stops_before_later_progress": 0,
+        "turns_after_stops": 146,
+        "stopped_trials": [
+          {
+            "trial": "embedding-drift-monitor__PTsawB6",
+            "after_session": 10,
+            "later_turns": 62,
+            "later_progress": false
+          },
+          {
+            "trial": "embedding-drift-monitor__Uf8HNF3",
+            "after_session": 4,
+            "later_turns": 52,
+            "later_progress": false
+          },
+          {
+            "trial": "interleaved-vigenere__zj5bwBL",
+            "after_session": 4,
+            "later_turns": 32,
+            "later_progress": false
+          }
+        ]
+      },
+      "next_step": {
+        "picks": {
+          "read_region": 34,
+          "edit": 59,
+          "continue": 90,
+          "run_tests": 129,
+          "run_example": 14
+        },
+        "pick_matches_next_step": {
+          "productive": 19,
+          "of": 62,
+          "rate": 0.3065,
+          "wilson": [
+            0.2058,
+            0.4297
+          ]
+        },
+        "pick_differs_from_next_step": {
+          "productive": 39,
+          "of": 174,
+          "rate": 0.2241,
+          "wilson": [
+            0.1685,
+            0.2917
+          ]
+        },
+        "precision": {
+          "value": 0.3065,
+          "wilson": [
+            0.2058,
+            0.4297
+          ],
+          "meaning": "of next steps that matched Jev's pick, the share followed by a score gain"
+        },
+        "recall": {
+          "value": 0.3276,
+          "wilson": [
+            0.2208,
+            0.4558
+          ],
+          "meaning": "of productive next steps, the share Jev had picked"
+        }
+      },
+      "done_report_only": {
+        "done_at_least_0_8": 1,
+        "of_which_trial_passed": 0,
+        "pass_rate_wilson": [
+          0.0,
+          0.7935
+        ]
+      }
+    },
+    "evaluation": {
+      "labeled_checkpoints": 102,
+      "all": {
+        "code_suspect": {
+          "base_rate": 0.8333,
+          "base_rate_wilson": [
+            0.7492,
+            0.8933
+          ],
+          "calls": 54,
+          "correct_calls": 45,
+          "stalls": 85,
+          "checkpoints": 102,
+          "precision": 0.8333,
+          "precision_wilson": [
+            0.7126,
+            0.9098
+          ],
+          "recall": 0.5294,
+          "recall_wilson": [
+            0.4243,
+            0.6319
+          ],
+          "calls_in_passing_trials": 0
+        },
+        "code_strong": {
+          "base_rate": 0.8333,
+          "base_rate_wilson": [
+            0.7492,
+            0.8933
+          ],
+          "calls": 3,
+          "correct_calls": 3,
+          "stalls": 85,
+          "checkpoints": 102,
+          "precision": 1.0,
+          "precision_wilson": [
+            0.4385,
+            1.0
+          ],
+          "recall": 0.0353,
+          "recall_wilson": [
+            0.0121,
+            0.0987
+          ],
+          "calls_in_passing_trials": 0
+        },
+        "jev_alone": {
+          "base_rate": 0.8333,
+          "base_rate_wilson": [
+            0.7492,
+            0.8933
+          ],
+          "calls": 49,
+          "correct_calls": 42,
+          "stalls": 85,
+          "checkpoints": 102,
+          "precision": 0.8571,
+          "precision_wilson": [
+            0.7333,
+            0.929
+          ],
+          "recall": 0.4941,
+          "recall_wilson": [
+            0.3904,
+            0.5983
+          ],
+          "calls_in_passing_trials": 0
+        },
+        "cascade": {
+          "base_rate": 0.8333,
+          "base_rate_wilson": [
+            0.7492,
+            0.8933
+          ],
+          "calls": 35,
+          "correct_calls": 30,
+          "stalls": 85,
+          "checkpoints": 102,
+          "precision": 0.8571,
+          "precision_wilson": [
+            0.7062,
+            0.9374
+          ],
+          "recall": 0.3529,
+          "recall_wilson": [
+            0.2597,
+            0.4589
+          ],
+          "calls_in_passing_trials": 0
+        }
+      },
+      "session_end": {
+        "code_suspect": {
+          "base_rate": 0.9762,
+          "base_rate_wilson": [
+            0.8768,
+            0.9958
+          ],
+          "calls": 18,
+          "correct_calls": 17,
+          "stalls": 41,
+          "checkpoints": 42,
+          "precision": 0.9444,
+          "precision_wilson": [
+            0.7424,
+            0.9901
+          ],
+          "recall": 0.4146,
+          "recall_wilson": [
+            0.2776,
+            0.5663
+          ],
+          "calls_in_passing_trials": 0
+        },
+        "code_strong": {
+          "base_rate": 0.9762,
+          "base_rate_wilson": [
+            0.8768,
+            0.9958
+          ],
+          "calls": 1,
+          "correct_calls": 1,
+          "stalls": 41,
+          "checkpoints": 42,
+          "precision": 1.0,
+          "precision_wilson": [
+            0.2065,
+            1.0
+          ],
+          "recall": 0.0244,
+          "recall_wilson": [
+            0.0043,
+            0.126
+          ],
+          "calls_in_passing_trials": 0
+        },
+        "jev_alone": {
+          "base_rate": 0.9762,
+          "base_rate_wilson": [
+            0.8768,
+            0.9958
+          ],
+          "calls": 25,
+          "correct_calls": 24,
+          "stalls": 41,
+          "checkpoints": 42,
+          "precision": 0.96,
+          "precision_wilson": [
+            0.8046,
+            0.9929
+          ],
+          "recall": 0.5854,
+          "recall_wilson": [
+            0.4337,
+            0.7224
+          ],
+          "calls_in_passing_trials": 0
+        },
+        "cascade": {
+          "base_rate": 0.9762,
+          "base_rate_wilson": [
+            0.8768,
+            0.9958
+          ],
+          "calls": 16,
+          "correct_calls": 15,
+          "stalls": 41,
+          "checkpoints": 42,
+          "precision": 0.9375,
+          "precision_wilson": [
+            0.7167,
+            0.9889
+          ],
+          "recall": 0.3659,
+          "recall_wilson": [
+            0.2359,
+            0.5188
+          ],
+          "calls_in_passing_trials": 0
+        }
+      },
+      "in_session": {
+        "code_suspect": {
+          "base_rate": 0.7333,
+          "base_rate_wilson": [
+            0.6099,
+            0.8287
+          ],
+          "calls": 36,
+          "correct_calls": 28,
+          "stalls": 44,
+          "checkpoints": 60,
+          "precision": 0.7778,
+          "precision_wilson": [
+            0.6192,
+            0.8828
+          ],
+          "recall": 0.6364,
+          "recall_wilson": [
+            0.4887,
+            0.7622
+          ],
+          "calls_in_passing_trials": 0
+        },
+        "code_strong": {
+          "base_rate": 0.7333,
+          "base_rate_wilson": [
+            0.6099,
+            0.8287
+          ],
+          "calls": 2,
+          "correct_calls": 2,
+          "stalls": 44,
+          "checkpoints": 60,
+          "precision": 1.0,
+          "precision_wilson": [
+            0.3424,
+            1.0
+          ],
+          "recall": 0.0455,
+          "recall_wilson": [
+            0.0126,
+            0.1513
+          ],
+          "calls_in_passing_trials": 0
+        },
+        "jev_alone": {
+          "base_rate": 0.7333,
+          "base_rate_wilson": [
+            0.6099,
+            0.8287
+          ],
+          "calls": 24,
+          "correct_calls": 18,
+          "stalls": 44,
+          "checkpoints": 60,
+          "precision": 0.75,
+          "precision_wilson": [
+            0.551,
+            0.88
+          ],
+          "recall": 0.4091,
+          "recall_wilson": [
+            0.2769,
+            0.5559
+          ],
+          "calls_in_passing_trials": 0
+        },
+        "cascade": {
+          "base_rate": 0.7333,
+          "base_rate_wilson": [
+            0.6099,
+            0.8287
+          ],
+          "calls": 19,
+          "correct_calls": 15,
+          "stalls": 44,
+          "checkpoints": 60,
+          "precision": 0.7895,
+          "precision_wilson": [
+            0.5667,
+            0.9149
+          ],
+          "recall": 0.3409,
+          "recall_wilson": [
+            0.2188,
+            0.4886
+          ],
+          "calls_in_passing_trials": 0
+        }
+      },
+      "by_task": {
+        "coq-block-bound": {
+          "trials": 2,
+          "passed_trials": 0,
+          "code_suspect": {
+            "base_rate": 1.0,
+            "base_rate_wilson": [
+              0.7575,
+              1.0
+            ],
+            "calls": 6,
+            "correct_calls": 6,
+            "stalls": 12,
+            "checkpoints": 12,
+            "precision": 1.0,
+            "precision_wilson": [
+              0.6097,
+              1.0
+            ],
+            "recall": 0.5,
+            "recall_wilson": [
+              0.2538,
+              0.7462
+            ],
+            "calls_in_passing_trials": 0
+          },
+          "code_strong": {
+            "base_rate": 1.0,
+            "base_rate_wilson": [
+              0.7575,
+              1.0
+            ],
+            "calls": 3,
+            "correct_calls": 3,
+            "stalls": 12,
+            "checkpoints": 12,
+            "precision": 1.0,
+            "precision_wilson": [
+              0.4385,
+              1.0
+            ],
+            "recall": 0.25,
+            "recall_wilson": [
+              0.0889,
+              0.5323
+            ],
+            "calls_in_passing_trials": 0
+          },
+          "jev_alone": {
+            "base_rate": 1.0,
+            "base_rate_wilson": [
+              0.7575,
+              1.0
+            ],
+            "calls": 10,
+            "correct_calls": 10,
+            "stalls": 12,
+            "checkpoints": 12,
+            "precision": 1.0,
+            "precision_wilson": [
+              0.7225,
+              1.0
+            ],
+            "recall": 0.8333,
+            "recall_wilson": [
+              0.552,
+              0.953
+            ],
+            "calls_in_passing_trials": 0
+          },
+          "cascade": {
+            "base_rate": 1.0,
+            "base_rate_wilson": [
+              0.7575,
+              1.0
+            ],
+            "calls": 6,
+            "correct_calls": 6,
+            "stalls": 12,
+            "checkpoints": 12,
+            "precision": 1.0,
+            "precision_wilson": [
+              0.6097,
+              1.0
+            ],
+            "recall": 0.5,
+            "recall_wilson": [
+              0.2538,
+              0.7462
+            ],
+            "calls_in_passing_trials": 0
+          }
+        },
+        "fin-saccr-rwa": {
+          "trials": 1,
+          "passed_trials": 0,
+          "code_suspect": {
+            "base_rate": 1.0,
+            "base_rate_wilson": [
+              0.3424,
+              1.0
+            ],
+            "calls": 0,
+            "correct_calls": 0,
+            "stalls": 2,
+            "checkpoints": 2,
+            "precision": null,
+            "precision_wilson": null,
+            "recall": 0.0,
+            "recall_wilson": [
+              0.0,
+              0.6576
+            ],
+            "calls_in_passing_trials": 0
+          },
+          "code_strong": {
+            "base_rate": 1.0,
+            "base_rate_wilson": [
+              0.3424,
+              1.0
+            ],
+            "calls": 0,
+            "correct_calls": 0,
+            "stalls": 2,
+            "checkpoints": 2,
+            "precision": null,
+            "precision_wilson": null,
+            "recall": 0.0,
+            "recall_wilson": [
+              0.0,
+              0.6576
+            ],
+            "calls_in_passing_trials": 0
+          },
+          "jev_alone": {
+            "base_rate": 1.0,
+            "base_rate_wilson": [
+              0.3424,
+              1.0
+            ],
+            "calls": 0,
+            "correct_calls": 0,
+            "stalls": 2,
+            "checkpoints": 2,
+            "precision": null,
+            "precision_wilson": null,
+            "recall": 0.0,
+            "recall_wilson": [
+              0.0,
+              0.6576
+            ],
+            "calls_in_passing_trials": 0
+          },
+          "cascade": {
+            "base_rate": 1.0,
+            "base_rate_wilson": [
+              0.3424,
+              1.0
+            ],
+            "calls": 0,
+            "correct_calls": 0,
+            "stalls": 2,
+            "checkpoints": 2,
+            "precision": null,
+            "precision_wilson": null,
+            "recall": 0.0,
+            "recall_wilson": [
+              0.0,
+              0.6576
+            ],
+            "calls_in_passing_trials": 0
+          }
+        },
+        "gsea-proteomics": {
+          "trials": 3,
+          "passed_trials": 0,
+          "code_suspect": {
+            "base_rate": 0.8571,
+            "base_rate_wilson": [
+              0.6536,
+              0.9502
+            ],
+            "calls": 9,
+            "correct_calls": 8,
+            "stalls": 18,
+            "checkpoints": 21,
+            "precision": 0.8889,
+            "precision_wilson": [
+              0.565,
+              0.9801
+            ],
+            "recall": 0.4444,
+            "recall_wilson": [
+              0.2456,
+              0.6628
+            ],
+            "calls_in_passing_trials": 0
+          },
+          "code_strong": {
+            "base_rate": 0.8571,
+            "base_rate_wilson": [
+              0.6536,
+              0.9502
+            ],
+            "calls": 0,
+            "correct_calls": 0,
+            "stalls": 18,
+            "checkpoints": 21,
+            "precision": null,
+            "precision_wilson": null,
+            "recall": 0.0,
+            "recall_wilson": [
+              0.0,
+              0.1759
+            ],
+            "calls_in_passing_trials": 0
+          },
+          "jev_alone": {
+            "base_rate": 0.8571,
+            "base_rate_wilson": [
+              0.6536,
+              0.9502
+            ],
+            "calls": 10,
+            "correct_calls": 9,
+            "stalls": 18,
+            "checkpoints": 21,
+            "precision": 0.9,
+            "precision_wilson": [
+              0.5958,
+              0.9821
+            ],
+            "recall": 0.5,
+            "recall_wilson": [
+              0.2903,
+              0.7097
+            ],
+            "calls_in_passing_trials": 0
+          },
+          "cascade": {
+            "base_rate": 0.8571,
+            "base_rate_wilson": [
+              0.6536,
+              0.9502
+            ],
+            "calls": 8,
+            "correct_calls": 7,
+            "stalls": 18,
+            "checkpoints": 21,
+            "precision": 0.875,
+            "precision_wilson": [
+              0.5291,
+              0.9776
+            ],
+            "recall": 0.3889,
+            "recall_wilson": [
+              0.2031,
+              0.6138
+            ],
+            "calls_in_passing_trials": 0
+          }
+        },
+        "html-js-filter": {
+          "trials": 1,
+          "passed_trials": 0,
+          "code_suspect": {
+            "base_rate": 1.0,
+            "base_rate_wilson": [
+              0.7009,
+              1.0
+            ],
+            "calls": 3,
+            "correct_calls": 3,
+            "stalls": 9,
+            "checkpoints": 9,
+            "precision": 1.0,
+            "precision_wilson": [
+              0.4385,
+              1.0
+            ],
+            "recall": 0.3333,
+            "recall_wilson": [
+              0.1206,
+              0.6458
+            ],
+            "calls_in_passing_trials": 0
+          },
+          "code_strong": {
+            "base_rate": 1.0,
+            "base_rate_wilson": [
+              0.7009,
+              1.0
+            ],
+            "calls": 0,
+            "correct_calls": 0,
+            "stalls": 9,
+            "checkpoints": 9,
+            "precision": null,
+            "precision_wilson": null,
+            "recall": 0.0,
+            "recall_wilson": [
+              0.0,
+              0.2991
+            ],
+            "calls_in_passing_trials": 0
+          },
+          "jev_alone": {
+            "base_rate": 1.0,
+            "base_rate_wilson": [
+              0.7009,
+              1.0
+            ],
+            "calls": 6,
+            "correct_calls": 6,
+            "stalls": 9,
+            "checkpoints": 9,
+            "precision": 1.0,
+            "precision_wilson": [
+              0.6097,
+              1.0
+            ],
+            "recall": 0.6667,
+            "recall_wilson": [
+              0.3542,
+              0.8794
+            ],
+            "calls_in_passing_trials": 0
+          },
+          "cascade": {
+            "base_rate": 1.0,
+            "base_rate_wilson": [
+              0.7009,
+              1.0
+            ],
+            "calls": 3,
+            "correct_calls": 3,
+            "stalls": 9,
+            "checkpoints": 9,
+            "precision": 1.0,
+            "precision_wilson": [
+              0.4385,
+              1.0
+            ],
+            "recall": 0.3333,
+            "recall_wilson": [
+              0.1206,
+              0.6458
+            ],
+            "calls_in_passing_trials": 0
+          }
+        },
+        "session-window-debug": {
+          "trials": 9,
+          "passed_trials": 0,
+          "code_suspect": {
+            "base_rate": 0.7273,
+            "base_rate_wilson": [
+              0.5185,
+              0.8685
+            ],
+            "calls": 0,
+            "correct_calls": 0,
+            "stalls": 16,
+            "checkpoints": 22,
+            "precision": null,
+            "precision_wilson": null,
+            "recall": 0.0,
+            "recall_wilson": [
+              0.0,
+              0.1936
+            ],
+            "calls_in_passing_trials": 0
+          },
+          "code_strong": {
+            "base_rate": 0.7273,
+            "base_rate_wilson": [
+              0.5185,
+              0.8685
+            ],
+            "calls": 0,
+            "correct_calls": 0,
+            "stalls": 16,
+            "checkpoints": 22,
+            "precision": null,
+            "precision_wilson": null,
+            "recall": 0.0,
+            "recall_wilson": [
+              0.0,
+              0.1936
+            ],
+            "calls_in_passing_trials": 0
+          },
+          "jev_alone": {
+            "base_rate": 0.7273,
+            "base_rate_wilson": [
+              0.5185,
+              0.8685
+            ],
+            "calls": 5,
+            "correct_calls": 3,
+            "stalls": 16,
+            "checkpoints": 22,
+            "precision": 0.6,
+            "precision_wilson": [
+              0.2307,
+              0.8824
+            ],
+            "recall": 0.1875,
+            "recall_wilson": [
+              0.0659,
+              0.4301
+            ],
+            "calls_in_passing_trials": 0
+          },
+          "cascade": {
+            "base_rate": 0.7273,
+            "base_rate_wilson": [
+              0.5185,
+              0.8685
+            ],
+            "calls": 0,
+            "correct_calls": 0,
+            "stalls": 16,
+            "checkpoints": 22,
+            "precision": null,
+            "precision_wilson": null,
+            "recall": 0.0,
+            "recall_wilson": [
+              0.0,
+              0.1936
+            ],
+            "calls_in_passing_trials": 0
+          }
+        },
+        "shadow-relay": {
+          "trials": 2,
+          "passed_trials": 0,
+          "code_suspect": {
+            "base_rate": 0.5789,
+            "base_rate_wilson": [
+              0.3628,
+              0.7686
+            ],
+            "calls": 19,
+            "correct_calls": 11,
+            "stalls": 11,
+            "checkpoints": 19,
+            "precision": 0.5789,
+            "precision_wilson": [
+              0.3628,
+              0.7686
+            ],
+            "recall": 1.0,
+            "recall_wilson": [
+              0.7412,
+              1.0
+            ],
+            "calls_in_passing_trials": 0
+          },
+          "code_strong": {
+            "base_rate": 0.5789,
+            "base_rate_wilson": [
+              0.3628,
+              0.7686
+            ],
+            "calls": 0,
+            "correct_calls": 0,
+            "stalls": 11,
+            "checkpoints": 19,
+            "precision": null,
+            "precision_wilson": null,
+            "recall": 0.0,
+            "recall_wilson": [
+              0.0,
+              0.2588
+            ],
+            "calls_in_passing_trials": 0
+          },
+          "jev_alone": {
+            "base_rate": 0.5789,
+            "base_rate_wilson": [
+              0.3628,
+              0.7686
+            ],
+            "calls": 9,
+            "correct_calls": 5,
+            "stalls": 11,
+            "checkpoints": 19,
+            "precision": 0.5556,
+            "precision_wilson": [
+              0.2667,
+              0.8112
+            ],
+            "recall": 0.4545,
+            "recall_wilson": [
+              0.2127,
+              0.7199
+            ],
+            "calls_in_passing_trials": 0
+          },
+          "cascade": {
+            "base_rate": 0.5789,
+            "base_rate_wilson": [
+              0.3628,
+              0.7686
+            ],
+            "calls": 9,
+            "correct_calls": 5,
+            "stalls": 11,
+            "checkpoints": 19,
+            "precision": 0.5556,
+            "precision_wilson": [
+              0.2667,
+              0.8112
+            ],
+            "recall": 0.4545,
+            "recall_wilson": [
+              0.2127,
+              0.7199
+            ],
+            "calls_in_passing_trials": 0
+          }
+        },
+        "uefi-bootkit": {
+          "trials": 1,
+          "passed_trials": 0,
+          "code_suspect": {
+            "base_rate": 1.0,
+            "base_rate_wilson": [
+              0.8157,
+              1.0
+            ],
+            "calls": 17,
+            "correct_calls": 17,
+            "stalls": 17,
+            "checkpoints": 17,
+            "precision": 1.0,
+            "precision_wilson": [
+              0.8157,
+              1.0
+            ],
+            "recall": 1.0,
+            "recall_wilson": [
+              0.8157,
+              1.0
+            ],
+            "calls_in_passing_trials": 0
+          },
+          "code_strong": {
+            "base_rate": 1.0,
+            "base_rate_wilson": [
+              0.8157,
+              1.0
+            ],
+            "calls": 0,
+            "correct_calls": 0,
+            "stalls": 17,
+            "checkpoints": 17,
+            "precision": null,
+            "precision_wilson": null,
+            "recall": 0.0,
+            "recall_wilson": [
+              0.0,
+              0.1843
+            ],
+            "calls_in_passing_trials": 0
+          },
+          "jev_alone": {
+            "base_rate": 1.0,
+            "base_rate_wilson": [
+              0.8157,
+              1.0
+            ],
+            "calls": 9,
+            "correct_calls": 9,
+            "stalls": 17,
+            "checkpoints": 17,
+            "precision": 1.0,
+            "precision_wilson": [
+              0.7009,
+              1.0
+            ],
+            "recall": 0.5294,
+            "recall_wilson": [
+              0.3096,
+              0.7383
+            ],
+            "calls_in_passing_trials": 0
+          },
+          "cascade": {
+            "base_rate": 1.0,
+            "base_rate_wilson": [
+              0.8157,
+              1.0
+            ],
+            "calls": 9,
+            "correct_calls": 9,
+            "stalls": 17,
+            "checkpoints": 17,
+            "precision": 1.0,
+            "precision_wilson": [
+              0.7009,
+              1.0
+            ],
+            "recall": 0.5294,
+            "recall_wilson": [
+              0.3096,
+              0.7383
+            ],
+            "calls_in_passing_trials": 0
+          }
+        }
+      },
+      "bootstrap": {
+        "resamples": 10000,
+        "seed": 9627,
+        "unit": "task",
+        "tasks": 7,
+        "compared": "cascade minus code_suspect",
+        "intervals": {
+          "cascade_precision": [
+            0.6667,
+            1.0
+          ],
+          "difference_precision": [
+            -0.0177,
+            0.0635
+          ],
+          "cascade_recall": [
+            0.1798,
+            0.4762
+          ],
+          "difference_recall": [
+            -0.3711,
+            -0.0112
+          ]
+        },
+        "undefined": {}
+      },
+      "actions": {
+        "session_ends": 34,
+        "rebriefs": 8,
+        "stops": 3,
+        "stops_before_later_progress": 0,
+        "turns_after_stops": 126,
+        "stopped_trials": [
+          {
+            "trial": "html-js-filter__EaX8vh7",
+            "after_session": 5,
+            "later_turns": 26,
+            "later_progress": false
+          },
+          {
+            "trial": "shadow-relay__GsRrdHR",
+            "after_session": 4,
+            "later_turns": 31,
+            "later_progress": false
+          },
+          {
+            "trial": "uefi-bootkit__TKiKnQj",
+            "after_session": 2,
+            "later_turns": 69,
+            "later_progress": false
+          }
+        ]
+      },
+      "next_step": {
+        "picks": {
+          "continue": 63,
+          "read_region": 4,
+          "edit": 9,
+          "run_tests": 18
+        },
+        "pick_matches_next_step": {
+          "productive": 4,
+          "of": 6,
+          "rate": 0.6667,
+          "wilson": [
+            0.3,
+            0.9032
+          ]
+        },
+        "pick_differs_from_next_step": {
+          "productive": 4,
+          "of": 25,
+          "rate": 0.16,
+          "wilson": [
+            0.064,
+            0.3465
+          ]
+        },
+        "precision": {
+          "value": 0.6667,
+          "wilson": [
+            0.3,
+            0.9032
+          ],
+          "meaning": "of next steps that matched Jev's pick, the share followed by a score gain"
+        },
+        "recall": {
+          "value": 0.5,
+          "wilson": [
+            0.2152,
+            0.7848
+          ],
+          "meaning": "of productive next steps, the share Jev had picked"
+        }
+      },
+      "done_report_only": {
+        "done_at_least_0_8": 2,
+        "of_which_trial_passed": 0,
+        "pass_rate_wilson": [
+          0.0,
+          0.6576
+        ]
+      }
+    }
+  }
+}

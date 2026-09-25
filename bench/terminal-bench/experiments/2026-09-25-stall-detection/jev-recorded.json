@@ -1,6 +1,71 @@
 {
   "schema": "openagents.coder-one.jev-recorded.v1",
   "entries": {
+    "02450128f887866f26c54be41844c461dbccb25aa63ac775e20711e2367171b1": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.25
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.19
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.69,
+          "probabilities": {
+            "edit": 0.17,
+            "continue": 0.8,
+            "read_region": 0.03
+          }
+        }
+      },
+      "input_tokens": 5073,
+      "output_tokens": 89,
+      "milliseconds": 198,
+      "source": "live control.stall replay#jev-stall-3-28"
+    },
+    "025e2b26923242fb5bed9eb317a37eac8307b6be06d7021e475b596a843987a1": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.11
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.31
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.11
+        },
+        "next": {
+          "type": "choice",
+          "choice": "edit",
+          "confidence": 0.65,
+          "probabilities": {
+            "edit": 0.74,
+            "continue": 0.03,
+            "run_tests": 0.16,
+            "read_region": 0.07
+          }
+        }
+      },
+      "input_tokens": 2008,
+      "output_tokens": 97,
+      "milliseconds": 140,
+      "source": "live control.stall replay#jev-stall-9-5"
+    },
     "027451482ff473edd9e3665e1b503ba83c164901877d7e5024f744380fba7884": {
       "name": "jev_stall",
       "model": "jev-1.13.0",
@@ -34,6 +99,38 @@
       "output_tokens": 105,
       "milliseconds": 147,
       "source": "live control.stall replay#jev-stall-1-40"
+    },
+    "02b81d730871adc0aaff124df0f21594ce9f325cbc52e72a1b1301d1b3dbf12e": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.15
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.72
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.54,
+          "probabilities": {
+            "read_region": 0.21,
+            "edit": 0.1,
+            "continue": 0.69
+          }
+        }
+      },
+      "input_tokens": 4999,
+      "output_tokens": 89,
+      "milliseconds": 178,
+      "source": "live control.stall replay#jev-stall-5-16"
     },
     "032bd04a8d879659c4db6672ef20afa4667b679f647a0fd95d6e522028cc02f1": {
       "name": "jev_stall",
@@ -722,6 +819,71 @@
       "milliseconds": 158,
       "source": "live control.stall replay#jev-stall-4-25"
     },
+    "0e5b45fa5277122c9f2e42d00f8508efe9f5e5327fc008ebebb91d4563533871": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.14
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.94
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.6
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.42,
+          "probabilities": {
+            "read_region": 0.01,
+            "continue": 0.57,
+            "edit": 0.01,
+            "run_tests": 0.41
+          }
+        }
+      },
+      "input_tokens": 2592,
+      "output_tokens": 97,
+      "milliseconds": 167,
+      "source": "live control.stall replay#jev-stall-1-8"
+    },
+    "0e5cd0c5fa7171be45018395b1d1ef77f25b51bcb32181e2af6b3069296c433a": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.65
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.42
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.08
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.47,
+          "probabilities": {
+            "run_tests": 0.28,
+            "continue": 0.65,
+            "run_example": 0.07
+          }
+        }
+      },
+      "input_tokens": 3059,
+      "output_tokens": 90,
+      "milliseconds": 329,
+      "source": "live control.stall replay#jev-stall-1-16"
+    },
     "0ffe0ba6ed95ac17344de91037dab291a1e2249ee196f31777dd23333b17ab31": {
       "name": "jev_stall",
       "model": "jev-1.13.0",
@@ -785,6 +947,40 @@
       "output_tokens": 89,
       "milliseconds": 144,
       "source": "live control.stall replay#jev-stall-7-15"
+    },
+    "1008b1735c249c4afc1d88230ad04ff467061473b3aca437b6ac80f398311818": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.27
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.59
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.23
+        },
+        "next": {
+          "type": "choice",
+          "choice": "run_tests",
+          "confidence": 0.31,
+          "probabilities": {
+            "edit": 0.05,
+            "run_example": 0.03,
+            "continue": 0.44,
+            "run_tests": 0.45,
+            "read_region": 0.03
+          }
+        }
+      },
+      "input_tokens": 2644,
+      "output_tokens": 106,
+      "milliseconds": 166,
+      "source": "live control.stall replay#jev-stall-2-32"
     },
     "1015ddb5f2cccbbc0be39b6367b23999a479d4c007940173b1654ddd6465392d": {
       "name": "jev_stall",
@@ -950,6 +1146,39 @@
       "milliseconds": 138,
       "source": "live control.stall replay#jev-stall-2-7"
     },
+    "123ede52ed8ac92c678634ed185dd5c5aad71ad4dcc96677b692a47bd6b8de14": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.22
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.85
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "next": {
+          "type": "choice",
+          "choice": "read_region",
+          "confidence": 0.59,
+          "probabilities": {
+            "run_tests": 0.28,
+            "read_region": 0.69,
+            "continue": 0.0,
+            "edit": 0.03
+          }
+        }
+      },
+      "input_tokens": 2863,
+      "output_tokens": 98,
+      "milliseconds": 140,
+      "source": "live control.stall replay#jev-stall-1-8"
+    },
     "13826e4c697f60c60ada35aac5c0b24e1ba5d3dfa14ddf3b1e97e941ba078b43": {
       "name": "jev_stall",
       "model": "jev-1.13.0",
@@ -1048,6 +1277,72 @@
       "output_tokens": 98,
       "milliseconds": 121,
       "source": "live control.stall replay#jev-stall-1-16"
+    },
+    "147e2b3974c2ed4bdf9101430ebdb67a5b1b84d62b5d767162339e1fe589d2e4": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.23
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.87
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "next": {
+          "type": "choice",
+          "choice": "run_tests",
+          "confidence": 0.8,
+          "probabilities": {
+            "edit": 0.06,
+            "read_region": 0.08,
+            "run_tests": 0.85,
+            "continue": 0.01
+          }
+        }
+      },
+      "input_tokens": 2683,
+      "output_tokens": 98,
+      "milliseconds": 157,
+      "source": "live control.stall replay#jev-stall-1-8"
+    },
+    "14df8058dcd8f47953a5e6c9e766f898c4648fc057f8f9c2d3588988c19f9141": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.1
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.06
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.09
+        },
+        "next": {
+          "type": "choice",
+          "choice": "read_region",
+          "confidence": 0.24,
+          "probabilities": {
+            "run_example": 0.06,
+            "read_region": 0.44,
+            "edit": 0.39,
+            "continue": 0.11
+          }
+        }
+      },
+      "input_tokens": 1350,
+      "output_tokens": 98,
+      "milliseconds": 157,
+      "source": "live control.stall replay#jev-stall-4-3"
     },
     "1536ae0dedd90fc5163ca7d0237faee4a8e08c8674f90faacde5fb17fa6f631c": {
       "name": "jev_stall",
@@ -1181,6 +1476,71 @@
       "output_tokens": 106,
       "milliseconds": 207,
       "source": "live control.stall replay#jev-stall-1-24"
+    },
+    "15f85f66e2261da222f9687f4c847efa2e5428e64d77687a4095bc1b25cefaaa": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.3
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.67
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "next": {
+          "type": "choice",
+          "choice": "edit",
+          "confidence": 0.61,
+          "probabilities": {
+            "edit": 0.74,
+            "read_region": 0.08,
+            "continue": 0.18
+          }
+        }
+      },
+      "input_tokens": 3702,
+      "output_tokens": 89,
+      "milliseconds": 160,
+      "source": "live control.stall replay#jev-stall-4-16"
+    },
+    "180be799286902cd6709d48e0c2480dd20dbf5a8bfed5540d056ca92cf5debcc": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.37
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.94
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.61
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.61,
+          "probabilities": {
+            "read_region": 0.01,
+            "continue": 0.71,
+            "run_tests": 0.27,
+            "edit": 0.01
+          }
+        }
+      },
+      "input_tokens": 3286,
+      "output_tokens": 97,
+      "milliseconds": 146,
+      "source": "live control.stall replay#jev-stall-1-16"
     },
     "18302d50afba9c8b52489d51a8f613b56614ed66f9003006d18351f4d929774d": {
       "name": "jev_stall",
@@ -1448,6 +1808,39 @@
       "milliseconds": 179,
       "source": "live control.stall replay#jev-stall-2-18"
     },
+    "1f2cfb7a1a2f5062a46be6d5eb32c22f5c04d29395492b917908bf475a691737": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.26
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.93
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.57
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.68,
+          "probabilities": {
+            "read_region": 0.04,
+            "continue": 0.76,
+            "run_tests": 0.17,
+            "edit": 0.03
+          }
+        }
+      },
+      "input_tokens": 2428,
+      "output_tokens": 97,
+      "milliseconds": 154,
+      "source": "live control.stall replay#jev-stall-1-12"
+    },
     "200ec34bb792fdb2cf23e1cb45a022bdb864fcd9b31c3c4f9179bdd6314c8343": {
       "name": "jev_stall",
       "model": "jev-1.13.0",
@@ -1480,6 +1873,70 @@
       "output_tokens": 97,
       "milliseconds": 135,
       "source": "live control.stall replay#jev-stall-1-17"
+    },
+    "204ac41d8f12de206223e28b69e36c863599731b9aba44a22aa3f5ac3522e33f": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.13
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.66
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.85,
+          "probabilities": {
+            "continue": 0.9,
+            "edit": 0.05,
+            "read_region": 0.05
+          }
+        }
+      },
+      "input_tokens": 4220,
+      "output_tokens": 89,
+      "milliseconds": 207,
+      "source": "live control.stall replay#jev-stall-3-8"
+    },
+    "2112cfb1dec9850d8b70a26d3429b7fb114f91ac91b11c6e3b5fa5149c875aa6": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.33
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.68
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.9,
+          "probabilities": {
+            "edit": 0.01,
+            "continue": 0.93,
+            "read_region": 0.06
+          }
+        }
+      },
+      "input_tokens": 4739,
+      "output_tokens": 89,
+      "milliseconds": 184,
+      "source": "live control.stall replay#jev-stall-2-16"
     },
     "21142060aa798f5834762212fec91484f9ebf9e96d0379713a18c600215d3bfe": {
       "name": "jev_stall",
@@ -1546,6 +2003,72 @@
       "output_tokens": 90,
       "milliseconds": 159,
       "source": "live control.stall replay#jev-stall-5-4"
+    },
+    "222c6c25cb70304a339ef8e8c2e8f60781630234333218c25570beabed36471d": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.22
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.95
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.76
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.8,
+          "probabilities": {
+            "continue": 0.85,
+            "edit": 0.01,
+            "run_tests": 0.14,
+            "read_region": 0.0
+          }
+        }
+      },
+      "input_tokens": 2758,
+      "output_tokens": 97,
+      "milliseconds": 162,
+      "source": "live control.stall replay#jev-stall-1-14"
+    },
+    "238805364e00de873df5dc1a0862512acf1d8e7c47771c6cf8b8325e0903fddb": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.33
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.95
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.73
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.74,
+          "probabilities": {
+            "read_region": 0.0,
+            "edit": 0.01,
+            "continue": 0.8,
+            "run_tests": 0.19
+          }
+        }
+      },
+      "input_tokens": 3302,
+      "output_tokens": 97,
+      "milliseconds": 155,
+      "source": "live control.stall replay#jev-stall-1-16"
     },
     "240e7127bbc83e4c912ce6df683b69251a33ad28c4f2293014946c31523ad3ae": {
       "name": "jev_stall",
@@ -1677,6 +2200,38 @@
       "output_tokens": 106,
       "milliseconds": 190,
       "source": "live control.stall replay#jev-stall-2-16"
+    },
+    "25cf1623058b7e696665b98215345f86b5c2e297a5809630e5de6b0cfa622b79": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.08
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.24
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.63
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.92,
+          "probabilities": {
+            "edit": 0.02,
+            "continue": 0.94,
+            "read_region": 0.04
+          }
+        }
+      },
+      "input_tokens": 1639,
+      "output_tokens": 89,
+      "milliseconds": 132,
+      "source": "live control.stall replay#jev-stall-3-4"
     },
     "261bbf620d03eed9e5d0e11b16f97c0589e0427e05dc06bd165736fed07201d0": {
       "name": "jev_stall",
@@ -1973,6 +2528,39 @@
       "milliseconds": 182,
       "source": "live control.stall replay#jev-stall-1-8"
     },
+    "2bcaf180b8b8ad8877a54f74e6210d3ce8b2a330752abd56b617f67a03e9dbde": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.43
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.33
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "next": {
+          "type": "choice",
+          "choice": "run_tests",
+          "confidence": 0.54,
+          "probabilities": {
+            "read_region": 0.27,
+            "edit": 0.05,
+            "continue": 0.02,
+            "run_tests": 0.66
+          }
+        }
+      },
+      "input_tokens": 2301,
+      "output_tokens": 98,
+      "milliseconds": 195,
+      "source": "live control.stall replay#jev-stall-1-8"
+    },
     "2bdee2e62178b6ad560c4bb0b832df0f02671b964c28f37cee43e01c719c844f": {
       "name": "jev_stall",
       "model": "jev-1.13.0",
@@ -2038,6 +2626,101 @@
       "milliseconds": 158,
       "source": "live control.stall replay#jev-stall-4-19"
     },
+    "2c61e3e4e66a5caf5d5e93a3c87e781dd88d64b51f167be3aa5bf6c9aab83729": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.83
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.27
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.7,
+          "probabilities": {
+            "continue": 0.8,
+            "run_tests": 0.16,
+            "run_example": 0.04
+          }
+        }
+      },
+      "input_tokens": 2997,
+      "output_tokens": 90,
+      "milliseconds": 183,
+      "source": "live control.stall replay#jev-stall-2-8"
+    },
+    "2d09fc833bc1e91d7c140b8c531f78ddebf3b39af8a81b215fa8631b7639ddb1": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.08
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.55
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.76,
+          "probabilities": {
+            "read_region": 0.02,
+            "continue": 0.84,
+            "edit": 0.14
+          }
+        }
+      },
+      "input_tokens": 3444,
+      "output_tokens": 89,
+      "milliseconds": 148,
+      "source": "live control.stall replay#jev-stall-4-8"
+    },
+    "2dce257cb09423f11a8d9f95ccd8c2ccef0030b1c4b44a68b1ba503b8e5f1c7c": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.12
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.53
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.77,
+          "probabilities": {
+            "run_tests": 0.12,
+            "continue": 0.88
+          }
+        }
+      },
+      "input_tokens": 5325,
+      "output_tokens": 82,
+      "milliseconds": 198,
+      "source": "live control.stall replay#jev-stall-1-8"
+    },
     "2e37bc769ed2f3b58d4531ec22df35e1337a594d7fe039b5049a883b58836046": {
       "name": "jev_stall",
       "model": "jev-1.13.0",
@@ -2070,6 +2753,39 @@
       "output_tokens": 98,
       "milliseconds": 148,
       "source": "live control.stall replay#jev-stall-1-16"
+    },
+    "2f435ef742f1017703320d3c08f2a3fd9ce3c8fcd7a26e30fc33ca0f250b60d9": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.32
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.94
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.64
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.72,
+          "probabilities": {
+            "read_region": 0.02,
+            "edit": 0.01,
+            "run_tests": 0.19,
+            "continue": 0.78
+          }
+        }
+      },
+      "input_tokens": 2451,
+      "output_tokens": 97,
+      "milliseconds": 207,
+      "source": "live control.stall replay#jev-stall-1-12"
     },
     "31826a96c75fdedf978cc8e33556e8c9bcb879d58c65c90ce62f89679811d102": {
       "name": "jev_stall",
@@ -2268,6 +2984,38 @@
       "output_tokens": 98,
       "milliseconds": 155,
       "source": "live control.stall replay#jev-stall-1-8"
+    },
+    "33db605d4b228669ff840725ef858d5135f118783405fcae1bee7d3ed55421d3": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.1
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.48
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.81,
+          "probabilities": {
+            "read_region": 0.12,
+            "continue": 0.88,
+            "edit": 0.0
+          }
+        }
+      },
+      "input_tokens": 3801,
+      "output_tokens": 89,
+      "milliseconds": 197,
+      "source": "live control.stall replay#jev-stall-4-8"
     },
     "375890e2094bce3160402a9170aee8c51755f1fbff95d7e6061d1b2f861e4379": {
       "name": "jev_stall",
@@ -2497,6 +3245,39 @@
       "milliseconds": 178,
       "source": "live control.stall replay#jev-stall-1-8"
     },
+    "3a8883aa96807e0f356acfecfd8db9b9eba274619462d2e411645d09e59cb5fc": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.42
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.94
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.73
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.71,
+          "probabilities": {
+            "run_tests": 0.19,
+            "continue": 0.78,
+            "read_region": 0.0,
+            "edit": 0.03
+          }
+        }
+      },
+      "input_tokens": 3005,
+      "output_tokens": 97,
+      "milliseconds": 144,
+      "source": "live control.stall replay#jev-stall-1-24"
+    },
     "3ad352554aa85f4c9681b5abaf09c6493760e070192d2c66f7672de7c3438860": {
       "name": "jev_stall",
       "model": "jev-1.13.0",
@@ -2530,6 +3311,39 @@
       "output_tokens": 105,
       "milliseconds": 172,
       "source": "live control.stall replay#jev-stall-2-24"
+    },
+    "3e5f56a59f523b597578aa1e3934b9c135b8a84586ba3cb3e45e5cd4ad717f85": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.51
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.95
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.82
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.7,
+          "probabilities": {
+            "run_tests": 0.21,
+            "continue": 0.78,
+            "edit": 0.01,
+            "read_region": 0.0
+          }
+        }
+      },
+      "input_tokens": 3400,
+      "output_tokens": 97,
+      "milliseconds": 150,
+      "source": "live control.stall replay#jev-stall-1-18"
     },
     "3e686a0e8d81c63377b21e928a638a3b2261ea5dd14966ff40077e1a7b9bf889": {
       "name": "jev_stall",
@@ -2630,6 +3444,38 @@
       "milliseconds": 184,
       "source": "live control.stall replay#jev-stall-1-48"
     },
+    "3f6efe9d237f6590d75032bcbe545f2fbfada1c2e836756973e2cba12528e5f6": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.27
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.26
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.66,
+          "probabilities": {
+            "read_region": 0.17,
+            "edit": 0.06,
+            "continue": 0.77
+          }
+        }
+      },
+      "input_tokens": 2920,
+      "output_tokens": 89,
+      "milliseconds": 181,
+      "source": "live control.stall replay#jev-stall-4-8"
+    },
     "3f7ae5dc51967558f36f6f59548d885ba0414ae523910a76a62aa51ccb0aa335": {
       "name": "jev_stall",
       "model": "jev-1.13.0",
@@ -2726,6 +3572,28 @@
       "output_tokens": 98,
       "milliseconds": 182,
       "source": "live control.stall replay#jev-stall-4-8"
+    },
+    "3fe38de841c11dd427fb4b869dc903110e402ebf54ce8d6dceb066e1500bfe23": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.15
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.29
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.02
+        }
+      },
+      "input_tokens": 4564,
+      "output_tokens": 54,
+      "milliseconds": 237,
+      "source": "live control.stall replay#jev-stall-1-26"
     },
     "3ff6eac183e174b3ec6b0e7206cf3ff19e7fa5d31b9d622e98e852444c8d2721": {
       "name": "jev_stall",
@@ -2857,6 +3725,37 @@
       "milliseconds": 177,
       "source": "live control.stall replay#jev-stall-3-8"
     },
+    "42710bf6251a4b79dd0eb0a0fe2cf6794824e854d82db17e545d101521392ce4": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.36,
+          "probabilities": {
+            "run_example": 0.32,
+            "continue": 0.68
+          }
+        }
+      },
+      "input_tokens": 1208,
+      "output_tokens": 82,
+      "milliseconds": 175,
+      "source": "live control.stall replay#jev-stall-1-2"
+    },
     "42e5120193e55e8471a971a5dd9386190b5832dc2fbcb525556b625637a8c28e": {
       "name": "jev_stall",
       "model": "jev-1.13.0",
@@ -2922,6 +3821,39 @@
       "output_tokens": 97,
       "milliseconds": 151,
       "source": "live control.stall replay#jev-stall-1-25"
+    },
+    "43c9dd3cc43a325612514dadbae776e566affcce133cc8976a735496a9e6a2ba": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.33
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.41
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "next": {
+          "type": "choice",
+          "choice": "run_tests",
+          "confidence": 0.55,
+          "probabilities": {
+            "run_tests": 0.67,
+            "continue": 0.19,
+            "edit": 0.11,
+            "read_region": 0.03
+          }
+        }
+      },
+      "input_tokens": 4354,
+      "output_tokens": 98,
+      "milliseconds": 159,
+      "source": "live control.stall replay#jev-stall-1-33"
     },
     "43ea6c219e20fa81849944b2cebdaa47aa7d4097c58d73d66e6e54150e525911": {
       "name": "jev_stall",
@@ -3020,6 +3952,40 @@
       "milliseconds": 173,
       "source": "live control.stall replay#jev-stall-1-25"
     },
+    "461df1c2387b4249cd6327c34b550a25265096a477853224e9040ec45e4f1cd2": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.37
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.52
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.09
+        },
+        "next": {
+          "type": "choice",
+          "choice": "read_region",
+          "confidence": 0.43,
+          "probabilities": {
+            "run_example": 0.31,
+            "read_region": 0.55,
+            "edit": 0.11,
+            "run_tests": 0.02,
+            "continue": 0.01
+          }
+        }
+      },
+      "input_tokens": 2934,
+      "output_tokens": 106,
+      "milliseconds": 147,
+      "source": "live control.stall replay#jev-stall-2-16"
+    },
     "46789c04c9260c568bde53f97f7922c4fe9c7016a348d14f4c4ef7679b75c249": {
       "name": "jev_stall",
       "model": "jev-1.13.0",
@@ -3054,6 +4020,39 @@
       "milliseconds": 142,
       "source": "live control.stall replay#jev-stall-1-32"
     },
+    "467feaffaafabb4c174195d73d3d2594bd624836959a131f5c2693c6a058a8ed": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.1
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.64
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.75,
+          "probabilities": {
+            "read_region": 0.02,
+            "continue": 0.81,
+            "edit": 0.0,
+            "run_tests": 0.17
+          }
+        }
+      },
+      "input_tokens": 5260,
+      "output_tokens": 97,
+      "milliseconds": 169,
+      "source": "live control.stall replay#jev-stall-7-16"
+    },
     "46b3874d433c4befceac37536f0ea4ed2fe89cad38d73d0a03ed3a5c732d6bdc": {
       "name": "jev_stall",
       "model": "jev-1.13.0",
@@ -3086,6 +4085,38 @@
       "output_tokens": 98,
       "milliseconds": 169,
       "source": "live control.stall replay#jev-stall-2-32"
+    },
+    "474e7e8869d5948248716f32bef105582b1f8a3634a77c49c5092baa56571223": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.2
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.39
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.6,
+          "probabilities": {
+            "read_region": 0.11,
+            "continue": 0.73,
+            "edit": 0.16
+          }
+        }
+      },
+      "input_tokens": 2870,
+      "output_tokens": 89,
+      "milliseconds": 149,
+      "source": "live control.stall replay#jev-stall-5-8"
     },
     "4785ae2573c0ab0dc39853d7bff2785e5242501727286eb1f851d4c7d3998184": {
       "name": "jev_stall",
@@ -3472,6 +4503,28 @@
       "milliseconds": 174,
       "source": "live control.stall replay#jev-stall-1-48"
     },
+    "4dbd00f1843837d77bfecbc35402b060e28ad56363a45b11f21493ce38d4dc98": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.12
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.64
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.03
+        }
+      },
+      "input_tokens": 4457,
+      "output_tokens": 54,
+      "milliseconds": 284,
+      "source": "live control.stall replay#jev-stall-1-16"
+    },
     "4dfda74973ef4221683129039e41ded580e822dec1b16412af782c33b7a40b8e": {
       "name": "jev_stall",
       "model": "jev-1.13.0",
@@ -3536,6 +4589,39 @@
       "output_tokens": 97,
       "milliseconds": 163,
       "source": "live control.stall replay#jev-stall-2-8"
+    },
+    "4e570927010bd82798ff13dcbe6fd6020ffac4666d04a899dd86ec4e9d278f1f": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.15
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.21
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.27
+        },
+        "next": {
+          "type": "choice",
+          "choice": "run_tests",
+          "confidence": 0.19,
+          "probabilities": {
+            "run_tests": 0.4,
+            "continue": 0.31,
+            "read_region": 0.01,
+            "edit": 0.28
+          }
+        }
+      },
+      "input_tokens": 2427,
+      "output_tokens": 98,
+      "milliseconds": 224,
+      "source": "live control.stall replay#jev-stall-5-5"
     },
     "4e645feebaa99725708e49ea34f587fe84e2080f8f34939ea670cf445d16cda1": {
       "name": "jev_stall",
@@ -3603,6 +4689,38 @@
       "milliseconds": 194,
       "source": "live control.stall replay#jev-stall-1-40"
     },
+    "4ef629f8061a15b94db50ed5d4990797a1d898f17b79c4a217c48996843d1f79": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.2
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.43
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.01
+        },
+        "next": {
+          "type": "choice",
+          "choice": "edit",
+          "confidence": 0.3,
+          "probabilities": {
+            "read_region": 0.07,
+            "continue": 0.39,
+            "edit": 0.54
+          }
+        }
+      },
+      "input_tokens": 3040,
+      "output_tokens": 89,
+      "milliseconds": 166,
+      "source": "live control.stall replay#jev-stall-1-8"
+    },
     "502db45d7e606865ab83850026e5eda6d31f367e08be9d031667a7ed51cb410e": {
       "name": "jev_stall",
       "model": "jev-1.13.0",
@@ -3669,6 +4787,39 @@
       "output_tokens": 105,
       "milliseconds": 206,
       "source": "live control.stall replay#jev-stall-2-8"
+    },
+    "5163a18a165f193b778485795540da54d57ca36260595ebeb983359277c0eab3": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.09
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.72
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.31
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.46,
+          "probabilities": {
+            "read_region": 0.01,
+            "continue": 0.59,
+            "run_tests": 0.15,
+            "edit": 0.25
+          }
+        }
+      },
+      "input_tokens": 4431,
+      "output_tokens": 97,
+      "milliseconds": 156,
+      "source": "live control.stall replay#jev-stall-4-11"
     },
     "51767aeb7cdbc64a24189ce7b36de97ea62f283bc59e51bbc3fc23b4f3d386fb": {
       "name": "jev_stall",
@@ -3833,6 +4984,39 @@
       "milliseconds": 154,
       "source": "live control.stall replay#jev-stall-1-32"
     },
+    "535db3f3e81c6231d6d0a82073b09447aad33581bac0b45a7c9e9dba0b30401e": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.76
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.95
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.84
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.9,
+          "probabilities": {
+            "continue": 0.93,
+            "edit": 0.0,
+            "run_tests": 0.07,
+            "read_region": 0.0
+          }
+        }
+      },
+      "input_tokens": 2625,
+      "output_tokens": 97,
+      "milliseconds": 189,
+      "source": "live control.stall replay#jev-stall-1-27"
+    },
     "547db7e1a175f0a28c2f8c0c9a17f8c467012a3bdabf592d010b71456a728e3e": {
       "name": "jev_stall",
       "model": "jev-1.13.0",
@@ -3865,6 +5049,38 @@
       "output_tokens": 97,
       "milliseconds": 153,
       "source": "live control.stall replay#jev-stall-2-8"
+    },
+    "54d5181c1772e88cf57e25782992c6346421016c65283b06c9fe416b9c3139dc": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.64
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.92,
+          "probabilities": {
+            "read_region": 0.05,
+            "continue": 0.95,
+            "edit": 0.0
+          }
+        }
+      },
+      "input_tokens": 4341,
+      "output_tokens": 89,
+      "milliseconds": 162,
+      "source": "live control.stall replay#jev-stall-5-8"
     },
     "54e73c37661efea172ab36e972dc6930ac7a8e451fed8845bc3e8759b0fe3d15": {
       "name": "jev_stall",
@@ -3963,6 +5179,39 @@
       "output_tokens": 89,
       "milliseconds": 141,
       "source": "live control.stall replay#jev-stall-12-17"
+    },
+    "55770c697cd7b9150c848d0662ae096d41726be200cc43a768fbe3776e02602d": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.31
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.79
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.08
+        },
+        "next": {
+          "type": "choice",
+          "choice": "edit",
+          "confidence": 0.39,
+          "probabilities": {
+            "run_tests": 0.35,
+            "edit": 0.54,
+            "continue": 0.1,
+            "read_region": 0.01
+          }
+        }
+      },
+      "input_tokens": 3880,
+      "output_tokens": 97,
+      "milliseconds": 230,
+      "source": "live control.stall replay#jev-stall-2-17"
     },
     "573e9a24e972ec2f3ccad326fb5762306d0244c4a83c3ca5b4dd0daee7f24521": {
       "name": "jev_stall",
@@ -4093,6 +5342,38 @@
       "output_tokens": 89,
       "milliseconds": 174,
       "source": "live control.stall replay#jev-stall-13-11"
+    },
+    "58fb7ab1d01209259fc1976b7ccc750ce10478e48a7f8e189457ae32761bdacc": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.29
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.64
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.69,
+          "probabilities": {
+            "read_region": 0.03,
+            "edit": 0.17,
+            "continue": 0.8
+          }
+        }
+      },
+      "input_tokens": 3709,
+      "output_tokens": 89,
+      "milliseconds": 201,
+      "source": "live control.stall replay#jev-stall-1-16"
     },
     "5916fa5edd4cc1604f38296157672f8707ef06158b79a6f20fab11940fefe80b": {
       "name": "jev_stall",
@@ -4391,6 +5672,37 @@
       "milliseconds": 136,
       "source": "live control.stall replay#jev-stall-5-19"
     },
+    "5e8905646ea4b7462b06bc23ac7dad4e3406bd685648ba3fd7090951d443341f": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.1
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.18
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.56,
+          "probabilities": {
+            "continue": 0.78,
+            "run_example": 0.22
+          }
+        }
+      },
+      "input_tokens": 1222,
+      "output_tokens": 82,
+      "milliseconds": 168,
+      "source": "live control.stall replay#jev-stall-2-2"
+    },
     "5fac5fadf718b03840e661f96e62b22cb83620e815cf7d925cc9616fbbe484bd": {
       "name": "jev_stall",
       "model": "jev-1.13.0",
@@ -4488,6 +5800,38 @@
       "milliseconds": 242,
       "source": "live control.stall replay#jev-stall-1-16"
     },
+    "604c689f8dc9597ef1be2c20aa19cc1821b14fbae3b9f766ea8d7d2bbb6f1c93": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.37
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.36
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.72,
+          "probabilities": {
+            "read_region": 0.14,
+            "edit": 0.05,
+            "continue": 0.81
+          }
+        }
+      },
+      "input_tokens": 3130,
+      "output_tokens": 89,
+      "milliseconds": 207,
+      "source": "live control.stall replay#jev-stall-3-8"
+    },
     "60f2ffab60c4498d457f4f91e7843440ad7a241459348e175ca0abc4bae709c3": {
       "name": "jev_stall",
       "model": "jev-1.13.0",
@@ -4520,6 +5864,39 @@
       "output_tokens": 97,
       "milliseconds": 137,
       "source": "live control.stall replay#jev-stall-3-48"
+    },
+    "6183a04c2aeedb478514a72a7bf63be3ce703f98715b7a466e046ba4a1f804a0": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.29
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.4
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "next": {
+          "type": "choice",
+          "choice": "run_tests",
+          "confidence": 0.53,
+          "probabilities": {
+            "edit": 0.12,
+            "read_region": 0.05,
+            "continue": 0.18,
+            "run_tests": 0.65
+          }
+        }
+      },
+      "input_tokens": 4347,
+      "output_tokens": 98,
+      "milliseconds": 158,
+      "source": "live control.stall replay#jev-stall-1-32"
     },
     "63a03958127ef49b693f756934aa15b8d7e72d67eec3d4a93d176a2f6bcf58f0": {
       "name": "jev_stall",
@@ -4686,6 +6063,38 @@
       "milliseconds": 148,
       "source": "live control.stall replay#jev-stall-1-8"
     },
+    "67695a0fec6212a504b35e7cd1d418bf270e743cdbcc293831b2322c78573bb8": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.26
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.48
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.83,
+          "probabilities": {
+            "read_region": 0.02,
+            "continue": 0.89,
+            "edit": 0.09
+          }
+        }
+      },
+      "input_tokens": 5362,
+      "output_tokens": 89,
+      "milliseconds": 162,
+      "source": "live control.stall replay#jev-stall-3-24"
+    },
     "6791829229f8c59806529517bf75237f46ef9e334dd8b8deeb2f3aea5fa952a4": {
       "name": "jev_stall",
       "model": "jev-1.13.0",
@@ -4752,6 +6161,38 @@
       "output_tokens": 106,
       "milliseconds": 179,
       "source": "live control.stall replay#jev-stall-3-25"
+    },
+    "6b65fb479c3ad88f9362542e94caebab7c76d89e161157ea6e55c597fdbae4bc": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.56
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.37
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.32,
+          "probabilities": {
+            "edit": 0.27,
+            "read_region": 0.18,
+            "continue": 0.55
+          }
+        }
+      },
+      "input_tokens": 3804,
+      "output_tokens": 89,
+      "milliseconds": 151,
+      "source": "live control.stall replay#jev-stall-1-10"
     },
     "6b933f635f07e1005e5f0fd5a22edd9491a2f02fc3f518b7e12b399ee621deec": {
       "name": "jev_stall",
@@ -5048,6 +6489,39 @@
       "milliseconds": 140,
       "source": "live control.stall replay#jev-stall-2-16"
     },
+    "705ce9be931984da764c55836fa216cc96eeb4491b7ddc4a412a22bccfa57e8e": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.45
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.95
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.7
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.69,
+          "probabilities": {
+            "read_region": 0.03,
+            "edit": 0.01,
+            "run_tests": 0.2,
+            "continue": 0.76
+          }
+        }
+      },
+      "input_tokens": 2985,
+      "output_tokens": 97,
+      "milliseconds": 142,
+      "source": "live control.stall replay#jev-stall-1-16"
+    },
     "707a8411d59d3454f15c99b1f4280850631f00f523f57ae15b3288ea8c29767e": {
       "name": "jev_stall",
       "model": "jev-1.13.0",
@@ -5112,6 +6586,39 @@
       "milliseconds": 225,
       "source": "live control.stall replay#jev-stall-1-8"
     },
+    "720a5e06d3939a731621908e7bc55c0efa8107f7de9f34a186a289d28e0902da": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.15
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.59
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.93,
+          "probabilities": {
+            "continue": 0.96,
+            "edit": 0.02,
+            "run_tests": 0.02,
+            "read_region": 0.0
+          }
+        }
+      },
+      "input_tokens": 4740,
+      "output_tokens": 97,
+      "milliseconds": 235,
+      "source": "live control.stall replay#jev-stall-2-16"
+    },
     "7245d5ff6f6efae64a88e86bb4e57f51430d3ca59d8cb3c20675f32c0bb9d671": {
       "name": "jev_stall",
       "model": "jev-1.13.0",
@@ -5143,6 +6650,39 @@
       "output_tokens": 90,
       "milliseconds": 139,
       "source": "live control.stall replay#jev-stall-11-16"
+    },
+    "729ba03b37022e3b332421333dd30be372789394c158ba1c864f98e70fea999d": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.12
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.38
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "next": {
+          "type": "choice",
+          "choice": "run_tests",
+          "confidence": 0.7,
+          "probabilities": {
+            "run_tests": 0.78,
+            "read_region": 0.01,
+            "continue": 0.1,
+            "edit": 0.11
+          }
+        }
+      },
+      "input_tokens": 3385,
+      "output_tokens": 98,
+      "milliseconds": 163,
+      "source": "live control.stall replay#jev-stall-3-8"
     },
     "72e880187dfce25dd3465e8c5c767d4b41bcde2eb6a5d8e5694104f566d13638": {
       "name": "jev_stall",
@@ -5176,6 +6716,38 @@
       "output_tokens": 98,
       "milliseconds": 150,
       "source": "live control.stall replay#jev-stall-3-24"
+    },
+    "73c40ee69c79daf923a4e812b0d320062bccc3f4e2a94c7839f98f4d68fb91fb": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.23
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.23
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.56,
+          "probabilities": {
+            "read_region": 0.22,
+            "continue": 0.7,
+            "edit": 0.08
+          }
+        }
+      },
+      "input_tokens": 4886,
+      "output_tokens": 89,
+      "milliseconds": 177,
+      "source": "live control.stall replay#jev-stall-5-25"
     },
     "73e0bd69baa907b090ee0c9692c1ea56afd57e6fdfa97f4756d0f30170933f31": {
       "name": "jev_stall",
@@ -5376,6 +6948,38 @@
       "milliseconds": 173,
       "source": "live control.stall replay#jev-stall-1-16"
     },
+    "77d84d963b03c1875a7dab35b37029b512bb81cc7f0076d9a39ebb552a785c0f": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.2
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.63
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "next": {
+          "type": "choice",
+          "choice": "edit",
+          "confidence": 0.21,
+          "probabilities": {
+            "continue": 0.4,
+            "read_region": 0.13,
+            "edit": 0.47
+          }
+        }
+      },
+      "input_tokens": 2833,
+      "output_tokens": 89,
+      "milliseconds": 238,
+      "source": "live control.stall replay#jev-stall-2-8"
+    },
     "78e3f94b8992595c6d3700c25603e3deddaa493de72d470ccd8e84af257a2ff7": {
       "name": "jev_stall",
       "model": "jev-1.13.0",
@@ -5477,6 +7081,73 @@
       "milliseconds": 237,
       "source": "live control.stall replay#jev-stall-4-32"
     },
+    "7d0f25efaa38b7cdab4a181997e6791861c01afc8c9cf552396c9de212c858a6": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.41
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.24
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "next": {
+          "type": "choice",
+          "choice": "run_tests",
+          "confidence": 0.84,
+          "probabilities": {
+            "edit": 0.01,
+            "read_region": 0.1,
+            "run_tests": 0.88,
+            "continue": 0.01
+          }
+        }
+      },
+      "input_tokens": 2579,
+      "output_tokens": 98,
+      "milliseconds": 181,
+      "source": "live control.stall replay#jev-stall-1-8"
+    },
+    "7d44c9e976e26a500af12132584f7fc02f48efcb74be1f32dc4f4b08687b4750": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.6
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.74
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.08
+        },
+        "next": {
+          "type": "choice",
+          "choice": "edit",
+          "confidence": 0.78,
+          "probabilities": {
+            "edit": 0.8099999999999999,
+            "run_tests": 0.06,
+            "read_region": 0.02,
+            "run_example": 0.03,
+            "continue": 0.08
+          }
+        }
+      },
+      "input_tokens": 2089,
+      "output_tokens": 105,
+      "milliseconds": 155,
+      "source": "live control.stall replay#jev-stall-2-24"
+    },
     "7d611711b43e0ad4f608d0a8198fb592d9cb526004dd3f1a08a50d69bdafc866": {
       "name": "jev_stall",
       "model": "jev-1.13.0",
@@ -5511,6 +7182,70 @@
       "milliseconds": 216,
       "source": "live control.stall replay#jev-stall-1-41"
     },
+    "7d6f657165a699628cc02992fc15de7ba730b248d2146b03adb4918ecbeec81c": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.72
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.11
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.06
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.51,
+          "probabilities": {
+            "run_example": 0.06,
+            "run_tests": 0.27,
+            "continue": 0.67
+          }
+        }
+      },
+      "input_tokens": 2933,
+      "output_tokens": 90,
+      "milliseconds": 159,
+      "source": "live control.stall replay#jev-stall-1-24"
+    },
+    "7df8076b08b8c4f7f6366b1b0f31bcae13deab9c12ba0f9aeda97301366a5040": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.19
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.57
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.81,
+          "probabilities": {
+            "read_region": 0.03,
+            "edit": 0.1,
+            "continue": 0.87
+          }
+        }
+      },
+      "input_tokens": 3548,
+      "output_tokens": 89,
+      "milliseconds": 186,
+      "source": "live control.stall replay#jev-stall-3-8"
+    },
     "7e1251027129e47de2ae311c8f6cfe90bd977cd4a63e1c15a4e7d5559cad6480": {
       "name": "jev_stall",
       "model": "jev-1.13.0",
@@ -5543,6 +7278,28 @@
       "output_tokens": 98,
       "milliseconds": 144,
       "source": "live control.stall replay#jev-stall-3-8"
+    },
+    "7f4197f70e6d8a781b2c549eb8ce715eddc526493daa403f0484dcd85a01c3cb": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.1
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.7
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.02
+        }
+      },
+      "input_tokens": 3575,
+      "output_tokens": 54,
+      "milliseconds": 220,
+      "source": "live control.stall replay#jev-stall-1-8"
     },
     "802441d4c4d5a3ffff82218fd1faa2aa21e15e4fa828d83366a3c3d74a868dc4": {
       "name": "jev_stall",
@@ -5676,6 +7433,28 @@
       "milliseconds": 201,
       "source": "live control.stall replay#jev-stall-1-24"
     },
+    "83a161b9f99754917853fefd612eb7bbef65c2f6a337e1b0b845ee2787813b95": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.11
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.46
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.03
+        }
+      },
+      "input_tokens": 4936,
+      "output_tokens": 54,
+      "milliseconds": 200,
+      "source": "live control.stall replay#jev-stall-1-24"
+    },
     "849087df78f94997956e520cbb021e28d7d565436df96e4d60cc15063042b9a9": {
       "name": "jev_stall",
       "model": "jev-1.13.0",
@@ -5708,6 +7487,72 @@
       "output_tokens": 97,
       "milliseconds": 174,
       "source": "live control.stall replay#jev-stall-1-20"
+    },
+    "84d8a7a88dab6e2620645e5e79afd906c5147b298e1911c75ab7076b9b6ea1a3": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.22
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.86
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.55
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.88,
+          "probabilities": {
+            "run_tests": 0.07,
+            "continue": 0.92,
+            "edit": 0.01,
+            "read_region": 0.0
+          }
+        }
+      },
+      "input_tokens": 3385,
+      "output_tokens": 97,
+      "milliseconds": 195,
+      "source": "live control.stall replay#jev-stall-1-15"
+    },
+    "8526aff24528460036271b431395903cc00db043550d2d6a331f44c2105a83b4": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.18
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.57
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.74,
+          "probabilities": {
+            "continue": 0.81,
+            "read_region": 0.03,
+            "run_tests": 0.13,
+            "edit": 0.03
+          }
+        }
+      },
+      "input_tokens": 4206,
+      "output_tokens": 97,
+      "milliseconds": 144,
+      "source": "live control.stall replay#jev-stall-2-8"
     },
     "8652e06b2593a13841c56b9b3954fae05de96336b99e78891287cf01479fbc39": {
       "name": "jev_stall",
@@ -5942,6 +7787,39 @@
       "milliseconds": 136,
       "source": "live control.stall replay#jev-stall-1-24"
     },
+    "89397e88d38bb91583c3f01c2690f42f908ac918fbeec6ae2b9fa4dac9c4e9f7": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.24
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.93
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.4
+        },
+        "next": {
+          "type": "choice",
+          "choice": "run_tests",
+          "confidence": 0.25,
+          "probabilities": {
+            "edit": 0.1,
+            "run_tests": 0.44,
+            "read_region": 0.11,
+            "continue": 0.35
+          }
+        }
+      },
+      "input_tokens": 2642,
+      "output_tokens": 98,
+      "milliseconds": 224,
+      "source": "live control.stall replay#jev-stall-1-8"
+    },
     "898c45b15d1e7e5b31bfa7c2e8dca54edb6d723648ba68d02ac23c0010b107f0": {
       "name": "jev_stall",
       "model": "jev-1.13.0",
@@ -5974,6 +7852,39 @@
       "output_tokens": 98,
       "milliseconds": 163,
       "source": "live control.stall replay#jev-stall-3-16"
+    },
+    "8991a12ab60faf318b6edcdfd49d340a5d10541f028f9dc1b9b3646bdf3da6de": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.27
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.8
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.19
+        },
+        "next": {
+          "type": "choice",
+          "choice": "run_tests",
+          "confidence": 0.65,
+          "probabilities": {
+            "edit": 0.04,
+            "read_region": 0.09,
+            "continue": 0.13,
+            "run_tests": 0.74
+          }
+        }
+      },
+      "input_tokens": 2902,
+      "output_tokens": 98,
+      "milliseconds": 152,
+      "source": "live control.stall replay#jev-stall-2-8"
     },
     "8a3461cd559125bd4845a2b6094c352d2941d0c5f8682cf6ada87ac7d1f09597": {
       "name": "jev_stall",
@@ -6170,6 +8081,28 @@
       "milliseconds": 173,
       "source": "live control.stall replay#jev-stall-1-8"
     },
+    "8d5cd70f5120aee4551e3dab3ea982769be4a30709b4faa5e484b649bde0f8ba": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.06
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.35
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.02
+        }
+      },
+      "input_tokens": 1522,
+      "output_tokens": 54,
+      "milliseconds": 144,
+      "source": "live control.stall replay#jev-stall-1-4"
+    },
     "8d7ac272ab3d2471964ae3d3d5f29c0eec2dc8f9665a8f71626c3653168f5aea": {
       "name": "jev_stall",
       "model": "jev-1.13.0",
@@ -6364,6 +8297,38 @@
       "output_tokens": 89,
       "milliseconds": 162,
       "source": "live control.stall replay#jev-stall-1-11"
+    },
+    "9100e849cbe00667679386dad076410825f60cce8ea158eed89cf8a967fa696c": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.06
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.29
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.63
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.93,
+          "probabilities": {
+            "edit": 0.02,
+            "continue": 0.95,
+            "read_region": 0.03
+          }
+        }
+      },
+      "input_tokens": 1439,
+      "output_tokens": 89,
+      "milliseconds": 149,
+      "source": "live control.stall replay#jev-stall-4-3"
     },
     "9103f5f78755d91a97639880ccdf3936f0e2d1c6238f1f96b146f472ebd22f5a": {
       "name": "jev_stall",
@@ -6561,6 +8526,39 @@
       "milliseconds": 178,
       "source": "live control.stall replay#jev-stall-1-16"
     },
+    "9294d39e3785367f1257eec8f4e394e295ab6feb664e017ac24760a2a650616e": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.28
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.58
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.31
+        },
+        "next": {
+          "type": "choice",
+          "choice": "run_tests",
+          "confidence": 0.84,
+          "probabilities": {
+            "read_region": 0.05,
+            "run_tests": 0.88,
+            "continue": 0.04,
+            "edit": 0.03
+          }
+        }
+      },
+      "input_tokens": 3526,
+      "output_tokens": 98,
+      "milliseconds": 159,
+      "source": "live control.stall replay#jev-stall-1-8"
+    },
     "9308a44fa6ebb55592eeca73184e8ed7713eba459c1bb60a167b7fe5f70d4c58": {
       "name": "jev_stall",
       "model": "jev-1.13.0",
@@ -6623,6 +8621,39 @@
       "output_tokens": 89,
       "milliseconds": 160,
       "source": "live control.stall replay#jev-stall-1-24"
+    },
+    "94d0f13d6b2c3d00babbfa6a5c66627e3b14fa6d5caa7b921f2cbafce8b2ee26": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.14
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.85
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "next": {
+          "type": "choice",
+          "choice": "run_tests",
+          "confidence": 0.75,
+          "probabilities": {
+            "run_tests": 0.8099999999999999,
+            "edit": 0.05,
+            "read_region": 0.12,
+            "continue": 0.02
+          }
+        }
+      },
+      "input_tokens": 2658,
+      "output_tokens": 98,
+      "milliseconds": 181,
+      "source": "live control.stall replay#jev-stall-1-8"
     },
     "9545519d054f64c379088347792a6b3d55af0817782384cfe350766c6af4ee60": {
       "name": "jev_stall",
@@ -6690,6 +8721,39 @@
       "output_tokens": 97,
       "milliseconds": 155,
       "source": "live control.stall replay#jev-stall-1-16"
+    },
+    "96a36c7eb0aed0406d4ee38bea6ec76fd0608ef9cf9345c1cddd8d9f8b4827d4": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.1
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.36
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.06
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.89,
+          "probabilities": {
+            "run_tests": 0.07,
+            "read_region": 0.01,
+            "continue": 0.91,
+            "edit": 0.01
+          }
+        }
+      },
+      "input_tokens": 5290,
+      "output_tokens": 97,
+      "milliseconds": 285,
+      "source": "live control.stall replay#jev-stall-5-11"
     },
     "983e80b4f55fb1c32a3c9bba0a672c9ff1b7522d727b4464cf8cac28b501f586": {
       "name": "jev_stall",
@@ -7413,6 +9477,39 @@
       "milliseconds": 205,
       "source": "live control.stall replay#jev-stall-1-24"
     },
+    "a559159a50bf4dcff34347543b494eb8f97690cb625b8e05912d298f17b1947f": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.08
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.38
+        },
+        "next": {
+          "type": "choice",
+          "choice": "read_region",
+          "confidence": 0.28,
+          "probabilities": {
+            "run_example": 0.1,
+            "continue": 0.36,
+            "edit": 0.08,
+            "read_region": 0.46
+          }
+        }
+      },
+      "input_tokens": 1361,
+      "output_tokens": 98,
+      "milliseconds": 181,
+      "source": "live control.stall replay#jev-stall-5-2"
+    },
     "a6b244094b164b8a3fb424c1c0309b3465f7b846e26a835db5e89b2785867365": {
       "name": "jev_stall",
       "model": "jev-1.13.0",
@@ -7477,6 +9574,39 @@
       "output_tokens": 90,
       "milliseconds": 153,
       "source": "live control.stall replay#jev-stall-1-8"
+    },
+    "a8104ae5867aea0bb22d92f826036abf28ed4ba8e4238a83be0bc80bd9532929": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.37
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.92
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.58
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.27,
+          "probabilities": {
+            "read_region": 0.04,
+            "continue": 0.45,
+            "run_tests": 0.43,
+            "edit": 0.08
+          }
+        }
+      },
+      "input_tokens": 2607,
+      "output_tokens": 97,
+      "milliseconds": 151,
+      "source": "live control.stall replay#jev-stall-1-16"
     },
     "a8d1e1ae772a3937cb711c6880e46f11c5fb780fc815a8be9c2bc59ecd962b9f": {
       "name": "jev_stall",
@@ -7578,6 +9708,38 @@
       "milliseconds": 176,
       "source": "live control.stall replay#jev-stall-1-56"
     },
+    "ab90c6d056c0f0feef850475a41d8e5290d9b9aef7927886025a8fc257b569c0": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.09
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.8
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.91,
+          "probabilities": {
+            "continue": 0.94,
+            "edit": 0.03,
+            "read_region": 0.03
+          }
+        }
+      },
+      "input_tokens": 2689,
+      "output_tokens": 89,
+      "milliseconds": 175,
+      "source": "live control.stall replay#jev-stall-2-8"
+    },
     "ac65cbffdef08d5bc2b23bad0b996d763831c522a3fc31d3947b0e7c60cbbf62": {
       "name": "jev_stall",
       "model": "jev-1.13.0",
@@ -7643,6 +9805,39 @@
       "milliseconds": 190,
       "source": "live control.stall replay#jev-stall-2-16"
     },
+    "add7f681cbd7847a08d0d6fb0bc27684d0608ae30bd4c14a33d6711661f70520": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.2
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.27
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.46
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.67,
+          "probabilities": {
+            "continue": 0.76,
+            "edit": 0.08,
+            "run_tests": 0.16,
+            "read_region": 0.0
+          }
+        }
+      },
+      "input_tokens": 1959,
+      "output_tokens": 97,
+      "milliseconds": 147,
+      "source": "live control.stall replay#jev-stall-8-5"
+    },
     "ade63f85fba5f9886740b94848d564b062e0309e21312158a2c7ae2252437c14": {
       "name": "jev_stall",
       "model": "jev-1.13.0",
@@ -7705,6 +9900,39 @@
       "output_tokens": 89,
       "milliseconds": 170,
       "source": "live control.stall replay#jev-stall-10-3"
+    },
+    "af82b70c48bfeb995905eb3a21e45a87ae7a6ef537541ec36dbedf987b65b6ac": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.19
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.89
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.8
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.89,
+          "probabilities": {
+            "run_tests": 0.08,
+            "edit": 0.0,
+            "read_region": 0.0,
+            "continue": 0.92
+          }
+        }
+      },
+      "input_tokens": 4373,
+      "output_tokens": 97,
+      "milliseconds": 202,
+      "source": "live control.stall replay#jev-stall-1-27"
     },
     "b04156da0fea1562babb63e2b80096a8e3a9ff7680a92d3f03b92c75eb9ded73": {
       "name": "jev_stall",
@@ -7771,6 +9999,39 @@
       "milliseconds": 154,
       "source": "live control.stall replay#jev-stall-4-8"
     },
+    "b0db75ce2d6df5337adf4412ba60bf299d5156de4e4b77303138d992284660ae": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.29
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.9
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.77
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.84,
+          "probabilities": {
+            "read_region": 0.0,
+            "continue": 0.88,
+            "edit": 0.01,
+            "run_tests": 0.11
+          }
+        }
+      },
+      "input_tokens": 1924,
+      "output_tokens": 97,
+      "milliseconds": 169,
+      "source": "live control.stall replay#jev-stall-7-7"
+    },
     "b1dd7d1e4eff999a55294555d016ab525c454c978ea22bffd4f1a36344e24ec1": {
       "name": "jev_stall",
       "model": "jev-1.13.0",
@@ -7836,6 +10097,39 @@
       "output_tokens": 97,
       "milliseconds": 188,
       "source": "live control.stall replay#jev-stall-1-28"
+    },
+    "b31a294b1a197abeff682aec0a9496ba24116b0a9984f113f8f74818447da0a8": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.35
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.81
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "next": {
+          "type": "choice",
+          "choice": "edit",
+          "confidence": 0.86,
+          "probabilities": {
+            "continue": 0.01,
+            "edit": 0.89,
+            "run_tests": 0.09,
+            "read_region": 0.01
+          }
+        }
+      },
+      "input_tokens": 3989,
+      "output_tokens": 97,
+      "milliseconds": 188,
+      "source": "live control.stall replay#jev-stall-2-16"
     },
     "b351873d500e46e413a389fd9ac762cdf465be2369b8791a9074ae15c5d6b8b1": {
       "name": "jev_stall",
@@ -8001,6 +10295,38 @@
       "milliseconds": 172,
       "source": "live control.stall replay#jev-stall-1-16"
     },
+    "b45ce54a53754630667dced26dbc5356dd8e791521540f7fa76d36b5472b49c2": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.7
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.28
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.63,
+          "probabilities": {
+            "run_example": 0.08,
+            "continue": 0.75,
+            "run_tests": 0.17
+          }
+        }
+      },
+      "input_tokens": 2483,
+      "output_tokens": 90,
+      "milliseconds": 364,
+      "source": "live control.stall replay#jev-stall-1-8"
+    },
     "b4bd9c82b8935c56605d37cadaf56862e1d88cdf23a6876bbb4cd0f6b9f0e94c": {
       "name": "jev_stall",
       "model": "jev-1.13.0",
@@ -8066,6 +10392,38 @@
       "milliseconds": 152,
       "source": "live control.stall replay#jev-stall-7-8"
     },
+    "b5554c2c3654cec776089457200713aea3c27c80b2cd5a178805131b18d5768b": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.86
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.1
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.35,
+          "probabilities": {
+            "continue": 0.57,
+            "run_tests": 0.4,
+            "run_example": 0.03
+          }
+        }
+      },
+      "input_tokens": 2924,
+      "output_tokens": 90,
+      "milliseconds": 148,
+      "source": "live control.stall replay#jev-stall-1-26"
+    },
     "b56704a788a673ca52115b9f5a319da136872651678af1e12e691fca60793d7f": {
       "name": "jev_stall",
       "model": "jev-1.13.0",
@@ -8097,6 +10455,38 @@
       "output_tokens": 89,
       "milliseconds": 139,
       "source": "live control.stall replay#jev-stall-3-13"
+    },
+    "b624e8e4fb8772e590ee8022fbe6e4e2ba327ad8e930987f16fda24f9a6001c3": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.24
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.79
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.4,
+          "probabilities": {
+            "continue": 0.6,
+            "edit": 0.31,
+            "read_region": 0.09
+          }
+        }
+      },
+      "input_tokens": 5351,
+      "output_tokens": 89,
+      "milliseconds": 154,
+      "source": "live control.stall replay#jev-stall-2-14"
     },
     "b70c819ad384e35ff6383af918e8b3f655d35ddff0d7faef10f52664d75ad2b0": {
       "name": "jev_stall",
@@ -8362,6 +10752,39 @@
       "milliseconds": 137,
       "source": "live control.stall replay#jev-stall-4-4"
     },
+    "ba687595277c89576d6935499c63dad8129f9701bc271101c6409e51eeb425e9": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.13
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.62
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.35,
+          "probabilities": {
+            "run_tests": 0.33,
+            "continue": 0.51,
+            "read_region": 0.04,
+            "edit": 0.12
+          }
+        }
+      },
+      "input_tokens": 3914,
+      "output_tokens": 97,
+      "milliseconds": 201,
+      "source": "live control.stall replay#jev-stall-4-8"
+    },
     "ba6fd67e6bc9f26a480392e38886044c8d4dfafb3ebdfb9a2ec216460a577a01": {
       "name": "jev_stall",
       "model": "jev-1.13.0",
@@ -8592,6 +11015,38 @@
       "milliseconds": 164,
       "source": "live control.stall replay#jev-stall-4-16"
     },
+    "be7535aa1edc8d6d23abb30c1e5b80817e10649cb3c717e992e7a9e8c34281b7": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.12
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.65
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.57,
+          "probabilities": {
+            "read_region": 0.04,
+            "edit": 0.24,
+            "continue": 0.72
+          }
+        }
+      },
+      "input_tokens": 3267,
+      "output_tokens": 89,
+      "milliseconds": 217,
+      "source": "live control.stall replay#jev-stall-2-10"
+    },
     "be8792d4a5107ac3747f9c48a126e7768b277557ffe4e9ba0654c84aeaf79f7f": {
       "name": "jev_stall",
       "model": "jev-1.13.0",
@@ -8624,6 +11079,38 @@
       "output_tokens": 98,
       "milliseconds": 184,
       "source": "live control.stall replay#jev-stall-2-21"
+    },
+    "bf98803a0efb5d992d6e637d47ce36f9fad6499512a46c20e5a11bab7e5a113e": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.82
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.54
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.89,
+          "probabilities": {
+            "read_region": 0.06,
+            "continue": 0.92,
+            "edit": 0.02
+          }
+        }
+      },
+      "input_tokens": 1459,
+      "output_tokens": 89,
+      "milliseconds": 175,
+      "source": "live control.stall replay#jev-stall-6-4"
     },
     "c3df06c44739162006666a617843643c84c8dac9f770fd2b154fd4151bfa7df0": {
       "name": "jev_stall",
@@ -8955,6 +11442,38 @@
       "milliseconds": 140,
       "source": "live control.stall replay#jev-stall-4-14"
     },
+    "c8beddeec0b0bac5652d7483716ed859f763a5584e44a3d62778013b288e2cc7": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.25
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.48
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.85,
+          "probabilities": {
+            "read_region": 0.02,
+            "continue": 0.9,
+            "edit": 0.08
+          }
+        }
+      },
+      "input_tokens": 4709,
+      "output_tokens": 89,
+      "milliseconds": 166,
+      "source": "live control.stall replay#jev-stall-3-16"
+    },
     "c8eb40803a69ccb6ecac26e66b2f73db7103cba9bcbd51ed1c7752c1b753c753": {
       "name": "jev_stall",
       "model": "jev-1.13.0",
@@ -8987,6 +11506,104 @@
       "milliseconds": 162,
       "source": "live control.stall replay#jev-stall-9-7"
     },
+    "c99b2faa2104bcdf5cbebe6f0752d67fde41b5d23f7222f1923bea005a57174d": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.26
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.61
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "next": {
+          "type": "choice",
+          "choice": "run_tests",
+          "confidence": 0.17,
+          "probabilities": {
+            "read_region": 0.06,
+            "continue": 0.35,
+            "run_tests": 0.38,
+            "edit": 0.21
+          }
+        }
+      },
+      "input_tokens": 4807,
+      "output_tokens": 98,
+      "milliseconds": 159,
+      "source": "live control.stall replay#jev-stall-2-24"
+    },
+    "c9caef89916d1b2f74ddcc961357edf158ac470730652f6259339884b9e3d872": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.49
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.86
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.75
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.74,
+          "probabilities": {
+            "edit": 0.01,
+            "continue": 0.81,
+            "read_region": 0.0,
+            "run_tests": 0.18
+          }
+        }
+      },
+      "input_tokens": 2434,
+      "output_tokens": 97,
+      "milliseconds": 159,
+      "source": "live control.stall replay#jev-stall-1-23"
+    },
+    "ca1db21cf9101a6e61375727a7349516035ba6cdb858764f89ef3e0fe1d28de1": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.16
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.37
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.61,
+          "probabilities": {
+            "continue": 0.74,
+            "read_region": 0.12,
+            "edit": 0.14
+          }
+        }
+      },
+      "input_tokens": 5016,
+      "output_tokens": 89,
+      "milliseconds": 152,
+      "source": "live control.stall replay#jev-stall-5-24"
+    },
     "ca86da769006c273353def4e688f8310a758edb8d44ae6e711462a1a5fb7d22e": {
       "name": "jev_stall",
       "model": "jev-1.13.0",
@@ -9018,6 +11635,38 @@
       "output_tokens": 90,
       "milliseconds": 139,
       "source": "live control.stall replay#jev-stall-2-8"
+    },
+    "cac115366b1d530a54dcfa7e7fb73c1f6dbd3296a422e67717b05a9d1b9f789d": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.16
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.43
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.7,
+          "probabilities": {
+            "edit": 0.13,
+            "continue": 0.8,
+            "read_region": 0.07
+          }
+        }
+      },
+      "input_tokens": 4199,
+      "output_tokens": 89,
+      "milliseconds": 177,
+      "source": "live control.stall replay#jev-stall-2-30"
     },
     "cad5c9bb859a1c887d6d1e8c8f99b7b3151b4fdb90ca85d42be02bebf5774133": {
       "name": "jev_stall",
@@ -9545,6 +12194,70 @@
       "milliseconds": 140,
       "source": "live control.stall replay#jev-stall-2-8"
     },
+    "d3b0d1c538ea2f608bc407b55f0b75aec51b28921bb1c25f1d238966069abe66": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.31
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.34
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "next": {
+          "type": "choice",
+          "choice": "run_tests",
+          "confidence": 0.08,
+          "probabilities": {
+            "continue": 0.46,
+            "run_tests": 0.54
+          }
+        }
+      },
+      "input_tokens": 3953,
+      "output_tokens": 83,
+      "milliseconds": 152,
+      "source": "live control.stall replay#jev-stall-1-16"
+    },
+    "d45ab0afbc76e6ba5d158b3f14474cebd45a355c0c747d8152857fcfa2c792bf": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.44
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.86,
+          "probabilities": {
+            "edit": 0.0,
+            "run_tests": 0.09,
+            "continue": 0.9,
+            "read_region": 0.01
+          }
+        }
+      },
+      "input_tokens": 3484,
+      "output_tokens": 97,
+      "milliseconds": 147,
+      "source": "live control.stall replay#jev-stall-7-8"
+    },
     "d50be05f7bec18d98eb22dc9aec7a100da6d6966538e24d6da6c57e3aa454f44": {
       "name": "jev_stall",
       "model": "jev-1.13.0",
@@ -9642,6 +12355,38 @@
       "milliseconds": 219,
       "source": "live control.stall replay#jev-stall-1-16"
     },
+    "d6e1972e270812cd046cbf99c9d291f7863fab47140fb479d76c29dc97a1e2f6": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.21
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.6
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "next": {
+          "type": "choice",
+          "choice": "edit",
+          "confidence": 0.37,
+          "probabilities": {
+            "read_region": 0.16,
+            "continue": 0.25,
+            "edit": 0.59
+          }
+        }
+      },
+      "input_tokens": 3715,
+      "output_tokens": 89,
+      "milliseconds": 172,
+      "source": "live control.stall replay#jev-stall-2-8"
+    },
     "d83ec5cf22b477dfd8938dd2f868546644796358ffa1e209f2e937c8736b73de": {
       "name": "jev_stall",
       "model": "jev-1.13.0",
@@ -9707,6 +12452,39 @@
       "output_tokens": 98,
       "milliseconds": 185,
       "source": "live control.stall replay#jev-stall-3-8"
+    },
+    "d8bb0effc6cfe8c163f419d1fcb3b1859882911de542f59e841be35c90b7f688": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.2
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.8
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "next": {
+          "type": "choice",
+          "choice": "run_tests",
+          "confidence": 0.39,
+          "probabilities": {
+            "read_region": 0.09,
+            "continue": 0.15,
+            "edit": 0.22,
+            "run_tests": 0.54
+          }
+        }
+      },
+      "input_tokens": 3802,
+      "output_tokens": 98,
+      "milliseconds": 158,
+      "source": "live control.stall replay#jev-stall-1-16"
     },
     "d8e688754cc300f45ef566e2c99bae1660f9e7874288891f56f0ff9fd54873ac": {
       "name": "jev_stall",
@@ -9840,6 +12618,69 @@
       "milliseconds": 154,
       "source": "live control.stall replay#jev-stall-2-8"
     },
+    "d9e02f776cb463d920076a8cfd0b81f01d42d137ec6c0a93118415c3eb2fbb84": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.21
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.28
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.19,
+          "probabilities": {
+            "edit": 0.22,
+            "continue": 0.46,
+            "read_region": 0.32
+          }
+        }
+      },
+      "input_tokens": 4004,
+      "output_tokens": 89,
+      "milliseconds": 159,
+      "source": "live control.stall replay#jev-stall-4-14"
+    },
+    "daae165aa7fa44027c7b98e3178a1a2b5ce62db2ec5b23a9aa7ffeb4a5b134c5": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.65
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.58
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.23,
+          "probabilities": {
+            "run_tests": 0.39,
+            "continue": 0.61
+          }
+        }
+      },
+      "input_tokens": 3381,
+      "output_tokens": 82,
+      "milliseconds": 133,
+      "source": "live control.stall replay#jev-stall-1-24"
+    },
     "db383cf93729266fd0601972675f2c4a53a00f107c1cc55c2d4db69baf06ef3b": {
       "name": "jev_stall",
       "model": "jev-1.13.0",
@@ -9905,6 +12746,39 @@
       "output_tokens": 106,
       "milliseconds": 175,
       "source": "live control.stall replay#jev-stall-2-32"
+    },
+    "dcb4d4cf303cdc145c5f12dad3a155cf6cec94f4be446f6b1b9d6aeada465d84": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.15
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.92
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "next": {
+          "type": "choice",
+          "choice": "run_tests",
+          "confidence": 0.78,
+          "probabilities": {
+            "run_tests": 0.83,
+            "continue": 0.02,
+            "edit": 0.09,
+            "read_region": 0.06
+          }
+        }
+      },
+      "input_tokens": 2853,
+      "output_tokens": 98,
+      "milliseconds": 190,
+      "source": "live control.stall replay#jev-stall-1-8"
     },
     "dcb8914c3afc34add67dbec04bf0f4ff67d871d7f6a6f6cbb3e12edddfaad6c9": {
       "name": "jev_stall",
@@ -10200,6 +13074,38 @@
       "milliseconds": 165,
       "source": "live control.stall replay#jev-stall-2-56"
     },
+    "e08ffcc28706cbf55c4cf68e8de929b3415037b1e6b15d6ee01108e54f093332": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.12
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.84
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.49
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.82,
+          "probabilities": {
+            "read_region": 0.07,
+            "continue": 0.88,
+            "edit": 0.05
+          }
+        }
+      },
+      "input_tokens": 1872,
+      "output_tokens": 89,
+      "milliseconds": 165,
+      "source": "live control.stall replay#jev-stall-2-8"
+    },
     "e111c22b187a69d2f11b30689e39d4a954faffb0d2724b91151cd1fa59f86b67": {
       "name": "jev_stall",
       "model": "jev-1.13.0",
@@ -10233,6 +13139,39 @@
       "milliseconds": 165,
       "source": "live control.stall replay#jev-stall-1-32"
     },
+    "e2098ad0e01d712e407f245c9509d51ead085a081485f7c875c7768c134b8e93": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.31
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.95
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.72
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.83,
+          "probabilities": {
+            "run_tests": 0.11,
+            "read_region": 0.01,
+            "continue": 0.87,
+            "edit": 0.01
+          }
+        }
+      },
+      "input_tokens": 2408,
+      "output_tokens": 97,
+      "milliseconds": 158,
+      "source": "live control.stall replay#jev-stall-1-13"
+    },
     "e306c53f113a1839ada21813f9e613d406b92d64998937caef74b4f172c39bc5": {
       "name": "jev_stall",
       "model": "jev-1.13.0",
@@ -10264,6 +13203,39 @@
       "output_tokens": 89,
       "milliseconds": 157,
       "source": "live control.stall replay#jev-stall-13-8"
+    },
+    "e383157dbcbd9b0ef5e1db58c08ee4aa80344bac8bd89492fe7966df6c54415e": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.29
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.3
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.63,
+          "probabilities": {
+            "run_tests": 0.04,
+            "read_region": 0.06,
+            "continue": 0.72,
+            "edit": 0.18
+          }
+        }
+      },
+      "input_tokens": 3438,
+      "output_tokens": 97,
+      "milliseconds": 190,
+      "source": "live control.stall replay#jev-stall-1-8"
     },
     "e4260f3db823569cf0186d79ba677271f525d38aef1038b47041c7204639fdae": {
       "name": "jev_stall",
@@ -10353,6 +13325,39 @@
       "milliseconds": 146,
       "source": "live control.stall replay#jev-stall-7-13"
     },
+    "e5bc61293872a670862a1c7e1e1da0c0b8eb65ea65dc1c78b38413ab7ab43308": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.28
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.82
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.09
+        },
+        "next": {
+          "type": "choice",
+          "choice": "run_tests",
+          "confidence": 0.22,
+          "probabilities": {
+            "continue": 0.25,
+            "run_tests": 0.42,
+            "edit": 0.32,
+            "read_region": 0.01
+          }
+        }
+      },
+      "input_tokens": 5349,
+      "output_tokens": 98,
+      "milliseconds": 185,
+      "source": "live control.stall replay#jev-stall-2-32"
+    },
     "e5fd1f82bb24d910eb145809f789f03b568dbf8f2ceaf9a279190b1e83fee633": {
       "name": "jev_stall",
       "model": "jev-1.13.0",
@@ -10385,6 +13390,102 @@
       "output_tokens": 97,
       "milliseconds": 171,
       "source": "live control.stall replay#jev-stall-1-8"
+    },
+    "e6a16492d1bc491db2bb154b670a8ecdb1d6e9bac6c943de4397a3fe88ccbadf": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.51
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.76
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.19
+        },
+        "next": {
+          "type": "choice",
+          "choice": "read_region",
+          "confidence": 0.48,
+          "probabilities": {
+            "read_region": 0.62,
+            "continue": 0.03,
+            "run_tests": 0.17,
+            "edit": 0.18
+          }
+        }
+      },
+      "input_tokens": 2797,
+      "output_tokens": 98,
+      "milliseconds": 135,
+      "source": "live control.stall replay#jev-stall-1-16"
+    },
+    "e6c018b6498840906344206f38e23af826efee725b79997082c2b2130f9e84e4": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.12
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.8,
+          "probabilities": {
+            "continue": 0.9,
+            "run_example": 0.1
+          }
+        }
+      },
+      "input_tokens": 1271,
+      "output_tokens": 82,
+      "milliseconds": 162,
+      "source": "live control.stall replay#jev-stall-3-3"
+    },
+    "e6daf6024dda2243ca93f4a60b0c0820ecdd49571590310763aec592ec552011": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.18
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.43
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.73,
+          "probabilities": {
+            "edit": 0.03,
+            "continue": 0.8099999999999999,
+            "read_region": 0.16
+          }
+        }
+      },
+      "input_tokens": 4875,
+      "output_tokens": 89,
+      "milliseconds": 168,
+      "source": "live control.stall replay#jev-stall-3-11"
     },
     "e81d6f72c6a4aace1bf4f4300570efdb73dc90bda63d78028c82a8b1e559a994": {
       "name": "jev_stall",
@@ -10452,6 +13553,93 @@
       "milliseconds": 162,
       "source": "live control.stall replay#jev-stall-6-16"
     },
+    "e93f2b78196d597d603d98f39b02b2906736dd9261b77671d474c46091a5d62c": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.39
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.55
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.02
+        }
+      },
+      "input_tokens": 4340,
+      "output_tokens": 54,
+      "milliseconds": 177,
+      "source": "live control.stall replay#jev-stall-1-16"
+    },
+    "e9a79576b4431e80d8797a9954967c3b9c0645407676f419c51b46abb1eddeb6": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.23
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.94
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.62
+        },
+        "next": {
+          "type": "choice",
+          "choice": "run_tests",
+          "confidence": 0.5,
+          "probabilities": {
+            "continue": 0.32,
+            "read_region": 0.04,
+            "run_tests": 0.62,
+            "edit": 0.02
+          }
+        }
+      },
+      "input_tokens": 2292,
+      "output_tokens": 98,
+      "milliseconds": 190,
+      "source": "live control.stall replay#jev-stall-1-8"
+    },
+    "ea142894a29c1188659516edb7ce6dcd82996fc305cfc52f89cb9c873af1cb1b": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.09
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.18
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.48
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.58,
+          "probabilities": {
+            "read_region": 0.09,
+            "continue": 0.72,
+            "edit": 0.19
+          }
+        }
+      },
+      "input_tokens": 1702,
+      "output_tokens": 89,
+      "milliseconds": 138,
+      "source": "live control.stall replay#jev-stall-5-4"
+    },
     "eb6e38c3a2d7bc2e73172b34ff8946d576424714a09509e2b0f2614f0e538e26": {
       "name": "jev_stall",
       "model": "jev-1.13.0",
@@ -10485,6 +13673,28 @@
       "output_tokens": 106,
       "milliseconds": 209,
       "source": "live control.stall replay#jev-stall-1-40"
+    },
+    "ebca10b2a02bc97e9f22cfe237e16a2dacff3a6f75f7bbba57b6e940c7b29775": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.1
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.5
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.03
+        }
+      },
+      "input_tokens": 2908,
+      "output_tokens": 54,
+      "milliseconds": 177,
+      "source": "live control.stall replay#jev-stall-2-8"
     },
     "ec03b93fbee1c50830c7061a8eb30dc75b1b8d7712f7991d6def009aa8c236e5": {
       "name": "jev_stall",
@@ -10584,6 +13794,38 @@
       "milliseconds": 143,
       "source": "live control.stall replay#jev-stall-2-8"
     },
+    "ee0a33b593bb3c5ccab9f9a7a6755842daf4f3756a786762ade27e3857fba010": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.32
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.54
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.82,
+          "probabilities": {
+            "read_region": 0.11,
+            "edit": 0.02,
+            "continue": 0.87
+          }
+        }
+      },
+      "input_tokens": 4916,
+      "output_tokens": 89,
+      "milliseconds": 168,
+      "source": "live control.stall replay#jev-stall-2-24"
+    },
     "ee252455f94bd98cc132e8cc34dfe785dd12093537645a4bc2d05cfd0dde183b": {
       "name": "jev_stall",
       "model": "jev-1.13.0",
@@ -10616,6 +13858,39 @@
       "output_tokens": 97,
       "milliseconds": 163,
       "source": "live control.stall replay#jev-stall-1-8"
+    },
+    "efb7f26774576dee93c0dfc49aea608a1059faebf7847559d3c2f67e2fe1db25": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.32
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.82
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.08
+        },
+        "next": {
+          "type": "choice",
+          "choice": "run_tests",
+          "confidence": 0.37,
+          "probabilities": {
+            "edit": 0.4,
+            "continue": 0.06,
+            "read_region": 0.01,
+            "run_tests": 0.53
+          }
+        }
+      },
+      "input_tokens": 4256,
+      "output_tokens": 98,
+      "milliseconds": 181,
+      "source": "live control.stall replay#jev-stall-1-24"
     },
     "f1b329c0e892f70b7579da94736fcbce387ebd674f06e12cd5684dd5dc5f93c3": {
       "name": "jev_stall",
@@ -10681,6 +13956,72 @@
       "milliseconds": 144,
       "source": "live control.stall replay#jev-stall-8-3"
     },
+    "f22363b45b990d8566605d01babd74f42ed847b9e71046111142ba9174cc3d5a": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.79
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.68
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.44
+        },
+        "next": {
+          "type": "choice",
+          "choice": "run_tests",
+          "confidence": 0.69,
+          "probabilities": {
+            "read_region": 0.04,
+            "continue": 0.09,
+            "run_tests": 0.77,
+            "edit": 0.1
+          }
+        }
+      },
+      "input_tokens": 2790,
+      "output_tokens": 98,
+      "milliseconds": 179,
+      "source": "live control.stall replay#jev-stall-1-24"
+    },
+    "f241667e16b862647cf277e312760c3486be52c199d8e1ac4e7271b4953d3e36": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.58
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.68
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "next": {
+          "type": "choice",
+          "choice": "edit",
+          "confidence": 0.52,
+          "probabilities": {
+            "read_region": 0.07,
+            "edit": 0.63,
+            "continue": 0.03,
+            "run_tests": 0.27
+          }
+        }
+      },
+      "input_tokens": 4058,
+      "output_tokens": 97,
+      "milliseconds": 191,
+      "source": "live control.stall replay#jev-stall-3-13"
+    },
     "f2a896a7b55dc4f62288b1177529d6cdd65c6cfc5304e6360be8b57ac6a39612": {
       "name": "jev_stall",
       "model": "jev-1.13.0",
@@ -10712,6 +14053,103 @@
       "output_tokens": 89,
       "milliseconds": 131,
       "source": "live control.stall replay#jev-stall-5-4"
+    },
+    "f2e9d8b8d7d53506cff0105f574c339dd15794ff3be0eaaa0371fb90172382bc": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.45
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.19
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.63,
+          "probabilities": {
+            "read_region": 0.16,
+            "continue": 0.75,
+            "edit": 0.09
+          }
+        }
+      },
+      "input_tokens": 3209,
+      "output_tokens": 89,
+      "milliseconds": 188,
+      "source": "live control.stall replay#jev-stall-3-9"
+    },
+    "f3b208d28109e0013dd9fc0825c71a6a7ea7df83055999b2d6220d2b5361cb2f": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.25
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.47
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "next": {
+          "type": "choice",
+          "choice": "edit",
+          "confidence": 0.1,
+          "probabilities": {
+            "edit": 0.4,
+            "continue": 0.33,
+            "read_region": 0.27
+          }
+        }
+      },
+      "input_tokens": 3535,
+      "output_tokens": 89,
+      "milliseconds": 164,
+      "source": "live control.stall replay#jev-stall-1-8"
+    },
+    "f54fa1269af9b0ec01f30c9f6d69efb4762d5fde573930a5d6d9c48b32fd8702": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.1
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.56,
+          "probabilities": {
+            "read_region": 0.02,
+            "continue": 0.66,
+            "run_tests": 0.31,
+            "edit": 0.01
+          }
+        }
+      },
+      "input_tokens": 1305,
+      "output_tokens": 97,
+      "milliseconds": 149,
+      "source": "live control.stall replay#jev-stall-6-2"
     },
     "f5a2837890b70adc62b29442dd7d47251399eca81f4e73f3a0bcb2a98cac332b": {
       "name": "jev_stall",
@@ -10878,6 +14316,39 @@
       "milliseconds": 156,
       "source": "live control.stall replay#jev-stall-2-16"
     },
+    "f91dfb42acc8fda6fa139aa7fe472b90d1b93265e12a49c3f2338868a2e04797": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.35
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.95
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.77
+        },
+        "next": {
+          "type": "choice",
+          "choice": "continue",
+          "confidence": 0.78,
+          "probabilities": {
+            "run_tests": 0.13,
+            "read_region": 0.0,
+            "continue": 0.84,
+            "edit": 0.03
+          }
+        }
+      },
+      "input_tokens": 3459,
+      "output_tokens": 97,
+      "milliseconds": 167,
+      "source": "live control.stall replay#jev-stall-1-20"
+    },
     "fa638b88dfbb58bbc14aa3dc25177e5c79b9e3a3592a77a75d41d8b3ca450328": {
       "name": "jev_stall",
       "model": "jev-1.13.0",
@@ -10943,6 +14414,28 @@
       "output_tokens": 90,
       "milliseconds": 171,
       "source": "live control.stall replay#jev-stall-3-8"
+    },
+    "fa8929e69f49f939ae97eea015f0b1727b99ffa9074748dcd0b0d3397b7d25a4": {
+      "name": "jev_stall",
+      "model": "jev-1.13.0",
+      "answers": {
+        "repeating": {
+          "type": "noul",
+          "noul": 0.11
+        },
+        "progress": {
+          "type": "noul",
+          "noul": 0.67
+        },
+        "done": {
+          "type": "noul",
+          "noul": 0.03
+        }
+      },
+      "input_tokens": 2883,
+      "output_tokens": 54,
+      "milliseconds": 195,
+      "source": "live control.stall replay#jev-stall-1-8"
     },
     "faa0f859c35c0eb64e511ba1a3fce4dbc94155f6de177ffb98855332c22f336d": {
       "name": "jev_stall",
