@@ -858,7 +858,6 @@ mod tests {
                     "evidence.pack",
                     "exec.session",
                     "exec.control",
-                    "verify.close",
                     "task.grade",
                 ] {
                     assert!(

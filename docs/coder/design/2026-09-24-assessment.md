@@ -142,7 +142,7 @@ components. Seventeen are fully built and three partly. The best policy,
 | Group | Components |
 | --- | --- |
 | On, and measured to help | Probes, the Jev file survey, evidence packing (through its requirement links only), executor settings, and the lean loop's time and spend limits |
-| On, but measured useless | `verify.close`, a broad "is it done?" Jev question. It still runs after every trial and should be turned off. |
+| Was on, measured useless, now off | `verify.close`, a broad "is it done?" Jev question. It ran after every delegated trial and fed only the record; it no longer runs live, and stays available offline as a component. |
 | Built, off, measured to hurt or not help | Routing, the live monitor, escalation, checks, support, and live repair |
 | Built, never graded live | Planner-worker, steer, race, and best-of-N (0 of 8 graded before it stopped) |
 | Not built | A runtime objective, the DSPy and GEPA bridge, and evidence on demand |
@@ -250,5 +250,7 @@ them unprompted.
 - Close #9585 as done and #9558 as won't do in this form.
 - Whether to stop policy iteration on the dev set until the signal from
   step 2 exists, as recommended here.
-- Whether to turn off `verify.close` now; it spends a Jev request per trial
-  on a signal measured to be useless.
+- Done on 2026-09-25: `verify.close` is off; #9585 is closed as done and
+  #9558 as won't do; the four missing issues are open as #9624 (the lean
+  loop in the product), #9625 (an issue-flow evaluation set), #9626 (the
+  capability-gap log), and #9627 (next-step choice and stall detection).

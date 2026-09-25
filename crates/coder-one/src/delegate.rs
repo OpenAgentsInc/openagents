@@ -2771,66 +2771,19 @@ where
                 200
             ))
     );
-    let verify = recorder.enter(
-        Start::new(
-            "verify.close",
-            crate::component::evidence::close_implementation(),
-        )
-        .named("closing check"),
-    );
-    let changed = match &start {
-        Some(copy) => {
-            let changed = changes_since(copy, &workdir);
-            let _ = std::fs::remove_dir_all(copy);
-            changed
-        }
-        None => changes(&workdir, plan.base),
-    };
-    let close = judge
-        .jev_mut()
-        .close(state, &report.output(), &changed)
-        .await;
-    recorder.end(
-        &verify,
-        Finish::new(if close.unavailable.is_none() {
-            RecordOutcome::Completed
-        } else {
-            RecordOutcome::Skipped
-        })
-        .output(json!({
-            "done": close.done,
-            "criteria": close.criteria,
-            "unavailable": close.unavailable,
-        })),
-    );
-    let mut note = match close.done {
-        Some(p) => format!("Closing check: Jev reads the task as done with p={p:.2}."),
-        None => format!(
-            "Closing check: no answer ({}).",
-            close.unavailable.as_deref().unwrap_or("unknown")
-        ),
-    };
-    for (requirement, p) in &close.criteria {
-        note.push_str(&format!(
-            "\n- {requirement}: {}",
-            p.map_or("not judged".to_string(), |p| format!("p={p:.2}"))
-        ));
+    // The closing check (`verify.close`, a broad "is it done?" Jev Noul) no
+    // longer runs here. It only ever fed the record, and measured useless: a
+    // 0.5 cutoff would have accepted every failure it saw
+    // (docs/coder/design/2026-09-24-assessment.md). The component stays for
+    // offline runs through `coder-one component run verify.close`.
+    if let Some(copy) = &start {
+        let _ = std::fs::remove_dir_all(copy);
     }
-    let mut shown = match close.done {
-        Some(p) => format!("closing check: chance the task is done {p:.2}"),
-        None => format!(
-            "closing check: Jev didn't answer ({})",
-            close.unavailable.as_deref().unwrap_or("no reason given")
-        ),
+    let close = crate::judge::Close {
+        done: None,
+        criteria: Vec::new(),
+        unavailable: Some("the closing check is off".to_string()),
     };
-    for (requirement, p) in &close.criteria {
-        shown.push_str(&format!(
-            "\n- {requirement}: {}",
-            p.map_or("not rated".to_string(), |p| format!("{p:.2}"))
-        ));
-    }
-    crate::say::say!("  jev ▸ {}", shown.replace('\n', "\n        "));
-    recorder.push(Step::said(Source::System, &note));
     let ended = ending(&explored, &report, state.history.len(), &state.issue.title);
     (
         ended,
@@ -3802,12 +3755,7 @@ pub(crate) mod tests {
         let components: Vec<&str> = invocations.iter().map(|i| i.component.as_str()).collect();
         assert_eq!(
             components,
-            [
-                "exec.explore",
-                "evidence.pack",
-                "exec.session",
-                "verify.close"
-            ]
+            ["exec.explore", "evidence.pack", "exec.session"]
         );
         assert!(invocations.iter().all(|i| i.ended.is_some()));
         let pack = &invocations[1];
@@ -3835,7 +3783,8 @@ pub(crate) mod tests {
             })
             .unwrap();
         assert_eq!(step.extensions["invocation_id"], json!(session.id));
-        assert_eq!(invocations[3].outcome(), "skipped");
+        // The closing check no longer runs.
+        assert_eq!(invocations.len(), 3);
         let _ = std::fs::remove_dir_all(dir);
     }
 }
