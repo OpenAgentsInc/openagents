@@ -153,6 +153,7 @@ struct Open {
     /// The screen row and step of every transcript row drawn last frame,
     /// for mouse clicks.
     drawn: RefCell<Vec<(u16, usize)>>,
+    file_hits: RefCell<Vec<crate::runs_files::Hit>>,
     /// The scroll position of the transcript's bottom, last frame.
     bottom: Cell<usize>,
     /// The analysis's Markdown, read or computed the first time `A` shows
@@ -174,6 +175,7 @@ impl Open {
             rows: RefCell::new(None),
             free: Cell::new(false),
             drawn: RefCell::new(Vec::new()),
+            file_hits: RefCell::new(Vec::new()),
             bottom: Cell::new(0),
             analysis: RefCell::new(None),
         }
@@ -260,6 +262,7 @@ pub struct Pane {
     cursor: usize,
     list_scroll: Cell<usize>,
     open: Option<Open>,
+    file_viewer: Option<crate::runs_files::Viewer>,
     /// The search being typed, when the reader pressed `/`, and the search
     /// it replaces.
     typing: Option<String>,
@@ -290,6 +293,7 @@ impl Pane {
             cursor: 0,
             list_scroll: Cell::new(0),
             open: None,
+            file_viewer: None,
             typing: None,
             before: String::new(),
             ladder: ladder_from_environment(),
@@ -650,6 +654,29 @@ impl Pane {
 
     /// Handles one key.
     pub fn key(&mut self, key: Key) -> Reply {
+        if let Some(viewer) = &mut self.file_viewer {
+            if viewer.key(key) {
+                self.file_viewer = None;
+            }
+            return Reply::Handled;
+        }
+        if self.replay.is_none()
+            && self.typing.is_none()
+            && !self.composing()
+            && !self.composing_ask()
+            && let Key::Click { column, row } = key
+            && let Some(open) = &self.open
+            && open.tab == Tab::Transcript
+            && let Some(hit) = crate::runs_files::clicked(&open.file_hits.borrow(), column, row)
+        {
+            self.file_viewer = Some(crate::runs_files::Viewer::open(
+                Some(&open.detail.run),
+                open.blocks(),
+                hit.step,
+                &hit.path,
+            ));
+            return Reply::Handled;
+        }
         if let Some(replay) = &mut self.replay {
             let reply = replay.key(key);
             if reply.is_none() {
@@ -935,6 +962,10 @@ impl Pane {
         }
         if let Some(replay) = &self.replay {
             replay.render(area, buf, self.ladder);
+            return;
+        }
+        if let Some(viewer) = &self.file_viewer {
+            viewer.render(area, buf, self.ladder);
             return;
         }
         match &self.open {
@@ -1277,7 +1308,7 @@ impl Pane {
             Tab::Analysis => (
                 "Analysis",
                 "A shows the summary",
-                "↑↓ scroll · A summary · t transcript · x mark bad · v mark fine · u unmark · esc back · q quit",
+                "↑↓ scroll · A summary · t transcript · click path opens file · x mark bad · v mark fine · u unmark · esc back · q quit",
                 "↑↓ A t x v u esc q",
             ),
             Tab::Transcript => (
@@ -1448,6 +1479,7 @@ impl Pane {
     fn render_transcript(&self, open: &Open, inner: Rect, buf: &mut Buffer) {
         let width = usize::from(inner.width) + 2;
         if open.blocks().is_empty() {
+            open.file_hits.borrow_mut().clear();
             buf.set_stringn(
                 inner.left(),
                 inner.top(),
@@ -1579,6 +1611,12 @@ impl Pane {
             }
         }
         scroll_note(scroll, room, total, following, note_area, buf, self.ladder);
+        *open.file_hits.borrow_mut() = crate::runs_files::decorate(
+            Rect::new(left + 1, inner.top(), inner.width + 2, inner.height),
+            &open.drawn.borrow(),
+            open.blocks(),
+            buf,
+        );
     }
 
     /// The transcript's blocks in a fresh scrollback.
@@ -2422,6 +2460,45 @@ pub(crate) mod tests {
             pane.key(Key::Down);
         }
         panic!("no {task} run in the list");
+    }
+
+    #[test]
+    fn file_viewer_opens_from_a_transcript_click_and_returns_to_the_same_step() {
+        let (_dir, mut pane) = pane();
+        pane.open_selected(Tab::Transcript);
+        let open = pane.open.as_mut().unwrap();
+        open.detail.transcript.blocks = vec![Block {
+            at: Some(0),
+            kind: Kind::Look {
+                what: "Read facts.md".to_owned(),
+                output: "retained facts contents".to_owned(),
+            },
+        }];
+        open.invalidate();
+        let _ = pane.to_text(100, 25);
+        let hit = pane
+            .open
+            .as_ref()
+            .unwrap()
+            .file_hits
+            .borrow()
+            .iter()
+            .find(|h| h.path == "facts.md")
+            .unwrap()
+            .clone();
+        let scroll = pane.open.as_ref().unwrap().scroll.get();
+        pane.key(Key::Click {
+            column: hit.cells.x,
+            row: hit.cells.y,
+        });
+        let text = pane.to_text(100, 25);
+        assert!(text.contains("File: facts.md"), "{text}");
+        assert!(text.contains("retained facts contents"), "{text}");
+        pane.key(Key::Back);
+        assert!(pane.file_viewer.is_none());
+        assert_eq!(pane.tab(), Some(Tab::Transcript));
+        assert_eq!(pane.open.as_ref().unwrap().selected, 0);
+        assert_eq!(pane.open.as_ref().unwrap().scroll.get(), scroll);
     }
 
     #[test]

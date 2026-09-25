@@ -154,6 +154,11 @@ both transcript views, including headings, emphasis, lists, quotes, links,
 tables, and fenced code. Commands, tool output, and `d` full records remain
 literal. Long code and output stay scrollable without dropping lines.
 
+Click an underlined file path in either transcript view to inspect its retained
+contents. The [file viewer](docs/gym/retained-files.md) wraps, scrolls, labels
+historical reads and later snapshots, and returns to the transcript with Esc.
+Opening it pauses head-to-head playback.
+
 ### Load the public transcripts on each computer
 
 The pinned Fable 5.1 collection contains **1,650 listed attempts across 66

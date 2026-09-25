@@ -111,6 +111,15 @@ Markdown renderer for messages and reasoning. They preserve inline styles,
 headings, lists, quotes, tables, and fenced code. Tool commands and output
 remain literal; `d` in replay shows the complete literal record.
 
+## Open files from transcripts
+
+Click an underlined path in a command, read, or edit to open its retained file
+evidence. The viewer scrolls and wraps; Esc returns to the same transcript
+position. In head-to-head replay, opening a file pauses playback. Tab cycles
+through explicitly labeled observations and snapshots. Missing historical
+contents stay visible as a gap; a final snapshot is not presented as an earlier
+file. See the [retained-file viewer](retained-files.md).
+
 ## Read recent runs
 
 The terminal opens on the **Runs** pane. It lists every Terminal-Bench trial

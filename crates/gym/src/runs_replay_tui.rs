@@ -46,6 +46,7 @@ struct Screen {
     free: Cell<bool>,
     /// The screen row and step of every row drawn last frame, for clicks.
     drawn: std::cell::RefCell<Vec<(u16, usize)>>,
+    file_hits: RefCell<Vec<crate::runs_files::Hit>>,
 }
 impl Screen {
     fn new(source: Source) -> Result<Self, String> {
@@ -79,6 +80,7 @@ impl Screen {
             shown: Cell::new(0),
             free: Cell::new(false),
             drawn: std::cell::RefCell::new(Vec::new()),
+            file_hits: RefCell::new(Vec::new()),
             rows: RefCell::new(Wrapped {
                 width: 0,
                 ladder: Ladder::default(),
@@ -179,6 +181,8 @@ impl Screen {
                 buf,
                 ladder,
             ));
+            *self.file_hits.borrow_mut() =
+                crate::runs_files::decorate(text, &self.drawn.borrow(), &self.blocks, buf);
             // The wheel reached the bottom: follow the latest step again.
             if was_free && !self.free.get() {
                 self.follow.set(true);
@@ -186,6 +190,7 @@ impl Screen {
             }
             return;
         }
+        self.file_hits.borrow_mut().clear();
         let mut wrapped = self.rows.borrow_mut();
         if wrapped.width != usize::from(text.width) || wrapped.ladder != ladder {
             wrapped.width = usize::from(text.width);
@@ -298,6 +303,7 @@ pub struct Pane {
     all_agents: bool,
     right_local: bool,
     screens: Option<[Option<Screen>; 2]>,
+    file_viewer: Option<crate::runs_files::Viewer>,
     side_errors: [Option<String>; 2],
     learning: Learning,
     analysis: bool,
@@ -342,6 +348,7 @@ impl Pane {
             all_agents,
             right_local: false,
             screens: None,
+            file_viewer: None,
             side_errors: [None, None],
             learning: Learning::default(),
             sides: Cell::new([Rect::default(); 2]),
@@ -600,6 +607,39 @@ impl Pane {
     }
     /// Returns `None` when Escape leaves head-to-head mode.
     pub fn key(&mut self, key: Key) -> Option<Reply> {
+        if let Some(viewer) = &mut self.file_viewer {
+            if viewer.key(key) {
+                self.file_viewer = None;
+            }
+            return Some(Reply::Handled);
+        }
+        if !self.analysis
+            && let Key::Click { column, row } = key
+            && let Some(screens) = &self.screens
+        {
+            for (side, screen) in screens.iter().enumerate() {
+                let Some(screen) = screen else {
+                    continue;
+                };
+                if let Some(hit) =
+                    crate::runs_files::clicked(&screen.file_hits.borrow(), column, row)
+                {
+                    let run = match &screen.source {
+                        Source::Local(run) => Some(run.as_ref()),
+                        Source::Public { .. } => None,
+                    };
+                    self.file_viewer = Some(crate::runs_files::Viewer::open(
+                        run,
+                        &screen.blocks,
+                        hit.step,
+                        &hit.path,
+                    ));
+                    self.clock.playing = false;
+                    self.focus = side;
+                    return Some(Reply::Handled);
+                }
+            }
+        }
         if self.typing {
             match key {
                 Key::Char(c) => self.query.push(c),
@@ -858,6 +898,10 @@ impl Pane {
         Some(Reply::Handled)
     }
     pub fn render(&self, area: Rect, buf: &mut Buffer, ladder: Ladder) {
+        if let Some(viewer) = &self.file_viewer {
+            viewer.render(area, buf, ladder);
+            return;
+        }
         if area.width < 60 || area.height < 14 {
             line(
                 buf,
@@ -939,7 +983,7 @@ impl Pane {
                 if self.analysis {
                     "Judgments cover the whole run, including events not replayed yet · l transcripts · Esc choose pair · q quit"
                 } else {
-                    "↑/↓ select · enter open or close · e open all · g top · G latest and follow · Tab other side · d raw record · Esc choose pair · q quit"
+                    "click path opens file · ↑/↓ select · enter open or close · e open all · g top · G latest and follow · Tab other side · d raw record · Esc choose pair · q quit"
                 },
                 ladder,
                 Intensity::Half,
@@ -1615,6 +1659,50 @@ mod tests {
         p.key(Key::Char('g'));
         p.render(area, &mut buf, crate::tui::ladder_from_environment());
         assert!(contents(&buf).contains("step timestamp"));
+    }
+
+    #[test]
+    fn file_viewer_in_replay_pauses_both_sides_and_preserves_the_clock() {
+        use crate::runs_transcript::{Block, Kind};
+        let (_dir, mut pane) = pane();
+        pane.query = "coq".to_owned();
+        pane.key(Key::Char('o'));
+        pane.key(Key::Enter);
+        for (side, screen) in pane.screens.as_mut().unwrap().iter_mut().enumerate() {
+            let screen = screen.as_mut().unwrap();
+            screen.blocks = vec![Block {
+                at: Some(0),
+                kind: Kind::Look {
+                    what: "Read tests/T5.sh".to_owned(),
+                    output: format!("side {side} contents"),
+                },
+            }];
+        }
+        pane.clock.elapsed_ms = 500.0;
+        pane.clock.playing = true;
+        let area = Rect::new(0, 0, 150, 38);
+        let mut buf = Buffer::empty(area);
+        pane.render(area, &mut buf, Ladder::default());
+        let hit = pane.screens.as_ref().unwrap()[1]
+            .as_ref()
+            .unwrap()
+            .file_hits
+            .borrow()[0]
+            .clone();
+        pane.key(Key::Click {
+            column: hit.cells.x,
+            row: hit.cells.y,
+        });
+        assert!(!pane.clock.playing);
+        assert_eq!(pane.focus, 1);
+        pane.advance(Duration::from_secs(20));
+        assert_eq!(pane.clock.elapsed_ms, 500.0);
+        pane.render(area, &mut buf, Ladder::default());
+        assert!(contents(&buf).contains("side 1 contents"));
+        pane.key(Key::Back);
+        assert!(pane.file_viewer.is_none());
+        assert!(pane.active());
+        assert_eq!(pane.clock.elapsed_ms, 500.0);
     }
 
     #[test]

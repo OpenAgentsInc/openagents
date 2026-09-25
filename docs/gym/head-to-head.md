@@ -179,6 +179,15 @@ picker means the attempt is listed but its transcript file is missing
 locally. A failed side displays its cause and acquisition command inside
 the pane. After downloading, press Escape and Enter to reload the pair.
 
+## Open a retained file
+
+Click an underlined file path on either transcript to open the file viewer.
+Playback pauses. The viewer wraps and scrolls; Esc returns to the same replay
+position. Tab cycles through retained observations and snapshots. Each source
+is labeled, and later or undated snapshots require explicit selection.
+See [inspect files from a transcript](retained-files.md) for controls, supported
+evidence, and the difference between a recorded read, a patch, and a full snapshot.
+
 ## Public Fable collection
 
 The September 23 acquisition contains all five Fable 5.1 rows on the

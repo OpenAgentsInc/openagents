@@ -452,7 +452,7 @@ fn tool_block(name: &str, input: &Value, output: String, failed: bool) -> Kind {
             }
         }
         "Read" | "read_file" => Kind::Look {
-            what: format!("Read {}", short_path(&get("file_path"))),
+            what: format!("Read {}", retained_path(&get("file_path"))),
             output,
         },
         "Glob" => Kind::Look {
@@ -464,14 +464,14 @@ fn tool_block(name: &str, input: &Value, output: String, failed: bool) -> Kind {
             output,
         },
         "LS" => Kind::Look {
-            what: format!("Listed {}", short_path(&get("path"))),
+            what: format!("Listed {}", retained_path(&get("path"))),
             output,
         },
         "Edit" => {
             let old = get("old_string");
             let new = get("new_string");
             Kind::Edit {
-                path: short_path(&get("file_path")),
+                path: retained_path(&get("file_path")),
                 action: "Edited",
                 added: lines(&new),
                 removed: lines(&old),
@@ -501,7 +501,7 @@ fn tool_block(name: &str, input: &Value, output: String, failed: bool) -> Kind {
                 body.push('\n');
             }
             Kind::Edit {
-                path: short_path(&get("file_path")),
+                path: retained_path(&get("file_path")),
                 action: "Edited",
                 added,
                 removed,
@@ -511,7 +511,7 @@ fn tool_block(name: &str, input: &Value, output: String, failed: bool) -> Kind {
         "Write" | "write_file" => {
             let content = get("content");
             Kind::Edit {
-                path: short_path(&get("file_path")),
+                path: retained_path(&get("file_path")),
                 action: "Wrote",
                 added: lines(&content),
                 removed: 0,
@@ -603,22 +603,9 @@ fn compact_json(value: &Value) -> String {
     }
 }
 
-/// `/app/src/lib.rs` stays as it is; only very long paths lose their
-/// middle.
-fn short_path(path: &str) -> String {
-    if path.chars().count() <= 70 {
-        return path.to_owned();
-    }
-    let parts: Vec<&str> = path.split('/').collect();
-    if parts.len() > 4 {
-        format!(
-            "{}/…/{}",
-            parts[..2].join("/"),
-            parts[parts.len() - 2..].join("/")
-        )
-    } else {
-        path.to_owned()
-    }
+/// Keeps the original file identity; renderers wrap or clip it for display.
+fn retained_path(path: &str) -> String {
+    path.to_owned()
 }
 
 /// Maps a native stream's line numbers to the times the episode log
@@ -783,7 +770,7 @@ pub fn codex_stream(lines: &[Value], clock: &Clock) -> (Vec<Block>, StreamEnd) {
                     blocks.push(Block::new(
                         at,
                         Kind::Edit {
-                            path: short_path(&text(change, "path").unwrap_or_default()),
+                            path: retained_path(&text(change, "path").unwrap_or_default()),
                             action,
                             added: 0,
                             removed: 0,
@@ -1145,13 +1132,13 @@ fn microluna_stream(path: &Path) -> (Vec<Block>, Option<f64>, Option<String>) {
         };
         let kind = match name {
             "read_file" => Kind::Look {
-                what: format!("Read {}", short_path(&get("path"))),
+                what: format!("Read {}", retained_path(&get("path"))),
                 output,
             },
             "write_file" => {
                 let content = get("content");
                 Kind::Edit {
-                    path: short_path(&get("path")),
+                    path: retained_path(&get("path")),
                     action: "Wrote",
                     added: content.lines().count(),
                     removed: 0,
@@ -1546,7 +1533,7 @@ pub fn coder_one(episode: Option<&Path>, log: &Path) -> Transcript {
                     transcript.blocks.push(Block::new(
                         at,
                         Kind::Edit {
-                            path: short_path(&text(event, "path").unwrap_or_default()),
+                            path: retained_path(&text(event, "path").unwrap_or_default()),
                             action: match change.as_str() {
                                 "created" | "added" => "Created",
                                 "deleted" | "removed" => "Deleted",

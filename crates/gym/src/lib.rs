@@ -89,6 +89,8 @@ pub mod runs;
 pub mod runs_analysis;
 pub mod runs_analysis_markdown;
 pub mod runs_analysis_suite;
+#[cfg(feature = "tui")]
+mod runs_files;
 pub mod runs_fingerprint;
 pub mod runs_group;
 pub mod runs_highlights;
