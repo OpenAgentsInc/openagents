@@ -1,0 +1,540 @@
+{
+  "schema": "openagents.coder-one.environment-offline.v1",
+  "implementation": "8a2a1058b5cc6be6bc43fc37dd6d6ef79234de037a91ed161770e2e857af8803",
+  "log_files": 2514,
+  "duplicate_files": 2106,
+  "totals": {
+    "sessions": 577,
+    "edited": 250,
+    "commands_before_edit": 6042,
+    "not_found": 153,
+    "no_such_file": 114,
+    "misses": 267,
+    "nonzero": 91,
+    "misses_per_session": 0.4627,
+    "sessions_with_miss": 177,
+    "sessions_with_miss_share": 0.3068,
+    "sessions_with_miss_interval": [
+      0.2705,
+      0.3456
+    ],
+    "prevented": 60,
+    "prevented_fixed": 59,
+    "prevented_share_of_misses": 0.2247,
+    "prevented_share_interval": [
+      0.1788,
+      0.2785
+    ],
+    "sessions_with_prevented": 58,
+    "sessions_with_prevented_interval": [
+      0.0786,
+      0.1278
+    ],
+    "max_misses_in_a_session": 9
+  },
+  "by_agent": {
+    "claude-code": {
+      "sessions": 374,
+      "edited": 116,
+      "commands_before_edit": 5065,
+      "not_found": 104,
+      "no_such_file": 106,
+      "misses": 210,
+      "nonzero": 52,
+      "misses_per_session": 0.5615,
+      "sessions_with_miss": 129,
+      "sessions_with_miss_share": 0.3449,
+      "sessions_with_miss_interval": [
+        0.2985,
+        0.3945
+      ],
+      "prevented": 27,
+      "prevented_fixed": 27,
+      "prevented_share_of_misses": 0.1286,
+      "prevented_share_interval": [
+        0.0899,
+        0.1806
+      ],
+      "sessions_with_prevented": 27,
+      "sessions_with_prevented_interval": [
+        0.0501,
+        0.103
+      ],
+      "max_misses_in_a_session": 9
+    },
+    "codex": {
+      "sessions": 161,
+      "edited": 106,
+      "commands_before_edit": 863,
+      "not_found": 30,
+      "no_such_file": 7,
+      "misses": 37,
+      "nonzero": 22,
+      "misses_per_session": 0.2298,
+      "sessions_with_miss": 31,
+      "sessions_with_miss_share": 0.1925,
+      "sessions_with_miss_interval": [
+        0.1391,
+        0.2603
+      ],
+      "prevented": 15,
+      "prevented_fixed": 14,
+      "prevented_share_of_misses": 0.4054,
+      "prevented_share_interval": [
+        0.2635,
+        0.5651
+      ],
+      "sessions_with_prevented": 15,
+      "sessions_with_prevented_interval": [
+        0.0573,
+        0.148
+      ],
+      "max_misses_in_a_session": 2
+    },
+    "microluna": {
+      "sessions": 42,
+      "edited": 28,
+      "commands_before_edit": 114,
+      "not_found": 19,
+      "no_such_file": 1,
+      "misses": 20,
+      "nonzero": 17,
+      "misses_per_session": 0.4762,
+      "sessions_with_miss": 17,
+      "sessions_with_miss_share": 0.4048,
+      "sessions_with_miss_interval": [
+        0.2704,
+        0.5551
+      ],
+      "prevented": 18,
+      "prevented_fixed": 18,
+      "prevented_share_of_misses": 0.9,
+      "prevented_share_interval": [
+        0.699,
+        0.9721
+      ],
+      "sessions_with_prevented": 16,
+      "sessions_with_prevented_interval": [
+        0.25,
+        0.5319
+      ],
+      "max_misses_in_a_session": 3
+    }
+  },
+  "names": {
+    "bc": 6,
+    "bcftools": 2,
+    "capture": 1,
+    "cmdline": 9,
+    "column": 8,
+    "curl": 12,
+    "evalbench": 3,
+    "file": 21,
+    "free": 4,
+    "git": 14,
+    "jar": 1,
+    "pdftoppm": 1,
+    "pgrep": 1,
+    "pip": 6,
+    "pkill": 8,
+    "ps": 14,
+    "pytest": 2,
+    "python": 23,
+    "python3": 14,
+    "setup.py": 1,
+    "sfdisk": 1,
+    "sqlite3": 1,
+    "ss": 1,
+    "strings": 10,
+    "time": 4,
+    "unzip": 1,
+    "vep": 1,
+    "which": 1,
+    "xxd": 15
+  },
+  "by_task": {
+    "atrx-vep-crispr": {
+      "sessions": 14,
+      "misses": 18,
+      "prevented": 0,
+      "sessions_with_prevented": 0
+    },
+    "batched-eval-parity": {
+      "sessions": 7,
+      "misses": 7,
+      "prevented": 0,
+      "sessions_with_prevented": 0
+    },
+    "biped-contact-dynamics": {
+      "sessions": 1,
+      "misses": 0,
+      "prevented": 0,
+      "sessions_with_prevented": 0
+    },
+    "build-cython-ext": {
+      "sessions": 15,
+      "misses": 5,
+      "prevented": 2,
+      "sessions_with_prevented": 2
+    },
+    "bun-sourcemap-leak": {
+      "sessions": 29,
+      "misses": 9,
+      "prevented": 6,
+      "sessions_with_prevented": 6
+    },
+    "cad-model": {
+      "sessions": 21,
+      "misses": 22,
+      "prevented": 0,
+      "sessions_with_prevented": 0
+    },
+    "cancel-async-tasks": {
+      "sessions": 19,
+      "misses": 1,
+      "prevented": 0,
+      "sessions_with_prevented": 0
+    },
+    "cargo-flight-dispatch": {
+      "sessions": 52,
+      "misses": 4,
+      "prevented": 2,
+      "sessions_with_prevented": 2
+    },
+    "coq-block-bound": {
+      "sessions": 5,
+      "misses": 0,
+      "prevented": 0,
+      "sessions_with_prevented": 0
+    },
+    "ctr-optimization": {
+      "sessions": 1,
+      "misses": 1,
+      "prevented": 0,
+      "sessions_with_prevented": 0
+    },
+    "cumulative-layout-shift": {
+      "sessions": 1,
+      "misses": 0,
+      "prevented": 0,
+      "sessions_with_prevented": 0
+    },
+    "data-anonymization": {
+      "sessions": 5,
+      "misses": 4,
+      "prevented": 0,
+      "sessions_with_prevented": 0
+    },
+    "embedding-drift-monitor": {
+      "sessions": 39,
+      "misses": 30,
+      "prevented": 24,
+      "sessions_with_prevented": 22
+    },
+    "fin-saccr-rwa": {
+      "sessions": 18,
+      "misses": 4,
+      "prevented": 0,
+      "sessions_with_prevented": 0
+    },
+    "fix-code-vulnerability": {
+      "sessions": 14,
+      "misses": 0,
+      "prevented": 0,
+      "sessions_with_prevented": 0
+    },
+    "fix-git": {
+      "sessions": 13,
+      "misses": 0,
+      "prevented": 0,
+      "sessions_with_prevented": 0
+    },
+    "foodstuff-beta-activity": {
+      "sessions": 1,
+      "misses": 0,
+      "prevented": 0,
+      "sessions_with_prevented": 0
+    },
+    "freecad-platform-drawing": {
+      "sessions": 1,
+      "misses": 1,
+      "prevented": 0,
+      "sessions_with_prevented": 0
+    },
+    "freight-dispatch-shift": {
+      "sessions": 1,
+      "misses": 0,
+      "prevented": 0,
+      "sessions_with_prevented": 0
+    },
+    "git-leak-recovery": {
+      "sessions": 15,
+      "misses": 0,
+      "prevented": 0,
+      "sessions_with_prevented": 0
+    },
+    "glycan-ms2-elucidation": {
+      "sessions": 2,
+      "misses": 0,
+      "prevented": 0,
+      "sessions_with_prevented": 0
+    },
+    "gsea-proteomics": {
+      "sessions": 11,
+      "misses": 17,
+      "prevented": 3,
+      "sessions_with_prevented": 3
+    },
+    "headless-terminal": {
+      "sessions": 12,
+      "misses": 0,
+      "prevented": 0,
+      "sessions_with_prevented": 0
+    },
+    "heat-pump-warranty": {
+      "sessions": 11,
+      "misses": 6,
+      "prevented": 0,
+      "sessions_with_prevented": 0
+    },
+    "hof-topology-interpenetration": {
+      "sessions": 1,
+      "misses": 0,
+      "prevented": 0,
+      "sessions_with_prevented": 0
+    },
+    "html-js-filter": {
+      "sessions": 14,
+      "misses": 1,
+      "prevented": 0,
+      "sessions_with_prevented": 0
+    },
+    "interleaved-vigenere": {
+      "sessions": 29,
+      "misses": 14,
+      "prevented": 1,
+      "sessions_with_prevented": 1
+    },
+    "intrastat-meldung": {
+      "sessions": 1,
+      "misses": 1,
+      "prevented": 0,
+      "sessions_with_prevented": 0
+    },
+    "ks-solver-cpp": {
+      "sessions": 19,
+      "misses": 13,
+      "prevented": 6,
+      "sessions_with_prevented": 6
+    },
+    "kv-live-surgery": {
+      "sessions": 1,
+      "misses": 2,
+      "prevented": 0,
+      "sessions_with_prevented": 0
+    },
+    "layout-config-recreation": {
+      "sessions": 1,
+      "misses": 0,
+      "prevented": 0,
+      "sessions_with_prevented": 0
+    },
+    "layout-config-recreation2": {
+      "sessions": 1,
+      "misses": 0,
+      "prevented": 0,
+      "sessions_with_prevented": 0
+    },
+    "legacy-utility-triage": {
+      "sessions": 8,
+      "misses": 5,
+      "prevented": 0,
+      "sessions_with_prevented": 0
+    },
+    "log-summary-date-ranges": {
+      "sessions": 15,
+      "misses": 1,
+      "prevented": 0,
+      "sessions_with_prevented": 0
+    },
+    "medical-claims-processing": {
+      "sessions": 1,
+      "misses": 0,
+      "prevented": 0,
+      "sessions_with_prevented": 0
+    },
+    "mp-checkpoint-consolidation": {
+      "sessions": 1,
+      "misses": 0,
+      "prevented": 0,
+      "sessions_with_prevented": 0
+    },
+    "music-harmony": {
+      "sessions": 5,
+      "misses": 2,
+      "prevented": 0,
+      "sessions_with_prevented": 0
+    },
+    "mvcc-lsm-compaction": {
+      "sessions": 24,
+      "misses": 7,
+      "prevented": 3,
+      "sessions_with_prevented": 3
+    },
+    "nextjs-performance": {
+      "sessions": 14,
+      "misses": 41,
+      "prevented": 10,
+      "sessions_with_prevented": 10
+    },
+    "ontology-kg-querying": {
+      "sessions": 1,
+      "misses": 0,
+      "prevented": 0,
+      "sessions_with_prevented": 0
+    },
+    "payments-pipeline-fix": {
+      "sessions": 1,
+      "misses": 0,
+      "prevented": 0,
+      "sessions_with_prevented": 0
+    },
+    "photonic-waveguide-routing": {
+      "sessions": 1,
+      "misses": 2,
+      "prevented": 0,
+      "sessions_with_prevented": 0
+    },
+    "production-planning": {
+      "sessions": 31,
+      "misses": 4,
+      "prevented": 0,
+      "sessions_with_prevented": 0
+    },
+    "protein-autointerp-disulfide": {
+      "sessions": 5,
+      "misses": 0,
+      "prevented": 0,
+      "sessions_with_prevented": 0
+    },
+    "react-lead-form": {
+      "sessions": 2,
+      "misses": 2,
+      "prevented": 1,
+      "sessions_with_prevented": 1
+    },
+    "retro-console-soc": {
+      "sessions": 1,
+      "misses": 1,
+      "prevented": 0,
+      "sessions_with_prevented": 0
+    },
+    "risk-scorer-replay": {
+      "sessions": 5,
+      "misses": 0,
+      "prevented": 0,
+      "sessions_with_prevented": 0
+    },
+    "roy-polymorph-cn": {
+      "sessions": 2,
+      "misses": 0,
+      "prevented": 0,
+      "sessions_with_prevented": 0
+    },
+    "rs-archive-clone": {
+      "sessions": 3,
+      "misses": 0,
+      "prevented": 0,
+      "sessions_with_prevented": 0
+    },
+    "satb-audio-transcription": {
+      "sessions": 1,
+      "misses": 1,
+      "prevented": 0,
+      "sessions_with_prevented": 0
+    },
+    "session-window-debug": {
+      "sessions": 20,
+      "misses": 1,
+      "prevented": 1,
+      "sessions_with_prevented": 1
+    },
+    "sglang-qwen-burst": {
+      "sessions": 3,
+      "misses": 0,
+      "prevented": 0,
+      "sessions_with_prevented": 0
+    },
+    "sound-change-cascade": {
+      "sessions": 9,
+      "misses": 4,
+      "prevented": 0,
+      "sessions_with_prevented": 0
+    },
+    "sqlite-db-truncate": {
+      "sessions": 13,
+      "misses": 16,
+      "prevented": 1,
+      "sessions_with_prevented": 1
+    },
+    "takens-embedding-lean": {
+      "sessions": 1,
+      "misses": 0,
+      "prevented": 0,
+      "sessions_with_prevented": 0
+    },
+    "telecom-entity-resolution": {
+      "sessions": 1,
+      "misses": 0,
+      "prevented": 0,
+      "sessions_with_prevented": 0
+    },
+    "uefi-bootkit": {
+      "sessions": 1,
+      "misses": 9,
+      "prevented": 0,
+      "sessions_with_prevented": 0
+    },
+    "unknown": {
+      "sessions": 4,
+      "misses": 0,
+      "prevented": 0,
+      "sessions_with_prevented": 0
+    },
+    "vba-userform-port": {
+      "sessions": 10,
+      "misses": 7,
+      "prevented": 0,
+      "sessions_with_prevented": 0
+    },
+    "vf2-speedup-networkx": {
+      "sessions": 2,
+      "misses": 0,
+      "prevented": 0,
+      "sessions_with_prevented": 0
+    },
+    "vllm-deepseek-streaming": {
+      "sessions": 1,
+      "misses": 0,
+      "prevented": 0,
+      "sessions_with_prevented": 0
+    },
+    "wal-recovery-ordering": {
+      "sessions": 16,
+      "misses": 4,
+      "prevented": 0,
+      "sessions_with_prevented": 0
+    }
+  },
+  "excluded_tasks": [
+    "distributed-dedup",
+    "formal-crypto",
+    "freecad-impeller",
+    "freecad-spring-clip",
+    "math-eval-grader",
+    "pretrain-shard-corruption",
+    "shadow-relay",
+    "vpp-loss-divergence"
+  ],
+  "excluded_sessions": 5
+}
