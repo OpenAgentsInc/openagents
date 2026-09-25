@@ -71,6 +71,9 @@ pub struct Bounds {
     pub usd: f64,
     /// The reasoning effort.
     pub effort: Option<String>,
+    /// How the session's commands are confined: a writing boundary on its
+    /// own directory, or the task's container when that is the boundary.
+    pub isolation: Isolation,
 }
 
 impl Default for Bounds {
@@ -80,6 +83,7 @@ impl Default for Bounds {
             wall: Duration::from_secs(600),
             usd: 0.08,
             effort: Some("high".to_string()),
+            isolation: Isolation::Boundary,
         }
     }
 }
@@ -181,7 +185,7 @@ pub async fn write<T: Transport>(
     let seal = microluna::Seal::create(&seal_dir, true).map_err(|e| e.to_string())?;
     let workspace = microluna::Workspace::new(dir)
         .map_err(|e| e.to_string())?
-        .isolated_by(Isolation::Boundary)
+        .isolated_by(bounds.isolation)
         .sealed_by(seal);
     let name = format!("oracle-writer-{}", spec.task);
     let config = Config {

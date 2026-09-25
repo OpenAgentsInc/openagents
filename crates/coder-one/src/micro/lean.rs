@@ -275,6 +275,55 @@ pub struct Lean {
     /// runs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub localize: Option<crate::localize::Localize>,
+    /// `checks.oracle` (issue #9656): before session 1, find a checker the
+    /// instruction names or have a separate Luna session write an oracle
+    /// from the task's stated definition ([`crate::checks::oracle`]), and
+    /// run it on the untouched workspace. An oracle that fails there then
+    /// replaces the frozen self-score for keep-best, and the loop won't
+    /// accept a `done` finish while it fails. Needs `keep_best`. Accepted
+    /// only once the offline measurement admits it
+    /// ([`crate::checks::oracle::ADMITTED`]); absent, as in every manifest
+    /// before it, nothing runs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub oracle: Option<LeanOracle>,
+}
+
+/// `executor.microluna.lean.oracle`: the oracle writer's bounds.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LeanOracle {
+    /// The writer session's model requests at most.
+    #[serde(default = "oracle_turns")]
+    pub writer_turns: usize,
+    /// The writer session's wall-time bound, in seconds.
+    #[serde(default = "oracle_sec")]
+    pub writer_sec: u64,
+    /// The writer session's spend bound, in dollars at list price.
+    #[serde(default = "oracle_usd")]
+    pub writer_usd: f64,
+}
+
+fn oracle_turns() -> usize {
+    crate::checks::oracle::write::Bounds::default().turns
+}
+
+fn oracle_sec() -> u64 {
+    crate::checks::oracle::write::Bounds::default()
+        .wall
+        .as_secs()
+}
+
+fn oracle_usd() -> f64 {
+    crate::checks::oracle::write::Bounds::default().usd
+}
+
+/// The oracle beside the lean loop, once it's ready.
+pub(super) struct OracleState {
+    pub oracle: crate::checks::oracle::Oracle,
+    pub spec: Option<crate::checks::oracle::Spec>,
+    /// Where a written oracle's files are.
+    pub dir: String,
+    pub untouched: crate::checks::acceptance::Acceptance,
 }
 
 /// `executor.microluna.lean.executed`: the bounds of the commands the host
@@ -646,6 +695,24 @@ impl Lean {
         }
         if let Some(localize) = &self.localize {
             problems.extend(localize.validate());
+        }
+        if self.oracle.is_some() {
+            if !crate::checks::oracle::ADMITTED {
+                problems.push(
+                    "executor.microluna.lean.oracle isn't admitted: the offline measurement \
+                     didn't admit checks.oracle (docs/terminal-bench/2026-09-25-oracle.md)"
+                        .to_string(),
+                );
+            }
+            if !self.keep_best {
+                problems.push("executor.microluna.lean.oracle requires keep_best".to_string());
+            }
+            if self.lanes > 1 {
+                problems.push(
+                    "executor.microluna.lean.oracle scores sequential sessions only, not lanes"
+                        .to_string(),
+                );
+            }
         }
         if self.grade && self.tiered.is_some() {
             problems.push(
@@ -1724,6 +1791,166 @@ impl Micro {
         (tier, record)
     }
 
+    /// Finds or writes the oracle before the first session and runs it on
+    /// the untouched workspace. Returns the oracle when it can score
+    /// candidates, and the move that records it with its cost in `usd`.
+    pub(super) async fn oracle_prepare(
+        &self,
+        prepared: &Prepared,
+        settings: &LeanOracle,
+    ) -> (Option<OracleState>, Value) {
+        use crate::checks::oracle::{self, Oracle, Source, define, find, write};
+        let workdir = self.workdir.display().to_string();
+        let host = crate::checks::contract::host::Contained {
+            workdir: self.workdir.clone(),
+        };
+        let pristine =
+            crate::checks::contract::extract::gather(&host, &prepared.instruction, &workdir).await;
+        let located = find::find(&prepared.instruction, &workdir, &pristine);
+        let base = self
+            .artifacts
+            .parent()
+            .map_or_else(|| self.artifacts.clone(), Path::to_path_buf);
+        let dir = base.join(format!("oracle-{}", self.dispatch()));
+        let mut usd = 0.0;
+        let mut jev_usd = 0.0;
+        let mut spec = None;
+        let mut writer = Value::Null;
+        let made = if let Some(command) = &located.command {
+            crate::say::line("  microluna ▸ the task names a checker; it is the oracle");
+            Some(
+                Oracle {
+                    schema: String::new(),
+                    task: prepared.title.clone(),
+                    source: Source::Found,
+                    command: Some(command.clone()),
+                    origin: located.origin.clone(),
+                    files: BTreeMap::new(),
+                    spec: None,
+                    writer: json!({ "from": located.from }),
+                    digest: String::new(),
+                }
+                .sealed(),
+            )
+        } else {
+            let (made, asked) = define::spec(
+                &prepared.title,
+                &prepared.instruction,
+                &workdir,
+                &pristine,
+                located.references.clone(),
+                &prepared.jev,
+                None,
+                &self.recorder,
+            )
+            .await;
+            jev_usd = asked.usd;
+            let written = match &self.wire {
+                Ok(wire) => {
+                    crate::say::line(
+                        "  microluna ▸ a separate session writes an oracle from the task's \
+                         stated definition",
+                    );
+                    let bounds = write::Bounds {
+                        turns: settings.writer_turns,
+                        wall: Duration::from_secs(settings.writer_sec).min(self.deadline),
+                        usd: settings.writer_usd,
+                        isolation: self.isolation,
+                        ..write::Bounds::default()
+                    };
+                    match write::write(wire, &made, &dir, &bounds, Some(&self.artifacts)).await {
+                        Ok((oracle, record)) => {
+                            usd = record["usd"].as_f64().unwrap_or(0.0);
+                            writer = record;
+                            oracle
+                        }
+                        Err(error) => {
+                            writer = json!({ "error": error });
+                            None
+                        }
+                    }
+                }
+                Err(error) => {
+                    writer = json!({ "error": error });
+                    None
+                }
+            };
+            spec = Some(made);
+            written
+        };
+        let Some(oracle) = made else {
+            return (
+                None,
+                json!({
+                    "kind": "lean.oracle",
+                    "oracle": null,
+                    "find": located,
+                    "writer": writer,
+                    "usd": usd + jev_usd,
+                }),
+            );
+        };
+        let dir = dir.display().to_string();
+        let untouched = self
+            .oracle_run_on(&oracle, spec.as_ref(), &dir, "untouched", None)
+            .await;
+        let usable = oracle::usable(&untouched);
+        crate::say::line(&format!(
+            "  microluna ▸ {} oracle on the untouched workspace: {}{}",
+            oracle.source.word(),
+            untouched.summary(),
+            if usable {
+                ""
+            } else {
+                "; it doesn't fail there, so it won't score candidates"
+            }
+        ));
+        let record = json!({
+            "kind": "lean.oracle",
+            "oracle": oracle.digest,
+            "source": oracle.source,
+            "find": located,
+            "spec": spec.as_ref().map(|s| s.digest.clone()),
+            "writer": writer,
+            "untouched": untouched,
+            "usable": usable,
+            "usd": usd + jev_usd,
+        });
+        let state = usable.then_some(OracleState {
+            oracle,
+            spec,
+            dir,
+            untouched,
+        });
+        (state, record)
+    }
+
+    /// Runs the oracle on the workspace as it is now: in the task's
+    /// container when that is the boundary, otherwise in a writing
+    /// boundary on the workspace.
+    pub(super) async fn oracle_run_on(
+        &self,
+        oracle: &crate::checks::oracle::Oracle,
+        spec: Option<&crate::checks::oracle::Spec>,
+        dir: &str,
+        label: &str,
+        untouched: Option<&crate::checks::acceptance::Acceptance>,
+    ) -> crate::checks::acceptance::Acceptance {
+        use crate::checks::contract::host::{Contained, Local};
+        let workdir = self.workdir.display().to_string();
+        if self.isolation == Isolation::TaskContainer {
+            let host = Contained {
+                workdir: self.workdir.clone(),
+            };
+            crate::checks::oracle::run(oracle, spec, &host, dir, &workdir, label, untouched).await
+        } else {
+            let host = Local {
+                workdir: self.workdir.clone(),
+            };
+            crate::checks::oracle::run(oracle, spec, &host, dir, &workdir, label, untouched).await
+        }
+    }
+
     /// Runs the tiered suite on the workspace after session `number`: the
     /// powers its result carries, the record, and the lines the next
     /// session reads. A suite edited since its freeze holds nothing and
@@ -2321,6 +2548,16 @@ impl Micro {
             }
             None => None,
         };
+        let oracle_state = match &lean.oracle {
+            Some(settings) => {
+                let (state, record) = self.oracle_prepare(prepared, settings).await;
+                spent += record["usd"].as_f64().unwrap_or(0.0);
+                moves.push(record);
+                state
+            }
+            None => None,
+        };
+        let mut oracle_note: Option<String> = None;
         let mut tier_notes: Vec<String> = Vec::new();
         let mut offset = 0u32;
         if lanes > 1 {
@@ -2569,6 +2806,9 @@ impl Micro {
                     state.extend(localize_notes.iter().cloned());
                 }
                 state.extend(tier_notes.iter().cloned());
+                if let Some(note) = &oracle_note {
+                    state.push(note.clone());
+                }
                 let changes = match &base {
                     Some(base) => crate::delegate::changes_since(base, &self.workdir),
                     None => crate::delegate::changes(&self.workdir, None),
@@ -2722,6 +2962,35 @@ impl Micro {
                 } else {
                     score_total = Some(total);
                 }
+            }
+            // `checks.oracle`: an oracle that failed on the untouched
+            // workspace replaces the self-score for keep-best (#9656).
+            let mut oracle_failing = false;
+            let mut oracle_record = Value::Null;
+            if let Some(o) = &oracle_state {
+                let result = self
+                    .oracle_run_on(
+                        &o.oracle,
+                        o.spec.as_ref(),
+                        &o.dir,
+                        &format!("after session {number}"),
+                        Some(&o.untouched),
+                    )
+                    .await;
+                oracle_failing = result.passed() == Some(false);
+                if result.passed().is_some() {
+                    let passed = result.count(crate::checks::acceptance::Verdict::Passed) as u64;
+                    let failed = result.count(crate::checks::acceptance::Verdict::Failed) as u64;
+                    score = Some((passed, passed + failed));
+                    score_tail = result.summary();
+                }
+                oracle_note = Some(crate::checks::oracle::brief_line(number, &result));
+                oracle_record = json!({
+                    "passed": result.passed(),
+                    "summary": result.summary(),
+                    "first_failure": result.first_failure,
+                    "cases": result.cases.len(),
+                });
             }
             if score.is_none() {
                 lines.clear();
@@ -3055,6 +3324,9 @@ impl Micro {
             if let (Some(told), Some(last)) = (localize_told, moves.last_mut()) {
                 last["localize_in_session"] = told;
             }
+            if let (false, Some(last)) = (oracle_record.is_null(), moves.last_mut()) {
+                last["oracle"] = oracle_record;
+            }
             if keep_evidence {
                 let evidence = serde_json::to_vec_pretty(&moves).unwrap_or_default();
                 if let Err(error) =
@@ -3086,8 +3358,13 @@ impl Micro {
             let full = score.is_some_and(|(p, t)| p >= t);
             // A holding test's red keeps the loop going; its green is
             // necessary, never sufficient.
-            let settled =
-                status == "done" && !flagged && !rejected && (!lean.keep_best || full) && held == 0;
+            // A failing oracle refuses the finish, as a holding test does.
+            let settled = status == "done"
+                && !flagged
+                && !rejected
+                && (!lean.keep_best || full)
+                && held == 0
+                && !oracle_failing;
             if settled {
                 stopped = format!("session {number} ended done");
                 if !lean.self_check {

@@ -1502,6 +1502,7 @@ fn lean_shape() -> lean::Lean {
         grade: false,
         method_conformance: false,
         localize: None,
+        oracle: None,
     }
 }
 
@@ -3263,4 +3264,86 @@ async fn the_frozen_check_is_graded_and_each_line_recorded_per_session() {
         ),
         grades["check_digest"].as_str().unwrap()
     );
+}
+
+#[test]
+fn the_oracle_switch_is_off_by_default_and_refused_until_admitted() {
+    let off: lean::Lean =
+        serde_json::from_value(json!({ "sessions": 1, "source_chars": 1000 })).unwrap();
+    assert!(off.oracle.is_none());
+    assert!(!serde_json::to_string(&off).unwrap().contains("oracle"));
+    let on: lean::Lean =
+        serde_json::from_value(json!({ "sessions": 1, "source_chars": 1000, "oracle": {} }))
+            .unwrap();
+    assert_eq!(on.oracle.as_ref().unwrap().writer_turns, 30);
+    let problems = on.validate();
+    assert_eq!(
+        problems.iter().any(|p| p.contains("oracle isn't admitted")),
+        !crate::checks::oracle::ADMITTED,
+        "{problems:?}"
+    );
+    assert!(
+        problems
+            .iter()
+            .any(|p| p.contains("oracle requires keep_best")),
+        "{problems:?}"
+    );
+}
+
+const ORACLE_TASK: &str =
+    "Write hello.txt containing the word hello.\n\nRun `sh check_hello.sh` to check the result.";
+
+#[tokio::test]
+async fn a_failing_oracle_refuses_a_done_finish_and_replaces_the_self_score() {
+    let dir = tempfile::tempdir().unwrap();
+    let work = dir.path().join("work");
+    std::fs::create_dir_all(&work).unwrap();
+    std::fs::write(work.join("check_hello.sh"), "grep -qx hello hello.txt\n").unwrap();
+    let mut executor = micro(
+        dir.path(),
+        vec![
+            call(
+                "a1",
+                "write_file",
+                &json!({ "path": "hello.txt", "contents": "goodbye\n" }),
+                usage(1_000, 0, 30),
+            ),
+            finish("a2", "done", "Wrote hello.txt."),
+            call(
+                "b1",
+                "write_file",
+                &json!({ "path": "hello.txt", "contents": "hello\n" }),
+                usage(1_000, 0, 30),
+            ),
+            finish("b2", "done", "Wrote hello.txt with hello."),
+        ],
+        lean_policy(lean::Lean {
+            sessions: 3,
+            self_check: false,
+            keep_best: true,
+            oracle: Some(lean::LeanOracle {
+                writer_turns: 4,
+                writer_sec: 60,
+                writer_usd: 0.01,
+            }),
+            ..lean_shape()
+        }),
+    );
+    let mut ready = prepared();
+    ready.instruction = ORACLE_TASK.to_string();
+    executor.prepared = Some(ready);
+    executor.execute(&briefing(ORACLE_TASK)).await;
+    let record = executor.last.clone().unwrap();
+    let moves = record["moves"].as_array().unwrap();
+    assert_eq!(moves[0]["kind"], "lean.oracle", "{record:#}");
+    assert_eq!(moves[0]["source"], "found", "{record:#}");
+    assert_eq!(moves[0]["usable"], true, "{record:#}");
+    // Session 1 finished done with the oracle failing: the loop went on.
+    assert_eq!(moves[1]["oracle"]["passed"], false, "{record:#}");
+    assert_eq!(moves[1]["score"]["passed"], 0, "{record:#}");
+    assert_eq!(moves[2]["oracle"]["passed"], true, "{record:#}");
+    assert_eq!(moves[2]["score"]["passed"], 1, "{record:#}");
+    assert_eq!(moves[2]["kept"], true, "{record:#}");
+    let stopped = record["stopped"].as_str().unwrap();
+    assert!(stopped.contains("session 2 ended done"), "{stopped}");
 }

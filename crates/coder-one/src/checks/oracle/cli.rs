@@ -143,6 +143,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
             wall: Duration::from_secs(number("--writer-sec", 600.0)? as u64),
             usd: number("--session-usd", 0.08)?,
             effort: Some(one("--effort").unwrap_or_else(|| "high".to_string())),
+            ..Bounds::default()
         },
         budget_usd: number("--budget-usd", 1.0)?,
     };
