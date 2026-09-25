@@ -1,0 +1,218 @@
+[
+  {
+    "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+    "trial": "bn-fit-modify__aamGcUp",
+    "task": "bn-fit-modify",
+    "executor": "luna"
+  },
+  {
+    "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+    "trial": "bn-fit-modify__bFJqScn",
+    "task": "bn-fit-modify",
+    "executor": "luna"
+  },
+  {
+    "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+    "trial": "bn-fit-modify__nomggBk",
+    "task": "bn-fit-modify",
+    "executor": "luna"
+  },
+  {
+    "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+    "trial": "circuit-fibsqrt__7YduQi2",
+    "task": "circuit-fibsqrt",
+    "executor": "luna"
+  },
+  {
+    "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+    "trial": "circuit-fibsqrt__GsDeSsu",
+    "task": "circuit-fibsqrt",
+    "executor": "luna"
+  },
+  {
+    "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+    "trial": "circuit-fibsqrt__X9xhXrv",
+    "task": "circuit-fibsqrt",
+    "executor": "luna"
+  },
+  {
+    "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+    "trial": "constraints-scheduling__6RAdWrC",
+    "task": "constraints-scheduling",
+    "executor": "luna"
+  },
+  {
+    "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+    "trial": "constraints-scheduling__8BvpdSE",
+    "task": "constraints-scheduling",
+    "executor": "luna"
+  },
+  {
+    "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+    "trial": "constraints-scheduling__HKRJM8E",
+    "task": "constraints-scheduling",
+    "executor": "luna"
+  },
+  {
+    "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+    "trial": "distribution-search__2iPcGxp",
+    "task": "distribution-search",
+    "executor": "luna"
+  },
+  {
+    "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+    "trial": "distribution-search__wfDMeV5",
+    "task": "distribution-search",
+    "executor": "luna"
+  },
+  {
+    "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+    "trial": "distribution-search__xGDRd3x",
+    "task": "distribution-search",
+    "executor": "luna"
+  },
+  {
+    "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+    "trial": "financial-document-processor__Tq5JAmN",
+    "task": "financial-document-processor",
+    "executor": "luna"
+  },
+  {
+    "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+    "trial": "financial-document-processor__qJZNUBC",
+    "task": "financial-document-processor",
+    "executor": "luna"
+  },
+  {
+    "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+    "trial": "financial-document-processor__vWXXrpH",
+    "task": "financial-document-processor",
+    "executor": "luna"
+  },
+  {
+    "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+    "trial": "model-extraction-relu-logits__7GNM99Y",
+    "task": "model-extraction-relu-logits",
+    "executor": "luna"
+  },
+  {
+    "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+    "trial": "model-extraction-relu-logits__UmfHku9",
+    "task": "model-extraction-relu-logits",
+    "executor": "luna"
+  },
+  {
+    "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+    "trial": "model-extraction-relu-logits__ouMhUtE",
+    "task": "model-extraction-relu-logits",
+    "executor": "luna"
+  },
+  {
+    "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+    "trial": "multi-source-data-merger__oJGMRvv",
+    "task": "multi-source-data-merger",
+    "executor": "luna"
+  },
+  {
+    "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+    "trial": "multi-source-data-merger__pS6dYp5",
+    "task": "multi-source-data-merger",
+    "executor": "luna"
+  },
+  {
+    "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+    "trial": "multi-source-data-merger__zWJATYe",
+    "task": "multi-source-data-merger",
+    "executor": "luna"
+  },
+  {
+    "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+    "trial": "openssl-selfsigned-cert__CejSu7F",
+    "task": "openssl-selfsigned-cert",
+    "executor": "luna"
+  },
+  {
+    "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+    "trial": "openssl-selfsigned-cert__TrUCPrY",
+    "task": "openssl-selfsigned-cert",
+    "executor": "luna"
+  },
+  {
+    "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+    "trial": "openssl-selfsigned-cert__ocGbbgF",
+    "task": "openssl-selfsigned-cert",
+    "executor": "luna"
+  },
+  {
+    "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+    "trial": "polyglot-c-py__4ajgUVL",
+    "task": "polyglot-c-py",
+    "executor": "luna"
+  },
+  {
+    "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+    "trial": "polyglot-c-py__BefiH6a",
+    "task": "polyglot-c-py",
+    "executor": "luna"
+  },
+  {
+    "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+    "trial": "polyglot-c-py__e7VT9Jp",
+    "task": "polyglot-c-py",
+    "executor": "luna"
+  },
+  {
+    "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+    "trial": "regex-log__ADNsZy7",
+    "task": "regex-log",
+    "executor": "luna"
+  },
+  {
+    "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+    "trial": "regex-log__CSmbePB",
+    "task": "regex-log",
+    "executor": "luna"
+  },
+  {
+    "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+    "trial": "regex-log__ZR34vNw",
+    "task": "regex-log",
+    "executor": "luna"
+  },
+  {
+    "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+    "trial": "sparql-university__EWVxjcq",
+    "task": "sparql-university",
+    "executor": "luna"
+  },
+  {
+    "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+    "trial": "sparql-university__R26rnoi",
+    "task": "sparql-university",
+    "executor": "luna"
+  },
+  {
+    "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+    "trial": "sparql-university__jefGE3t",
+    "task": "sparql-university",
+    "executor": "luna"
+  },
+  {
+    "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+    "trial": "write-compressor__AdqzkqJ",
+    "task": "write-compressor",
+    "executor": "luna"
+  },
+  {
+    "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+    "trial": "write-compressor__a7ExoaT",
+    "task": "write-compressor",
+    "executor": "luna"
+  },
+  {
+    "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+    "trial": "write-compressor__hfBx6Mh",
+    "task": "write-compressor",
+    "executor": "luna"
+  }
+]
