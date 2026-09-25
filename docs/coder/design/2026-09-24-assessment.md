@@ -234,7 +234,12 @@ In order:
    anatomy work to find TB4 tasks of that shape, pin a set of 10 before
    running, and measure the cheaper-work lane across them. That's the
    claim a customer would care about: "this kind of task, this reliable,
-   this much cheaper."
+   this much cheaper." Pinned on 2026-09-25, not yet run: the
+   [Luna-sized family pre-registration](../../../bench/terminal-bench/experiments/2026-09-25-luna-sized-family/protocol.md).
+   Only six untouched TB4 tasks qualify, not ten: three for development
+   and three for confirmation, with `microluna-v15` at 3 attempts each.
+   It's a win if at least 2 of the 3 confirmation tasks pass 2 of 3
+   attempts at under 10% of Fable low's cost per pass.
 5. **Treat the search tasks as capability gaps, logged** in the
    [capability-gap log](../../terminal-bench/capability-gaps.md). Don't
    tune the loop on them further. Revisit when a new Luna, a new
