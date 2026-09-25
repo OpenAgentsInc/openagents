@@ -614,6 +614,107 @@ fn row<'a>(rows: &'a mut Vec<Split>, label: &str) -> &'a mut Split {
     }
 }
 
+/// Per-kind discrimination on the candidate the experiment graded. Missing
+/// reports are not passing observations, and each trial counts once per kind.
+fn per_check_signal(composed: &[&TrialFacts]) -> Signal {
+    let mut kinds: BTreeMap<String, Vec<Split>> = BTreeMap::new();
+    let failures = composed.iter().filter(|t| !t.passed()).count();
+    for trial in composed {
+        let Some(record) = &trial.composition else {
+            continue;
+        };
+        let Some(candidate) = record["final_checks"]["candidate"].as_str() else {
+            continue;
+        };
+        let Some(entry) = record["checks"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .rev()
+            .find(|c| c["summary"]["candidate"].as_str() == Some(candidate))
+        else {
+            continue;
+        };
+        let Some(file) = entry["file"].as_str().filter(|f| {
+            Path::new(f)
+                .components()
+                .all(|c| matches!(c, std::path::Component::Normal(_)))
+        }) else {
+            continue;
+        };
+        let Some(dir) = &trial.trial_dir else {
+            continue;
+        };
+        let Some(report) = read_json(&dir.join("agent/episode").join(file)) else {
+            continue;
+        };
+        if report["candidate"]["digest"].as_str() != Some(candidate) {
+            continue;
+        }
+        let names: BTreeMap<&str, &str> = report["scenarios"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|s| Some((s["id"].as_str()?, s["kind"].as_str()?)))
+            .collect();
+        let mut verdicts: BTreeMap<&str, u8> = BTreeMap::new();
+        for v in report["verdicts"].as_array().into_iter().flatten() {
+            let Some(kind) = v["scenario"].as_str().and_then(|id| names.get(id)).copied() else {
+                continue;
+            };
+            let rank = match v["verdict"].as_str() {
+                Some("passed") => 0,
+                Some("failed") => 2,
+                _ => 1,
+            };
+            verdicts
+                .entry(kind)
+                .and_modify(|r| *r = (*r).max(rank))
+                .or_insert(rank);
+        }
+        for (kind, rank) in verdicts {
+            kinds
+                .entry(kind.to_string())
+                .or_insert_with(|| split_rows(&["passed", "unknown", "failed"]))[usize::from(rank)]
+            .add(trial.passed());
+        }
+    }
+    let mut rows = Vec::new();
+    for (kind, mut states) in kinds {
+        let failed = &states[2];
+        let precision = rate_text(failed.fails, failed.total());
+        let recall = rate_text(failed.fails, failures);
+        states[2].note = Some(format!(
+            "fail precision {precision}; recall across all composed failures {recall}; descriptive trial-level intervals"
+        ));
+        for mut state in states {
+            state.label = format!("{kind}: {}", state.label);
+            if state.total() > 0 {
+                rows.push(state);
+            }
+        }
+    }
+    Signal {
+        name: "Per-check verdicts",
+        rows,
+        fisher: None,
+        auc: None,
+    }
+}
+
+fn rate_text(k: usize, n: usize) -> String {
+    if n == 0 {
+        return format!("{k}/{n} unknown");
+    }
+    let (low, high) = wilson(k, n);
+    format!(
+        "{k}/{n} {:.0}% ({:.0}–{:.0}%)",
+        100.0 * k as f64 / n as f64,
+        low * 100.0,
+        high * 100.0
+    )
+}
+
 fn signals(composed: &[&TrialFacts]) -> Vec<Signal> {
     let mut checks = split_rows(&["all passed", "inconclusive", "a check failed"]);
     let mut none_ran = (0, 0);
@@ -675,6 +776,7 @@ fn signals(composed: &[&TrialFacts]) -> Vec<Signal> {
         Signal::with_fisher("Final checks", checks),
         Signal::with_fisher("Jev support", support),
         effort,
+        per_check_signal(composed),
     ]
 }
 
@@ -2047,6 +2149,46 @@ mod tests {
         std::fs::remove_file(job.join("tbench/attempts/t1__cand1.json")).unwrap();
         let native = Pulse::load(&experiments.join("x/status.json"), Some(&jobs), None).unwrap();
         assert_eq!(native.arms[1].mean_cost, Some(2.0));
+    }
+
+    #[test]
+    fn per_check_discrimination_counts_candidates_once_and_rejects_other_versions() {
+        let temp = tempfile::tempdir().unwrap();
+        let (experiments, jobs) = fixture::write_experiment(temp.path());
+        let pulse = Pulse::load(&experiments.join("x/status.json"), Some(&jobs), None).unwrap();
+        let mut trial = pulse
+            .trials
+            .iter()
+            .find(|t| t.graded() && t.composition.is_some() && !t.passed())
+            .unwrap()
+            .clone();
+        let record = trial.composition.as_mut().unwrap();
+        record["final_checks"]["candidate"] = json!("selected");
+        record["checks"] =
+            json!([{"summary":{"candidate":"selected"}, "file":"verification/checks.json"}]);
+        let report_path = trial
+            .trial_dir
+            .as_ref()
+            .unwrap()
+            .join("agent/episode/verification/checks.json");
+        std::fs::create_dir_all(report_path.parent().unwrap()).unwrap();
+        let mut report = json!({"candidate":{"digest":"selected"}, "scenarios":[
+            {"id":"a", "kind":"behavior.example"}, {"id":"b", "kind":"behavior.example"}],
+            "verdicts":[{"scenario":"a","verdict":"passed"},{"scenario":"b","verdict":"failed"}]});
+        std::fs::write(&report_path, report.to_string()).unwrap();
+        let measured = per_check_signal(&[&trial]);
+        assert_eq!(measured.rows.len(), 1);
+        assert_eq!(measured.rows[0].fails, 1);
+        assert!(
+            measured.rows[0]
+                .note
+                .as_ref()
+                .unwrap()
+                .contains("fail precision 1/1")
+        );
+        report["candidate"]["digest"] = json!("discarded");
+        std::fs::write(&report_path, report.to_string()).unwrap();
+        assert!(per_check_signal(&[&trial]).rows.is_empty());
     }
 
     #[test]

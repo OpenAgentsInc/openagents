@@ -120,7 +120,10 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
             "--arm" => arm = value("--arm")?,
             "--out" => out = Some(PathBuf::from(value("--out")?)),
             "--jobs" => jobs = Some(value("--jobs")?),
-            "--match" => matching = value("--match")?,
+            "--match" => {
+                matching = value("--match")?;
+                truth_options.push(format!("match={matching}"));
+            }
             "--policy" => policy = Some(PathBuf::from(value("--policy")?)),
             "--write-fixtures" => fixtures_out = Some(PathBuf::from(value("--write-fixtures")?)),
             "--json" => json_output = true,
@@ -372,12 +375,16 @@ async fn truth_command(
         truth::read_rows(&path)?
     } else {
         let jobs = match jobs {
+            Some(dir) if dir == "none" => None,
             Some(dir) => Some(PathBuf::from(dir)),
             None => std::env::var_os("HOME")
                 .map(|home| PathBuf::from(home).join(".openagents/terminal-bench/jobs")),
         };
         let traces = traces.or_else(|| Some(PathBuf::from("bench/terminal-bench/traces")));
         let mut loaded = truth::scan(jobs.as_deref(), traces.as_deref());
+        if let Some(pattern) = option("match") {
+            loaded.retain(|trial| trial.row.job.contains(&pattern));
+        }
         let recorded_path = out.join(truth::RECORDED_FILE);
         let mut recorded = crate::component::jev::Recorded::load(&recorded_path)?;
         let client = match jev_word.as_str() {
@@ -409,6 +416,7 @@ async fn truth_command(
         truth::write_rows(&out.join("rows.jsonl"), &rows)?;
         rows
     };
+    truth::validate_rows(&rows)?;
     let summary = truth::summary(&rows);
     let text = serde_json::to_string_pretty(&summary).map_err(|e| e.to_string())?;
     crate::record::write_atomic(&out.join("summary.json"), format!("{text}\n").as_bytes())?;

@@ -303,13 +303,17 @@ pub fn load(job: &str, dir: &Path) -> Option<Loaded> {
         .iter()
         .rev()
         .find(|c| candidate.is_some() && c["summary"]["candidate"].as_str() == candidate)
-        .or_else(|| checks.last())
+        .or_else(|| candidate.is_none().then(|| checks.last()).flatten())
         .copied();
     let mut scenarios: BTreeMap<String, Tally> = BTreeMap::new();
     let mut requirements: BTreeMap<String, usize> = BTreeMap::new();
     if let Some(report) = entry
         .and_then(|e| e["file"].as_str())
-        .filter(|f| !f.contains(".."))
+        .filter(|f| {
+            Path::new(f)
+                .components()
+                .all(|c| matches!(c, std::path::Component::Normal(_)))
+        })
         .and_then(|f| read_json(&episode.join(f)))
     {
         let kinds: BTreeMap<&str, &str> = report["scenarios"]
@@ -444,7 +448,7 @@ pub fn scan(jobs: Option<&Path>, traces: Option<&Path>) -> Vec<Loaded> {
                 .filter(|p| p.is_dir() && name(p).contains("__"))
             {
                 if let Some(loaded) = load(&job_name, &trial)
-                    && seen.insert(loaded.row.trial.clone())
+                    && seen.insert((job_name.clone(), loaded.row.trial.clone()))
                 {
                     out.push(loaded);
                 }
@@ -459,11 +463,11 @@ pub fn scan(jobs: Option<&Path>, traces: Option<&Path>) -> Vec<Loaded> {
                 .filter(|p| p.is_dir() && name(p).ends_with(".episode"))
             {
                 let id = name(&trial).trim_end_matches(".episode").to_string();
-                if seen.contains(&id) {
+                if seen.contains(&(job_name.clone(), id)) {
                     continue;
                 }
                 if let Some(loaded) = load(&job_name, &trial)
-                    && seen.insert(loaded.row.trial.clone())
+                    && seen.insert((job_name.clone(), loaded.row.trial.clone()))
                 {
                     out.push(loaded);
                 }
@@ -1213,6 +1217,69 @@ pub fn write_rows(path: &Path, rows: &[Row]) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn sample_row() -> Row {
+        serde_json::from_str(
+            include_str!("../../fixtures/truth/rows.jsonl")
+                .lines()
+                .next()
+                .unwrap(),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn imported_rows_refuse_alias_leakage_and_invalid_labels() {
+        let first = sample_row();
+        let mut second = first.clone();
+        second.trial.push_str("-another");
+        second.task = first
+            .task
+            .strip_prefix("terminal-bench/")
+            .unwrap()
+            .to_string();
+        second.split = if first.split == Split::Calibration {
+            Split::HeldOut
+        } else {
+            Split::Calibration
+        };
+        assert!(
+            validate_rows(&[first.clone(), second])
+                .unwrap_err()
+                .contains("both partitions")
+        );
+        assert!(
+            validate_rows(&[first.clone(), first.clone()])
+                .unwrap_err()
+                .contains("Duplicate")
+        );
+        let mut invalid = first;
+        invalid.reward = f64::NAN;
+        assert!(validate_rows(&[invalid]).is_err());
+    }
+
+    #[test]
+    fn retained_microluna_recovers_public_instruction_and_selected_report() {
+        let traces =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../bench/terminal-bench/traces");
+        let job = "tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r3";
+        let trial = "embedding-drift-monitor__KDeY8Bf.episode";
+        let loaded = load(job, &traces.join(job).join(trial)).expect("retained trial");
+        assert!(loaded.instruction.as_ref().is_some_and(|s| !s.is_empty()));
+        assert!(loaded.report.as_ref().is_some_and(|s| s.contains("13/13")));
+        assert!(loaded.row.report_source.unwrap().ends_with("#session-1"));
+        assert_eq!(
+            loaded.row.local_score,
+            Some(LocalScore {
+                passed: 13,
+                total: 13
+            })
+        );
+        assert_eq!(
+            loaded.row.reward, 0.0,
+            "a green self-check is not the official label"
+        );
+    }
 
     #[test]
     fn wilson_matches_a_known_interval() {
