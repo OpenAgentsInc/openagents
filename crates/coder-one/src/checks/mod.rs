@@ -41,6 +41,7 @@ pub mod html;
 pub mod interactive;
 pub mod labeled;
 pub mod place;
+pub mod public_program;
 pub mod recover;
 pub mod replay;
 pub mod report_audit;
