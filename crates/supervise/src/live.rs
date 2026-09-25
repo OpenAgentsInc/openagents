@@ -207,10 +207,13 @@ impl Job {
                 // A child that failed to execute may still have been
                 // placed; its scope is cleared away without holding up the
                 // caller.
+                let why = placed
+                    .as_ref()
+                    .map_or_else(|| error.to_string(), |placed| placed.refusal(&error));
                 if let Some(placed) = placed {
                     std::thread::spawn(move || placed.settle());
                 }
-                return Err(error.to_string());
+                return Err(why);
             }
         };
         let pid = child.id();

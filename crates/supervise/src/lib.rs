@@ -59,9 +59,10 @@
 //! [`MEMORY_ENV`] variable says otherwise. On a host with a systemd user
 //! manager the job runs in a transient scope whose cgroup holds its whole
 //! tree to the cap, and a job the kernel killed for passing it is reported
-//! as such in [`Ended::memory`], apart from one that crashed. Elsewhere each
-//! process gets `RLIMIT_DATA` instead. The [`memory`] module has the design
-//! and the reasons for it.
+//! as such in [`Ended::memory`], apart from one that crashed. On macOS the
+//! supervisor samples the job's process group and kills it past the cap.
+//! Elsewhere each process gets `RLIMIT_DATA` instead. The [`memory`] module
+//! has the design and the reasons for it.
 //!
 //! # Watching a job while it runs
 //!

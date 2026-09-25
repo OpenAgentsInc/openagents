@@ -144,15 +144,31 @@ milliseconds after the job's cleanup, the supervisor kills them through
 systemd.
 
 **Where there is no scope, the child caps itself.** No user manager, no
-`busctl`, a manager without the memory controller, macOS, or
-`SUPERVISE_MEMORY_SCOPE=off`: the child sets `RLIMIT_DATA` to the cap before
+`busctl`, a manager without the memory controller, or
+`SUPERVISE_MEMORY_SCOPE=off` on Linux: the child sets `RLIMIT_DATA` to the cap before
 it executes the program. When an enclosing cgroup allows more, as a task
 container with a 32 GB budget does, the limit is that cgroup's `memory.max`
 instead: the container's limit already protects the host, and a lower one
 would fail a command the task's budget admits. That stops a runaway process, but per process, and
 the job is reported with `Enforcement::DataLimit` and `exceeded: false`,
 since nothing can tell its ending from a crash. A failed handshake falls back
-the same way, so no job runs uncapped because placement failed.
+the same way, so no job runs uncapped because placement failed. When the
+system refuses the limit, the spawn fails with a message that names the cap
+and `SUPERVISE_MEMORY_MAX`, rather than a bare `Invalid argument`.
+
+**On macOS the supervisor watches the job.** macOS has no cgroups, and since
+macOS 26 it refuses an `RLIMIT_DATA` below the process's mapped address
+space, which starts at about 415 GiB on an Apple silicon machine, so the
+resource limit can't hold a cap there
+([#9651](https://github.com/OpenAgentsInc/openagents/issues/9651)). The
+helper thread starts a watch before it opens the gate: every 25
+milliseconds it sums the physical footprint (`proc_pid_rusage`) of every
+process in the job's process group, and kills the group when the total
+passes the cap. The job is reported with `Enforcement::Watch`, and
+`exceeded: true` when the watch killed it. Like a scope, the watch counts
+the tree and reports the kill. Unlike one, it misses a process that left the
+group, and a job can pass the cap by what it allocates between two samples
+before it is killed.
 
 **Nested supervision.** A supervised program that supervises jobs of its own
 puts each in a scope beside its own, under the same slice, not inside it: a
@@ -195,7 +211,7 @@ an implementation and tests is the failure this crate exists to remove.
 - **A process that leaves the group escapes it without a scope.** A
   descendant that calls `setsid` is no longer in the group the job owns. The
   memory scope still holds it and ends it after cleanup; under the
-  `RLIMIT_DATA` fallback, nothing here reaches it. The capture waits a bounded time for such a process to close its end
+  `RLIMIT_DATA` fallback or the macOS watch, nothing here reaches it. The capture waits a bounded time for such a process to close its end
   of a pipe rather than waiting forever.
 - **There is a window between reaping and the last signal.** A group
   identifier belongs to a job while its leader exists, and the supervisor
@@ -217,5 +233,6 @@ and partial output retained on a timeout. `tests/memory.rs` runs the test
 binary again as a job that allocates past a 64 MiB cap and checks that it is
 killed and reported as over its cap, that a job under its cap and a job that
 crashes are not, that a grandchild started at once is already in the scope,
-and that a `setsid` descendant ends with the scope. `crates/coder` and
+that a `setsid` descendant ends with the scope, and on macOS that a capped
+job is watched. `crates/coder` and
 `crates/coderbench` each repeat the marker case through their own call site.

@@ -50,14 +50,30 @@
 //! job it ends is not told apart from one that failed. [`Memory`] says
 //! which of the two held the job. `SUPERVISE_MEMORY_SCOPE=off` forces the
 //! fallback.
+//!
+//! # macOS
+//!
+//! macOS has no cgroups, and since macOS 26 it refuses an `RLIMIT_DATA`
+//! below the process's mapped address space, which starts at hundreds of
+//! gibibytes, so the resource limit can't hold a cap there either. On macOS
+//! the helper watches the job instead: before it opens the gate it starts a
+//! thread that samples the physical footprint of every process in the job's
+//! process group every [`WATCH_EVERY`], and kills the group when the total
+//! passes the cap. That counts the tree and reports a kill, as a scope does,
+//! but a process that leaves the group is not counted, and a job can pass
+//! the cap by what it allocates between two samples before it is killed.
+//!
+//! Where the child still has to set the resource limit and the system
+//! refuses it, the spawn fails with a message that names the cap and
+//! [`MEMORY_ENV`], so no job runs uncapped because the limit was refused.
 
 #![cfg_attr(not(feature = "job"), allow(dead_code))]
 
 use std::io::{Read, Write};
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
 use std::process::{Command, Stdio};
-use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, OnceLock};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
@@ -84,6 +100,9 @@ const HELPER_WALL: Duration = Duration::from_secs(3);
 /// to settle the scope's result.
 const SETTLE_WALL: Duration = Duration::from_secs(2);
 
+/// How often a watched job's footprint is sampled.
+const WATCH_EVERY: Duration = Duration::from_millis(25);
+
 /// What held one job's memory, and whether the job ran into it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Memory {
@@ -91,8 +110,8 @@ pub struct Memory {
     pub max: u64,
     /// What enforced it.
     pub enforcement: Enforcement,
-    /// Whether the kernel killed a process in the job for passing the cap.
-    /// Only a scope can say so; under [`Enforcement::DataLimit`] this is
+    /// Whether a process in the job was killed for passing the cap. A scope
+    /// and a watch can say so; under [`Enforcement::DataLimit`] this is
     /// always `false`, and a job its limit ended reads as a failure.
     pub exceeded: bool,
 }
@@ -105,6 +124,10 @@ pub enum Enforcement {
     Scope(String),
     /// Each process in the job had `RLIMIT_DATA` set to the cap.
     DataLimit,
+    /// The supervisor sampled the physical footprint of the job's process
+    /// group and killed the group when the total passed the cap. This is
+    /// what holds a job on macOS.
+    Watch,
 }
 
 /// The cap a job gets when its caller names none: [`MEMORY_ENV`] when it
@@ -165,6 +188,12 @@ fn scopes_allowed() -> bool {
 /// resource limit instead of paying for the same failure again.
 static SCOPES_UNAVAILABLE: AtomicBool = AtomicBool::new(false);
 
+/// Whether a job without a scope is watched rather than given the resource
+/// limit: on macOS, which refuses a useful `RLIMIT_DATA`.
+fn watches() -> bool {
+    cfg!(target_os = "macos")
+}
+
 /// The parent's half of one job's handshake.
 pub(crate) struct Handshake {
     max: u64,
@@ -179,7 +208,7 @@ pub(crate) struct Handshake {
 
 /// The helper serving one handshake while the spawn runs.
 pub(crate) struct Serving {
-    helper: JoinHandle<Enforcement>,
+    helper: JoinHandle<(Enforcement, Option<Arc<Watch>>)>,
     child_ends: Option<(OwnedFd, OwnedFd)>,
     max: u64,
 }
@@ -242,10 +271,10 @@ pub(crate) fn arm_with(command: &mut Command, max: u64, scope: bool) -> Result<H
                 break read;
             };
             libc::close(gate_read);
-            // Anything but the scope's answer — a refusal, a closed pipe, a
-            // parent that went away — gets the resource limit, so no job
-            // runs uncapped because the handshake failed.
-            if read != 1 || answer != SCOPED {
+            // Anything but a scope's or a watch's answer — a refusal, a
+            // closed pipe, a parent that went away — gets the resource
+            // limit, so no job runs uncapped because the handshake failed.
+            if read != 1 || (answer != SCOPED && answer != WATCHED) {
                 let limit = libc::rlimit {
                     rlim_cur: data_limit as libc::rlim_t,
                     rlim_max: data_limit as libc::rlim_t,
@@ -268,6 +297,8 @@ pub(crate) fn arm_with(command: &mut Command, max: u64, scope: bool) -> Result<H
 
 /// The gate byte that tells the child it is in its scope.
 const SCOPED: u8 = b's';
+/// The gate byte that tells the child it is watched.
+const WATCHED: u8 = b'w';
 /// The gate byte that tells the child to cap itself.
 const LIMITED: u8 = b'r';
 
@@ -288,14 +319,27 @@ impl Handshake {
             let Some(pid) = read_pid(&mut report) else {
                 // The child never reached the handshake, so the spawn
                 // failed; there is nothing to place.
-                return Enforcement::DataLimit;
+                return (Enforcement::DataLimit, None);
             };
             let placed = if scope { place(pid, max) } else { None };
-            let answer = if placed.is_some() { SCOPED } else { LIMITED };
+            // The child leads its own process group by now, since the
+            // group is set before the handshake runs, so the group the
+            // watch samples is the job's from its first instruction.
+            let watch = (placed.is_none() && watches()).then(|| Watch::start(pid, max));
+            let answer = match (&placed, &watch) {
+                (Some(_), _) => SCOPED,
+                (None, Some(_)) => WATCHED,
+                (None, None) => LIMITED,
+            };
             // A failed write means the child is gone, and a gone child needs
             // no answer.
             let _ = gate.write_all(&[answer]);
-            placed.map_or(Enforcement::DataLimit, Enforcement::Scope)
+            let enforcement = match (placed, &watch) {
+                (Some(unit), _) => Enforcement::Scope(unit),
+                (None, Some(_)) => Enforcement::Watch,
+                (None, None) => Enforcement::DataLimit,
+            };
+            (enforcement, watch)
         });
         Serving {
             helper,
@@ -309,10 +353,11 @@ impl Serving {
     /// Closes the child's ends and waits for the helper's answer.
     pub(crate) fn finish(mut self) -> Placed {
         drop(self.child_ends.take());
-        let enforcement = self.helper.join().unwrap_or(Enforcement::DataLimit);
+        let (enforcement, watch) = self.helper.join().unwrap_or((Enforcement::DataLimit, None));
         Placed {
             max: self.max,
             enforcement,
+            watch,
         }
     }
 }
@@ -322,6 +367,8 @@ impl Serving {
 pub(crate) struct Placed {
     max: u64,
     enforcement: Enforcement,
+    /// The running watch, under [`Enforcement::Watch`].
+    watch: Option<Arc<Watch>>,
 }
 
 impl Placed {
@@ -335,15 +382,22 @@ impl Placed {
         }
     }
 
+    /// Why a spawn under this cap failed, in words that say what to do
+    /// when the system refused the resource limit.
+    pub(crate) fn refusal(&self, error: &std::io::Error) -> String {
+        refusal(&self.enforcement, self.max, error)
+    }
+
     /// Settles the cap once the job's tree is gone: whether the kernel
     /// killed inside the scope, and the scope cleared away.
     ///
     /// This blocks for up to [`SETTLE_WALL`] while systemd notices the
     /// scope is empty; the asynchronous callers run it on a blocking thread.
     pub(crate) fn settle(self) -> Memory {
-        let exceeded = match &self.enforcement {
-            Enforcement::Scope(unit) => settle_scope(unit),
-            Enforcement::DataLimit => false,
+        let exceeded = match (&self.enforcement, &self.watch) {
+            (Enforcement::Scope(unit), _) => settle_scope(unit),
+            (Enforcement::Watch, Some(watch)) => watch.stop(),
+            _ => false,
         };
         Memory {
             max: self.max,
@@ -351,6 +405,127 @@ impl Placed {
             exceeded,
         }
     }
+}
+
+/// Why a spawn failed. A child told to set the resource limit fails with
+/// `EINVAL` or `EPERM` when the system refuses it, and a bare
+/// "Invalid argument" says nothing about memory, so that failure names the
+/// cap and the way past it.
+fn refusal(enforcement: &Enforcement, max: u64, error: &std::io::Error) -> String {
+    let refused = matches!(error.raw_os_error(), Some(libc::EINVAL | libc::EPERM));
+    if *enforcement == Enforcement::DataLimit && refused {
+        format!(
+            "couldn't start the job under its memory cap of {max} bytes: this system refused `RLIMIT_DATA` ({error}). Set {MEMORY_ENV} to a cap this system accepts, or to `none` to run without one"
+        )
+    } else {
+        error.to_string()
+    }
+}
+
+/// A watch on one job's process group.
+#[derive(Debug)]
+pub(crate) struct Watch {
+    stop: AtomicBool,
+    exceeded: AtomicBool,
+    thread: std::sync::Mutex<Option<JoinHandle<()>>>,
+}
+
+impl Watch {
+    /// Starts sampling the process group `group`, and kills it once the
+    /// group's footprint passes `max` bytes.
+    fn start(group: i32, max: u64) -> Arc<Self> {
+        let watch = Arc::new(Watch {
+            stop: AtomicBool::new(false),
+            exceeded: AtomicBool::new(false),
+            thread: std::sync::Mutex::new(None),
+        });
+        let watching = Arc::clone(&watch);
+        let thread = std::thread::spawn(move || {
+            let mut pids = Vec::new();
+            while !watching.stop.load(Ordering::Relaxed) {
+                // An empty group is a finished job, and its identifier may
+                // be reused, so the watch ends with it.
+                let Some(footprint) = footprint(group, &mut pids) else {
+                    return;
+                };
+                if footprint > max {
+                    watching.exceeded.store(true, Ordering::Relaxed);
+                    crate::group::end(group);
+                    return;
+                }
+                std::thread::sleep(WATCH_EVERY);
+            }
+        });
+        *watch
+            .thread
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(thread);
+        watch
+    }
+
+    /// Stops the watch and says whether it killed the job.
+    fn stop(&self) -> bool {
+        self.stop.store(true, Ordering::Relaxed);
+        let thread = self
+            .thread
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+        if let Some(thread) = thread {
+            let _ = thread.join();
+        }
+        self.exceeded.load(Ordering::Relaxed)
+    }
+}
+
+/// The total physical footprint of the processes in `group`, in bytes, or
+/// `None` when the group is empty. `pids` is scratch space the watch keeps
+/// between samples.
+#[cfg(target_os = "macos")]
+fn footprint(group: i32, pids: &mut Vec<libc::pid_t>) -> Option<u64> {
+    if pids.is_empty() {
+        pids.resize(256, 0);
+    }
+    let listed = loop {
+        let room = libc::c_int::try_from(std::mem::size_of_val(pids.as_slice())).ok()?;
+        // SAFETY: the buffer has `room` bytes, and the call writes at most
+        // that many.
+        let listed = unsafe { libc::proc_listpgrppids(group, pids.as_mut_ptr().cast(), room) };
+        let listed = usize::try_from(listed).ok().filter(|&listed| listed > 0)?;
+        // A full buffer may have left members out.
+        if listed < pids.len() || pids.len() >= 1 << 16 {
+            break listed.min(pids.len());
+        }
+        let grown = pids.len() * 2;
+        pids.resize(grown, 0);
+    };
+    let mut total = 0u64;
+    for &pid in &pids[..listed] {
+        // SAFETY: an all-zero `rusage_info_v2` is a valid value of a struct
+        // of integers.
+        let mut info: libc::rusage_info_v2 = unsafe { std::mem::zeroed() };
+        // SAFETY: the flavor names the struct the pointer points to. A
+        // process that exited since the listing fails the call, and counts
+        // for nothing.
+        let read = unsafe {
+            libc::proc_pid_rusage(
+                pid,
+                libc::RUSAGE_INFO_V2,
+                (&raw mut info).cast::<libc::rusage_info_t>(),
+            )
+        };
+        if read == 0 {
+            total = total.saturating_add(info.ri_phys_footprint);
+        }
+    }
+    Some(total)
+}
+
+/// Watching is macOS only; elsewhere the group reads as empty, which ends a
+/// watch at once.
+#[cfg(not(target_os = "macos"))]
+fn footprint(_group: i32, _pids: &mut Vec<libc::pid_t>) -> Option<u64> {
+    None
 }
 
 /// Makes a pipe whose ends close on `exec`, so the program the child runs
@@ -637,6 +812,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(target_os = "macos"))]
     fn without_a_scope_the_child_caps_itself_before_it_runs() {
         let mut command = Command::new("sh");
         command.args(["-c", "ulimit -d"]).stdout(Stdio::piped());
@@ -654,6 +830,63 @@ mod tests {
         );
         let memory = placed.settle();
         assert!(!memory.exceeded);
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn on_macos_the_job_is_watched_and_its_data_limit_left_alone() {
+        let mut command = Command::new("sh");
+        command.args(["-c", "ulimit -d"]).stdout(Stdio::piped());
+        let serving = arm_with(&mut command, 256 << 20, false).unwrap().serve();
+        let spawned = command.spawn();
+        let placed = serving.finish();
+        let output = spawned.unwrap().wait_with_output().unwrap();
+        assert_eq!(placed.enforcement, Enforcement::Watch);
+        assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "unlimited");
+        let memory = placed.settle();
+        assert_eq!(memory.enforcement, Enforcement::Watch);
+        assert!(!memory.exceeded);
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn a_footprint_counts_every_process_in_the_group() {
+        let mut command = Command::new("sh");
+        command.args(["-c", "sleep 5 & sleep 5"]);
+        std::os::unix::process::CommandExt::process_group(&mut command, 0);
+        let mut child = command.spawn().unwrap();
+        let group = i32::try_from(child.id()).unwrap();
+        std::thread::sleep(Duration::from_millis(200));
+        let mut pids = Vec::new();
+        let total = footprint(group, &mut pids).expect("the group is running");
+        assert!(total > 0);
+        crate::group::end(group);
+        let _ = child.wait();
+        std::thread::sleep(Duration::from_millis(100));
+        assert_eq!(footprint(group, &mut pids), None);
+    }
+
+    #[test]
+    fn a_refused_data_limit_names_the_cap_and_the_way_past_it() {
+        let refused = std::io::Error::from_raw_os_error(libc::EINVAL);
+        let message = refusal(&Enforcement::DataLimit, 256 << 20, &refused);
+        assert!(
+            message.contains("memory cap of 268435456 bytes"),
+            "{message}"
+        );
+        assert!(message.contains(MEMORY_ENV), "{message}");
+        assert!(message.contains("`none`"), "{message}");
+        // Other failures, and failures under a scope or a watch, keep their
+        // own words.
+        let missing = std::io::Error::from_raw_os_error(libc::ENOENT);
+        assert_eq!(
+            refusal(&Enforcement::DataLimit, 256 << 20, &missing),
+            missing.to_string()
+        );
+        assert_eq!(
+            refusal(&Enforcement::Watch, 256 << 20, &refused),
+            refused.to_string()
+        );
     }
 
     #[test]

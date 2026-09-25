@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import resource
 import shutil
+import signal
 import subprocess
 import sys
 
@@ -80,6 +81,7 @@ def test_a_scoped_process_past_its_cap_is_killed_alone():
     assert "held" not in done.stdout
 
 
+@pytest.mark.skipif(sys.platform == "darwin", reason="macOS refuses a useful RLIMIT_DATA")
 def test_limit_self_only_lowers_the_data_limit():
     script = (
         "import resource\n"
@@ -101,3 +103,62 @@ def test_limit_self_only_lowers_the_data_limit():
     )
     assert done.stdout.split() == [str(256 << 20), "refused"], done.stderr
     assert resource.getrlimit(resource.RLIMIT_DATA)[0] != 256 << 20
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="the watch holds the cap on macOS")
+def test_on_macos_a_process_past_its_cap_is_stopped_and_told_why():
+    script = (
+        "from tbench import memcap\n"
+        "memcap.limit_self(256 << 20)\n"
+        "memcap.limit_self(1 << 40)\n"
+        "held = [b'x' * (1 << 20) for _ in range(1024)]\n"
+        "print('held')\n"
+    )
+    done = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        timeout=60,
+    )
+    assert "held" not in done.stdout
+    assert done.returncode == -signal.SIGKILL, done.stderr
+    assert "memory cap of 268435456 bytes" in done.stderr
+    assert memcap.ANALYSIS_ENV in done.stderr
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="the watch holds the cap on macOS")
+def test_on_macos_a_process_under_its_cap_runs():
+    script = (
+        "from tbench import memcap\n"
+        "memcap.limit_self(1 << 30)\n"
+        "b = b'x' * (16 << 20)\n"
+        "print('held')\n"
+    )
+    done = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        timeout=60,
+    )
+    assert done.stdout.split() == ["held"], done.stderr
+
+
+def test_a_refused_data_limit_raises_with_the_way_past_it(monkeypatch):
+    def refuse(*_):
+        raise ValueError("current limit exceeds maximum limit")
+
+    monkeypatch.setattr(memcap.sys, "platform", "linux")
+    monkeypatch.setattr(
+        memcap.resource,
+        "getrlimit",
+        lambda _: (memcap.resource.RLIM_INFINITY, memcap.resource.RLIM_INFINITY),
+    )
+    monkeypatch.setattr(memcap.resource, "setrlimit", refuse)
+    with pytest.raises(memcap.CapRefused) as refused:
+        memcap.limit_self(256 << 20)
+    message = str(refused.value)
+    assert "268435456 bytes" in message
+    assert memcap.ANALYSIS_ENV in message
+    assert "none" in message

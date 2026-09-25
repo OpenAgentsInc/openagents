@@ -168,8 +168,11 @@ async fn supervise(job: Job, dropped: oneshot::Receiver<()>) -> Ended {
         Err(error) => {
             // A child that failed to execute may still have been placed,
             // and its scope is cleared away like any other.
+            let why = placed
+                .as_ref()
+                .map_or_else(|| error.to_string(), |placed| placed.refusal(&error));
             settle(placed).await;
-            return unspawned(error.to_string(), started);
+            return unspawned(why, started);
         }
     };
     // `process_group(0)` makes the child the leader of a new group, so the

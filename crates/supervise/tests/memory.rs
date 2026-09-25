@@ -54,6 +54,10 @@ async fn a_job_past_its_cap_is_killed_and_reported() {
         // Without a scope the allocation fails and the process aborts. It
         // is stopped, and nothing can tell it apart from a crash.
         Enforcement::DataLimit => assert!(!ended.over_memory()),
+        // On macOS the watch killed the group, and the report says so.
+        Enforcement::Watch => {
+            assert!(ended.over_memory(), "{memory:?} {:?}", ended.ending);
+        }
     }
 }
 
@@ -83,6 +87,8 @@ async fn a_crash_under_a_cap_is_not_a_memory_ending() {
     assert!(ended.memory.is_some());
 }
 
+// `/proc` and cgroups are Linux's.
+#[cfg(target_os = "linux")]
 #[tokio::test]
 async fn what_the_job_starts_first_is_already_inside_the_scope() {
     let ended = Job::new("sh")
@@ -118,9 +124,23 @@ async fn a_watched_job_past_its_cap_is_reported_when_it_stops() {
     let stopped = live.wait().await;
     let memory = stopped.memory.clone().expect("the job ran under a cap");
     assert!(!stopped.ending.success());
-    if let Enforcement::Scope(_) = memory.enforcement {
+    if let Enforcement::Scope(_) | Enforcement::Watch = memory.enforcement {
         assert!(stopped.over_memory(), "{memory:?}");
     }
+}
+
+#[cfg(target_os = "macos")]
+#[tokio::test]
+async fn on_macos_a_capped_job_is_watched() {
+    let ended = Job::new("true")
+        .bounded(Limits::within(Duration::from_secs(5)).memory(Some(256 * MIB)))
+        .run()
+        .await;
+    assert!(ended.ending.success(), "{:?}", ended.ending);
+    assert_eq!(
+        ended.memory.map(|memory| memory.enforcement),
+        Some(Enforcement::Watch)
+    );
 }
 
 #[tokio::test]

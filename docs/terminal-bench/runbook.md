@@ -842,7 +842,7 @@ harness now caps its own processes; `tbench/memcap.py` holds the defaults.
 | --- | --- | --- | --- |
 | A detached scheduler (`suite run --detach`, `experiment run --detach`) | 8 GiB | Its own systemd scope | `TBENCH_SCHEDULER_MEMORY_MAX` |
 | Each trial the scheduler starts (`tbench run` or `resume`, Harbor, and what Harbor starts on the host) | 16 GiB | Its own systemd scope | `TBENCH_TRIAL_MEMORY_MAX` |
-| An analysis command (`inspect`, `compare`, `reference`, `looptime`, `profiles`) and `tools/trial_metrics.py` and `tools/tb4_scoreboard.py` | 16 GiB | `RLIMIT_DATA` on itself | `TBENCH_ANALYSIS_MEMORY_MAX` |
+| An analysis command (`inspect`, `compare`, `reference`, `looptime`, `profiles`) and `tools/trial_metrics.py` and `tools/tb4_scoreboard.py` | 16 GiB | `RLIMIT_DATA` on itself; a watcher process on macOS | `TBENCH_ANALYSIS_MEMORY_MAX` |
 
 An override takes a byte count with an optional `K`, `M`, `G`, or `T`
 suffix, or `none`. A scope is `systemd-run --user --scope` with
@@ -850,7 +850,16 @@ suffix, or `none`. A scope is `systemd-run --user --scope` with
 caller runs in, so a scheduler started inside `agents.slice` keeps its
 trials there. The kernel kills a runaway trial's tree and nothing else, and
 `journalctl --user -u 'run-*.scope'` records the kill.
-`TBENCH_MEMORY_SCOPE=off` starts children without a scope. Task containers
+`TBENCH_MEMORY_SCOPE=off` starts children without a scope.
+
+macOS refuses an `RLIMIT_DATA` below a process's mapped address space, which
+starts at hundreds of gibibytes
+([#9651](https://github.com/OpenAgentsInc/openagents/issues/9651)). There an
+analysis command starts a watcher process that samples the command's
+physical footprint every 25 milliseconds and kills it with a message that
+names the cap and the override when it passes. Where a system refuses the
+limit and no watch is available, the command stops with the same kind of
+message rather than running without a cap. Task containers
 belong to Docker's cgroup, so these caps don't touch a task's own `memory`
 budget.
 
