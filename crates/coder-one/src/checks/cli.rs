@@ -105,6 +105,9 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
     if verb == "execution-audit" {
         return super::execution_audit::command(rest).await;
     }
+    if verb == "reproduced-review" {
+        return super::reproduced::command(rest).await;
+    }
     if verb == "readiness" {
         return super::readiness::command(rest).await;
     }

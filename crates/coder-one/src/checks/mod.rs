@@ -47,6 +47,7 @@ pub mod readiness;
 pub mod recover;
 pub mod replay;
 pub mod report_audit;
+pub mod reproduced;
 pub mod review;
 pub mod selfreport;
 pub mod synthetic;
