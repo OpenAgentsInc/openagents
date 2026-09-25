@@ -78,6 +78,9 @@ gym coder truth [--set held-out|calibration|all] [--within] [--json]
                            failure recall, and pass rate with intervals, and
                            the calibrated verdict compared with today's checks
                            on held-out tasks; see gym coder truth --help
+gym coder truth --confirmation PATH [--executor luna|astra] [--json]
+                           retained archive confirmation: frozen signal rates,
+                           missing grades, and whole-task bootstrap differences
 gym coder asks [ID|latest] [--json]
                            the questions `coder-one ask` answered: citations
                            checked, claims verified, cost, and time

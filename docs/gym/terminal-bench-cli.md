@@ -664,3 +664,32 @@ with their cost. Replayed on 2026-09-24:
 | `effort-9569` | `coder-one-tunable-v9` undecidable against `coder-one-tunable-v3` after graded trial 32 of 44; `v2` against `v3` stays open | 4 trials that ran, $10.12, and 3 more that never finished |
 | `matched-v8-9567` | `coder-one-matched-v8` undecidable, ending the experiment, after graded trial 50 of 60 | 9 trials that ran, $11.13 |
 | `escalate-9571b` | Never: its only other arm is `nop`, a control | none |
+
+
+## Read a frozen check confirmation
+
+Read the archived task-group confirmation without running a model or benchmark:
+
+```sh
+gym coder truth --confirmation \
+  bench/terminal-bench/experiments/2026-09-25-candidate-review/records/archive-measurement.json
+```
+
+The file is produced after the cohort's predictions are committed and its
+outcomes joined. Until then, no confirmation result is available. Add
+`--executor luna` or `--executor astra` to select one executor, or `--json` to
+retain the versioned view. Do not combine this mode with the historical
+`--dir`, `--set`, `--family`, or `--within` options.
+
+The view reads `openagents.archive-confirmation-measurement.v1`. It shows each
+signal's failure precision and recall with Wilson intervals, missing official
+grades, unknown calls, whole-task bootstrap differences, undefined bootstrap
+resamples, and within-task failure ranking. Missing evidence stays in failure
+recall when the official grade is a failure. Undefined precision is shown as
+undefined. Within-task pairs share candidates and are labeled dependent.
+
+The reader bounds the file to 16 MiB and rejects inconsistent rate, coverage,
+interval, or executor counts. It displays the prediction and label digests and
+the measurement's limitations. Reading a report does not verify the underlying
+artifacts, establish independent replication, or promote a runtime policy; use
+the experiment's sealed join and archive verification for those file checks.

@@ -179,7 +179,40 @@ All files were restored and verified, with no exact credential matches.
 
 `archive_run.py --prepare-only` stages the jobs without inference; omit that flag
 only to start new paid attempts. `archive_checks.py --plans-only` extracts and
-executes the public file plans on pristine images; omit it only after the jobs
-finish, to inspect candidates without reading official outcomes. The latter
+executes the public file plans on pristine images. Use `--completed-only` to
+inspect finished attempts while later candidates run, without opening outcomes. The latter
 requires `--runtime` naming the four-library checker runtime manifest. Keep
 outcomes unopened until all check and baseline predictions have been sealed.
+
+
+The first launch stopped in setup before any agent or verifier ran. The protocol
+records a separate `--run-id r2` restart with the same frozen rule. Verify the
+959-file setup, guard, replay, and gate archive with `archive_records.py` and
+`records/truth9642-files.json`. No original attempt is erased.
+
+`archive_pipeline.py` runs the frozen checks on completed attempts with two
+review workers. Once all 72 attempts have a check record, seal their calls:
+
+```sh
+python3 seal_archive.py --checks "$COHORT/checks" --jobs "$JOBS" \
+  --out records/archive-sealed.json
+```
+
+Commit and push that exact file. Then use its commit and repository path to open
+official outcomes. The join checks the published seal and every evidence digest:
+
+```sh
+python3 join_archive.py --predictions records/archive-sealed.json \
+  --seal-commit "$SEAL_COMMIT" \
+  --seal-path bench/terminal-bench/experiments/2026-09-25-candidate-review/records/archive-sealed.json \
+  --jobs "$JOBS" --checks "$COHORT/checks" --out records/archive-labels.json
+python3 measure_archive.py --predictions records/archive-sealed.json \
+  --labels records/archive-labels.json --out records/archive-measurement.json
+python3 archive_executor_costs.py --manifest "$COHORT/checks/manifest.json" \
+  --jobs "$JOBS" --out records/archive-executor-costs.json
+python3 costs.py "$COHORT/checks" records/archive-review-costs.json
+```
+
+The last three commands make no model calls. `test_archive_seal.py` checks cohort
+completeness, duplicate and mismatched joins, unknown-evidence recall, and sealing
+without parsing grades. Run it with `test_archive_checks` and `test_reproduce`.

@@ -14,6 +14,8 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 
+mod confirmation;
+
 /// The schema a truth summary carries.
 pub const SCHEMA: &str = "openagents.coder-one.check-truth.v1";
 
@@ -23,6 +25,7 @@ pub const VIEW_SCHEMA: &str = "openagents.gym.coder-truth.v1";
 const HELP: &str = "\
 gym coder truth [--dir PATH] [--set held-out|calibration|all] [--family NAME]
                 [--within] [--json]
+gym coder truth --confirmation PATH [--executor luna|astra] [--json]
 
 Each check signal's discrimination on the labeled Terminal-Bench set that
 `coder-one checks truth` writes: fail precision (of the trials the signal
@@ -38,6 +41,10 @@ half and measured on the held-out half.
                   self-report, control, report, microluna, or verdict
   --within        precision and recall on tasks the verifier both passed and
                   failed: whether a signal tells two attempts at one task apart
+  --confirmation PATH
+                  read a frozen archive confirmation measurement, including
+                  missing grades and whole-task bootstrap differences
+  --executor NAME show one executor in the confirmation measurement
   --json          print versioned JSON instead of text";
 
 /// Where `coder-one checks truth` writes by default.
@@ -213,6 +220,9 @@ pub fn command(args: &[String], out: &mut impl std::io::Write) -> Result<i32, St
     let mut family = None;
     let mut within = false;
     let mut json_output = false;
+    let mut confirmation_path = None;
+    let mut executor = None;
+    let mut historical_option = false;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         let mut value = |name: &str| {
@@ -226,12 +236,38 @@ pub fn command(args: &[String], out: &mut impl std::io::Write) -> Result<i32, St
                 return Ok(0);
             }
             "--json" => json_output = true,
-            "--within" => within = true,
-            "--dir" => dir = Some(value("--dir")?.into()),
-            "--set" => set = value("--set")?,
-            "--family" => family = Some(value("--family")?),
+            "--confirmation" => confirmation_path = Some(PathBuf::from(value("--confirmation")?)),
+            "--executor" => executor = Some(value("--executor")?),
+            "--within" => {
+                historical_option = true;
+                within = true;
+            }
+            "--dir" => {
+                historical_option = true;
+                dir = Some(value("--dir")?.into());
+            }
+            "--set" => {
+                historical_option = true;
+                set = value("--set")?;
+            }
+            "--family" => {
+                historical_option = true;
+                family = Some(value("--family")?);
+            }
             other => return Err(format!("unknown option {other}\n\n{HELP}")),
         }
+    }
+    if let Some(path) = confirmation_path {
+        if historical_option {
+            return Err(
+                "--confirmation cannot be combined with --dir, --set, --family, or --within"
+                    .to_string(),
+            );
+        }
+        return confirmation::command(&path, executor.as_deref(), json_output, out);
+    }
+    if executor.is_some() {
+        return Err("--executor requires --confirmation".to_string());
     }
     if set_key(&set).is_none() {
         return Err(format!(
