@@ -56,17 +56,18 @@ and commit. `coder doctor` reports the selected execution backend,
 credentials found, boundary support, and trace location without running a
 turn. See the [installation guide](docs/coder/guides/install.md).
 
-With an installed and authenticated Claude Code or Codex, the default
-`CODER_DELEGATE=auto` briefs that executor using Coder One's probe and
-context-packing components. Claude Code is preferred when both are
-available. The executor runs inside the host's filesystem boundary, and
-follow-up turns resume its session. Terminal and headless modes use the
-same turn implementation.
+The default `CODER_DELEGATE=auto` uses Microluna in process when the Codex
+login has more than ten minutes left on its access token. Otherwise it
+tries authenticated Claude Code, then Codex CLI, then the Open Responses
+door. Coder One supplies the probes, briefing, and configurable execution
+loop. Commands run inside the host's filesystem boundary. CLI follow-ups
+resume their session; Microluna receives the earlier conversation as
+context. Terminal and headless modes use the same turn implementation.
 
 | Setting | Purpose |
 | --- | --- |
 | `CODER_DELEGATE=auto\|always\|off` | Use an available executor, require one, or disable this delegation path. |
-| `CODER_DELEGATE_AGENT=claude-code\|codex` | Select the executor. |
+| `CODER_DELEGATE_AGENT=microluna\|claude-code\|codex` | Select the executor. |
 | `CODER_DELEGATE_MODEL` | Select its model. |
 | `TYPESAFE_API_KEY` or `~/.openagents/jev.json` | Configure Jev for the delegate briefing. Without a key, that briefing carries the request alone. |
 | `CODER_DOOR_KEY`, `CODER_DOOR_URL`, `CODER_MODEL` | Configure the Open Responses fallback. |

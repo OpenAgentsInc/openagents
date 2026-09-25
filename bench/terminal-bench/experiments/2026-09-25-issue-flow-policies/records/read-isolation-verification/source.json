@@ -1,0 +1,8 @@
+{
+  "crates/coder-one/src/issue_eval/sealed.rs": "f60198439969ead231c122adbc224734a0f11c6d9b911579ef48de623a549d52",
+  "crates/coder-one/src/issue_eval/sealed/toolchain.rs": "30ab832b598b2a0530f7c65e63e2145304f1c91361411270a5f0ce87f5c82398",
+  "crates/coder-one/src/issue_turn/confined.rs": "c0a71dd6f71ac8d97f3c598ae32b640ba67de97d5bc15a28b95a7a3ec24b57c9",
+  "crates/coder-one/src/micro/tests.rs": "06c666b07aa3de282f65ddde925d7fdd1a07092eebfd178839a75293f7f8fd56",
+  "crates/microluna/src/seal.rs": "4e80e7dddb07a08fb89bb0714f2b47b1d5340e5d133e54930347147ba0e2eaec",
+  "crates/microluna/src/tools.rs": "de2c502aba91c3497cf1189b3c9971cf4cf7027d0a4b33d7d65112e37d6fff01"
+}

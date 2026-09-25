@@ -22,6 +22,15 @@ use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+/// Files and tool state a sealed evaluation may reach. All paths name
+/// host-approved inputs; the model cannot change this scope.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ReadScope {
+    pub readable: Vec<PathBuf>,
+    pub writable: Vec<PathBuf>,
+    pub environment: Vec<(OsString, OsString)>,
+}
+
 /// What the stub `gh` prints before it exits 1.
 pub const GH_REFUSAL: &str = "gh: GitHub access is off during an evaluation run.";
 
@@ -34,6 +43,7 @@ pub struct Seal {
     gh_config: PathBuf,
     /// Whether commands run with no network beyond loopback.
     offline: bool,
+    reads: Option<ReadScope>,
 }
 
 impl Seal {
@@ -60,7 +70,38 @@ impl Seal {
             stubs: stubs.canonicalize()?,
             gh_config: gh_config.canonicalize()?,
             offline,
+            reads: None,
         })
+    }
+
+    /// Confines commands to their workspace, system tools, and this scope.
+    #[must_use]
+    pub fn with_read_scope(mut self, scope: ReadScope) -> Self {
+        self.reads = Some(scope);
+        self
+    }
+
+    #[must_use]
+    pub fn read_scope(&self) -> Option<&ReadScope> {
+        self.reads.as_ref()
+    }
+
+    /// Applies the same read scope to a session command or a host test gate.
+    #[must_use]
+    pub fn constrain_reads(&self, mut spec: coder_boundary::Spec) -> coder_boundary::Spec {
+        if let Some(scope) = &self.reads {
+            spec = spec
+                .confining_reads()
+                .readable(&self.stubs)
+                .readable(&self.gh_config);
+            for path in &scope.readable {
+                spec = spec.readable(path);
+            }
+            for path in &scope.writable {
+                spec = spec.writable(path);
+            }
+        }
+        spec
     }
 
     /// Whether commands run with no network beyond loopback.
@@ -108,6 +149,9 @@ impl Seal {
         command.env("PATH", path);
         if self.offline {
             command.env("CARGO_NET_OFFLINE", "true");
+        }
+        if let Some(scope) = &self.reads {
+            command.envs(scope.environment.iter().map(|(name, value)| (name, value)));
         }
     }
 }

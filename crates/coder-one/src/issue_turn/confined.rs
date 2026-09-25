@@ -67,6 +67,8 @@ pub struct Confinement {
     pub credentials_withheld: bool,
     /// The paths the tests could write, when they ran in a boundary.
     pub writable: Vec<String>,
+    pub reads_confined: bool,
+    pub readable: Vec<String>,
     pub deadline_seconds: u64,
     pub output_kept_bytes: usize,
     /// What the host's `cargo fetch` did before the tests: `fetched`,
@@ -146,9 +148,14 @@ impl Setup {
     /// laid out.
     pub fn for_run(workdir: &Path, seal: Option<&microluna::Seal>) -> Result<Setup, String> {
         let home = crate::credentials::openagents_dir().map(|dir| dir.join("coder-one"));
-        let target = home
-            .as_ref()
-            .map_or_else(|| workdir.join("target"), |dir| dir.join("target"));
+        let target = if seal.is_some_and(|seal| seal.read_scope().is_some()) {
+            // A shared build directory can contain other attempts' source
+            // and compiled answers. Sealed evaluations use their own.
+            workdir.join("target")
+        } else {
+            home.as_ref()
+                .map_or_else(|| workdir.join("target"), |dir| dir.join("target"))
+        };
         std::fs::create_dir_all(&target)
             .map_err(|error| format!("cannot create {}: {error}", target.display()))?;
         let evaluation = seal.is_some();
@@ -217,6 +224,8 @@ pub async fn run(setup: &Setup, packages: &[String]) -> (Vec<String>, Confinemen
         network: if network_off { "off" } else { "on" },
         credentials_withheld: true,
         writable: Vec::new(),
+        reads_confined: setup.seal.read_scope().is_some(),
+        readable: Vec::new(),
         deadline_seconds: DEADLINE.as_secs(),
         output_kept_bytes: OUTPUT_KEPT,
         prefetch: "skipped".to_string(),
@@ -251,10 +260,16 @@ pub async fn run(setup: &Setup, packages: &[String]) -> (Vec<String>, Confinemen
     };
     let spec = spec.owned_scratch_under(std::env::temp_dir());
     let spec = if network_off { spec.offline() } else { spec };
+    let spec = setup.seal.constrain_reads(spec);
     let confined = match (setup.build)(spec) {
         Ok(boundary) => {
             record.mode = "confined";
             record.backend = Some(boundary.backend().display().to_string());
+            record.readable = boundary
+                .readable()
+                .iter()
+                .map(|p| p.display().to_string())
+                .collect();
             record.writable = std::iter::once(setup.workdir.display().to_string())
                 .chain(
                     boundary
@@ -304,6 +319,17 @@ pub async fn run(setup: &Setup, packages: &[String]) -> (Vec<String>, Confinemen
             Some(boundary) => match boundary.command(&cargo, args) {
                 Ok(mut command) => {
                     environment(&mut command, setup, boundary.scratch());
+                    if boundary.confines_reads() {
+                        let path = command
+                            .get_envs()
+                            .find(|(name, _)| *name == "PATH")
+                            .and_then(|(_, value)| value.map(OsString::from))
+                            .unwrap_or_default();
+                        command.env("PATH", boundary.search_path(&path));
+                        if let Some(scratch) = boundary.scratch() {
+                            command.env("HOME", scratch);
+                        }
+                    }
                     command
                 }
                 Err(error) => {
@@ -409,16 +435,25 @@ mod tests {
     fn setup(dir: &Path, offline: bool, evaluation: bool, build: Build) -> Setup {
         let workdir = dir.join("work");
         let target = dir.join("target");
+        std::fs::create_dir_all(&workdir).unwrap();
         std::fs::create_dir_all(&target).unwrap();
         let mut env: Vec<(OsString, OsString)> = std::env::vars_os()
             .filter(|(name, _)| name != "GH_TOKEN" && name != "OPENAI_API_KEY")
             .collect();
         env.push(("GH_TOKEN".into(), "planted".into()));
         env.push(("OPENAI_API_KEY".into(), "planted".into()));
+        let seal = microluna::Seal::create(&dir.join("seal"), offline).unwrap();
+        let seal = if evaluation {
+            seal.with_read_scope(
+                crate::issue_eval::sealed::toolchain::scope(&dir.join("seal")).unwrap(),
+            )
+        } else {
+            seal
+        };
         Setup {
             workdir,
             target,
-            seal: microluna::Seal::create(&dir.join("seal"), offline).unwrap(),
+            seal,
             evaluation,
             env,
             build,
@@ -458,6 +493,12 @@ mod tests {
         }
         let outside = tempfile::tempdir().unwrap();
         let escaped = outside.path().join("escaped");
+        let private = outside.path().join("private-history.txt");
+        std::fs::write(
+            &private,
+            "a later solution and a private credential fixture",
+        )
+        .unwrap();
         package(
             &probe.workdir,
             &format!(
@@ -467,6 +508,7 @@ mod tests {
                  let reached = std::net::TcpStream::connect_timeout(&address, std::time::Duration::from_secs(3));\n    \
                  assert!(reached.is_err(), \"the test reached the network\");\n    \
                  assert!(std::fs::write({escaped:?}, \"x\").is_err(), \"the test wrote outside\");\n    \
+                 assert!(std::fs::read({private:?}).is_err(), \"the test read outside\");\n    \
                  std::fs::write(\"ran\", \"yes\").unwrap();"
             ),
         );
@@ -475,6 +517,7 @@ mod tests {
         assert_eq!(record.mode, "confined");
         assert_eq!(record.network, "off");
         assert!(record.credentials_withheld);
+        assert!(record.reads_confined);
         assert!(probe.workdir.join("ran").is_file(), "the test did not run");
         assert!(!escaped.exists());
         assert!(

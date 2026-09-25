@@ -1,5 +1,11 @@
 # Issue-flow default policy: protocol
 
+Execution status: **invalid, stopped after three attempts**. Slot 3 read
+private conversation history outside its candidate. The
+[read-isolation report](../../../../docs/coder/verification/2026-09-25-issue-eval-read-isolation.md)
+records every attempted run and the local quarantine. No default decision
+follows from this study; a fresh comparison must use the repaired seal.
+
 Issue [#9624](https://github.com/OpenAgentsInc/openagents/issues/9624).
 Written on 2026-09-25 at commit `70fa97a2b5`, before any run of either arm
 on the issue-flow evaluation set.

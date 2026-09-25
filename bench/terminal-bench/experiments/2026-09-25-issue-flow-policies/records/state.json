@@ -1,0 +1,13 @@
+{
+  "started_at": "2026-09-25T19:21:37.879379+00:00",
+  "pid": 18912,
+  "status": "invalid",
+  "slot": 3,
+  "entry": "9446",
+  "arm": "requirements",
+  "counted_usd": 0.047668704,
+  "updated_at": "2026-09-25T19:26:34.468807+00:00",
+  "reason": "An unrestricted home-directory search returned private chat history in slot 3; stopped before slot 4.",
+  "completed": 3,
+  "stopped_at": "2026-09-25T19:54:34.425641+00:00"
+}

@@ -1,0 +1,5 @@
+- Removed the stale claim that operator-sentence fan-out is unbuilt, retaining the existing link to `docs/programs.md` for the current runtime path. Added reviewer instructions for locating, inspecting, merging, or removing a writing delegate’s retained worktree. Checked the documentation evaluation: 4/4 checks passed; `git diff --check` passed.
+- Review: Reviewed the documentation diff and restored the unrelated “Reaching a fan-out…” fact that the change had removed. `git diff --check` passes.
+- Review: Rewrote the writing-delegate guidance in plain, complete sentences and added lines for clarity. Ran `git diff --check` successfully.
+
+Published nothing. The changes are staged in /Users/christopherdavid/.openagents/coder-one/issue-flow-policies-20260925/01-9450-lean/runs/issue-eval-9450-delegate-stale-bullet-microluna-gpt-6-luna-1790364097892/repo (1 file changed, 5 insertions(+)).

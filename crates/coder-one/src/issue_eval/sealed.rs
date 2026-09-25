@@ -26,6 +26,8 @@ use regex::Regex;
 use serde::Serialize;
 use serde_json::{Value, json};
 
+pub(crate) mod toolchain;
+
 /// How a run was sealed, as its manifest records it.
 #[derive(Clone, Debug, Serialize)]
 pub struct Sealing {
@@ -36,6 +38,10 @@ pub struct Sealing {
     /// What preparing Cargo for an offline run did: `fetched`, `no
     /// Cargo.lock`, `skipped`, or why the fetch failed.
     pub prefetch: String,
+    /// The read boundary used by the sessions and the test gate.
+    pub read_isolation: &'static str,
+    pub readable: Vec<std::path::PathBuf>,
+    pub writable_tool_state: Vec<std::path::PathBuf>,
 }
 
 impl Sealing {
@@ -84,12 +90,23 @@ pub fn prepare(
             Err(why) => format!("failed: {why}"),
         }
     };
+    let scope = toolchain::scope(dir)?;
+    let readable = scope.readable.clone();
+    let writable_tool_state = scope.writable.clone();
+    let seal = seal.with_read_scope(scope);
+    // Refuse before inference if this host cannot construct the full scope.
+    seal.constrain_reads(coder_boundary::Boundary::writing(repo))
+        .build()
+        .map_err(|error| format!("cannot enforce evaluation reads: {error}"))?;
     Ok((
         seal,
         Sealing {
             github_withheld: true,
             network_off,
             prefetch,
+            read_isolation: "candidate-and-toolchain-v1",
+            readable,
+            writable_tool_state,
         },
     ))
 }
@@ -321,6 +338,9 @@ mod tests {
             github_withheld: true,
             network_off: true,
             prefetch: "skipped".to_string(),
+            read_isolation: "candidate-and-toolchain-v1",
+            readable: Vec::new(),
+            writable_tool_state: Vec::new(),
         };
         let scan = scan(dir.path(), Some(&sealed));
         assert_eq!(scan.traces, 1);

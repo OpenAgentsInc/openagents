@@ -1,0 +1,47 @@
+{
+  "entry": "9450-delegate-stale-bullet",
+  "grade": {
+    "verdict": "failed",
+    "detail": "2 of 4 checks passed; failed: stale-bullet-gone, reviewer-worktree",
+    "passed": 2,
+    "total": 4,
+    "changed": [
+      "docs/coder/delegate.md"
+    ],
+    "checks": [
+      {
+        "id": "only-delegate-md",
+        "group": "deliverables",
+        "kind": "only_changed",
+        "passed": true,
+        "detail": "changed only docs/coder/delegate.md",
+        "milliseconds": 0
+      },
+      {
+        "id": "stale-bullet-gone",
+        "group": "deliverables",
+        "kind": "lacks",
+        "passed": false,
+        "detail": "docs/coder/delegate.md:335 matches Reaching a fan-out from an operator's sentence",
+        "milliseconds": 0
+      },
+      {
+        "id": "reviewer-worktree",
+        "group": "deliverables",
+        "kind": "contains",
+        "passed": false,
+        "detail": "docs/coder/delegate.md doesn't match (?s)git worktree list.{0,300}\\bmerg|\\bmerg.{0,300}git worktree list",
+        "milliseconds": 8
+      },
+      {
+        "id": "links-resolve",
+        "group": "deliverables",
+        "kind": "links",
+        "passed": true,
+        "detail": "3 relative links in docs/coder/delegate.md resolve",
+        "milliseconds": 0
+      }
+    ]
+  },
+  "reward": 0.0
+}

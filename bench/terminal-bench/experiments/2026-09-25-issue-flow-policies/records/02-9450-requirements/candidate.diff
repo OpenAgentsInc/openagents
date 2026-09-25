@@ -1,0 +1,32 @@
+diff --git a/docs/coder/delegate.md b/docs/coder/delegate.md
+index 9d24fcf..bb37547 100644
+--- a/docs/coder/delegate.md
++++ b/docs/coder/delegate.md
+@@ -6,8 +6,9 @@ stated bound, and records each as an ATIF `Call` named `delegate`.
+ Status: implemented in `crates/coder` (`delegate.rs`, recorded by
+ `trace.rs`). The executor is `devin-local`, the Devin CLI on the operator's
+ computer. A `delegate` step of a program reaches this through
+-`coder::runtime`; what still runs from a caller in Rust is the program,
+-not the fan-out.
++`coder::runtime`. See
++[How a sentence reaches it](../programs.md#how-a-sentence-reaches-it) for
++how an operator's sentence reaches a program.
+ 
+ Read [`../programs.md`](../programs.md) for why delegation is reached
+ through a program rather than offered to the model, and
+@@ -258,6 +259,9 @@ delegation and runs the executor in it. A read-only delegation's checkout
+ is removed when the delegation ends; a writing delegation's stays where
+ the executor left it — its edits are owed to a reviewer, not silently
+ merged or discarded — and the recorded call names the retained path.
++If a writing delegate retains a worktree, run `git worktree list` to find it,
++inspect its changes, then merge the work or remove the worktree. The program
++runs the delegate; you finish its work.
+ 
+ A delegator that was **not** told refuses a task asking for a worktree with
+ `isolation_unavailable`, and any delegator refuses a task that says it
+@@ -327,5 +331,3 @@ repository the delegates run in, which matters because a git worktree under
+   the retained checkout keeps them, and `crates/coder-boundary` snapshots
+   observe a tree before and after a run; the CoderBench side that grades
+   a run against that observation is separate work.
+-- **Reaching a fan-out from an operator's sentence.** `coder::runtime` runs
+-  the program, and the program still runs from a caller in Rust.

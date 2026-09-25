@@ -1,0 +1,16 @@
+diff --git a/docs/coder/delegate.md b/docs/coder/delegate.md
+index 9d24fcf..d485426 100644
+--- a/docs/coder/delegate.md
++++ b/docs/coder/delegate.md
+@@ -306,6 +306,11 @@ the reviewer even when no result came back; a read-only delegation's is
+ removed by the cleanup transaction. Abrupt process termination can still leave
+ a checkout for the operator to inspect and remove.
+ 
++For a writing delegate, use `git worktree list` to find the retained checkout.
++It is stored in the `.coder/worktrees` directory. Review the delegate's edits
++there. Merge those edits into your branch, or remove the worktree when you no
++longer need it. The program runs the delegate; you finish its work.
++
+ ## Running the live check
+ 
+ The delegation tests run against a stub executor, so `cargo test -p coder`

@@ -422,6 +422,10 @@ impl Workspace {
     #[must_use]
     pub fn confines_reads(&self) -> bool {
         self.reads.is_some()
+            || self
+                .seal
+                .as_ref()
+                .is_some_and(|seal| seal.read_scope().is_some())
     }
 
     /// The same workspace, with every tool run in `remote` instead of on
@@ -561,6 +565,17 @@ impl Workspace {
             .timeout_seconds
             .map_or(COMMAND_WALL, |seconds| Duration::from_secs(seconds.max(1)))
             .min(self.command_max);
+        if self.remote.is_some()
+            && self
+                .seal
+                .as_ref()
+                .is_some_and(|seal| seal.read_scope().is_some())
+        {
+            return Outcome::refused(
+                "The command did not run: a remote cannot enforce this evaluation's host read scope."
+                    .to_string(),
+            );
+        }
         if let Some(remote) = &self.remote
             && self.seal.as_ref().is_some_and(crate::Seal::offline)
             && !remote.offline()
@@ -596,6 +611,10 @@ impl Workspace {
                         }
                         spec
                     }
+                };
+                let spec = match &self.seal {
+                    Some(seal) => seal.constrain_reads(spec),
+                    None => spec,
                 };
                 let boundary = match spec.owned_scratch_under(std::env::temp_dir()).build() {
                     Ok(boundary) => boundary,
@@ -641,7 +660,7 @@ impl Workspace {
                     .await
             }
             (None, Isolation::TaskContainer) => {
-                if self.reads.is_some() {
+                if self.confines_reads() {
                     return Outcome::refused(
                         "The command did not run: this session may read only its own files, \
                          and a task container can't limit what a command reads."
@@ -714,7 +733,7 @@ impl Workspace {
             "reads",
             json!(if self.remote.is_some() {
                 "remote"
-            } else if self.reads.is_some() {
+            } else if self.confines_reads() {
                 "confined"
             } else {
                 "open"
@@ -1187,9 +1206,16 @@ mod tests {
             return;
         }
         let seal_dir = tempfile::tempdir().unwrap();
-        let workspace = workspace
-            .sealed_by(crate::Seal::create(seal_dir.path(), true).unwrap())
-            .confining_reads(vec![task.path().to_path_buf()]);
+        let workspace = workspace.sealed_by(
+            crate::Seal::create(seal_dir.path(), true)
+                .unwrap()
+                .with_read_scope(crate::seal::ReadScope {
+                    readable: vec![task.path().to_path_buf()],
+                    writable: Vec::new(),
+                    environment: Vec::new(),
+                }),
+        );
+        assert!(workspace.confines_reads());
         let inside = workspace
             .call(
                 "run_command",

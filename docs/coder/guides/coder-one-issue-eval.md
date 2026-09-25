@@ -161,7 +161,7 @@ Git keeps working on the local clone.
 boundary with the network taken away: on Linux, `bwrap --unshare-net`
 gives the command a network namespace that holds only loopback; on macOS,
 the boundary's profile denies outbound connections to any address but
-`localhost`. The macOS half isn't tested. A host that can't take the
+`localhost`. The offline gate has been exercised on macOS. A host that can't take the
 network away refuses the run and says to pass `--network on`.
 
 With the network off, Cargo can't reach its registry. Before the flow
@@ -181,9 +181,9 @@ touches, and a test the model wrote runs there. Each test command runs as
 follows:
 
 - Inside the `coder-boundary` write boundary, which lets it write only to
-  the clone, the gate's shared Cargo target directory
-  (`~/.openagents/coder-one/target`), and a scratch directory the boundary
-  owns for `TMPDIR`.
+  the clone, the gate's Cargo target directory
+  (`repo/target` inside this evaluation's candidate), a private Cargo
+  metadata directory, and scratch space the boundary owns for `TMPDIR`.
 - Through `supervise`, with a 1,200-second deadline and 1 MiB kept of each
   output stream.
 - With the run's seal: no credential that Microluna withholds from a
@@ -198,12 +198,25 @@ records itself as incomplete, and no fix round follows, because a fix
 round can't give the host a boundary. The manifest's `gate_tests` records
 how the tests ran, and `gate_incomplete` says whether they didn't.
 
+**Reads are confined too.** Sessions and the gate can read their candidate,
+their own writable scratch and tool state, the system program directories,
+installed Rust tools, and prefetched registry sources. Cargo's credentials
+and configuration, sibling checkouts, the grader's build output, and the
+operator's conversation histories are outside that scope. Cargo metadata
+is private to the run; registry sources are read-only. The host supplies
+`CARGO_HOME` and `RUSTUP_HOME` explicitly, and commands get a scratch `HOME`.
+On macOS, Xcode's installed bundle and license receipts are readable, and
+the SDK is selected explicitly. The manifest records these grants. A host
+that cannot build the scope refuses the evaluation before inference.
+
+The [read-isolation verification](../verification/2026-09-25-issue-eval-read-isolation.md)
+records the private-history exposure that motivated this boundary and the
+original study's quarantine.
+
 What the seal doesn't cover:
 
-- The gate's tests read what the operator's account can read: the
-  boundary confines writes and the network, not reads. With GitHub
-  withheld and the network off, what they read can reach only the fix
-  round.
+- The macOS boundary permits file metadata outside the scope, as required
+  by the loader. It denies file contents and directory listings there.
 - The grader runs on the host after the flow, with the network open. The
   flow never sees what it does.
 - `--network on` leaves `curl`, `wget`, and `git clone` of a public URL
@@ -230,7 +243,8 @@ The manifest's `schema` is `openagents.coder-one.minitask-run.v1` and its
 - `task`: the entry, its part and category, the issue number, the base and
   fix commits, and the entry's and the set's digests.
 - `policy`: the Microluna manifest the flow ran under, with its digest.
-- `sealed`: `github_withheld`, `network_off`, and `prefetch`, what the
+- `sealed`: `github_withheld`, `network_off`, `read_isolation`, the readable
+  paths and writable tool state, and `prefetch`, what the
   Cargo fetch did (`fetched`, `no Cargo.lock`, `skipped`, or why it
   failed).
 - `contamination`: every command a session ran that looked like it reached
@@ -240,7 +254,7 @@ The manifest's `schema` is `openagents.coder-one.minitask-run.v1` and its
 - `gate_tests`: how the gate ran its tests, or `null` when the gate never
   ran. `mode` is `confined`, `refused` (no boundary on this host), or
   `none` (no Rust package changed); the record also holds the sandbox
-  program, `network`, the writable paths, the deadline, the output cap,
+  program, `network`, `reads_confined`, the readable and writable paths, the deadline, the output cap,
   and the packages. `gate_incomplete` is `true` when the mode is
   `refused`.
 - `contaminated`: true when an attempt got past the seal, or might have.

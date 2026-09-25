@@ -1,0 +1,26 @@
+[
+  {
+    "slot": 1,
+    "entry": "9450",
+    "arm": "lean",
+    "archive": "records/01-9450-lean/traces.tar.gz",
+    "sha256": "43248c139519867addc9fb02d56d1b26d3afe0f10fd2d67ef209b3b574b2aa1d",
+    "bytes": 8480992
+  },
+  {
+    "slot": 2,
+    "entry": "9450",
+    "arm": "requirements",
+    "archive": "records/02-9450-requirements/traces.tar.gz",
+    "sha256": "9901d7e4c877a301a3b2bb326398e11331a99fcd64c5cd9c2438180b28ec1d1f",
+    "bytes": 203227
+  },
+  {
+    "slot": 3,
+    "entry": "9446",
+    "arm": "requirements",
+    "status": "quarantined-local-only",
+    "source": "/Users/christopherdavid/.openagents/coder-one/issue-flow-policies-20260925/03-9446-requirements/runs/issue-eval-9446-coderdev-launcher-microluna-gpt-6-luna-1790364394480",
+    "reason": "Outside private conversation history appeared in command output."
+  }
+]
