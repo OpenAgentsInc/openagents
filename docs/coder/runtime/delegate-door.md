@@ -120,7 +120,40 @@ One's mini-handoff loop (`coder_one::micro`,
    600 seconds.
 
 A request whose map has no requirements runs one session on the briefing.
-The reply is each group's last answer, in order.
+The reply is each group's last answer, in order. A request Jev reads as a
+question runs one session with no survey, whatever the manifest says.
+
+### Which manifest a Microluna turn runs
+
+The loop's shape and bounds come from a policy manifest in
+`crates/coder-one/policies/`, the way a Terminal-Bench episode's do. The
+manifests are compiled in, and each has a digest.
+
+| Turn | Default manifest | Variable that names another |
+| --- | --- | --- |
+| A change request | `terminal-microluna.json`: the requirements loop above | `CODER_TERMINAL_POLICY` |
+| The issue flow's loop | `issue-flow.json`: the requirements loop with larger bounds | `CODER_ISSUE_POLICY` |
+
+A variable holds a reference manifest's file name, such as
+`issue-flow-lean.json`, or the path of a manifest file. The manifest must
+be valid and name the `microluna` agent with an `executor.microluna`
+section; otherwise the turn keeps the default and says why. The manifest's
+judge, briefing cap, deadline, model, and loop all apply. A read-only turn
+still runs no checks, and a question or the issue flow's review still runs
+one session under the terminal's default bounds.
+
+`issue-flow-lean.json` runs the issue flow on the lean loop that
+Terminal-Bench runs (`coder_one::micro::lean`): up to four work sessions,
+a frozen evaluation script that keeps the best-scoring workspace, finishes
+turned back while that score is below full, a spend bound per session, a
+300-second bound per command, retained candidates, and a read-only review.
+It isn't the default: the issue-flow evaluation set (issue #9625) decides
+between it and `issue-flow.json`. On a checkout above the workspace copy
+bound (20,000 files or 256 MiB), keep-best and candidate retention can't
+copy the workspace, so the loop keeps its last workspace instead.
+
+`coder doctor` names each manifest, its digest, and its loop, and each
+turn's trace records the manifest it ran as a system step.
 
 The permit maps to Microluna's own isolation. A read-only turn runs every
 command in a read-only `coder-boundary` boundary and refuses `apply_patch`
@@ -141,8 +174,15 @@ When a request names a GitHub issue to work, such as "work on #9597", or
    about an issue, such as "summarize #9597", gets `none`.
 1. The host reads the issue with `gh`, clones its repository fresh under
    `~/.openagents/coder-one/runs/`, and creates a `coder/issue-N-…` branch.
-1. The same Microluna loop a change request runs works the issue in the
-   clone, with larger bounds: up to 10 sessions, $1.00, and 40 minutes.
+1. The Microluna loop that `issue-flow.json` names works the issue in the
+   clone, with larger bounds than a change request's: up to 10 sessions,
+   $1.00, and 40 minutes. `CODER_ISSUE_POLICY` can name another manifest,
+   such as `issue-flow-lean.json`.
+1. One review session reads the diff and the code that uses what changed,
+   and the host's gate runs the tests and checks the change's figures,
+   links, style, plain language, and dependent code. Up to two fix rounds
+   follow when the gate still finds problems. The review and the gate run
+   whichever loop the manifest names.
 1. When the loop finishes with changes, the host commits them, pushes the
    branch, and opens a draft pull request that closes the issue. A run
    that doesn't finish leaves its changes staged in the clone.
