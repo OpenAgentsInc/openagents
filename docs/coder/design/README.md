@@ -21,6 +21,7 @@ discovery, and package distribution.
 | --- | --- |
 | [2026-09-21-project-roadmap-snapshot](2026-09-21-project-roadmap-snapshot.md) | Decision Router and Coder project snapshot |
 | [2026-09-24-assessment](2026-09-24-assessment.md) | Where Coder stands: the thesis prediction by prediction, component usage, open issues, and the path to wins that hold up |
+| [2026-09-25-assessment](2026-09-25-assessment.md) | Where Coder stands, one day on: every failure mode, what happened to the acceptance contract, and the shape a Jev-plus-Luna Coder needs to be faster, cheaper, and better |
 | [coder-as-decision-router-consumer](coder-as-decision-router-consumer.md) | Coder as a Decision Router consumer |
 | [coder-terminal-v05-algorithm-and-goldens](coder-terminal-v05-algorithm-and-goldens.md) | Proposed v0.5 algorithm, Terminal-Bench panel, golden evidence, and NIP mapping |
 | [decision-function-inventory](decision-function-inventory.md) | Coder decision-function inventory |
