@@ -132,6 +132,12 @@ pub struct Attempt {
 }
 
 impl Attempt {
+    /// Setup before the agent's first command: Harbor's environment_setup
+    /// and agent_setup phases together, when both are known.
+    pub fn setup_ms(&self) -> Option<u64> {
+        Some(self.phases_ms[0]? + self.phases_ms[1]?)
+    }
+
     pub fn is_control(&self) -> bool {
         matches!(self.arm.as_str(), "oracle" | "nop")
     }

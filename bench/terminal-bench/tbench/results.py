@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from . import contamination, netpolicy, usage_limit
+from .looptime import environment_records
 
 ATTEMPT_SCHEMA = "openagents.tbench.attempt.v1"
 MANIFEST_SCHEMA = "openagents.tbench.episode-manifest.v1"
@@ -226,12 +227,33 @@ def image_state(
         )
     elif task_path and (Path(task_path) / "task.toml").is_file():
         state["image_source"] = "dockerfile"
+    starts = [
+        r
+        for r in environment_records(trial_dir)
+        if r.get("event", "start") == "start" and r.get("role") == "environment"
+    ]
+    if starts:
+        state["starts"] = environment_summary(trial_dir)
     if state["image_source"] == "dockerfile":
         state["image_action"] = "built"
         state["image_state_method"] = (
             "Harbor builds a Dockerfile task in every trial; the trial log "
             "doesn't record whether the build cache served its layers"
         )
+        cache = starts[0].get("cache") if starts else None
+        if cache == "warm":
+            state["image_state"] = "warm"
+            state["image_action"] = "reused"
+            state["image_state_method"] = (
+                "tbench-environment.jsonl: every image the task builds was kept "
+                "(tbench.warm_docker), so nothing was built"
+            )
+        elif cache == "cold":
+            state["image_state"] = "cold"
+            state["image_state_method"] = (
+                "tbench-environment.jsonl: an image the task builds wasn't kept, "
+                "so Harbor built it and tbench.warm_docker kept it"
+            )
         return state
     if state["image_source"] != "prebuilt":
         state["image_state_method"] = "the task's declared image is unreadable"
@@ -280,7 +302,71 @@ def image_state(
     return state
 
 
+def setup_timing(
+    trial_result: dict[str, Any], timing: dict[str, Any], trial_dir: Path
+) -> dict[str, Any]:
+    """Setup and teardown, kept apart from the agent's own time.
+
+    - ``setup_ms``: everything before the agent's first command, Harbor's
+      environment_setup and agent_setup phases together.
+    - ``handoff_ms``: from the agent's end to the verifier's start. Harbor
+      collects the artifacts and, for a separate verifier, stops the agent
+      environment here; no Harbor phase counts it.
+    - ``verifier_environment_ms``: the separate verifier environment's
+      start and stop inside Harbor's verifier phase, from the environment
+      records. ``None`` when the trial ran without them.
+    """
+    setup = None
+    if timing.get("environment_setup_ms") is not None and timing.get("agent_setup_ms") is not None:
+        setup = timing["environment_setup_ms"] + timing["agent_setup_ms"]
+    handoff = _ms(
+        {
+            "started_at": (trial_result.get("agent_execution") or {}).get("finished_at"),
+            "finished_at": (trial_result.get("verifier") or {}).get("started_at"),
+        }
+    )
+    verifier_env = None
+    records = [r for r in environment_records(trial_dir) if r.get("role") == "tests"]
+    starts = [r.get("start_ms") for r in records if r.get("event", "start") == "start"]
+    stops = [r.get("stop_ms") for r in records if r.get("event") == "stop"]
+    if starts and all(isinstance(ms, int) for ms in starts + stops):
+        verifier_env = sum(starts) + sum(stops)
+    return {
+        "setup_ms": setup,
+        "handoff_ms": handoff,
+        "verifier_environment_ms": verifier_env,
+    }
+
+
+def environment_summary(trial_dir: Path) -> list[dict[str, Any]]:
+    """Each environment start's role, cache state, and phase times."""
+    summary = []
+    for record in environment_records(trial_dir):
+        entry = {
+            "event": record.get("event", "start"),
+            "role": record.get("role"),
+            "cache": record.get("cache"),
+        }
+        for key in ("start_ms", "phases_ms", "stop_ms", "stop_timeout_sec"):
+            if key in record:
+                entry[key] = record[key]
+        summary.append({k: v for k, v in entry.items() if v is not None or k == "cache"})
+    return summary
+
+
 SETUP_BOUNDARIES = {
+    "setup_ms": (
+        "environment_setup_ms plus agent_setup_ms: everything before the "
+        "agent's first command"
+    ),
+    "handoff_ms": (
+        "the agent's end to the verifier's start: artifact collection and, "
+        "for a separate verifier, the agent environment's stop"
+    ),
+    "verifier_environment_ms": (
+        "the separate verifier environment's start and stop, inside "
+        "verifier_ms, from tbench-environment.jsonl"
+    ),
     "agent_setup_ms": (
         "Harbor's agent_setup phase: the toolchain install, the artifact "
         "upload, and the episode doctor"
@@ -388,6 +474,7 @@ def attempt_record(
             }
         ),
     }
+    timing.update(setup_timing(trial_result, timing, trial_dir))
 
     usage_totals = _usage_totals(trial_result)
     usage = {

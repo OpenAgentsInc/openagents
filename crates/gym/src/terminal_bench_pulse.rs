@@ -6,7 +6,8 @@
 //! model call, and reports:
 //!
 //! - each arm's passes over graded attempts with a 95% Wilson interval, its
-//!   mean and total cost, and its mean time per graded attempt;
+//!   mean and total cost, its mean time per graded attempt, and its mean
+//!   setup before the agent's first command (environment and agent setup);
 //! - how well each of Coder One's signals separates the verifier's passes
 //!   from its failures: the final checks' verdicts, Jev's support answers,
 //!   and the effort score, with counts, intervals, a Fisher exact test, and
@@ -61,6 +62,9 @@ pub struct TrialFacts {
     pub cost_usd: Option<f64>,
     pub quota_usd: f64,
     pub duration_ms: Option<u64>,
+    /// Setup before the agent's first command: Harbor's environment_setup
+    /// and agent_setup phases, from the attempt record.
+    pub setup_ms: Option<u64>,
     /// The trial directory under the job, when it exists.
     pub trial_dir: Option<PathBuf>,
     /// Coder One's composition record, when the trial ran Coder One.
@@ -299,6 +303,9 @@ pub struct ArmPulse {
     pub total_cost: f64,
     pub unpriced: usize,
     pub mean_ms: Option<u64>,
+    /// Mean setup before the agent's first command, over the graded
+    /// trials whose attempt record has it.
+    pub mean_setup_ms: Option<u64>,
     pub quota_usd: f64,
 }
 
@@ -389,6 +396,18 @@ fn verifier(trial: &Path) -> (Option<(u64, u64)>, Vec<String>) {
     (tests, failing)
 }
 
+/// An attempt record's setup before the agent: its `timing.setup_ms`, or
+/// the environment and agent setup phases added when an older record has
+/// only those.
+fn setup_ms(record: &Value) -> Option<u64> {
+    let field = |key: &str| {
+        record
+            .pointer(&format!("/timing/{key}"))
+            .and_then(Value::as_u64)
+    };
+    field("setup_ms").or_else(|| Some(field("environment_setup_ms")? + field("agent_setup_ms")?))
+}
+
 impl TrialFacts {
     fn read(row: &Value, trial: &experiment::Trial, jobs: Option<&Path>) -> Self {
         let text = |key: &str| row[key].as_str().map(str::to_owned);
@@ -404,6 +423,7 @@ impl TrialFacts {
             cost_usd: None,
             quota_usd: trial.quota_usd,
             duration_ms: None,
+            setup_ms: None,
             trial_dir: None,
             composition: None,
             tests: None,
@@ -429,6 +449,7 @@ impl TrialFacts {
                     if let Some(ms) = record.pointer("/timing/total_ms").and_then(Value::as_u64) {
                         facts.duration_ms = Some(ms);
                     }
+                    facts.setup_ms = setup_ms(record);
                     // A trial the scheduler adopted after a restart has no
                     // times in the status file; the attempt record has them.
                     let timing = |key: &str| {
@@ -1143,6 +1164,7 @@ impl Pulse {
                 // A float sum of nothing is -0.0; start from 0.0.
                 let total = priced.iter().fold(0.0, |sum, usd| sum + usd);
                 let times: Vec<u64> = graded.iter().filter_map(|t| t.duration_ms).collect();
+                let setups: Vec<u64> = graded.iter().filter_map(|t| t.setup_ms).collect();
                 ArmPulse {
                     arm: summary.arm.clone(),
                     scheduled: summary.scheduled,
@@ -1158,6 +1180,8 @@ impl Pulse {
                     unpriced: graded.len() - priced.len(),
                     mean_ms: (!times.is_empty())
                         .then(|| times.iter().sum::<u64>() / times.len() as u64),
+                    mean_setup_ms: (!setups.is_empty())
+                        .then(|| setups.iter().sum::<u64>() / setups.len() as u64),
                     quota_usd: summary.quota_usd,
                 }
             })
@@ -1250,6 +1274,7 @@ impl Pulse {
                 "priced_total_cost_usd": a.total_cost,
                 "unpriced": a.unpriced,
                 "mean_ms": a.mean_ms,
+                "mean_setup_ms": a.mean_setup_ms,
                 "claude_quota_usd": a.quota_usd,
             })).collect::<Vec<_>>(),
             "tasks_by_arm": self.report.tasks.iter().map(|task| json!({
@@ -1304,7 +1329,7 @@ impl Pulse {
             ),
             String::new(),
             format!(
-                "  {:<34} {:>7} {:>5}  {:<9} {:>9} {:>10} {:>9} {:>9}",
+                "  {:<34} {:>7} {:>5}  {:<9} {:>9} {:>10} {:>9} {:>10} {:>9}",
                 "arm",
                 "passes",
                 "rate",
@@ -1312,12 +1337,13 @@ impl Pulse {
                 "mean cost",
                 "total cost",
                 "mean time",
+                "mean setup",
                 "Claude $"
             ),
         ];
         for a in &self.arms {
             lines.push(format!(
-                "  {:<34} {:>3}/{:<3} {:>5}  {:<9} {:>9} {:>10} {:>9} {:>9}{}",
+                "  {:<34} {:>3}/{:<3} {:>5}  {:<9} {:>9} {:>10} {:>9} {:>10} {:>9}{}",
                 a.arm,
                 a.passes,
                 a.graded,
@@ -1335,6 +1361,7 @@ impl Pulse {
                     format!(">=${:.2}", a.total_cost)
                 },
                 duration_text(a.mean_ms),
+                duration_text(a.mean_setup_ms),
                 format!("${:.2}", a.quota_usd),
                 if a.running + a.pending + a.stopped > 0 {
                     format!(
@@ -2100,6 +2127,18 @@ pub(crate) mod fixture {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn setup_before_the_agent_comes_from_the_attempt_record() {
+        let record = serde_json::json!({"timing": {"setup_ms": 9_000, "environment_setup_ms": 1}});
+        assert_eq!(setup_ms(&record), Some(9_000));
+        // An older record has only the two phases; setup is their sum.
+        let older =
+            serde_json::json!({"timing": {"environment_setup_ms": 6_400, "agent_setup_ms": 1_500}});
+        assert_eq!(setup_ms(&older), Some(7_900));
+        let partial = serde_json::json!({"timing": {"environment_setup_ms": 6_400}});
+        assert_eq!(setup_ms(&partial), None);
+    }
 
     #[test]
     fn an_unknown_total_never_becomes_a_partial_quota_or_arm_mean() {

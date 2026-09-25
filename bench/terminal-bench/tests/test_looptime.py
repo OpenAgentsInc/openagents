@@ -124,3 +124,20 @@ def test_the_table_sums_every_trial(tmp_path: Path):
     assert summary["seconds"]["total"] == 2400.0
     table = looptime.render(rows)
     assert "2 trials" in table and "2/2 passed" in table and "$2.50" in table
+
+
+def test_stop_records_are_not_starts(tmp_path):
+    (tmp_path / "tbench-environment.jsonl").write_text(
+        "\n".join(
+            json.dumps(record)
+            for record in (
+                {"role": "environment", "cache": "warm"},
+                {"event": "stop", "role": "environment", "stop_ms": 2000},
+                {"event": "start", "role": "tests", "cache": "cold"},
+            )
+        )
+        + "\n"
+    )
+    starts = looptime.environment_starts(tmp_path)
+    assert [start["role"] for start in starts] == ["environment", "tests"]
+    assert [stop["stop_ms"] for stop in looptime.environment_stops(tmp_path)] == [2000]

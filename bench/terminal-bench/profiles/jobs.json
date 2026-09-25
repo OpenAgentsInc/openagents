@@ -73,7 +73,7 @@
    "controls": false
   },
   "tb4": {
-   "description": "Terminal-Bench 4.0, all 66 tasks at tag v4.0.0 with their declared resources and 8-hour agent timeouts. Run it through `tbench suite run`, which schedules one job per task and attempt within the host's CPU, memory, GPU, and disk budgets. The environment is Harbor's Docker environment with GPUs passed through by CDI, for the three GPU tasks.",
+   "description": "Terminal-Bench 4.0, all 66 tasks at tag v4.0.0 with their declared resources and 8-hour agent timeouts. Run it through `tbench suite run`, which schedules one job per task and attempt within the host's CPU, memory, GPU, and disk budgets. The environment is Harbor's Docker environment with GPUs passed through by CDI, for the three GPU tasks, and with task images kept between trials (tbench.warm_docker, issue #9631).",
    "catalog": "tb4",
    "tasks": [
     "atrx-vep-crispr",
@@ -146,7 +146,7 @@
    "n_attempts": 1,
    "controls": false,
    "environment": {
-    "import_path": "tbench.gpu_docker:CdiDockerEnvironment"
+    "import_path": "tbench.warm_docker:WarmDockerEnvironment"
    }
   }
  }

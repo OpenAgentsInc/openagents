@@ -501,8 +501,40 @@ uv run tbench images prune
 ```
 
 A changed Dockerfile or build context changes the tag, so an old image is
-never reused, but it stays on disk until you prune it. The suite scheduler
-doesn't use kept images and never removes them.
+never reused, but it stays on disk until you prune it.
+
+The kept images are the cache. They live in Docker's own image store,
+tagged `tbench-warm/<task>:<role>-<hash>` (and
+`tbench-warm/<task>-<service>:…` for a service the task's compose builds),
+so `docker system df` counts them and `tbench images prune` clears them.
+Since issue #9631 the `tb4` job profile starts every environment from them
+too, and the suite scheduler removes a finished task's kept images when
+free disk comes within the prune margin of its floor.
+
+### Time a task's environments without an agent
+
+`tbench envstart` starts and stops a task's environments exactly as a
+suite trial would, with the arm's allowed hosts and the allowlist
+enforced, and runs no agent, no verifier, and no model call:
+
+```sh
+uv run tbench envstart embedding-drift-monitor payments-pipeline-fix \
+  --repeat 2 --probe \
+  --artifact ~/.cache/openagents/artifacts/coder-one-<build>
+```
+
+It times the agent environment's start, the switch to the agent phase's
+allowlist, the Coder One binary's upload and digest check (with
+`--artifact`), the agent environment's stop, and the separate verifier
+environment's start and stop. `--probe` requests each allowed host and a
+few blocked ones from inside the environment and says whether the
+allowlist held. `--mode harbor` measures Harbor's own start and stop;
+`--mode warm` measures kept images and the short stop; the default runs
+both. Containers are named `tbench-envstart-<task>-<hex>`, and Harbor
+removes them, their networks, and their volumes when each stop ends. The
+report goes to `~/.openagents/terminal-bench/envstart/<stamp>/envstart.json`.
+[Where trial setup time goes](2026-09-25-setup-time.md) has the
+measurements.
 
 ## Run the Terminal-Bench 4.0 suite
 
@@ -593,10 +625,11 @@ and the first wave a run would start. `--tasks a,b` narrows a suite, and
 - **Disk.** No trial starts while the Docker volume has less than
   `--min-free-disk-gb` free (40 by default); the scheduler prunes and waits
   instead. Harbor removes each trial's built image
-  (`<trial>__env-main`) when the trial ends, so what grows is the base
-  images and Docker's build cache. When a task's trials have all finished
-  and free space is within `--prune-margin-gb` (20) of the floor, the
-  scheduler removes any image a crashed trial of that task left. Below the
+  (`<trial>__env-main`) when the trial ends, so what grows is the kept
+  task images (`tbench-warm/*`), the base images, and Docker's build
+  cache. When a task's trials have all finished and free space is within
+  `--prune-margin-gb` (20) of the floor, the scheduler removes any image a
+  crashed trial of that task left and the images kept for it. Below the
   floor it also drops Docker's unused build cache. Other agents' Cargo
   target directories count against the same disk.
 - **Images.** A task's later attempts wait until its first attempt has
@@ -841,6 +874,7 @@ It copies each trial's full evidence closure into
 | `<trial>.episode/verifier/` | The reward, the CTRF report, and the verifier's per-test output (`test-stdout.txt`) |
 | `<trial>.episode/produced/` | Files Harbor collected from the task container |
 | `<trial>.episode/setup/toolchain-setup.json` | How the agent was installed: prebuilt or network, cold or warm, and the install phases |
+| `<trial>.episode/setup/tbench-environment.jsonl` | Each environment start and stop: the role (`environment` or `tests`), whether its images were `warm`, `cold`, or built by Harbor (`harbor`), the start's phases (`sidecar_image`, `build`, `down`, `up`, `keep`, `other`), and the stop's milliseconds |
 | `<trial>.episode/harbor-result.json` | Harbor's result, trimmed to phase timings, the verifier result, the exception, and `agent_result`'s usage and cost |
 | `<trial>.episode/tbench-attempt.json`, `tbench-manifest.json` | The harness's attempt record and episode manifest |
 | `<trial>.episode/retention.json` | The retention record: each copied file and its digest, each manifest digest checked, each missing reference with its reason, how the raw ATIF relates to the normalized one, and the credential scan |

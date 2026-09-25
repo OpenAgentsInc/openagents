@@ -23,9 +23,21 @@ untags the name compose gave it; the kept tag holds the image. A changed
 Dockerfile or context changes the hash, so a stale image is never reused.
 
 Each start appends one line to ``tbench-environment.jsonl`` in the trial
-directory: the role, the tag, whether the image was warm or cold, and the
-milliseconds the start took. ``tbench images list`` shows the kept images
-and ``tbench images prune`` removes them.
+directory: the role, the tag, whether the image was warm or cold, the
+milliseconds the start took, and where they went (``phases_ms``: the
+egress sidecar's image, the build, the stale-container cleanup, ``up``,
+tagging a cold build, and the rest of Harbor's start). Each stop appends
+a line with ``"event": "stop"`` and its milliseconds. ``tbench images
+list`` shows the kept images and ``tbench images prune`` removes them.
+
+A trial's environments end with ``docker compose down``, which gives each
+container ten seconds to exit after SIGTERM. Harbor's ``main`` service runs
+``sh -c "sleep infinity"`` as PID 1, which ignores SIGTERM, so every stop
+waited the full ten seconds: twice a trial for a task with a separate
+verifier (issue #9631). Harbor collects the artifacts before it stops an
+environment, so ``WarmDockerEnvironment`` stops with a one-second grace
+(``STOP_TIMEOUT_SEC``). ``TimedDockerEnvironment`` starts and stops as
+Harbor does and only records it, for before-and-after measurements.
 
 Select it with the environment import path
 ``tbench.warm_docker:WarmDockerEnvironment``. It extends
@@ -162,8 +174,121 @@ def remove_warm_images(match: str | None = None) -> list[str]:
     return removed
 
 
-class WarmDockerEnvironment(CdiDockerEnvironment):
+# Compose subcommands a start record times on their own.
+TIMED_COMMANDS = ("build", "down", "up")
+
+
+def with_stop_timeout(command: list[str], seconds: int | None) -> list[str]:
+    """``command`` with a shutdown grace when it stops containers.
+
+    ``down`` and ``stop`` take ``--timeout``; a command that already names
+    one keeps it. ``None`` leaves every command as Harbor wrote it.
+    """
+    if seconds is None or not command or command[0] not in ("down", "stop"):
+        return command
+    if any(part in ("-t", "--timeout") or part.startswith("--timeout=") for part in command):
+        return command
+    return [command[0], "--timeout", str(int(seconds)), *command[1:]]
+
+
+class TimedDockerEnvironment(CdiDockerEnvironment):
+    """Harbor's Docker environment, with each start and stop recorded.
+
+    It builds, starts, and stops as Harbor does. ``WarmDockerEnvironment``
+    extends it with kept images and a short stop grace.
+    """
+
+    # Seconds ``down`` and ``stop`` give a container to exit; ``None`` keeps
+    # Docker's ten.
+    STOP_TIMEOUT_SEC: int | None = None
+    CACHE_LABEL = "harbor"
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._timed_role = self.environment_dir.name or "environment"
+        self._phase_ms: dict[str, int] | None = None
+
+    def _add_phase(self, name: str, started: float) -> None:
+        if self._phase_ms is not None:
+            ms = int((time.monotonic() - started) * 1000)
+            self._phase_ms[name] = self._phase_ms.get(name, 0) + ms
+
+    async def _run_docker_compose_command(self, command: list[str], *args: Any, **kwargs: Any):
+        command = with_stop_timeout(list(command), self.STOP_TIMEOUT_SEC)
+        started = time.monotonic()
+        try:
+            return await super()._run_docker_compose_command(command, *args, **kwargs)
+        finally:
+            if command and command[0] in TIMED_COMMANDS:
+                self._add_phase(command[0], started)
+
+    async def _ensure_egress_control_sidecar_image_built(self) -> None:
+        started = time.monotonic()
+        try:
+            await super()._ensure_egress_control_sidecar_image_built()
+        finally:
+            self._add_phase("sidecar_image", started)
+
+    def _record(self, entry: dict[str, Any]) -> None:
+        try:
+            path = self.trial_paths.trial_dir / RECORD_NAME
+            with path.open("a") as handle:
+                handle.write(json.dumps(entry) + "\n")
+        except OSError:
+            pass
+
+    def _start_entry(self, started: float) -> dict[str, Any]:
+        total = int((time.monotonic() - started) * 1000)
+        phases = dict(self._phase_ms or {})
+        # Everything else Harbor's start does: the compose overlays, the
+        # image OS check, the writable mounts, and the environment upload.
+        phases["other"] = max(total - sum(phases.values()), 0)
+        return {
+            "schema": RECORD_SCHEMA,
+            "event": "start",
+            "role": self._timed_role,
+            "session": self.session_id,
+            "image": self.task_env_config.docker_image,
+            "cache": self.CACHE_LABEL,
+            "kept": [],
+            "start_ms": total,
+            "phases_ms": phases,
+            "egress_control": bool(getattr(self, "_enable_egress_control", False)),
+            "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        }
+
+    async def start(self, force_build: bool):
+        started = time.monotonic()
+        self._phase_ms = {}
+        try:
+            await super().start(force_build)
+        finally:
+            self._record(self._start_entry(started))
+            self._phase_ms = None
+
+    async def stop(self, delete: bool):
+        started = time.monotonic()
+        try:
+            await super().stop(delete)
+        finally:
+            self._record(
+                {
+                    "schema": RECORD_SCHEMA,
+                    "event": "stop",
+                    "role": self._timed_role,
+                    "session": self.session_id,
+                    "delete": delete,
+                    "stop_timeout_sec": self.STOP_TIMEOUT_SEC,
+                    "stop_ms": int((time.monotonic() - started) * 1000),
+                    "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                }
+            )
+
+
+class WarmDockerEnvironment(TimedDockerEnvironment):
     """Harbor's Docker environment that keeps and reuses task images."""
+
+    STOP_TIMEOUT_SEC: int | None = 1
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
@@ -231,16 +356,9 @@ class WarmDockerEnvironment(CdiDockerEnvironment):
             paths.append(self._warm_override_path)
         return paths
 
-    def _record(self, entry: dict[str, Any]) -> None:
-        try:
-            path = self.trial_paths.trial_dir / RECORD_NAME
-            with path.open("a") as handle:
-                handle.write(json.dumps(entry) + "\n")
-        except OSError:
-            pass
-
     async def start(self, force_build: bool):
         started = time.monotonic()
+        self._phase_ms = {}
         tags = self._warm_tags()
         kept: list[str] = []
         cache = image_cache(self._task_image, tags, force_build, image_exists)
@@ -255,22 +373,25 @@ class WarmDockerEnvironment(CdiDockerEnvironment):
             )
             self._env_vars.prebuilt_image_name = self._warm_main
         try:
-            await super().start(force_build)
+            # Harbor's start; the timed class's own start would write a
+            # second record.
+            await CdiDockerEnvironment.start(self, force_build)
             if cache == "cold":
+                keeping = time.monotonic()
                 kept = await self._keep_built_images(tags)
+                self._add_phase("keep", keeping)
         finally:
-            self._record(
+            entry = self._start_entry(started)
+            entry.update(
                 {
-                    "schema": RECORD_SCHEMA,
                     "role": self._warm_role,
-                    "session": self.session_id,
                     "image": self._task_image or self._warm_main,
                     "cache": cache,
                     "kept": kept,
-                    "start_ms": int((time.monotonic() - started) * 1000),
-                    "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 }
             )
+            self._record(entry)
+            self._phase_ms = None
 
     async def stop(self, delete: bool):
         try:

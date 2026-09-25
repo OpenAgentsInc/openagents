@@ -34,3 +34,46 @@ def test_warm_needs_every_built_image_kept():
     assert image_cache(None, tags, False, lambda tag: tag == "m") == "cold"
     assert image_cache(None, tags, True, lambda tag: True) == "cold"
     assert image_cache("alexgshaw/fix-git:1", tags, False, lambda tag: True) == "task-image"
+
+
+def test_stops_get_the_short_grace_and_nothing_else_does():
+    from tbench.warm_docker import with_stop_timeout
+
+    down = ["down", "--rmi", "local", "--volumes", "--remove-orphans"]
+    assert with_stop_timeout(down, 1) == ["down", "--timeout", "1", *down[1:]]
+    assert with_stop_timeout(["stop", "main"], 1) == ["stop", "--timeout", "1", "main"]
+    assert with_stop_timeout(["up", "--detach", "--wait"], 1) == ["up", "--detach", "--wait"]
+    assert with_stop_timeout(["build"], 1) == ["build"]
+    # Harbor's own commands are unchanged without a grace.
+    assert with_stop_timeout(down, None) == down
+    # A command that names its own timeout keeps it.
+    assert with_stop_timeout(["down", "-t", "30"], 1) == ["down", "-t", "30"]
+    assert with_stop_timeout(["stop", "--timeout=5"], 1) == ["stop", "--timeout=5"]
+
+
+def test_only_the_kept_class_shortens_the_stop():
+    from tbench.warm_docker import TimedDockerEnvironment, WarmDockerEnvironment
+
+    assert TimedDockerEnvironment.STOP_TIMEOUT_SEC is None
+    assert WarmDockerEnvironment.STOP_TIMEOUT_SEC == 1
+    assert issubclass(WarmDockerEnvironment, TimedDockerEnvironment)
+
+
+def test_a_tasks_images_include_its_kept_ones():
+    from tbench.host import images_of_task
+
+    references = [
+        "payments-pipeline-fix__abc__env-main:latest",
+        "tbench-warm/payments-pipeline-fix:environment-1",
+        "tbench-warm/payments-pipeline-fix-seeder:environment-1",
+        "tbench-warm/payments-pipeline-fix:tests-2",
+        "tbench-warm/payments:environment-3",
+        "payments__x__env-main:latest",
+        "ubuntu:24.04",
+    ]
+    assert images_of_task("payments-pipeline-fix", references) == [
+        "payments-pipeline-fix__abc__env-main:latest",
+        "tbench-warm/payments-pipeline-fix-seeder:environment-1",
+        "tbench-warm/payments-pipeline-fix:environment-1",
+        "tbench-warm/payments-pipeline-fix:tests-2",
+    ]

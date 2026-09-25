@@ -371,8 +371,10 @@ fn attempt_value(attempt: &Attempt) -> Value {
             "agent_execution": attempt.phases_ms[2],
             "verifier": attempt.phases_ms[3],
             "total": attempt.phases_ms[4],
+            "setup": attempt.setup_ms(),
         },
         "setup": {
+            "setup_ms": attempt.setup_ms(),
             "mode": attempt.setup_mode,
             "cache": attempt.setup_cache,
             "install_ms": attempt.setup_install_ms,
@@ -529,6 +531,7 @@ fn comparisons(
                 "agent_time_ms_range": range_u64(&fresh.iter().filter_map(|attempt| attempt.phases_ms[2]).collect::<Vec<_>>()),
                 "total_time_ms_range": range_u64(&fresh.iter().filter_map(|attempt| attempt.phases_ms[4]).collect::<Vec<_>>()),
                 "setup_ms_range": setup_ranges(&members),
+                "setup_before_agent_ms_range": range_u64(&members.iter().filter_map(|attempt| attempt.setup_ms()).collect::<Vec<_>>()),
                 "setup_failures": members.iter().filter(|attempt| attempt.is_setup_failure()).count(),
                 "cost_usd_range": range_f64(&fresh.iter().filter_map(|attempt| attempt.cost_usd).collect::<Vec<_>>()),
                 "attempts": members.iter().map(|attempt| attempt_value(attempt)).collect::<Vec<_>>(),
@@ -539,7 +542,11 @@ fn comparisons(
 }
 
 /// Which clock each reported time uses.
-const TIME_BOUNDARIES: [(&str, &str); 4] = [
+const TIME_BOUNDARIES: [(&str, &str); 5] = [
+    (
+        "setup before the agent",
+        "Harbor's environment_setup and agent_setup phases: everything before the agent's first command",
+    ),
     (
         "setup",
         "Harbor's agent_setup phase: toolchain install, artifact upload, and episode doctor",
@@ -787,6 +794,11 @@ fn render_text(
                     .unwrap_or_else(|| "—".to_owned());
                 writeln!(
                     out,
+                    "  Setup before the agent (environment and agent setup): {} ms",
+                    range_text(&group["setup_before_agent_ms_range"])
+                )?;
+                writeln!(
+                    out,
                     "  Setup (agent_setup phase): {setup} · {} setup failures and {} graded attempts",
                     group["setup_failures"], group["graded_denominator"]
                 )?;
@@ -816,11 +828,13 @@ fn render_text(
                 for attempt in group["attempts"].as_array().into_iter().flatten() {
                     writeln!(
                         out,
-                        "  {} / {} · reward {} · {} · setup {} ms ({}) · agent {} ms of {} ms total · cost {} ({}) · tokens in {} out {} ({}) · {}",
+                        "  {} / {} · reward {} · {} · setup {} ms (environment {} · install {} ms, {}) · agent {} ms of {} ms total · cost {} ({}) · tokens in {} out {} ({}) · {}",
                         attempt["job"].as_str().unwrap_or("?"),
                         attempt["trial"].as_str().unwrap_or("?"),
                         show(&attempt["reward"]),
                         attempt["display_status"].as_str().unwrap_or("?"),
+                        show(&attempt["setup"]["setup_ms"]),
+                        show(&attempt["phases_ms"]["environment_setup"]),
                         show(&attempt["setup"]["agent_setup_ms"]),
                         attempt["setup"]["cache"].as_str().unwrap_or("unknown"),
                         show(&attempt["phases_ms"]["agent_execution"]),
@@ -873,7 +887,8 @@ fn render_text(
             )?;
             writeln!(
                 out,
-                "Timing (ms): environment {} · install {} · agent {} · verifier {} · total {}",
+                "Timing (ms): setup {} (environment {} · install {}) · agent {} · verifier {} · total {}",
+                show(&value["phases_ms"]["setup"]),
                 show(&value["phases_ms"]["environment_setup"]),
                 show(&value["phases_ms"]["agent_setup"]),
                 show(&value["phases_ms"]["agent_execution"]),
@@ -1169,7 +1184,7 @@ mod tests {
                 "attempt": {"job": "extended--coder-one-x--task", "trial": trial, "arm": "coder-one-x", "kind": "fresh"},
                 "task": {"name": "terminal-bench/task"},
                 "outcome": {"reward": if status == "completed" { json!(1.0) } else { Value::Null }, "terminal_status": status},
-                "timing": {"agent_setup_ms": setup_ms, "agent_execution_ms": 30_000, "total_ms": setup_ms + 40_000},
+                "timing": {"environment_setup_ms": 5_000, "agent_setup_ms": setup_ms, "agent_execution_ms": 30_000, "total_ms": setup_ms + 40_000},
                 "setup": {"mode": cache.map(|_| "prebuilt"), "cache": cache, "install_ms": 4_000},
             });
             std::fs::write(
@@ -1200,6 +1215,10 @@ mod tests {
             json!([360_000, 360_000])
         );
         assert_eq!(group["attempts"][1]["setup"]["cache"], "warm");
+        assert_eq!(
+            group["setup_before_agent_ms_range"],
+            json!([14_000, 365_000])
+        );
         assert!(
             value["data"]["time_boundaries"][0][1]
                 .as_str()
@@ -1213,7 +1232,16 @@ mod tests {
             text.contains("Setup (agent_setup phase): cold 70000 to 70000 ms · unknown 360000 to 360000 ms · warm 9000 to 12000 ms · 1 setup failures and 3 graded attempts"),
             "{text}"
         );
-        assert!(text.contains("setup 9000 ms (warm)"), "{text}");
+        assert!(
+            text.contains("setup 14000 ms (environment 5000 · install 9000 ms, warm)"),
+            "{text}"
+        );
+        assert!(
+            text.contains(
+                "Setup before the agent (environment and agent setup): 14000 to 365000 ms"
+            ),
+            "{text}"
+        );
         assert!(
             text.contains("Time boundary: agent = Harbor's agent_execution phase"),
             "{text}"
