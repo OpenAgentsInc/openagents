@@ -9,7 +9,10 @@ how much of the [component design](../../optimization/coder-components.md)
 runs, the open issues, and the path to wins that hold up.
 
 The held-out test set for `microluna-v15` ran after the first draft of this
-document, and its results are included: 0 of 4. The per-task analysis is in
+document, and its results are included: 0 of 4. So is the Codex agent's
+truthful-checks iteration of 2026-09-25
+([write-up](../../terminal-bench/2026-09-25-truthful-checks-microluna.md),
+[#9584 comment](https://github.com/OpenAgentsInc/openagents/issues/9584)). The per-task analysis is in
 [the iterations record](../../terminal-bench/2026-09-24-microluna-iterations.md).
 
 ## Summary
@@ -44,12 +47,19 @@ document, and its results are included: 0 of 4. The per-task analysis is in
   writes for itself. The Codex agent showed that score is green on every
   failing attempt, so it can't tell a pass from a fail. Prediction 1, "a
   green suite predicts a pass", is invalidated as things stand.
-- **The biggest missing piece is a trustworthy signal.** Every algorithm
-  that would turn cheap attempts into wins (stop when done, keep the best
-  candidate, choose among N attempts, decide to retry) needs a check that
-  separates passing work from failing work. None of ours does yet. Candidate
-  grading, which the Codex agent built, now makes the labels to calibrate
-  one cheap.
+- **The biggest missing piece is a trustworthy signal, and the first
+  promising one has appeared.** Every algorithm that would turn cheap
+  attempts into wins (stop when done, keep the best candidate, choose among
+  N attempts, decide to retry) needs a check that separates passing work
+  from failing work. On 18 retained Microluna trials, a green self-score
+  meant a pass only 5 times in 18 (28%). Judging the writer's own report,
+  the existing combined verdict caught 0 of 13 failures. Once the host also
+  hands it a read-only review of the same files, which a later session
+  wrote, it catches 6 of 13 failures, and all 6 of its failure calls are
+  right. That's development evidence on two studied tasks, and no passing
+  candidate in the set had such a review, so its false-alarm rate on
+  correct work is unknown. A stricter "corroborated" rule was measured and
+  not promoted.
 - **Coder Terminal is a real product path now.** Questions answer in 5 to
   12 seconds, and "implement issue N" runs a Coder One issue flow that ends
   in a draft pull request, behind a gate that runs the tests and checks
@@ -155,7 +165,7 @@ The biggest gaps:
 | Issue | Recommendation |
 | --- | --- |
 | #9607 Microluna: repeatable wins on Fable failures and cheaper Fable successes | Keep; do next. The test-set run is its next step for the cheaper lane. |
-| #9584 Truthful checks, calibrated against graded runs | Keep; do next. It's the bottleneck for everything below. |
+| #9584 Truthful checks, calibrated against graded runs | Keep; do next. The Codex agent's 2026-09-25 iteration recovered the read-only reviews (6 of 13 failures caught, 6 of 6 correct, development only) and keeps the issue open: the improvement on untouched task groups isn't established. It's still the bottleneck for everything below. |
 | #9588 `accept.define` | Publish its offline validity number, even though it's negative, then fold the rest into #9584 and close. |
 | #9587 Best-of-N Luna | Publish the partial `suite-9587` result now; rerun only after #9584 gives a selection signal. |
 | #9585 Microluna, a minimal Luna executor | Close as done: its "done when" is met. Iteration work lives in #9607. |
@@ -187,7 +197,17 @@ In order:
    isn't a general gain. Stop iterating policy text against the dev set.
    Two of the four failures were wrong answers that Luna's own format-only
    check called done, which points straight at step 2.
-2. **Build the signal (#9584).** Calibrate a check on candidate labels:
+2. **Build the signal (#9584).** The strongest lead is an independent
+   read-only review of the frozen candidate: a separate Luna session that
+   reads the submitted files and names what's still wrong, with no power to
+   edit. It's cheap (a review cost about 81 seconds and a fifth of a
+   trial's spend) and it disagreed with the writer's optimistic report on
+   every failing trial where it existed. The next experiment, as the Codex
+   agent frames it: run that review on correct candidates too, to measure
+   its false alarms; turn each concrete concern into a small behavior check
+   against the task's public contract, and keep the command and its output;
+   freeze task groups, wording, and thresholds before reading labels; and
+   count the full cost of acting on the checks. Calibrate on candidate labels:
    retained candidates graded by the official verifier, with the tasks
    split so calibration and evaluation don't share a task. Keep only
    signals that separate passing candidates from failing ones on tasks they
@@ -201,7 +221,8 @@ In order:
    caught them.
 3. **Then use the signal three ways, one at a time, each matched against
    v15:**
-   - stop and keep the best candidate by the signal, not the self-score;
+   - stop and keep the best candidate by the signal, not the self-score (the
+     self-score may rank candidates, but must not certify one as done);
    - best-of-N first sessions selected by the signal, which only helps on
      tasks where some candidate passes (measure that "oracle headroom"
      first; it was 0 on the target tasks);
