@@ -218,3 +218,24 @@ python3 archive_resources.py --labels records/archive-labels.json \
 These measurement and accounting commands make no model calls. `test_archive_seal.py` checks cohort
 completeness, duplicate and mismatched joins, unknown-evidence recall, and sealing
 without parsing grades. Run it with `test_archive_checks` and `test_reproduce`.
+
+## Optional review execution profile
+
+`reproduce.py --execution-profile owner-exec --record-name reproduced-owner-exec`
+runs a separately recorded review as the restored snapshot's host UID and GID,
+with executable `/tmp` scratch. The original profile remains the default. Both
+profiles keep the candidate and image root read-only, disable networking, drop
+all capabilities, forbid privilege escalation, and retain the same resource
+bounds. A different profile cannot reuse an existing review record. The process
+record names the profile, UID/GID, and tmpfs setting.
+
+This addresses owner-only files and compiled scratch tests. It does not install
+missing runtimes or restore packages that the executor installed outside `/app`.
+Use a separately declared arm to measure its accuracy. The 72-candidate archive
+confirmation continues with the original profile.
+
+`verify_review_profile.py --image PINNED_IMAGE --out NEW_DIRECTORY` tests both
+profiles against synthetic files in a public image with `sh` and `cc`. It checks
+owner-only reads, compiled scratch execution, rejected writes, Docker isolation,
+and unchanged candidate bytes, modes, and ownership. It calls no model and reads
+no official grade.

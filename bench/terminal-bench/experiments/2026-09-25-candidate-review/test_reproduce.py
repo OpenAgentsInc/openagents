@@ -5,11 +5,38 @@ from pathlib import Path
 import tarfile
 import tempfile
 import unittest
+from types import SimpleNamespace
 
 import reproduce
 
 
 class RestoreTests(unittest.TestCase):
+    def test_execution_profiles_preserve_bounds_and_change_only_owner_and_scratch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            app = Path(tmp)
+            old = reproduce.execution('original', app)
+            new = reproduce.execution('owner-exec', app)
+            self.assertIsNone(old['user'])
+            self.assertEqual(new['user'], f'{app.stat().st_uid}:{app.stat().st_gid}')
+            self.assertEqual(new['tmpfs'], '/tmp:rw,exec,size=128m')
+            for profile in (old, new):
+                command = reproduce.container_command('image', app, 'a' * 64, profile)
+                self.assertEqual(command[command.index('--network') + 1], 'none')
+                self.assertIn('--read-only', command)
+                self.assertEqual(command[command.index('--cap-drop') + 1], 'ALL')
+                self.assertEqual(command[command.index('--memory') + 1], '2g')
+                self.assertTrue(command[command.index('--mount') + 1].endswith(',readonly'))
+
+    def test_a_new_execution_profile_cannot_reuse_an_old_record(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            reproduce.write(root / 'trial/reproduced/process.json', {'call': 'unknown'})
+            args = SimpleNamespace(out=root, record_name='reproduced', execution_profile='owner-exec')
+            with self.assertRaisesRegex(ValueError, 'another execution profile'):
+                reproduce.run({'trial': 'trial'}, args, {}, {})
+            args.execution_profile = 'original'
+            self.assertEqual(reproduce.run({'trial': 'trial'}, args, {}, {}), 'trial: retained')
+
     def archive(self, root, name, kind=tarfile.REGTYPE):
         path = root / 'candidate.tar.gz'
         with tarfile.open(path, 'w:gz') as tf:

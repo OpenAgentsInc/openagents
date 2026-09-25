@@ -117,6 +117,31 @@ def public_files_match(expected, stdout):
     return len(actual) == len(expected) and set(actual) == {digest + '  ' + path for path, digest in expected.items()}
 
 
+def execution(profile, app):
+    """Keep the original profile available; name later environment changes."""
+    if profile == 'original':
+        return {'profile': profile, 'tmpfs': '/tmp:rw,size=128m', 'user': None}
+    if profile != 'owner-exec':
+        raise ValueError('Unknown review execution profile')
+    owner = app.stat()
+    return {'profile': profile, 'tmpfs': '/tmp:rw,exec,size=128m',
+            'user': f'{owner.st_uid}:{owner.st_gid}'}
+
+
+def container_command(image, app, identity, settings):
+    command = ['docker', 'run', '-d', '--rm', '--network', 'none', '--read-only', '--cap-drop', 'ALL',
+               '--security-opt', 'no-new-privileges', '--pids-limit', '128', '--memory', '2g',
+               '--memory-swap', '2g', '--cpus', '2', '--tmpfs', settings['tmpfs'],
+               '--mount', f'type=bind,src={app},dst=/app,readonly',
+               '--workdir', '/app', '--env', 'HOME=/tmp', '--env', 'PYTHONDONTWRITEBYTECODE=1',
+               '--env', 'QT_QPA_PLATFORM=offscreen', '--env', 'MPLCONFIGDIR=/tmp/mpl',
+               '--label', 'openagents.candidate-review=1',
+               '--label', 'openagents.candidate-identity=' + identity]
+    if settings['user']:
+        command += ['--user', settings['user']]
+    return command + ['--entrypoint', 'sleep', image, '400']
+
+
 def environment(row, jobs, out):
     trial = jobs / row['job'] / row['trial']
     cfg = json.loads((trial / 'config.json').read_text())
@@ -147,11 +172,16 @@ def environment(row, jobs, out):
 
 def run(row, args, images, env):
     dest = args.out / row['trial'] / args.record_name
+    profile = getattr(args, 'execution_profile', 'original')
     if (dest / 'process.json').exists():
+        retained = json.loads((dest / 'process.json').read_text())
+        if retained.get('execution_profile', 'original') != profile:
+            raise ValueError('Retained review uses another execution profile; choose a new record name')
         return row['trial'] + ': retained'
     dest.mkdir(parents=True, exist_ok=True)
     started = time.monotonic()
-    process = {'trial': row['trial'], 'task': row['task'], 'call': 'unknown'}
+    process = {'trial': row['trial'], 'task': row['task'], 'call': 'unknown',
+               'execution_profile': profile}
     container = None
     with tempfile.TemporaryDirectory(prefix='truth9584-reproduced-') as scratch:
         scratch = Path(scratch)
@@ -169,13 +199,9 @@ def run(row, args, images, env):
             write(dest / 'input.json', packet)
             if row['task'] not in images:
                 raise ValueError('Public task image unavailable')
-            cmd = ['docker', 'run', '-d', '--rm', '--network', 'none', '--read-only', '--cap-drop', 'ALL',
-                   '--security-opt', 'no-new-privileges', '--pids-limit', '128', '--memory', '2g', '--memory-swap', '2g',
-                   '--cpus', '2', '--tmpfs', '/tmp:rw,size=128m', '--mount', f'type=bind,src={scratch / "app"},dst=/app,readonly',
-                   '--workdir', '/app', '--env', 'HOME=/tmp', '--env', 'PYTHONDONTWRITEBYTECODE=1',
-                   '--env', 'QT_QPA_PLATFORM=offscreen', '--env', 'MPLCONFIGDIR=/tmp/mpl',
-                   '--label', 'openagents.candidate-review=1', '--label', 'openagents.candidate-identity=' + packet['candidate_identity'],
-                   '--entrypoint', 'sleep', images[row['task']], '400']
+            settings = execution(profile, scratch / 'app')
+            process['execution'] = settings
+            cmd = container_command(images[row['task']], scratch / 'app', packet['candidate_identity'], settings)
             container = subprocess.check_output(cmd, text=True, timeout=30).strip()
             extra = identity['public_files_to_verify']
             if extra:
@@ -216,12 +242,15 @@ def main():
     p.add_argument('--workers', type=int, default=2)
     p.add_argument('--record-name', default='reproduced')
     p.add_argument('--prompt', choices=['v1', 'literal-v2'], default='v1')
+    p.add_argument('--execution-profile', choices=['original', 'owner-exec'], default='original')
     p.add_argument('--allow-public-files', action='store_true')
     a = p.parse_args()
     if Path(a.record_name).name != a.record_name or a.record_name in ('.', '..'):
         raise ValueError('The record name must be one path component')
     if a.allow_public_files and a.record_name == 'reproduced':
         raise ValueError('Public-file recovery needs a separate record name')
+    if a.execution_profile != 'original' and a.record_name == 'reproduced':
+        raise ValueError('A different execution profile needs a separate record name')
     rows = json.loads(a.manifest.read_text())
     env = dict(os.environ)
     env['TYPESAFE_API_KEY'] = json.loads((Path.home() / '.openagents/jev.json').read_text())['api_key']
