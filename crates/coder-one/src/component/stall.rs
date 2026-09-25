@@ -227,7 +227,7 @@ pub struct Trial {
 }
 
 /// `microluna-<d>-<n>.atif.jsonl` as `(d, n)`.
-fn session_number(name: &str) -> Option<(u32, u32)> {
+pub(crate) fn session_number(name: &str) -> Option<(u32, u32)> {
     let rest = name
         .strip_prefix("microluna-")?
         .strip_suffix(".atif.jsonl")?;
@@ -236,7 +236,7 @@ fn session_number(name: &str) -> Option<(u32, u32)> {
 }
 
 /// The trial directory and name an `artifacts` directory belongs to.
-fn trial_of(artifacts: &Path) -> Option<(PathBuf, String)> {
+pub(crate) fn trial_of(artifacts: &Path) -> Option<(PathBuf, String)> {
     let parent = artifacts.parent()?;
     let name = parent.file_name()?.to_string_lossy().into_owned();
     if name == "episode" && parent.parent()?.file_name()? == "agent" {
@@ -252,7 +252,7 @@ fn trial_of(artifacts: &Path) -> Option<(PathBuf, String)> {
 
 /// Every `artifacts` directory under `root` holding Microluna session logs,
 /// leaving out interrupted copies and live mirrors.
-fn artifact_dirs(root: &Path) -> Vec<PathBuf> {
+pub(crate) fn artifact_dirs(root: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
     let mut pending = vec![(root.to_path_buf(), 0)];
     while let Some((dir, depth)) = pending.pop() {

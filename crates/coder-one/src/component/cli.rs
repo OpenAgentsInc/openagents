@@ -24,6 +24,8 @@ pub const USAGE: &str = "usage: coder-one component list [--json]
        coder-one component replay control.finish [--traces DIR]... [--exclude-task NAME]...
                                   [--baselines FILE] --out DIR
        coder-one component replay control.review [--traces DIR]... [--labels FILE] --out DIR
+       coder-one component replay evidence.localize [--traces DIR]... [--exclude-task NAME]...
+                                  --out DIR
 
 --jev defaults to recorded: answers replay from each fixture's jev-recorded.json,
 and a changed state or question set misses. live calls Jev with TYPESAFE_API_KEY;
@@ -61,7 +63,14 @@ replay control.review asks, for every retained lean-loop dispatch under each
 --traces directory that reached its self-check, what the review rule (issue
 #9637) would have decided from the records the trial kept, and writes rows.jsonl
 and summary.json to --out. --labels names a file of {trial, reward} labels for
-trials that didn't keep their reward. It asks no model.";
+trials that didn't keep their reward. It asks no model.
+
+replay evidence.localize reads every failing command in the retained Microluna
+session logs under each --traces directory (issue #9658) and asks what
+evidence.error_context would have found in its output, whether the session's next
+edit touched that region, and how many later turns re-read the file the error
+named. It writes rows.jsonl, summary.json, and sources.json to --out. --exclude-task
+omits a task before reading its records. It runs nothing and asks no model.";
 
 /// A live Jev client from `TYPESAFE_API_KEY` or `~/.openagents/jev.json`.
 ///
@@ -197,9 +206,15 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
     let flags = Flags::parse(rest)?;
     if !flags.excluded_tasks.is_empty()
         && !(verb == "replay"
-            && flags.positional.first().map(String::as_str) == Some("control.finish"))
+            && matches!(
+                flags.positional.first().map(String::as_str),
+                Some("control.finish" | "evidence.localize")
+            ))
     {
-        return Err("--exclude-task applies only to replay control.finish".to_string());
+        return Err(
+            "--exclude-task applies only to replay control.finish and evidence.localize"
+                .to_string(),
+        );
     }
     match verb.as_str() {
         "list" => {
@@ -325,6 +340,9 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
         }
         "replay" if flags.positional.first().map(String::as_str) == Some("control.review") => {
             replay_review(&flags)
+        }
+        "replay" if flags.positional.first().map(String::as_str) == Some("evidence.localize") => {
+            replay_localize(&flags)
         }
         "replay" => {
             if flags.positional.first().map(String::as_str) != Some("evidence.pack") {
@@ -462,6 +480,26 @@ fn replay_finish(flags: &Flags) -> Result<i32, String> {
     let summary = super::finish::summary(&rows, &sources);
     let text = serde_json::to_string_pretty(&summary).map_err(|error| error.to_string())?;
     crate::record::write_atomic(&out.join("summary.json"), format!("{text}\n").as_bytes())?;
+    print_json(&summary)?;
+    Ok(0)
+}
+
+fn replay_localize(flags: &Flags) -> Result<i32, String> {
+    let out = flags
+        .out
+        .clone()
+        .ok_or("replay evidence.localize needs --out DIR")?;
+    let roots = if flags.traces_all.is_empty() {
+        vec![
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../bench/terminal-bench/traces"),
+        ]
+    } else {
+        flags.traces_all.clone()
+    };
+    let (rows, totals, sources) = crate::localize::offline::replay(&roots, &flags.excluded_tasks);
+    let summary = crate::localize::offline::summary(&rows, &totals, &sources);
+    crate::localize::offline::write(&out, &rows, &summary, &sources)?;
     print_json(&summary)?;
     Ok(0)
 }

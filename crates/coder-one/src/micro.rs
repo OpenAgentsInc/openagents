@@ -35,6 +35,7 @@ pub mod candidate;
 mod checkpoint;
 mod detect;
 pub mod lean;
+mod localize_hook;
 pub mod parallel;
 
 use std::cell::Cell;

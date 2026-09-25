@@ -1501,6 +1501,7 @@ fn lean_shape() -> lean::Lean {
         review_rule: None,
         grade: false,
         method_conformance: false,
+        localize: None,
     }
 }
 

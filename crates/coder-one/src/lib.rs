@@ -47,6 +47,7 @@ pub mod issue_eval;
 pub mod issue_turn;
 pub mod judge;
 pub mod limit;
+pub mod localize;
 pub mod micro;
 pub mod minitask;
 pub mod monitor;

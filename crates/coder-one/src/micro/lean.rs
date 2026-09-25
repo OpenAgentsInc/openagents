@@ -266,6 +266,15 @@ pub struct Lean {
     /// absent, as in every manifest before it, nothing runs.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub method_conformance: bool,
+    /// Failure localization (issue #9658): after every work session, the
+    /// source lines the failing output names (`evidence.error_context`),
+    /// the first failing case of a check (`evidence.mismatch_trace`), and a
+    /// profile of a command that timed out or used most of its bound
+    /// (`evidence.phase_timing`), as notes in the next brief
+    /// ([`crate::localize`]). Absent, as in every manifest before it, none
+    /// runs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub localize: Option<crate::localize::Localize>,
 }
 
 /// `executor.microluna.lean.executed`: the bounds of the commands the host
@@ -634,6 +643,9 @@ impl Lean {
                  (docs/terminal-bench/2026-09-25-method-conformance.md)"
                     .to_string(),
             );
+        }
+        if let Some(localize) = &self.localize {
+            problems.extend(localize.validate());
         }
         if self.grade && self.tiered.is_some() {
             problems.push(
@@ -2279,6 +2291,8 @@ impl Micro {
         // The stall detector's notes for the next session, and whether it
         // re-briefed after the last one (issue #9627).
         let mut detect_notes: Vec<String> = Vec::new();
+        // Failure localization's notes for the next session (issue #9658).
+        let mut localize_notes: Vec<String> = Vec::new();
         let mut rebriefed = false;
         let mut stopped = String::new();
         let mut halted = false;
@@ -2552,6 +2566,7 @@ impl Micro {
                 }
                 if !checking {
                     state.extend(detect_notes.iter().cloned());
+                    state.extend(localize_notes.iter().cloned());
                 }
                 state.extend(tier_notes.iter().cloned());
                 let changes = match &base {
@@ -2592,11 +2607,15 @@ impl Micro {
             };
             // The in-session stall check (issue #9627), on work sessions
             // only; inert unless `detect.in_session` is on.
-            let mut watch = self.in_session(
-                prepared,
-                lean.detect.as_ref().filter(|_| !checking),
-                &sessions,
-                number,
+            let mut watch = super::localize_hook::Watching::new(
+                self.in_session(
+                    prepared,
+                    lean.detect.as_ref().filter(|_| !checking),
+                    &sessions,
+                    number,
+                ),
+                lean.localize.as_ref().filter(|_| !checking),
+                self.workdir.clone(),
             );
             let ran = self
                 .session_watched(
@@ -2629,8 +2648,9 @@ impl Micro {
                     &mut watch,
                 )
                 .await;
-            spent += ran.cost_usd.unwrap_or(0.0) + watch.usd;
-            let in_session = watch.record();
+            spent += ran.cost_usd.unwrap_or(0.0) + watch.inner.usd;
+            let in_session = watch.inner.record();
+            let localize_told = watch.record();
             let status = ran.status();
             let lost = matches!(ran.ending, Ending::Transport(_));
             sessions.push(ran);
@@ -2799,6 +2819,30 @@ impl Micro {
             };
             let held = powers.as_ref().map_or(0, |(p, _)| p.held.len());
             let rank = powers.as_ref().map_or(0.0, |(p, _)| p.rank_fraction());
+            // Failure localization (issue #9658): notes for the next brief.
+            let mut localize_record = Value::Null;
+            localize_notes.clear();
+            if let (Some(policy), false, Some(ran)) =
+                (lean.localize.as_ref(), checking, sessions.last())
+            {
+                let score_failed = have_score && score.is_none_or(|(p, t)| p < t);
+                let checked = super::localize_hook::Checked {
+                    score_tail: score_failed.then_some(score_tail.as_str()),
+                    executed: &executed_records,
+                    executed_sec: lean.executed.as_ref().map_or(0, |e| e.command_sec),
+                    command_sec: lean.command_sec,
+                };
+                let (notes, record) = self
+                    .localize_after(
+                        policy,
+                        ran,
+                        &checked,
+                        time_left().min(wall_left().unwrap_or(Duration::MAX)),
+                    )
+                    .await;
+                localize_notes = notes;
+                localize_record = record;
+            }
             if lean.failures && have_score {
                 last_tail = Some(format!(
                     "The host's evaluation output after session {number}, its tail:\n{}",
@@ -3001,6 +3045,12 @@ impl Micro {
             }
             if let (false, Some(last)) = (executed_record.is_null(), moves.last_mut()) {
                 last["executed"] = executed_record;
+            }
+            if let (false, Some(last)) = (localize_record.is_null(), moves.last_mut()) {
+                last["localize"] = localize_record;
+            }
+            if let (Some(told), Some(last)) = (localize_told, moves.last_mut()) {
+                last["localize_in_session"] = told;
             }
             if keep_evidence {
                 let evidence = serde_json::to_vec_pretty(&moves).unwrap_or_default();
