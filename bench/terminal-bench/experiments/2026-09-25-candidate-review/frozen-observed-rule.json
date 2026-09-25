@@ -1,0 +1,43 @@
+{
+  "execution_at": 0.5,
+  "report_at": 0.7,
+  "schema": "openagents.observed-verdict-rule.v1",
+  "calibration": {
+    "fail_precision": {
+      "correct": 15,
+      "total": 15,
+      "value": 1.0,
+      "wilson_95": [
+        0.7961107336956521,
+        1
+      ]
+    },
+    "failure_recall": {
+      "correct": 15,
+      "total": 62,
+      "value": 0.24193548387096775,
+      "wilson_95": [
+        0.15245763680948543,
+        0.3615274425324505
+      ]
+    },
+    "pass_precision": {
+      "correct": 0,
+      "total": 0,
+      "value": null,
+      "wilson_95": null
+    },
+    "unknown": 117
+  },
+  "meaning": "Fail on an attributed unresolved execution failure or a concrete report admission; otherwise unknown. No pass calls.",
+  "selection_partition": "calibration",
+  "protocol_commit": "92cf520598",
+  "historical_comparison": "Reused validation; execution comparison answers not yet generated.",
+  "prospective": "Eight Luna and eight Astra control tasks; official outcomes unopened.",
+  "digests": {
+    "crates/coder-one/src/checks/execution_audit.rs": "7b9fb8ae25c1ede8dee637a39072221401a9e974b676af6bf2c568f83b068e5b",
+    "crates/coder-one/src/checks/report_audit.rs": "47b428ecdaf1b832cb0d8bb61e264132ff2c9ff2e9c4185c5258d721ee0cf6a1",
+    "crates/coder-one/src/checks/truth_selected.rs": "e0a716477ac1f1a37119561d151e24d373f9b4d9973dd30b7fcc1ad99fd44819",
+    "crates/coder-one/src/checks/truth.rs": "947e3ab2038c0613a0a9c6673cbb4fe949fb11c09d968927912cbb6dc389e03e"
+  }
+}

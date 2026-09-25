@@ -1,0 +1,4815 @@
+{
+  "partition": "calibration",
+  "trials": 132,
+  "tasks": 26,
+  "rule": {
+    "execution_at": 0.5,
+    "report_at": 0.7,
+    "schema": "openagents.observed-verdict-rule.v1",
+    "calibration": {
+      "fail_precision": {
+        "correct": 15,
+        "total": 15,
+        "value": 1.0,
+        "wilson_95": [
+          0.7961107336956521,
+          1
+        ]
+      },
+      "failure_recall": {
+        "correct": 15,
+        "total": 62,
+        "value": 0.24193548387096775,
+        "wilson_95": [
+          0.15245763680948543,
+          0.3615274425324505
+        ]
+      },
+      "pass_precision": {
+        "correct": 0,
+        "total": 0,
+        "value": null,
+        "wilson_95": null
+      },
+      "unknown": 117
+    },
+    "meaning": "Fail on an attributed unresolved execution failure or a concrete report admission; otherwise unknown. No pass calls."
+  },
+  "calibration_grid": [
+    {
+      "execution_at": 0.5,
+      "report_at": 0.5,
+      "metrics": {
+        "fail_precision": {
+          "correct": 15,
+          "total": 15,
+          "value": 1.0,
+          "wilson_95": [
+            0.7961107336956521,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 15,
+          "total": 62,
+          "value": 0.24193548387096775,
+          "wilson_95": [
+            0.15245763680948543,
+            0.3615274425324505
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 117
+      }
+    },
+    {
+      "execution_at": 0.5,
+      "report_at": 0.7,
+      "metrics": {
+        "fail_precision": {
+          "correct": 15,
+          "total": 15,
+          "value": 1.0,
+          "wilson_95": [
+            0.7961107336956521,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 15,
+          "total": 62,
+          "value": 0.24193548387096775,
+          "wilson_95": [
+            0.15245763680948543,
+            0.3615274425324505
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 117
+      }
+    },
+    {
+      "execution_at": 0.5,
+      "report_at": 0.8,
+      "metrics": {
+        "fail_precision": {
+          "correct": 14,
+          "total": 14,
+          "value": 1.0,
+          "wilson_95": [
+            0.7846829880728186,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 14,
+          "total": 62,
+          "value": 0.22580645161290322,
+          "wilson_95": [
+            0.13955057139297955,
+            0.34405857540782725
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 118
+      }
+    },
+    {
+      "execution_at": 0.5,
+      "report_at": 0.9,
+      "metrics": {
+        "fail_precision": {
+          "correct": 14,
+          "total": 14,
+          "value": 1.0,
+          "wilson_95": [
+            0.7846829880728186,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 14,
+          "total": 62,
+          "value": 0.22580645161290322,
+          "wilson_95": [
+            0.13955057139297955,
+            0.34405857540782725
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 118
+      }
+    },
+    {
+      "execution_at": 0.5,
+      "report_at": 0.95,
+      "metrics": {
+        "fail_precision": {
+          "correct": 14,
+          "total": 14,
+          "value": 1.0,
+          "wilson_95": [
+            0.7846829880728186,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 14,
+          "total": 62,
+          "value": 0.22580645161290322,
+          "wilson_95": [
+            0.13955057139297955,
+            0.34405857540782725
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 118
+      }
+    }
+  ],
+  "signals": {
+    "checks.final": {
+      "fail_precision": {
+        "correct": 5,
+        "total": 10,
+        "value": 0.5,
+        "wilson_95": [
+          0.23658959361548731,
+          0.7634104063845126
+        ]
+      },
+      "failure_recall": {
+        "correct": 5,
+        "total": 62,
+        "value": 0.08064516129032258,
+        "wilson_95": [
+          0.034937831855833754,
+          0.17528792207481192
+        ]
+      },
+      "pass_precision": {
+        "correct": 37,
+        "total": 59,
+        "value": 0.6271186440677966,
+        "wilson_95": [
+          0.49953356682142136,
+          0.7391618196741485
+        ]
+      },
+      "unknown": 63
+    },
+    "verdict.combined": {
+      "fail_precision": {
+        "correct": 34,
+        "total": 42,
+        "value": 0.8095238095238095,
+        "wilson_95": [
+          0.6669893264500356,
+          0.9001811039014357
+        ]
+      },
+      "failure_recall": {
+        "correct": 34,
+        "total": 62,
+        "value": 0.5483870967741935,
+        "wilson_95": [
+          0.42532294530598713,
+          0.6658048523173997
+        ]
+      },
+      "pass_precision": {
+        "correct": 20,
+        "total": 23,
+        "value": 0.8695652173913043,
+        "wilson_95": [
+          0.678721020269818,
+          0.954624234856553
+        ]
+      },
+      "unknown": 67
+    },
+    "verdict.observed": {
+      "fail_precision": {
+        "correct": 15,
+        "total": 15,
+        "value": 1.0,
+        "wilson_95": [
+          0.7961107336956521,
+          1
+        ]
+      },
+      "failure_recall": {
+        "correct": 15,
+        "total": 62,
+        "value": 0.24193548387096775,
+        "wilson_95": [
+          0.15245763680948543,
+          0.3615274425324505
+        ]
+      },
+      "pass_precision": {
+        "correct": 0,
+        "total": 0,
+        "value": null,
+        "wilson_95": null
+      },
+      "unknown": 117
+    }
+  },
+  "paired_task_bootstrap": {
+    "checks.final": {
+      "precision": {
+        "valid_resamples": 9952,
+        "undefined_resamples": 48,
+        "percentile_95": [
+          0.1428571428571429,
+          0.8571428571428572
+        ]
+      },
+      "recall": {
+        "valid_resamples": 10000,
+        "undefined_resamples": 0,
+        "percentile_95": [
+          0.0,
+          0.3333333333333333
+        ]
+      }
+    },
+    "verdict.combined": {
+      "precision": {
+        "valid_resamples": 9955,
+        "undefined_resamples": 45,
+        "percentile_95": [
+          0.05660377358490565,
+          0.48
+        ]
+      },
+      "recall": {
+        "valid_resamples": 10000,
+        "undefined_resamples": 0,
+        "percentile_95": [
+          -0.5375,
+          -0.015873015873015872
+        ]
+      }
+    }
+  },
+  "tasks_table": {
+    "terminal-bench/atrx-vep-crispr": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 3,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.5615060804490177
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "unknown": 7
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 2,
+          "total": 2,
+          "value": 1.0,
+          "wilson_95": [
+            0.34237195288961925,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 2,
+          "total": 3,
+          "value": 0.6666666666666666,
+          "wilson_95": [
+            0.2076549551264879,
+            0.9385096847238394
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "unknown": 5
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 2,
+          "total": 2,
+          "value": 1.0,
+          "wilson_95": [
+            0.34237195288961925,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 2,
+          "total": 3,
+          "value": 0.6666666666666666,
+          "wilson_95": [
+            0.2076549551264879,
+            0.9385096847238394
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 6
+      }
+    },
+    "terminal-bench/biped-contact-dynamics": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "unknown": 0
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      }
+    },
+    "terminal-bench/bun-sourcemap-leak": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 5,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.43449149475208104
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "unknown": 5
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 5,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.43449149475208104
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 6
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 1,
+          "total": 5,
+          "value": 0.2,
+          "wilson_95": [
+            0.03622316096978745,
+            0.6244717358814613
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 5
+      }
+    },
+    "terminal-bench/cargo-flight-dispatch": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 2,
+          "total": 2,
+          "value": 1.0,
+          "wilson_95": [
+            0.34237195288961925,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 2,
+          "total": 15,
+          "value": 0.13333333333333333,
+          "wilson_95": [
+            0.0373604698913593,
+            0.3788249920651624
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "unknown": 12
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 14,
+          "total": 14,
+          "value": 1.0,
+          "wilson_95": [
+            0.7846829880728186,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 14,
+          "total": 15,
+          "value": 0.9333333333333333,
+          "wilson_95": [
+            0.7018292244757601,
+            0.9881334113938051
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 4,
+          "total": 4,
+          "value": 1.0,
+          "wilson_95": [
+            0.5100999795960008,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 4,
+          "total": 15,
+          "value": 0.26666666666666666,
+          "wilson_95": [
+            0.1089727610318281,
+            0.5195088965768675
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 11
+      }
+    },
+    "terminal-bench/coq-block-bound": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "unknown": 1
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 2,
+          "total": 2,
+          "value": 1.0,
+          "wilson_95": [
+            0.34237195288961925,
+            1
+          ]
+        },
+        "unknown": 0
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 2
+      }
+    },
+    "terminal-bench/fix-code-vulnerability": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 11,
+          "total": 12,
+          "value": 0.9166666666666666,
+          "wilson_95": [
+            0.6461140782014047,
+            0.9851352905492264
+          ]
+        },
+        "unknown": 0
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 2,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.6576280471103807
+          ]
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 7,
+          "total": 7,
+          "value": 1.0,
+          "wilson_95": [
+            0.6456611570247934,
+            1
+          ]
+        },
+        "unknown": 3
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 12
+      }
+    },
+    "terminal-bench/fix-git": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 13
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 7,
+          "total": 8,
+          "value": 0.875,
+          "wilson_95": [
+            0.5291051942301386,
+            0.9775830911367038
+          ]
+        },
+        "unknown": 4
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 13
+      }
+    },
+    "terminal-bench/git-leak-recovery": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 12,
+          "total": 12,
+          "value": 1.0,
+          "wilson_95": [
+            0.7574992425007574,
+            1
+          ]
+        },
+        "unknown": 0
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 2,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.6576280471103807
+          ]
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 3,
+          "total": 3,
+          "value": 1.0,
+          "wilson_95": [
+            0.43849391955098227,
+            1
+          ]
+        },
+        "unknown": 7
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 12
+      }
+    },
+    "terminal-bench/glycan-ms2-elucidation": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 0
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 0
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      }
+    },
+    "terminal-bench/heat-pump-warranty": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 4,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.48990002040399916
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 2,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.6576280471103807
+          ]
+        },
+        "unknown": 4
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 1,
+          "total": 4,
+          "value": 0.25,
+          "wilson_95": [
+            0.045586062644636216,
+            0.6993639475573634
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 5
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 4,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.48990002040399916
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 6
+      }
+    },
+    "terminal-bench/hof-topology-interpenetration": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "unknown": 0
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      }
+    },
+    "terminal-bench/interleaved-vigenere": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 1,
+          "total": 3,
+          "value": 0.3333333333333333,
+          "wilson_95": [
+            0.0614903152761605,
+            0.7923450448735121
+          ]
+        },
+        "failure_recall": {
+          "correct": 1,
+          "total": 7,
+          "value": 0.14285714285714285,
+          "wilson_95": [
+            0.02567895594897479,
+            0.51313450331903
+          ]
+        },
+        "pass_precision": {
+          "correct": 6,
+          "total": 12,
+          "value": 0.5,
+          "wilson_95": [
+            0.2537781703934222,
+            0.7462218296065778
+          ]
+        },
+        "unknown": 0
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 4,
+          "total": 4,
+          "value": 1.0,
+          "wilson_95": [
+            0.5100999795960008,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 4,
+          "total": 7,
+          "value": 0.5714285714285714,
+          "wilson_95": [
+            0.2504542304090258,
+            0.8417830777373732
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 11
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 6,
+          "total": 6,
+          "value": 1.0,
+          "wilson_95": [
+            0.6096569663469354,
+            0.9999999999999999
+          ]
+        },
+        "failure_recall": {
+          "correct": 6,
+          "total": 7,
+          "value": 0.8571428571428571,
+          "wilson_95": [
+            0.48686549668097007,
+            0.9743210440510253
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 9
+      }
+    },
+    "terminal-bench/layout-config-recreation": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "unknown": 0
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 0
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      }
+    },
+    "terminal-bench/medical-claims-processing": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      }
+    },
+    "terminal-bench/mvcc-lsm-compaction": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 2,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.6576280471103807
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 2,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.6576280471103807
+          ]
+        },
+        "unknown": 5
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 2,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.6576280471103807
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "unknown": 7
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 2,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.6576280471103807
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 8
+      }
+    },
+    "terminal-bench/react-lead-form": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 0
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      }
+    },
+    "terminal-bench/retro-console-soc": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 0
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      }
+    },
+    "terminal-bench/risk-scorer-replay": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "pass_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "unknown": 0
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 1,
+          "total": 2,
+          "value": 0.5,
+          "wilson_95": [
+            0.09452865480086614,
+            0.9054713451991339
+          ]
+        },
+        "failure_recall": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 0
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 2
+      }
+    },
+    "terminal-bench/roy-polymorph-cn": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 0
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      }
+    },
+    "terminal-bench/rs-archive-clone": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      }
+    },
+    "terminal-bench/session-window-debug": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      }
+    },
+    "terminal-bench/sglang-qwen-burst": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 2,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.6576280471103807
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 2
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 2,
+          "total": 2,
+          "value": 1.0,
+          "wilson_95": [
+            0.34237195288961925,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 2,
+          "total": 2,
+          "value": 1.0,
+          "wilson_95": [
+            0.34237195288961925,
+            1
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 0
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 2,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.6576280471103807
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 2
+      }
+    },
+    "terminal-bench/takens-embedding-lean": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "unknown": 0
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "unknown": 0
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      }
+    },
+    "terminal-bench/vba-userform-port": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 8,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.3244156195108769
+          ]
+        },
+        "pass_precision": {
+          "correct": 2,
+          "total": 10,
+          "value": 0.2,
+          "wilson_95": [
+            0.056680947980693314,
+            0.5098431532792765
+          ]
+        },
+        "unknown": 0
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 5,
+          "total": 5,
+          "value": 1.0,
+          "wilson_95": [
+            0.5655085052479191,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 5,
+          "total": 8,
+          "value": 0.625,
+          "wilson_95": [
+            0.30573785458380187,
+            0.863158240538479
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 5
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 8,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.3244156195108769
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 10
+      }
+    },
+    "terminal-bench/vllm-deepseek-streaming": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 0
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      }
+    },
+    "terminal-bench/wal-recovery-ordering": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 9,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.2991527535509594
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 9
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 3,
+          "total": 3,
+          "value": 1.0,
+          "wilson_95": [
+            0.43849391955098227,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 3,
+          "total": 9,
+          "value": 0.3333333333333333,
+          "wilson_95": [
+            0.12058159868274293,
+            0.6458026525009102
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 6
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 2,
+          "total": 2,
+          "value": 1.0,
+          "wilson_95": [
+            0.34237195288961925,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 2,
+          "total": 9,
+          "value": 0.2222222222222222,
+          "wilson_95": [
+            0.06322376231222723,
+            0.5474166563271946
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 7
+      }
+    }
+  },
+  "predictions": [
+    {
+      "job": "extended--coder-one-tunable--git-leak-recovery",
+      "trial": "git-leak-recovery__ZeVnjRW",
+      "task": "terminal-bench/git-leak-recovery",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.25,
+      "execution-audit-error": null,
+      "execution-audit-digest": "b216fc868da06011578df39458cd8e73a4e01076c44cc056e9abe9f442e80d15",
+      "report-audit": 0.09,
+      "report-audit-error": null,
+      "report-audit-digest": "6a4d3c3d7caf8b127adb6d4dfede3bc82cf864e5f8329675845801b1d3bb22c7"
+    },
+    {
+      "job": "extended--coder-one-tunable--git-leak-recovery-2",
+      "trial": "git-leak-recovery__jjGzjpC",
+      "task": "terminal-bench/git-leak-recovery",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.35,
+      "execution-audit-error": null,
+      "execution-audit-digest": "3ed857ec1d17b15672f9b25b7470740ce17d5486ed8d3b52e52e8e467a7752c4",
+      "report-audit": 0.36,
+      "report-audit-error": null,
+      "report-audit-digest": "0f7f2c4b1031c51ed380f97dfc60b5bc0f9a832ac392a245c582f1ae9e26aa19"
+    },
+    {
+      "job": "extended--coder-one-tunable--git-leak-recovery-3",
+      "trial": "git-leak-recovery__9ihLMP8",
+      "task": "terminal-bench/git-leak-recovery",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.31,
+      "execution-audit-error": null,
+      "execution-audit-digest": "719c46016f845876f69ed403daed54a667a99293ff83cdd04d3b85b98378b569",
+      "report-audit": 0.08,
+      "report-audit-error": null,
+      "report-audit-digest": "e37b6eff348add0e8210ea5b311df2661e0769af84588e508d124f3aac5b5030"
+    },
+    {
+      "job": "extended--coder-one-tunable-luna--git-leak-recovery",
+      "trial": "git-leak-recovery__g6yGQSJ",
+      "task": "terminal-bench/git-leak-recovery",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.16,
+      "execution-audit-error": null,
+      "execution-audit-digest": "d17d3444bc1d1281b68e854a0347235aef5e8c93e47e443e6cae86bda4b117d9",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "be34dd8627076012fbcca139599e79dbcf5e03a077adfff71cc8ae671e70f4a9"
+    },
+    {
+      "job": "extended--coder-one-tunable-luna--git-leak-recovery-2",
+      "trial": "git-leak-recovery__G5NZ2hs",
+      "task": "terminal-bench/git-leak-recovery",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.16,
+      "execution-audit-error": null,
+      "execution-audit-digest": "24057ded9a923805abae13d0ed03c70a7fddd3f4f0a1b31c012221d28082d812",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "201640813d3456f3bbc5538203dfd85c55ce7eaeff5b82a30f08ec8a62c6e446"
+    },
+    {
+      "job": "extended--coder-one-tunable-luna--git-leak-recovery-3",
+      "trial": "git-leak-recovery__NQpZdD7",
+      "task": "terminal-bench/git-leak-recovery",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.16,
+      "execution-audit-error": null,
+      "execution-audit-digest": "fc052e0a58ec88e3a3acdbecd0d5d878a7676d0f35b3aaba364e27f3de21927c",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "470f5707febc517025dc57a7c2cea6aea38c506d3abfc5f7960abf9fb32847eb"
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-pack--git-leak-recovery",
+      "trial": "git-leak-recovery__THsKzXF",
+      "task": "terminal-bench/git-leak-recovery",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.19,
+      "execution-audit-error": null,
+      "execution-audit-digest": "0e8d1ba12ceaaa7393c9b307fe4144a828c74b377ee9958d267a78c6a6e39b3d",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "9018045d696a99d5f2f314774acf68edad175c82b22544cffee154e878027805"
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-pack--git-leak-recovery-2",
+      "trial": "git-leak-recovery__9nT2jNY",
+      "task": "terminal-bench/git-leak-recovery",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.1,
+      "execution-audit-error": null,
+      "execution-audit-digest": "e53c70e8507aaef3f99e70fb1909ccaa2142fff0e830aaea4041c06291c6f47a",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "fea98103f8d5bc0c3c59dff606a6979fcf58dfa272c05474bcf26a85043cd110"
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-pack--git-leak-recovery-3",
+      "trial": "git-leak-recovery__pWCWrVm",
+      "task": "terminal-bench/git-leak-recovery",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.17,
+      "execution-audit-error": null,
+      "execution-audit-digest": "9c45cedbc4db43d28d8a55d50f9555832ffc68ee9895484ee18348c42d4388f9",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "69be0a7ca44f38fd655b05a88d79bfa51c8eaca296d5b09e0e71a621a45c6685"
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-v2--git-leak-recovery",
+      "trial": "git-leak-recovery__gRXY9pH",
+      "task": "terminal-bench/git-leak-recovery",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.14,
+      "execution-audit-error": null,
+      "execution-audit-digest": "3d1252c39b265db6c92e74622d56a4468822c536cea427956362c6420a040c7b",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "ebc0be7204f09cdc5cfda8bf4e9cb157266428bd2c5c18bbe92f9966b75edddc"
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-v2--git-leak-recovery-2",
+      "trial": "git-leak-recovery__cTpAoFS",
+      "task": "terminal-bench/git-leak-recovery",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.13,
+      "execution-audit-error": null,
+      "execution-audit-digest": "4bebb9e192a35ab387dd164e2f630da056f0cc54916e6615a0a7b7e35a7dc7c3",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "9f36598300d65f6f6027997d0f052626e80254bec60a1e8a8f52ec9db38b4883"
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-v2--git-leak-recovery-3",
+      "trial": "git-leak-recovery__WKEnyYD",
+      "task": "terminal-bench/git-leak-recovery",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.19,
+      "execution-audit-error": null,
+      "execution-audit-digest": "651ca218fa4d1f57be009510f56ea2935472b84723742aa21defa421ca3d72da",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "baa689958ad16d78775fbd82451ad4b32cb61a05081dd4e447423e39ac4b2e5b"
+    },
+    {
+      "job": "panel--coder-one-tunable--fix-code-vulnerability",
+      "trial": "fix-code-vulnerability__9f87Mzv",
+      "task": "terminal-bench/fix-code-vulnerability",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.08,
+      "execution-audit-error": null,
+      "execution-audit-digest": "da9a4394f386d391981763132f890515f8346cc521522d5610a30217e2322cc8",
+      "report-audit": 0.06,
+      "report-audit-error": null,
+      "report-audit-digest": "434c100ce5587168e96fdfe152bdefa175e85f4227abbf8146e8dfdc96594be6"
+    },
+    {
+      "job": "panel--coder-one-tunable--fix-code-vulnerability-2",
+      "trial": "fix-code-vulnerability__SrxyDDg",
+      "task": "terminal-bench/fix-code-vulnerability",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.11,
+      "execution-audit-error": null,
+      "execution-audit-digest": "9779fee07a359eb14279cf31947926701032214a4fc5921c9ff690695e7c90aa",
+      "report-audit": 0.08,
+      "report-audit-error": null,
+      "report-audit-digest": "4d92a696fc679c93632c7df85551ffba7b3f39689d99f0ed244941832201176f"
+    },
+    {
+      "job": "panel--coder-one-tunable--fix-code-vulnerability-3",
+      "trial": "fix-code-vulnerability__vSiEWQt",
+      "task": "terminal-bench/fix-code-vulnerability",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.33,
+      "execution-audit-error": null,
+      "execution-audit-digest": "a30b2f0750e76952d7e7de8b2ca1cc68524a947298a28a1d5a55dc4b41f4050e",
+      "report-audit": 0.4,
+      "report-audit-error": null,
+      "report-audit-digest": "8cd14c4bfbf61b72946e55613c51542a3552539d92f987365d03bb4e795b31c6"
+    },
+    {
+      "job": "panel--coder-one-tunable--fix-git",
+      "trial": "fix-git__k9rT6Bx",
+      "task": "terminal-bench/fix-git",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.15,
+      "execution-audit-error": null,
+      "execution-audit-digest": "741d8438b57a544a4a371190226a8e1132c188157744856510123e84b92ee8c0",
+      "report-audit": 0.14,
+      "report-audit-error": null,
+      "report-audit-digest": "3d38d41bdb245370bd48361904b2902d5cdddc215731cbb5e300c6220fbc5203"
+    },
+    {
+      "job": "panel--coder-one-tunable--fix-git-2",
+      "trial": "fix-git__YxBWCQJ",
+      "task": "terminal-bench/fix-git",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.1,
+      "execution-audit-error": null,
+      "execution-audit-digest": "c6b64f5096239f8fbc3095188f80fafc82421a7a00bc4a60816f8a3b0d1d900d",
+      "report-audit": 0.09,
+      "report-audit-error": null,
+      "report-audit-digest": "eff0f40790cc0f31f5c2408621901c3cea2fbd101f8b0d561c00df19f30cfea8"
+    },
+    {
+      "job": "panel--coder-one-tunable--fix-git-3",
+      "trial": "fix-git__MX25s8B",
+      "task": "terminal-bench/fix-git",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.12,
+      "execution-audit-error": null,
+      "execution-audit-digest": "a1ab3a0eee53482f5253abc75263a147f148b31ad1525203522051fcc77f714a",
+      "report-audit": 0.1,
+      "report-audit-error": null,
+      "report-audit-digest": "fba8dee870d057abd0feb0e9ad6864ae5a90236de96bb9c656f6903243f33800"
+    },
+    {
+      "job": "panel--coder-one-tunable-luna--fix-code-vulnerability",
+      "trial": "fix-code-vulnerability__HTsLxAt",
+      "task": "terminal-bench/fix-code-vulnerability",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.16,
+      "execution-audit-error": null,
+      "execution-audit-digest": "4c05db0800fb0736337f0dbb0d4f3eaf6f66f77e77775fdb01c4c9ca62da4af1",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "635cfd60d8e25c6953c6f5f6bc35020a2a5a4e139839be07dd934ee34e8abb7a"
+    },
+    {
+      "job": "panel--coder-one-tunable-luna--fix-code-vulnerability-2",
+      "trial": "fix-code-vulnerability__H3bdbdN",
+      "task": "terminal-bench/fix-code-vulnerability",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.15,
+      "execution-audit-error": null,
+      "execution-audit-digest": "05f3ccdf3a75d2d7bf05a5d2c1ffabf556bbbbf47b98821c3ce2c761ce5da70d",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "bd606054cc7881a1ddd06f1e3b72e8d3e91d8f9909ea438f3f0274ee06e0ac78"
+    },
+    {
+      "job": "panel--coder-one-tunable-luna--fix-code-vulnerability-3",
+      "trial": "fix-code-vulnerability__VpQLb2b",
+      "task": "terminal-bench/fix-code-vulnerability",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.14,
+      "execution-audit-error": null,
+      "execution-audit-digest": "2eb25937f120d075b9cd0ddbaf5cd645935c79fe227b1708fd32e3535562700a",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "c808eaa45b821064d5c887773b418679f758ac79ffd3bebe0ff9d16b6ef37823"
+    },
+    {
+      "job": "panel--coder-one-tunable-luna--fix-git",
+      "trial": "fix-git__9288jhQ",
+      "task": "terminal-bench/fix-git",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.13,
+      "execution-audit-error": null,
+      "execution-audit-digest": "1790f2915749837730c26582c4931dc0d63b11462621814dd6e015b20f77a578",
+      "report-audit": 0.04,
+      "report-audit-error": null,
+      "report-audit-digest": "c50bbd78278273b6eaf86050340dc38dc85d77d35106149ca36ba360eb553c9f"
+    },
+    {
+      "job": "panel--coder-one-tunable-luna--fix-git-2",
+      "trial": "fix-git__24DAJ4U",
+      "task": "terminal-bench/fix-git",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.09,
+      "execution-audit-error": null,
+      "execution-audit-digest": "bc34f3909a57309046d8bc8b5096d351143a0c8d5bb4d3d1a2e6e02f81bbe3b5",
+      "report-audit": 0.04,
+      "report-audit-error": null,
+      "report-audit-digest": "a18b3a144d6172ca61b654b488e6b3a5e3bf878ad82a5b47082cf1f1fbb00754"
+    },
+    {
+      "job": "panel--coder-one-tunable-luna--fix-git-3",
+      "trial": "fix-git__C4uRAH7",
+      "task": "terminal-bench/fix-git",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.08,
+      "execution-audit-error": null,
+      "execution-audit-digest": "9efac2c65ab44c942334b9f19ee1664e6f2cda7cc0f8ac54ed4a33a20409da96",
+      "report-audit": 0.04,
+      "report-audit-error": null,
+      "report-audit-digest": "397ad01d9ab425f305fa82e9cd8adaf01c79c440657f9a20157db36d238e7f29"
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-pack--fix-code-vulnerability",
+      "trial": "fix-code-vulnerability__pbLhhDi",
+      "task": "terminal-bench/fix-code-vulnerability",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.1,
+      "execution-audit-error": null,
+      "execution-audit-digest": "1437aed98044d66e51cef8da17f2c4c0c4567c1074971210771c97d0607fed12",
+      "report-audit": 0.08,
+      "report-audit-error": null,
+      "report-audit-digest": "f11d16e298bb932a60a128afc08eaf97819937e813f1b298b4e104dcb9317255"
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-pack--fix-code-vulnerability-2",
+      "trial": "fix-code-vulnerability__9PTAuKy",
+      "task": "terminal-bench/fix-code-vulnerability",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.21,
+      "execution-audit-error": null,
+      "execution-audit-digest": "9e3cfda92504ef48977ddacc7ced51437a846ae819a2a10686d9359b1930d361",
+      "report-audit": 0.31,
+      "report-audit-error": null,
+      "report-audit-digest": "372fa0e98d1283e8777ce568070b345f4c2640f8981645785fe48da396ab201d"
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-pack--fix-code-vulnerability-3",
+      "trial": "fix-code-vulnerability__mBKc6Zq",
+      "task": "terminal-bench/fix-code-vulnerability",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.15,
+      "execution-audit-error": null,
+      "execution-audit-digest": "26516b9b82ed8b87ec48d505b8d3148b30821c1c74b9526efb4869a93604de30",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "5d026f23808dc5e103a389ab5ad16ac607fec165c5a702ba9597a7bd86314caf"
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-pack--fix-git",
+      "trial": "fix-git__F9C4oF8",
+      "task": "terminal-bench/fix-git",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.11,
+      "execution-audit-error": null,
+      "execution-audit-digest": "b616b8697b07a3facfd3f60a4e1beb9c38f75dc572e0e4962cd505fe01db4f8b",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "b37b01e068bdc55380d3f4980f57f942845ba47f74c4cebbea16e58d0a723ad2"
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-pack--fix-git-2",
+      "trial": "fix-git__A9XCxQd",
+      "task": "terminal-bench/fix-git",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.14,
+      "execution-audit-error": null,
+      "execution-audit-digest": "ec0b850504c9aa20897d451db57a9a23c0433dca542b566bc293c17fb25ea90f",
+      "report-audit": 0.04,
+      "report-audit-error": null,
+      "report-audit-digest": "d78f92e50d9fd1d0b2605ad55805998ad38b0917f83a69980b09d165833d292b"
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-pack--fix-git-3",
+      "trial": "fix-git__2fCaBxk",
+      "task": "terminal-bench/fix-git",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.1,
+      "execution-audit-error": null,
+      "execution-audit-digest": "a172e96d06b0fd71ac2ce11bbf9c2b13e29639ae6670326de9d420f19425ae49",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "7e4ec4e967f6a867a3f1b41728053cffe547342e893cf69aaf74d9e7af38a455"
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-v2--fix-code-vulnerability",
+      "trial": "fix-code-vulnerability__Ksgi4tX",
+      "task": "terminal-bench/fix-code-vulnerability",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.16,
+      "execution-audit-error": null,
+      "execution-audit-digest": "f0082ee76b35197c9fc8da29ad0aa188ee31aef3ff78d242f61e802221930fa0",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "807d02d9cea7aa4f41a79564a367d6bb4155c043b316f2c113afd23d19a26025"
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-v2--fix-code-vulnerability-2",
+      "trial": "fix-code-vulnerability__F2ywMC7",
+      "task": "terminal-bench/fix-code-vulnerability",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.4,
+      "execution-audit-error": null,
+      "execution-audit-digest": "534d01583338f179e71828d4e2ed1995f0ba8136b2f72d67e8d0832764612969",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "710a37f0affa9cb494c26f386453f4d1552cd0b1aad1874453567199dcdcc8e7"
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-v2--fix-code-vulnerability-3",
+      "trial": "fix-code-vulnerability__QX76QYj",
+      "task": "terminal-bench/fix-code-vulnerability",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.13,
+      "execution-audit-error": null,
+      "execution-audit-digest": "c1fcb9856f6811dbfc28a92ec9a17edf32ddd22a2c27ba0e1695f161f8edd7d1",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "83589c13e0ea538d65a0d50bcb200943797fae765eafeb97c58df8baf129ee26"
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-v2--fix-git",
+      "trial": "fix-git__SvUP5GM",
+      "task": "terminal-bench/fix-git",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.1,
+      "execution-audit-error": null,
+      "execution-audit-digest": "b9ea87323ad57dbe0f9c89c5b943eb681e8d09c2f003284968ea95e5a0c88305",
+      "report-audit": 0.04,
+      "report-audit-error": null,
+      "report-audit-digest": "a755052e92961d50bf392eff0c3900ec7a061af5a9051d0154a8b63a2068dabb"
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-v2--fix-git-2",
+      "trial": "fix-git__grhmUnf",
+      "task": "terminal-bench/fix-git",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.07,
+      "execution-audit-error": null,
+      "execution-audit-digest": "1f3c052a9d66385cad69ec4e9221da1cfdd59be7bc4dec35010a8a96abfd792a",
+      "report-audit": 0.04,
+      "report-audit-error": null,
+      "report-audit-digest": "a04bacb5103b4421efe2e471be0c60f5b9792a81ccb277e1602c6854fd841d75"
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-v2--fix-git-3",
+      "trial": "fix-git__ufNaxMJ",
+      "task": "terminal-bench/fix-git",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.18,
+      "execution-audit-error": null,
+      "execution-audit-digest": "a7c1dc5cd5f822484053792212334e69ac0f77a8080429ff8a4a4825e1ccf835",
+      "report-audit": 0.04,
+      "report-audit-error": null,
+      "report-audit-digest": "9957dee2e85dad954c81fb51aae227b329d37809f2e7cddceb1029e03896bf4a"
+    },
+    {
+      "job": "smoke--coder-one-tunable--fix-git",
+      "trial": "fix-git__m4eoyBB",
+      "task": "terminal-bench/fix-git",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.08,
+      "execution-audit-error": null,
+      "execution-audit-digest": "bf7c8d564182b26783e823ce352097fbf32c061c255f1bc17d90635bb2d36a84",
+      "report-audit": 0.1,
+      "report-audit-error": null,
+      "report-audit-digest": "94d63554095bd3e416a6c9cfd0dd63e5b3d777f102b05fe111ef781cd66507f7"
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--heat-pump-warranty--matched-v8-9567-r1",
+      "trial": "heat-pump-warranty__XiAF7ri",
+      "task": "terminal-bench/heat-pump-warranty",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.11,
+      "execution-audit-error": null,
+      "execution-audit-digest": "0139673787a487dd374a3eab46b15afbc416d336832adb5c1e17583810b21412",
+      "report-audit": 0.05,
+      "report-audit-error": null,
+      "report-audit-digest": "8842c14239932a94207a897a0a04b1b882610b2f5c4384976afa18cd9e3e2591"
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--heat-pump-warranty--matched-v8-9567-r2",
+      "trial": "heat-pump-warranty__VSFJ726",
+      "task": "terminal-bench/heat-pump-warranty",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.13,
+      "execution-audit-error": null,
+      "execution-audit-digest": "df68706f18259099d436c6ea295572845224023cd53db64bcaac471dd431adae",
+      "report-audit": 0.05,
+      "report-audit-error": null,
+      "report-audit-digest": "3890c669fd2e9660796757af34d8883293f6c8dad74decf2260606da0dee8c8d"
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--heat-pump-warranty--matched-v8-9567-r3",
+      "trial": "heat-pump-warranty__XimLDF4",
+      "task": "terminal-bench/heat-pump-warranty",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.12,
+      "execution-audit-error": null,
+      "execution-audit-digest": "b91f3207f9d8b4c793fa7ce29340f339c180d02c370a0a60277d112d6a707f1f",
+      "report-audit": 0.04,
+      "report-audit-error": null,
+      "report-audit-digest": "2d5f977793da95628bc0ab2391f98b14b0f8056a4476e56f997e17bfe97b2129"
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--mvcc-lsm-compaction--matched-v8-9567-r1",
+      "trial": "mvcc-lsm-compaction__s5z5Kwr",
+      "task": "terminal-bench/mvcc-lsm-compaction",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.17,
+      "execution-audit-error": null,
+      "execution-audit-digest": "069980e4fbd9f526588348034c409e47722e27138f5d46512e460a8873bb39c2",
+      "report-audit": 0.1,
+      "report-audit-error": null,
+      "report-audit-digest": "bdf9ff11f7fd0ea05c091d06163a61b2fdba59b301ba755ba9c2c9aac29b709c"
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--mvcc-lsm-compaction--matched-v8-9567-r2",
+      "trial": "mvcc-lsm-compaction__pkCidVR",
+      "task": "terminal-bench/mvcc-lsm-compaction",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.14,
+      "execution-audit-error": null,
+      "execution-audit-digest": "0d6093bdac90374e6edd826e1d675911e05f003f491340757a13763f9bb8add5",
+      "report-audit": 0.06,
+      "report-audit-error": null,
+      "report-audit-digest": "a1c9340cd8d75561639e8f5eea59ac674e8150ae4b1b95097cb4f8cdf7e41414"
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--mvcc-lsm-compaction--matched-v8-9567-r3",
+      "trial": "mvcc-lsm-compaction__4yfBDYL",
+      "task": "terminal-bench/mvcc-lsm-compaction",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.13,
+      "execution-audit-error": null,
+      "execution-audit-digest": "f528ad604c9fc1e60cb063dae94b284ea89a7602a21002d434d8ede92b88cf36",
+      "report-audit": 0.06,
+      "report-audit-error": null,
+      "report-audit-digest": "46e185e3f8ec4723d7354e136c88f45fbe2e4d82bfa7706eac6b11936585ed48"
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--wal-recovery-ordering--matched-v8-9567-r1",
+      "trial": "wal-recovery-ordering__DXqWif2",
+      "task": "terminal-bench/wal-recovery-ordering",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.1,
+      "execution-audit-error": null,
+      "execution-audit-digest": "b2de99fb61ab10dbbc7c4f3352fea5faba64d01744f5baaf3b8c9a4fa8a1f152",
+      "report-audit": 0.07,
+      "report-audit-error": null,
+      "report-audit-digest": "5b59390e6a02c2dcd333bf8bedd551459552af1c398177b9fa1a60e4e7486d39"
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--wal-recovery-ordering--matched-v8-9567-r2",
+      "trial": "wal-recovery-ordering__qbhxq2M",
+      "task": "terminal-bench/wal-recovery-ordering",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.17,
+      "execution-audit-error": null,
+      "execution-audit-digest": "4378c9e4733fabe481c0124b6adeccb2d9439069fb4b8f02af6bad656b4fa13b",
+      "report-audit": 0.32,
+      "report-audit-error": null,
+      "report-audit-digest": "f85bb1456c56486092a6bae41a3bc8f64247aa837f129150e4b6e1a9cce1b061"
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--wal-recovery-ordering--matched-v8-9567-r3",
+      "trial": "wal-recovery-ordering__uoUwaHU",
+      "task": "terminal-bench/wal-recovery-ordering",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.15,
+      "execution-audit-error": null,
+      "execution-audit-digest": "aa128888c818a910a8f251a0a9d2055f5a32e43fa7877c1ab67a444ef3e9f1d9",
+      "report-audit": 0.22,
+      "report-audit-error": null,
+      "report-audit-digest": "3fc07631a2cf7c98246cdbee15ef1599c339bb98f2155b141f723fa15194592a"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v10--bun-sourcemap-leak--v10-persist-9570-r1",
+      "trial": "bun-sourcemap-leak__hTfpu6P",
+      "task": "terminal-bench/bun-sourcemap-leak",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.1,
+      "execution-audit-error": null,
+      "execution-audit-digest": "a3fa50cb714c2ab598d06a77be088337d898acf0d87abfbe5fdc09a5da6f2b95",
+      "report-audit": 0.31,
+      "report-audit-error": null,
+      "report-audit-digest": "4fd3ee60b8138fa57e2d1972d0b0b79cc6b97c8f8658ba5abb47f1904b3d86ed"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v10--cargo-flight-dispatch--v10-persist-9570-r1",
+      "trial": "cargo-flight-dispatch__anfUuvh",
+      "task": "terminal-bench/cargo-flight-dispatch",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.18,
+      "execution-audit-error": null,
+      "execution-audit-digest": "1a0a9417ca87f9ca32a7a5a1bba30a153dcee624eb18322a704ccecb72f686a1",
+      "report-audit": 0.18,
+      "report-audit-error": null,
+      "report-audit-digest": "99cf8b2debec1c372e72ddbcc5345b644645b1adae226d02c56d0292b005bb01"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v10--mvcc-lsm-compaction--v10-persist-9570-r1",
+      "trial": "mvcc-lsm-compaction__cXLAxTv",
+      "task": "terminal-bench/mvcc-lsm-compaction",
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.22,
+      "execution-audit-error": null,
+      "execution-audit-digest": "6e391786180073f3f76cf2c43452390b374de08f5c60a478105bc9892acfdcf6",
+      "report-audit": 0.06,
+      "report-audit-error": null,
+      "report-audit-digest": "bc2fd557d224bea4b0890e630b864a89b0bf9ee35715673c12081bc2b7efe3e3"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--atrx-vep-crispr",
+      "trial": "atrx-vep-crispr__n4pQEBK",
+      "task": "terminal-bench/atrx-vep-crispr",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "verdict.observed": "fail"
+      },
+      "reward": 0.0,
+      "execution-audit": 0.56,
+      "execution-audit-error": null,
+      "execution-audit-digest": "e33785c15e20f6f8d5330b1246a10ec1e9af1f05911f87db13e032164322dd32",
+      "report-audit": 0.12,
+      "report-audit-error": null,
+      "report-audit-digest": "defdf97fffe1cfe4b874877e291a316c4bedf072372208ad7487deb4ff860363"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--biped-contact-dynamics",
+      "trial": "biped-contact-dynamics__Cg7CqRp",
+      "task": "terminal-bench/biped-contact-dynamics",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.37,
+      "execution-audit-error": null,
+      "execution-audit-digest": "a7487f857c18277c434d59b72c686ac73159d0f9601ded0304a9b80bf482dcb2",
+      "report-audit": 0.06,
+      "report-audit-error": null,
+      "report-audit-digest": "eddcc38790ecad9c0b065b0a45c9569d1bc99a6d5acb8045f73b5c5cb2d20edf"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--bun-sourcemap-leak",
+      "trial": "bun-sourcemap-leak__UEEnDnL",
+      "task": "terminal-bench/bun-sourcemap-leak",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": "fail"
+      },
+      "reward": 0.0,
+      "execution-audit": 0.54,
+      "execution-audit-error": null,
+      "execution-audit-digest": "5b3578c7ab9d7f9e195290993f27e8089c581d29f290e82eaf1f074802657e83",
+      "report-audit": 0.05,
+      "report-audit-error": null,
+      "report-audit-digest": "f159462e6b6c5f0b93472acc7a4c851ceb973179094c7d00779f5f6c7202e5e5"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--cargo-flight-dispatch",
+      "trial": "cargo-flight-dispatch__DRH9R9E",
+      "task": "terminal-bench/cargo-flight-dispatch",
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.35,
+      "execution-audit-error": null,
+      "execution-audit-digest": "b34b58078a492d46f27705528c1541789b96d029d4d4223469db50af7aaff045",
+      "report-audit": 0.21,
+      "report-audit-error": null,
+      "report-audit-digest": "5f85c4aa33f0e5c261c7b4726422750b1fc5063abe4db47470ac0d0dd1f033b9"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--coq-block-bound",
+      "trial": "coq-block-bound__BuaH7r9",
+      "task": "terminal-bench/coq-block-bound",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.1,
+      "execution-audit-error": null,
+      "execution-audit-digest": "93e8ed26381ff507f6472b9f6bca433cfa8707562e31eb0e597cffcc0a128a06",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "c99d77e775c18357333278ef6a4f39e44e7f51aaa78b0c1b5084e33198c85f40"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--glycan-ms2-elucidation",
+      "trial": "glycan-ms2-elucidation__SJyggQr",
+      "task": "terminal-bench/glycan-ms2-elucidation",
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.17,
+      "execution-audit-error": null,
+      "execution-audit-digest": "4b57b264ea13e4a1777b7d5354e68a9be809efae34d962588170682885a3349d",
+      "report-audit": 0.18,
+      "report-audit-error": null,
+      "report-audit-digest": "be85f84f4c3e38a4b896d5290c40bbba198a3ac66bb56f95d4b542d674210af7"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--heat-pump-warranty",
+      "trial": "heat-pump-warranty__AfdurXo",
+      "task": "terminal-bench/heat-pump-warranty",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.16,
+      "execution-audit-error": null,
+      "execution-audit-digest": "be866bfd6a437c2f0084602c34cf698d99825459263639b9f40866858ca14f24",
+      "report-audit": 0.08,
+      "report-audit-error": null,
+      "report-audit-digest": "fb71c0bf87fd10eacc6298313b5853780efe022cfc25445e294bf8c0e7417306"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--hof-topology-interpenetration",
+      "trial": "hof-topology-interpenetration__Adzjrvb",
+      "task": "terminal-bench/hof-topology-interpenetration",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.2,
+      "execution-audit-error": null,
+      "execution-audit-digest": "58bb11f71edc7dcfc10eff8d06aa2681021e00726abaf4b9e26e53c8ed32c15b",
+      "report-audit": 0.11,
+      "report-audit-error": null,
+      "report-audit-digest": "dce8b8729be38372fa13e1c775260ce9201aca6595a34decc385b1ee11c4188b"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--interleaved-vigenere",
+      "trial": "interleaved-vigenere__RsGcrb3",
+      "task": "terminal-bench/interleaved-vigenere",
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.12,
+      "execution-audit-error": null,
+      "execution-audit-digest": "0859bc9b279da1936a1bd8af721bf605bf2dc567d8f9d56fc70052ef76ec75af",
+      "report-audit": 0.05,
+      "report-audit-error": null,
+      "report-audit-digest": "3b46f32d51745830f1d11d28b961ede9bb132c93d0b9b382421126c1c5cce945"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--interleaved-vigenere--effort-9569-r1",
+      "trial": "interleaved-vigenere__c7t5Vhg",
+      "task": "terminal-bench/interleaved-vigenere",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.1,
+      "execution-audit-error": null,
+      "execution-audit-digest": "102263c9ba53c131759c5ceb055ab6271403b8b8da0cf8d83d541f502a2e9c61",
+      "report-audit": 0.05,
+      "report-audit-error": null,
+      "report-audit-digest": "1987a4976e4ced0e49d92861ad855df2509341c3acb42a760fbbf36059f3bd7c"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--interleaved-vigenere--effort-9569-r2",
+      "trial": "interleaved-vigenere__WvzGv2D",
+      "task": "terminal-bench/interleaved-vigenere",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.11,
+      "execution-audit-error": null,
+      "execution-audit-digest": "3628d2145518b7d08c1f04ea1919a196f77967ad2a0a9823e8bfbf5616bb07ca",
+      "report-audit": 0.04,
+      "report-audit-error": null,
+      "report-audit-digest": "8cee3a461c4ea74f5ea1382141912a12bc15e8262609092944a22a6312e26c13"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--layout-config-recreation",
+      "trial": "layout-config-recreation__CJ76ek5",
+      "task": "terminal-bench/layout-config-recreation",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.45,
+      "execution-audit-error": null,
+      "execution-audit-digest": "b129273bac17502e42e33404adb8604b83f7406b0c918b14e62dc076d7af0dee",
+      "report-audit": 0.12,
+      "report-audit-error": null,
+      "report-audit-digest": "cf9e3275061da3100616ec5c1e6f3cf96b4d7efb7ff9f8c4233ef9f6fa0b7c64"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--medical-claims-processing",
+      "trial": "medical-claims-processing__xRGX835",
+      "task": "terminal-bench/medical-claims-processing",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.28,
+      "execution-audit-error": null,
+      "execution-audit-digest": "09540bced8c235a8511b964b2afe05dd2917c51eb311c7aaeb5a85b7c3db1867",
+      "report-audit": 0.11,
+      "report-audit-error": null,
+      "report-audit-digest": "54d3742026f33c9e83a111da5dd4595ef34ac9053bf8504c79e9087caa625e20"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--mvcc-lsm-compaction",
+      "trial": "mvcc-lsm-compaction__nhUf8R2",
+      "task": "terminal-bench/mvcc-lsm-compaction",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.08,
+      "execution-audit-error": null,
+      "execution-audit-digest": "b69876523ffc1b1217b6bb028a33932699b4897fb1d3d1f6c89a6c491e77c094",
+      "report-audit": 0.04,
+      "report-audit-error": null,
+      "report-audit-digest": "8e150b91b469985484c3e3f58c989cc9fe6b0ddbac99a1cead44087c136b716a"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--react-lead-form",
+      "trial": "react-lead-form__b2MsQ4F",
+      "task": "terminal-bench/react-lead-form",
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.19,
+      "execution-audit-error": null,
+      "execution-audit-digest": "c5dd7fc8f28658f79e6871d436414ee5993db3d9679f17f991a3af283b2073f8",
+      "report-audit": 0.09,
+      "report-audit-error": null,
+      "report-audit-digest": "58e225c95769eacedf9dd5871ebf956028b04d1d3937345ca2465d246b00b5f2"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--retro-console-soc",
+      "trial": "retro-console-soc__zSmxL3Z",
+      "task": "terminal-bench/retro-console-soc",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.2,
+      "execution-audit-error": null,
+      "execution-audit-digest": "f192f41b9ffd4e7bf8c34132f9615136b9ac939ad53dfe9d04aa36a0f82aeafa",
+      "report-audit": 0.18,
+      "report-audit-error": null,
+      "report-audit-digest": "d2beea09397d0b83000f2f198d384149272e377c478b4af97a64be882407a75f"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--roy-polymorph-cn",
+      "trial": "roy-polymorph-cn__De3ie25",
+      "task": "terminal-bench/roy-polymorph-cn",
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.18,
+      "execution-audit-error": null,
+      "execution-audit-digest": "d8e2575da7fd1b75593163ef7b1a117ca095a250d854d145cb2b55b582bb8c1e",
+      "report-audit": 0.12,
+      "report-audit-error": null,
+      "report-audit-digest": "446df82cb1a14c72be7482d87a5c5f93e8b9fc371436970dcf7026185452d551"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--session-window-debug",
+      "trial": "session-window-debug__joa7QeZ",
+      "task": "terminal-bench/session-window-debug",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.4,
+      "execution-audit-error": null,
+      "execution-audit-digest": "f474ec010b6ead807b08acf598db6ffcc088fd15e77d240fae9a077060e5c67c",
+      "report-audit": 0.19,
+      "report-audit-error": null,
+      "report-audit-digest": "03946934e8425504a8e279fc5f51488efb48c5ea73b4941fdeb1c6a90023cde5"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--sglang-qwen-burst",
+      "trial": "sglang-qwen-burst__ioERXod",
+      "task": "terminal-bench/sglang-qwen-burst",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.3,
+      "execution-audit-error": null,
+      "execution-audit-digest": "76cd5967d1e47a97a5f7c8aa0541eb8ef3958d5f486e57770955892403d658ea",
+      "report-audit": 0.45,
+      "report-audit-error": null,
+      "report-audit-digest": "b453e8ca15516569643c79989234f496a37b6d824e6d03213ec5ad499c932dbb"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--takens-embedding-lean",
+      "trial": "takens-embedding-lean__N4BtTbm",
+      "task": "terminal-bench/takens-embedding-lean",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.22,
+      "execution-audit-error": null,
+      "execution-audit-digest": "857a404df062d25709a6ed12d3019bfd70f987815ab7f91c910b6577d4ffe79b",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "7f02dd7b7fd45745b83e689997ff8fb6fd6a2609f0b2a7b6b35cd6cdf66367d3"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--vba-userform-port",
+      "trial": "vba-userform-port__UFHaKKE",
+      "task": "terminal-bench/vba-userform-port",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.31,
+      "execution-audit-error": null,
+      "execution-audit-digest": "0de293c7107c8bc80c80322785a84105481dac9de6f4737e50ef8676dc68c5e9",
+      "report-audit": 0.04,
+      "report-audit-error": null,
+      "report-audit-digest": "6df78ad826936e887a7a27d338b23171bdf0be1759b744c9db1e1ca77b3201ba"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--vba-userform-port--effort-9569-r1",
+      "trial": "vba-userform-port__GDgw63Z",
+      "task": "terminal-bench/vba-userform-port",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.22,
+      "execution-audit-error": null,
+      "execution-audit-digest": "334f6eec39f14037e5cdd59ae78956414c14ccf2334aec4d41d2565b4008b85f",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "ca03b0ae8f3d21d44d5bfae0b23575dfcefe804e4445a2157988c1c771f32d70"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--vba-userform-port--effort-9569-r2",
+      "trial": "vba-userform-port__x6Tgz87",
+      "task": "terminal-bench/vba-userform-port",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.23,
+      "execution-audit-error": null,
+      "execution-audit-digest": "401d7f1ca756287123f84a5a9a468f4825725eb9b1fa992f6d29d1c748ebed75",
+      "report-audit": 0.06,
+      "report-audit-error": null,
+      "report-audit-digest": "40f5500015bede93897a09ca46967be4c709d466786d24cae3f13f2d22fdd7ac"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--vba-userform-port--effort-9569-r3",
+      "trial": "vba-userform-port__icxuPBa",
+      "task": "terminal-bench/vba-userform-port",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.31,
+      "execution-audit-error": null,
+      "execution-audit-digest": "a22985ba77142dd4a93fd9df7ae040cce5550ea340a4326b8dfac8daaec6601d",
+      "report-audit": 0.05,
+      "report-audit-error": null,
+      "report-audit-digest": "67803a3f960ff859e85cce60db57c0d87d443a57e99cf878ffeff44f4633c941"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--vllm-deepseek-streaming",
+      "trial": "vllm-deepseek-streaming__usfxVic",
+      "task": "terminal-bench/vllm-deepseek-streaming",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.3,
+      "execution-audit-error": null,
+      "execution-audit-digest": "9a9c5e654954ee98978085538635a407c92bf4dbc086ebed10a17fdba71f06a6",
+      "report-audit": 0.24,
+      "report-audit-error": null,
+      "report-audit-digest": "8eaa66f91f11f6a284c94b09923534800c3f3cab630f2df266b23434af47b724"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--wal-recovery-ordering",
+      "trial": "wal-recovery-ordering__BYcFKPX",
+      "task": "terminal-bench/wal-recovery-ordering",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "verdict.observed": "fail"
+      },
+      "reward": 0.0,
+      "execution-audit": 0.65,
+      "execution-audit-error": null,
+      "execution-audit-digest": "638e9375706024e4be08e6255b3d2d2857785c7c78f234969150f663cb9f9b76",
+      "report-audit": 0.09,
+      "report-audit-error": null,
+      "report-audit-digest": "03ef90796fd2ce058419fd7226f8a801f8819dd7369b52a20e416dd3c65d0a37"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--interleaved-vigenere",
+      "trial": "interleaved-vigenere__yfy8vrD",
+      "task": "terminal-bench/interleaved-vigenere",
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.1,
+      "execution-audit-error": null,
+      "execution-audit-digest": "c4eb4d3f4b5711a72a6803c9bdc836d8b6bec51a1f250477ed962ccd7513397c",
+      "report-audit": 0.06,
+      "report-audit-error": null,
+      "report-audit-digest": "7ab4224b15abe8c2e17c2da3ee66f99f046fa8fedcc0a706a500a74342eaef0d"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--interleaved-vigenere--effort-9569-r1",
+      "trial": "interleaved-vigenere__7e5hUoG",
+      "task": "terminal-bench/interleaved-vigenere",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.11,
+      "execution-audit-error": null,
+      "execution-audit-digest": "8d2a8a091ab66a846b69000d05418e9b5d5c2734aebe3f67770a4596d671c51d",
+      "report-audit": 0.05,
+      "report-audit-error": null,
+      "report-audit-digest": "cb7c9bc47418ffc989d1f3815fb1494457dbdd37e0c281b6ea5a6b2614419cfc"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--interleaved-vigenere--effort-9569-r2",
+      "trial": "interleaved-vigenere__dbkGkGd",
+      "task": "terminal-bench/interleaved-vigenere",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.11,
+      "execution-audit-error": null,
+      "execution-audit-digest": "56fa5e8eb4a7fcec5fa98e63f0fe0382034d9bae02b6fc0049359d1182766911",
+      "report-audit": 0.06,
+      "report-audit-error": null,
+      "report-audit-digest": "84e2368dd9be4213cb4af02b2d9a87b6192a7194cf6e39367ead35aafcbff11c"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--vba-userform-port",
+      "trial": "vba-userform-port__EumaQXp",
+      "task": "terminal-bench/vba-userform-port",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.28,
+      "execution-audit-error": null,
+      "execution-audit-digest": "3ee2bc36a5b9819fd5ad00d0527ae4e6f9426bed1996470c7724dff72b6815a0",
+      "report-audit": 0.04,
+      "report-audit-error": null,
+      "report-audit-digest": "35379bda2ae5978fcaebd585bc23489b62c5927c78549d15196b3baf3af6f3bb"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--vba-userform-port--effort-9569-r1",
+      "trial": "vba-userform-port__8PPMh2Z",
+      "task": "terminal-bench/vba-userform-port",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.24,
+      "execution-audit-error": null,
+      "execution-audit-digest": "4bc54b9d2b583add3c445a11a77b447ee1b94e3944c2806560d1bbc04402e85f",
+      "report-audit": 0.04,
+      "report-audit-error": null,
+      "report-audit-digest": "dcab760221a8e68efc25a4926bab278bb03526f62011ca522359099bbcf6bbba"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--vba-userform-port--effort-9569-r2",
+      "trial": "vba-userform-port__ZAKo38r",
+      "task": "terminal-bench/vba-userform-port",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.19,
+      "execution-audit-error": null,
+      "execution-audit-digest": "c5d877e0d354eceb03782406ff5586938e4b0022632d566601613cb731fb5b12",
+      "report-audit": 0.11,
+      "report-audit-error": null,
+      "report-audit-digest": "44fa4df28302a02a49024ce94478ab867b56d626d4248bc7b627e67d0a54f8cd"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v4--atrx-vep-crispr",
+      "trial": "atrx-vep-crispr__n56Tmj4",
+      "task": "terminal-bench/atrx-vep-crispr",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.25,
+      "execution-audit-error": null,
+      "execution-audit-digest": "c07b711f17506170ad902e7d5a243929c727e8df5b16e4d450db8fa2033f9ccf",
+      "report-audit": 0.04,
+      "report-audit-error": null,
+      "report-audit-digest": "cba73eedd1b8fc069761d88b0f8a41286bcdae02c1b000900b3677377a1d3424"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v4--mvcc-lsm-compaction",
+      "trial": "mvcc-lsm-compaction__JiQV4ft",
+      "task": "terminal-bench/mvcc-lsm-compaction",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": null,
+      "execution-audit-error": "No such file or directory (os error 2)",
+      "execution-audit-digest": null,
+      "report-audit": 0.1,
+      "report-audit-error": null,
+      "report-audit-digest": "59387cccaa6e1de620305ec82218e34adbef00a31f9d4059019af15dacfe4d83"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v5--atrx-vep-crispr",
+      "trial": "atrx-vep-crispr__n5F2AiC",
+      "task": "terminal-bench/atrx-vep-crispr",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.15,
+      "execution-audit-error": null,
+      "execution-audit-digest": "6f629177f42e730dd22dc844643a725c6884e1fd782e2097a4efbaa0114a334c",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "127cb6848266a1a7884b3433b2b289589d046c1f315e5eccfff243e161a30487"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v5--cargo-flight-dispatch",
+      "trial": "cargo-flight-dispatch__kS32Mq7",
+      "task": "terminal-bench/cargo-flight-dispatch",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.32,
+      "execution-audit-error": null,
+      "execution-audit-digest": "2d590cea2edab285d78795faca63edee30af877daa08429e761df834ec3efeca",
+      "report-audit": 0.23,
+      "report-audit-error": null,
+      "report-audit-digest": "52df5f85ae342557e9ef40679e4d566122e7e65d2a4ee1b233186eee94ee9416"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v6--atrx-vep-crispr",
+      "trial": "atrx-vep-crispr__dQsvJqp",
+      "task": "terminal-bench/atrx-vep-crispr",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.13,
+      "execution-audit-error": null,
+      "execution-audit-digest": "bb2f268f2cb51ce725d75b881443826a1e5c78714540f64484304d49c68ca76d",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "7a18cb18c3282028664a111fe8078a8040b619ce3543f39148b962e3ac684410"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v6--cargo-flight-dispatch",
+      "trial": "cargo-flight-dispatch__GEa4vKX",
+      "task": "terminal-bench/cargo-flight-dispatch",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.22,
+      "execution-audit-error": null,
+      "execution-audit-digest": "ea57474c42300a5a90cbd6735634a2f0f767e40552507766ec8b550b56a24ac2",
+      "report-audit": 0.05,
+      "report-audit-error": null,
+      "report-audit-digest": "45f5c28e0de1f24895f6a5a621c3e3b224a7b33174a13515f2546d24aac57527"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v6--coq-block-bound",
+      "trial": "coq-block-bound__Mu8ygpJ",
+      "task": "terminal-bench/coq-block-bound",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.08,
+      "execution-audit-error": null,
+      "execution-audit-digest": "859d811150460dede19f5e20761bf93193d7f6f9e2540f7e798ba808fee88cd9",
+      "report-audit": 0.04,
+      "report-audit-error": null,
+      "report-audit-digest": "6cca17b33b12d03010f91db6431435a0f727fb4b2c8353f58255c7dd70602e6b"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v7--bun-sourcemap-leak--v10-persist-9570-r1",
+      "trial": "bun-sourcemap-leak__KSe7EpL",
+      "task": "terminal-bench/bun-sourcemap-leak",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.29,
+      "execution-audit-error": null,
+      "execution-audit-digest": "4586de01106f9324c3e7e77fd8c15348ed1f553135d7481339906d0935c08b60",
+      "report-audit": 0.26,
+      "report-audit-error": null,
+      "report-audit-digest": "649e3040b484cf209028418371dac86242cfbd3805a4575a5be6f2196d7b64e1"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v7--cargo-flight-dispatch--v10-persist-9570-r1",
+      "trial": "cargo-flight-dispatch__eVK5hHc",
+      "task": "terminal-bench/cargo-flight-dispatch",
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.25,
+      "execution-audit-error": null,
+      "execution-audit-digest": "f04eb54d4b1d5477626a14ad9e022a9234399f216f41466e91ee0205f689fda0",
+      "report-audit": 0.14,
+      "report-audit-error": null,
+      "report-audit-digest": "23ad8505ce71e23d2c23dbaf4cb786df4ebede744293ecfecf49a0c6cbf6edab"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v7--mvcc-lsm-compaction--v10-persist-9570-r1",
+      "trial": "mvcc-lsm-compaction__JsFGzzJ",
+      "task": "terminal-bench/mvcc-lsm-compaction",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.18,
+      "execution-audit-error": null,
+      "execution-audit-digest": "28628b18f67cf9ed40a8dcf9358c9155330d5f4eee0b2303880f1b409321972d",
+      "report-audit": 0.08,
+      "report-audit-error": null,
+      "report-audit-digest": "9c1b90df73bd6d7cf5a236a00c7f8f7c681ad3be296e48de30759620526621e9"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v8--bun-sourcemap-leak--v8-persist-9570-ca-r1",
+      "trial": "bun-sourcemap-leak__F4t2d8w",
+      "task": "terminal-bench/bun-sourcemap-leak",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.15,
+      "execution-audit-error": null,
+      "execution-audit-digest": "5e1a8b321298f2cb5270e0998706a706f996ca0b68a25d7527df04839c0a393a",
+      "report-audit": 0.05,
+      "report-audit-error": null,
+      "report-audit-digest": "5fbf0b6dae8568b77716d1e596bdeb564668d0cd173796d4322cdf8d7ec748be"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v8--bun-sourcemap-leak--v8-persist-9570-ca-r2",
+      "trial": "bun-sourcemap-leak__YgVxiUg",
+      "task": "terminal-bench/bun-sourcemap-leak",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.12,
+      "execution-audit-error": null,
+      "execution-audit-digest": "3886d6b0d4acfeb932dfa7e55750422fc0e67a9220696144cb0255b0da9bc7a1",
+      "report-audit": 0.05,
+      "report-audit-error": null,
+      "report-audit-digest": "7623172ee70bc4e9fda34f7543337ca814794907bf9e1c3a20aa446a2b006ba8"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v8--bun-sourcemap-leak--v8-persist-9570-ca-r3",
+      "trial": "bun-sourcemap-leak__AhfCw5c",
+      "task": "terminal-bench/bun-sourcemap-leak",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.12,
+      "execution-audit-error": null,
+      "execution-audit-digest": "bdc87345f2a2f61232f728b841b1598398540e246887196011368be5790baacc",
+      "report-audit": 0.05,
+      "report-audit-error": null,
+      "report-audit-digest": "7d2cf0bafce16ba291ead825c4f978d2949bf9fc0f155ff6e7076bad7e9316e6"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v8--cargo-flight-dispatch--v8-persist-9570-r2",
+      "trial": "cargo-flight-dispatch__jTTHMeh",
+      "task": "terminal-bench/cargo-flight-dispatch",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.37,
+      "execution-audit-error": null,
+      "execution-audit-digest": "950a34dec05de0e9a1fdf94f027ec0bd36cc9926542aede5ddb2f8fc84ad8e2b",
+      "report-audit": 0.19,
+      "report-audit-error": null,
+      "report-audit-digest": "1b6270b0bd511aebd032aa374554359344853209410baa54ccca5222696eaa17"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v8--cargo-flight-dispatch--v8-persist-9570-r3",
+      "trial": "cargo-flight-dispatch__kzGkiRi",
+      "task": "terminal-bench/cargo-flight-dispatch",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.23,
+      "execution-audit-error": null,
+      "execution-audit-digest": "d190dea510bb16851350dae24d617e5d146f04f3215717ce5442020b2204e4b4",
+      "report-audit": 0.22,
+      "report-audit-error": null,
+      "report-audit-digest": "4957687916cd667049b41d451f420edf5a378578ad5927d4a92dd24fe14fb7d0"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v8--cargo-flight-dispatch--v8-persist-9570-r4",
+      "trial": "cargo-flight-dispatch__gsjsQr3",
+      "task": "terminal-bench/cargo-flight-dispatch",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "verdict.observed": "fail"
+      },
+      "reward": 0.0,
+      "execution-audit": 0.66,
+      "execution-audit-error": null,
+      "execution-audit-digest": "8b63f60f563787a61ada710f1674594b891ef8ff166728cde749677287f80ea2",
+      "report-audit": 0.76,
+      "report-audit-error": null,
+      "report-audit-digest": "cb9bad222bbd2d9bf069251940103d4477c530c0fd246e7e3f0fbab2c6cf6883"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9--interleaved-vigenere--effort-9569-r1",
+      "trial": "interleaved-vigenere__tFzU3sd",
+      "task": "terminal-bench/interleaved-vigenere",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.15,
+      "execution-audit-error": null,
+      "execution-audit-digest": "8231ace429c4f5aa02fa68288619384c1ab630b53809df508b0489710f0ec9d8",
+      "report-audit": 0.05,
+      "report-audit-error": null,
+      "report-audit-digest": "c14facfdb295b5f98f340662311dbd42fe470226f9f77d02f0fd2ed72185398c"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9--interleaved-vigenere--effort-9569-r2",
+      "trial": "interleaved-vigenere__JQtzetw",
+      "task": "terminal-bench/interleaved-vigenere",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.11,
+      "execution-audit-error": null,
+      "execution-audit-digest": "8e3537fc1dece35784f02e4ba64e736f78e912e8dedd045c74172f4c34e12290",
+      "report-audit": 0.05,
+      "report-audit-error": null,
+      "report-audit-digest": "4e098d4d4cc38ef7dfc3e348ebb28ac84133247b191485d4722e2e4ccafe5fcb"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9--vba-userform-port--effort-9569-r1",
+      "trial": "vba-userform-port__hZxyDD4",
+      "task": "terminal-bench/vba-userform-port",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.13,
+      "execution-audit-error": null,
+      "execution-audit-digest": "d58685698c4f889d8ce18d193ca168a0545cf329aed867f29769f42a68f16b9d",
+      "report-audit": 0.05,
+      "report-audit-error": null,
+      "report-audit-digest": "4c6225727513854cd58e704b4deb9ece2fd2bc4ed6879aaaf67ed5113bc86340"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9--vba-userform-port--effort-9569-r2",
+      "trial": "vba-userform-port__V6oFTGN",
+      "task": "terminal-bench/vba-userform-port",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.19,
+      "execution-audit-error": null,
+      "execution-audit-digest": "7f62faec4a39af88c5817b4d6bc1e58a90d433209e54942a9b7c637fcc6d44ea",
+      "report-audit": 0.09,
+      "report-audit-error": null,
+      "report-audit-digest": "37c5108b2521d2f0ce03ecc8c158485ee0a35b3d7e06144a751e7d027f02a0ff"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9--vba-userform-port--effort-9569-r3",
+      "trial": "vba-userform-port__dU5fpSE",
+      "task": "terminal-bench/vba-userform-port",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.12,
+      "execution-audit-error": null,
+      "execution-audit-digest": "15a68fc5b8a878a07ecf9248f9be3f92226fce3d2217ebf89097f0cde382a513",
+      "report-audit": 0.04,
+      "report-audit-error": null,
+      "report-audit-digest": "46fbf78d699b350743462c4995b9b886183f8e158037c4d3351ce529010e3cd7"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--atrx-vep-crispr--escalate-9571-r1",
+      "trial": "atrx-vep-crispr__RQM3iFa",
+      "task": "terminal-bench/atrx-vep-crispr",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "verdict.observed": "fail"
+      },
+      "reward": 0.0,
+      "execution-audit": 0.52,
+      "execution-audit-error": null,
+      "execution-audit-digest": "d37f9c5cfdb5e5629ea014f301091d8b69533ddfa67e56344e7045a0a08f39ce",
+      "report-audit": 0.38,
+      "report-audit-error": null,
+      "report-audit-digest": "a54ddb59cf1ef50584305d7a55a591ab3a8508df75f25c55b29df137660fade5"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--atrx-vep-crispr--escalate-9571b-r1",
+      "trial": "atrx-vep-crispr__evQzELY",
+      "task": "terminal-bench/atrx-vep-crispr",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.27,
+      "execution-audit-error": null,
+      "execution-audit-digest": "ad57b910330615b44295023588ad1b94be06a03d4e0ccc5de50649b09ac087bb",
+      "report-audit": 0.04,
+      "report-audit-error": null,
+      "report-audit-digest": "f215529460c07eff9f680351d29896f5323341a74887dc1b469f9cf0a3ef92ed"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--atrx-vep-crispr--escalate-9571b-r2",
+      "trial": "atrx-vep-crispr__ykHsy4X",
+      "task": "terminal-bench/atrx-vep-crispr",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.25,
+      "execution-audit-error": null,
+      "execution-audit-digest": "144f1a37d326b7307e59655959b71710a131bcb3219a5155973823654447361e",
+      "report-audit": 0.05,
+      "report-audit-error": null,
+      "report-audit-digest": "6f992af22a9cec80ae5b3a9584620b3d83c2c8f915230bd31e93358726ed834e"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--atrx-vep-crispr--escalate-9571b-r3",
+      "trial": "atrx-vep-crispr__Znd6Xna",
+      "task": "terminal-bench/atrx-vep-crispr",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.24,
+      "execution-audit-error": null,
+      "execution-audit-digest": "a5b6f2bf6fad964575a5908058e82cb629d133217932a7b5e6bdd6d5d4617a78",
+      "report-audit": 0.05,
+      "report-audit-error": null,
+      "report-audit-digest": "b52b2bfbee4c33e0386f4d49306240302a29d74d2fa25f5241587295dd9459b8"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--cargo-flight-dispatch--escalate-9571b-r1",
+      "trial": "cargo-flight-dispatch__usYEzUQ",
+      "task": "terminal-bench/cargo-flight-dispatch",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "verdict.observed": "fail"
+      },
+      "reward": 0.0,
+      "execution-audit": 0.52,
+      "execution-audit-error": null,
+      "execution-audit-digest": "c4acf7e9195b1218a3cce6d466b1c5aee320c767bfc48d0cd972671a9dcb5352",
+      "report-audit": 0.57,
+      "report-audit-error": null,
+      "report-audit-digest": "cf1229a6e533d0ae92d3fc4d1d48a126cbc2e40b4e13751b44be395788f7b428"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--cargo-flight-dispatch--escalate-9571b-r2",
+      "trial": "cargo-flight-dispatch__7xHzsYu",
+      "task": "terminal-bench/cargo-flight-dispatch",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.29,
+      "execution-audit-error": null,
+      "execution-audit-digest": "1fb6ff1a3e437fbc976a7d74bf8f003008befed4fc9068935c1c963580069a40",
+      "report-audit": 0.33,
+      "report-audit-error": null,
+      "report-audit-digest": "db32c77cf02d168c3b3f14668bf3144457d0f2a75df1f1e62e92042f5d9a849a"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--cargo-flight-dispatch--escalate-9571b-r3",
+      "trial": "cargo-flight-dispatch__osWtVpd",
+      "task": "terminal-bench/cargo-flight-dispatch",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.31,
+      "execution-audit-error": null,
+      "execution-audit-digest": "d51d6eeecf9a17c8b21fde210d0f15bc716e7d8e2f335f127f88d4a954fde41d",
+      "report-audit": 0.47,
+      "report-audit-error": null,
+      "report-audit-digest": "f9c338b1b1bb9576bf6743c18b9b61ed4e90a9f51c327588744415bc50243686"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--cargo-flight-dispatch--escalate-9571c-r1",
+      "trial": "cargo-flight-dispatch__R9rUoUQ",
+      "task": "terminal-bench/cargo-flight-dispatch",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "verdict.observed": "fail"
+      },
+      "reward": 0.0,
+      "execution-audit": 0.52,
+      "execution-audit-error": null,
+      "execution-audit-digest": "fd8af5f756deb49c42c1d974de3a41355229e2dcf153e53495dec46c67af3c2f",
+      "report-audit": 0.54,
+      "report-audit-error": null,
+      "report-audit-digest": "a1166f92b94014c0d9c25ad0d8896a6bfa824e3d4ea4c3a61812636981fcc1ee"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--cargo-flight-dispatch--escalate-9571c-r2",
+      "trial": "cargo-flight-dispatch__QtTUDpN",
+      "task": "terminal-bench/cargo-flight-dispatch",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.29,
+      "execution-audit-error": null,
+      "execution-audit-digest": "20b035ca4bca896fcb810804471394e2c48fe1e1e442cd369484087e26059eca",
+      "report-audit": 0.22,
+      "report-audit-error": null,
+      "report-audit-digest": "73cea580a16f1f9bdb0f84402cc81fe6b901a6067c962cacfafe10c776b2e32d"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--cargo-flight-dispatch--escalate-9571c-r3",
+      "trial": "cargo-flight-dispatch__6pGdAdj",
+      "task": "terminal-bench/cargo-flight-dispatch",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.14,
+      "execution-audit-error": null,
+      "execution-audit-digest": "8f5db7a4cb03170923aa52aaed5b26756c67c1d8dd82798394fb9feb06cad97f",
+      "report-audit": 0.08,
+      "report-audit-error": null,
+      "report-audit-digest": "2831f87b23bca18a5e6820c3cd7f2830f6b7e2635c53217485568538e4b4dade"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--wal-recovery-ordering--escalate-9571b-r1",
+      "trial": "wal-recovery-ordering__ckJ6tad",
+      "task": "terminal-bench/wal-recovery-ordering",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.36,
+      "execution-audit-error": null,
+      "execution-audit-digest": "d20c614c8933df4e888c2a618da3a5d4e944166aa1f3f161ebe8d1136febf8aa",
+      "report-audit": 0.11,
+      "report-audit-error": null,
+      "report-audit-digest": "175db7f237a6ba54a8c98e0bd29a8b04c018c7a679d82440d5b1da016dbb4643"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--wal-recovery-ordering--escalate-9571b-r2",
+      "trial": "wal-recovery-ordering__tTWCgpb",
+      "task": "terminal-bench/wal-recovery-ordering",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.15,
+      "execution-audit-error": null,
+      "execution-audit-digest": "2295d87828edf9b5f598566e6083cbb662ac65d777ced2882ed5c50547b201fc",
+      "report-audit": 0.06,
+      "report-audit-error": null,
+      "report-audit-digest": "c38c13a16cd81a0d2bac9f8116170d2fb6a9b61437b012cacc4f89f77ace2c19"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--wal-recovery-ordering--escalate-9571b-r3",
+      "trial": "wal-recovery-ordering__5JZLxH6",
+      "task": "terminal-bench/wal-recovery-ordering",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": "fail"
+      },
+      "reward": 0.0,
+      "execution-audit": 0.6,
+      "execution-audit-error": null,
+      "execution-audit-digest": "8b5f923bba362adf1c76c6755011f016dfb244a16961b78b0bc52dddcb28e362",
+      "report-audit": 0.04,
+      "report-audit-error": null,
+      "report-audit-digest": "a48b5929da3163943563c9c3bef30ebb640841a297203bcfedae954a880039d7"
+    },
+    {
+      "job": "tb4--luna-jev--heat-pump-warranty--luna-tb4-9583-r1",
+      "trial": "heat-pump-warranty__hJAiTCe",
+      "task": "terminal-bench/heat-pump-warranty",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.14,
+      "execution-audit-error": null,
+      "execution-audit-digest": "2c0d0a8f21b48059bf821ee5ad80b36ba2a86209e3f06a9e11770aa25d178a29",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "2f3132e33419e40856cbb59cbdf229155ba2d4f74da86975bd8c76692754ebf4"
+    },
+    {
+      "job": "tb4--luna-jev--mvcc-lsm-compaction--luna-tb4-9583-r1",
+      "trial": "mvcc-lsm-compaction__J3pVbur",
+      "task": "terminal-bench/mvcc-lsm-compaction",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.12,
+      "execution-audit-error": null,
+      "execution-audit-digest": "695f42dbd73fc10673022e8a923d8567a3388ba12107603e3a7784a0069fb292",
+      "report-audit": 0.09,
+      "report-audit-error": null,
+      "report-audit-digest": "66fe874c7f08b733d547de4656f8b315af0dc0bf24cb8f708ab96367f3b446a0"
+    },
+    {
+      "job": "tb4--luna-jev--wal-recovery-ordering--luna-tb4-9583-r1",
+      "trial": "wal-recovery-ordering__DxL86DR",
+      "task": "terminal-bench/wal-recovery-ordering",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.16,
+      "execution-audit-error": null,
+      "execution-audit-digest": "71272153acc2d177d21369264473bbd93030c5d59f7f1ea6f5ffda62d3d8dd4f",
+      "report-audit": 0.07,
+      "report-audit-error": null,
+      "report-audit-digest": "a1d93282f069ea7627a76ee24f6fd61ee7b11604d6c02e07e18391af191491a5"
+    },
+    {
+      "job": "tb4--prop-1790193215184-1--interleaved-vigenere--prop-1790193215184-1-codex-r1",
+      "trial": "interleaved-vigenere__JVKX6yF",
+      "task": "terminal-bench/interleaved-vigenere",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "verdict.observed": "fail"
+      },
+      "reward": 0.0,
+      "execution-audit": 0.59,
+      "execution-audit-error": null,
+      "execution-audit-digest": "12cdfca8b6d5c41ffc9bc04c694fe09a4dc96e524f97afdebaf1cecea9e494e7",
+      "report-audit": 0.19,
+      "report-audit-error": null,
+      "report-audit-digest": "e378c64531d4e30a6af005e5f1d9c0a1d0cfa6bcc5d851b7de7304e1e1baf8ce"
+    },
+    {
+      "job": "tb4--prop-1790193215184-1--interleaved-vigenere--prop-1790193215184-1-codex-r2",
+      "trial": "interleaved-vigenere__Encp5RY",
+      "task": "terminal-bench/interleaved-vigenere",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "verdict.observed": "fail"
+      },
+      "reward": 0.0,
+      "execution-audit": 0.48,
+      "execution-audit-error": null,
+      "execution-audit-digest": "547ea82fd236c37ea2e787cf7072f2910d7556c7b69be45a3da99ac6a13c269a",
+      "report-audit": 0.7,
+      "report-audit-error": null,
+      "report-audit-digest": "638020e28567f3b7c4b7472300449c6861579a8c47e56de51ea6d5dc558f5f9b"
+    },
+    {
+      "job": "tb4--prop-1790193215184-1--interleaved-vigenere--prop-1790193215184-1-codex-r3",
+      "trial": "interleaved-vigenere__hoFTsGE",
+      "task": "terminal-bench/interleaved-vigenere",
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.2,
+      "execution-audit-error": null,
+      "execution-audit-digest": "2b4f02099245c474792165f341a68d3109644b846a4b5fc408ceb63b9b3e8e47",
+      "report-audit": 0.04,
+      "report-audit-error": null,
+      "report-audit-digest": "b296e23f388010c57b282588958f4d7aa483cc8d9a25f8f81d37f993ee73a01e"
+    },
+    {
+      "job": "tb4--prop-1790193215184-1-base--interleaved-vigenere--prop-1790193215184-1-codex-r1",
+      "trial": "interleaved-vigenere__3e5S6jo",
+      "task": "terminal-bench/interleaved-vigenere",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "verdict.observed": "fail"
+      },
+      "reward": 0.0,
+      "execution-audit": 0.58,
+      "execution-audit-error": null,
+      "execution-audit-digest": "9bd4f832d01933599aab6c0801c73ffacbf181e1431fb67988f7d63d5da16a25",
+      "report-audit": 0.5,
+      "report-audit-error": null,
+      "report-audit-digest": "0bfe373534052dfdcff8f9362b732d3e13dfb3926b7ddc362d9b2fbe6ce3807f"
+    },
+    {
+      "job": "tb4--prop-1790193215184-1-base--interleaved-vigenere--prop-1790193215184-1-codex-r2",
+      "trial": "interleaved-vigenere__aemUcnU",
+      "task": "terminal-bench/interleaved-vigenere",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": "fail"
+      },
+      "reward": 0.0,
+      "execution-audit": 0.58,
+      "execution-audit-error": null,
+      "execution-audit-digest": "ae2f87bbe46a65fb28999cc7557511924b7e5ad1411079536b812b64512fcdb8",
+      "report-audit": 0.04,
+      "report-audit-error": null,
+      "report-audit-digest": "40b532091775b95fcc5718d6445daaf7cf95a419da49b1da380d042454b0b1cc"
+    },
+    {
+      "job": "tb4--prop-1790193215184-1-base--interleaved-vigenere--prop-1790193215184-1-codex-r3",
+      "trial": "interleaved-vigenere__Uoy73ue",
+      "task": "terminal-bench/interleaved-vigenere",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": "fail"
+      },
+      "reward": 0.0,
+      "execution-audit": 0.53,
+      "execution-audit-error": null,
+      "execution-audit-digest": "a4b5a8d7122f1c0f003e41833b0d8d2e9517007342d296408cb88deb78d52ce0",
+      "report-audit": 0.04,
+      "report-audit-error": null,
+      "report-audit-digest": "077d89322ccb667e2e61fbd32919d226e69c31faaa0c2db7e04194028060a829"
+    },
+    {
+      "job": "try--coder-one-tunable-luna-snapshot--20260923T162706Z",
+      "trial": "cargo-flight-dispatch__M5T7oW8",
+      "task": "terminal-bench/cargo-flight-dispatch",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "verdict.observed": "fail"
+      },
+      "reward": 0.0,
+      "execution-audit": 0.66,
+      "execution-audit-error": null,
+      "execution-audit-digest": "b462e184bb187ce296d919fd740a60b0dff992420494cbe9dd52385b1cdda034",
+      "report-audit": 0.56,
+      "report-audit-error": null,
+      "report-audit-digest": "f4cd2940f326037fa4537c89b65aa35024c1e8bd0994915c1566a40dce91b058"
+    },
+    {
+      "job": "try--coder-one-tunable-luna-snapshot--20260923T162706Z",
+      "trial": "interleaved-vigenere__FryxfnM",
+      "task": "terminal-bench/interleaved-vigenere",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "verdict.observed": "fail"
+      },
+      "reward": 0.0,
+      "execution-audit": 0.6,
+      "execution-audit-error": null,
+      "execution-audit-digest": "b912da651645b719a909bf689665416311e7f84b04f0695ea42e2eed3312378c",
+      "report-audit": 0.71,
+      "report-audit-error": null,
+      "report-audit-digest": "6a5477ef30eab7e40381de198b42828d4c6ebb878f441fa23bb16aa0de7d3b10"
+    },
+    {
+      "job": "try--coder-one-tunable-luna-snapshot--20260923T162706Z",
+      "trial": "risk-scorer-replay__sSqd7oF",
+      "task": "terminal-bench/risk-scorer-replay",
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "verdict.observed": null
+      },
+      "reward": 1.0,
+      "execution-audit": 0.27,
+      "execution-audit-error": null,
+      "execution-audit-digest": "6605ce82e26a802f88ed199bc39a0544b98b76880dd95e00e6eac9a2236a72e5",
+      "report-audit": 0.11,
+      "report-audit-error": null,
+      "report-audit-digest": "73d347c182025de810c01125eb0e0d4287ab3fa61f23c06b623e8e2d023c3b23"
+    },
+    {
+      "job": "try--coder-one-tunable-v7--targets-9568b",
+      "trial": "heat-pump-warranty__bgPdMox",
+      "task": "terminal-bench/heat-pump-warranty",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.38,
+      "execution-audit-error": null,
+      "execution-audit-digest": "f4050e4b8dcfa66c1cf4ea0af08e604e5fda734eb8d390b177b707a948b856dc",
+      "report-audit": 0.47,
+      "report-audit-error": null,
+      "report-audit-digest": "d934c0c87e2793051d4dff2e19e574ae152fccf8bd4d7fc6c97cae6fb74cbca8"
+    },
+    {
+      "job": "try--coder-one-tunable-v7--targets-9568b",
+      "trial": "risk-scorer-replay__xWMSei4",
+      "task": "terminal-bench/risk-scorer-replay",
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": null,
+      "execution-audit-error": "No selected tool observations were retained",
+      "execution-audit-digest": null,
+      "report-audit": 0.12,
+      "report-audit-error": null,
+      "report-audit-digest": "c963139db48a2dc1660c5eab72ed75b4d12ab337220d6a3adbd7d8c77fd7efd4"
+    },
+    {
+      "job": "try--coder-one-tunable-v7--targets-9568b",
+      "trial": "rs-archive-clone__MgL93Lo",
+      "task": "terminal-bench/rs-archive-clone",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": null,
+      "execution-audit-error": "No selected tool observations were retained",
+      "execution-audit-digest": null,
+      "report-audit": 0.18,
+      "report-audit-error": null,
+      "report-audit-digest": "9162b1ceb0e97eaae66342a7844d014b07818708c11f095216e51200f6254f49"
+    },
+    {
+      "job": "try--coder-one-tunable-v7--targets-9568b",
+      "trial": "sglang-qwen-burst__Unf9hcE",
+      "task": "terminal-bench/sglang-qwen-burst",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": null,
+      "execution-audit-error": "No selected tool observations were retained",
+      "execution-audit-digest": null,
+      "report-audit": 0.17,
+      "report-audit-error": null,
+      "report-audit-digest": "036ffd6ab6439190b6035633973ab78bf1bc80a1917ff528fbfdecede2222e3e"
+    },
+    {
+      "job": "try--coder-one-tunable-v7--targets-9568b",
+      "trial": "wal-recovery-ordering__rojNpSF",
+      "task": "terminal-bench/wal-recovery-ordering",
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "verdict.observed": null
+      },
+      "reward": 0.0,
+      "execution-audit": 0.11,
+      "execution-audit-error": null,
+      "execution-audit-digest": "f6368de1c0793d98c2750a57e0c8dbcad45162adcc12831c3a04e33ab1877535",
+      "report-audit": 0.03,
+      "report-audit-error": null,
+      "report-audit-digest": "819e01b52da44e93399f127a4b48602e6ce829355908a3a723403528b7cd196a"
+    }
+  ]
+}

@@ -1,0 +1,5903 @@
+{
+  "partition": "held-out",
+  "feature": "readiness",
+  "trials": 185,
+  "tasks": 32,
+  "available": 28,
+  "chosen": 0.5,
+  "threshold_table": {
+    "0.5": {
+      "fail_precision": {
+        "correct": 7,
+        "total": 10,
+        "value": 0.7,
+        "wilson_95": [
+          0.39677321997956516,
+          0.892210712513788
+        ]
+      },
+      "failure_recall": {
+        "correct": 7,
+        "total": 60,
+        "value": 0.11666666666666667,
+        "wilson_95": [
+          0.05767647403450049,
+          0.2217902059985814
+        ]
+      },
+      "pass_precision": {
+        "correct": 0,
+        "total": 0,
+        "value": null,
+        "wilson_95": null
+      },
+      "unknown": 175
+    }
+  },
+  "known_cost_usd": 6.07528,
+  "signals": {
+    "checks.final": {
+      "fail_precision": {
+        "correct": 6,
+        "total": 11,
+        "value": 0.5454545454545454,
+        "wilson_95": [
+          0.28008775568998817,
+          0.7872904245601196
+        ]
+      },
+      "failure_recall": {
+        "correct": 6,
+        "total": 60,
+        "value": 0.1,
+        "wilson_95": [
+          0.04664219945723587,
+          0.20149694492511044
+        ]
+      },
+      "pass_precision": {
+        "correct": 69,
+        "total": 97,
+        "value": 0.711340206185567,
+        "wilson_95": [
+          0.614479497470417,
+          0.792098740082339
+        ]
+      },
+      "unknown": 77
+    },
+    "verdict.combined": {
+      "fail_precision": {
+        "correct": 22,
+        "total": 37,
+        "value": 0.5945945945945946,
+        "wilson_95": [
+          0.4348568313132931,
+          0.7365370416005986
+        ]
+      },
+      "failure_recall": {
+        "correct": 22,
+        "total": 60,
+        "value": 0.36666666666666664,
+        "wilson_95": [
+          0.2562073884620827,
+          0.4931723263320327
+        ]
+      },
+      "pass_precision": {
+        "correct": 11,
+        "total": 13,
+        "value": 0.8461538461538461,
+        "wilson_95": [
+          0.5776482949136899,
+          0.9567427368172621
+        ]
+      },
+      "unknown": 135
+    },
+    "readiness": {
+      "fail_precision": {
+        "correct": 7,
+        "total": 10,
+        "value": 0.7,
+        "wilson_95": [
+          0.39677321997956516,
+          0.892210712513788
+        ]
+      },
+      "failure_recall": {
+        "correct": 7,
+        "total": 60,
+        "value": 0.11666666666666667,
+        "wilson_95": [
+          0.05767647403450049,
+          0.2217902059985814
+        ]
+      },
+      "pass_precision": {
+        "correct": 0,
+        "total": 0,
+        "value": null,
+        "wilson_95": null
+      },
+      "unknown": 175
+    }
+  },
+  "paired_task_bootstrap": {
+    "checks.final": {
+      "precision": {
+        "valid_resamples": 9941,
+        "undefined_resamples": 59,
+        "percentile_95": [
+          -0.35,
+          0.5714285714285714
+        ]
+      },
+      "recall": {
+        "valid_resamples": 10000,
+        "undefined_resamples": 0,
+        "percentile_95": [
+          -0.13043478260869568,
+          0.14285714285714288
+        ]
+      }
+    },
+    "verdict.combined": {
+      "precision": {
+        "valid_resamples": 9990,
+        "undefined_resamples": 10,
+        "percentile_95": [
+          -0.3333333333333333,
+          0.4042553191489362
+        ]
+      },
+      "recall": {
+        "valid_resamples": 10000,
+        "undefined_resamples": 0,
+        "percentile_95": [
+          -0.4444444444444444,
+          -0.01999999999999999
+        ]
+      }
+    }
+  },
+  "tasks_table": {
+    "terminal-bench/batched-eval-parity": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 5
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 5
+      },
+      "readiness": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 4
+      }
+    },
+    "terminal-bench/build-cython-ext": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 11
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 3,
+          "total": 3,
+          "value": 1.0,
+          "wilson_95": [
+            0.43849391955098227,
+            1
+          ]
+        },
+        "unknown": 9
+      },
+      "readiness": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 12
+      }
+    },
+    "terminal-bench/cad-model": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 4,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.48990002040399916
+          ]
+        },
+        "pass_precision": {
+          "correct": 8,
+          "total": 12,
+          "value": 0.6666666666666666,
+          "wilson_95": [
+            0.3906175873976139,
+            0.8618821601026385
+          ]
+        },
+        "unknown": 4
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 1,
+          "total": 4,
+          "value": 0.25,
+          "wilson_95": [
+            0.045586062644636216,
+            0.6993639475573634
+          ]
+        },
+        "pass_precision": {
+          "correct": 2,
+          "total": 2,
+          "value": 1.0,
+          "wilson_95": [
+            0.34237195288961925,
+            1
+          ]
+        },
+        "unknown": 13
+      },
+      "readiness": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 4,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.48990002040399916
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 16
+      }
+    },
+    "terminal-bench/cancel-async-tasks": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 11,
+          "total": 11,
+          "value": 1.0,
+          "wilson_95": [
+            0.7411599827511859,
+            1
+          ]
+        },
+        "unknown": 0
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 4,
+          "total": 4,
+          "value": 1.0,
+          "wilson_95": [
+            0.5100999795960008,
+            1
+          ]
+        },
+        "unknown": 7
+      },
+      "readiness": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 12
+      }
+    },
+    "terminal-bench/cumulative-layout-shift": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 0
+      },
+      "readiness": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      }
+    },
+    "terminal-bench/data-anonymization": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 3,
+          "total": 4,
+          "value": 0.75,
+          "wilson_95": [
+            0.3006360524426366,
+            0.9544139373553637
+          ]
+        },
+        "failure_recall": {
+          "correct": 3,
+          "total": 3,
+          "value": 1.0,
+          "wilson_95": [
+            0.43849391955098227,
+            1
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 0
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 3,
+          "total": 4,
+          "value": 0.75,
+          "wilson_95": [
+            0.3006360524426366,
+            0.9544139373553637
+          ]
+        },
+        "failure_recall": {
+          "correct": 3,
+          "total": 3,
+          "value": 1.0,
+          "wilson_95": [
+            0.43849391955098227,
+            1
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 0
+      },
+      "readiness": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 3,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.5615060804490177
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 4
+      }
+    },
+    "terminal-bench/embedding-drift-monitor": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 11
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 10
+      },
+      "readiness": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 11
+      }
+    },
+    "terminal-bench/fin-saccr-rwa": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 7,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.35433884297520657
+          ]
+        },
+        "pass_precision": {
+          "correct": 3,
+          "total": 7,
+          "value": 0.42857142857142855,
+          "wilson_95": [
+            0.15821692226262685,
+            0.7495457695909742
+          ]
+        },
+        "unknown": 3
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 1,
+          "total": 2,
+          "value": 0.5,
+          "wilson_95": [
+            0.09452865480086614,
+            0.9054713451991339
+          ]
+        },
+        "failure_recall": {
+          "correct": 1,
+          "total": 7,
+          "value": 0.14285714285714285,
+          "wilson_95": [
+            0.02567895594897479,
+            0.51313450331903
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 8
+      },
+      "readiness": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 7,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.35433884297520657
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 10
+      }
+    },
+    "terminal-bench/foodstuff-beta-activity": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 0
+      },
+      "readiness": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      }
+    },
+    "terminal-bench/freight-dispatch-shift": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "unknown": 0
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 0
+      },
+      "readiness": {
+        "fail_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 0
+      }
+    },
+    "terminal-bench/gsea-proteomics": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 7,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.35433884297520657
+          ]
+        },
+        "pass_precision": {
+          "correct": 4,
+          "total": 11,
+          "value": 0.36363636363636365,
+          "wilson_95": [
+            0.15166223614131383,
+            0.6462032231083628
+          ]
+        },
+        "unknown": 0
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 1,
+          "total": 7,
+          "value": 0.14285714285714285,
+          "wilson_95": [
+            0.02567895594897479,
+            0.51313450331903
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 10
+      },
+      "readiness": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 7,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.35433884297520657
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 11
+      }
+    },
+    "terminal-bench/headless-terminal": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 12,
+          "total": 12,
+          "value": 1.0,
+          "wilson_95": [
+            0.7574992425007574,
+            1
+          ]
+        },
+        "unknown": 0
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 11
+      },
+      "readiness": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 12
+      }
+    },
+    "terminal-bench/html-js-filter": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 2,
+          "total": 4,
+          "value": 0.5,
+          "wilson_95": [
+            0.15003570882017148,
+            0.8499642911798285
+          ]
+        },
+        "failure_recall": {
+          "correct": 2,
+          "total": 5,
+          "value": 0.4,
+          "wilson_95": [
+            0.1176182311592533,
+            0.769280067791163
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 3,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.5615060804490177
+          ]
+        },
+        "unknown": 1
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 1,
+          "total": 5,
+          "value": 0.2,
+          "wilson_95": [
+            0.03622316096978745,
+            0.6244717358814613
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "unknown": 6
+      },
+      "readiness": {
+        "fail_precision": {
+          "correct": 4,
+          "total": 5,
+          "value": 0.8,
+          "wilson_95": [
+            0.3755282641185388,
+            0.9637768390302125
+          ]
+        },
+        "failure_recall": {
+          "correct": 4,
+          "total": 5,
+          "value": 0.8,
+          "wilson_95": [
+            0.3755282641185388,
+            0.9637768390302125
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 3
+      }
+    },
+    "terminal-bench/intrastat-meldung": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "unknown": 0
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      },
+      "readiness": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      }
+    },
+    "terminal-bench/ks-solver-cpp": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 1,
+          "total": 9,
+          "value": 0.1111111111111111,
+          "wilson_95": [
+            0.019890371327130535,
+            0.4350062147680601
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 3,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.5615060804490177
+          ]
+        },
+        "unknown": 6
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 5,
+          "total": 5,
+          "value": 1.0,
+          "wilson_95": [
+            0.5655085052479191,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 5,
+          "total": 9,
+          "value": 0.5555555555555556,
+          "wilson_95": [
+            0.2666473457440297,
+            0.811224570528086
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 5
+      },
+      "readiness": {
+        "fail_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 1,
+          "total": 9,
+          "value": 0.1111111111111111,
+          "wilson_95": [
+            0.019890371327130535,
+            0.4350062147680601
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 9
+      }
+    },
+    "terminal-bench/kv-live-surgery": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      },
+      "readiness": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      }
+    },
+    "terminal-bench/layout-config-recreation2": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "unknown": 0
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      },
+      "readiness": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      }
+    },
+    "terminal-bench/legacy-utility-triage": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 3,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.5615060804490177
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 4
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 1,
+          "total": 2,
+          "value": 0.5,
+          "wilson_95": [
+            0.09452865480086614,
+            0.9054713451991339
+          ]
+        },
+        "failure_recall": {
+          "correct": 1,
+          "total": 3,
+          "value": 0.3333333333333333,
+          "wilson_95": [
+            0.0614903152761605,
+            0.7923450448735121
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 2
+      },
+      "readiness": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 3,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.5615060804490177
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 4
+      }
+    },
+    "terminal-bench/log-summary-date-ranges": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 2,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.6576280471103807
+          ]
+        },
+        "pass_precision": {
+          "correct": 10,
+          "total": 12,
+          "value": 0.8333333333333334,
+          "wilson_95": [
+            0.5519636426153274,
+            0.9530358523851776
+          ]
+        },
+        "unknown": 0
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 2,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.6576280471103807
+          ]
+        },
+        "pass_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "unknown": 11
+      },
+      "readiness": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 2,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.6576280471103807
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 12
+      }
+    },
+    "terminal-bench/mp-checkpoint-consolidation": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "unknown": 0
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      },
+      "readiness": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      }
+    },
+    "terminal-bench/music-harmony": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 4,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.48990002040399916
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "unknown": 3
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 1,
+          "total": 4,
+          "value": 0.25,
+          "wilson_95": [
+            0.045586062644636216,
+            0.6993639475573634
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 3
+      },
+      "readiness": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 4,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.48990002040399916
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 4
+      }
+    },
+    "terminal-bench/nextjs-performance": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 2,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.6576280471103807
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 8
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 1,
+          "total": 3,
+          "value": 0.3333333333333333,
+          "wilson_95": [
+            0.0614903152761605,
+            0.7923450448735121
+          ]
+        },
+        "failure_recall": {
+          "correct": 1,
+          "total": 2,
+          "value": 0.5,
+          "wilson_95": [
+            0.09452865480086614,
+            0.9054713451991339
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 5
+      },
+      "readiness": {
+        "fail_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 1,
+          "total": 2,
+          "value": 0.5,
+          "wilson_95": [
+            0.09452865480086614,
+            0.9054713451991339
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 7
+      }
+    },
+    "terminal-bench/ontology-kg-querying": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "unknown": 0
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      },
+      "readiness": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      }
+    },
+    "terminal-bench/payments-pipeline-fix": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "unknown": 0
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      },
+      "readiness": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 0
+      }
+    },
+    "terminal-bench/photonic-waveguide-routing": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "unknown": 0
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      },
+      "readiness": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      }
+    },
+    "terminal-bench/production-planning": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 7,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.35433884297520657
+          ]
+        },
+        "pass_precision": {
+          "correct": 1,
+          "total": 2,
+          "value": 0.5,
+          "wilson_95": [
+            0.09452865480086614,
+            0.9054713451991339
+          ]
+        },
+        "unknown": 12
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 5,
+          "total": 10,
+          "value": 0.5,
+          "wilson_95": [
+            0.23658959361548731,
+            0.7634104063845126
+          ]
+        },
+        "failure_recall": {
+          "correct": 5,
+          "total": 7,
+          "value": 0.7142857142857143,
+          "wilson_95": [
+            0.35892909014821267,
+            0.9177828342909844
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 4
+      },
+      "readiness": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 7,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.35433884297520657
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 14
+      }
+    },
+    "terminal-bench/protein-autointerp-disulfide": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 2,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.6576280471103807
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "unknown": 1
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 2,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.6576280471103807
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "unknown": 1
+      },
+      "readiness": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 2,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.6576280471103807
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 2
+      }
+    },
+    "terminal-bench/satb-audio-transcription": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "unknown": 0
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      },
+      "readiness": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      }
+    },
+    "terminal-bench/sound-change-cascade": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "unknown": 3
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "unknown": 3
+      },
+      "readiness": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 4
+      }
+    },
+    "terminal-bench/sqlite-db-truncate": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 12,
+          "total": 12,
+          "value": 1.0,
+          "wilson_95": [
+            0.7574992425007574,
+            1
+          ]
+        },
+        "unknown": 0
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 12
+      },
+      "readiness": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 12
+      }
+    },
+    "terminal-bench/telecom-entity-resolution": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "unknown": 0
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 0
+      },
+      "readiness": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      }
+    },
+    "terminal-bench/vf2-speedup-networkx": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 2
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 2
+      },
+      "readiness": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 2
+      }
+    }
+  },
+  "predictions": [
+    {
+      "job": "extended--coder-one-tunable--cancel-async-tasks",
+      "trial": "cancel-async-tasks__EZNWX8x",
+      "task": "terminal-bench/cancel-async-tasks",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "extended--coder-one-tunable--cancel-async-tasks-2",
+      "trial": "cancel-async-tasks__ojx3LrP",
+      "task": "terminal-bench/cancel-async-tasks",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "extended--coder-one-tunable--cancel-async-tasks-3",
+      "trial": "cancel-async-tasks__Jo4st5E",
+      "task": "terminal-bench/cancel-async-tasks",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "extended--coder-one-tunable--log-summary-date-ranges",
+      "trial": "log-summary-date-ranges__xNufynH",
+      "task": "terminal-bench/log-summary-date-ranges",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "extended--coder-one-tunable--log-summary-date-ranges-2",
+      "trial": "log-summary-date-ranges__DSX3Nnf",
+      "task": "terminal-bench/log-summary-date-ranges",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "extended--coder-one-tunable--log-summary-date-ranges-3",
+      "trial": "log-summary-date-ranges__LmwAFaD",
+      "task": "terminal-bench/log-summary-date-ranges",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "extended--coder-one-tunable--sqlite-db-truncate",
+      "trial": "sqlite-db-truncate__ZCf74xb",
+      "task": "terminal-bench/sqlite-db-truncate",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "extended--coder-one-tunable--sqlite-db-truncate-2",
+      "trial": "sqlite-db-truncate__2YDS99z",
+      "task": "terminal-bench/sqlite-db-truncate",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "extended--coder-one-tunable--sqlite-db-truncate-3",
+      "trial": "sqlite-db-truncate__JfCXuyo",
+      "task": "terminal-bench/sqlite-db-truncate",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "extended--coder-one-tunable-luna--cancel-async-tasks",
+      "trial": "cancel-async-tasks__vkbVrBR",
+      "task": "terminal-bench/cancel-async-tasks",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "extended--coder-one-tunable-luna--cancel-async-tasks-2",
+      "trial": "cancel-async-tasks__yteL4JF",
+      "task": "terminal-bench/cancel-async-tasks",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "extended--coder-one-tunable-luna--cancel-async-tasks-3",
+      "trial": "cancel-async-tasks__TAoi72C",
+      "task": "terminal-bench/cancel-async-tasks",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "extended--coder-one-tunable-luna--log-summary-date-ranges",
+      "trial": "log-summary-date-ranges__tWvowjq",
+      "task": "terminal-bench/log-summary-date-ranges",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "extended--coder-one-tunable-luna--log-summary-date-ranges-2",
+      "trial": "log-summary-date-ranges__VZCxzYS",
+      "task": "terminal-bench/log-summary-date-ranges",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "extended--coder-one-tunable-luna--log-summary-date-ranges-3",
+      "trial": "log-summary-date-ranges__MGUR8qz",
+      "task": "terminal-bench/log-summary-date-ranges",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "extended--coder-one-tunable-luna--sqlite-db-truncate",
+      "trial": "sqlite-db-truncate__ewqDC5Z",
+      "task": "terminal-bench/sqlite-db-truncate",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "extended--coder-one-tunable-luna--sqlite-db-truncate-2",
+      "trial": "sqlite-db-truncate__MS4umyG",
+      "task": "terminal-bench/sqlite-db-truncate",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "extended--coder-one-tunable-luna--sqlite-db-truncate-3",
+      "trial": "sqlite-db-truncate__g2XMeQ6",
+      "task": "terminal-bench/sqlite-db-truncate",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-pack--cancel-async-tasks",
+      "trial": "cancel-async-tasks__U3HoBMX",
+      "task": "terminal-bench/cancel-async-tasks",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-pack--cancel-async-tasks-2",
+      "trial": "cancel-async-tasks__C4WWS3V",
+      "task": "terminal-bench/cancel-async-tasks",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-pack--cancel-async-tasks-3",
+      "trial": "cancel-async-tasks__yzE5pS9",
+      "task": "terminal-bench/cancel-async-tasks",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-pack--log-summary-date-ranges",
+      "trial": "log-summary-date-ranges__yVFhVDi",
+      "task": "terminal-bench/log-summary-date-ranges",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-pack--log-summary-date-ranges-2",
+      "trial": "log-summary-date-ranges__t3tTZ7U",
+      "task": "terminal-bench/log-summary-date-ranges",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-pack--log-summary-date-ranges-3",
+      "trial": "log-summary-date-ranges__7yPBBBk",
+      "task": "terminal-bench/log-summary-date-ranges",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-pack--sqlite-db-truncate",
+      "trial": "sqlite-db-truncate__kmzasWS",
+      "task": "terminal-bench/sqlite-db-truncate",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-pack--sqlite-db-truncate-2",
+      "trial": "sqlite-db-truncate__GojX4Yj",
+      "task": "terminal-bench/sqlite-db-truncate",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-pack--sqlite-db-truncate-3",
+      "trial": "sqlite-db-truncate__FcVGhAK",
+      "task": "terminal-bench/sqlite-db-truncate",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-v2--cancel-async-tasks",
+      "trial": "cancel-async-tasks__jR2MgS7",
+      "task": "terminal-bench/cancel-async-tasks",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-v2--cancel-async-tasks-2",
+      "trial": "cancel-async-tasks__LyPdBMp",
+      "task": "terminal-bench/cancel-async-tasks",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-v2--cancel-async-tasks-3",
+      "trial": "cancel-async-tasks__NNJ2abg",
+      "task": "terminal-bench/cancel-async-tasks",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-v2--log-summary-date-ranges",
+      "trial": "log-summary-date-ranges__8j6Nis3",
+      "task": "terminal-bench/log-summary-date-ranges",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-v2--log-summary-date-ranges-2",
+      "trial": "log-summary-date-ranges__8NBoYwo",
+      "task": "terminal-bench/log-summary-date-ranges",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-v2--log-summary-date-ranges-3",
+      "trial": "log-summary-date-ranges__9z9Yuem",
+      "task": "terminal-bench/log-summary-date-ranges",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-v2--sqlite-db-truncate",
+      "trial": "sqlite-db-truncate__V5R5B6a",
+      "task": "terminal-bench/sqlite-db-truncate",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-v2--sqlite-db-truncate-2",
+      "trial": "sqlite-db-truncate__L72MUVx",
+      "task": "terminal-bench/sqlite-db-truncate",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "extended--coder-one-tunable-luna-v2--sqlite-db-truncate-3",
+      "trial": "sqlite-db-truncate__rGwQzog",
+      "task": "terminal-bench/sqlite-db-truncate",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "matched-20260923--batched-eval-parity--r1--coder",
+      "trial": "batched-eval-parity__zAAp2Jy",
+      "task": "terminal-bench/batched-eval-parity",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "matched-20260923--batched-eval-parity--r2--coder",
+      "trial": "batched-eval-parity__yMr4Wo4",
+      "task": "terminal-bench/batched-eval-parity",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.3,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.29233,
+      "milliseconds": 61667
+    },
+    {
+      "job": "matched-20260923--batched-eval-parity--r3--coder",
+      "trial": "batched-eval-parity__MRdoTBa",
+      "task": "terminal-bench/batched-eval-parity",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.45,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.28449,
+      "milliseconds": 56003
+    },
+    {
+      "job": "matched-20260923--nextjs-performance--r1--coder",
+      "trial": "nextjs-performance__ajfrZR6",
+      "task": "terminal-bench/nextjs-performance",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.15,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.31284,
+      "milliseconds": 42608
+    },
+    {
+      "job": "matched-20260923--nextjs-performance--r2--coder",
+      "trial": "nextjs-performance__dhy6o9c",
+      "task": "terminal-bench/nextjs-performance",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.18,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.30788,
+      "milliseconds": 40670
+    },
+    {
+      "job": "matched-20260923--nextjs-performance--r3--coder",
+      "trial": "nextjs-performance__ZdJvNTW",
+      "task": "terminal-bench/nextjs-performance",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "panel--coder-one-tunable--build-cython-ext",
+      "trial": "build-cython-ext__iAGyfZv",
+      "task": "terminal-bench/build-cython-ext",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "panel--coder-one-tunable--build-cython-ext-2",
+      "trial": "build-cython-ext__GGKHcsF",
+      "task": "terminal-bench/build-cython-ext",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "panel--coder-one-tunable--build-cython-ext-3",
+      "trial": "build-cython-ext__GBkZ3KY",
+      "task": "terminal-bench/build-cython-ext",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "panel--coder-one-tunable--headless-terminal",
+      "trial": "headless-terminal__5uCPA7c",
+      "task": "terminal-bench/headless-terminal",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "panel--coder-one-tunable--headless-terminal-2",
+      "trial": "headless-terminal__AcjpX6e",
+      "task": "terminal-bench/headless-terminal",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "panel--coder-one-tunable--headless-terminal-3",
+      "trial": "headless-terminal__ENXuSCw",
+      "task": "terminal-bench/headless-terminal",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "panel--coder-one-tunable-luna--build-cython-ext",
+      "trial": "build-cython-ext__MbR5J5V",
+      "task": "terminal-bench/build-cython-ext",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "panel--coder-one-tunable-luna--build-cython-ext-2",
+      "trial": "build-cython-ext__7wxMF82",
+      "task": "terminal-bench/build-cython-ext",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "panel--coder-one-tunable-luna--build-cython-ext-3",
+      "trial": "build-cython-ext__rFonZts",
+      "task": "terminal-bench/build-cython-ext",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "panel--coder-one-tunable-luna--headless-terminal",
+      "trial": "headless-terminal__SGPFUYL",
+      "task": "terminal-bench/headless-terminal",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "panel--coder-one-tunable-luna--headless-terminal-2",
+      "trial": "headless-terminal__2UPEAzA",
+      "task": "terminal-bench/headless-terminal",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "panel--coder-one-tunable-luna--headless-terminal-3",
+      "trial": "headless-terminal__opQo8vp",
+      "task": "terminal-bench/headless-terminal",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-pack--build-cython-ext",
+      "trial": "build-cython-ext__ierikWT",
+      "task": "terminal-bench/build-cython-ext",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-pack--build-cython-ext-2",
+      "trial": "build-cython-ext__N4fdZAz",
+      "task": "terminal-bench/build-cython-ext",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-pack--build-cython-ext-3",
+      "trial": "build-cython-ext__TgHtSs7",
+      "task": "terminal-bench/build-cython-ext",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-pack--headless-terminal",
+      "trial": "headless-terminal__4S7YkPk",
+      "task": "terminal-bench/headless-terminal",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-pack--headless-terminal-2",
+      "trial": "headless-terminal__CE88DJ9",
+      "task": "terminal-bench/headless-terminal",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-pack--headless-terminal-3",
+      "trial": "headless-terminal__XiqmqwN",
+      "task": "terminal-bench/headless-terminal",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-v2--build-cython-ext",
+      "trial": "build-cython-ext__zDAWX44",
+      "task": "terminal-bench/build-cython-ext",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-v2--build-cython-ext-2",
+      "trial": "build-cython-ext__Z3xnp4Y",
+      "task": "terminal-bench/build-cython-ext",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-v2--build-cython-ext-3",
+      "trial": "build-cython-ext__jX8s8QE",
+      "task": "terminal-bench/build-cython-ext",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-v2--headless-terminal",
+      "trial": "headless-terminal__vZba6b2",
+      "task": "terminal-bench/headless-terminal",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-v2--headless-terminal-2",
+      "trial": "headless-terminal__6pBHBsf",
+      "task": "terminal-bench/headless-terminal",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "panel--coder-one-tunable-luna-v2--headless-terminal-3",
+      "trial": "headless-terminal__ichu42j",
+      "task": "terminal-bench/headless-terminal",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--cad-model--matched-v8-9567-r1",
+      "trial": "cad-model__UpQfB2j",
+      "task": "terminal-bench/cad-model",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--cad-model--matched-v8-9567-r2",
+      "trial": "cad-model__VXuQNL9",
+      "task": "terminal-bench/cad-model",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--cad-model--matched-v8-9567-r3",
+      "trial": "cad-model__PCPn5pW",
+      "task": "terminal-bench/cad-model",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--embedding-drift-monitor--matched-v8-9567-r1",
+      "trial": "embedding-drift-monitor__eh9ex5r",
+      "task": "terminal-bench/embedding-drift-monitor",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--embedding-drift-monitor--matched-v8-9567-r2",
+      "trial": "embedding-drift-monitor__aGH4F34",
+      "task": "terminal-bench/embedding-drift-monitor",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--embedding-drift-monitor--matched-v8-9567-r3",
+      "trial": "embedding-drift-monitor__zsNLRYd",
+      "task": "terminal-bench/embedding-drift-monitor",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--fin-saccr-rwa--matched-v8-9567-r1",
+      "trial": "fin-saccr-rwa__E3d7o4p",
+      "task": "terminal-bench/fin-saccr-rwa",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--fin-saccr-rwa--matched-v8-9567-r2",
+      "trial": "fin-saccr-rwa__89KPMs9",
+      "task": "terminal-bench/fin-saccr-rwa",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--fin-saccr-rwa--matched-v8-9567-r3",
+      "trial": "fin-saccr-rwa__GPBRV5j",
+      "task": "terminal-bench/fin-saccr-rwa",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--ks-solver-cpp--matched-v8-9567-r1",
+      "trial": "ks-solver-cpp__PDuFFLt",
+      "task": "terminal-bench/ks-solver-cpp",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--ks-solver-cpp--matched-v8-9567-r2",
+      "trial": "ks-solver-cpp__Lt6izN8",
+      "task": "terminal-bench/ks-solver-cpp",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--ks-solver-cpp--matched-v8-9567-r3",
+      "trial": "ks-solver-cpp__pFx79Ga",
+      "task": "terminal-bench/ks-solver-cpp",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--legacy-utility-triage--matched-v8-9567-r1",
+      "trial": "legacy-utility-triage__rHThFTx",
+      "task": "terminal-bench/legacy-utility-triage",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--legacy-utility-triage--matched-v8-9567-r2",
+      "trial": "legacy-utility-triage__9KzpBTZ",
+      "task": "terminal-bench/legacy-utility-triage",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--legacy-utility-triage--matched-v8-9567-r3",
+      "trial": "legacy-utility-triage__RiZTd3U",
+      "task": "terminal-bench/legacy-utility-triage",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--nextjs-performance--matched-v8-9567-r1",
+      "trial": "nextjs-performance__9eqHrN9",
+      "task": "terminal-bench/nextjs-performance",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.15,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.32895,
+      "milliseconds": 48228
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--nextjs-performance--matched-v8-9567-r2",
+      "trial": "nextjs-performance__S7ZZrQr",
+      "task": "terminal-bench/nextjs-performance",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.16,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.30281,
+      "milliseconds": 37493
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--nextjs-performance--matched-v8-9567-r3",
+      "trial": "nextjs-performance__sqxw84g",
+      "task": "terminal-bench/nextjs-performance",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.2,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.29991,
+      "milliseconds": 35743
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--sound-change-cascade--matched-v8-9567-r1",
+      "trial": "sound-change-cascade__Kk7csF5",
+      "task": "terminal-bench/sound-change-cascade",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--sound-change-cascade--matched-v8-9567-r2",
+      "trial": "sound-change-cascade__uaGad7W",
+      "task": "terminal-bench/sound-change-cascade",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-matched-v8--sound-change-cascade--matched-v8-9567-r3",
+      "trial": "sound-change-cascade__KUdjBfR",
+      "task": "terminal-bench/sound-change-cascade",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v10--production-planning--v10-persist-9570-r1",
+      "trial": "production-planning__sZAqAc6",
+      "task": "terminal-bench/production-planning",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--batched-eval-parity",
+      "trial": "batched-eval-parity__CMa4h7f",
+      "task": "terminal-bench/batched-eval-parity",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.28,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.29689,
+      "milliseconds": 65643
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--cad-model",
+      "trial": "cad-model__93HTQVd",
+      "task": "terminal-bench/cad-model",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--cad-model--effort-9569-r1",
+      "trial": "cad-model__h4LVf5q",
+      "task": "terminal-bench/cad-model",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--cad-model--effort-9569-r2",
+      "trial": "cad-model__dX5KRqB",
+      "task": "terminal-bench/cad-model",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--cad-model--effort-9569-r3",
+      "trial": "cad-model__LtnXxBX",
+      "task": "terminal-bench/cad-model",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--cumulative-layout-shift",
+      "trial": "cumulative-layout-shift__ceBid2H",
+      "task": "terminal-bench/cumulative-layout-shift",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--data-anonymization",
+      "trial": "data-anonymization__nyv2W9N",
+      "task": "terminal-bench/data-anonymization",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "readiness": null
+      },
+      "score": 0.28,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.19065,
+      "milliseconds": 71149
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--embedding-drift-monitor",
+      "trial": "embedding-drift-monitor__W8tf8im",
+      "task": "terminal-bench/embedding-drift-monitor",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--embedding-drift-monitor--effort-9569-r1",
+      "trial": "embedding-drift-monitor__H9citTy",
+      "task": "terminal-bench/embedding-drift-monitor",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": true,
+      "error": "Readiness assessment exceeded its 180-second deadline",
+      "known_cost_usd": null,
+      "milliseconds": 180003
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--embedding-drift-monitor--effort-9569-r2",
+      "trial": "embedding-drift-monitor__BNyAf9y",
+      "task": "terminal-bench/embedding-drift-monitor",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--fin-saccr-rwa",
+      "trial": "fin-saccr-rwa__3udZRiv",
+      "task": "terminal-bench/fin-saccr-rwa",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--fin-saccr-rwa--effort-9569-r1",
+      "trial": "fin-saccr-rwa__GXwFtf7",
+      "task": "terminal-bench/fin-saccr-rwa",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--fin-saccr-rwa--effort-9569-r2",
+      "trial": "fin-saccr-rwa__ccuiJu6",
+      "task": "terminal-bench/fin-saccr-rwa",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--foodstuff-beta-activity",
+      "trial": "foodstuff-beta-activity__E3RY23V",
+      "task": "terminal-bench/foodstuff-beta-activity",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--freight-dispatch-shift",
+      "trial": "freight-dispatch-shift__mD6mGp8",
+      "task": "terminal-bench/freight-dispatch-shift",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "readiness": "fail"
+      },
+      "score": 0.82,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.25876,
+      "milliseconds": 49490
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--gsea-proteomics",
+      "trial": "gsea-proteomics__D6NCFzF",
+      "task": "terminal-bench/gsea-proteomics",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--gsea-proteomics--effort-9569-r1",
+      "trial": "gsea-proteomics__xSDYqJW",
+      "task": "terminal-bench/gsea-proteomics",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--gsea-proteomics--effort-9569-r2",
+      "trial": "gsea-proteomics__YtXyrMb",
+      "task": "terminal-bench/gsea-proteomics",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--gsea-proteomics--effort-9569-r3",
+      "trial": "gsea-proteomics__G2xtweX",
+      "task": "terminal-bench/gsea-proteomics",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--html-js-filter",
+      "trial": "html-js-filter__LCP4hV7",
+      "task": "terminal-bench/html-js-filter",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": "fail"
+      },
+      "score": 0.97,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.10767,
+      "milliseconds": 42000
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--intrastat-meldung",
+      "trial": "intrastat-meldung__kPAoUMb",
+      "task": "terminal-bench/intrastat-meldung",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--ks-solver-cpp",
+      "trial": "ks-solver-cpp__VoHECwg",
+      "task": "terminal-bench/ks-solver-cpp",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--kv-live-surgery",
+      "trial": "kv-live-surgery__LFqoK6L",
+      "task": "terminal-bench/kv-live-surgery",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--layout-config-recreation2",
+      "trial": "layout-config-recreation2__dKArjvs",
+      "task": "terminal-bench/layout-config-recreation2",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--legacy-utility-triage",
+      "trial": "legacy-utility-triage__UzgKrwV",
+      "task": "terminal-bench/legacy-utility-triage",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--mp-checkpoint-consolidation",
+      "trial": "mp-checkpoint-consolidation__JwHGCSm",
+      "task": "terminal-bench/mp-checkpoint-consolidation",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--music-harmony",
+      "trial": "music-harmony__foosfLn",
+      "task": "terminal-bench/music-harmony",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--nextjs-performance",
+      "trial": "nextjs-performance__9mhSdgu",
+      "task": "terminal-bench/nextjs-performance",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.18,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.30304,
+      "milliseconds": 36771
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--ontology-kg-querying",
+      "trial": "ontology-kg-querying__iZQFjNF",
+      "task": "terminal-bench/ontology-kg-querying",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--payments-pipeline-fix",
+      "trial": "payments-pipeline-fix__gbaYqCg",
+      "task": "terminal-bench/payments-pipeline-fix",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": "fail"
+      },
+      "score": 0.63,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.13953,
+      "milliseconds": 42239
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--photonic-waveguide-routing",
+      "trial": "photonic-waveguide-routing__JYAGpSt",
+      "task": "terminal-bench/photonic-waveguide-routing",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--production-planning",
+      "trial": "production-planning__c6E8jPq",
+      "task": "terminal-bench/production-planning",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--protein-autointerp-disulfide",
+      "trial": "protein-autointerp-disulfide__mFaPwNz",
+      "task": "terminal-bench/protein-autointerp-disulfide",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--satb-audio-transcription",
+      "trial": "satb-audio-transcription__4hNhXf2",
+      "task": "terminal-bench/satb-audio-transcription",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--sound-change-cascade",
+      "trial": "sound-change-cascade__9pSQecy",
+      "task": "terminal-bench/sound-change-cascade",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--telecom-entity-resolution",
+      "trial": "telecom-entity-resolution__QkWGffc",
+      "task": "terminal-bench/telecom-entity-resolution",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--vf2-speedup-networkx",
+      "trial": "vf2-speedup-networkx__ArPJp6A",
+      "task": "terminal-bench/vf2-speedup-networkx",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.27,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.35685,
+      "milliseconds": 57114
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--cad-model",
+      "trial": "cad-model__CS37B9J",
+      "task": "terminal-bench/cad-model",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--cad-model--effort-9569-r1",
+      "trial": "cad-model__yHy7yE6",
+      "task": "terminal-bench/cad-model",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--cad-model--effort-9569-r2",
+      "trial": "cad-model__8yBCVk8",
+      "task": "terminal-bench/cad-model",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--cad-model--effort-9569-r3",
+      "trial": "cad-model__iZrygzN",
+      "task": "terminal-bench/cad-model",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--embedding-drift-monitor--effort-9569-r1",
+      "trial": "embedding-drift-monitor__KDJ5PCL",
+      "task": "terminal-bench/embedding-drift-monitor",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.18,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.17699,
+      "milliseconds": 70934
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--embedding-drift-monitor--effort-9569-r2",
+      "trial": "embedding-drift-monitor__V5nyG7d",
+      "task": "terminal-bench/embedding-drift-monitor",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.18,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.1177,
+      "milliseconds": 37860
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--fin-saccr-rwa--effort-9569-r1",
+      "trial": "fin-saccr-rwa__uffrPxc",
+      "task": "terminal-bench/fin-saccr-rwa",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--fin-saccr-rwa--effort-9569-r2",
+      "trial": "fin-saccr-rwa__vghcgV7",
+      "task": "terminal-bench/fin-saccr-rwa",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--gsea-proteomics",
+      "trial": "gsea-proteomics__r4EXrRJ",
+      "task": "terminal-bench/gsea-proteomics",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--gsea-proteomics--effort-9569-r1",
+      "trial": "gsea-proteomics__xXWx55f",
+      "task": "terminal-bench/gsea-proteomics",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--gsea-proteomics--effort-9569-r2",
+      "trial": "gsea-proteomics__4ACy62S",
+      "task": "terminal-bench/gsea-proteomics",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--gsea-proteomics--effort-9569-r3",
+      "trial": "gsea-proteomics__dWAjmmk",
+      "task": "terminal-bench/gsea-proteomics",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--html-js-filter",
+      "trial": "html-js-filter__eCVVDAg",
+      "task": "terminal-bench/html-js-filter",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "readiness": "fail"
+      },
+      "score": 0.96,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.11573,
+      "milliseconds": 43173
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--ks-solver-cpp",
+      "trial": "ks-solver-cpp__ZnfrMxv",
+      "task": "terminal-bench/ks-solver-cpp",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--vf2-speedup-networkx",
+      "trial": "vf2-speedup-networkx__jgSFKBL",
+      "task": "terminal-bench/vf2-speedup-networkx",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.38,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.30281,
+      "milliseconds": 30893
+    },
+    {
+      "job": "tb4--coder-one-tunable-v4--cad-model",
+      "trial": "cad-model__kou5pbz",
+      "task": "terminal-bench/cad-model",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v4--music-harmony",
+      "trial": "music-harmony__6Jk4UFX",
+      "task": "terminal-bench/music-harmony",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v4--production-planning",
+      "trial": "production-planning__8AzrC5r",
+      "task": "terminal-bench/production-planning",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v6--batched-eval-parity",
+      "trial": "batched-eval-parity__fzyVtJh",
+      "task": "terminal-bench/batched-eval-parity",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": "fail"
+      },
+      "score": 0.78,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.30475,
+      "milliseconds": 72896
+    },
+    {
+      "job": "tb4--coder-one-tunable-v7--production-planning--v10-persist-9570-r1",
+      "trial": "production-planning__bMzvLfm",
+      "task": "terminal-bench/production-planning",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v8--production-planning--v8-persist-9570-r2",
+      "trial": "production-planning__yzdyUnm",
+      "task": "terminal-bench/production-planning",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v8--production-planning--v8-persist-9570-r3",
+      "trial": "production-planning__Vb5Fddr",
+      "task": "terminal-bench/production-planning",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v8--production-planning--v8-persist-9570-r4",
+      "trial": "production-planning__FRFigLe",
+      "task": "terminal-bench/production-planning",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9--cad-model--effort-9569-r1",
+      "trial": "cad-model__WGki8Vq",
+      "task": "terminal-bench/cad-model",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9--cad-model--effort-9569-r2",
+      "trial": "cad-model__KfKHTfT",
+      "task": "terminal-bench/cad-model",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9--cad-model--effort-9569-r3",
+      "trial": "cad-model__MAcsWaj",
+      "task": "terminal-bench/cad-model",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9--embedding-drift-monitor--effort-9569-r1",
+      "trial": "embedding-drift-monitor__9ba4fb6",
+      "task": "terminal-bench/embedding-drift-monitor",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9--embedding-drift-monitor--effort-9569-r2",
+      "trial": "embedding-drift-monitor__jfqZgGA",
+      "task": "terminal-bench/embedding-drift-monitor",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9--fin-saccr-rwa--effort-9569-r1",
+      "trial": "fin-saccr-rwa__HvTn5Kj",
+      "task": "terminal-bench/fin-saccr-rwa",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9--fin-saccr-rwa--effort-9569-r2",
+      "trial": "fin-saccr-rwa__7tWMCpN",
+      "task": "terminal-bench/fin-saccr-rwa",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9--gsea-proteomics--effort-9569-r1",
+      "trial": "gsea-proteomics__yhVXZAC",
+      "task": "terminal-bench/gsea-proteomics",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9--gsea-proteomics--effort-9569-r2",
+      "trial": "gsea-proteomics__RmjVrEc",
+      "task": "terminal-bench/gsea-proteomics",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9--gsea-proteomics--effort-9569-r3",
+      "trial": "gsea-proteomics__Hr3aJZr",
+      "task": "terminal-bench/gsea-proteomics",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--data-anonymization--escalate-9571b-r1",
+      "trial": "data-anonymization__PAAihP5",
+      "task": "terminal-bench/data-anonymization",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "readiness": null
+      },
+      "score": 0.3,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.18161,
+      "milliseconds": 49818
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--data-anonymization--escalate-9571b-r2",
+      "trial": "data-anonymization__apqf9W4",
+      "task": "terminal-bench/data-anonymization",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "readiness": null
+      },
+      "score": 0.22,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.18563,
+      "milliseconds": 51150
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--data-anonymization--escalate-9571b-r3",
+      "trial": "data-anonymization__ciaS3xW",
+      "task": "terminal-bench/data-anonymization",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--html-js-filter--escalate-9571b-r1",
+      "trial": "html-js-filter__oCNdp3f",
+      "task": "terminal-bench/html-js-filter",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--html-js-filter--escalate-9571b-r2",
+      "trial": "html-js-filter__yzcGZLh",
+      "task": "terminal-bench/html-js-filter",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--html-js-filter--escalate-9571b-r3",
+      "trial": "html-js-filter__dTauU9w",
+      "task": "terminal-bench/html-js-filter",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--html-js-filter--escalate-9571c-r1",
+      "trial": "html-js-filter__dmYo4Ea",
+      "task": "terminal-bench/html-js-filter",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "fail",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": "fail"
+      },
+      "score": 0.88,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.1279,
+      "milliseconds": 62309
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--html-js-filter--escalate-9571c-r2",
+      "trial": "html-js-filter__DLLinwn",
+      "task": "terminal-bench/html-js-filter",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": "fail"
+      },
+      "score": 0.95,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.13494,
+      "milliseconds": 57218
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--ks-solver-cpp--escalate-9571b-r1",
+      "trial": "ks-solver-cpp__GiiPX4W",
+      "task": "terminal-bench/ks-solver-cpp",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--ks-solver-cpp--escalate-9571b-r2",
+      "trial": "ks-solver-cpp__esTosjF",
+      "task": "terminal-bench/ks-solver-cpp",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--ks-solver-cpp--escalate-9571b-r3",
+      "trial": "ks-solver-cpp__TMx3LP6",
+      "task": "terminal-bench/ks-solver-cpp",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--music-harmony--escalate-9571c-r1",
+      "trial": "music-harmony__PYGQLHk",
+      "task": "terminal-bench/music-harmony",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--music-harmony--escalate-9571c-r2",
+      "trial": "music-harmony__ELzKMKg",
+      "task": "terminal-bench/music-harmony",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--production-planning--escalate-9571b-r1",
+      "trial": "production-planning__XpeUFiB",
+      "task": "terminal-bench/production-planning",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--production-planning--escalate-9571b-r2",
+      "trial": "production-planning__ejuoUvx",
+      "task": "terminal-bench/production-planning",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--production-planning--escalate-9571b-r3",
+      "trial": "production-planning__LQFfEx5",
+      "task": "terminal-bench/production-planning",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--production-planning--escalate-9571c-r1",
+      "trial": "production-planning__bCXurew",
+      "task": "terminal-bench/production-planning",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--production-planning--escalate-9571c-r2",
+      "trial": "production-planning__iywETeW",
+      "task": "terminal-bench/production-planning",
+      "reward": 1.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--coder-one-tunable-v9-escalate--production-planning--escalate-9571c-r3",
+      "trial": "production-planning__9JYC3c8",
+      "task": "terminal-bench/production-planning",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--luna-jev--cad-model--luna-tb4-9583-r1",
+      "trial": "cad-model__K6JXysv",
+      "task": "terminal-bench/cad-model",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "tb4--luna-jev--embedding-drift-monitor--luna-tb4-9583-r1",
+      "trial": "embedding-drift-monitor__hgETELE",
+      "task": "terminal-bench/embedding-drift-monitor",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": 0.24,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.13041,
+      "milliseconds": 51182
+    },
+    {
+      "job": "tb4--luna-jev--ks-solver-cpp--luna-tb4-9583-r1",
+      "trial": "ks-solver-cpp__J3takNd",
+      "task": "terminal-bench/ks-solver-cpp",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": null,
+        "verdict.corroborated": null,
+        "readiness": "fail"
+      },
+      "score": 0.65,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.13664,
+      "milliseconds": 63815
+    },
+    {
+      "job": "tb4--luna-jev--nextjs-performance--luna-tb4-9583-r1",
+      "trial": "nextjs-performance__ZEDjfNL",
+      "task": "terminal-bench/nextjs-performance",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "readiness": "fail"
+      },
+      "score": 0.72,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.28991,
+      "milliseconds": 38444
+    },
+    {
+      "job": "try--coder-one-tunable-v7--targets-9568b",
+      "trial": "html-js-filter__aZvBopx",
+      "task": "terminal-bench/html-js-filter",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": "pass",
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "readiness": "fail"
+      },
+      "score": 0.97,
+      "available": true,
+      "error": null,
+      "known_cost_usd": 0.08766,
+      "milliseconds": 32122
+    },
+    {
+      "job": "try--coder-one-tunable-v7--targets-9568b",
+      "trial": "ks-solver-cpp__z5fa8Zp",
+      "task": "terminal-bench/ks-solver-cpp",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": null,
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "try--coder-one-tunable-v7--targets-9568b",
+      "trial": "production-planning__rmraruG",
+      "task": "terminal-bench/production-planning",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "fail",
+        "verdict.corroborated": "fail",
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    },
+    {
+      "job": "try--coder-one-tunable-v7--targets-9568b",
+      "trial": "protein-autointerp-disulfide__BTX75Mq",
+      "task": "terminal-bench/protein-autointerp-disulfide",
+      "reward": 0.0,
+      "calls": {
+        "checks.final": null,
+        "microluna.local-score": null,
+        "verdict.combined": "pass",
+        "verdict.corroborated": "pass",
+        "readiness": null
+      },
+      "score": null,
+      "available": false,
+      "error": "No record",
+      "known_cost_usd": null,
+      "milliseconds": null
+    }
+  ]
+}
