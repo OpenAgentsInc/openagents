@@ -37,6 +37,17 @@ for every check:
 ./scripts/verify-rust.sh --keep-going              # record every phase, not just to first failure
 ```
 
+The cancellation fixtures require a current Python runtime. On macOS,
+Apple's system Python 3.9 fails their known-good runner; Python 3.13 passes
+the same check. Put the installed Homebrew runtime first for the gate:
+
+```sh
+export PATH="/opt/homebrew/opt/python@3.13/libexec/bin:$PATH"
+python3 --version
+```
+
+This selects the test runtime without changing the system interpreter.
+
 `--changed` maps `crates/<name>/` paths to packages, maps the data
 directories `coder` loads (`programs/`, `questions/`, `capabilities/`,
 `sources/`) to it, and escalates to the whole workspace when
