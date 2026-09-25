@@ -7,9 +7,11 @@ Updated on 2026-09-25 with candidate-review validation and its negative results.
 **Truthful checks still need confirmation.** Source review, whole-task assessment,
 observed-execution audits, and fitted combinations have not established an
 improvement in both fail precision and failure recall. The 317 historical trials
-are now development data. Fresh Luna and Astra candidates are being reviewed
-through bounded commands against their unchanged snapshots before grades are
-opened. See the [protocols, rejected alternatives, and implementation](2026-09-25-candidate-review-validation.md).
+are now development data. The sealed fresh evaluation has 16 candidates: Luna
+passes 0/8 and Astra 4/8. Executable review correctly detects 2/12 failures,
+versus 3/12 for existing checks; neither makes a false alarm in this small sample.
+Four CAD outcomes required verifier setup repairs on unchanged candidates.
+See the [full outcomes, uncertainty, costs, transcripts, and revised plan](2026-09-25-candidate-review-validation.md).
 [#9584](https://github.com/OpenAgentsInc/openagents/issues/9584) remains open;
 the [earlier report-evidence repair](2026-09-25-truthful-checks-microluna.md)
 remains useful independently of these rejected rules.

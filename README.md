@@ -205,8 +205,11 @@ noninteractive view. The plain `gym-terminal` command without
 The [candidate-review study](docs/terminal-bench/2026-09-25-candidate-review-validation.md)
 retains negative source, report, observed-execution, and fitted-model experiments.
 None has established better failure precision and recall. The historical 317
-trials are now development data. Fresh Luna and Astra candidates are undergoing
-an executable review before their grades are opened. #9584 remains open. The earlier
+trials are now development data. The sealed 16-candidate evaluation found two
+correct executable failure detections out of 12 failures; it did not beat the
+existing checks. Luna passed 0/8 and Astra 4/8, including four unchanged CAD
+candidates regraded after verifier setup repairs. Full transcripts, predictions,
+costs, and uncertainty are retained. #9584 remains open. The earlier
 [Microluna evidence repair](docs/terminal-bench/2026-09-25-truthful-checks-microluna.md)
 recovers selected reports and reviews of unchanged submitted files.
 

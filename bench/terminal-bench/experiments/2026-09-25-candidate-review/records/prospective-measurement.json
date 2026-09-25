@@ -1,0 +1,3762 @@
+{
+  "schema": "openagents.prospective-check-measurement.v1",
+  "prediction_sha256": "c93a61b90c4a823fb576ec19f0959aef27f4e156c9e34fcd9fd5e0bfb818510f",
+  "labels_sha256": "a44ff06dd7a6397f563a38072b095521bd7b80cbf9758ed3da7a19172f2ba17f",
+  "bootstrap_seed": 9584,
+  "bootstrap_resamples": 10000,
+  "all": {
+    "trials": 16,
+    "graded": 16,
+    "tasks": 8,
+    "passes": 4,
+    "failures": 12,
+    "unknown_outcomes": [],
+    "signals": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 3,
+          "total": 3,
+          "value": 1.0,
+          "wilson_95": [
+            0.43849391955098227,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 3,
+          "total": 12,
+          "value": 0.25,
+          "wilson_95": [
+            0.08894003962896138,
+            0.53231033912066
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 13
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 6,
+          "total": 6,
+          "value": 1.0,
+          "wilson_95": [
+            0.6096569663469354,
+            0.9999999999999999
+          ]
+        },
+        "failure_recall": {
+          "correct": 6,
+          "total": 12,
+          "value": 0.5,
+          "wilson_95": [
+            0.2537781703934222,
+            0.7462218296065778
+          ]
+        },
+        "pass_precision": {
+          "correct": 2,
+          "total": 5,
+          "value": 0.4,
+          "wilson_95": [
+            0.1176182311592533,
+            0.769280067791163
+          ]
+        },
+        "unknown": 5
+      },
+      "source-union-v1": {
+        "fail_precision": {
+          "correct": 4,
+          "total": 4,
+          "value": 1.0,
+          "wilson_95": [
+            0.5100999795960008,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 4,
+          "total": 12,
+          "value": 0.3333333333333333,
+          "wilson_95": [
+            0.13811783989736134,
+            0.609382412602386
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 12
+      },
+      "source-union-v2": {
+        "fail_precision": {
+          "correct": 7,
+          "total": 7,
+          "value": 1.0,
+          "wilson_95": [
+            0.6456611570247934,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 7,
+          "total": 12,
+          "value": 0.5833333333333334,
+          "wilson_95": [
+            0.3195073356553728,
+            0.8067425380947535
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 9
+      },
+      "verdict.agreement": {
+        "fail_precision": {
+          "correct": 6,
+          "total": 6,
+          "value": 1.0,
+          "wilson_95": [
+            0.6096569663469354,
+            0.9999999999999999
+          ]
+        },
+        "failure_recall": {
+          "correct": 6,
+          "total": 12,
+          "value": 0.5,
+          "wilson_95": [
+            0.2537781703934222,
+            0.7462218296065778
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 10
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 1,
+          "total": 12,
+          "value": 0.08333333333333333,
+          "wilson_95": [
+            0.014864709450773478,
+            0.35388592179859524
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 15
+      },
+      "verdict.fusion": {
+        "fail_precision": {
+          "correct": 8,
+          "total": 9,
+          "value": 0.8888888888888888,
+          "wilson_95": [
+            0.5649937852319399,
+            0.9801096286728695
+          ]
+        },
+        "failure_recall": {
+          "correct": 8,
+          "total": 12,
+          "value": 0.6666666666666666,
+          "wilson_95": [
+            0.3906175873976139,
+            0.8618821601026385
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 7
+      },
+      "verdict.pooled": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 12,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.2425007574992425
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 16
+      },
+      "verdict.reproduced": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 12,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.2425007574992425
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 16
+      },
+      "verdict.reproduced-quoted-v1": {
+        "fail_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 1,
+          "total": 12,
+          "value": 0.08333333333333333,
+          "wilson_95": [
+            0.014864709450773478,
+            0.35388592179859524
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 15
+      },
+      "verdict.reproduced-citations-v2": {
+        "fail_precision": {
+          "correct": 2,
+          "total": 2,
+          "value": 1.0,
+          "wilson_95": [
+            0.34237195288961925,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 2,
+          "total": 12,
+          "value": 0.16666666666666666,
+          "wilson_95": [
+            0.04696414761482223,
+            0.44803635738467273
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 14
+      }
+    },
+    "paired_task_bootstrap": {
+      "source-union-v1": {
+        "checks.final": {
+          "precision": {
+            "valid_resamples": 8956,
+            "undefined_resamples": 1044,
+            "percentile_95": [
+              0.0,
+              0.0
+            ]
+          },
+          "recall": {
+            "valid_resamples": 10000,
+            "undefined_resamples": 0,
+            "percentile_95": [
+              -0.2727272727272727,
+              0.46153846153846156
+            ]
+          }
+        },
+        "verdict.combined": {
+          "precision": {
+            "valid_resamples": 9951,
+            "undefined_resamples": 49,
+            "percentile_95": [
+              0.0,
+              0.0
+            ]
+          },
+          "recall": {
+            "valid_resamples": 10000,
+            "undefined_resamples": 0,
+            "percentile_95": [
+              -0.5454545454545455,
+              0.25
+            ]
+          }
+        }
+      },
+      "source-union-v2": {
+        "checks.final": {
+          "precision": {
+            "valid_resamples": 8988,
+            "undefined_resamples": 1012,
+            "percentile_95": [
+              0.0,
+              0.0
+            ]
+          },
+          "recall": {
+            "valid_resamples": 10000,
+            "undefined_resamples": 0,
+            "percentile_95": [
+              -0.08333333333333337,
+              0.7142857142857143
+            ]
+          }
+        },
+        "verdict.combined": {
+          "precision": {
+            "valid_resamples": 9989,
+            "undefined_resamples": 11,
+            "percentile_95": [
+              0.0,
+              0.0
+            ]
+          },
+          "recall": {
+            "valid_resamples": 10000,
+            "undefined_resamples": 0,
+            "percentile_95": [
+              -0.4166666666666667,
+              0.5454545454545454
+            ]
+          }
+        }
+      },
+      "verdict.agreement": {
+        "checks.final": {
+          "precision": {
+            "valid_resamples": 8988,
+            "undefined_resamples": 1012,
+            "percentile_95": [
+              0.0,
+              0.0
+            ]
+          },
+          "recall": {
+            "valid_resamples": 10000,
+            "undefined_resamples": 0,
+            "percentile_95": [
+              -0.09090909090909094,
+              0.5833333333333334
+            ]
+          }
+        },
+        "verdict.combined": {
+          "precision": {
+            "valid_resamples": 9989,
+            "undefined_resamples": 11,
+            "percentile_95": [
+              0.0,
+              0.0
+            ]
+          },
+          "recall": {
+            "valid_resamples": 10000,
+            "undefined_resamples": 0,
+            "percentile_95": [
+              -0.4444444444444445,
+              0.38461538461538464
+            ]
+          }
+        }
+      },
+      "verdict.observed": {
+        "checks.final": {
+          "precision": {
+            "valid_resamples": 5771,
+            "undefined_resamples": 4229,
+            "percentile_95": [
+              0.0,
+              0.0
+            ]
+          },
+          "recall": {
+            "valid_resamples": 10000,
+            "undefined_resamples": 0,
+            "percentile_95": [
+              -0.5454545454545454,
+              0.19999999999999998
+            ]
+          }
+        },
+        "verdict.combined": {
+          "precision": {
+            "valid_resamples": 6553,
+            "undefined_resamples": 3447,
+            "percentile_95": [
+              0.0,
+              0.0
+            ]
+          },
+          "recall": {
+            "valid_resamples": 10000,
+            "undefined_resamples": 0,
+            "percentile_95": [
+              -0.75,
+              -0.09999999999999998
+            ]
+          }
+        }
+      },
+      "verdict.fusion": {
+        "checks.final": {
+          "precision": {
+            "valid_resamples": 8995,
+            "undefined_resamples": 1005,
+            "percentile_95": [
+              -0.2857142857142857,
+              0.0
+            ]
+          },
+          "recall": {
+            "valid_resamples": 10000,
+            "undefined_resamples": 0,
+            "percentile_95": [
+              0.16666666666666663,
+              0.7000000000000001
+            ]
+          }
+        },
+        "verdict.combined": {
+          "precision": {
+            "valid_resamples": 9996,
+            "undefined_resamples": 4,
+            "percentile_95": [
+              -0.30000000000000004,
+              0.0
+            ]
+          },
+          "recall": {
+            "valid_resamples": 10000,
+            "undefined_resamples": 0,
+            "percentile_95": [
+              0.0,
+              0.4
+            ]
+          }
+        }
+      },
+      "verdict.pooled": {
+        "checks.final": {
+          "precision": {
+            "valid_resamples": 0,
+            "undefined_resamples": 10000,
+            "percentile_95": null
+          },
+          "recall": {
+            "valid_resamples": 10000,
+            "undefined_resamples": 0,
+            "percentile_95": [
+              -0.6,
+              0.0
+            ]
+          }
+        },
+        "verdict.combined": {
+          "precision": {
+            "valid_resamples": 0,
+            "undefined_resamples": 10000,
+            "percentile_95": null
+          },
+          "recall": {
+            "valid_resamples": 10000,
+            "undefined_resamples": 0,
+            "percentile_95": [
+              -0.8333333333333334,
+              -0.2
+            ]
+          }
+        }
+      },
+      "verdict.reproduced": {
+        "checks.final": {
+          "precision": {
+            "valid_resamples": 0,
+            "undefined_resamples": 10000,
+            "percentile_95": null
+          },
+          "recall": {
+            "valid_resamples": 10000,
+            "undefined_resamples": 0,
+            "percentile_95": [
+              -0.6,
+              0.0
+            ]
+          }
+        },
+        "verdict.combined": {
+          "precision": {
+            "valid_resamples": 0,
+            "undefined_resamples": 10000,
+            "percentile_95": null
+          },
+          "recall": {
+            "valid_resamples": 10000,
+            "undefined_resamples": 0,
+            "percentile_95": [
+              -0.8333333333333334,
+              -0.2
+            ]
+          }
+        }
+      },
+      "verdict.reproduced-quoted-v1": {
+        "checks.final": {
+          "precision": {
+            "valid_resamples": 5751,
+            "undefined_resamples": 4249,
+            "percentile_95": [
+              0.0,
+              0.0
+            ]
+          },
+          "recall": {
+            "valid_resamples": 10000,
+            "undefined_resamples": 0,
+            "percentile_95": [
+              -0.5833333333333333,
+              0.1818181818181818
+            ]
+          }
+        },
+        "verdict.combined": {
+          "precision": {
+            "valid_resamples": 6533,
+            "undefined_resamples": 3467,
+            "percentile_95": [
+              0.0,
+              0.0
+            ]
+          },
+          "recall": {
+            "valid_resamples": 10000,
+            "undefined_resamples": 0,
+            "percentile_95": [
+              -0.8333333333333334,
+              0.0
+            ]
+          }
+        }
+      },
+      "verdict.reproduced-citations-v2": {
+        "checks.final": {
+          "precision": {
+            "valid_resamples": 8005,
+            "undefined_resamples": 1995,
+            "percentile_95": [
+              0.0,
+              0.0
+            ]
+          },
+          "recall": {
+            "valid_resamples": 10000,
+            "undefined_resamples": 0,
+            "percentile_95": [
+              -0.5333333333333333,
+              0.3333333333333333
+            ]
+          }
+        },
+        "verdict.combined": {
+          "precision": {
+            "valid_resamples": 8958,
+            "undefined_resamples": 1042,
+            "percentile_95": [
+              0.0,
+              0.0
+            ]
+          },
+          "recall": {
+            "valid_resamples": 10000,
+            "undefined_resamples": 0,
+            "percentile_95": [
+              -0.8,
+              0.15384615384615385
+            ]
+          }
+        }
+      }
+    },
+    "false_alarms": {
+      "checks.final": [],
+      "verdict.combined": [],
+      "source-union-v1": [],
+      "source-union-v2": [],
+      "verdict.agreement": [],
+      "verdict.observed": [],
+      "verdict.fusion": [
+        "formal-crypto__iCSMsv3"
+      ],
+      "verdict.pooled": [],
+      "verdict.reproduced": [],
+      "verdict.reproduced-quoted-v1": [],
+      "verdict.reproduced-citations-v2": []
+    }
+  },
+  "by_executor": {
+    "astra": {
+      "trials": 8,
+      "graded": 8,
+      "tasks": 8,
+      "passes": 4,
+      "failures": 4,
+      "unknown_outcomes": [],
+      "signals": {
+        "checks.final": {
+          "fail_precision": {
+            "correct": 1,
+            "total": 1,
+            "value": 1.0,
+            "wilson_95": [
+              0.20654329147389294,
+              1
+            ]
+          },
+          "failure_recall": {
+            "correct": 1,
+            "total": 4,
+            "value": 0.25,
+            "wilson_95": [
+              0.045586062644636216,
+              0.6993639475573634
+            ]
+          },
+          "pass_precision": {
+            "correct": 0,
+            "total": 0,
+            "value": null,
+            "wilson_95": null
+          },
+          "unknown": 7
+        },
+        "verdict.combined": {
+          "fail_precision": {
+            "correct": 2,
+            "total": 2,
+            "value": 1.0,
+            "wilson_95": [
+              0.34237195288961925,
+              1
+            ]
+          },
+          "failure_recall": {
+            "correct": 2,
+            "total": 4,
+            "value": 0.5,
+            "wilson_95": [
+              0.15003570882017148,
+              0.8499642911798285
+            ]
+          },
+          "pass_precision": {
+            "correct": 2,
+            "total": 3,
+            "value": 0.6666666666666666,
+            "wilson_95": [
+              0.2076549551264879,
+              0.9385096847238394
+            ]
+          },
+          "unknown": 3
+        },
+        "source-union-v1": {
+          "fail_precision": {
+            "correct": 0,
+            "total": 0,
+            "value": null,
+            "wilson_95": null
+          },
+          "failure_recall": {
+            "correct": 0,
+            "total": 4,
+            "value": 0.0,
+            "wilson_95": [
+              0,
+              0.48990002040399916
+            ]
+          },
+          "pass_precision": {
+            "correct": 0,
+            "total": 0,
+            "value": null,
+            "wilson_95": null
+          },
+          "unknown": 8
+        },
+        "source-union-v2": {
+          "fail_precision": {
+            "correct": 2,
+            "total": 2,
+            "value": 1.0,
+            "wilson_95": [
+              0.34237195288961925,
+              1
+            ]
+          },
+          "failure_recall": {
+            "correct": 2,
+            "total": 4,
+            "value": 0.5,
+            "wilson_95": [
+              0.15003570882017148,
+              0.8499642911798285
+            ]
+          },
+          "pass_precision": {
+            "correct": 0,
+            "total": 0,
+            "value": null,
+            "wilson_95": null
+          },
+          "unknown": 6
+        },
+        "verdict.agreement": {
+          "fail_precision": {
+            "correct": 1,
+            "total": 1,
+            "value": 1.0,
+            "wilson_95": [
+              0.20654329147389294,
+              1
+            ]
+          },
+          "failure_recall": {
+            "correct": 1,
+            "total": 4,
+            "value": 0.25,
+            "wilson_95": [
+              0.045586062644636216,
+              0.6993639475573634
+            ]
+          },
+          "pass_precision": {
+            "correct": 0,
+            "total": 0,
+            "value": null,
+            "wilson_95": null
+          },
+          "unknown": 7
+        },
+        "verdict.observed": {
+          "fail_precision": {
+            "correct": 0,
+            "total": 0,
+            "value": null,
+            "wilson_95": null
+          },
+          "failure_recall": {
+            "correct": 0,
+            "total": 4,
+            "value": 0.0,
+            "wilson_95": [
+              0,
+              0.48990002040399916
+            ]
+          },
+          "pass_precision": {
+            "correct": 0,
+            "total": 0,
+            "value": null,
+            "wilson_95": null
+          },
+          "unknown": 8
+        },
+        "verdict.fusion": {
+          "fail_precision": {
+            "correct": 2,
+            "total": 3,
+            "value": 0.6666666666666666,
+            "wilson_95": [
+              0.2076549551264879,
+              0.9385096847238394
+            ]
+          },
+          "failure_recall": {
+            "correct": 2,
+            "total": 4,
+            "value": 0.5,
+            "wilson_95": [
+              0.15003570882017148,
+              0.8499642911798285
+            ]
+          },
+          "pass_precision": {
+            "correct": 0,
+            "total": 0,
+            "value": null,
+            "wilson_95": null
+          },
+          "unknown": 5
+        },
+        "verdict.pooled": {
+          "fail_precision": {
+            "correct": 0,
+            "total": 0,
+            "value": null,
+            "wilson_95": null
+          },
+          "failure_recall": {
+            "correct": 0,
+            "total": 4,
+            "value": 0.0,
+            "wilson_95": [
+              0,
+              0.48990002040399916
+            ]
+          },
+          "pass_precision": {
+            "correct": 0,
+            "total": 0,
+            "value": null,
+            "wilson_95": null
+          },
+          "unknown": 8
+        },
+        "verdict.reproduced": {
+          "fail_precision": {
+            "correct": 0,
+            "total": 0,
+            "value": null,
+            "wilson_95": null
+          },
+          "failure_recall": {
+            "correct": 0,
+            "total": 4,
+            "value": 0.0,
+            "wilson_95": [
+              0,
+              0.48990002040399916
+            ]
+          },
+          "pass_precision": {
+            "correct": 0,
+            "total": 0,
+            "value": null,
+            "wilson_95": null
+          },
+          "unknown": 8
+        },
+        "verdict.reproduced-quoted-v1": {
+          "fail_precision": {
+            "correct": 0,
+            "total": 0,
+            "value": null,
+            "wilson_95": null
+          },
+          "failure_recall": {
+            "correct": 0,
+            "total": 4,
+            "value": 0.0,
+            "wilson_95": [
+              0,
+              0.48990002040399916
+            ]
+          },
+          "pass_precision": {
+            "correct": 0,
+            "total": 0,
+            "value": null,
+            "wilson_95": null
+          },
+          "unknown": 8
+        },
+        "verdict.reproduced-citations-v2": {
+          "fail_precision": {
+            "correct": 0,
+            "total": 0,
+            "value": null,
+            "wilson_95": null
+          },
+          "failure_recall": {
+            "correct": 0,
+            "total": 4,
+            "value": 0.0,
+            "wilson_95": [
+              0,
+              0.48990002040399916
+            ]
+          },
+          "pass_precision": {
+            "correct": 0,
+            "total": 0,
+            "value": null,
+            "wilson_95": null
+          },
+          "unknown": 8
+        }
+      },
+      "paired_task_bootstrap": {
+        "source-union-v1": {
+          "checks.final": {
+            "precision": {
+              "valid_resamples": 0,
+              "undefined_resamples": 10000,
+              "percentile_95": null
+            },
+            "recall": {
+              "valid_resamples": 9966,
+              "undefined_resamples": 34,
+              "percentile_95": [
+                -0.75,
+                0.0
+              ]
+            }
+          },
+          "verdict.combined": {
+            "precision": {
+              "valid_resamples": 0,
+              "undefined_resamples": 10000,
+              "percentile_95": null
+            },
+            "recall": {
+              "valid_resamples": 9966,
+              "undefined_resamples": 34,
+              "percentile_95": [
+                -1.0,
+                0.0
+              ]
+            }
+          }
+        },
+        "source-union-v2": {
+          "checks.final": {
+            "precision": {
+              "valid_resamples": 6526,
+              "undefined_resamples": 3474,
+              "percentile_95": [
+                0.0,
+                0.0
+              ]
+            },
+            "recall": {
+              "valid_resamples": 9966,
+              "undefined_resamples": 34,
+              "percentile_95": [
+                0.0,
+                0.75
+              ]
+            }
+          },
+          "verdict.combined": {
+            "precision": {
+              "valid_resamples": 8209,
+              "undefined_resamples": 1791,
+              "percentile_95": [
+                0.0,
+                0.0
+              ]
+            },
+            "recall": {
+              "valid_resamples": 9966,
+              "undefined_resamples": 34,
+              "percentile_95": [
+                -0.75,
+                0.75
+              ]
+            }
+          }
+        },
+        "verdict.agreement": {
+          "checks.final": {
+            "precision": {
+              "valid_resamples": 6526,
+              "undefined_resamples": 3474,
+              "percentile_95": [
+                0.0,
+                0.0
+              ]
+            },
+            "recall": {
+              "valid_resamples": 9966,
+              "undefined_resamples": 34,
+              "percentile_95": [
+                0.0,
+                0.0
+              ]
+            }
+          },
+          "verdict.combined": {
+            "precision": {
+              "valid_resamples": 6526,
+              "undefined_resamples": 3474,
+              "percentile_95": [
+                0.0,
+                0.0
+              ]
+            },
+            "recall": {
+              "valid_resamples": 9966,
+              "undefined_resamples": 34,
+              "percentile_95": [
+                -0.75,
+                0.0
+              ]
+            }
+          }
+        },
+        "verdict.observed": {
+          "checks.final": {
+            "precision": {
+              "valid_resamples": 0,
+              "undefined_resamples": 10000,
+              "percentile_95": null
+            },
+            "recall": {
+              "valid_resamples": 9966,
+              "undefined_resamples": 34,
+              "percentile_95": [
+                -0.75,
+                0.0
+              ]
+            }
+          },
+          "verdict.combined": {
+            "precision": {
+              "valid_resamples": 0,
+              "undefined_resamples": 10000,
+              "percentile_95": null
+            },
+            "recall": {
+              "valid_resamples": 9966,
+              "undefined_resamples": 34,
+              "percentile_95": [
+                -1.0,
+                0.0
+              ]
+            }
+          }
+        },
+        "verdict.fusion": {
+          "checks.final": {
+            "precision": {
+              "valid_resamples": 6526,
+              "undefined_resamples": 3474,
+              "percentile_95": [
+                -0.6666666666666667,
+                0.0
+              ]
+            },
+            "recall": {
+              "valid_resamples": 9966,
+              "undefined_resamples": 34,
+              "percentile_95": [
+                0.0,
+                0.75
+              ]
+            }
+          },
+          "verdict.combined": {
+            "precision": {
+              "valid_resamples": 8997,
+              "undefined_resamples": 1003,
+              "percentile_95": [
+                -0.75,
+                0.0
+              ]
+            },
+            "recall": {
+              "valid_resamples": 9966,
+              "undefined_resamples": 34,
+              "percentile_95": [
+                0.0,
+                0.0
+              ]
+            }
+          }
+        },
+        "verdict.pooled": {
+          "checks.final": {
+            "precision": {
+              "valid_resamples": 0,
+              "undefined_resamples": 10000,
+              "percentile_95": null
+            },
+            "recall": {
+              "valid_resamples": 9966,
+              "undefined_resamples": 34,
+              "percentile_95": [
+                -0.75,
+                0.0
+              ]
+            }
+          },
+          "verdict.combined": {
+            "precision": {
+              "valid_resamples": 0,
+              "undefined_resamples": 10000,
+              "percentile_95": null
+            },
+            "recall": {
+              "valid_resamples": 9966,
+              "undefined_resamples": 34,
+              "percentile_95": [
+                -1.0,
+                0.0
+              ]
+            }
+          }
+        },
+        "verdict.reproduced": {
+          "checks.final": {
+            "precision": {
+              "valid_resamples": 0,
+              "undefined_resamples": 10000,
+              "percentile_95": null
+            },
+            "recall": {
+              "valid_resamples": 9966,
+              "undefined_resamples": 34,
+              "percentile_95": [
+                -0.75,
+                0.0
+              ]
+            }
+          },
+          "verdict.combined": {
+            "precision": {
+              "valid_resamples": 0,
+              "undefined_resamples": 10000,
+              "percentile_95": null
+            },
+            "recall": {
+              "valid_resamples": 9966,
+              "undefined_resamples": 34,
+              "percentile_95": [
+                -1.0,
+                0.0
+              ]
+            }
+          }
+        },
+        "verdict.reproduced-quoted-v1": {
+          "checks.final": {
+            "precision": {
+              "valid_resamples": 0,
+              "undefined_resamples": 10000,
+              "percentile_95": null
+            },
+            "recall": {
+              "valid_resamples": 9966,
+              "undefined_resamples": 34,
+              "percentile_95": [
+                -0.75,
+                0.0
+              ]
+            }
+          },
+          "verdict.combined": {
+            "precision": {
+              "valid_resamples": 0,
+              "undefined_resamples": 10000,
+              "percentile_95": null
+            },
+            "recall": {
+              "valid_resamples": 9966,
+              "undefined_resamples": 34,
+              "percentile_95": [
+                -1.0,
+                0.0
+              ]
+            }
+          }
+        },
+        "verdict.reproduced-citations-v2": {
+          "checks.final": {
+            "precision": {
+              "valid_resamples": 0,
+              "undefined_resamples": 10000,
+              "percentile_95": null
+            },
+            "recall": {
+              "valid_resamples": 9966,
+              "undefined_resamples": 34,
+              "percentile_95": [
+                -0.75,
+                0.0
+              ]
+            }
+          },
+          "verdict.combined": {
+            "precision": {
+              "valid_resamples": 0,
+              "undefined_resamples": 10000,
+              "percentile_95": null
+            },
+            "recall": {
+              "valid_resamples": 9966,
+              "undefined_resamples": 34,
+              "percentile_95": [
+                -1.0,
+                0.0
+              ]
+            }
+          }
+        }
+      },
+      "false_alarms": {
+        "checks.final": [],
+        "verdict.combined": [],
+        "source-union-v1": [],
+        "source-union-v2": [],
+        "verdict.agreement": [],
+        "verdict.observed": [],
+        "verdict.fusion": [
+          "formal-crypto__iCSMsv3"
+        ],
+        "verdict.pooled": [],
+        "verdict.reproduced": [],
+        "verdict.reproduced-quoted-v1": [],
+        "verdict.reproduced-citations-v2": []
+      }
+    },
+    "luna": {
+      "trials": 8,
+      "graded": 8,
+      "tasks": 8,
+      "passes": 0,
+      "failures": 8,
+      "unknown_outcomes": [],
+      "signals": {
+        "checks.final": {
+          "fail_precision": {
+            "correct": 2,
+            "total": 2,
+            "value": 1.0,
+            "wilson_95": [
+              0.34237195288961925,
+              1
+            ]
+          },
+          "failure_recall": {
+            "correct": 2,
+            "total": 8,
+            "value": 0.25,
+            "wilson_95": [
+              0.07147768885802763,
+              0.5907301208974108
+            ]
+          },
+          "pass_precision": {
+            "correct": 0,
+            "total": 0,
+            "value": null,
+            "wilson_95": null
+          },
+          "unknown": 6
+        },
+        "verdict.combined": {
+          "fail_precision": {
+            "correct": 4,
+            "total": 4,
+            "value": 1.0,
+            "wilson_95": [
+              0.5100999795960008,
+              1
+            ]
+          },
+          "failure_recall": {
+            "correct": 4,
+            "total": 8,
+            "value": 0.5,
+            "wilson_95": [
+              0.21521252682444186,
+              0.7847874731755582
+            ]
+          },
+          "pass_precision": {
+            "correct": 0,
+            "total": 2,
+            "value": 0.0,
+            "wilson_95": [
+              0,
+              0.6576280471103807
+            ]
+          },
+          "unknown": 2
+        },
+        "source-union-v1": {
+          "fail_precision": {
+            "correct": 4,
+            "total": 4,
+            "value": 1.0,
+            "wilson_95": [
+              0.5100999795960008,
+              1
+            ]
+          },
+          "failure_recall": {
+            "correct": 4,
+            "total": 8,
+            "value": 0.5,
+            "wilson_95": [
+              0.21521252682444186,
+              0.7847874731755582
+            ]
+          },
+          "pass_precision": {
+            "correct": 0,
+            "total": 0,
+            "value": null,
+            "wilson_95": null
+          },
+          "unknown": 4
+        },
+        "source-union-v2": {
+          "fail_precision": {
+            "correct": 5,
+            "total": 5,
+            "value": 1.0,
+            "wilson_95": [
+              0.5655085052479191,
+              1
+            ]
+          },
+          "failure_recall": {
+            "correct": 5,
+            "total": 8,
+            "value": 0.625,
+            "wilson_95": [
+              0.30573785458380187,
+              0.863158240538479
+            ]
+          },
+          "pass_precision": {
+            "correct": 0,
+            "total": 0,
+            "value": null,
+            "wilson_95": null
+          },
+          "unknown": 3
+        },
+        "verdict.agreement": {
+          "fail_precision": {
+            "correct": 5,
+            "total": 5,
+            "value": 1.0,
+            "wilson_95": [
+              0.5655085052479191,
+              1
+            ]
+          },
+          "failure_recall": {
+            "correct": 5,
+            "total": 8,
+            "value": 0.625,
+            "wilson_95": [
+              0.30573785458380187,
+              0.863158240538479
+            ]
+          },
+          "pass_precision": {
+            "correct": 0,
+            "total": 0,
+            "value": null,
+            "wilson_95": null
+          },
+          "unknown": 3
+        },
+        "verdict.observed": {
+          "fail_precision": {
+            "correct": 1,
+            "total": 1,
+            "value": 1.0,
+            "wilson_95": [
+              0.20654329147389294,
+              1
+            ]
+          },
+          "failure_recall": {
+            "correct": 1,
+            "total": 8,
+            "value": 0.125,
+            "wilson_95": [
+              0.02241690886329617,
+              0.4708948057698615
+            ]
+          },
+          "pass_precision": {
+            "correct": 0,
+            "total": 0,
+            "value": null,
+            "wilson_95": null
+          },
+          "unknown": 7
+        },
+        "verdict.fusion": {
+          "fail_precision": {
+            "correct": 6,
+            "total": 6,
+            "value": 1.0,
+            "wilson_95": [
+              0.6096569663469354,
+              0.9999999999999999
+            ]
+          },
+          "failure_recall": {
+            "correct": 6,
+            "total": 8,
+            "value": 0.75,
+            "wilson_95": [
+              0.40926987910258916,
+              0.9285223111419724
+            ]
+          },
+          "pass_precision": {
+            "correct": 0,
+            "total": 0,
+            "value": null,
+            "wilson_95": null
+          },
+          "unknown": 2
+        },
+        "verdict.pooled": {
+          "fail_precision": {
+            "correct": 0,
+            "total": 0,
+            "value": null,
+            "wilson_95": null
+          },
+          "failure_recall": {
+            "correct": 0,
+            "total": 8,
+            "value": 0.0,
+            "wilson_95": [
+              0,
+              0.3244156195108769
+            ]
+          },
+          "pass_precision": {
+            "correct": 0,
+            "total": 0,
+            "value": null,
+            "wilson_95": null
+          },
+          "unknown": 8
+        },
+        "verdict.reproduced": {
+          "fail_precision": {
+            "correct": 0,
+            "total": 0,
+            "value": null,
+            "wilson_95": null
+          },
+          "failure_recall": {
+            "correct": 0,
+            "total": 8,
+            "value": 0.0,
+            "wilson_95": [
+              0,
+              0.3244156195108769
+            ]
+          },
+          "pass_precision": {
+            "correct": 0,
+            "total": 0,
+            "value": null,
+            "wilson_95": null
+          },
+          "unknown": 8
+        },
+        "verdict.reproduced-quoted-v1": {
+          "fail_precision": {
+            "correct": 1,
+            "total": 1,
+            "value": 1.0,
+            "wilson_95": [
+              0.20654329147389294,
+              1
+            ]
+          },
+          "failure_recall": {
+            "correct": 1,
+            "total": 8,
+            "value": 0.125,
+            "wilson_95": [
+              0.02241690886329617,
+              0.4708948057698615
+            ]
+          },
+          "pass_precision": {
+            "correct": 0,
+            "total": 0,
+            "value": null,
+            "wilson_95": null
+          },
+          "unknown": 7
+        },
+        "verdict.reproduced-citations-v2": {
+          "fail_precision": {
+            "correct": 2,
+            "total": 2,
+            "value": 1.0,
+            "wilson_95": [
+              0.34237195288961925,
+              1
+            ]
+          },
+          "failure_recall": {
+            "correct": 2,
+            "total": 8,
+            "value": 0.25,
+            "wilson_95": [
+              0.07147768885802763,
+              0.5907301208974108
+            ]
+          },
+          "pass_precision": {
+            "correct": 0,
+            "total": 0,
+            "value": null,
+            "wilson_95": null
+          },
+          "unknown": 6
+        }
+      },
+      "paired_task_bootstrap": {
+        "source-union-v1": {
+          "checks.final": {
+            "precision": {
+              "valid_resamples": 8956,
+              "undefined_resamples": 1044,
+              "percentile_95": [
+                0.0,
+                0.0
+              ]
+            },
+            "recall": {
+              "valid_resamples": 10000,
+              "undefined_resamples": 0,
+              "percentile_95": [
+                -0.25,
+                0.75
+              ]
+            }
+          },
+          "verdict.combined": {
+            "precision": {
+              "valid_resamples": 9922,
+              "undefined_resamples": 78,
+              "percentile_95": [
+                0.0,
+                0.0
+              ]
+            },
+            "recall": {
+              "valid_resamples": 10000,
+              "undefined_resamples": 0,
+              "percentile_95": [
+                -0.5,
+                0.5
+              ]
+            }
+          }
+        },
+        "source-union-v2": {
+          "checks.final": {
+            "precision": {
+              "valid_resamples": 8988,
+              "undefined_resamples": 1012,
+              "percentile_95": [
+                0.0,
+                0.0
+              ]
+            },
+            "recall": {
+              "valid_resamples": 10000,
+              "undefined_resamples": 0,
+              "percentile_95": [
+                -0.125,
+                0.875
+              ]
+            }
+          },
+          "verdict.combined": {
+            "precision": {
+              "valid_resamples": 9960,
+              "undefined_resamples": 40,
+              "percentile_95": [
+                0.0,
+                0.0
+              ]
+            },
+            "recall": {
+              "valid_resamples": 10000,
+              "undefined_resamples": 0,
+              "percentile_95": [
+                -0.375,
+                0.625
+              ]
+            }
+          }
+        },
+        "verdict.agreement": {
+          "checks.final": {
+            "precision": {
+              "valid_resamples": 8988,
+              "undefined_resamples": 1012,
+              "percentile_95": [
+                0.0,
+                0.0
+              ]
+            },
+            "recall": {
+              "valid_resamples": 10000,
+              "undefined_resamples": 0,
+              "percentile_95": [
+                -0.125,
+                0.875
+              ]
+            }
+          },
+          "verdict.combined": {
+            "precision": {
+              "valid_resamples": 9960,
+              "undefined_resamples": 40,
+              "percentile_95": [
+                0.0,
+                0.0
+              ]
+            },
+            "recall": {
+              "valid_resamples": 10000,
+              "undefined_resamples": 0,
+              "percentile_95": [
+                -0.375,
+                0.625
+              ]
+            }
+          }
+        },
+        "verdict.observed": {
+          "checks.final": {
+            "precision": {
+              "valid_resamples": 5771,
+              "undefined_resamples": 4229,
+              "percentile_95": [
+                0.0,
+                0.0
+              ]
+            },
+            "recall": {
+              "valid_resamples": 10000,
+              "undefined_resamples": 0,
+              "percentile_95": [
+                -0.5,
+                0.25
+              ]
+            }
+          },
+          "verdict.combined": {
+            "precision": {
+              "valid_resamples": 6553,
+              "undefined_resamples": 3447,
+              "percentile_95": [
+                0.0,
+                0.0
+              ]
+            },
+            "recall": {
+              "valid_resamples": 10000,
+              "undefined_resamples": 0,
+              "percentile_95": [
+                -0.75,
+                -0.125
+              ]
+            }
+          }
+        },
+        "verdict.fusion": {
+          "checks.final": {
+            "precision": {
+              "valid_resamples": 8995,
+              "undefined_resamples": 1005,
+              "percentile_95": [
+                0.0,
+                0.0
+              ]
+            },
+            "recall": {
+              "valid_resamples": 10000,
+              "undefined_resamples": 0,
+              "percentile_95": [
+                0.125,
+                0.875
+              ]
+            }
+          },
+          "verdict.combined": {
+            "precision": {
+              "valid_resamples": 9967,
+              "undefined_resamples": 33,
+              "percentile_95": [
+                0.0,
+                0.0
+              ]
+            },
+            "recall": {
+              "valid_resamples": 10000,
+              "undefined_resamples": 0,
+              "percentile_95": [
+                0.0,
+                0.625
+              ]
+            }
+          }
+        },
+        "verdict.pooled": {
+          "checks.final": {
+            "precision": {
+              "valid_resamples": 0,
+              "undefined_resamples": 10000,
+              "percentile_95": null
+            },
+            "recall": {
+              "valid_resamples": 10000,
+              "undefined_resamples": 0,
+              "percentile_95": [
+                -0.625,
+                0.0
+              ]
+            }
+          },
+          "verdict.combined": {
+            "precision": {
+              "valid_resamples": 0,
+              "undefined_resamples": 10000,
+              "percentile_95": null
+            },
+            "recall": {
+              "valid_resamples": 10000,
+              "undefined_resamples": 0,
+              "percentile_95": [
+                -0.875,
+                -0.125
+              ]
+            }
+          }
+        },
+        "verdict.reproduced": {
+          "checks.final": {
+            "precision": {
+              "valid_resamples": 0,
+              "undefined_resamples": 10000,
+              "percentile_95": null
+            },
+            "recall": {
+              "valid_resamples": 10000,
+              "undefined_resamples": 0,
+              "percentile_95": [
+                -0.625,
+                0.0
+              ]
+            }
+          },
+          "verdict.combined": {
+            "precision": {
+              "valid_resamples": 0,
+              "undefined_resamples": 10000,
+              "percentile_95": null
+            },
+            "recall": {
+              "valid_resamples": 10000,
+              "undefined_resamples": 0,
+              "percentile_95": [
+                -0.875,
+                -0.125
+              ]
+            }
+          }
+        },
+        "verdict.reproduced-quoted-v1": {
+          "checks.final": {
+            "precision": {
+              "valid_resamples": 5751,
+              "undefined_resamples": 4249,
+              "percentile_95": [
+                0.0,
+                0.0
+              ]
+            },
+            "recall": {
+              "valid_resamples": 10000,
+              "undefined_resamples": 0,
+              "percentile_95": [
+                -0.5,
+                0.25
+              ]
+            }
+          },
+          "verdict.combined": {
+            "precision": {
+              "valid_resamples": 6505,
+              "undefined_resamples": 3495,
+              "percentile_95": [
+                0.0,
+                0.0
+              ]
+            },
+            "recall": {
+              "valid_resamples": 10000,
+              "undefined_resamples": 0,
+              "percentile_95": [
+                -0.875,
+                0.125
+              ]
+            }
+          }
+        },
+        "verdict.reproduced-citations-v2": {
+          "checks.final": {
+            "precision": {
+              "valid_resamples": 8005,
+              "undefined_resamples": 1995,
+              "percentile_95": [
+                0.0,
+                0.0
+              ]
+            },
+            "recall": {
+              "valid_resamples": 10000,
+              "undefined_resamples": 0,
+              "percentile_95": [
+                -0.5,
+                0.5
+              ]
+            }
+          },
+          "verdict.combined": {
+            "precision": {
+              "valid_resamples": 8929,
+              "undefined_resamples": 1071,
+              "percentile_95": [
+                0.0,
+                0.0
+              ]
+            },
+            "recall": {
+              "valid_resamples": 10000,
+              "undefined_resamples": 0,
+              "percentile_95": [
+                -0.75,
+                0.375
+              ]
+            }
+          }
+        }
+      },
+      "false_alarms": {
+        "checks.final": [],
+        "verdict.combined": [],
+        "source-union-v1": [],
+        "source-union-v2": [],
+        "verdict.agreement": [],
+        "verdict.observed": [],
+        "verdict.fusion": [],
+        "verdict.pooled": [],
+        "verdict.reproduced": [],
+        "verdict.reproduced-quoted-v1": [],
+        "verdict.reproduced-citations-v2": []
+      }
+    }
+  },
+  "within_task": {
+    "terminal-bench/formal-crypto": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 2
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      },
+      "source-union-v1": {
+        "fail_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      },
+      "source-union-v2": {
+        "fail_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      },
+      "verdict.agreement": {
+        "fail_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      },
+      "verdict.fusion": {
+        "fail_precision": {
+          "correct": 1,
+          "total": 2,
+          "value": 0.5,
+          "wilson_95": [
+            0.09452865480086614,
+            0.9054713451991339
+          ]
+        },
+        "failure_recall": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 0
+      },
+      "verdict.pooled": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 2
+      },
+      "verdict.reproduced": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 2
+      },
+      "verdict.reproduced-quoted-v1": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 2
+      },
+      "verdict.reproduced-citations-v2": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 2
+      }
+    },
+    "terminal-bench/freecad-spring-clip": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 2
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 1,
+          "total": 2,
+          "value": 0.5,
+          "wilson_95": [
+            0.09452865480086614,
+            0.9054713451991339
+          ]
+        },
+        "unknown": 0
+      },
+      "source-union-v1": {
+        "fail_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      },
+      "source-union-v2": {
+        "fail_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      },
+      "verdict.agreement": {
+        "fail_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 2
+      },
+      "verdict.fusion": {
+        "fail_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      },
+      "verdict.pooled": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 2
+      },
+      "verdict.reproduced": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 2
+      },
+      "verdict.reproduced-quoted-v1": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 2
+      },
+      "verdict.reproduced-citations-v2": {
+        "fail_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      }
+    },
+    "terminal-bench/shadow-relay": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "pass_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "unknown": 0
+      },
+      "source-union-v1": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 2
+      },
+      "source-union-v2": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 2
+      },
+      "verdict.agreement": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 2
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 2
+      },
+      "verdict.fusion": {
+        "fail_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      },
+      "verdict.pooled": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 2
+      },
+      "verdict.reproduced": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 2
+      },
+      "verdict.reproduced-quoted-v1": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 2
+      },
+      "verdict.reproduced-citations-v2": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 2
+      }
+    },
+    "terminal-bench/vpp-loss-divergence": {
+      "checks.final": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 2
+      },
+      "verdict.combined": {
+        "fail_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      },
+      "source-union-v1": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 2
+      },
+      "source-union-v2": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 2
+      },
+      "verdict.agreement": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 2
+      },
+      "verdict.observed": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 2
+      },
+      "verdict.fusion": {
+        "fail_precision": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "failure_recall": {
+          "correct": 1,
+          "total": 1,
+          "value": 1.0,
+          "wilson_95": [
+            0.20654329147389294,
+            1
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 1
+      },
+      "verdict.pooled": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 2
+      },
+      "verdict.reproduced": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 2
+      },
+      "verdict.reproduced-quoted-v1": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 2
+      },
+      "verdict.reproduced-citations-v2": {
+        "fail_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "failure_recall": {
+          "correct": 0,
+          "total": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0,
+            0.7934567085261071
+          ]
+        },
+        "pass_precision": {
+          "correct": 0,
+          "total": 0,
+          "value": null,
+          "wilson_95": null
+        },
+        "unknown": 2
+      }
+    }
+  },
+  "notes": [
+    "Predictions were sealed before the original outcome join.",
+    "Environment-only regrades preserve all original unknown outcomes and candidate identities.",
+    "Wilson intervals are descriptive trial-level intervals; paired intervals resample whole tasks.",
+    "Undefined bootstrap precision is counted, not assigned zero.",
+    "Eight task groups and one attempt per executor per task limit generalization.",
+    "These outcomes are now development evidence for any later change to a rule."
+  ],
+  "predictions": [
+    {
+      "job": "tb4--coder-one-microluna-truth-confirmation--distributed-dedup--9584-r1",
+      "trial": "distributed-dedup__vSURoBk",
+      "task": "terminal-bench/distributed-dedup",
+      "executor": "luna",
+      "calls": {
+        "checks.final": null,
+        "verdict.combined": null,
+        "source-union-v1": null,
+        "source-union-v2": "fail",
+        "verdict.agreement": "fail",
+        "verdict.observed": null,
+        "verdict.fusion": null,
+        "verdict.pooled": null,
+        "verdict.reproduced": null,
+        "verdict.reproduced-quoted-v1": null,
+        "verdict.reproduced-citations-v2": null
+      },
+      "reward": 0.0,
+      "original_outcome": {
+        "job": "tb4--coder-one-microluna-truth-confirmation--distributed-dedup--9584-r1",
+        "trial": "distributed-dedup__vSURoBk",
+        "task": "terminal-bench/distributed-dedup",
+        "executor": "luna",
+        "reward": 0.0,
+        "exception_type": null,
+        "result_sha256": "853ea77bb23aefa348623c58142a063f6307934fbe6857d82f70f1b44e6fdbc4"
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-truth-confirmation--formal-crypto--9584-r1",
+      "trial": "formal-crypto__DjBPnEM",
+      "task": "terminal-bench/formal-crypto",
+      "executor": "luna",
+      "calls": {
+        "checks.final": null,
+        "verdict.combined": "fail",
+        "source-union-v1": "fail",
+        "source-union-v2": "fail",
+        "verdict.agreement": "fail",
+        "verdict.observed": "fail",
+        "verdict.fusion": "fail",
+        "verdict.pooled": null,
+        "verdict.reproduced": null,
+        "verdict.reproduced-quoted-v1": null,
+        "verdict.reproduced-citations-v2": null
+      },
+      "reward": 0.0,
+      "original_outcome": {
+        "job": "tb4--coder-one-microluna-truth-confirmation--formal-crypto--9584-r1",
+        "trial": "formal-crypto__DjBPnEM",
+        "task": "terminal-bench/formal-crypto",
+        "executor": "luna",
+        "reward": 0.0,
+        "exception_type": null,
+        "result_sha256": "7f7ad4e910df3d61d18a9d2121da497ad9c67e4b51a393945572b8f3c66a49c2"
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-truth-confirmation--freecad-impeller--9584-r1",
+      "trial": "freecad-impeller__wy7yRPQ",
+      "task": "terminal-bench/freecad-impeller",
+      "executor": "luna",
+      "calls": {
+        "checks.final": null,
+        "verdict.combined": "pass",
+        "source-union-v1": "fail",
+        "source-union-v2": "fail",
+        "verdict.agreement": "fail",
+        "verdict.observed": null,
+        "verdict.fusion": "fail",
+        "verdict.pooled": null,
+        "verdict.reproduced": null,
+        "verdict.reproduced-quoted-v1": "fail",
+        "verdict.reproduced-citations-v2": "fail"
+      },
+      "reward": 0.0,
+      "original_outcome": {
+        "job": "tb4--coder-one-microluna-truth-confirmation--freecad-impeller--9584-r1",
+        "trial": "freecad-impeller__wy7yRPQ",
+        "task": "terminal-bench/freecad-impeller",
+        "executor": "luna",
+        "reward": null,
+        "exception_type": "RuntimeError",
+        "result_sha256": "87520b815b9820b2a3e1273ec5607818ed38bfb58db4e61965c0e8cf3b4f9189"
+      },
+      "regrade": {
+        "job": "tb4--coder-one-microluna-truth-confirmation--freecad-impeller--9584-r1",
+        "trial": "freecad-impeller__wy7yRPQ",
+        "task": "terminal-bench/freecad-impeller",
+        "executor": "luna",
+        "original_reward": null,
+        "original_result_sha256": "87520b815b9820b2a3e1273ec5607818ed38bfb58db4e61965c0e8cf3b4f9189",
+        "snapshot": {
+          "snapshot": {
+            "schema": "openagents.coder-one.snapshot.v1",
+            "stage": "post-executor",
+            "workdir": "/app",
+            "outside": [],
+            "policy": {
+              "max_mb": 128,
+              "max_files": 20000
+            },
+            "subject": "snapshot/subject.json",
+            "archive": {
+              "path": "snapshot/workspace.tar.gz",
+              "bytes": 600315,
+              "sha256": "857ba0e54cc9eefc86c4d1b740fe950065206ead34b31ea5984ebec19f2fa437",
+              "paths": [
+                "app"
+              ]
+            },
+            "taken": true,
+            "files": 6,
+            "bytes": 613737,
+            "elapsed_ms": 25
+          },
+          "composition_sha256": "b5b7d4b3c3b35f762c154bdc08b9121f017f30ce9a3fd1bcfe9bf6913ae4bda9",
+          "collected_files": {
+            "/app/answer.py": "989c582f7f6c644182ba632536ca417fbd099010faf005b94c791eded1a10fa3",
+            "/app/answer_base.FCStd": "6641eaf393d3c25b97a7f9044ce982ff8537f9649d4535cacae130b67c2cd811",
+            "/app/answer_edit.FCStd": "46c8e331c9c891ce0670cf3e31682a27eac0d52007e2af7edcac8d742eed1e80"
+          },
+          "files": {
+            "app/__pycache__/answer.cpython-311.pyc": "64406d56f11af7896dd3d4c001e2e0ebf30104931ea551af789aba73c92496fc",
+            "app/answer.py": "989c582f7f6c644182ba632536ca417fbd099010faf005b94c791eded1a10fa3",
+            "app/answer_base.20260925-025147.FCBak": "646849932936506f830497664802c3fd87f93a0cd01dffc50d8f371fbb85ac80",
+            "app/answer_base.FCStd": "6641eaf393d3c25b97a7f9044ce982ff8537f9649d4535cacae130b67c2cd811",
+            "app/answer_edit.20260925-025150.FCBak": "df007b10712b22c745640a3676298438a0640e6c981e346ea0b81730e783d0c4",
+            "app/answer_edit.FCStd": "46c8e331c9c891ce0670cf3e31682a27eac0d52007e2af7edcac8d742eed1e80"
+          }
+        },
+        "result": {
+          "reward": 0.0,
+          "rewards": {
+            "reward": 0.0
+          },
+          "exit": 0,
+          "exception": null,
+          "message": null,
+          "image_cache": "cold",
+          "trial_dir": "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/cad-regrade-v2/freecad-impeller__wy7yRPQ/verify__71dfd86",
+          "stdout_tail": null
+        },
+        "seconds": 166.2298934509745,
+        "record_sha256": "51cc7e4c3a1c1d1dea7f99401d4f0976b1f602ff2d65ebe2d81f5f16a6028990"
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-truth-confirmation--freecad-spring-clip--9584-r1",
+      "trial": "freecad-spring-clip__TSfGK3H",
+      "task": "terminal-bench/freecad-spring-clip",
+      "executor": "luna",
+      "calls": {
+        "checks.final": null,
+        "verdict.combined": "pass",
+        "source-union-v1": "fail",
+        "source-union-v2": "fail",
+        "verdict.agreement": "fail",
+        "verdict.observed": null,
+        "verdict.fusion": "fail",
+        "verdict.pooled": null,
+        "verdict.reproduced": null,
+        "verdict.reproduced-quoted-v1": null,
+        "verdict.reproduced-citations-v2": "fail"
+      },
+      "reward": 0.0,
+      "original_outcome": {
+        "job": "tb4--coder-one-microluna-truth-confirmation--freecad-spring-clip--9584-r1",
+        "trial": "freecad-spring-clip__TSfGK3H",
+        "task": "terminal-bench/freecad-spring-clip",
+        "executor": "luna",
+        "reward": null,
+        "exception_type": "RuntimeError",
+        "result_sha256": "444d533e2e23e826e061e12f798200259efbaa2c7ffd1d97cffeb8d793397c15"
+      },
+      "regrade": {
+        "job": "tb4--coder-one-microluna-truth-confirmation--freecad-spring-clip--9584-r1",
+        "trial": "freecad-spring-clip__TSfGK3H",
+        "task": "terminal-bench/freecad-spring-clip",
+        "executor": "luna",
+        "original_reward": null,
+        "original_result_sha256": "444d533e2e23e826e061e12f798200259efbaa2c7ffd1d97cffeb8d793397c15",
+        "snapshot": {
+          "snapshot": {
+            "schema": "openagents.coder-one.snapshot.v1",
+            "stage": "post-executor",
+            "workdir": "/app",
+            "outside": [],
+            "policy": {
+              "max_mb": 128,
+              "max_files": 20000
+            },
+            "subject": "snapshot/subject.json",
+            "archive": {
+              "path": "snapshot/workspace.tar.gz",
+              "bytes": 33519,
+              "sha256": "4a8603449f76ed7a0320bfa0da988bed41bb88f876671db52a80e54357041fdc",
+              "paths": [
+                "app"
+              ]
+            },
+            "taken": true,
+            "files": 8,
+            "bytes": 54079,
+            "elapsed_ms": 50
+          },
+          "composition_sha256": "0fede2687125b7055498c26acf3e79c54dec9cf844363f34444b4840cfb9bc13",
+          "collected_files": {
+            "/app/answer.py": "e07f1e542f7fbf12372b6d4f7a5a3a9e10285373a8a6060a5c8ead159677e5d6",
+            "/app/answer_base.FCStd": "1de53c26da64efdc3fc0a3d037d7e29d480287fff1ec44861e224dc14d25b092",
+            "/app/answer_edit.FCStd": "0c83c1a300df913bc870d3d49412cb59e44d6973fe3bbe0824f0745a53176823"
+          },
+          "files": {
+            "app/__pycache__/answer.cpython-311.pyc": "d5b62e45392917ae4af2b495a0d59d36ffc825e691c78f0a3103b7294a8f6f84",
+            "app/__pycache__/check.cpython-311.pyc": "c7eb3eaffdbffc4bc023e69f22db2cc582f249002e60c1147f6e556dd5c82bfd",
+            "app/__pycache__/vals.cpython-311.pyc": "591e44dca1690306eff85664dcad66f5f80375b53ee1e5be98f7a117470adf3e",
+            "app/answer.py": "e07f1e542f7fbf12372b6d4f7a5a3a9e10285373a8a6060a5c8ead159677e5d6",
+            "app/answer_base.20260925-025903.FCBak": "ddca48f6997cca80478e656c8fe4d8db63bcbf4a4acae4f6d2b7d175654c2a8e",
+            "app/answer_base.FCStd": "1de53c26da64efdc3fc0a3d037d7e29d480287fff1ec44861e224dc14d25b092",
+            "app/answer_edit.20260925-025903.FCBak": "6b95e314b88a4df6e948d5f59cda5d8431275f417109c646524b6f22f42be92c",
+            "app/answer_edit.FCStd": "0c83c1a300df913bc870d3d49412cb59e44d6973fe3bbe0824f0745a53176823"
+          }
+        },
+        "result": {
+          "reward": 0.0,
+          "rewards": {
+            "reward": 0.0
+          },
+          "exit": 0,
+          "exception": null,
+          "message": null,
+          "image_cache": "cold",
+          "trial_dir": "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/cad-regrade-v2/freecad-spring-clip__TSfGK3H/verify__e5d7133",
+          "stdout_tail": null
+        },
+        "seconds": 165.73890131898224,
+        "record_sha256": "68bbf5758c515fedf7a455a2de2e3f05653e0c989c25df101f2a5813dbf96ee2"
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-truth-confirmation--math-eval-grader--9584-r1",
+      "trial": "math-eval-grader__8VqJfiN",
+      "task": "terminal-bench/math-eval-grader",
+      "executor": "luna",
+      "calls": {
+        "checks.final": "fail",
+        "verdict.combined": "fail",
+        "source-union-v1": "fail",
+        "source-union-v2": "fail",
+        "verdict.agreement": "fail",
+        "verdict.observed": null,
+        "verdict.fusion": "fail",
+        "verdict.pooled": null,
+        "verdict.reproduced": null,
+        "verdict.reproduced-quoted-v1": null,
+        "verdict.reproduced-citations-v2": null
+      },
+      "reward": 0.0,
+      "original_outcome": {
+        "job": "tb4--coder-one-microluna-truth-confirmation--math-eval-grader--9584-r1",
+        "trial": "math-eval-grader__8VqJfiN",
+        "task": "terminal-bench/math-eval-grader",
+        "executor": "luna",
+        "reward": 0.0,
+        "exception_type": null,
+        "result_sha256": "94e777c3021d4ff1b7e9f87f1f03c23404ee41445d760646fad5c2e7553b19d8"
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-truth-confirmation--pretrain-shard-corruption--9584-r1",
+      "trial": "pretrain-shard-corruption__ZeirVXN",
+      "task": "terminal-bench/pretrain-shard-corruption",
+      "executor": "luna",
+      "calls": {
+        "checks.final": null,
+        "verdict.combined": null,
+        "source-union-v1": null,
+        "source-union-v2": null,
+        "verdict.agreement": null,
+        "verdict.observed": null,
+        "verdict.fusion": null,
+        "verdict.pooled": null,
+        "verdict.reproduced": null,
+        "verdict.reproduced-quoted-v1": null,
+        "verdict.reproduced-citations-v2": null
+      },
+      "reward": 0.0,
+      "original_outcome": {
+        "job": "tb4--coder-one-microluna-truth-confirmation--pretrain-shard-corruption--9584-r1",
+        "trial": "pretrain-shard-corruption__ZeirVXN",
+        "task": "terminal-bench/pretrain-shard-corruption",
+        "executor": "luna",
+        "reward": 0.0,
+        "exception_type": null,
+        "result_sha256": "bcf10e6fc25d49dccbc182f5945b40814e594a14bc09b150390f1b6051b064fc"
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-truth-confirmation--shadow-relay--9584-r1",
+      "trial": "shadow-relay__QWbzYAf",
+      "task": "terminal-bench/shadow-relay",
+      "executor": "luna",
+      "calls": {
+        "checks.final": "fail",
+        "verdict.combined": "fail",
+        "source-union-v1": null,
+        "source-union-v2": null,
+        "verdict.agreement": null,
+        "verdict.observed": null,
+        "verdict.fusion": "fail",
+        "verdict.pooled": null,
+        "verdict.reproduced": null,
+        "verdict.reproduced-quoted-v1": null,
+        "verdict.reproduced-citations-v2": null
+      },
+      "reward": 0.0,
+      "original_outcome": {
+        "job": "tb4--coder-one-microluna-truth-confirmation--shadow-relay--9584-r1",
+        "trial": "shadow-relay__QWbzYAf",
+        "task": "terminal-bench/shadow-relay",
+        "executor": "luna",
+        "reward": 0.0,
+        "exception_type": null,
+        "result_sha256": "104a6639989efa387f7933fdbb69a0000aa33e0a04a4a0682daf352f7b7a3f2a"
+      }
+    },
+    {
+      "job": "tb4--coder-one-microluna-truth-confirmation--vpp-loss-divergence--9584-r1",
+      "trial": "vpp-loss-divergence__j23bCmx",
+      "task": "terminal-bench/vpp-loss-divergence",
+      "executor": "luna",
+      "calls": {
+        "checks.final": null,
+        "verdict.combined": "fail",
+        "source-union-v1": null,
+        "source-union-v2": null,
+        "verdict.agreement": null,
+        "verdict.observed": null,
+        "verdict.fusion": "fail",
+        "verdict.pooled": null,
+        "verdict.reproduced": null,
+        "verdict.reproduced-quoted-v1": null,
+        "verdict.reproduced-citations-v2": null
+      },
+      "reward": 0.0,
+      "original_outcome": {
+        "job": "tb4--coder-one-microluna-truth-confirmation--vpp-loss-divergence--9584-r1",
+        "trial": "vpp-loss-divergence__j23bCmx",
+        "task": "terminal-bench/vpp-loss-divergence",
+        "executor": "luna",
+        "reward": 0.0,
+        "exception_type": null,
+        "result_sha256": "32ba3bbd183daeebcbb82e5be028a568de8a6c256a7dbbc326593c02f623c8a2"
+      }
+    },
+    {
+      "job": "tb4--coder-one-astra-truth-control--distributed-dedup--9584-r1",
+      "trial": "distributed-dedup__YT5MuTJ",
+      "task": "terminal-bench/distributed-dedup",
+      "executor": "astra",
+      "calls": {
+        "checks.final": null,
+        "verdict.combined": null,
+        "source-union-v1": null,
+        "source-union-v2": "fail",
+        "verdict.agreement": null,
+        "verdict.observed": null,
+        "verdict.fusion": null,
+        "verdict.pooled": null,
+        "verdict.reproduced": null,
+        "verdict.reproduced-quoted-v1": null,
+        "verdict.reproduced-citations-v2": null
+      },
+      "reward": 0.0,
+      "original_outcome": {
+        "job": "tb4--coder-one-astra-truth-control--distributed-dedup--9584-r1",
+        "trial": "distributed-dedup__YT5MuTJ",
+        "task": "terminal-bench/distributed-dedup",
+        "executor": "astra",
+        "reward": 0.0,
+        "exception_type": null,
+        "result_sha256": "203088d75f617594da38dff63707e034fc9ffa571416e5d75892e60ebd3ac4bc"
+      }
+    },
+    {
+      "job": "tb4--coder-one-astra-truth-control--formal-crypto--9584-r1",
+      "trial": "formal-crypto__iCSMsv3",
+      "task": "terminal-bench/formal-crypto",
+      "executor": "astra",
+      "calls": {
+        "checks.final": null,
+        "verdict.combined": null,
+        "source-union-v1": null,
+        "source-union-v2": null,
+        "verdict.agreement": null,
+        "verdict.observed": null,
+        "verdict.fusion": "fail",
+        "verdict.pooled": null,
+        "verdict.reproduced": null,
+        "verdict.reproduced-quoted-v1": null,
+        "verdict.reproduced-citations-v2": null
+      },
+      "reward": 1.0,
+      "original_outcome": {
+        "job": "tb4--coder-one-astra-truth-control--formal-crypto--9584-r1",
+        "trial": "formal-crypto__iCSMsv3",
+        "task": "terminal-bench/formal-crypto",
+        "executor": "astra",
+        "reward": 1.0,
+        "exception_type": null,
+        "result_sha256": "afb38ba22f04b4561ab671d24d568196b4644c8e7ac01952e9ca21c6cb65fbd3"
+      }
+    },
+    {
+      "job": "tb4--coder-one-astra-truth-control--freecad-impeller--9584-r1",
+      "trial": "freecad-impeller__XWiud7W",
+      "task": "terminal-bench/freecad-impeller",
+      "executor": "astra",
+      "calls": {
+        "checks.final": null,
+        "verdict.combined": "pass",
+        "source-union-v1": null,
+        "source-union-v2": null,
+        "verdict.agreement": null,
+        "verdict.observed": null,
+        "verdict.fusion": null,
+        "verdict.pooled": null,
+        "verdict.reproduced": null,
+        "verdict.reproduced-quoted-v1": null,
+        "verdict.reproduced-citations-v2": null
+      },
+      "reward": 0.0,
+      "original_outcome": {
+        "job": "tb4--coder-one-astra-truth-control--freecad-impeller--9584-r1",
+        "trial": "freecad-impeller__XWiud7W",
+        "task": "terminal-bench/freecad-impeller",
+        "executor": "astra",
+        "reward": null,
+        "exception_type": "RuntimeError",
+        "result_sha256": "282436453d50b6b270ab899a30c5d2ccf286124dc7d3b344a783496a5fd26969"
+      },
+      "regrade": {
+        "job": "tb4--coder-one-astra-truth-control--freecad-impeller--9584-r1",
+        "trial": "freecad-impeller__XWiud7W",
+        "task": "terminal-bench/freecad-impeller",
+        "executor": "astra",
+        "original_reward": null,
+        "original_result_sha256": "282436453d50b6b270ab899a30c5d2ccf286124dc7d3b344a783496a5fd26969",
+        "snapshot": {
+          "snapshot": {
+            "schema": "openagents.coder-one.snapshot.v1",
+            "stage": "post-executor",
+            "workdir": "/app",
+            "outside": [],
+            "policy": {
+              "max_mb": 128,
+              "max_files": 20000
+            },
+            "subject": "snapshot/subject.json",
+            "archive": {
+              "path": "snapshot/workspace.tar.gz",
+              "bytes": 982814,
+              "sha256": "69b91c91a9cd613020b3acbe2ea3dc4112b67ee5211b8b173e28dad0d6d0c417",
+              "paths": [
+                "app"
+              ]
+            },
+            "taken": true,
+            "files": 5,
+            "bytes": 998538,
+            "elapsed_ms": 35
+          },
+          "composition_sha256": "e616b78e1989785047cc41de28a43e1cb4db690a0eaf49efb9622706e084f892",
+          "collected_files": {
+            "/app/answer.py": "2067a160d7b73f89bab8f1080fda64d111af80ddf89ed7d80991c5a4c1d0202a",
+            "/app/answer_base.FCStd": "2764daf162e5ac1c6a5837e41d3470a73a71caf6b96603a866c5900c162881de",
+            "/app/answer_edit.FCStd": "afe6f1f6b5c78eb0e49094423aeb622a01222a64155569d238730159734b0ff3"
+          },
+          "files": {
+            "app/answer.py": "2067a160d7b73f89bab8f1080fda64d111af80ddf89ed7d80991c5a4c1d0202a",
+            "app/answer_base.20260925-045242.FCBak": "379825dd21e2115d90d0eb3011cce453acc3231d5a5bc3b2d1c58b73ca116f5b",
+            "app/answer_base.FCStd": "2764daf162e5ac1c6a5837e41d3470a73a71caf6b96603a866c5900c162881de",
+            "app/answer_edit.20260925-045242.FCBak": "29c866553368b32498eac385c0c5bf91f5f72a5abf2ec10ed80c9cb41774a687",
+            "app/answer_edit.FCStd": "afe6f1f6b5c78eb0e49094423aeb622a01222a64155569d238730159734b0ff3"
+          }
+        },
+        "result": {
+          "reward": 0.0,
+          "rewards": {
+            "reward": 0.0
+          },
+          "exit": 0,
+          "exception": null,
+          "message": null,
+          "image_cache": "warm",
+          "trial_dir": "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/cad-regrade-v2/freecad-impeller__XWiud7W/verify__45ac9e5",
+          "stdout_tail": null
+        },
+        "seconds": 17.69430153403664,
+        "record_sha256": "b3aa8f2c08c745d12fd31abfe202cf024b29b960725cf60dce0c23793302aa98"
+      }
+    },
+    {
+      "job": "tb4--coder-one-astra-truth-control--freecad-spring-clip--9584-r1",
+      "trial": "freecad-spring-clip__YHtXhkG",
+      "task": "terminal-bench/freecad-spring-clip",
+      "executor": "astra",
+      "calls": {
+        "checks.final": null,
+        "verdict.combined": "pass",
+        "source-union-v1": null,
+        "source-union-v2": null,
+        "verdict.agreement": null,
+        "verdict.observed": null,
+        "verdict.fusion": null,
+        "verdict.pooled": null,
+        "verdict.reproduced": null,
+        "verdict.reproduced-quoted-v1": null,
+        "verdict.reproduced-citations-v2": null
+      },
+      "reward": 1.0,
+      "original_outcome": {
+        "job": "tb4--coder-one-astra-truth-control--freecad-spring-clip--9584-r1",
+        "trial": "freecad-spring-clip__YHtXhkG",
+        "task": "terminal-bench/freecad-spring-clip",
+        "executor": "astra",
+        "reward": null,
+        "exception_type": "RuntimeError",
+        "result_sha256": "06795caebdb4f930f8410c2e9781544817f4d9d9a3cf6c7de9d5415365b75e46"
+      },
+      "regrade": {
+        "job": "tb4--coder-one-astra-truth-control--freecad-spring-clip--9584-r1",
+        "trial": "freecad-spring-clip__YHtXhkG",
+        "task": "terminal-bench/freecad-spring-clip",
+        "executor": "astra",
+        "original_reward": null,
+        "original_result_sha256": "06795caebdb4f930f8410c2e9781544817f4d9d9a3cf6c7de9d5415365b75e46",
+        "snapshot": {
+          "snapshot": {
+            "schema": "openagents.coder-one.snapshot.v1",
+            "stage": "post-executor",
+            "workdir": "/app",
+            "outside": [],
+            "policy": {
+              "max_mb": 128,
+              "max_files": 20000
+            },
+            "subject": "snapshot/subject.json",
+            "archive": {
+              "path": "snapshot/workspace.tar.gz",
+              "bytes": 79054,
+              "sha256": "d263ceb19d38c902b4134a3edf873d5dedd18b4223379fbaf46b09627093551f",
+              "paths": [
+                "app"
+              ]
+            },
+            "taken": true,
+            "files": 5,
+            "bytes": 88718,
+            "elapsed_ms": 14
+          },
+          "composition_sha256": "1ac4ae119bb793233f8fe7ecb616a3da28f7bb04c483a328f1f1fea5f2345dd3",
+          "collected_files": {
+            "/app/answer.py": "2bda3ae70432e5780f06740f086f9119b9704b57e78a6c7a6a463499bbb298f9",
+            "/app/answer_base.FCStd": "e7f5036379ccc15915f8d6af0a55e65f266d9171396732fdc9416f59c4e49cd6",
+            "/app/answer_edit.FCStd": "ede88e0089e9888c4b2fb3dc7c601edf709b360d1100bbc36b59efcaffc41014"
+          },
+          "files": {
+            "app/answer.py": "2bda3ae70432e5780f06740f086f9119b9704b57e78a6c7a6a463499bbb298f9",
+            "app/answer_base.20260925-045822.FCBak": "9688592353d8babdd9a36b8557fb0ea96fe49441aa9635a5de0c5874826c9c2e",
+            "app/answer_base.FCStd": "e7f5036379ccc15915f8d6af0a55e65f266d9171396732fdc9416f59c4e49cd6",
+            "app/answer_edit.20260925-045822.FCBak": "266bf28a4e15869e5031de27497a1839477e7231c3b7e55bd91bd060ff7e4bd3",
+            "app/answer_edit.FCStd": "ede88e0089e9888c4b2fb3dc7c601edf709b360d1100bbc36b59efcaffc41014"
+          }
+        },
+        "result": {
+          "reward": 1.0,
+          "rewards": {
+            "reward": 1.0
+          },
+          "exit": 0,
+          "exception": null,
+          "message": null,
+          "image_cache": "warm",
+          "trial_dir": "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/cad-regrade-v2/freecad-spring-clip__YHtXhkG/verify__f162bd0",
+          "stdout_tail": null
+        },
+        "seconds": 16.75122974999249,
+        "record_sha256": "05df0d94ed237d3b484e9955350460f87b37fe69dc66ad9c91dedcd36c475de1"
+      }
+    },
+    {
+      "job": "tb4--coder-one-astra-truth-control--math-eval-grader--9584-r1",
+      "trial": "math-eval-grader__G6edYMz",
+      "task": "terminal-bench/math-eval-grader",
+      "executor": "astra",
+      "calls": {
+        "checks.final": "fail",
+        "verdict.combined": "fail",
+        "source-union-v1": null,
+        "source-union-v2": "fail",
+        "verdict.agreement": "fail",
+        "verdict.observed": null,
+        "verdict.fusion": "fail",
+        "verdict.pooled": null,
+        "verdict.reproduced": null,
+        "verdict.reproduced-quoted-v1": null,
+        "verdict.reproduced-citations-v2": null
+      },
+      "reward": 0.0,
+      "original_outcome": {
+        "job": "tb4--coder-one-astra-truth-control--math-eval-grader--9584-r1",
+        "trial": "math-eval-grader__G6edYMz",
+        "task": "terminal-bench/math-eval-grader",
+        "executor": "astra",
+        "reward": 0.0,
+        "exception_type": null,
+        "result_sha256": "d0b700cf4349835bc0dfc043deb02a642a408dd064d0012c4907a67ba4940851"
+      }
+    },
+    {
+      "job": "tb4--coder-one-astra-truth-control--pretrain-shard-corruption--9584-r1",
+      "trial": "pretrain-shard-corruption__DwSw56Y",
+      "task": "terminal-bench/pretrain-shard-corruption",
+      "executor": "astra",
+      "calls": {
+        "checks.final": null,
+        "verdict.combined": "fail",
+        "source-union-v1": null,
+        "source-union-v2": null,
+        "verdict.agreement": null,
+        "verdict.observed": null,
+        "verdict.fusion": "fail",
+        "verdict.pooled": null,
+        "verdict.reproduced": null,
+        "verdict.reproduced-quoted-v1": null,
+        "verdict.reproduced-citations-v2": null
+      },
+      "reward": 0.0,
+      "original_outcome": {
+        "job": "tb4--coder-one-astra-truth-control--pretrain-shard-corruption--9584-r1",
+        "trial": "pretrain-shard-corruption__DwSw56Y",
+        "task": "terminal-bench/pretrain-shard-corruption",
+        "executor": "astra",
+        "reward": 0.0,
+        "exception_type": null,
+        "result_sha256": "b0c615eb10689d743c65f032428733c3e1cd1253b784770455b4cc94ec3cdff6"
+      }
+    },
+    {
+      "job": "tb4--coder-one-astra-truth-control--shadow-relay--9584-r1",
+      "trial": "shadow-relay__vjf9cyb",
+      "task": "terminal-bench/shadow-relay",
+      "executor": "astra",
+      "calls": {
+        "checks.final": null,
+        "verdict.combined": "pass",
+        "source-union-v1": null,
+        "source-union-v2": null,
+        "verdict.agreement": null,
+        "verdict.observed": null,
+        "verdict.fusion": null,
+        "verdict.pooled": null,
+        "verdict.reproduced": null,
+        "verdict.reproduced-quoted-v1": null,
+        "verdict.reproduced-citations-v2": null
+      },
+      "reward": 1.0,
+      "original_outcome": {
+        "job": "tb4--coder-one-astra-truth-control--shadow-relay--9584-r1",
+        "trial": "shadow-relay__vjf9cyb",
+        "task": "terminal-bench/shadow-relay",
+        "executor": "astra",
+        "reward": 1.0,
+        "exception_type": null,
+        "result_sha256": "2b6f9b88d0b82b7bb2191865aa7219cfd78a7f4ba172ce6f3cd1784eeba9f903"
+      }
+    },
+    {
+      "job": "tb4--coder-one-astra-truth-control--vpp-loss-divergence--9584-r2",
+      "trial": "vpp-loss-divergence__T9Z3LzN",
+      "task": "terminal-bench/vpp-loss-divergence",
+      "executor": "astra",
+      "calls": {
+        "checks.final": null,
+        "verdict.combined": null,
+        "source-union-v1": null,
+        "source-union-v2": null,
+        "verdict.agreement": null,
+        "verdict.observed": null,
+        "verdict.fusion": null,
+        "verdict.pooled": null,
+        "verdict.reproduced": null,
+        "verdict.reproduced-quoted-v1": null,
+        "verdict.reproduced-citations-v2": null
+      },
+      "reward": 1.0,
+      "original_outcome": {
+        "job": "tb4--coder-one-astra-truth-control--vpp-loss-divergence--9584-r2",
+        "trial": "vpp-loss-divergence__T9Z3LzN",
+        "task": "terminal-bench/vpp-loss-divergence",
+        "executor": "astra",
+        "reward": 1.0,
+        "exception_type": null,
+        "result_sha256": "bc4a8f653b9479835d0c06c7840c9ffe38fa9c491a9e042fab1f31acc306cf0a"
+      }
+    }
+  ]
+}

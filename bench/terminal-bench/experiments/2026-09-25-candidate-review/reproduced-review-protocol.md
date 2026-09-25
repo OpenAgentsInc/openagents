@@ -89,3 +89,16 @@ hash, and require the only task-file difference to be `tests/Dockerfile`.
 Verifier assertions and candidate hashes must remain unchanged. Keep original
 unknown labels and recovered labels separately. This repairs a measurement
 failure; it cannot convert an unknown into failure without running the verifier.
+
+The first environment repair still failed: the subsequent validator install
+continued to see conda's VTK metadata and attempted the same uninstall. Retain
+those four null results under `cad-regrade`. A second copied environment applies
+`--ignore-installed` to the validator installation itself and pins VTK 9.7.0 in
+that command. This can overlay other dependencies; it is not the original image.
+The task-file hashes prove that no verifier assertions changed. Results and
+candidate identities are retained under `cad-regrade-v2` for all four candidates.
+
+Both Luna CAD candidates fail after successful verifier setup. Astra's impeller
+also fails, and Astra's spring clip passes. These are repaired-environment grades
+of unchanged candidates, reported beside the original setup failures. Neither
+candidate generation nor any reviewer prediction was rerun after opening grades.
