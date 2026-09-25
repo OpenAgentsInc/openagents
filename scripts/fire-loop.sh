@@ -118,7 +118,8 @@ mkdir -p "$logs_dir"
 fire() {
   local task="$1" stamp job harness pid code=0 on_stop
   stamp="$(date -u +%Y%m%dT%H%M%SZ)"
-  job="fire--$task--$stamp"
+  # The process id keeps launches that start in the same second apart.
+  job="fire--$task--$stamp-$$-$RANDOM"
   harness="$logs_dir/$job.harness.log"
   (
     cd "$bench"
