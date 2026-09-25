@@ -1,0 +1,3 @@
+    Checking coder-one v0.1.0 (/Users/christopherdavid/.codex/worktrees/issue-flow-default/openagents/crates/coder-one)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 9.26s
+PHASE END: Default workspace Clippy; elapsed 9.4s; exit 0

@@ -1,0 +1,37 @@
+   Compiling coder-one v0.1.0 (/Users/christopherdavid/.codex/worktrees/issue-flow-default/openagents/crates/coder-one)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 15.66s
+     Running unittests src/lib.rs (/Users/christopherdavid/.codex/worktrees/issue-flow-default/target/debug/deps/coder_one-5a397fa83c387622)
+
+running 1 test
+  agent:  [in 100 (cached 0), out 10, $0.000015]
+    write_file {"path":".microluna-eval/score.sh","contents":"if cat \"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/.tmpf5QrtA/artifacts/private.txt\" >/dev/null 2>&1; the… (0 ms, completed) -> Wrote .microluna-eval/score.sh (293 bytes).
+  agent:  [in 100 (cached 0), out 10, $0.000015]
+    read_file {"path":".microluna-eval/score.sh"} (0 ms, completed) ->      1	if cat "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/.tmpf5QrtA/artifacts/private.txt" >/dev/null 2>&1; then echo PRIVATE_READ_ESCAPED; exit 1; fi |      2	if gh --version >/dev/null 2>&1; …
+  agent:  [in 1000 (cached 800), out 40, $0.000048]
+    finish {"status":"blocked","summary":"The score is ready; the solution still needs work.","answer":""} (0 ms, completed) -> Session finished.
+  microluna ▸ session 1 on the whole task: blocked in 0.1 s, 3 turns (1 only reading), 3 tool calls, 1,200 tokens in (800 cached), 60 out, $0.00008
+  microluna ▸ session 1 blocked; no tests ran; the answer doesn't look hard-coded; kept as the best so far
+  agent:  [in 100 (cached 0), out 10, $0.000015]
+    run_command {"command":"printf hello > hello.txt && sh \"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/.tmpf5QrtA/artifacts/lean-1/evaluator/score.sh\" && ! cat \"/var/f… (37 ms, failed) -> [exit 126] | [stderr] | sh: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/.tmpf5QrtA/artifacts/lean-1/evaluator/score.sh: Operation not permitted
+  agent:  [in 1000 (cached 800), out 40, $0.000048]
+    finish {"status":"done","summary":"The frozen score passes.","answer":""} (0 ms, completed) -> Session finished.
+  agent:  [in 1000 (cached 800), out 40, $0.000048]
+    finish {"status":"failed","summary":"A broken finish hook wrongly consumed this reply.","answer":""} (0 ms, completed) -> Session finished.
+  microluna ▸ session 2 on the whole task: failed in 0.1 s, 3 turns (0 only reading), 3 tool calls, 2,100 tokens in (1,600 cached), 90 out, $0.00011
+  microluna ▸ session 2 failed; no tests ran; the answer doesn't look hard-coded; kept as the best so far
+
+thread 'micro::tests::a_sealed_lean_session_and_its_finish_hook_can_run_only_their_frozen_evaluator' (84688007) panicked at crates/coder-one/src/micro/tests.rs:1560:5:
+assertion `left == right` failed: the host runs the sealed scorer
+  left: Null
+ right: 0
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test micro::tests::a_sealed_lean_session_and_its_finish_hook_can_run_only_their_frozen_evaluator ... FAILED
+
+failures:
+
+failures:
+    micro::tests::a_sealed_lean_session_and_its_finish_hook_can_run_only_their_frozen_evaluator
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 931 filtered out; finished in 0.33s
+
+error: test failed, to rerun pass `-p coder-one --lib`

@@ -1,0 +1,35 @@
+   Compiling coder-one v0.1.0 (/Users/christopherdavid/.codex/worktrees/issue-flow-default/openagents/crates/coder-one)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 15.39s
+     Running unittests src/lib.rs (/Users/christopherdavid/.codex/worktrees/issue-flow-default/target/debug/deps/coder_one-5a397fa83c387622)
+
+running 1 test
+  agent:  [in 100 (cached 0), out 10, $0.000015]
+    write_file {"path":".microluna-eval/score.sh","contents":"if cat \"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/.tmpadnceo/artifacts/private.txt\" >/dev/null 2>&1; the… (0 ms, completed) -> Wrote .microluna-eval/score.sh (293 bytes).
+  agent:  [in 100 (cached 0), out 10, $0.000015]
+    read_file {"path":".microluna-eval/score.sh"} (0 ms, completed) ->      1	if cat "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/.tmpadnceo/artifacts/private.txt" >/dev/null 2>&1; then echo PRIVATE_READ_ESCAPED; exit 1; fi |      2	if gh --version >/dev/null 2>&1; …
+  agent:  [in 1000 (cached 800), out 40, $0.000048]
+    finish {"status":"blocked","summary":"The score is ready; the solution still needs work.","answer":""} (0 ms, completed) -> Session finished.
+  microluna ▸ session 1 on the whole task: blocked in 0.1 s, 3 turns (1 only reading), 3 tool calls, 1,200 tokens in (800 cached), 60 out, $0.00008
+  microluna ▸ session 1 blocked; 0 of 1 tests pass; the answer doesn't look hard-coded; kept as the best so far
+  agent:  [in 100 (cached 0), out 10, $0.000015]
+    run_command {"command":"printf hello > hello.txt && sh \"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/.tmpadnceo/artifacts/lean-1/evaluator/score.sh\" && ! cat \"/var/f… (34 ms, completed) -> [exit 0] | SCORE 1 1 | EVALUATOR_SCOPE_OK | [stderr] | cat: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/.tmpadnceo/artifacts/private.txt: Operation not permitted | /bin/sh: /var/folders/v2/0ls5nf…
+  agent:  [in 1000 (cached 800), out 40, $0.000048]
+    finish {"status":"done","summary":"The frozen score passes.","answer":""} (0 ms, completed) -> Session finished.
+  microluna ▸ session 2 on the whole task: done in 0.1 s, 2 turns (0 only reading), 2 tool calls, 1,100 tokens in (800 cached), 50 out, $0.00006
+  microluna ▸ session 2 done; 1 of 1 tests pass; the answer doesn't look hard-coded; kept as the best so far
+test micro::tests::a_sealed_lean_session_and_its_finish_hook_can_run_only_their_frozen_evaluator ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 931 filtered out; finished in 0.42s
+
+     Running unittests src/main.rs (/Users/christopherdavid/.codex/worktrees/issue-flow-default/target/debug/deps/coder_one-671a9c54fddc6068)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/codex_login.rs (/Users/christopherdavid/.codex/worktrees/issue-flow-default/target/debug/deps/codex_login-5c3837e4b6e2d798)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
