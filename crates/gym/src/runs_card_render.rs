@@ -577,6 +577,53 @@ pub fn rows(card: &Card) -> Vec<Row> {
             },
         );
     }
+    match &card.review_rule {
+        Some(rule) => {
+            rows.push(
+                "review.rule.trigger",
+                "What started the review",
+                json!(rule.trigger),
+                rule.trigger.clone(),
+            );
+            rows.push(
+                "review.rule.ran",
+                "Whether the review ran",
+                json!(rule.review),
+                if rule.review { "yes" } else { "no" }.to_owned(),
+            );
+            for (trigger, reading, detail) in &rule.readings {
+                rows.push(
+                    format!("review.rule.{trigger}"),
+                    format!("Review trigger `{trigger}`"),
+                    json!(reading),
+                    format!("{reading}: {detail}"),
+                );
+            }
+            match &rule.concerns {
+                Some(concerns) => rows.count(
+                    "review.rule.concerns",
+                    "Concerns the review reported",
+                    concerns.len(),
+                ),
+                None => rows.push(
+                    "review.rule.concerns",
+                    "Concerns the review reported",
+                    Value::Null,
+                    if rule.review {
+                        NOT_RECORDED.to_owned()
+                    } else {
+                        "no review".to_owned()
+                    },
+                ),
+            }
+        }
+        None => rows.push(
+            "review.rule.trigger",
+            "What started the review",
+            Value::Null,
+            "not recorded: the policy runs the review unconditionally".to_owned(),
+        ),
+    }
     let claims = &card.claims;
     match claims.self_score_agrees {
         Some(agrees) => rows.push(
@@ -1142,6 +1189,35 @@ pub fn markdown(card: &Card) -> String {
                 short(after)
             ));
         }
+    }
+    match &card.review_rule {
+        Some(rule) => {
+            line(format!(
+                "- Review rule on session {}'s candidate: {}. Trigger: {}.",
+                rule.session
+                    .map_or_else(|| UNKNOWN.to_owned(), |n| n.to_string()),
+                rule.reason,
+                rule.trigger
+            ));
+            for (trigger, reading, detail) in &rule.readings {
+                line(format!("  - `{trigger}`: {reading}, {detail}"));
+            }
+            for concern in rule.concerns.iter().flatten() {
+                line(format!(
+                    "  - Concern{}: {}{}",
+                    concern["requirement"]
+                        .as_str()
+                        .map_or_else(String::new, |id| format!(" on {id}")),
+                    concern["concern"].as_str().unwrap_or_default(),
+                    concern["command"]
+                        .as_str()
+                        .map_or_else(String::new, |c| format!(" (`{c}`)"))
+                ));
+            }
+        }
+        None => line(
+            "- Review rule: not recorded; the policy runs the review unconditionally.".to_owned(),
+        ),
     }
     line(String::new());
     line("## Claims against outcomes".to_owned());

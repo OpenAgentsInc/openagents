@@ -1496,6 +1496,7 @@ fn lean_shape() -> lean::Lean {
         baseline: false,
         executed: None,
         tiered: None,
+        review_rule: None,
     }
 }
 
@@ -1531,6 +1532,133 @@ async fn the_lean_loop_runs_one_session_then_the_self_check() {
     assert!(stopped.contains("session 1 ended done"), "{stopped}");
     assert!(stopped.contains("the self-check ended done"), "{stopped}");
     assert_eq!(record["moves"][1]["self_check"], true);
+}
+
+fn hello_session() -> Vec<microluna::Reply> {
+    vec![
+        call(
+            "c1",
+            "write_file",
+            &json!({ "path": "hello.txt", "contents": "hello\n" }),
+            usage(1_200, 0, 60),
+        ),
+        finish("c2", "done", "Wrote hello.txt."),
+    ]
+}
+
+#[tokio::test]
+async fn the_review_rule_skips_the_self_check_when_nothing_fires() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut executor = micro(
+        dir.path(),
+        hello_session(),
+        lean_policy(lean::Lean {
+            review_rule: Some(crate::review_rule::Params {
+                unknown_fires: false,
+            }),
+            ..lean_shape()
+        }),
+    );
+    executor.prepared = Some(prepared());
+    executor.execute(&briefing(TASK)).await;
+    let record = executor.last.clone().unwrap();
+    assert_eq!(record["sessions"].as_array().unwrap().len(), 1);
+    let stopped = record["stopped"].as_str().unwrap();
+    assert!(stopped.contains("no review: no trigger fired"), "{stopped}");
+    let rule = record["moves"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["kind"] == "lean.review_rule")
+        .unwrap();
+    assert_eq!(rule["review"], false);
+    assert_eq!(rule["trigger"], "none");
+    assert_eq!(rule["session"], 1);
+    assert_eq!(rule["triggers"].as_array().unwrap().len(), 4);
+}
+
+#[tokio::test]
+async fn the_review_rule_runs_the_review_on_a_regression_and_keeps_its_concerns() {
+    let dir = tempfile::tempdir().unwrap();
+    let line = json!({
+        "schema": crate::review_rule::EXECUTED_SCHEMA,
+        "stage": "after_session",
+        "session": 1,
+        "kind": "named",
+        "command": "cat hello.txt",
+        "exit": 1,
+        "requirements": ["R1"],
+        "verdict": "regressed",
+    });
+    let artifacts = dir.path().join("artifacts");
+    std::fs::create_dir_all(&artifacts).unwrap();
+    std::fs::write(
+        artifacts.join(crate::review_rule::EXECUTED_FILE),
+        format!("{line}\n"),
+    )
+    .unwrap();
+    let mut replies = hello_session();
+    replies.push(finish(
+        "c3",
+        "done",
+        "Checked the result.\nCONCERN R1: hello.txt fails to print | command: `cat hello.txt`\n",
+    ));
+    let mut executor = micro(
+        dir.path(),
+        replies,
+        lean_policy(lean::Lean {
+            review_rule: Some(crate::review_rule::Params::default()),
+            ..lean_shape()
+        }),
+    );
+    executor.prepared = Some(prepared());
+    executor.execute(&briefing(TASK)).await;
+    let record = executor.last.clone().unwrap();
+    assert_eq!(record["sessions"].as_array().unwrap().len(), 2);
+    let moves = record["moves"].as_array().unwrap();
+    let rule = moves
+        .iter()
+        .find(|m| m["kind"] == "lean.review_rule")
+        .unwrap();
+    assert_eq!(rule["review"], true);
+    // The check read hello.txt only, so world.txt is uncovered too.
+    assert_eq!(rule["fired"], json!(["regressed", "uncovered"]));
+    let concerns = moves
+        .iter()
+        .find(|m| m["kind"] == "lean.review_concerns")
+        .unwrap();
+    assert_eq!(concerns["session"], 2);
+    assert_eq!(concerns["concerns"][0]["requirement"], "R1");
+    assert_eq!(concerns["concerns"][0]["command"], "cat hello.txt");
+    assert!(
+        record["stopped"]
+            .as_str()
+            .unwrap()
+            .contains("the self-check ended done")
+    );
+}
+
+#[test]
+fn the_review_rule_needs_the_self_check() {
+    let lean = lean::Lean {
+        self_check: false,
+        review_rule: Some(crate::review_rule::Params::default()),
+        ..lean_shape()
+    };
+    assert!(
+        lean.validate()
+            .contains(&"review_rule requires self_check".to_string())
+    );
+    let parsed: lean::Lean = serde_json::from_value(json!({
+        "sessions": 1, "source_chars": 10, "self_check": true, "review_rule": {}
+    }))
+    .unwrap();
+    assert_eq!(
+        parsed.review_rule,
+        Some(crate::review_rule::Params {
+            unknown_fires: true
+        })
+    );
 }
 
 #[tokio::test]
@@ -1856,6 +1984,105 @@ async fn the_lean_loop_rejects_a_candidate_that_regresses_a_baseline_command() {
             "after_session Some(2) Some(1) regressed",
         ]
     );
+}
+
+/// Issue #9637 on #9636's records: `verify.executed` writes an
+/// `after_session` record that regressed, and the review rule reads it
+/// from the lean group's `executed-commands.jsonl` and starts the review.
+#[tokio::test]
+async fn the_review_rule_reads_verify_executed_records() {
+    let dir = tempfile::tempdir().unwrap();
+    let work = dir.path().join("work");
+    std::fs::create_dir_all(&work).unwrap();
+    std::fs::write(
+        work.join("check.sh"),
+        "if grep -qs broken state.txt; then echo broken >&2; exit 1; fi\necho fine\n",
+    )
+    .unwrap();
+    let eval = lean::eval_dir(&work, Isolation::TaskContainer);
+    let _ = std::fs::remove_dir_all(&eval);
+    let script = format!(
+        "mkdir -p {e} && printf '%s\\n' 'if grep -q hello hello.txt; then echo SCORE 1 1; else echo SCORE 0 1; fi' > {e}/score.sh",
+        e = eval.display()
+    );
+    let task = "Write hello.txt containing the word hello. `sh check.sh` must succeed.";
+    let mut executor = micro(
+        dir.path(),
+        vec![
+            call(
+                "a1",
+                "run_command",
+                &json!({ "command": script, "timeout_seconds": null }),
+                usage(1_000, 0, 30),
+            ),
+            call(
+                "a2",
+                "write_file",
+                &json!({ "path": "hello.txt", "contents": "hello\n" }),
+                usage(1_000, 0, 30),
+            ),
+            finish("a3", "blocked", "Wrote hello.txt."),
+            call(
+                "b1",
+                "write_file",
+                &json!({ "path": "state.txt", "contents": "broken\n" }),
+                usage(1_000, 0, 30),
+            ),
+            finish("b2", "blocked", "Wrote state.txt."),
+            finish(
+                "c1",
+                "done",
+                "CONCERN R2: `sh check.sh` fails after state.txt | command: sh check.sh",
+            ),
+        ],
+        lean_policy(lean::Lean {
+            sessions: 2,
+            self_check: true,
+            keep_best: true,
+            baseline: true,
+            executed: Some(lean::LeanExecuted {
+                command_sec: 20,
+                budget_sec: 60,
+            }),
+            review_rule: Some(crate::review_rule::Params {
+                unknown_fires: false,
+            }),
+            ..lean_shape()
+        }),
+    );
+    let mut prepared = prepared();
+    prepared.instruction = task.to_string();
+    prepared.requirements = crate::requirements::mechanical(task);
+    executor.prepared = Some(prepared);
+    executor.execute(&briefing(task)).await;
+    let record = executor.last.clone().unwrap();
+    let moves = record["moves"].as_array().unwrap();
+    let rule = moves
+        .iter()
+        .find(|m| m["kind"] == "lean.review_rule")
+        .unwrap_or_else(|| panic!("no rule in {record:#}"));
+    assert_eq!(rule["session"], 2, "{rule:#}");
+    assert_eq!(rule["review"], true, "{rule:#}");
+    assert!(
+        rule["fired"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("regressed")),
+        "{rule:#}"
+    );
+    let regressed = rule["triggers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["trigger"] == "regressed")
+        .unwrap();
+    assert_eq!(regressed["commands"], json!(["sh check.sh"]));
+    assert_eq!(record["sessions"].as_array().unwrap().len(), 3);
+    let concerns = moves
+        .iter()
+        .find(|m| m["kind"] == "lean.review_concerns")
+        .unwrap();
+    assert_eq!(concerns["concerns"][0]["command"], "sh check.sh");
 }
 
 #[test]

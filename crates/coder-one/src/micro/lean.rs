@@ -221,6 +221,12 @@ pub struct Lean {
     /// every manifest before it, the loop runs as it did.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tiered: Option<Box<Tiered>>,
+    /// `control.review`: start the self-check only when a trigger fires
+    /// ([`crate::review_rule`], issue #9637), and have it report concerns
+    /// by requirement ID. Needs `self_check`. Absent, as in every manifest
+    /// before it, the self-check always runs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review_rule: Option<crate::review_rule::Params>,
 }
 
 /// `executor.microluna.lean.executed`: the bounds of the commands the host
@@ -519,6 +525,9 @@ impl Lean {
                     "executor.microluna.lean.executed bounds must be at least 1 second".to_string(),
                 );
             }
+        }
+        if self.review_rule.is_some() && !self.self_check {
+            problems.push("review_rule requires self_check".to_string());
         }
         for source in &self.departures {
             if !crate::departures::ADMITTED.contains(source) {
@@ -1354,6 +1363,55 @@ impl Micro {
     }
 }
 
+/// The review rule's decision on session `session`'s candidate: its score
+/// and hard-coding answer from the loop's record, the grades and executed
+/// commands from the first of `dirs` that has them, and the requirement
+/// map.
+fn review_decision(
+    prepared: &Prepared,
+    lean: &Lean,
+    params: crate::review_rule::Params,
+    session: u32,
+    moves: &[Value],
+    dirs: &[&Path],
+) -> crate::review_rule::Decision {
+    use crate::review_rule as rule;
+    let record = moves
+        .iter()
+        .rev()
+        .find(|m| m["kind"] == "lean" && m["after_session"].as_u64() == Some(u64::from(session)));
+    let score = record.and_then(|m| {
+        Some((
+            m["score"]["passed"].as_u64()?,
+            m["score"]["total"].as_u64()?,
+        ))
+    });
+    let hardcoded = if lean.hardcode_check {
+        record.and_then(|m| rule::hardcoded_of(&m["hardcoded"]))
+    } else {
+        None
+    };
+    rule::decide(
+        &rule::Evidence {
+            session,
+            score,
+            grades: rule::read_grades(dirs),
+            executed: rule::read_executed(dirs),
+            hardcoded,
+            targets: rule::targets(&prepared.requirements),
+        },
+        params,
+    )
+}
+
+/// The review rule's decision as a loop record.
+fn review_record(decision: &crate::review_rule::Decision) -> Value {
+    let mut record = serde_json::to_value(decision).unwrap_or(Value::Null);
+    record["kind"] = json!("lean.review_rule");
+    record["trigger"] = json!(decision.words());
+    record
+}
+
 /// The best workspace so far.
 struct Best {
     session: u32,
@@ -1888,6 +1946,8 @@ impl Micro {
         let mut rebriefed = false;
         let mut stopped = String::new();
         let mut halted = false;
+        // The review rule's decision, once the loop reaches the self-check.
+        let mut review: Option<crate::review_rule::Decision> = None;
         let lane_bound = (lean.keep_best && lean.lanes > 1).then(|| scope.bound(&self.workdir));
         let lanes = if matches!(lane_bound, Some(Ok(()))) {
             lean.lanes as usize
@@ -2058,6 +2118,42 @@ impl Micro {
                 stopped = "the dispatch's time ran out".to_string();
                 break;
             }
+            // The review rule (issue #9637): decide once, before the
+            // self-check, whether anything disagrees.
+            if checking
+                && review.is_none()
+                && let Some(params) = lean.review_rule
+            {
+                // The candidate the review reads: the selected one, which
+                // protected candidates restore before the review, or else
+                // the workspace as the last work session left it.
+                let session = best
+                    .as_ref()
+                    .filter(|_| lean.protect_candidates)
+                    .map_or(number - 1, |b| b.session);
+                let decision = review_decision(
+                    prepared,
+                    lean,
+                    params,
+                    session,
+                    &moves,
+                    &[&retained, &self.artifacts],
+                );
+                crate::say::line(&format!("  microluna ▸ review rule: {}", decision.reason));
+                moves.push(review_record(&decision));
+                let skip = !decision.review;
+                if skip {
+                    stopped.push_str(&format!(
+                        "{}{}",
+                        if stopped.is_empty() { "" } else { "; " },
+                        decision.reason
+                    ));
+                }
+                review = Some(decision);
+                if skip {
+                    break;
+                }
+            }
             if checking
                 && lean.protect_candidates
                 && let Some(candidate) = &best
@@ -2085,6 +2181,10 @@ impl Micro {
             if checking && lean.holdout {
                 guidance.push_str("\n\n");
                 guidance.push_str(HOLDOUT_GUIDANCE);
+            }
+            if checking && let Some(decision) = &review {
+                guidance.push_str("\n\n");
+                guidance.push_str(&crate::review_rule::guidance(decision));
             }
             guidance.push_str(&rules);
             let mut session_evidence = evidence.clone();
@@ -2133,6 +2233,12 @@ impl Micro {
                         frozen.display()
                     ));
                 }
+            }
+            if checking && review.is_some() {
+                state.push(format!(
+                    "The task's requirements, by ID:\n{}",
+                    crate::review_rule::requirement_lines(&prepared.requirements).join("\n")
+                ));
             }
             let brief = Brief {
                 task: prepared.instruction.clone(),
@@ -2490,6 +2596,15 @@ impl Micro {
                     "{}the self-check ended {status}",
                     if stopped.is_empty() { "" } else { "; " }
                 ));
+                if review.is_some()
+                    && let Some(ran) = sessions.last()
+                {
+                    moves.push(crate::review_rule::concerns_record(
+                        number,
+                        &ran.summary(),
+                        &crate::review_rule::targets(&prepared.requirements),
+                    ));
+                }
                 break;
             }
             let full = score.is_some_and(|(p, t)| p >= t);
@@ -2530,7 +2645,10 @@ impl Micro {
         // Finish on the best workspace when the last one scores lower or is
         // flagged.
         if let Some(b) = &best {
-            let last = moves.last();
+            let last = moves
+                .iter()
+                .rev()
+                .find(|m| m["kind"] != "lean.review_rule" && m["kind"] != "lean.review_concerns");
             let last_flagged = last.is_some_and(|m| {
                 m["hardcoded"]["flagged"] == true || m["executed"]["rejected"] == true
             });

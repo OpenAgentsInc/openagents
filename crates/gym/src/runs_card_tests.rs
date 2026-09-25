@@ -524,6 +524,69 @@ fn the_card_reads_grades_and_host_executed_commands_in_their_shapes() {
 }
 
 #[test]
+fn the_card_shows_which_review_trigger_fired_or_that_none_did() {
+    let root = tempfile::tempdir().expect("a directory");
+    bare_trial(root.path());
+    let catalog = || {
+        Catalog::load(Sources {
+            jobs: None,
+            traces: Some(root.path().to_path_buf()),
+            tasks: Vec::new(),
+            index: None,
+        })
+    };
+    // No rule recorded: the review ran unconditionally.
+    let card = characterize(
+        catalog().find("demo-task__abc").expect("trial"),
+        &Options::default(),
+    );
+    let r = rows(&card);
+    assert!(row(&r, "review.rule.trigger").value.is_null());
+    assert!(
+        row(&r, "review.rule.trigger")
+            .text
+            .starts_with("not recorded")
+    );
+    let artifacts = root
+        .path()
+        .join("tb4--coder-one-demo--demo-task/demo-task__abc.episode/artifacts");
+    let reading = |trigger: &str, reading: &str| json!({"trigger": trigger, "reading": reading, "detail": format!("{trigger} {reading}")});
+    put(
+        &artifacts.join("microluna-1.json"),
+        &json!({
+            "mode": "lean",
+            "moves": [
+                {"kind": "lean", "after_session": 1},
+                {"kind": "lean.review_rule", "session": 1, "review": true,
+                 "fired": ["uncovered"], "unknown": ["regressed"], "unknown_fires": true,
+                 "trigger": "uncovered",
+                 "reason": "the review runs: R3 has no executed check",
+                 "triggers": [reading("score", "clear"), reading("regressed", "unknown"),
+                              reading("hardcoded", "clear"), reading("uncovered", "fired")]},
+                {"kind": "lean", "after_session": 2, "self_check": true},
+                {"kind": "lean.review_concerns", "session": 2,
+                 "concerns": [{"requirement": "R3", "concern": "rwa.xlsx has a zero RC", "command": "python3 check.py"}]},
+            ],
+        })
+        .to_string(),
+    );
+    let card = characterize(
+        catalog().find("demo-task__abc").expect("trial"),
+        &Options::default(),
+    );
+    let r = rows(&card);
+    assert_eq!(row(&r, "review.rule.trigger").value, json!("uncovered"));
+    assert_eq!(row(&r, "review.rule.ran").value, json!(true));
+    assert_eq!(row(&r, "review.rule.regressed").value, json!("unknown"));
+    assert_eq!(row(&r, "review.rule.concerns").value, json!(1));
+    let page = markdown(&card);
+    assert!(
+        page.contains("Concern on R3: rwa.xlsx has a zero RC (`python3 check.py`)"),
+        "{page}"
+    );
+}
+
+#[test]
 fn scores_and_missing_programs_read_from_command_output() {
     assert_eq!(score_of("x\nSCORE 3 8\n[stderr]\nwarn"), Some((3, 8)));
     assert_eq!(score_of("no score"), None);

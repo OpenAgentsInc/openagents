@@ -1,0 +1,93 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "control.review",
+  "source": {
+    "kind": "synthetic",
+    "issue": 9637,
+    "case": "A deliverable names /app/out/rwa.xlsx and no executed check touches it, the held-out failures' shape: a figure no executed check recomputed."
+  },
+  "input": {
+    "evidence": {
+      "session": 1,
+      "score": [
+        6,
+        6
+      ],
+      "grades": null,
+      "executed": [
+        {
+          "stage": "after_session",
+          "session": 1,
+          "kind": "named",
+          "command": "python3 -m report --out /app/out/report.csv",
+          "cwd": "/app",
+          "exit": 0,
+          "requirements": [
+            "R2"
+          ],
+          "verdict": "ok"
+        },
+        {
+          "stage": "after_session",
+          "session": 1,
+          "kind": "score",
+          "command": "sh /tmp/eval/score.sh",
+          "cwd": "/app",
+          "exit": 0,
+          "requirements": [],
+          "verdict": null
+        }
+      ],
+      "hardcoded": false,
+      "targets": [
+        {
+          "id": "R1",
+          "kind": "behavior",
+          "paths": [],
+          "commands": []
+        },
+        {
+          "id": "R2",
+          "kind": "deliverable",
+          "paths": [
+            "/app/out/report.csv"
+          ],
+          "commands": []
+        },
+        {
+          "id": "R3",
+          "kind": "check",
+          "paths": [],
+          "commands": [
+            "python3 -m report"
+          ]
+        },
+        {
+          "id": "R4",
+          "kind": "constraint",
+          "paths": [
+            "/app/src/report.py"
+          ],
+          "commands": []
+        },
+        {
+          "id": "R5",
+          "kind": "deliverable",
+          "paths": [
+            "/app/out/rwa.xlsx"
+          ],
+          "commands": []
+        }
+      ]
+    },
+    "params": {
+      "unknown_fires": true
+    }
+  },
+  "retained": {
+    "review": true,
+    "fired": [
+      "uncovered"
+    ]
+  }
+}
