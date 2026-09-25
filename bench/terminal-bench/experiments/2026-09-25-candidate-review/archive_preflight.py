@@ -23,7 +23,12 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--upstream', type=Path, required=True)
     p.add_argument('--out', type=Path, required=True)
+    p.add_argument('--tasks-file', type=Path,
+                   help='Explicit reserved task list; omission keeps the original 12-task cohort.')
     a = p.parse_args()
+    tasks = a.tasks_file.read_text().split() if a.tasks_file else TASKS
+    if not tasks or len(tasks) != len(set(tasks)) or any('/' in t or t in ('.', '..') for t in tasks):
+        raise ValueError('Preflight needs unique task directory names')
     head = subprocess.check_output(['git', '-C', str(a.upstream), 'rev-parse', 'HEAD'], text=True).strip()
     if head != PIN:
         raise ValueError('Upstream checkout does not match the declared pin')
@@ -72,7 +77,7 @@ def main():
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
         records = []
-        for record in pool.map(run, TASKS):
+        for record in pool.map(run, tasks):
             records.append(record)
             print(json.dumps({k: record.get(k) for k in ['task', 'status', 'image', 'error', 'seconds']}), flush=True)
     write(a.out / 'preflight.json', records)

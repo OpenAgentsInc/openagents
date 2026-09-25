@@ -1,0 +1,15 @@
+adaptive-rejection-sampler
+cobol-modernization
+db-wal-recovery
+extract-elf
+filter-js-from-html
+large-scale-text-editing
+largest-eigenval
+modernize-scientific-stack
+overfull-hbox
+portfolio-optimization
+pytorch-model-recovery
+query-optimize
+raman-fitting
+regex-chess
+schemelike-metacircular-eval
