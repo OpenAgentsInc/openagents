@@ -159,26 +159,51 @@ pub fn error_context(
     (text, record)
 }
 
-/// `evidence.mismatch_trace` over `checks`, `(check, output)` pairs most
-/// recent first: the first that shows a failing case.
+/// `evidence.mismatch_trace`: the first failing case of the first shared
+/// acceptance result in `acceptance` that has one, else of the first of
+/// `checks`, `(check, output)` pairs most recent first, whose output shows
+/// one.
 #[must_use]
-pub fn mismatch_trace(checks: &[(String, String)]) -> (Option<String>, Value) {
-    for (check, output) in checks {
-        if let Some(case) = mismatch::first_case(output) {
-            let text = mismatch::render(&case, check);
+pub fn mismatch_trace(
+    acceptance: &[crate::checks::acceptance::Acceptance],
+    checks: &[(String, String)],
+) -> (Option<String>, Value) {
+    let structured = acceptance.iter().find_map(|result| {
+        let case = mismatch::from_acceptance(result)?;
+        let check = result
+            .provenance
+            .origin
+            .clone()
+            .unwrap_or_else(|| result.provenance.component.clone());
+        Some((check, case))
+    });
+    let found = structured.or_else(|| {
+        checks
+            .iter()
+            .find_map(|(check, output)| Some((check.clone(), mismatch::first_case(output)?)))
+    });
+    match found {
+        Some((check, case)) => {
+            let text = mismatch::render(&case, &check);
             let record = json!({
                 "component": MISMATCH_TRACE,
                 "check": check,
                 "case": case,
-                "first_differing_stage": mismatch::first_differing_stage(&case).map(|(i, s)| json!({"index": i, "name": s.name})),
+                "first_differing_stage": mismatch::first_differing_stage(&case)
+                    .map(|(i, s)| json!({"index": i, "name": s.name})),
             });
-            return (Some(text), record);
+            (Some(text), record)
         }
+        None => (
+            None,
+            json!({
+                "component": MISMATCH_TRACE,
+                "acceptance": acceptance.len(),
+                "checks": checks.len(),
+                "case": null,
+            }),
+        ),
     }
-    (
-        None,
-        json!({"component": MISMATCH_TRACE, "checks": checks.len(), "case": null}),
-    )
 }
 
 /// A command worth timing: it timed out, or used at least half its bound.

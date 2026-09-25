@@ -66,12 +66,61 @@ fn text_of(value: &Value) -> String {
     }
 }
 
-/// A case from one oracle JSON line, when it holds a failing case.
+/// The stages a JSON value exposes: a list of `{name, expected,
+/// observed}` objects, or an object of `name: {expected, observed}`.
+fn stages_of(value: Option<&Value>) -> Vec<Stage> {
+    let observed_of = |item: &Value| {
+        ["observed", "actual", "got"]
+            .iter()
+            .find_map(|key| item.get(*key))
+            .cloned()
+    };
+    let mut stages = Vec::new();
+    match value {
+        Some(Value::Array(items)) => {
+            for item in items {
+                let (Some(name), Some(e), Some(o)) = (
+                    item.get("name").or_else(|| item.get("stage")),
+                    item.get("expected"),
+                    observed_of(item),
+                ) else {
+                    continue;
+                };
+                stages.push(Stage {
+                    name: text_of(name),
+                    expected: text_of(e),
+                    observed: text_of(&o),
+                });
+            }
+        }
+        Some(Value::Object(map)) => {
+            for (name, item) in map {
+                if let (Some(e), Some(o)) = (item.get("expected"), observed_of(item)) {
+                    stages.push(Stage {
+                        name: name.clone(),
+                        expected: text_of(e),
+                        observed: text_of(&o),
+                    });
+                }
+            }
+        }
+        _ => {}
+    }
+    stages
+}
+
+/// A case from one oracle JSON line, when it holds a failing case. A line
+/// `checks.oracle` prints (`{case, verdict, observed, expected}`) reads
+/// the same way.
 fn from_json(line: &str) -> Option<Case> {
     let value: Value = serde_json::from_str(line.trim()).ok()?;
     let object = value.as_object()?;
     if object.get("pass").and_then(Value::as_bool) == Some(true)
         || object.get("ok").and_then(Value::as_bool) == Some(true)
+        || matches!(
+            object.get("verdict").and_then(Value::as_str),
+            Some("passed" | "pass" | "could_not_run")
+        )
     {
         return None;
     }
@@ -79,44 +128,7 @@ fn from_json(line: &str) -> Option<Case> {
     let observed = ["observed", "actual", "got"]
         .iter()
         .find_map(|key| object.get(*key))?;
-    let mut stages = Vec::new();
-    match object.get("stages") {
-        Some(Value::Array(items)) => {
-            for item in items {
-                let (Some(name), Some(e), Some(o)) = (
-                    item.get("name").or_else(|| item.get("stage")),
-                    item.get("expected"),
-                    ["observed", "actual", "got"]
-                        .iter()
-                        .find_map(|key| item.get(*key)),
-                ) else {
-                    continue;
-                };
-                stages.push(Stage {
-                    name: text_of(name),
-                    expected: text_of(e),
-                    observed: text_of(o),
-                });
-            }
-        }
-        Some(Value::Object(map)) => {
-            for (name, item) in map {
-                if let (Some(e), Some(o)) = (
-                    item.get("expected"),
-                    ["observed", "actual", "got"]
-                        .iter()
-                        .find_map(|key| item.get(*key)),
-                ) {
-                    stages.push(Stage {
-                        name: name.clone(),
-                        expected: text_of(e),
-                        observed: text_of(o),
-                    });
-                }
-            }
-        }
-        _ => {}
-    }
+    let stages = stages_of(object.get("stages"));
     if text_of(expected) == text_of(observed) && stages.iter().all(|s| s.expected == s.observed) {
         return None;
     }
@@ -131,6 +143,39 @@ fn from_json(line: &str) -> Option<Case> {
         sided: true,
         stages,
         format: "oracle-json".to_string(),
+    })
+}
+
+/// The first failing case of a shared acceptance result
+/// ([`crate::checks::acceptance`], issue #9656), from its
+/// `first_failure`. Its `detail`, when it's a JSON object with `stages`,
+/// supplies the stages.
+#[must_use]
+pub fn from_acceptance(result: &crate::checks::acceptance::Acceptance) -> Option<Case> {
+    let failure = result.first_failure.as_ref()?;
+    let expected = failure.expected.clone()?;
+    let covers = &failure.covers;
+    let input = covers
+        .input
+        .clone()
+        .or_else(|| match (&covers.parameter, &covers.value) {
+            (Some(p), Some(v)) => Some(format!("{p} = {v}")),
+            _ => None,
+        });
+    let stages = failure
+        .detail
+        .as_deref()
+        .and_then(|d| serde_json::from_str::<Value>(d).ok())
+        .map(|d| stages_of(d.get("stages")))
+        .unwrap_or_default();
+    Some(Case {
+        name: Some(failure.case.clone()),
+        input,
+        expected,
+        observed: failure.observed.clone().unwrap_or_default(),
+        sided: true,
+        stages,
+        format: format!("acceptance:{}", result.provenance.component),
     })
 }
 

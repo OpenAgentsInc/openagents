@@ -2829,6 +2829,9 @@ impl Micro {
                 let checked = super::localize_hook::Checked {
                     score_tail: score_failed.then_some(score_tail.as_str()),
                     executed: &executed_records,
+                    // No shared acceptance check runs in the loop yet; `checks.oracle`'s
+                    // wiring (issue #9656) passes its results here.
+                    acceptance: &[],
                     executed_sec: lean.executed.as_ref().map_or(0, |e| e.command_sec),
                     command_sec: lean.command_sec,
                 };

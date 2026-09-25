@@ -368,9 +368,70 @@ fn an_oracle_with_stages_names_the_first_stage_that_differs() {
         "{text}"
     );
     assert!(text.contains("first difference at character 5"), "{text}");
-    let (note, record) = mismatch_trace(&[("python3 oracle.py".to_string(), output)]);
+    let (note, record) = mismatch_trace(&[], &[("python3 oracle.py".to_string(), output)]);
     assert!(note.is_some());
     assert_eq!(record["first_differing_stage"]["name"], "fold");
+}
+
+#[test]
+fn a_shared_acceptance_result_comes_before_plain_output() {
+    use crate::checks::acceptance::{Acceptance, Case, Covers, Provenance, Triviality, Verdict};
+    let case = |id: &str, verdict: Verdict, observed: &str, detail: Option<String>| Case {
+        id: id.to_string(),
+        covers: Covers {
+            parameter: Some("k".to_string()),
+            value: Some("3".to_string()),
+            ..Covers::default()
+        },
+        verdict,
+        observed: Some(observed.to_string()),
+        expected: Some("0.75".to_string()),
+        detail,
+        milliseconds: 0,
+    };
+    let stages = json!({"stages": [
+        {"name": "tokenize", "expected": "[a, b]", "observed": "[a, b]"},
+        {"name": "shingle", "expected": "3", "observed": "2"},
+    ]})
+    .to_string();
+    let result = Acceptance::new(
+        "demo",
+        "workspace",
+        crate::accept::authority::Authority::IndependentlySupported,
+        Provenance {
+            component: "checks.oracle".to_string(),
+            source: "written".to_string(),
+            origin: Some("python3 oracle.py".to_string()),
+            ..Provenance::default()
+        },
+        vec![
+            case("O1", Verdict::Passed, "0.75", None),
+            case("O2", Verdict::Failed, "0.5", Some(stages)),
+        ],
+        Triviality::default(),
+    );
+    let found = mismatch::from_acceptance(&result).unwrap();
+    assert_eq!(found.name.as_deref(), Some("O2"));
+    assert_eq!(found.input.as_deref(), Some("k = 3"));
+    assert_eq!(found.format, "acceptance:checks.oracle");
+    let (text, record) = mismatch_trace(
+        &[result],
+        &[("sh t.sh".to_string(), "expected: 1\ngot: 2".to_string())],
+    );
+    let text = text.unwrap();
+    assert!(text.contains("`python3 oracle.py`, `O2`"), "{text}");
+    assert!(
+        text.contains("the first that differs is `shingle`"),
+        "{text}"
+    );
+    assert_eq!(record["first_differing_stage"]["index"], 1);
+    // An oracle's own passing line isn't a case.
+    assert!(
+        mismatch::first_case(
+            r#"{"case": "O1", "verdict": "passed", "expected": 1, "observed": 1}"#
+        )
+        .is_none()
+    );
 }
 
 #[test]

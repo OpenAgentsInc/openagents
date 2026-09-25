@@ -19,6 +19,9 @@ pub(super) struct Checked<'a> {
     pub score_tail: Option<&'a str>,
     /// The commands `verify.executed` reran on the candidate.
     pub executed: &'a [executed::Record],
+    /// Shared acceptance results the loop ran on the candidate, such as
+    /// `checks.oracle`'s (issue #9656); their first failing case comes first.
+    pub acceptance: &'a [crate::checks::acceptance::Acceptance],
     /// `verify.executed`'s per-command bound, in seconds.
     pub executed_sec: u64,
     /// The lean loop's cap on a session command's bound, in seconds; 0
@@ -105,7 +108,7 @@ impl Micro {
                 .rev()
                 .map(|f| (f.command.clone(), f.output.clone()))
                 .collect();
-            let (text, found) = localize::mismatch_trace(&checks);
+            let (text, found) = localize::mismatch_trace(checked.acceptance, &checks);
             if let Some(text) = text {
                 notes.push(localize::note(ran.number, localize::MISMATCH_TRACE, &text));
             }
