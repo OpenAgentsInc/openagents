@@ -165,6 +165,26 @@ calls and new evidence; it is not how to reproduce this table.
 
 ## New archive confirmation
 
+The [completed result](../../../../docs/terminal-bench/2026-09-25-archive-check-confirmation.md)
+has 72/72 official grades: Luna 26/36 passes and Astra 35/36. The frozen detector
+finds 6/11 official failures with 6/9 precision; it does not meet the declared
+joint improvement over scenario checks. `records/archive-sealed.json` was pushed
+in `94458c65f3` before the grade join. `archive-measurement.json`, the executor and
+review cost ledgers, `archive-resources.json`, and the three `gym-confirmation-*`
+views retain the complete measurement.
+
+The `archive-luna-*` and `archive-astra-*` trace bundles contain all agent records
+and candidate artifacts; restore them with `restore_traces.py`. The 2,401-file
+`truth9584-archive-cohort.tar.gz` contains the full check records, official
+outcomes, verifier logs, task provenance, and verification logs. Restore and
+verify it with `archive_records.py` and `archive-cohort-files.json`.
+
+The separate nine-file `truth9645-records.tar.gz`, verified by
+`truth9645-files.json`, reproduces circuit specification defects beyond the
+official grader's tested range. `audit_circuit.py` reruns that audit with no model
+calls; it requires the sealed candidates and the exact pinned simulator. It is a
+post-label audit, not a replacement of official outcomes or primary metrics.
+
 The [frozen protocol](archive-confirmation-protocol.md) declares 72 trials on
 12 previously unused archived task groups. The candidate policies and check rule
 are fixed before generation. Its population is broader than TB4 and cannot

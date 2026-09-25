@@ -1,0 +1,1158 @@
+{
+  "prediction_sha256": "143aafd40d4e1d117e2f4ea9d29ef0180882a3944e452dc2eea0d2fbc7c38b6d",
+  "seal_commit": "94458c65f3",
+  "labels": [
+    {
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "trial": "bn-fit-modify__aamGcUp",
+      "task": "bn-fit-modify",
+      "executor": "luna",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "939c57001231494af5866cbde2eca8dc41958232b084e92fea846a0a7e99d4f7",
+      "seconds": {
+        "trial": 172.196582,
+        "environment_setup": 3.816415,
+        "agent_setup": 1.957049,
+        "agent_execution": 147.562225,
+        "verifier": 15.979455
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "trial": "bn-fit-modify__bFJqScn",
+      "task": "bn-fit-modify",
+      "executor": "luna",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "ba03704919e2f2a90699137be6569cf18e072ea0f89c7bd926bec17ba38ddd9a",
+      "seconds": {
+        "trial": 153.414408,
+        "environment_setup": 3.332523,
+        "agent_setup": 1.365272,
+        "agent_execution": 124.321431,
+        "verifier": 21.075183
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "trial": "bn-fit-modify__nomggBk",
+      "task": "bn-fit-modify",
+      "executor": "luna",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "cdc3b2c837f57b0de45c961847481b4721b7ffe70fa000406051a11b9a6cd71a",
+      "seconds": {
+        "trial": 121.705517,
+        "environment_setup": 3.243522,
+        "agent_setup": 1.791158,
+        "agent_execution": 99.175855,
+        "verifier": 14.131889
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "trial": "circuit-fibsqrt__7YduQi2",
+      "task": "circuit-fibsqrt",
+      "executor": "luna",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "b2000ee0959ddfa24d2f8570bab8036da88d7a54b5b57cf199da85dd3be9dbf3",
+      "seconds": {
+        "trial": 343.958232,
+        "environment_setup": 3.184801,
+        "agent_setup": 1.848716,
+        "agent_execution": 326.371055,
+        "verifier": 9.598728
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "trial": "circuit-fibsqrt__GsDeSsu",
+      "task": "circuit-fibsqrt",
+      "executor": "luna",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "4cff8145c57accaf0f63f7d02d0c61019f2d73306fbeff69bcbd03739c49cea9",
+      "seconds": {
+        "trial": 374.483815,
+        "environment_setup": 3.279996,
+        "agent_setup": 1.776886,
+        "agent_execution": 356.462946,
+        "verifier": 9.945409
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "trial": "circuit-fibsqrt__X9xhXrv",
+      "task": "circuit-fibsqrt",
+      "executor": "luna",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "17a470d31321ad256fda8a0bc91bb9260c9970017106cebe8261c2ee980f6467",
+      "seconds": {
+        "trial": 757.618715,
+        "environment_setup": 3.397516,
+        "agent_setup": 1.4376,
+        "agent_execution": 739.093066,
+        "verifier": 10.404377
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "trial": "constraints-scheduling__6RAdWrC",
+      "task": "constraints-scheduling",
+      "executor": "luna",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "bb1e98b0318fbd59a1de55fbde7c04247ea7d11954dfd0d48fd4d81c3858e865",
+      "seconds": {
+        "trial": 247.636613,
+        "environment_setup": 3.273802,
+        "agent_setup": 1.612132,
+        "agent_execution": 222.481842,
+        "verifier": 17.670538
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "trial": "constraints-scheduling__8BvpdSE",
+      "task": "constraints-scheduling",
+      "executor": "luna",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "098af8e54e76ded40dcb41d64a56c9c59052f3801235bca41ca85de9e4286c59",
+      "seconds": {
+        "trial": 368.238983,
+        "environment_setup": 3.77582,
+        "agent_setup": 1.62962,
+        "agent_execution": 342.837983,
+        "verifier": 16.91234
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "trial": "constraints-scheduling__HKRJM8E",
+      "task": "constraints-scheduling",
+      "executor": "luna",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "42c982fad04d53096d2cca85b30417b74026874e7b85c1f66e8792bd5d15238c",
+      "seconds": {
+        "trial": 248.167321,
+        "environment_setup": 3.362916,
+        "agent_setup": 1.394774,
+        "agent_execution": 224.512147,
+        "verifier": 14.258918
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "trial": "distribution-search__2iPcGxp",
+      "task": "distribution-search",
+      "executor": "luna",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "f0d766e55617a4239c7827d9d4af1eb686a2a5ed97b0f7c68b0614c0f643df62",
+      "seconds": {
+        "trial": 167.497686,
+        "environment_setup": 3.18627,
+        "agent_setup": 1.782591,
+        "agent_execution": 144.288843,
+        "verifier": 15.802816
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "trial": "distribution-search__wfDMeV5",
+      "task": "distribution-search",
+      "executor": "luna",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "eabe56d585f289afa4a739d8be32f4c0fdd7a2c3db8f198cff66f901090f36a8",
+      "seconds": {
+        "trial": 178.215942,
+        "environment_setup": 4.80383,
+        "agent_setup": 1.865592,
+        "agent_execution": 158.988147,
+        "verifier": 9.014505
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "trial": "distribution-search__xGDRd3x",
+      "task": "distribution-search",
+      "executor": "luna",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "09d165c38b991ca184a884442259c0875c16a478bbfae2a9c22a3017ff73c509",
+      "seconds": {
+        "trial": 193.972234,
+        "environment_setup": 3.235623,
+        "agent_setup": 1.951551,
+        "agent_execution": 175.486408,
+        "verifier": 10.908585
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "trial": "financial-document-processor__Tq5JAmN",
+      "task": "financial-document-processor",
+      "executor": "luna",
+      "reward": 0.0,
+      "exception_type": null,
+      "result_sha256": "98857a3c27f39fca0f7135b5abd02e46e8caffd9f77e4202601cecdfa08a820d",
+      "seconds": {
+        "trial": 379.665374,
+        "environment_setup": 3.475116,
+        "agent_setup": 1.759781,
+        "agent_execution": 350.997832,
+        "verifier": 20.222878
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "trial": "financial-document-processor__qJZNUBC",
+      "task": "financial-document-processor",
+      "executor": "luna",
+      "reward": 0.0,
+      "exception_type": null,
+      "result_sha256": "e6a292847ed68272e26bb30c8101788795cfc13c6ed2cebda0ca224fabc91394",
+      "seconds": {
+        "trial": 435.701665,
+        "environment_setup": 3.128311,
+        "agent_setup": 1.483145,
+        "agent_execution": 406.995177,
+        "verifier": 20.356798
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "trial": "financial-document-processor__vWXXrpH",
+      "task": "financial-document-processor",
+      "executor": "luna",
+      "reward": 0.0,
+      "exception_type": null,
+      "result_sha256": "015bfb7c054d7df98137fed38259da903c87d29269ef503e7a56229c0d0aebc1",
+      "seconds": {
+        "trial": 282.42161,
+        "environment_setup": 3.238092,
+        "agent_setup": 1.658131,
+        "agent_execution": 253.08766,
+        "verifier": 21.634466
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "trial": "model-extraction-relu-logits__7GNM99Y",
+      "task": "model-extraction-relu-logits",
+      "executor": "luna",
+      "reward": 0.0,
+      "exception_type": null,
+      "result_sha256": "c0a3fb0799d29227c6bde01409ab8ade0ef805a3936fae8a1194f33e16e0c527",
+      "seconds": {
+        "trial": 295.791129,
+        "environment_setup": 3.262783,
+        "agent_setup": 1.724533,
+        "agent_execution": 267.930304,
+        "verifier": 19.725152
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "trial": "model-extraction-relu-logits__UmfHku9",
+      "task": "model-extraction-relu-logits",
+      "executor": "luna",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "5a541d3f820744821743549c717b4ba9ef8d2e7a05fe470f6baa4961daf3bf2c",
+      "seconds": {
+        "trial": 219.471722,
+        "environment_setup": 3.223863,
+        "agent_setup": 1.438242,
+        "agent_execution": 191.585555,
+        "verifier": 19.646097
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "trial": "model-extraction-relu-logits__ouMhUtE",
+      "task": "model-extraction-relu-logits",
+      "executor": "luna",
+      "reward": 0.0,
+      "exception_type": null,
+      "result_sha256": "acb2c60f810fdefbaf01bb313ea1d51e0a6e4c22dc78ea5174293a11ac350547",
+      "seconds": {
+        "trial": 292.97895,
+        "environment_setup": 3.26771,
+        "agent_setup": 1.687655,
+        "agent_execution": 271.671573,
+        "verifier": 13.312606
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "trial": "multi-source-data-merger__oJGMRvv",
+      "task": "multi-source-data-merger",
+      "executor": "luna",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "92e849029009df1a688ba1569acbe1720a199503d4751f013a7f4450d409212b",
+      "seconds": {
+        "trial": 126.449658,
+        "environment_setup": 3.528669,
+        "agent_setup": 1.86926,
+        "agent_execution": 98.504749,
+        "verifier": 20.012045
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "trial": "multi-source-data-merger__pS6dYp5",
+      "task": "multi-source-data-merger",
+      "executor": "luna",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "9a74f9c4040255c51ed36997414352a87c977d58b3dfaeb68b7ea6ee6db2e118",
+      "seconds": {
+        "trial": 149.185887,
+        "environment_setup": 3.219508,
+        "agent_setup": 1.625379,
+        "agent_execution": 122.901185,
+        "verifier": 18.00127
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "trial": "multi-source-data-merger__zWJATYe",
+      "task": "multi-source-data-merger",
+      "executor": "luna",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "b0ff84aa0e97db21bd9b2249e3ba367ee07b0f76fc7272812853d6f73396a495",
+      "seconds": {
+        "trial": 195.03633,
+        "environment_setup": 3.210265,
+        "agent_setup": 1.430249,
+        "agent_execution": 163.565778,
+        "verifier": 24.399658
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "trial": "openssl-selfsigned-cert__CejSu7F",
+      "task": "openssl-selfsigned-cert",
+      "executor": "luna",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "91d5ffb0d9fbe505856a0e0984f847aaf3133c139355a9ae8b2fa595ce032e9a",
+      "seconds": {
+        "trial": 104.719647,
+        "environment_setup": 3.027586,
+        "agent_setup": 1.401754,
+        "agent_execution": 87.532408,
+        "verifier": 9.803234
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "trial": "openssl-selfsigned-cert__TrUCPrY",
+      "task": "openssl-selfsigned-cert",
+      "executor": "luna",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "df226d2b842c80b942f64bb4d1eb8e893e9c9497b0b3276dadd5124f03ee32d3",
+      "seconds": {
+        "trial": 118.201897,
+        "environment_setup": 3.844552,
+        "agent_setup": 1.704222,
+        "agent_execution": 97.877114,
+        "verifier": 12.128896
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "trial": "openssl-selfsigned-cert__ocGbbgF",
+      "task": "openssl-selfsigned-cert",
+      "executor": "luna",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "963856fd05a29a9028909bf287ea53692e3d6c2314d206cff314e43730813b95",
+      "seconds": {
+        "trial": 116.721817,
+        "environment_setup": 3.211089,
+        "agent_setup": 1.453925,
+        "agent_execution": 91.031987,
+        "verifier": 17.33757
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "trial": "polyglot-c-py__4ajgUVL",
+      "task": "polyglot-c-py",
+      "executor": "luna",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "3252a15ee05fd7f41969cf01d2e7332ff05b45efd1453ff65696bd9189dd5e72",
+      "seconds": {
+        "trial": 219.238307,
+        "environment_setup": 3.24792,
+        "agent_setup": 1.386208,
+        "agent_execution": 195.67861,
+        "verifier": 15.249328
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "trial": "polyglot-c-py__BefiH6a",
+      "task": "polyglot-c-py",
+      "executor": "luna",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "1b5faad51a2d4ee6541b61ef504e014e9225d619b0d7097e2e1fad809f42197a",
+      "seconds": {
+        "trial": 230.186831,
+        "environment_setup": 3.179066,
+        "agent_setup": 1.508813,
+        "agent_execution": 206.819404,
+        "verifier": 15.391739
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "trial": "polyglot-c-py__e7VT9Jp",
+      "task": "polyglot-c-py",
+      "executor": "luna",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "37b173f54cb9b4468a6cc78855a1c0434dd114ab43a7cc7a5715aaaea2aa3f86",
+      "seconds": {
+        "trial": 292.467125,
+        "environment_setup": 3.094225,
+        "agent_setup": 1.751107,
+        "agent_execution": 265.360326,
+        "verifier": 18.84735
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "trial": "regex-log__ADNsZy7",
+      "task": "regex-log",
+      "executor": "luna",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "5beacf8baa747c7f7c00fa4ba61d9749af71107a0cbf340a3e060519dd551ede",
+      "seconds": {
+        "trial": 193.368327,
+        "environment_setup": 3.980077,
+        "agent_setup": 1.36943,
+        "agent_execution": 168.043548,
+        "verifier": 16.928571
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "trial": "regex-log__CSmbePB",
+      "task": "regex-log",
+      "executor": "luna",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "6ba04efe9f27263c76bf8ad88a3ea71e05c14f9461642ac6600afb277c9d94f3",
+      "seconds": {
+        "trial": 357.82089,
+        "environment_setup": 3.152914,
+        "agent_setup": 1.728969,
+        "agent_execution": 331.030747,
+        "verifier": 19.178472
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "trial": "regex-log__ZR34vNw",
+      "task": "regex-log",
+      "executor": "luna",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "9a30757f6a5ecba1123f4d2aa2cfc73e98f9126a3f45dcb11d6df1f9658c43d3",
+      "seconds": {
+        "trial": 194.598002,
+        "environment_setup": 4.089159,
+        "agent_setup": 1.593476,
+        "agent_execution": 168.641444,
+        "verifier": 16.44465
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "trial": "sparql-university__EWVxjcq",
+      "task": "sparql-university",
+      "executor": "luna",
+      "reward": 0.0,
+      "exception_type": null,
+      "result_sha256": "bfb24955399f9f435ede56a08e0f18c3b21b238a22b11319cab39d24e271938b",
+      "seconds": {
+        "trial": 140.807473,
+        "environment_setup": 3.129084,
+        "agent_setup": 1.552496,
+        "agent_execution": 114.047249,
+        "verifier": 18.722919
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "trial": "sparql-university__R26rnoi",
+      "task": "sparql-university",
+      "executor": "luna",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "58c9e9585221ac5f3fe7e7b42dd7afeb4e95328dc8d61d73f1d4e246072a13fa",
+      "seconds": {
+        "trial": 122.792164,
+        "environment_setup": 3.436096,
+        "agent_setup": 2.147547,
+        "agent_execution": 94.039534,
+        "verifier": 19.853723
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "trial": "sparql-university__jefGE3t",
+      "task": "sparql-university",
+      "executor": "luna",
+      "reward": 0.0,
+      "exception_type": null,
+      "result_sha256": "243999144b4cf96f084919fe5d004b7cd62124a31cca8c49de64a849ca26e89a",
+      "seconds": {
+        "trial": 112.525591,
+        "environment_setup": 3.426465,
+        "agent_setup": 1.762647,
+        "agent_execution": 87.585765,
+        "verifier": 17.041046
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "trial": "write-compressor__AdqzkqJ",
+      "task": "write-compressor",
+      "executor": "luna",
+      "reward": 0.0,
+      "exception_type": null,
+      "result_sha256": "9b518891378823e2b007f02abcd4632703ca61a6c08a48d15725fc78158e64da",
+      "seconds": {
+        "trial": 784.898073,
+        "environment_setup": 3.274818,
+        "agent_setup": 1.472933,
+        "agent_execution": 753.236943,
+        "verifier": 24.366526
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "trial": "write-compressor__a7ExoaT",
+      "task": "write-compressor",
+      "executor": "luna",
+      "reward": 0.0,
+      "exception_type": null,
+      "result_sha256": "c81eb6c6c0d74a1be21089478081671bd47d5da46236035e5b14a96d1950d7cc",
+      "seconds": {
+        "trial": 776.069492,
+        "environment_setup": 3.252436,
+        "agent_setup": 1.697741,
+        "agent_execution": 753.310857,
+        "verifier": 14.600433
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-confirmation--9584-literal-r2",
+      "trial": "write-compressor__hfBx6Mh",
+      "task": "write-compressor",
+      "executor": "luna",
+      "reward": 0.0,
+      "exception_type": null,
+      "result_sha256": "bf00f8eaebf1d4a0cfeaecdd45f1fbd16cead115cc1b5bb055faf65c34da3ada",
+      "seconds": {
+        "trial": 781.591329,
+        "environment_setup": 3.206027,
+        "agent_setup": 1.551059,
+        "agent_execution": 753.658097,
+        "verifier": 20.268674
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "trial": "bn-fit-modify__Tqn97Gu",
+      "task": "bn-fit-modify",
+      "executor": "astra",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "40917d8d8329c14319b41b257bf9457bee6164feb79cb061dc7799278d4a70c1",
+      "seconds": {
+        "trial": 211.819901,
+        "environment_setup": 3.208181,
+        "agent_setup": 1.389726,
+        "agent_execution": 188.741963,
+        "verifier": 15.353318
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "trial": "bn-fit-modify__XBjQVJf",
+      "task": "bn-fit-modify",
+      "executor": "astra",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "95efb48a40ad2992794162002a98facb24d4cb1ca18fdb8790cfddc6c161ce3a",
+      "seconds": {
+        "trial": 282.870218,
+        "environment_setup": 3.232649,
+        "agent_setup": 1.631386,
+        "agent_execution": 257.676866,
+        "verifier": 17.088838
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "trial": "bn-fit-modify__hh3CepA",
+      "task": "bn-fit-modify",
+      "executor": "astra",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "1eb780ef2fc83c08921afffcc070cd20d586a0b2eeeb8617446c4a8c882ae6a3",
+      "seconds": {
+        "trial": 207.963204,
+        "environment_setup": 3.168485,
+        "agent_setup": 1.472604,
+        "agent_execution": 187.495017,
+        "verifier": 12.621747
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "trial": "circuit-fibsqrt__AsrhbfB",
+      "task": "circuit-fibsqrt",
+      "executor": "astra",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "45bdb5449d2ed52662ccb2b8119ddd584966831519c1a12ad00f9f44762dadc0",
+      "seconds": {
+        "trial": 274.337349,
+        "environment_setup": 4.364865,
+        "agent_setup": 1.929936,
+        "agent_execution": 254.547182,
+        "verifier": 10.789334
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "trial": "circuit-fibsqrt__cbpJmSh",
+      "task": "circuit-fibsqrt",
+      "executor": "astra",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "2854a8bbb5cfe1f72edd275dfa54b2d657a47ed2155596611d2a7e518b92eac3",
+      "seconds": {
+        "trial": 527.301749,
+        "environment_setup": 9.452053,
+        "agent_setup": 1.685789,
+        "agent_execution": 503.77383,
+        "verifier": 9.437367
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "trial": "circuit-fibsqrt__iXo3BvS",
+      "task": "circuit-fibsqrt",
+      "executor": "astra",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "e37ca8f00971da76707486d7a650a9bb69b6621c51669d9c9207916838070a2d",
+      "seconds": {
+        "trial": 337.228713,
+        "environment_setup": 3.409177,
+        "agent_setup": 1.463565,
+        "agent_execution": 320.316746,
+        "verifier": 9.083655
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "trial": "constraints-scheduling__Kj54Rts",
+      "task": "constraints-scheduling",
+      "executor": "astra",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "b62fbb8d8d4b0c06d9fc94053802553ffc6e7de84f4af5488178a04520c8bc72",
+      "seconds": {
+        "trial": 256.070608,
+        "environment_setup": 3.104842,
+        "agent_setup": 1.659666,
+        "agent_execution": 211.634347,
+        "verifier": 37.187445
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "trial": "constraints-scheduling__QCqy7tt",
+      "task": "constraints-scheduling",
+      "executor": "astra",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "2b3e92c09d40c0e39bbc87e8cba4770b90bb2ab598dd512cf3fe9cace2cb24e9",
+      "seconds": {
+        "trial": 302.348212,
+        "environment_setup": 3.24006,
+        "agent_setup": 1.687687,
+        "agent_execution": 277.404474,
+        "verifier": 16.566444
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "trial": "constraints-scheduling__WQjTCna",
+      "task": "constraints-scheduling",
+      "executor": "astra",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "fa0e1bbbd58f2066a8dd6577c38b9e520caf6db948e0e2a469b0785d810dce89",
+      "seconds": {
+        "trial": 186.589231,
+        "environment_setup": 3.245207,
+        "agent_setup": 1.587544,
+        "agent_execution": 153.331767,
+        "verifier": 16.209165
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "trial": "distribution-search__UEB9GvZ",
+      "task": "distribution-search",
+      "executor": "astra",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "15ae5dee44b0549af36684492e989115367626c3bbcb23d41d7b88583a7283c4",
+      "seconds": {
+        "trial": 115.729202,
+        "environment_setup": 3.206667,
+        "agent_setup": 1.63328,
+        "agent_execution": 95.842227,
+        "verifier": 11.482383
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "trial": "distribution-search__dsotnuZ",
+      "task": "distribution-search",
+      "executor": "astra",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "0048b6af3d76f5a9c2afe514e01449e2f6a1e0c1d33af0103534b338a13cda4d",
+      "seconds": {
+        "trial": 108.838345,
+        "environment_setup": 3.833805,
+        "agent_setup": 1.647751,
+        "agent_execution": 86.278482,
+        "verifier": 10.326097
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "trial": "distribution-search__fDiucoR",
+      "task": "distribution-search",
+      "executor": "astra",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "67b0c82f9b57a60d6b2840e65f58bfed2dc36053047b82b7291cc3d73618c9eb",
+      "seconds": {
+        "trial": 115.633302,
+        "environment_setup": 3.155963,
+        "agent_setup": 1.396726,
+        "agent_execution": 93.733316,
+        "verifier": 14.538386
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "trial": "financial-document-processor__GZQJYM9",
+      "task": "financial-document-processor",
+      "executor": "astra",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "72ed372db6b7a8524333840c559fe31e60f0f81684ff12868d033b87fd566a1b",
+      "seconds": {
+        "trial": 572.39569,
+        "environment_setup": 3.723153,
+        "agent_setup": 15.515159,
+        "agent_execution": 531.45213,
+        "verifier": 18.341922
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "trial": "financial-document-processor__Wu2v2EL",
+      "task": "financial-document-processor",
+      "executor": "astra",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "75488450486b06bbc190eddc1f7c463e3a804cfacbb3e0581abc495f0aaa191b",
+      "seconds": {
+        "trial": 706.89283,
+        "environment_setup": 3.35545,
+        "agent_setup": 2.264337,
+        "agent_execution": 678.940092,
+        "verifier": 18.851447
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "trial": "financial-document-processor__iUk2vrc",
+      "task": "financial-document-processor",
+      "executor": "astra",
+      "reward": 0.0,
+      "exception_type": null,
+      "result_sha256": "c9f04c4fe9ecb01e0d628cc0f26728397a5998ce1e9800c2807c3a47ed6bbb62",
+      "seconds": {
+        "trial": 619.392371,
+        "environment_setup": 3.264795,
+        "agent_setup": 1.414491,
+        "agent_execution": 590.448172,
+        "verifier": 21.251375
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "trial": "model-extraction-relu-logits__438AiAn",
+      "task": "model-extraction-relu-logits",
+      "executor": "astra",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "1b1c1d2918e067006a2477815dfff91b91e6b427481b61c6887e97af1e2a89c1",
+      "seconds": {
+        "trial": 287.645649,
+        "environment_setup": 3.244416,
+        "agent_setup": 1.777003,
+        "agent_execution": 264.537852,
+        "verifier": 14.562176
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "trial": "model-extraction-relu-logits__ZyD7uDx",
+      "task": "model-extraction-relu-logits",
+      "executor": "astra",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "b43b49cb708f915b1da4c6a84bb5cea1e4c99f6edebce4962a56db715060cac2",
+      "seconds": {
+        "trial": 305.946522,
+        "environment_setup": 3.247557,
+        "agent_setup": 1.714062,
+        "agent_execution": 272.844545,
+        "verifier": 25.378947
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "trial": "model-extraction-relu-logits__iQwXJ8F",
+      "task": "model-extraction-relu-logits",
+      "executor": "astra",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "8f610e99368c1709034cfb7c31329595b8f72629ff7933a680db9a72d0f477df",
+      "seconds": {
+        "trial": 169.006084,
+        "environment_setup": 4.977587,
+        "agent_setup": 1.45214,
+        "agent_execution": 141.873036,
+        "verifier": 16.815075
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "trial": "multi-source-data-merger__bUc8CK5",
+      "task": "multi-source-data-merger",
+      "executor": "astra",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "aaccaecd2422c56920bd239e4388fcc81fb6b130451588e77f85a10e7a6a905f",
+      "seconds": {
+        "trial": 233.058514,
+        "environment_setup": 3.651818,
+        "agent_setup": 1.601535,
+        "agent_execution": 209.816505,
+        "verifier": 14.779977
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "trial": "multi-source-data-merger__rVGDNrM",
+      "task": "multi-source-data-merger",
+      "executor": "astra",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "2b5b68fe98092dd218c3750b47c9cb970351579b36d142a27943af26437cc791",
+      "seconds": {
+        "trial": 221.9613,
+        "environment_setup": 4.553994,
+        "agent_setup": 1.398601,
+        "agent_execution": 198.270149,
+        "verifier": 14.77592
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "trial": "multi-source-data-merger__vyzUujE",
+      "task": "multi-source-data-merger",
+      "executor": "astra",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "2fb3b54050ceb08cde5e1d5bc722f9e5c0bde9d28d674f68ab1bedcfc0eed021",
+      "seconds": {
+        "trial": 253.092872,
+        "environment_setup": 3.227705,
+        "agent_setup": 1.718054,
+        "agent_execution": 222.733927,
+        "verifier": 22.187455
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "trial": "openssl-selfsigned-cert__7bZiEmF",
+      "task": "openssl-selfsigned-cert",
+      "executor": "astra",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "20b19283e28a3e893e6380ca92662300f8515ee6bf55af25c1a3b7cb8f0ddbd3",
+      "seconds": {
+        "trial": 168.6056,
+        "environment_setup": 3.20053,
+        "agent_setup": 1.656377,
+        "agent_execution": 144.859012,
+        "verifier": 15.756863
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "trial": "openssl-selfsigned-cert__GYVLDbq",
+      "task": "openssl-selfsigned-cert",
+      "executor": "astra",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "b91c33413da8270b2dd2d6c915ac439c85f3d169d66efd2649597eb89423cc23",
+      "seconds": {
+        "trial": 162.479125,
+        "environment_setup": 3.27837,
+        "agent_setup": 1.546256,
+        "agent_execution": 140.028935,
+        "verifier": 14.065393
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "trial": "openssl-selfsigned-cert__NjYzAHo",
+      "task": "openssl-selfsigned-cert",
+      "executor": "astra",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "27593aa03eb0024b2713ba17a90943df8574c17bcd3f19f836a9fe10523f5c6e",
+      "seconds": {
+        "trial": 140.950238,
+        "environment_setup": 3.28172,
+        "agent_setup": 1.489979,
+        "agent_execution": 120.820873,
+        "verifier": 12.780299
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "trial": "polyglot-c-py__FyxYrAv",
+      "task": "polyglot-c-py",
+      "executor": "astra",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "8f2c0f2815982cf8d92ce59d64ee2b20523eb1ac6bd196d9461303e33505fed2",
+      "seconds": {
+        "trial": 762.89652,
+        "environment_setup": 3.193722,
+        "agent_setup": 1.517233,
+        "agent_execution": 738.004962,
+        "verifier": 16.930144
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "trial": "polyglot-c-py__NDvEvHe",
+      "task": "polyglot-c-py",
+      "executor": "astra",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "4d555a00233bd83c12ba1038b307ca4ecee46f536532a319d0c3eaf71ca77c45",
+      "seconds": {
+        "trial": 629.219957,
+        "environment_setup": 3.212145,
+        "agent_setup": 1.487292,
+        "agent_execution": 604.931435,
+        "verifier": 16.471193
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "trial": "polyglot-c-py__pjSexXf",
+      "task": "polyglot-c-py",
+      "executor": "astra",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "1232ffae4e6c684f74ab4f627aa68e3bf1d150c6d38dc6c8178c41c4af164856",
+      "seconds": {
+        "trial": 472.073068,
+        "environment_setup": 3.123094,
+        "agent_setup": 1.570528,
+        "agent_execution": 445.89606,
+        "verifier": 18.323135
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "trial": "regex-log__dWHyXPL",
+      "task": "regex-log",
+      "executor": "astra",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "0a450b9e35b4354c2e9ffd5d2449ea411e1c6a2991a63d2bf234165ce4743a98",
+      "seconds": {
+        "trial": 256.683528,
+        "environment_setup": 3.243398,
+        "agent_setup": 1.518713,
+        "agent_execution": 231.087668,
+        "verifier": 16.42953
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "trial": "regex-log__mArbFXZ",
+      "task": "regex-log",
+      "executor": "astra",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "1a9354e8e38adf571de8b4b1744936452425135bc2e9a93fa3a7ae47ee1c28aa",
+      "seconds": {
+        "trial": 334.467788,
+        "environment_setup": 6.648034,
+        "agent_setup": 1.50746,
+        "agent_execution": 304.595776,
+        "verifier": 18.520995
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "trial": "regex-log__mu2EN2J",
+      "task": "regex-log",
+      "executor": "astra",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "d5151422933a7f2fd902d3768bd360c8b007596bc1c89550b4e28397a3d7661f",
+      "seconds": {
+        "trial": 197.416476,
+        "environment_setup": 3.21258,
+        "agent_setup": 2.113848,
+        "agent_execution": 171.910424,
+        "verifier": 16.525395
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "trial": "sparql-university__DA7rUVB",
+      "task": "sparql-university",
+      "executor": "astra",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "8ea22482809765cd36eb548debbf6717a24d5be00837b1b81a51b6146c5eaa1b",
+      "seconds": {
+        "trial": 685.044219,
+        "environment_setup": 3.269129,
+        "agent_setup": 1.688652,
+        "agent_execution": 654.000858,
+        "verifier": 23.495831
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "trial": "sparql-university__HZrQvfq",
+      "task": "sparql-university",
+      "executor": "astra",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "31e141ccf7757e68aa11e3b9d557b3969e6239be08a2722cea29d8ee13276fac",
+      "seconds": {
+        "trial": 354.178078,
+        "environment_setup": 3.296871,
+        "agent_setup": 1.689438,
+        "agent_execution": 324.150265,
+        "verifier": 21.746095
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "trial": "sparql-university__i4EPKes",
+      "task": "sparql-university",
+      "executor": "astra",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "6ff4f23b6e388f339bab3e70966a4b7dbcfb710e4217339cafb2a970f90ddff7",
+      "seconds": {
+        "trial": 647.858958,
+        "environment_setup": 3.158235,
+        "agent_setup": 1.532789,
+        "agent_execution": 621.977049,
+        "verifier": 16.812211
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "trial": "write-compressor__PMcdu2M",
+      "task": "write-compressor",
+      "executor": "astra",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "f2728ec8ddcee0189f416131f7d82740b28a694f141a73e7fcc4bae5873fa27f",
+      "seconds": {
+        "trial": 147.186354,
+        "environment_setup": 3.373532,
+        "agent_setup": 1.602503,
+        "agent_execution": 122.924291,
+        "verifier": 16.545785
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "trial": "write-compressor__Y6JMAvX",
+      "task": "write-compressor",
+      "executor": "astra",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "f3d034156394d76a6a9dc8cac3460eb7cd21440a414fdf17201205787f6397b0",
+      "seconds": {
+        "trial": 129.662107,
+        "environment_setup": 3.246153,
+        "agent_setup": 1.353706,
+        "agent_execution": 108.088028,
+        "verifier": 13.072917
+      }
+    },
+    {
+      "job": "archive--coder-one-truth-control--9584-literal-r2",
+      "trial": "write-compressor__mWyWPBC",
+      "task": "write-compressor",
+      "executor": "astra",
+      "reward": 1.0,
+      "exception_type": null,
+      "result_sha256": "f163889a7801618dd570d8e63aeb78d00a85637ddb7d4f5dac98aa1bed18233a",
+      "seconds": {
+        "trial": 161.257381,
+        "environment_setup": 3.250265,
+        "agent_setup": 1.543486,
+        "agent_execution": 138.464894,
+        "verifier": 15.315908
+      }
+    }
+  ]
+}

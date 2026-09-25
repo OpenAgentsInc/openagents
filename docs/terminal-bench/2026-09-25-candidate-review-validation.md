@@ -1,5 +1,13 @@
 # Candidate review and executable-check validation
 
+The subsequent [72-candidate archive confirmation](2026-09-25-archive-check-confirmation.md)
+is complete. Executed review detects 6/11 official failures with 6/9 precision,
+versus 1/11 and 1/1 for scenario checks. It does not meet the frozen joint
+improvement criterion. A separate audit reproduces public specification defects
+in all three circuit candidates that the official grader passes. The original
+labels stay unchanged; #9584 remains open. The report below retains the earlier
+development and 16-candidate confirmation history.
+
 This study continues [#9584](https://github.com/OpenAgentsInc/openagents/issues/9584)
 after the [Microluna evidence repair](2026-09-25-truthful-checks-microluna.md).
 The original 317 graded trials contain 58 task groups: 132 calibration rows on

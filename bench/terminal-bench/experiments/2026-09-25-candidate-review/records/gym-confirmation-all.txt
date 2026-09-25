@@ -1,0 +1,31 @@
+Retained archive confirmation measurement
+  prediction_sha256: 143aafd40d4e1d117e2f4ea9d29ef0180882a3944e452dc2eea0d2fbc7c38b6d
+  labels_sha256: 432c214d111969da35093c12acd8eca8dbb1d42c96bf09ece04437d5e798e610
+  72/72 graded · 61 passes · 11 failures · 12 tasks · 0 missing grades
+  checks.final: fail precision 1/1 100.0% (20.7–100.0%) · failure recall 1/11 9.1% (1.6–37.7%) · 71 unknown calls
+  verdict.combined: fail precision 1/9 11.1% (2.0–43.5%) · failure recall 1/11 9.1% (1.6–37.7%) · 18 unknown calls
+  checks.public-files: fail precision 0/0 undefined · failure recall 0/11 0.0% (0.0–25.9%) · 72 unknown calls
+  verdict.executed: fail precision 6/9 66.7% (35.4–87.9%) · failure recall 6/11 54.5% (28.0–78.7%) · 63 unknown calls
+  Differences resample whole tasks; positive favors the new signal.
+    checks.public-files vs checks.final, precision: undefined; 10000/10000 undefined resamples
+    checks.public-files vs checks.final, recall: -25.0 to +0.0 percentage points; 73/10000 undefined resamples
+    checks.public-files vs verdict.combined, precision: undefined; 10000/10000 undefined resamples
+    checks.public-files vs verdict.combined, recall: -25.0 to +0.0 percentage points; 73/10000 undefined resamples
+    verdict.executed vs checks.final, precision: -81.8 to +0.0 percentage points; 3451/10000 undefined resamples
+    verdict.executed vs checks.final, recall: +0.0 to +100.0 percentage points; 73/10000 undefined resamples
+    verdict.executed vs verdict.combined, precision: +0.0 to +100.0 percentage points; 131/10000 undefined resamples
+    verdict.executed vs verdict.combined, recall: +0.0 to +100.0 percentage points; 73/10000 undefined resamples
+  checks.final, within-task failure ranking: 53.0% across 33 dependent pairs; ties count one half
+  verdict.combined, within-task failure ranking: 50.0% across 33 dependent pairs; ties count one half
+  checks.public-files, within-task failure ranking: 50.0% across 33 dependent pairs; ties count one half
+  verdict.executed, within-task failure ranking: 78.8% across 33 dependent pairs; ties count one half
+  Predictions were committed and pushed before opening official outcomes.
+  No signal calls a candidate passed except the unchanged historical baseline signals.
+  Every officially failed candidate remains in recall, including unavailable reviews.
+  Skipped reviews are not standalone negative predictions; only the frozen OR is evaluated.
+  Wilson intervals describe trials; paired differences resample whole task groups.
+  Within-task pairs are dependent descriptive comparisons, not independent trials.
+  Twelve selected archive task groups cannot establish TB4 completion or a Fable win.
+  The 72 original setup refusals had no candidates or grades and are separate from accuracy.
+  These outcomes become development evidence for any later change to the rule.
+  Reading this report does not verify its source files or promote a runtime rule.

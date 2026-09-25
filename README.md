@@ -202,28 +202,21 @@ noninteractive view. The plain `gym-terminal` command without
 
 ## Coder One benchmark evidence
 
-The [candidate-review study](docs/terminal-bench/2026-09-25-candidate-review-validation.md)
-retains negative source, report, observed-execution, and fitted-model experiments.
-None has established better failure precision and recall. The historical 317
-trials are now development data. The sealed 16-candidate evaluation found two
-correct executable failure detections out of 12 failures; it did not beat the
-existing checks. Luna passed 0/8 and Astra 4/8, including four unchanged CAD
-candidates regraded after verifier setup repairs. Full transcripts, predictions,
-costs, and uncertainty are retained. #9584 remains open. The earlier
-[Microluna evidence repair](docs/terminal-bench/2026-09-25-truthful-checks-microluna.md)
-recovers selected reports and reviews of unchanged submitted files.
+The [72-candidate archive confirmation](docs/terminal-bench/2026-09-25-archive-check-confirmation.md)
+is complete: Luna passes 26/36 and Astra 35/36 on 12 unused archived task groups.
+Executed checks detect 6/11 official failures with 6/9 precision, versus 1/11
+and 1/1 for scenario checks. They do not meet the frozen joint-improvement bar;
+#9584 remains open. An independent audit confirms real specification defects
+in the three circuit candidates behind the official false alarms. Original
+grades remain unchanged. This is not TB4, a Fable comparison, or a matched
+Coder ablation. Full transcripts, sealed predictions, costs, timings, and
+uncertainty are retained; `gym coder truth --confirmation PATH` reads the result.
 
-The subsequent [mini controls](docs/terminal-bench/2026-09-25-candidate-review-validation.md#mini-controls-useful-findings-and-two-grader-blind-spots)
-detect all four deliberately broken fixtures and expose two cancellation cases
-that the mini-grader missed. Both fixture defects and the grader are fixed;
-the original labels and full reviews remain retained. These development controls
-do not replace the required confirmation on new task groups.
-The [next confirmation protocol](bench/terminal-bench/experiments/2026-09-25-candidate-review/archive-confirmation-protocol.md)
-freezes 72 attempts on 12 unused archive tasks, with environments and check plans
-verified before generation. The first launch stopped at contamination setup;
-[#9642](https://github.com/OpenAgentsInc/openagents/issues/9642) fixes the unrelated
-source exclusion list without weakening the guard. The unchanged cohort has
-restarted, with all original refusals retained and no outcome claim yet.
+The [earlier candidate-review study](docs/terminal-bench/2026-09-25-candidate-review-validation.md)
+retains the rejected opinion-based rules, the negative 16-candidate evaluation,
+and mini controls that exposed two cancellation bugs in a passing fixture.
+The [Microluna evidence repair](docs/terminal-bench/2026-09-25-truthful-checks-microluna.md)
+recovers selected reports and reviews of unchanged submitted files.
 
 Fresh Microluna v13 runs passed **3/3 embedding-drift-monitor attempts for
 $0.01599 per accepted result**, including Jev—about 1/54 of Fable low's

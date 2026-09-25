@@ -1,30 +1,26 @@
 # Terminal-Bench status
 
-Updated on 2026-09-25 with candidate-review validation and its negative results. This page summarizes retained evidence, not the host's live queue.
+Updated on 2026-09-25 with the completed archive confirmation. This page summarizes retained evidence, not the host's live queue.
 
 ## Latest status
 
-**Truthful checks still need confirmation.** Source review, whole-task assessment,
-observed-execution audits, and fitted combinations have not established an
-improvement in both fail precision and failure recall. The 317 historical trials
-are now development data. The sealed fresh evaluation has 16 candidates: Luna
-passes 0/8 and Astra 4/8. Executable review correctly detects 2/12 failures,
-versus 3/12 for existing checks; neither makes a false alarm in this small sample.
-Four CAD outcomes required verifier setup repairs on unchanged candidates.
-See the [full outcomes, uncertainty, costs, transcripts, and revised plan](2026-09-25-candidate-review-validation.md).
-[#9584](https://github.com/OpenAgentsInc/openagents/issues/9584) remains open;
-the [earlier report-evidence repair](2026-09-25-truthful-checks-microluna.md)
-remains useful independently of these rejected rules.
+**The 72-candidate archive confirmation is complete.** Luna passes 26/36 and
+Astra 35/36 across 12 unused archived task groups. Executed checks detect 6/11
+official failures with 6/9 precision, versus 1/11 and 1/1 for scenario checks.
+They do not meet the frozen joint-improvement bar, so
+[#9584](https://github.com/OpenAgentsInc/openagents/issues/9584) remains open.
+A separate audit confirms public specification defects in all three circuit
+candidates counted as false alarms by the official grader. Original grades stay
+unchanged. See the [complete results, failure analysis, costs, traces, uncertainty,
+and next steps](2026-09-25-archive-check-confirmation.md). This is component
+validation outside TB4, not a Fable comparison or a matched Coder ablation.
 
-The [mini controls](2026-09-25-candidate-review-validation.md#mini-controls-useful-findings-and-two-grader-blind-spots)
-now detect all four deliberately broken candidates. They also exposed two real
-cancellation bugs in a passing fixture; the fixture and grader are fixed, with
-all original labels and transcripts retained. This remains development evidence.
-The [next frozen confirmation](../../bench/terminal-bench/experiments/2026-09-25-candidate-review/archive-confirmation-protocol.md)
-has 72 planned attempts on 12 unused archive task groups. The first launch
-stopped before agent execution; #9642 fixes the unrelated contamination setup
-problem. The unchanged cohort has restarted, with every original refusal retained
-and no outcome claim yet. This is component validation outside the TB4 table.
+The [earlier study](2026-09-25-candidate-review-validation.md) retains the negative
+16-candidate confirmation, rejected opinion-based rules, and mini controls that
+exposed two cancellation bugs in a passing fixture. The
+[report-evidence repair](2026-09-25-truthful-checks-microluna.md) remains useful
+independently. `gym coder truth --confirmation PATH` reads the new measurement
+without inference.
 
 **Microluna v13: 3/3 embedding passes at $0.01599 per accepted output**, including
 Jev, against Fable low's 5/5 at $0.8691. Microluna was slower. It passed **0/3

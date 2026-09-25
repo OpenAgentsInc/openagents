@@ -1,0 +1,134 @@
+{
+  "schema": "openagents.archive-resources.v1",
+  "by_executor": {
+    "luna": {
+      "scheduled": 36,
+      "official_passes": 26,
+      "missing_grades": 0,
+      "executor_cost": {
+        "scheduled": 36,
+        "known_list_price_lower_bound_usd": 0.35538811600000003,
+        "unknown_calls": 3,
+        "missing_usage_trials": [],
+        "components_lower_bound_usd": {
+          "generation": 0.0,
+          "jev": 0.038849916,
+          "delegate": 0.3165382
+        }
+      },
+      "known_list_price_usd_per_official_pass_lower_bound": 0.013668773692307694,
+      "timing": {
+        "trial": {
+          "recorded": 36,
+          "missing": 0,
+          "total_seconds": 10249.815338,
+          "median_seconds": 219.35501449999998,
+          "min_seconds": 104.719647,
+          "max_seconds": 784.898073
+        },
+        "environment_setup": {
+          "recorded": 36,
+          "missing": 0,
+          "total_seconds": 121.998865,
+          "median_seconds": 3.2576095,
+          "min_seconds": 3.027586,
+          "max_seconds": 4.80383
+        },
+        "agent_setup": {
+          "recorded": 36,
+          "missing": 0,
+          "total_seconds": 59.171643,
+          "median_seconds": 1.6438755,
+          "min_seconds": 1.365272,
+          "max_seconds": 2.147547
+        },
+        "agent_execution": {
+          "recorded": 36,
+          "missing": 0,
+          "total_seconds": 9356.715794,
+          "median_seconds": 193.6320825,
+          "min_seconds": 87.532408,
+          "max_seconds": 753.658097
+        },
+        "verifier": {
+          "recorded": 36,
+          "missing": 0,
+          "total_seconds": 599.176844,
+          "median_seconds": 16.9848085,
+          "min_seconds": 9.014505,
+          "max_seconds": 24.399658
+        }
+      }
+    },
+    "astra": {
+      "scheduled": 36,
+      "official_passes": 35,
+      "missing_grades": 0,
+      "executor_cost": {
+        "scheduled": 36,
+        "known_list_price_lower_bound_usd": 33.143966714,
+        "unknown_calls": 0,
+        "missing_usage_trials": [],
+        "components_lower_bound_usd": {
+          "generation": 0.0,
+          "jev": 0.03922871400000001,
+          "delegate": 33.104738
+        }
+      },
+      "known_list_price_usd_per_official_pass_lower_bound": 0.9469704775428571,
+      "timing": {
+        "trial": {
+          "recorded": 36,
+          "missing": 0,
+          "total_seconds": 11546.101263,
+          "median_seconds": 256.377068,
+          "min_seconds": 108.838345,
+          "max_seconds": 762.89652
+        },
+        "environment_setup": {
+          "recorded": 36,
+          "missing": 0,
+          "total_seconds": 131.856207,
+          "median_seconds": 3.246855,
+          "min_seconds": 3.104842,
+          "max_seconds": 9.452053
+        },
+        "agent_setup": {
+          "recorded": 36,
+          "missing": 0,
+          "total_seconds": 71.859302,
+          "median_seconds": 1.5945395,
+          "min_seconds": 1.353706,
+          "max_seconds": 15.515159
+        },
+        "agent_execution": {
+          "recorded": 36,
+          "missing": 0,
+          "total_seconds": 10613.433155,
+          "median_seconds": 226.9107975,
+          "min_seconds": 86.278482,
+          "max_seconds": 738.004962
+        },
+        "verifier": {
+          "recorded": 36,
+          "missing": 0,
+          "total_seconds": 600.420167,
+          "median_seconds": 16.4503615,
+          "min_seconds": 9.083655,
+          "max_seconds": 37.187445
+        }
+      }
+    }
+  },
+  "labels_sha256": "432c214d111969da35093c12acd8eca8dbb1d42c96bf09ece04437d5e798e610",
+  "executor_costs_sha256": "9ec05d4e88284d562faf4e5ee1c7ca8002ef41dd5c788b174377a2eb9c922ea7",
+  "notes": [
+    "All attempted work contributes cost, including failed attempts.",
+    "A price lower bound per observed pass is not an invoice or a full-population estimate.",
+    "Unknown grades and usage remain explicit; no passes means undefined cost per pass.",
+    "Research reviews are accounted separately; they did not control these executor runs.",
+    "Trial timings include setup and verification; agent timings do not.",
+    "The shared host also ran candidate review and scoped verification builds.",
+    "Different executor models and budgets do not form a matched Coder ablation."
+  ]
+}

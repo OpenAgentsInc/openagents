@@ -1,0 +1,54 @@
+{
+  "schema": "openagents.retained-files.v1",
+  "archive": "truth9645-records.tar.gz",
+  "archive_sha256": "44207878ac2c7c23f3a6e540e83a88510af465743f873a395344898567360c8a",
+  "exclusions": [],
+  "credential_scan": "exact local values, zero matches",
+  "files": [
+    {
+      "path": "circuit-fibsqrt__7YduQi2.json",
+      "bytes": 17022,
+      "sha256": "746eeda61140c03ada72a8bb7214db49a68779bf88305d7b56bbad8d1e0f712f"
+    },
+    {
+      "path": "circuit-fibsqrt__AsrhbfB.json",
+      "bytes": 16543,
+      "sha256": "001371d9efff8a09d64a32073164046f3987f5f1c7ed6f33ad8e21bda93e7a7b"
+    },
+    {
+      "path": "circuit-fibsqrt__GsDeSsu.json",
+      "bytes": 17483,
+      "sha256": "df432b063d542608bd4d66f0fed48694b75f4f8ff0b639f53f5d197a7ea40795"
+    },
+    {
+      "path": "circuit-fibsqrt__X9xhXrv.json",
+      "bytes": 16866,
+      "sha256": "2645429c2043b89fba40ae9e1f4126adf6e370d0adc832fdc8d7e1064d8f8e17"
+    },
+    {
+      "path": "circuit-fibsqrt__cbpJmSh.json",
+      "bytes": 16543,
+      "sha256": "f0a092b31119bf3101da7f8d29532a341fbd988d897d520d504bc38e05d73e19"
+    },
+    {
+      "path": "circuit-fibsqrt__iXo3BvS.json",
+      "bytes": 16543,
+      "sha256": "f808ba86be01b3e2c28317d9d6635a0e72169d0214fb1af80f18043f9fe91a63"
+    },
+    {
+      "path": "probe.py",
+      "bytes": 941,
+      "sha256": "1c12f7fddaaeb784290b6d5433a087acd659e65ba2a94fc514e173f92c32a42b"
+    },
+    {
+      "path": "protocol.json",
+      "bytes": 970,
+      "sha256": "e06e08a9762ddd17b867344382c918a28a3cd747f3bcdc626dded6eede0d8f6b"
+    },
+    {
+      "path": "result.json",
+      "bytes": 3920,
+      "sha256": "984febabc91264898f2b68f9cbb2fdeb87500e79f2028787c36073359de4b3da"
+    }
+  ]
+}

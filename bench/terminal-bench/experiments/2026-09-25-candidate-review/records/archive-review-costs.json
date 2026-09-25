@@ -1,0 +1,4751 @@
+{
+  "schema": "openagents.truth-check-costs.v1",
+  "native_requests_with_usage": 364,
+  "known_native_list_price_usd": 12.467562,
+  "native_cost_unknown_records": [],
+  "native_responses_with_unknown_cost": [],
+  "known_jev_input_tokens": {
+    "reproduced": 38541
+  },
+  "known_jev_list_price_usd": 0.0016187220000000002,
+  "notes": [
+    "List-price accounting is not an invoice for the logged-in subscription.",
+    "Native response IDs deduplicate replayed replies.",
+    "Provider failures without usage have unknown cost, not zero.",
+    "This ledger excludes the benchmark executor trials; those are reported separately."
+  ],
+  "native": {
+    "resp_02985c906d9821d3016ab63661cef487d1b4639f611702845a": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1015,
+        "cached": 0,
+        "output": 34,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01185,
+      "records": [
+        "bn-fit-modify__Tqn97Gu/reproduced/reply-1.json"
+      ]
+    },
+    "resp_02985c906d9821d3016ab636647abc87d1b6848345d7b020f2": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1437,
+        "cached": 0,
+        "output": 77,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01822,
+      "records": [
+        "bn-fit-modify__Tqn97Gu/reproduced/reply-2.json"
+      ]
+    },
+    "resp_02985c906d9821d3016ab63668c58887d1835a1d14e208dbc7": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 4534,
+        "cached": 0,
+        "output": 1007,
+        "reasoning": 78
+      },
+      "cost_usd": 0.09569,
+      "records": [
+        "bn-fit-modify__Tqn97Gu/reproduced/reply-3.json"
+      ]
+    },
+    "resp_02985c906d9821d3016ab63688743c87d188ce201226d080da": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 6516,
+        "cached": 4352,
+        "output": 611,
+        "reasoning": 16
+      },
+      "cost_usd": 0.056542,
+      "records": [
+        "bn-fit-modify__Tqn97Gu/reproduced/reply-4.json"
+      ]
+    },
+    "resp_02985c906d9821d3016ab6369ce74487d1bcc7afde9c05bda9": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 7999,
+        "cached": 6400,
+        "output": 549,
+        "reasoning": 46
+      },
+      "cost_usd": 0.04984,
+      "records": [
+        "bn-fit-modify__Tqn97Gu/reproduced/reply-5.json"
+      ]
+    },
+    "resp_02985c906d9821d3016ab636b023b887d199ce93c445cf730f": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 9140,
+        "cached": 7808,
+        "output": 226,
+        "reasoning": 0
+      },
+      "cost_usd": 0.032428,
+      "records": [
+        "bn-fit-modify__Tqn97Gu/reproduced/reply-6.json"
+      ]
+    },
+    "resp_04884f9593ed3db4016ab6304a5b6487d1bcef99e8dd933e87": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1021,
+        "cached": 0,
+        "output": 38,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01211,
+      "records": [
+        "bn-fit-modify__XBjQVJf/reproduced/reply-1.json"
+      ]
+    },
+    "resp_04884f9593ed3db4016ab6304e05d887d1bb8d9355f0da6e53": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1422,
+        "cached": 0,
+        "output": 65,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01747,
+      "records": [
+        "bn-fit-modify__XBjQVJf/reproduced/reply-2.json"
+      ]
+    },
+    "resp_04884f9593ed3db4016ab63051ad6887d1b70e22889f26463e": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 4159,
+        "cached": 1280,
+        "output": 813,
+        "reasoning": 91
+      },
+      "cost_usd": 0.07072,
+      "records": [
+        "bn-fit-modify__XBjQVJf/reproduced/reply-3.json"
+      ]
+    },
+    "resp_04884f9593ed3db4016ab6306c34c487d18f45eb96b3556266": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 5738,
+        "cached": 3968,
+        "output": 716,
+        "reasoning": 0
+      },
+      "cost_usd": 0.057468,
+      "records": [
+        "bn-fit-modify__XBjQVJf/reproduced/reply-4.json"
+      ]
+    },
+    "resp_04884f9593ed3db4016ab6308555c087d1b38b1a582ec69f99": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 7496,
+        "cached": 0,
+        "output": 248,
+        "reasoning": 29
+      },
+      "cost_usd": 0.08736,
+      "records": [
+        "bn-fit-modify__XBjQVJf/reproduced/reply-5.json"
+      ]
+    },
+    "resp_022019007de07326016ab633a01b4487d1b221158bbc46687b": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1017,
+        "cached": 0,
+        "output": 48,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01257,
+      "records": [
+        "bn-fit-modify__aamGcUp/reproduced/reply-1.json"
+      ]
+    },
+    "resp_022019007de07326016ab633a38c8c87d1ac67b0f6abcd629e": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1393,
+        "cached": 0,
+        "output": 93,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01858,
+      "records": [
+        "bn-fit-modify__aamGcUp/reproduced/reply-2.json"
+      ]
+    },
+    "resp_022019007de07326016ab633a8862487d1b67537e80c6125d4": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2489,
+        "cached": 0,
+        "output": 408,
+        "reasoning": 35
+      },
+      "cost_usd": 0.04529,
+      "records": [
+        "bn-fit-modify__aamGcUp/reproduced/reply-3.json"
+      ]
+    },
+    "resp_022019007de07326016ab633b64dd487d1bfd87a5bc766552d": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 4627,
+        "cached": 0,
+        "output": 495,
+        "reasoning": 93
+      },
+      "cost_usd": 0.07102,
+      "records": [
+        "bn-fit-modify__aamGcUp/reproduced/reply-4.json"
+      ]
+    },
+    "resp_022019007de07326016ab633c7442c87d1912d06f1f4bc66e2": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 5788,
+        "cached": 4480,
+        "output": 222,
+        "reasoning": 0
+      },
+      "cost_usd": 0.02866,
+      "records": [
+        "bn-fit-modify__aamGcUp/reproduced/reply-5.json"
+      ]
+    },
+    "resp_026db419ddfcfdcb016ab62c8bdb8487d1ae283420b1921f6b": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1022,
+        "cached": 0,
+        "output": 34,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01192,
+      "records": [
+        "bn-fit-modify__bFJqScn/reproduced/reply-1.json"
+      ]
+    },
+    "resp_026db419ddfcfdcb016ab62c90837087d18eaf9a1ba0aeffa2": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1321,
+        "cached": 0,
+        "output": 117,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01906,
+      "records": [
+        "bn-fit-modify__bFJqScn/reproduced/reply-2.json"
+      ]
+    },
+    "resp_026db419ddfcfdcb016ab62c96169487d199688137847b714b": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1659,
+        "cached": 0,
+        "output": 100,
+        "reasoning": 0
+      },
+      "cost_usd": 0.02159,
+      "records": [
+        "bn-fit-modify__bFJqScn/reproduced/reply-3.json"
+      ]
+    },
+    "resp_026db419ddfcfdcb016ab62c9ba73087d1b6ce015e964ffac2": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1934,
+        "cached": 1536,
+        "output": 730,
+        "reasoning": 21
+      },
+      "cost_usd": 0.042016,
+      "records": [
+        "bn-fit-modify__bFJqScn/reproduced/reply-4.json"
+      ]
+    },
+    "resp_026db419ddfcfdcb016ab62cb4f2f087d18744d0a97a9372d8": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 4494,
+        "cached": 0,
+        "output": 493,
+        "reasoning": 31
+      },
+      "cost_usd": 0.06959,
+      "records": [
+        "bn-fit-modify__bFJqScn/reproduced/reply-5.json"
+      ]
+    },
+    "resp_026db419ddfcfdcb016ab62cc5d13487d1be1de001c052be62": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 5743,
+        "cached": 4352,
+        "output": 227,
+        "reasoning": 0
+      },
+      "cost_usd": 0.029612,
+      "records": [
+        "bn-fit-modify__bFJqScn/reproduced/reply-6.json"
+      ]
+    },
+    "resp_06d29d8223186750016ab627d823d087d187c00b46a06a5729": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1018,
+        "cached": 0,
+        "output": 105,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01543,
+      "records": [
+        "bn-fit-modify__hh3CepA/reproduced/reply-1.json"
+      ]
+    },
+    "resp_06d29d8223186750016ab627dcd6e887d1ae5e38607b3476d3": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1511,
+        "cached": 0,
+        "output": 82,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01921,
+      "records": [
+        "bn-fit-modify__hh3CepA/reproduced/reply-2.json"
+      ]
+    },
+    "resp_06d29d8223186750016ab627e120a887d1ba0d3c2daaef5309": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 4008,
+        "cached": 0,
+        "output": 732,
+        "reasoning": 110
+      },
+      "cost_usd": 0.07668,
+      "records": [
+        "bn-fit-modify__hh3CepA/reproduced/reply-3.json"
+      ]
+    },
+    "resp_06d29d8223186750016ab627f8e56487d1b746a2eb7edd7c56": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 6007,
+        "cached": 1280,
+        "output": 257,
+        "reasoning": 32
+      },
+      "cost_usd": 0.0614,
+      "records": [
+        "bn-fit-modify__hh3CepA/reproduced/reply-4.json"
+      ]
+    },
+    "resp_069a7cbd8db70076016ab62684f91887d1859f12dd4f7c8c04": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1017,
+        "cached": 0,
+        "output": 44,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01237,
+      "records": [
+        "bn-fit-modify__nomggBk/reproduced/reply-1.json"
+      ]
+    },
+    "resp_069a7cbd8db70076016ab62688000887d1b2b14be703fb940a": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1385,
+        "cached": 0,
+        "output": 119,
+        "reasoning": 0
+      },
+      "cost_usd": 0.0198,
+      "records": [
+        "bn-fit-modify__nomggBk/reproduced/reply-2.json"
+      ]
+    },
+    "resp_069a7cbd8db70076016ab6268e4d4487d1a12890abe6727d67": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2429,
+        "cached": 1152,
+        "output": 487,
+        "reasoning": 55
+      },
+      "cost_usd": 0.038272,
+      "records": [
+        "bn-fit-modify__nomggBk/reproduced/reply-3.json"
+      ]
+    },
+    "resp_069a7cbd8db70076016ab6269ed8e087d18db41ab5dcc2d246": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 5209,
+        "cached": 2304,
+        "output": 857,
+        "reasoning": 127
+      },
+      "cost_usd": 0.074204,
+      "records": [
+        "bn-fit-modify__nomggBk/reproduced/reply-4.json"
+      ]
+    },
+    "resp_069a7cbd8db70076016ab626ba5f0c87d184b161f09452bd22": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 7075,
+        "cached": 4992,
+        "output": 198,
+        "reasoning": 0
+      },
+      "cost_usd": 0.035722,
+      "records": [
+        "bn-fit-modify__nomggBk/reproduced/reply-5.json"
+      ]
+    },
+    "resp_0d2d501fe8745db4016ab62f4313c487d19da134b3de35236d": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 951,
+        "cached": 0,
+        "output": 56,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01231,
+      "records": [
+        "circuit-fibsqrt__7YduQi2/reproduced/reply-1.json"
+      ]
+    },
+    "resp_0d2d501fe8745db4016ab62f465b1487d1a860a1272df8cf51": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 3564,
+        "cached": 0,
+        "output": 95,
+        "reasoning": 0
+      },
+      "cost_usd": 0.04039,
+      "records": [
+        "circuit-fibsqrt__7YduQi2/reproduced/reply-2.json"
+      ]
+    },
+    "resp_0d2d501fe8745db4016ab62f4c062c87d18e89228e0d283f0e": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 4854,
+        "cached": 3456,
+        "output": 253,
+        "reasoning": 0
+      },
+      "cost_usd": 0.030086,
+      "records": [
+        "circuit-fibsqrt__7YduQi2/reproduced/reply-3.json"
+      ]
+    },
+    "resp_0d2d501fe8745db4016ab62f5554a087d18b645617201cf013": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 5664,
+        "cached": 4736,
+        "output": 124,
+        "reasoning": 15
+      },
+      "cost_usd": 0.020216,
+      "records": [
+        "circuit-fibsqrt__7YduQi2/reproduced/reply-4.json"
+      ]
+    },
+    "resp_0d2d501fe8745db4016ab62f5d04bc87d1934a8a9ff84a1e69": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 8215,
+        "cached": 5504,
+        "output": 187,
+        "reasoning": 29
+      },
+      "cost_usd": 0.041964,
+      "records": [
+        "circuit-fibsqrt__7YduQi2/reproduced/reply-5.json"
+      ]
+    },
+    "resp_0d2d501fe8745db4016ab62f6950c087d187eb94780d725b60": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 9683,
+        "cached": 8064,
+        "output": 427,
+        "reasoning": 33
+      },
+      "cost_usd": 0.045604,
+      "records": [
+        "circuit-fibsqrt__7YduQi2/reproduced/reply-6.json"
+      ]
+    },
+    "resp_0d2d501fe8745db4016ab62f7d4d4087d1b6702066a1d8e1a7": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 11403,
+        "cached": 9472,
+        "output": 288,
+        "reasoning": 24
+      },
+      "cost_usd": 0.043182,
+      "records": [
+        "circuit-fibsqrt__7YduQi2/reproduced/reply-7.json"
+      ]
+    },
+    "resp_0d2d501fe8745db4016ab62f89654087d18b75001253d915ce": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 12186,
+        "cached": 11264,
+        "output": 492,
+        "reasoning": 0
+      },
+      "cost_usd": 0.045084,
+      "records": [
+        "circuit-fibsqrt__7YduQi2/reproduced/reply-8.json"
+      ]
+    },
+    "resp_0376d92dedf51351016ab63111eb7c87d1acd095e62d1f09b5": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 949,
+        "cached": 0,
+        "output": 64,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01269,
+      "records": [
+        "circuit-fibsqrt__AsrhbfB/reproduced/reply-1.json"
+      ]
+    },
+    "resp_0376d92dedf51351016ab63116976087d18ed0078cbd5c8fec": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 3688,
+        "cached": 0,
+        "output": 63,
+        "reasoning": 0
+      },
+      "cost_usd": 0.04003,
+      "records": [
+        "circuit-fibsqrt__AsrhbfB/reproduced/reply-2.json"
+      ]
+    },
+    "resp_0376d92dedf51351016ab6311bfb0c87d1a208bb87b7c50746": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 6425,
+        "cached": 3456,
+        "output": 45,
+        "reasoning": 0
+      },
+      "cost_usd": 0.035396,
+      "records": [
+        "circuit-fibsqrt__AsrhbfB/reproduced/reply-3.json"
+      ]
+    },
+    "resp_0376d92dedf51351016ab6312078f487d187f0e6d4a9c4df07": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 7719,
+        "cached": 6272,
+        "output": 547,
+        "reasoning": 36
+      },
+      "cost_usd": 0.048092,
+      "records": [
+        "circuit-fibsqrt__AsrhbfB/reproduced/reply-4.json"
+      ]
+    },
+    "resp_0376d92dedf51351016ab6314e3c8087d1af5aa624287380d5": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 8931,
+        "cached": 0,
+        "output": 207,
+        "reasoning": 29
+      },
+      "cost_usd": 0.09966,
+      "records": [
+        "circuit-fibsqrt__AsrhbfB/reproduced/reply-5.json"
+      ]
+    },
+    "resp_0fac9d4868e5ed99016ab628a3f36487d1b766e8118a1de75d": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 950,
+        "cached": 0,
+        "output": 56,
+        "reasoning": 0
+      },
+      "cost_usd": 0.0123,
+      "records": [
+        "circuit-fibsqrt__GsDeSsu/reproduced/reply-1.json"
+      ]
+    },
+    "resp_0fac9d4868e5ed99016ab628a70a9c87d18b0dde38a00d84db": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 3535,
+        "cached": 0,
+        "output": 87,
+        "reasoning": 0
+      },
+      "cost_usd": 0.0397,
+      "records": [
+        "circuit-fibsqrt__GsDeSsu/reproduced/reply-2.json"
+      ]
+    },
+    "resp_0fac9d4868e5ed99016ab628ab716487d19174e143bffb9113": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 5001,
+        "cached": 3328,
+        "output": 336,
+        "reasoning": 55
+      },
+      "cost_usd": 0.036858,
+      "records": [
+        "circuit-fibsqrt__GsDeSsu/reproduced/reply-3.json"
+      ]
+    },
+    "resp_0fac9d4868e5ed99016ab628bb00c487d1898e0102c0430246": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 5973,
+        "cached": 4864,
+        "output": 222,
+        "reasoning": 40
+      },
+      "cost_usd": 0.027054,
+      "records": [
+        "circuit-fibsqrt__GsDeSsu/reproduced/reply-4.json"
+      ]
+    },
+    "resp_0fac9d4868e5ed99016ab628c5872487d190315e7fe034e706": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 6974,
+        "cached": 5760,
+        "output": 242,
+        "reasoning": 27
+      },
+      "cost_usd": 0.03,
+      "records": [
+        "circuit-fibsqrt__GsDeSsu/reproduced/reply-5.json"
+      ]
+    },
+    "resp_0fac9d4868e5ed99016ab628cf42dc87d1a6fdd5884612ae6f": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 7705,
+        "cached": 6784,
+        "output": 518,
+        "reasoning": 51
+      },
+      "cost_usd": 0.041894,
+      "records": [
+        "circuit-fibsqrt__GsDeSsu/reproduced/reply-6.json"
+      ]
+    },
+    "resp_03983a777070f8f2016ab623f6fbf887d1976eb7d2f672f2a5": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 947,
+        "cached": 0,
+        "output": 56,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01227,
+      "records": [
+        "circuit-fibsqrt__X9xhXrv/reproduced/reply-1.json"
+      ]
+    },
+    "resp_03983a777070f8f2016ab623fa213887d186d1b8a07c10f5fd": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 3548,
+        "cached": 0,
+        "output": 67,
+        "reasoning": 0
+      },
+      "cost_usd": 0.03883,
+      "records": [
+        "circuit-fibsqrt__X9xhXrv/reproduced/reply-2.json"
+      ]
+    },
+    "resp_03983a777070f8f2016ab623fe123487d1a38ef325bc1a55e3": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 4877,
+        "cached": 3328,
+        "output": 303,
+        "reasoning": 18
+      },
+      "cost_usd": 0.033968,
+      "records": [
+        "circuit-fibsqrt__X9xhXrv/reproduced/reply-3.json"
+      ]
+    },
+    "resp_03983a777070f8f2016ab6240b974c87d1a207105902594213": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 6730,
+        "cached": 4736,
+        "output": 318,
+        "reasoning": 74
+      },
+      "cost_usd": 0.040576,
+      "records": [
+        "circuit-fibsqrt__X9xhXrv/reproduced/reply-4.json"
+      ]
+    },
+    "resp_03983a777070f8f2016ab6241b8dc487d1a7218f247716b109": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 8166,
+        "cached": 0,
+        "output": 416,
+        "reasoning": 0
+      },
+      "cost_usd": 0.10246,
+      "records": [
+        "circuit-fibsqrt__X9xhXrv/reproduced/reply-5.json"
+      ]
+    },
+    "resp_0d18c9a9a0ba9bbc016ab62a36917c87d1a0a5f9f920b50f00": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 948,
+        "cached": 0,
+        "output": 56,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01228,
+      "records": [
+        "circuit-fibsqrt__cbpJmSh/reproduced/reply-1.json"
+      ]
+    },
+    "resp_0d18c9a9a0ba9bbc016ab62a3b343487d18df427fd6dbaeeff": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 3635,
+        "cached": 0,
+        "output": 74,
+        "reasoning": 0
+      },
+      "cost_usd": 0.04005,
+      "records": [
+        "circuit-fibsqrt__cbpJmSh/reproduced/reply-2.json"
+      ]
+    },
+    "resp_0d18c9a9a0ba9bbc016ab62a3fbf5087d1b3d5c838ee2de781": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 6386,
+        "cached": 3456,
+        "output": 212,
+        "reasoning": 15
+      },
+      "cost_usd": 0.043356,
+      "records": [
+        "circuit-fibsqrt__cbpJmSh/reproduced/reply-3.json"
+      ]
+    },
+    "resp_0d18c9a9a0ba9bbc016ab62a4a90dc87d1a8219a2411754291": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 7922,
+        "cached": 6272,
+        "output": 431,
+        "reasoning": 44
+      },
+      "cost_usd": 0.044322,
+      "records": [
+        "circuit-fibsqrt__cbpJmSh/reproduced/reply-4.json"
+      ]
+    },
+    "resp_0d18c9a9a0ba9bbc016ab62a59dac887d1a1c146604f93ad5b": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 9163,
+        "cached": 7808,
+        "output": 223,
+        "reasoning": 14
+      },
+      "cost_usd": 0.032508,
+      "records": [
+        "circuit-fibsqrt__cbpJmSh/reproduced/reply-5.json"
+      ]
+    },
+    "resp_0d18c9a9a0ba9bbc016ab62a7283f087d1b4063996d1ff6f7b": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 9909,
+        "cached": 8960,
+        "output": 215,
+        "reasoning": 19
+      },
+      "cost_usd": 0.0292,
+      "records": [
+        "circuit-fibsqrt__cbpJmSh/reproduced/reply-6.json"
+      ]
+    },
+    "resp_0bbdc14afc39fba8016ab6229a155487d19359f6255b48dba5": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 948,
+        "cached": 0,
+        "output": 56,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01228,
+      "records": [
+        "circuit-fibsqrt__iXo3BvS/reproduced/reply-1.json"
+      ]
+    },
+    "resp_0bbdc14afc39fba8016ab6229d836087d180be9fb578bda09a": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 3645,
+        "cached": 0,
+        "output": 74,
+        "reasoning": 0
+      },
+      "cost_usd": 0.04015,
+      "records": [
+        "circuit-fibsqrt__iXo3BvS/reproduced/reply-2.json"
+      ]
+    },
+    "resp_0bbdc14afc39fba8016ab622a1437487d1b4cf9d33cf776191": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 6351,
+        "cached": 0,
+        "output": 65,
+        "reasoning": 0
+      },
+      "cost_usd": 0.06676,
+      "records": [
+        "circuit-fibsqrt__iXo3BvS/reproduced/reply-3.json"
+      ]
+    },
+    "resp_0bbdc14afc39fba8016ab622a5313c87d197bb1c885aafb886": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 8093,
+        "cached": 0,
+        "output": 402,
+        "reasoning": 24
+      },
+      "cost_usd": 0.10103,
+      "records": [
+        "circuit-fibsqrt__iXo3BvS/reproduced/reply-4.json"
+      ]
+    },
+    "resp_0bbdc14afc39fba8016ab622b8207887d1ba45066c93e8b266": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 9061,
+        "cached": 6144,
+        "output": 81,
+        "reasoning": 43
+      },
+      "cost_usd": 0.039364,
+      "records": [
+        "circuit-fibsqrt__iXo3BvS/reproduced/reply-5.json"
+      ]
+    },
+    "resp_0bbdc14afc39fba8016ab622c626f887d19ee88594ebd69847": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 9282,
+        "cached": 8832,
+        "output": 344,
+        "reasoning": 65
+      },
+      "cost_usd": 0.030532,
+      "records": [
+        "circuit-fibsqrt__iXo3BvS/reproduced/reply-6.json"
+      ]
+    },
+    "resp_0bbdc14afc39fba8016ab622d2aa0087d1b19c2fdd0a1601d6": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 10309,
+        "cached": 7936,
+        "output": 276,
+        "reasoning": 18
+      },
+      "cost_usd": 0.045466,
+      "records": [
+        "circuit-fibsqrt__iXo3BvS/reproduced/reply-7.json"
+      ]
+    },
+    "resp_0bbdc14afc39fba8016ab622ee28d887d1907bc0856f6269ca": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 10902,
+        "cached": 10112,
+        "output": 239,
+        "reasoning": 0
+      },
+      "cost_usd": 0.029962,
+      "records": [
+        "circuit-fibsqrt__iXo3BvS/reproduced/reply-8.json"
+      ]
+    },
+    "resp_0c1fe19c080e0785016ab6296b58c087d18f282a5a47bbe17f": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1271,
+        "cached": 0,
+        "output": 45,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01496,
+      "records": [
+        "constraints-scheduling__6RAdWrC/reproduced/reply-1.json"
+      ]
+    },
+    "resp_0c1fe19c080e0785016ab6296ea99087d1a10cb2ef409fd387": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2981,
+        "cached": 1152,
+        "output": 101,
+        "reasoning": 20
+      },
+      "cost_usd": 0.024492,
+      "records": [
+        "constraints-scheduling__6RAdWrC/reproduced/reply-2.json"
+      ]
+    },
+    "resp_0c1fe19c080e0785016ab629742ef887d1a74619573bd854d9": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 4991,
+        "cached": 2816,
+        "output": 740,
+        "reasoning": 0
+      },
+      "cost_usd": 0.061566,
+      "records": [
+        "constraints-scheduling__6RAdWrC/reproduced/reply-3.json"
+      ]
+    },
+    "resp_0c1fe19c080e0785016ab6298c823087d19ac3b0331158b990": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 6518,
+        "cached": 4864,
+        "output": 741,
+        "reasoning": 0
+      },
+      "cost_usd": 0.058454,
+      "records": [
+        "constraints-scheduling__6RAdWrC/reproduced/reply-4.json"
+      ]
+    },
+    "resp_0c1fe19c080e0785016ab629a704ac87d1af86cd79958b53c9": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 8233,
+        "cached": 6400,
+        "output": 196,
+        "reasoning": 0
+      },
+      "cost_usd": 0.03453,
+      "records": [
+        "constraints-scheduling__6RAdWrC/reproduced/reply-5.json"
+      ]
+    },
+    "resp_007fa54ae62ec30f016ab6304c927887d18602084ad5154d2f": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1274,
+        "cached": 0,
+        "output": 55,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01549,
+      "records": [
+        "constraints-scheduling__8BvpdSE/reproduced/reply-1.json"
+      ]
+    },
+    "resp_007fa54ae62ec30f016ab63050feec87d1a82fefc57ab3a32c": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 3867,
+        "cached": 1152,
+        "output": 732,
+        "reasoning": 29
+      },
+      "cost_usd": 0.064902,
+      "records": [
+        "constraints-scheduling__8BvpdSE/reproduced/reply-2.json"
+      ]
+    },
+    "resp_007fa54ae62ec30f016ab63068859887d1a554d3022b33cbad": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 5347,
+        "cached": 3712,
+        "output": 702,
+        "reasoning": 0
+      },
+      "cost_usd": 0.055162,
+      "records": [
+        "constraints-scheduling__8BvpdSE/reproduced/reply-3.json"
+      ]
+    },
+    "resp_007fa54ae62ec30f016ab6307fe9ac87d19006097fbc0a6fd5": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 7045,
+        "cached": 0,
+        "output": 237,
+        "reasoning": 50
+      },
+      "cost_usd": 0.0823,
+      "records": [
+        "constraints-scheduling__8BvpdSE/reproduced/reply-4.json"
+      ]
+    },
+    "resp_0117edb5784648ec016ab62224ea1487d18de870c972fbb7d2": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1274,
+        "cached": 0,
+        "output": 45,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01499,
+      "records": [
+        "constraints-scheduling__HKRJM8E/reproduced/reply-1.json"
+      ]
+    },
+    "resp_0117edb5784648ec016ab62228820887d192df6dec15adafdd": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 3004,
+        "cached": 0,
+        "output": 669,
+        "reasoning": 31
+      },
+      "cost_usd": 0.06349,
+      "records": [
+        "constraints-scheduling__HKRJM8E/reproduced/reply-2.json"
+      ]
+    },
+    "resp_0117edb5784648ec016ab622418c9887d1831f37b4af3b0d53": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 5907,
+        "cached": 2816,
+        "output": 699,
+        "reasoning": 0
+      },
+      "cost_usd": 0.068676,
+      "records": [
+        "constraints-scheduling__HKRJM8E/reproduced/reply-3.json"
+      ]
+    },
+    "resp_0117edb5784648ec016ab622587f9c87d1a8f26521e6530ecc": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 7495,
+        "cached": 5760,
+        "output": 175,
+        "reasoning": 0
+      },
+      "cost_usd": 0.03186,
+      "records": [
+        "constraints-scheduling__HKRJM8E/reproduced/reply-4.json"
+      ]
+    },
+    "resp_006b1beb2749f2d2016ab629eb46f087d1946573244ce7f238": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1276,
+        "cached": 0,
+        "output": 55,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01551,
+      "records": [
+        "constraints-scheduling__Kj54Rts/reproduced/reply-1.json"
+      ]
+    },
+    "resp_006b1beb2749f2d2016ab629eef20487d1970af7fd1226c430": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 3913,
+        "cached": 1152,
+        "output": 94,
+        "reasoning": 33
+      },
+      "cost_usd": 0.033462,
+      "records": [
+        "constraints-scheduling__Kj54Rts/reproduced/reply-2.json"
+      ]
+    },
+    "resp_006b1beb2749f2d2016ab629f5e89887d1876a9d94a84c3dfc": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 6500,
+        "cached": 3712,
+        "output": 774,
+        "reasoning": 0
+      },
+      "cost_usd": 0.070292,
+      "records": [
+        "constraints-scheduling__Kj54Rts/reproduced/reply-3.json"
+      ]
+    },
+    "resp_006b1beb2749f2d2016ab62a0f1cd487d1b47a7debcce2bd2d": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 8203,
+        "cached": 6272,
+        "output": 197,
+        "reasoning": 0
+      },
+      "cost_usd": 0.035432,
+      "records": [
+        "constraints-scheduling__Kj54Rts/reproduced/reply-4.json"
+      ]
+    },
+    "resp_024e7f334175e400016ab631a48ec887d18d4fd56ffa2a619f": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1272,
+        "cached": 0,
+        "output": 57,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01557,
+      "records": [
+        "constraints-scheduling__QCqy7tt/reproduced/reply-1.json"
+      ]
+    },
+    "resp_024e7f334175e400016ab631a7c3f487d19f48c49f1504c56c": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 3906,
+        "cached": 1152,
+        "output": 770,
+        "reasoning": 33
+      },
+      "cost_usd": 0.067192,
+      "records": [
+        "constraints-scheduling__QCqy7tt/reproduced/reply-2.json"
+      ]
+    },
+    "resp_024e7f334175e400016ab631c0703c87d184bf5bc2fd550a34": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 5457,
+        "cached": 3712,
+        "output": 763,
+        "reasoning": 27
+      },
+      "cost_usd": 0.059312,
+      "records": [
+        "constraints-scheduling__QCqy7tt/reproduced/reply-3.json"
+      ]
+    },
+    "resp_024e7f334175e400016ab631d912b087d1aa7a92bf8e3c5d97": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 7790,
+        "cached": 5248,
+        "output": 192,
+        "reasoning": 18
+      },
+      "cost_usd": 0.040268,
+      "records": [
+        "constraints-scheduling__QCqy7tt/reproduced/reply-4.json"
+      ]
+    },
+    "resp_066b80499da2f3f8016ab62224640487d18f268879eb6a3aba": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1274,
+        "cached": 0,
+        "output": 45,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01499,
+      "records": [
+        "constraints-scheduling__WQjTCna/reproduced/reply-1.json"
+      ]
+    },
+    "resp_066b80499da2f3f8016ab62227255487d19bdc0c7d09601b84": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2995,
+        "cached": 0,
+        "output": 824,
+        "reasoning": 37
+      },
+      "cost_usd": 0.07115,
+      "records": [
+        "constraints-scheduling__WQjTCna/reproduced/reply-2.json"
+      ]
+    },
+    "resp_066b80499da2f3f8016ab62241a69c87d18f2291ad7d6128c3": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 4651,
+        "cached": 2816,
+        "output": 758,
+        "reasoning": 0
+      },
+      "cost_usd": 0.059066,
+      "records": [
+        "constraints-scheduling__WQjTCna/reproduced/reply-3.json"
+      ]
+    },
+    "resp_066b80499da2f3f8016ab6225b7f4487d19a385a8e0cfb7245": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 6401,
+        "cached": 4480,
+        "output": 180,
+        "reasoning": 0
+      },
+      "cost_usd": 0.03269,
+      "records": [
+        "constraints-scheduling__WQjTCna/reproduced/reply-4.json"
+      ]
+    },
+    "resp_0c24c05ce8736256016ab629383ec487d18705388c2e5d4a3d": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 979,
+        "cached": 0,
+        "output": 44,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01199,
+      "records": [
+        "distribution-search__2iPcGxp/reproduced/reply-1.json"
+      ]
+    },
+    "resp_0c24c05ce8736256016ab6293b65bc87d1a3c1ae88338549c6": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1230,
+        "cached": 0,
+        "output": 182,
+        "reasoning": 0
+      },
+      "cost_usd": 0.0214,
+      "records": [
+        "distribution-search__2iPcGxp/reproduced/reply-2.json"
+      ]
+    },
+    "resp_0c24c05ce8736256016ab6294338a087d19ae599409c5ef342": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2284,
+        "cached": 1024,
+        "output": 208,
+        "reasoning": 44
+      },
+      "cost_usd": 0.024024,
+      "records": [
+        "distribution-search__2iPcGxp/reproduced/reply-3.json"
+      ]
+    },
+    "resp_06da06dae25a4c49016ab631ce639887d19d185eea53b035c4": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 985,
+        "cached": 0,
+        "output": 41,
+        "reasoning": 0
+      },
+      "cost_usd": 0.0119,
+      "records": [
+        "distribution-search__UEB9GvZ/reproduced/reply-1.json"
+      ]
+    },
+    "resp_06da06dae25a4c49016ab631d1ebd087d19a28d650f3eca8ff": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1263,
+        "cached": 0,
+        "output": 171,
+        "reasoning": 0
+      },
+      "cost_usd": 0.02118,
+      "records": [
+        "distribution-search__UEB9GvZ/reproduced/reply-2.json"
+      ]
+    },
+    "resp_06da06dae25a4c49016ab631d9429887d198249082e0391e6d": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2539,
+        "cached": 0,
+        "output": 185,
+        "reasoning": 0
+      },
+      "cost_usd": 0.03464,
+      "records": [
+        "distribution-search__UEB9GvZ/reproduced/reply-3.json"
+      ]
+    },
+    "resp_06da06dae25a4c49016ab631e19a6887d19e5ad01f302f41a7": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 3010,
+        "cached": 0,
+        "output": 160,
+        "reasoning": 0
+      },
+      "cost_usd": 0.0381,
+      "records": [
+        "distribution-search__UEB9GvZ/reproduced/reply-4.json"
+      ]
+    },
+    "resp_0122ccc6c8f124cc016ab62261d02087d1a1b9650dd5b03152": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 982,
+        "cached": 0,
+        "output": 44,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01202,
+      "records": [
+        "distribution-search__dsotnuZ/reproduced/reply-1.json"
+      ]
+    },
+    "resp_0122ccc6c8f124cc016ab622647f5087d1944935e2a0f33297": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1232,
+        "cached": 0,
+        "output": 186,
+        "reasoning": 0
+      },
+      "cost_usd": 0.02162,
+      "records": [
+        "distribution-search__dsotnuZ/reproduced/reply-2.json"
+      ]
+    },
+    "resp_0122ccc6c8f124cc016ab6226c54d887d193085e165f3f813e": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2635,
+        "cached": 0,
+        "output": 201,
+        "reasoning": 0
+      },
+      "cost_usd": 0.0364,
+      "records": [
+        "distribution-search__dsotnuZ/reproduced/reply-3.json"
+      ]
+    },
+    "resp_0122ccc6c8f124cc016ab62274c15087d1a2b68eb9606b9f74": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 3133,
+        "cached": 2432,
+        "output": 135,
+        "reasoning": 0
+      },
+      "cost_usd": 0.016192,
+      "records": [
+        "distribution-search__dsotnuZ/reproduced/reply-4.json"
+      ]
+    },
+    "resp_09f66b2e5ce1163b016ab62ad12bcc87d18fb37808866be649": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 982,
+        "cached": 0,
+        "output": 48,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01222,
+      "records": [
+        "distribution-search__fDiucoR/reproduced/reply-1.json"
+      ]
+    },
+    "resp_09f66b2e5ce1163b016ab62ad4677887d18d1d5e6781029322": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1288,
+        "cached": 0,
+        "output": 181,
+        "reasoning": 0
+      },
+      "cost_usd": 0.02193,
+      "records": [
+        "distribution-search__fDiucoR/reproduced/reply-2.json"
+      ]
+    },
+    "resp_09f66b2e5ce1163b016ab62adc03bc87d1ba0675ac2a6eb091": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2505,
+        "cached": 0,
+        "output": 193,
+        "reasoning": 41
+      },
+      "cost_usd": 0.0347,
+      "records": [
+        "distribution-search__fDiucoR/reproduced/reply-3.json"
+      ]
+    },
+    "resp_0fda752bc7359207016ab6229a0f5887d189dae94ca4df1962": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 987,
+        "cached": 0,
+        "output": 44,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01207,
+      "records": [
+        "distribution-search__wfDMeV5/reproduced/reply-1.json"
+      ]
+    },
+    "resp_0fda752bc7359207016ab6229d6c1887d1a76df55abe7382fa": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1265,
+        "cached": 0,
+        "output": 149,
+        "reasoning": 0
+      },
+      "cost_usd": 0.0201,
+      "records": [
+        "distribution-search__wfDMeV5/reproduced/reply-2.json"
+      ]
+    },
+    "resp_0fda752bc7359207016ab622a7fb7887d1b320ce66f5f2924b": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2409,
+        "cached": 0,
+        "output": 191,
+        "reasoning": 26
+      },
+      "cost_usd": 0.03364,
+      "records": [
+        "distribution-search__wfDMeV5/reproduced/reply-3.json"
+      ]
+    },
+    "resp_0d0b63ef9460eeeb016ab62fd9d2a887d1a1ef4a2f2536ffdb": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 984,
+        "cached": 0,
+        "output": 48,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01224,
+      "records": [
+        "distribution-search__xGDRd3x/reproduced/reply-1.json"
+      ]
+    },
+    "resp_0d0b63ef9460eeeb016ab62fde7ac487d18f4407cdceb63e86": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1242,
+        "cached": 0,
+        "output": 220,
+        "reasoning": 0
+      },
+      "cost_usd": 0.02342,
+      "records": [
+        "distribution-search__xGDRd3x/reproduced/reply-2.json"
+      ]
+    },
+    "resp_0d0b63ef9460eeeb016ab62fe7e41887d18f325468df247c28": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2640,
+        "cached": 1024,
+        "output": 175,
+        "reasoning": 0
+      },
+      "cost_usd": 0.025934,
+      "records": [
+        "distribution-search__xGDRd3x/reproduced/reply-3.json"
+      ]
+    },
+    "resp_0d0b63ef9460eeeb016ab62fef4ba887d1a775445b78ecaf73": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 3078,
+        "cached": 2432,
+        "output": 157,
+        "reasoning": 0
+      },
+      "cost_usd": 0.016742,
+      "records": [
+        "distribution-search__xGDRd3x/reproduced/reply-4.json"
+      ]
+    },
+    "resp_0244b62c0b037098016ab624fcb17087d1a28fa613d1e01313": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 944,
+        "cached": 0,
+        "output": 46,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01174,
+      "records": [
+        "financial-document-processor__GZQJYM9/reproduced/reply-1.json"
+      ]
+    },
+    "resp_0244b62c0b037098016ab624fff59487d1a4af5c6275f16868": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1495,
+        "cached": 0,
+        "output": 72,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01855,
+      "records": [
+        "financial-document-processor__GZQJYM9/reproduced/reply-2.json"
+      ]
+    },
+    "resp_0244b62c0b037098016ab62503e89c87d1aa4580bbd2bfcf47": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2067,
+        "cached": 1280,
+        "output": 118,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01505,
+      "records": [
+        "financial-document-processor__GZQJYM9/reproduced/reply-3.json"
+      ]
+    },
+    "resp_0244b62c0b037098016ab62509055487d1b8251c03db674df5": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2351,
+        "cached": 1920,
+        "output": 109,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01168,
+      "records": [
+        "financial-document-processor__GZQJYM9/reproduced/reply-4.json"
+      ]
+    },
+    "resp_0244b62c0b037098016ab6250e462487d18072dbbf53bc85ee": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 7566,
+        "cached": 2176,
+        "output": 221,
+        "reasoning": 45
+      },
+      "cost_usd": 0.067126,
+      "records": [
+        "financial-document-processor__GZQJYM9/reproduced/reply-5.json"
+      ]
+    },
+    "resp_0244b62c0b037098016ab62516866087d18bcc5185cb37763f": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 8314,
+        "cached": 0,
+        "output": 196,
+        "reasoning": 39
+      },
+      "cost_usd": 0.09294,
+      "records": [
+        "financial-document-processor__GZQJYM9/reproduced/reply-6.json"
+      ]
+    },
+    "resp_0244b62c0b037098016ab6251eb28887d19d57b991dd7aefee": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 12958,
+        "cached": 7424,
+        "output": 457,
+        "reasoning": 41
+      },
+      "cost_usd": 0.085614,
+      "records": [
+        "financial-document-processor__GZQJYM9/reproduced/reply-7.json"
+      ]
+    },
+    "resp_0244b62c0b037098016ab6252f53a487d1b1ef8ed3a155b4a1": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 14850,
+        "cached": 12800,
+        "output": 210,
+        "reasoning": 0
+      },
+      "cost_usd": 0.0438,
+      "records": [
+        "financial-document-processor__GZQJYM9/reproduced/reply-8.json"
+      ]
+    },
+    "resp_0579d479cc8f73fd016ab6244a7dfc87d1b7557ef270c02471": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 946,
+        "cached": 0,
+        "output": 48,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01186,
+      "records": [
+        "financial-document-processor__Tq5JAmN/reproduced/reply-1.json"
+      ]
+    },
+    "resp_0579d479cc8f73fd016ab6244d739087d1a40337fd1e867b1d": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1501,
+        "cached": 0,
+        "output": 86,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01931,
+      "records": [
+        "financial-document-processor__Tq5JAmN/reproduced/reply-2.json"
+      ]
+    },
+    "resp_0579d479cc8f73fd016ab62451a52c87d1a5e7f17df6906ac5": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2014,
+        "cached": 1280,
+        "output": 114,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01432,
+      "records": [
+        "financial-document-processor__Tq5JAmN/reproduced/reply-3.json"
+      ]
+    },
+    "resp_0579d479cc8f73fd016ab624566e7c87d1b40fc030ee90e061": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2289,
+        "cached": 1792,
+        "output": 130,
+        "reasoning": 0
+      },
+      "cost_usd": 0.013262,
+      "records": [
+        "financial-document-processor__Tq5JAmN/reproduced/reply-4.json"
+      ]
+    },
+    "resp_0579d479cc8f73fd016ab6246b5d5487d1a8679edf3f4e726a": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2800,
+        "cached": 2176,
+        "output": 138,
+        "reasoning": 12
+      },
+      "cost_usd": 0.015316,
+      "records": [
+        "financial-document-processor__Tq5JAmN/reproduced/reply-5.json"
+      ]
+    },
+    "resp_0579d479cc8f73fd016ab62472153487d18e57efd233984008": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 8529,
+        "cached": 2688,
+        "output": 178,
+        "reasoning": 13
+      },
+      "cost_usd": 0.069998,
+      "records": [
+        "financial-document-processor__Tq5JAmN/reproduced/reply-6.json"
+      ]
+    },
+    "resp_0579d479cc8f73fd016ab624881dd887d1aa07545ba51fb0c6": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 9153,
+        "cached": 8320,
+        "output": 576,
+        "reasoning": 44
+      },
+      "cost_usd": 0.04545,
+      "records": [
+        "financial-document-processor__Tq5JAmN/reproduced/reply-7.json"
+      ]
+    },
+    "resp_0579d479cc8f73fd016ab6249c30d887d197cd22f0db5b4080": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 11359,
+        "cached": 8960,
+        "output": 185,
+        "reasoning": 0
+      },
+      "cost_usd": 0.0422,
+      "records": [
+        "financial-document-processor__Tq5JAmN/reproduced/reply-8.json"
+      ]
+    },
+    "resp_08d4d1fa21c02685016ab62d0c3d0487d1b6489035ca05420c": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 944,
+        "cached": 0,
+        "output": 46,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01174,
+      "records": [
+        "financial-document-processor__Wu2v2EL/reproduced/reply-1.json"
+      ]
+    },
+    "resp_08d4d1fa21c02685016ab62d0f147087d1a5834af3bcbb75b7": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1497,
+        "cached": 0,
+        "output": 72,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01857,
+      "records": [
+        "financial-document-processor__Wu2v2EL/reproduced/reply-2.json"
+      ]
+    },
+    "resp_08d4d1fa21c02685016ab62d13e37887d1a408a6781f37a64e": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2068,
+        "cached": 0,
+        "output": 167,
+        "reasoning": 0
+      },
+      "cost_usd": 0.02903,
+      "records": [
+        "financial-document-processor__Wu2v2EL/reproduced/reply-3.json"
+      ]
+    },
+    "resp_08d4d1fa21c02685016ab62d1a6f9487d1bf0a58493f92d01b": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2533,
+        "cached": 1920,
+        "output": 55,
+        "reasoning": 0
+      },
+      "cost_usd": 0.0108,
+      "records": [
+        "financial-document-processor__Wu2v2EL/reproduced/reply-4.json"
+      ]
+    },
+    "resp_08d4d1fa21c02685016ab62d1ddb3887d1be1bc077d5a8c5b2": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 6291,
+        "cached": 2304,
+        "output": 200,
+        "reasoning": 25
+      },
+      "cost_usd": 0.052174,
+      "records": [
+        "financial-document-processor__Wu2v2EL/reproduced/reply-5.json"
+      ]
+    },
+    "resp_08d4d1fa21c02685016ab62d26446487d1a731257a29b37a7e": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 8635,
+        "cached": 6144,
+        "output": 334,
+        "reasoning": 37
+      },
+      "cost_usd": 0.047754,
+      "records": [
+        "financial-document-processor__Wu2v2EL/reproduced/reply-6.json"
+      ]
+    },
+    "resp_08d4d1fa21c02685016ab62d34546c87d193311fe0a2541642": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 13732,
+        "cached": 8448,
+        "output": 199,
+        "reasoning": 16
+      },
+      "cost_usd": 0.071238,
+      "records": [
+        "financial-document-processor__Wu2v2EL/reproduced/reply-7.json"
+      ]
+    },
+    "resp_08d4d1fa21c02685016ab62d3f67d087d19d4925e05047e6df": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 18407,
+        "cached": 13568,
+        "output": 266,
+        "reasoning": 25
+      },
+      "cost_usd": 0.075258,
+      "records": [
+        "financial-document-processor__Wu2v2EL/reproduced/reply-8.json"
+      ]
+    },
+    "resp_0bab11a11d8b139d016ab633f0876087d1b5b5e8389cc8a2ca": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 943,
+        "cached": 0,
+        "output": 46,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01173,
+      "records": [
+        "financial-document-processor__iUk2vrc/reproduced/reply-1.json"
+      ]
+    },
+    "resp_0bab11a11d8b139d016ab633f3815c87d1815224167b83fa85": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1714,
+        "cached": 0,
+        "output": 242,
+        "reasoning": 46
+      },
+      "cost_usd": 0.02924,
+      "records": [
+        "financial-document-processor__iUk2vrc/reproduced/reply-2.json"
+      ]
+    },
+    "resp_0bab11a11d8b139d016ab633fc788487d1998be54ffbde80ca": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2194,
+        "cached": 0,
+        "output": 136,
+        "reasoning": 0
+      },
+      "cost_usd": 0.02874,
+      "records": [
+        "financial-document-processor__iUk2vrc/reproduced/reply-3.json"
+      ]
+    },
+    "resp_0bab11a11d8b139d016ab63402ad4087d1880a060289524b9e": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 4830,
+        "cached": 2048,
+        "output": 478,
+        "reasoning": 28
+      },
+      "cost_usd": 0.053768,
+      "records": [
+        "financial-document-processor__iUk2vrc/reproduced/reply-4.json"
+      ]
+    },
+    "resp_04a33d81db5f4872016ab6317617f487d195c7827371ea120f": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 943,
+        "cached": 0,
+        "output": 46,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01173,
+      "records": [
+        "financial-document-processor__qJZNUBC/reproduced/reply-1.json"
+      ]
+    },
+    "resp_04a33d81db5f4872016ab631794bb487d191e0292b6b282f30": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1494,
+        "cached": 0,
+        "output": 77,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01879,
+      "records": [
+        "financial-document-processor__qJZNUBC/reproduced/reply-2.json"
+      ]
+    },
+    "resp_04a33d81db5f4872016ab6317d7b1487d19430c6e8f9f9bbb9": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1942,
+        "cached": 1280,
+        "output": 184,
+        "reasoning": 0
+      },
+      "cost_usd": 0.0171,
+      "records": [
+        "financial-document-processor__qJZNUBC/reproduced/reply-3.json"
+      ]
+    },
+    "resp_04a33d81db5f4872016ab63186ff0887d1ad64045c0abef6dc": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2355,
+        "cached": 0,
+        "output": 254,
+        "reasoning": 0
+      },
+      "cost_usd": 0.03625,
+      "records": [
+        "financial-document-processor__qJZNUBC/reproduced/reply-4.json"
+      ]
+    },
+    "resp_04a33d81db5f4872016ab631906af087d1bb509415338ebd21": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 3701,
+        "cached": 2176,
+        "output": 111,
+        "reasoning": 19
+      },
+      "cost_usd": 0.022976,
+      "records": [
+        "financial-document-processor__qJZNUBC/reproduced/reply-5.json"
+      ]
+    },
+    "resp_04a33d81db5f4872016ab6319d11e487d1a193ecfb939f2d6b": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 9443,
+        "cached": 3584,
+        "output": 512,
+        "reasoning": 64
+      },
+      "cost_usd": 0.087774,
+      "records": [
+        "financial-document-processor__qJZNUBC/reproduced/reply-6.json"
+      ]
+    },
+    "resp_04a33d81db5f4872016ab631ae5b0487d184e0f8342f80f04b": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 14781,
+        "cached": 9216,
+        "output": 167,
+        "reasoning": 24
+      },
+      "cost_usd": 0.073216,
+      "records": [
+        "financial-document-processor__qJZNUBC/reproduced/reply-7.json"
+      ]
+    },
+    "resp_04a33d81db5f4872016ab631b5b48487d1bb0a606bdca5e458": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 19417,
+        "cached": 14592,
+        "output": 661,
+        "reasoning": 61
+      },
+      "cost_usd": 0.095892,
+      "records": [
+        "financial-document-processor__qJZNUBC/reproduced/reply-8.json"
+      ]
+    },
+    "resp_0903cc53bc768407016ab62a9a172087d1b341b1585a11cd24": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 940,
+        "cached": 0,
+        "output": 46,
+        "reasoning": 0
+      },
+      "cost_usd": 0.0117,
+      "records": [
+        "financial-document-processor__vWXXrpH/reproduced/reply-1.json"
+      ]
+    },
+    "resp_0903cc53bc768407016ab62a9df0dc87d197e7fb1eb4fb2863": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1490,
+        "cached": 0,
+        "output": 74,
+        "reasoning": 0
+      },
+      "cost_usd": 0.0186,
+      "records": [
+        "financial-document-processor__vWXXrpH/reproduced/reply-2.json"
+      ]
+    },
+    "resp_0903cc53bc768407016ab62aa1a60087d18b89887e05dcef20": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1928,
+        "cached": 0,
+        "output": 158,
+        "reasoning": 0
+      },
+      "cost_usd": 0.02718,
+      "records": [
+        "financial-document-processor__vWXXrpH/reproduced/reply-3.json"
+      ]
+    },
+    "resp_0903cc53bc768407016ab62aa80a8c87d188bc0437f0c82ccc": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 3045,
+        "cached": 1280,
+        "output": 228,
+        "reasoning": 0
+      },
+      "cost_usd": 0.03033,
+      "records": [
+        "financial-document-processor__vWXXrpH/reproduced/reply-4.json"
+      ]
+    },
+    "resp_0903cc53bc768407016ab62ab03a6087d19a33d62327f7d7aa": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 3546,
+        "cached": 2816,
+        "output": 120,
+        "reasoning": 16
+      },
+      "cost_usd": 0.016116,
+      "records": [
+        "financial-document-processor__vWXXrpH/reproduced/reply-5.json"
+      ]
+    },
+    "resp_0903cc53bc768407016ab62ab6e5b887d1ac2961912275d58e": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 7449,
+        "cached": 1792,
+        "output": 276,
+        "reasoning": 70
+      },
+      "cost_usd": 0.072162,
+      "records": [
+        "financial-document-processor__vWXXrpH/reproduced/reply-6.json"
+      ]
+    },
+    "resp_0903cc53bc768407016ab62ac14bf487d194c09d0a2c979b6a": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 9504,
+        "cached": 7296,
+        "output": 286,
+        "reasoning": 57
+      },
+      "cost_usd": 0.043676,
+      "records": [
+        "financial-document-processor__vWXXrpH/reproduced/reply-7.json"
+      ]
+    },
+    "resp_0903cc53bc768407016ab62ac8fce087d1b3a75dd586477441": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 14338,
+        "cached": 9344,
+        "output": 179,
+        "reasoning": 14
+      },
+      "cost_usd": 0.068234,
+      "records": [
+        "financial-document-processor__vWXXrpH/reproduced/reply-8.json"
+      ]
+    },
+    "resp_0bd290d9c8ac9f89016ab628ffa16c87d183b3b589798e0dc2": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 821,
+        "cached": 0,
+        "output": 48,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01061,
+      "records": [
+        "model-extraction-relu-logits__438AiAn/reproduced/reply-1.json"
+      ]
+    },
+    "resp_0bd290d9c8ac9f89016ab62902632087d1b135aab576866d56": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1174,
+        "cached": 0,
+        "output": 36,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01354,
+      "records": [
+        "model-extraction-relu-logits__438AiAn/reproduced/reply-2.json"
+      ]
+    },
+    "resp_0bd290d9c8ac9f89016ab6290595e487d18a9f96bba65b2441": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 3479,
+        "cached": 1024,
+        "output": 322,
+        "reasoning": 14
+      },
+      "cost_usd": 0.041674,
+      "records": [
+        "model-extraction-relu-logits__438AiAn/reproduced/reply-3.json"
+      ]
+    },
+    "resp_0bd290d9c8ac9f89016ab629117f4c87d18eaca29f13694682": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 4385,
+        "cached": 3328,
+        "output": 194,
+        "reasoning": 20
+      },
+      "cost_usd": 0.023598,
+      "records": [
+        "model-extraction-relu-logits__438AiAn/reproduced/reply-4.json"
+      ]
+    },
+    "resp_04a52752c7c12e13016ab62da6301487d19b593edcec4ff827": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 828,
+        "cached": 0,
+        "output": 53,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01093,
+      "records": [
+        "model-extraction-relu-logits__7GNM99Y/reproduced/reply-1.json"
+      ]
+    },
+    "resp_04a52752c7c12e13016ab62da946b887d190fcf84db8bdfbac": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2594,
+        "cached": 0,
+        "output": 262,
+        "reasoning": 49
+      },
+      "cost_usd": 0.03904,
+      "records": [
+        "model-extraction-relu-logits__7GNM99Y/reproduced/reply-2.json"
+      ]
+    },
+    "resp_04a52752c7c12e13016ab62db2fcd487d197b0fd7051eeec85": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 3465,
+        "cached": 2432,
+        "output": 439,
+        "reasoning": 23
+      },
+      "cost_usd": 0.034712,
+      "records": [
+        "model-extraction-relu-logits__7GNM99Y/reproduced/reply-3.json"
+      ]
+    },
+    "resp_04a52752c7c12e13016ab62dc4a47487d1bfecf7b5727b7705": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 5981,
+        "cached": 3328,
+        "output": 734,
+        "reasoning": 66
+      },
+      "cost_usd": 0.066558,
+      "records": [
+        "model-extraction-relu-logits__7GNM99Y/reproduced/reply-4.json"
+      ]
+    },
+    "resp_0f5a78fee58e1cf3016ab62700973487d1b8b94b28315b0bc8": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 828,
+        "cached": 0,
+        "output": 37,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01013,
+      "records": [
+        "model-extraction-relu-logits__UmfHku9/reproduced/reply-1.json"
+      ]
+    },
+    "resp_0f5a78fee58e1cf3016ab62703995887d197a1fa14f0f43f96": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2169,
+        "cached": 0,
+        "output": 252,
+        "reasoning": 36
+      },
+      "cost_usd": 0.03429,
+      "records": [
+        "model-extraction-relu-logits__UmfHku9/reproduced/reply-2.json"
+      ]
+    },
+    "resp_0f5a78fee58e1cf3016ab6270d384c87d1ac066895377c347f": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 3039,
+        "cached": 0,
+        "output": 406,
+        "reasoning": 56
+      },
+      "cost_usd": 0.05069,
+      "records": [
+        "model-extraction-relu-logits__UmfHku9/reproduced/reply-3.json"
+      ]
+    },
+    "resp_0f5a78fee58e1cf3016ab6271c25b887d19e359f1ccb5f9e15": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 3913,
+        "cached": 2816,
+        "output": 163,
+        "reasoning": 0
+      },
+      "cost_usd": 0.021936,
+      "records": [
+        "model-extraction-relu-logits__UmfHku9/reproduced/reply-4.json"
+      ]
+    },
+    "resp_0a2eafc9c88bbf70016ab6378e636087d1a4c7f2d1b71c3d7a": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 824,
+        "cached": 0,
+        "output": 50,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01074,
+      "records": [
+        "model-extraction-relu-logits__ZyD7uDx/reproduced/reply-1.json"
+      ]
+    },
+    "resp_0a2eafc9c88bbf70016ab637919e4c87d1af2a0e278b5d67e5": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2839,
+        "cached": 0,
+        "output": 114,
+        "reasoning": 0
+      },
+      "cost_usd": 0.03409,
+      "records": [
+        "model-extraction-relu-logits__ZyD7uDx/reproduced/reply-2.json"
+      ]
+    },
+    "resp_0a2eafc9c88bbf70016ab63796e59887d1bc0eb6e9dc69da30": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 4059,
+        "cached": 0,
+        "output": 291,
+        "reasoning": 0
+      },
+      "cost_usd": 0.05514,
+      "records": [
+        "model-extraction-relu-logits__ZyD7uDx/reproduced/reply-3.json"
+      ]
+    },
+    "resp_0a2eafc9c88bbf70016ab637a299e487d1845dbb7273c5ddf3": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 4798,
+        "cached": 2688,
+        "output": 195,
+        "reasoning": 16
+      },
+      "cost_usd": 0.033538,
+      "records": [
+        "model-extraction-relu-logits__ZyD7uDx/reproduced/reply-4.json"
+      ]
+    },
+    "resp_07f2f790395dd664016ab63015aa0087d1a69326a5e66e33fb": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 821,
+        "cached": 0,
+        "output": 63,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01136,
+      "records": [
+        "model-extraction-relu-logits__iQwXJ8F/reproduced/reply-1.json"
+      ]
+    },
+    "resp_07f2f790395dd664016ab63019375087d19c170b7efb8c1bc8": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2564,
+        "cached": 0,
+        "output": 262,
+        "reasoning": 0
+      },
+      "cost_usd": 0.03874,
+      "records": [
+        "model-extraction-relu-logits__iQwXJ8F/reproduced/reply-2.json"
+      ]
+    },
+    "resp_07f2f790395dd664016ab63023bce487d1beca0e5e6800e989": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 3871,
+        "cached": 2432,
+        "output": 189,
+        "reasoning": 24
+      },
+      "cost_usd": 0.026272,
+      "records": [
+        "model-extraction-relu-logits__iQwXJ8F/reproduced/reply-3.json"
+      ]
+    },
+    "resp_0f55fe941e385125016ab6348ca7a887d1ac2a7bf53c7389f2": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 827,
+        "cached": 0,
+        "output": 53,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01092,
+      "records": [
+        "model-extraction-relu-logits__ouMhUtE/reproduced/reply-1.json"
+      ]
+    },
+    "resp_0f55fe941e385125016ab6348fec7087d1bd6de9ea40f8b859": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2328,
+        "cached": 0,
+        "output": 255,
+        "reasoning": 0
+      },
+      "cost_usd": 0.03603,
+      "records": [
+        "model-extraction-relu-logits__ouMhUtE/reproduced/reply-2.json"
+      ]
+    },
+    "resp_0f55fe941e385125016ab6349a35f887d1bad2ac64c85b0aa8": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 3561,
+        "cached": 0,
+        "output": 353,
+        "reasoning": 88
+      },
+      "cost_usd": 0.05326,
+      "records": [
+        "model-extraction-relu-logits__ouMhUtE/reproduced/reply-3.json"
+      ]
+    },
+    "resp_0f55fe941e385125016ab634a78c8087d1bf57a8a0867f289b": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 4466,
+        "cached": 3328,
+        "output": 645,
+        "reasoning": 0
+      },
+      "cost_usd": 0.046958,
+      "records": [
+        "model-extraction-relu-logits__ouMhUtE/reproduced/reply-4.json"
+      ]
+    },
+    "resp_0931dea26a08aaca016ab62b68098c87d190ebfaf9a3b5db3c": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1187,
+        "cached": 0,
+        "output": 40,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01387,
+      "records": [
+        "multi-source-data-merger__bUc8CK5/reproduced/reply-1.json"
+      ]
+    },
+    "resp_0931dea26a08aaca016ab62b6bdf4087d185c983a8a263c74a": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1563,
+        "cached": 1024,
+        "output": 115,
+        "reasoning": 0
+      },
+      "cost_usd": 0.012164,
+      "records": [
+        "multi-source-data-merger__bUc8CK5/reproduced/reply-2.json"
+      ]
+    },
+    "resp_0931dea26a08aaca016ab62b7133e087d1b2c057b3b2b27838": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 4336,
+        "cached": 1408,
+        "output": 94,
+        "reasoning": 0
+      },
+      "cost_usd": 0.035388,
+      "records": [
+        "multi-source-data-merger__bUc8CK5/reproduced/reply-3.json"
+      ]
+    },
+    "resp_0931dea26a08aaca016ab62b76973087d1a0474b4a133cb1eb": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 4922,
+        "cached": 0,
+        "output": 583,
+        "reasoning": 23
+      },
+      "cost_usd": 0.07837,
+      "records": [
+        "multi-source-data-merger__bUc8CK5/reproduced/reply-4.json"
+      ]
+    },
+    "resp_0931dea26a08aaca016ab62b8b361487d197b2896664e5a28a": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 6276,
+        "cached": 4736,
+        "output": 150,
+        "reasoning": 0
+      },
+      "cost_usd": 0.027636,
+      "records": [
+        "multi-source-data-merger__bUc8CK5/reproduced/reply-5.json"
+      ]
+    },
+    "resp_0c005deb3dc0fe79016ab624cb084487d18cadf16195cdad51": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1192,
+        "cached": 0,
+        "output": 46,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01422,
+      "records": [
+        "multi-source-data-merger__oJGMRvv/reproduced/reply-1.json"
+      ]
+    },
+    "resp_0c005deb3dc0fe79016ab624ce175487d1816810a781f6ace9": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1487,
+        "cached": 1024,
+        "output": 144,
+        "reasoning": 0
+      },
+      "cost_usd": 0.012854,
+      "records": [
+        "multi-source-data-merger__oJGMRvv/reproduced/reply-2.json"
+      ]
+    },
+    "resp_0c005deb3dc0fe79016ab624d494b487d1b708f8ec8e1b135a": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 3969,
+        "cached": 1280,
+        "output": 729,
+        "reasoning": 37
+      },
+      "cost_usd": 0.06462,
+      "records": [
+        "multi-source-data-merger__oJGMRvv/reproduced/reply-3.json"
+      ]
+    },
+    "resp_0c005deb3dc0fe79016ab624edceec87d1ab14694238922756": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 5499,
+        "cached": 3840,
+        "output": 164,
+        "reasoning": 0
+      },
+      "cost_usd": 0.02863,
+      "records": [
+        "multi-source-data-merger__oJGMRvv/reproduced/reply-4.json"
+      ]
+    },
+    "resp_0cac5fb38ecb2e81016ab630cc5df487d1978b2149f7636a83": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1190,
+        "cached": 0,
+        "output": 40,
+        "reasoning": 0
+      },
+      "cost_usd": 0.0139,
+      "records": [
+        "multi-source-data-merger__pS6dYp5/reproduced/reply-1.json"
+      ]
+    },
+    "resp_0cac5fb38ecb2e81016ab630cf64e887d1aa9a7ee64473a958": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1506,
+        "cached": 1024,
+        "output": 141,
+        "reasoning": 0
+      },
+      "cost_usd": 0.012894,
+      "records": [
+        "multi-source-data-merger__pS6dYp5/reproduced/reply-2.json"
+      ]
+    },
+    "resp_0cac5fb38ecb2e81016ab630d7a03c87d1bccb64ca7eb64ed7": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 3659,
+        "cached": 0,
+        "output": 557,
+        "reasoning": 13
+      },
+      "cost_usd": 0.06444,
+      "records": [
+        "multi-source-data-merger__pS6dYp5/reproduced/reply-3.json"
+      ]
+    },
+    "resp_0cac5fb38ecb2e81016ab630ea554487d1886142253bb82625": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 4901,
+        "cached": 3456,
+        "output": 145,
+        "reasoning": 0
+      },
+      "cost_usd": 0.025156,
+      "records": [
+        "multi-source-data-merger__pS6dYp5/reproduced/reply-4.json"
+      ]
+    },
+    "resp_031fa0351ac54431016ab632f9bcd487d19b8b27a4d5d18867": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1190,
+        "cached": 0,
+        "output": 42,
+        "reasoning": 0
+      },
+      "cost_usd": 0.014,
+      "records": [
+        "multi-source-data-merger__rVGDNrM/reproduced/reply-1.json"
+      ]
+    },
+    "resp_031fa0351ac54431016ab6330054f087d1bd6951022e733382": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1592,
+        "cached": 1024,
+        "output": 62,
+        "reasoning": 0
+      },
+      "cost_usd": 0.009804,
+      "records": [
+        "multi-source-data-merger__rVGDNrM/reproduced/reply-2.json"
+      ]
+    },
+    "resp_031fa0351ac54431016ab63303e34087d18dce7bfeb3a29643": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 4019,
+        "cached": 1408,
+        "output": 134,
+        "reasoning": 0
+      },
+      "cost_usd": 0.034218,
+      "records": [
+        "multi-source-data-merger__rVGDNrM/reproduced/reply-3.json"
+      ]
+    },
+    "resp_031fa0351ac54431016ab6330a3cb087d1bc1690e5a345693f": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 5244,
+        "cached": 3840,
+        "output": 678,
+        "reasoning": 32
+      },
+      "cost_usd": 0.05178,
+      "records": [
+        "multi-source-data-merger__rVGDNrM/reproduced/reply-4.json"
+      ]
+    },
+    "resp_031fa0351ac54431016ab633226fe487d19afa9412a9192f19": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 7045,
+        "cached": 5120,
+        "output": 184,
+        "reasoning": 0
+      },
+      "cost_usd": 0.03357,
+      "records": [
+        "multi-source-data-merger__rVGDNrM/reproduced/reply-5.json"
+      ]
+    },
+    "resp_0b4625b8148d86c9016ab62354e9dc87d199cc91a56b823b4a": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1191,
+        "cached": 0,
+        "output": 36,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01371,
+      "records": [
+        "multi-source-data-merger__vyzUujE/reproduced/reply-1.json"
+      ]
+    },
+    "resp_0b4625b8148d86c9016ab6235794fc87d1b078e8516e58849f": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1505,
+        "cached": 1024,
+        "output": 115,
+        "reasoning": 0
+      },
+      "cost_usd": 0.011584,
+      "records": [
+        "multi-source-data-merger__vyzUujE/reproduced/reply-2.json"
+      ]
+    },
+    "resp_0b4625b8148d86c9016ab6235fc18087d1b52c44197f4ab977": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 4071,
+        "cached": 1280,
+        "output": 158,
+        "reasoning": 0
+      },
+      "cost_usd": 0.03709,
+      "records": [
+        "multi-source-data-merger__vyzUujE/reproduced/reply-3.json"
+      ]
+    },
+    "resp_0b4625b8148d86c9016ab6236672d887d192f3befa809d1ef5": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 5326,
+        "cached": 3840,
+        "output": 353,
+        "reasoning": 28
+      },
+      "cost_usd": 0.03635,
+      "records": [
+        "multi-source-data-merger__vyzUujE/reproduced/reply-4.json"
+      ]
+    },
+    "resp_0b4625b8148d86c9016ab623738c2887d1981e31f6630b99a6": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 6437,
+        "cached": 5120,
+        "output": 187,
+        "reasoning": 0
+      },
+      "cost_usd": 0.02764,
+      "records": [
+        "multi-source-data-merger__vyzUujE/reproduced/reply-5.json"
+      ]
+    },
+    "resp_00afbb7d18006074016ab62a36c37c87d185f61eca3836cc54": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1191,
+        "cached": 0,
+        "output": 49,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01436,
+      "records": [
+        "multi-source-data-merger__zWJATYe/reproduced/reply-1.json"
+      ]
+    },
+    "resp_00afbb7d18006074016ab62a3a20ac87d1be0815466df7408f": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1567,
+        "cached": 0,
+        "output": 133,
+        "reasoning": 0
+      },
+      "cost_usd": 0.02232,
+      "records": [
+        "multi-source-data-merger__zWJATYe/reproduced/reply-2.json"
+      ]
+    },
+    "resp_00afbb7d18006074016ab62a42153887d1bd851051dca4af73": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 3988,
+        "cached": 0,
+        "output": 686,
+        "reasoning": 23
+      },
+      "cost_usd": 0.07418,
+      "records": [
+        "multi-source-data-merger__zWJATYe/reproduced/reply-3.json"
+      ]
+    },
+    "resp_00afbb7d18006074016ab62a59b86487d1b6d6b39d578803f6": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 5451,
+        "cached": 1408,
+        "output": 148,
+        "reasoning": 0
+      },
+      "cost_usd": 0.049238,
+      "records": [
+        "multi-source-data-merger__zWJATYe/reproduced/reply-4.json"
+      ]
+    },
+    "resp_0377df00b14c84a4016ab623f7834087d19f963f2edbabf178": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1014,
+        "cached": 0,
+        "output": 53,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01279,
+      "records": [
+        "openssl-selfsigned-cert__7bZiEmF/reproduced/reply-1.json"
+      ]
+    },
+    "resp_0377df00b14c84a4016ab623fc0d9887d18aa6d1dae7962c70": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2197,
+        "cached": 0,
+        "output": 397,
+        "reasoning": 0
+      },
+      "cost_usd": 0.04182,
+      "records": [
+        "openssl-selfsigned-cert__7bZiEmF/reproduced/reply-2.json"
+      ]
+    },
+    "resp_0377df00b14c84a4016ab62409c99887d1a069d509967597aa": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 5165,
+        "cached": 0,
+        "output": 231,
+        "reasoning": 14
+      },
+      "cost_usd": 0.0632,
+      "records": [
+        "openssl-selfsigned-cert__7bZiEmF/reproduced/reply-3.json"
+      ]
+    },
+    "resp_0377df00b14c84a4016ab62412ee5487d18df784e69c37d681": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 5730,
+        "cached": 4992,
+        "output": 302,
+        "reasoning": 49
+      },
+      "cost_usd": 0.027472,
+      "records": [
+        "openssl-selfsigned-cert__7bZiEmF/reproduced/reply-4.json"
+      ]
+    },
+    "resp_0377df00b14c84a4016ab6241e28d087d1abb12b18eef2c7bd": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 6337,
+        "cached": 5504,
+        "output": 169,
+        "reasoning": 0
+      },
+      "cost_usd": 0.022284,
+      "records": [
+        "openssl-selfsigned-cert__7bZiEmF/reproduced/reply-5.json"
+      ]
+    },
+    "resp_0e7f00066d1ba60f016ab62a9a9d9487d18ce36f3a94a1afb7": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1009,
+        "cached": 0,
+        "output": 53,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01274,
+      "records": [
+        "openssl-selfsigned-cert__CejSu7F/reproduced/reply-1.json"
+      ]
+    },
+    "resp_0e7f00066d1ba60f016ab62a9e56cc87d18d633b4e166e78e7": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1944,
+        "cached": 0,
+        "output": 467,
+        "reasoning": 0
+      },
+      "cost_usd": 0.04279,
+      "records": [
+        "openssl-selfsigned-cert__CejSu7F/reproduced/reply-2.json"
+      ]
+    },
+    "resp_0e7f00066d1ba60f016ab62aae941487d181701ac25fa019a2": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 5153,
+        "cached": 0,
+        "output": 257,
+        "reasoning": 19
+      },
+      "cost_usd": 0.06438,
+      "records": [
+        "openssl-selfsigned-cert__CejSu7F/reproduced/reply-3.json"
+      ]
+    },
+    "resp_0e7f00066d1ba60f016ab62ab9b90487d18098df5da07a24ea": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 5733,
+        "cached": 0,
+        "output": 318,
+        "reasoning": 15
+      },
+      "cost_usd": 0.07323,
+      "records": [
+        "openssl-selfsigned-cert__CejSu7F/reproduced/reply-4.json"
+      ]
+    },
+    "resp_0e7f00066d1ba60f016ab62ac6865887d1812028ed8e39e7f6": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 6405,
+        "cached": 1792,
+        "output": 187,
+        "reasoning": 0
+      },
+      "cost_usd": 0.057272,
+      "records": [
+        "openssl-selfsigned-cert__CejSu7F/reproduced/reply-5.json"
+      ]
+    },
+    "resp_01b790899055bf01016ab63349d73087d198a81c3934cdc960": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1008,
+        "cached": 0,
+        "output": 64,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01328,
+      "records": [
+        "openssl-selfsigned-cert__GYVLDbq/reproduced/reply-1.json"
+      ]
+    },
+    "resp_01b790899055bf01016ab6334dd5b087d1a1af4923e6fb1690": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2139,
+        "cached": 0,
+        "output": 456,
+        "reasoning": 0
+      },
+      "cost_usd": 0.04419,
+      "records": [
+        "openssl-selfsigned-cert__GYVLDbq/reproduced/reply-2.json"
+      ]
+    },
+    "resp_01b790899055bf01016ab6335e0c7c87d1b6f4cb7dd27df8a3": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 3865,
+        "cached": 1920,
+        "output": 357,
+        "reasoning": 17
+      },
+      "cost_usd": 0.03922,
+      "records": [
+        "openssl-selfsigned-cert__GYVLDbq/reproduced/reply-3.json"
+      ]
+    },
+    "resp_01b790899055bf01016ab6336ae0b487d1ace692398e70b82f": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 4689,
+        "cached": 3712,
+        "output": 336,
+        "reasoning": 38
+      },
+      "cost_usd": 0.030282,
+      "records": [
+        "openssl-selfsigned-cert__GYVLDbq/reproduced/reply-4.json"
+      ]
+    },
+    "resp_01b790899055bf01016ab63378f14087d1939224049679267d": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 5373,
+        "cached": 4480,
+        "output": 179,
+        "reasoning": 0
+      },
+      "cost_usd": 0.02236,
+      "records": [
+        "openssl-selfsigned-cert__GYVLDbq/reproduced/reply-5.json"
+      ]
+    },
+    "resp_027a1e4c3ed3e63e016ab62bf2275087d1b5777c672dbbd90a": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1014,
+        "cached": 0,
+        "output": 46,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01244,
+      "records": [
+        "openssl-selfsigned-cert__NjYzAHo/reproduced/reply-1.json"
+      ]
+    },
+    "resp_027a1e4c3ed3e63e016ab62bf601f087d19759198c7fd580ae": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2202,
+        "cached": 0,
+        "output": 383,
+        "reasoning": 0
+      },
+      "cost_usd": 0.04117,
+      "records": [
+        "openssl-selfsigned-cert__NjYzAHo/reproduced/reply-2.json"
+      ]
+    },
+    "resp_027a1e4c3ed3e63e016ab62c03690c87d19a3bbc3922e3b863": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 4997,
+        "cached": 0,
+        "output": 233,
+        "reasoning": 12
+      },
+      "cost_usd": 0.06162,
+      "records": [
+        "openssl-selfsigned-cert__NjYzAHo/reproduced/reply-3.json"
+      ]
+    },
+    "resp_027a1e4c3ed3e63e016ab62c0c913087d183828aeea204651f": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 5670,
+        "cached": 4864,
+        "output": 188,
+        "reasoning": 0
+      },
+      "cost_usd": 0.022324,
+      "records": [
+        "openssl-selfsigned-cert__NjYzAHo/reproduced/reply-4.json"
+      ]
+    },
+    "resp_0a84969155daa726016ab631762b2887d193bec861efc43a58": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1010,
+        "cached": 0,
+        "output": 120,
+        "reasoning": 0
+      },
+      "cost_usd": 0.0161,
+      "records": [
+        "openssl-selfsigned-cert__TrUCPrY/reproduced/reply-1.json"
+      ]
+    },
+    "resp_0a84969155daa726016ab6317bdd7887d1a7356e1d73b90d13": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2301,
+        "cached": 0,
+        "output": 410,
+        "reasoning": 0
+      },
+      "cost_usd": 0.04351,
+      "records": [
+        "openssl-selfsigned-cert__TrUCPrY/reproduced/reply-2.json"
+      ]
+    },
+    "resp_0a84969155daa726016ab63189e88087d1ac2652ffe46811b0": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 3871,
+        "cached": 2176,
+        "output": 191,
+        "reasoning": 17
+      },
+      "cost_usd": 0.028676,
+      "records": [
+        "openssl-selfsigned-cert__TrUCPrY/reproduced/reply-3.json"
+      ]
+    },
+    "resp_0a84969155daa726016ab63191bc3087d188d1770af6c4e48c": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 4356,
+        "cached": 3712,
+        "output": 268,
+        "reasoning": 22
+      },
+      "cost_usd": 0.023552,
+      "records": [
+        "openssl-selfsigned-cert__TrUCPrY/reproduced/reply-4.json"
+      ]
+    },
+    "resp_0a84969155daa726016ab6319b939887d1b60dcb188d257d3e": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 4920,
+        "cached": 4224,
+        "output": 185,
+        "reasoning": 0
+      },
+      "cost_usd": 0.020434,
+      "records": [
+        "openssl-selfsigned-cert__TrUCPrY/reproduced/reply-5.json"
+      ]
+    },
+    "resp_024d8afb805e92ba016ab624cad50487d18035c2f9865d3565": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1010,
+        "cached": 0,
+        "output": 53,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01275,
+      "records": [
+        "openssl-selfsigned-cert__ocGbbgF/reproduced/reply-1.json"
+      ]
+    },
+    "resp_024d8afb805e92ba016ab624cecf8887d1ab9a5c3ea114ec4e": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2017,
+        "cached": 0,
+        "output": 458,
+        "reasoning": 0
+      },
+      "cost_usd": 0.04307,
+      "records": [
+        "openssl-selfsigned-cert__ocGbbgF/reproduced/reply-2.json"
+      ]
+    },
+    "resp_024d8afb805e92ba016ab624ded7b887d1b48599f469bd06bc": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 5187,
+        "cached": 1792,
+        "output": 253,
+        "reasoning": 14
+      },
+      "cost_usd": 0.048392,
+      "records": [
+        "openssl-selfsigned-cert__ocGbbgF/reproduced/reply-3.json"
+      ]
+    },
+    "resp_024d8afb805e92ba016ab624e8e97087d19f4ae7184d3d9850": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 5764,
+        "cached": 4992,
+        "output": 313,
+        "reasoning": 18
+      },
+      "cost_usd": 0.028362,
+      "records": [
+        "openssl-selfsigned-cert__ocGbbgF/reproduced/reply-4.json"
+      ]
+    },
+    "resp_024d8afb805e92ba016ab624f4848887d18b205c78907c7360": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 6422,
+        "cached": 5632,
+        "output": 192,
+        "reasoning": 0
+      },
+      "cost_usd": 0.023132,
+      "records": [
+        "openssl-selfsigned-cert__ocGbbgF/reproduced/reply-5.json"
+      ]
+    },
+    "resp_066a986f52769797016ab62557b28487d1a9bcaabfd520f8c3": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 806,
+        "cached": 0,
+        "output": 48,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01046,
+      "records": [
+        "polyglot-c-py__4ajgUVL/reproduced/reply-1.json"
+      ]
+    },
+    "resp_066a986f52769797016ab6255aa72c87d194779c831571faf2": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1538,
+        "cached": 0,
+        "output": 137,
+        "reasoning": 10
+      },
+      "cost_usd": 0.02223,
+      "records": [
+        "polyglot-c-py__4ajgUVL/reproduced/reply-2.json"
+      ]
+    },
+    "resp_066a986f52769797016ab62562b15c87d18c6da5377db31af4": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2881,
+        "cached": 1408,
+        "output": 155,
+        "reasoning": 39
+      },
+      "cost_usd": 0.023888,
+      "records": [
+        "polyglot-c-py__4ajgUVL/reproduced/reply-3.json"
+      ]
+    },
+    "resp_066a986f52769797016ab6256982d887d1b05a26189a2e7233": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 3430,
+        "cached": 2688,
+        "output": 356,
+        "reasoning": 132
+      },
+      "cost_usd": 0.027908,
+      "records": [
+        "polyglot-c-py__4ajgUVL/reproduced/reply-4.json"
+      ]
+    },
+    "resp_066a986f52769797016ab625762a9887d1b2f26b66bffb4018": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 4180,
+        "cached": 3200,
+        "output": 379,
+        "reasoning": 56
+      },
+      "cost_usd": 0.03195,
+      "records": [
+        "polyglot-c-py__4ajgUVL/reproduced/reply-5.json"
+      ]
+    },
+    "resp_066a986f52769797016ab6258338a887d1bdaa150a6a1d7a0b": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 5073,
+        "cached": 3968,
+        "output": 248,
+        "reasoning": 39
+      },
+      "cost_usd": 0.027418,
+      "records": [
+        "polyglot-c-py__4ajgUVL/reproduced/reply-6.json"
+      ]
+    },
+    "resp_066a986f52769797016ab6258d873087d19159dc742b43ecd2": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 5584,
+        "cached": 4864,
+        "output": 180,
+        "reasoning": 0
+      },
+      "cost_usd": 0.021064,
+      "records": [
+        "polyglot-c-py__4ajgUVL/reproduced/reply-7.json"
+      ]
+    },
+    "resp_0ebbc51d75ffbc3d016ab62b224a6887d1a48e5f4a08d69dd2": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 805,
+        "cached": 0,
+        "output": 48,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01045,
+      "records": [
+        "polyglot-c-py__BefiH6a/reproduced/reply-1.json"
+      ]
+    },
+    "resp_0ebbc51d75ffbc3d016ab62b25cf2087d1a2a36c155f9653ea": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1620,
+        "cached": 0,
+        "output": 94,
+        "reasoning": 0
+      },
+      "cost_usd": 0.0209,
+      "records": [
+        "polyglot-c-py__BefiH6a/reproduced/reply-2.json"
+      ]
+    },
+    "resp_0ebbc51d75ffbc3d016ab62b2b506c87d1981dd32ddf0e6128": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 5500,
+        "cached": 1408,
+        "output": 127,
+        "reasoning": 20
+      },
+      "cost_usd": 0.048678,
+      "records": [
+        "polyglot-c-py__BefiH6a/reproduced/reply-3.json"
+      ]
+    },
+    "resp_0ebbc51d75ffbc3d016ab62b310a7487d1b963e26d9102382e": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 5988,
+        "cached": 5376,
+        "output": 103,
+        "reasoning": 11
+      },
+      "cost_usd": 0.016646,
+      "records": [
+        "polyglot-c-py__BefiH6a/reproduced/reply-4.json"
+      ]
+    },
+    "resp_0ebbc51d75ffbc3d016ab62b35eed087d1aad90b6b939b4611": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 6488,
+        "cached": 5760,
+        "output": 189,
+        "reasoning": 23
+      },
+      "cost_usd": 0.02249,
+      "records": [
+        "polyglot-c-py__BefiH6a/reproduced/reply-5.json"
+      ]
+    },
+    "resp_05a95d078508ce57016ab62ed15e1087d18054579147ff2324": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 806,
+        "cached": 0,
+        "output": 48,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01046,
+      "records": [
+        "polyglot-c-py__FyxYrAv/reproduced/reply-1.json"
+      ]
+    },
+    "resp_05a95d078508ce57016ab62ed47b2c87d180298e3dfc611ffc": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2158,
+        "cached": 0,
+        "output": 124,
+        "reasoning": 0
+      },
+      "cost_usd": 0.02778,
+      "records": [
+        "polyglot-c-py__FyxYrAv/reproduced/reply-2.json"
+      ]
+    },
+    "resp_05a95d078508ce57016ab62eda459c87d19a32d1cf37fc0389": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2886,
+        "cached": 2048,
+        "output": 215,
+        "reasoning": 91
+      },
+      "cost_usd": 0.021178,
+      "records": [
+        "polyglot-c-py__FyxYrAv/reproduced/reply-3.json"
+      ]
+    },
+    "resp_05a95d078508ce57016ab62ee2b0d487d194218447f198a74d": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 3495,
+        "cached": 2688,
+        "output": 275,
+        "reasoning": 80
+      },
+      "cost_usd": 0.024508,
+      "records": [
+        "polyglot-c-py__FyxYrAv/reproduced/reply-4.json"
+      ]
+    },
+    "resp_05a95d078508ce57016ab62eecce9487d18acc116bacbcfcf9": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 4020,
+        "cached": 3328,
+        "output": 82,
+        "reasoning": 0
+      },
+      "cost_usd": 0.014348,
+      "records": [
+        "polyglot-c-py__FyxYrAv/reproduced/reply-5.json"
+      ]
+    },
+    "resp_05a95d078508ce57016ab62ef4dbb887d1b550ec478526012e": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 4222,
+        "cached": 3840,
+        "output": 354,
+        "reasoning": 30
+      },
+      "cost_usd": 0.02536,
+      "records": [
+        "polyglot-c-py__FyxYrAv/reproduced/reply-6.json"
+      ]
+    },
+    "resp_05a95d078508ce57016ab62f01773c87d1b02327b673e6cb54": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 5091,
+        "cached": 4096,
+        "output": 448,
+        "reasoning": 14
+      },
+      "cost_usd": 0.036446,
+      "records": [
+        "polyglot-c-py__FyxYrAv/reproduced/reply-7.json"
+      ]
+    },
+    "resp_05a95d078508ce57016ab62f121e3c87d1b91863c0a712da1d": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 6034,
+        "cached": 4864,
+        "output": 190,
+        "reasoning": 0
+      },
+      "cost_usd": 0.026064,
+      "records": [
+        "polyglot-c-py__FyxYrAv/reproduced/reply-8.json"
+      ]
+    },
+    "resp_0c311db686404973016ab62684fa1887d1809b4bccc4031d4e": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 808,
+        "cached": 0,
+        "output": 48,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01048,
+      "records": [
+        "polyglot-c-py__NDvEvHe/reproduced/reply-1.json"
+      ]
+    },
+    "resp_0c311db686404973016ab62687f7dc87d184665c4e648281a2": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1876,
+        "cached": 0,
+        "output": 84,
+        "reasoning": 0
+      },
+      "cost_usd": 0.02296,
+      "records": [
+        "polyglot-c-py__NDvEvHe/reproduced/reply-2.json"
+      ]
+    },
+    "resp_0c311db686404973016ab6268c3d6887d1bf1766af13a9cffd": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 5648,
+        "cached": 1664,
+        "output": 126,
+        "reasoning": 14
+      },
+      "cost_usd": 0.047804,
+      "records": [
+        "polyglot-c-py__NDvEvHe/reproduced/reply-3.json"
+      ]
+    },
+    "resp_0c311db686404973016ab62691afdc87d19077d51e4810fce1": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 6293,
+        "cached": 5504,
+        "output": 125,
+        "reasoning": 57
+      },
+      "cost_usd": 0.019644,
+      "records": [
+        "polyglot-c-py__NDvEvHe/reproduced/reply-4.json"
+      ]
+    },
+    "resp_0c311db686404973016ab62698712087d18a40ade4e623c454": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 6572,
+        "cached": 6144,
+        "output": 309,
+        "reasoning": 73
+      },
+      "cost_usd": 0.025874,
+      "records": [
+        "polyglot-c-py__NDvEvHe/reproduced/reply-5.json"
+      ]
+    },
+    "resp_0c311db686404973016ab626a4589887d1bc37335e30076ae5": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 7267,
+        "cached": 6400,
+        "output": 446,
+        "reasoning": 98
+      },
+      "cost_usd": 0.03737,
+      "records": [
+        "polyglot-c-py__NDvEvHe/reproduced/reply-6.json"
+      ]
+    },
+    "resp_0c311db686404973016ab626b8cb8c87d1850ebdc344807692": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 8123,
+        "cached": 0,
+        "output": 184,
+        "reasoning": 0
+      },
+      "cost_usd": 0.09043,
+      "records": [
+        "polyglot-c-py__NDvEvHe/reproduced/reply-7.json"
+      ]
+    },
+    "resp_06e6ef0c111d6acd016ab632d5220087d1a11f5185425a1f54": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 806,
+        "cached": 0,
+        "output": 48,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01046,
+      "records": [
+        "polyglot-c-py__e7VT9Jp/reproduced/reply-1.json"
+      ]
+    },
+    "resp_06e6ef0c111d6acd016ab632d84bf887d1a6b804cfb55786be": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1802,
+        "cached": 0,
+        "output": 66,
+        "reasoning": 0
+      },
+      "cost_usd": 0.02132,
+      "records": [
+        "polyglot-c-py__e7VT9Jp/reproduced/reply-2.json"
+      ]
+    },
+    "resp_06e6ef0c111d6acd016ab632dd066087d1ab5973481c1bd276": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2892,
+        "cached": 1664,
+        "output": 140,
+        "reasoning": 30
+      },
+      "cost_usd": 0.020944,
+      "records": [
+        "polyglot-c-py__e7VT9Jp/reproduced/reply-3.json"
+      ]
+    },
+    "resp_06e6ef0c111d6acd016ab632e3f92c87d181c017d81baf320b": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 3396,
+        "cached": 2688,
+        "output": 111,
+        "reasoning": 28
+      },
+      "cost_usd": 0.015318,
+      "records": [
+        "polyglot-c-py__e7VT9Jp/reproduced/reply-4.json"
+      ]
+    },
+    "resp_06e6ef0c111d6acd016ab632eaed6087d19887a7abcaed1cb0": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 4207,
+        "cached": 0,
+        "output": 287,
+        "reasoning": 37
+      },
+      "cost_usd": 0.05642,
+      "records": [
+        "polyglot-c-py__e7VT9Jp/reproduced/reply-5.json"
+      ]
+    },
+    "resp_06e6ef0c111d6acd016ab632f556fc87d19a178a342dd07484": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 4932,
+        "cached": 4096,
+        "output": 412,
+        "reasoning": 56
+      },
+      "cost_usd": 0.033056,
+      "records": [
+        "polyglot-c-py__e7VT9Jp/reproduced/reply-6.json"
+      ]
+    },
+    "resp_06e6ef0c111d6acd016ab63303881487d198318ae563c9b92e": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 5765,
+        "cached": 4736,
+        "output": 195,
+        "reasoning": 0
+      },
+      "cost_usd": 0.024776,
+      "records": [
+        "polyglot-c-py__e7VT9Jp/reproduced/reply-7.json"
+      ]
+    },
+    "resp_08b48669585ba993016ab634dd523087d1b31339186d247651": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 806,
+        "cached": 0,
+        "output": 48,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01046,
+      "records": [
+        "polyglot-c-py__pjSexXf/reproduced/reply-1.json"
+      ]
+    },
+    "resp_08b48669585ba993016ab634e0e29c87d184a0dd998b17862a": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2059,
+        "cached": 0,
+        "output": 60,
+        "reasoning": 0
+      },
+      "cost_usd": 0.02359,
+      "records": [
+        "polyglot-c-py__pjSexXf/reproduced/reply-2.json"
+      ]
+    },
+    "resp_08b48669585ba993016ab634e42f0c87d19ee5851a9b1b6a6c": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 5873,
+        "cached": 1920,
+        "output": 128,
+        "reasoning": 12
+      },
+      "cost_usd": 0.04785,
+      "records": [
+        "polyglot-c-py__pjSexXf/reproduced/reply-3.json"
+      ]
+    },
+    "resp_08b48669585ba993016ab634eb608087d18cc058db5d3661dd": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 6338,
+        "cached": 5760,
+        "output": 93,
+        "reasoning": 12
+      },
+      "cost_usd": 0.01619,
+      "records": [
+        "polyglot-c-py__pjSexXf/reproduced/reply-4.json"
+      ]
+    },
+    "resp_08b48669585ba993016ab634f118d487d19cf6985526d13984": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 6600,
+        "cached": 6144,
+        "output": 204,
+        "reasoning": 44
+      },
+      "cost_usd": 0.020904,
+      "records": [
+        "polyglot-c-py__pjSexXf/reproduced/reply-5.json"
+      ]
+    },
+    "resp_0a6f5f21b79b07eb016ab62557b59c87d18f1932f87edd5b01": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 938,
+        "cached": 0,
+        "output": 29,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01083,
+      "records": [
+        "regex-log__ADNsZy7/reproduced/reply-1.json"
+      ]
+    },
+    "resp_0a6f5f21b79b07eb016ab6255b8aac87d1a1d4e62c3bf4485b": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1527,
+        "cached": 0,
+        "output": 679,
+        "reasoning": 159
+      },
+      "cost_usd": 0.04922,
+      "records": [
+        "regex-log__ADNsZy7/reproduced/reply-2.json"
+      ]
+    },
+    "resp_0a6f5f21b79b07eb016ab625714ee487d1bfdf642d75369bef": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2766,
+        "cached": 1408,
+        "output": 519,
+        "reasoning": 0
+      },
+      "cost_usd": 0.040938,
+      "records": [
+        "regex-log__ADNsZy7/reproduced/reply-3.json"
+      ]
+    },
+    "resp_0a6f5f21b79b07eb016ab62582909487d19e12883248fef141": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 3848,
+        "cached": 2560,
+        "output": 65,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01869,
+      "records": [
+        "regex-log__ADNsZy7/reproduced/reply-4.json"
+      ]
+    },
+    "resp_0a6f5f21b79b07eb016ab62589145087d1ad9fe6892f3f213e": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 4281,
+        "cached": 3712,
+        "output": 96,
+        "reasoning": 32
+      },
+      "cost_usd": 0.014202,
+      "records": [
+        "regex-log__ADNsZy7/reproduced/reply-5.json"
+      ]
+    },
+    "resp_0a6f5f21b79b07eb016ab62590c1f487d18380babda37adfd1": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 4728,
+        "cached": 4096,
+        "output": 216,
+        "reasoning": 88
+      },
+      "cost_usd": 0.021216,
+      "records": [
+        "regex-log__ADNsZy7/reproduced/reply-6.json"
+      ]
+    },
+    "resp_0543f7ca90d1439f016ab62bf1020087d1acdc11e77e9d0ff8": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 933,
+        "cached": 0,
+        "output": 33,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01098,
+      "records": [
+        "regex-log__CSmbePB/reproduced/reply-1.json"
+      ]
+    },
+    "resp_0543f7ca90d1439f016ab62bf3d23c87d1b81e7d1732d4bc52": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1519,
+        "cached": 0,
+        "output": 626,
+        "reasoning": 194
+      },
+      "cost_usd": 0.04649,
+      "records": [
+        "regex-log__CSmbePB/reproduced/reply-2.json"
+      ]
+    },
+    "resp_0543f7ca90d1439f016ab62c08986c87d1971a118274d3b30c": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2621,
+        "cached": 1408,
+        "output": 601,
+        "reasoning": 0
+      },
+      "cost_usd": 0.043588,
+      "records": [
+        "regex-log__CSmbePB/reproduced/reply-3.json"
+      ]
+    },
+    "resp_0543f7ca90d1439f016ab62c1c6b0487d1ba12c2da70da6a2f": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 3870,
+        "cached": 0,
+        "output": 62,
+        "reasoning": 0
+      },
+      "cost_usd": 0.0418,
+      "records": [
+        "regex-log__CSmbePB/reproduced/reply-4.json"
+      ]
+    },
+    "resp_0543f7ca90d1439f016ab62c2087f087d1a9547f1660733e1b": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 5893,
+        "cached": 2432,
+        "output": 364,
+        "reasoning": 232
+      },
+      "cost_usd": 0.055242,
+      "records": [
+        "regex-log__CSmbePB/reproduced/reply-5.json"
+      ]
+    },
+    "resp_05ffa50a142d7188016ab63245b5b487d195110b4e7fd1b813": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 933,
+        "cached": 0,
+        "output": 33,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01098,
+      "records": [
+        "regex-log__ZR34vNw/reproduced/reply-1.json"
+      ]
+    },
+    "resp_05ffa50a142d7188016ab63248909c87d18fce342c8407c45e": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1565,
+        "cached": 0,
+        "output": 695,
+        "reasoning": 134
+      },
+      "cost_usd": 0.0504,
+      "records": [
+        "regex-log__ZR34vNw/reproduced/reply-2.json"
+      ]
+    },
+    "resp_05ffa50a142d7188016ab6325f365c87d1b3fc7fc0e2a846b5": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2864,
+        "cached": 1408,
+        "output": 560,
+        "reasoning": 0
+      },
+      "cost_usd": 0.043968,
+      "records": [
+        "regex-log__ZR34vNw/reproduced/reply-3.json"
+      ]
+    },
+    "resp_05ffa50a142d7188016ab63278c07487d199d066a735604479": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 4031,
+        "cached": 2688,
+        "output": 81,
+        "reasoning": 0
+      },
+      "cost_usd": 0.020168,
+      "records": [
+        "regex-log__ZR34vNw/reproduced/reply-4.json"
+      ]
+    },
+    "resp_05ffa50a142d7188016ab6327cd1ac87d1b41463171e889a4b": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 4405,
+        "cached": 3840,
+        "output": 130,
+        "reasoning": 38
+      },
+      "cost_usd": 0.01599,
+      "records": [
+        "regex-log__ZR34vNw/reproduced/reply-5.json"
+      ]
+    },
+    "resp_05ffa50a142d7188016ab632830cd087d18f9498a765da7942": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 4676,
+        "cached": 4224,
+        "output": 673,
+        "reasoning": 56
+      },
+      "cost_usd": 0.042394,
+      "records": [
+        "regex-log__ZR34vNw/reproduced/reply-6.json"
+      ]
+    },
+    "resp_05ffa50a142d7188016ab6329a0ba887d190eddf7638c4a2f2": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 6146,
+        "cached": 0,
+        "output": 100,
+        "reasoning": 54
+      },
+      "cost_usd": 0.06646,
+      "records": [
+        "regex-log__ZR34vNw/reproduced/reply-7.json"
+      ]
+    },
+    "resp_05ffa50a142d7188016ab632a1744887d1bc48f7e81d1a0573": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 6819,
+        "cached": 6016,
+        "output": 572,
+        "reasoning": 31
+      },
+      "cost_usd": 0.042646,
+      "records": [
+        "regex-log__ZR34vNw/reproduced/reply-8.json"
+      ]
+    },
+    "resp_0300817326f8dc66016ab634dd65d087d1a78979d98b99a8ea": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 934,
+        "cached": 0,
+        "output": 33,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01099,
+      "records": [
+        "regex-log__dWHyXPL/reproduced/reply-1.json"
+      ]
+    },
+    "resp_0300817326f8dc66016ab634e01eb487d19b9fba2317f48c12": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1309,
+        "cached": 0,
+        "output": 1086,
+        "reasoning": 220
+      },
+      "cost_usd": 0.06739,
+      "records": [
+        "regex-log__dWHyXPL/reproduced/reply-2.json"
+      ]
+    },
+    "resp_0300817326f8dc66016ab63502a17887d19a154c0c37cfd2ba": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 3306,
+        "cached": 0,
+        "output": 24,
+        "reasoning": 0
+      },
+      "cost_usd": 0.03426,
+      "records": [
+        "regex-log__dWHyXPL/reproduced/reply-3.json"
+      ]
+    },
+    "resp_0300817326f8dc66016ab635054a2087d1a138fa3e6ec499c5": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 3402,
+        "cached": 3072,
+        "output": 78,
+        "reasoning": 0
+      },
+      "cost_usd": 0.010272,
+      "records": [
+        "regex-log__dWHyXPL/reproduced/reply-4.json"
+      ]
+    },
+    "resp_0300817326f8dc66016ab6350991f887d1bd9c17495ec55453": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 4608,
+        "cached": 3200,
+        "output": 853,
+        "reasoning": 42
+      },
+      "cost_usd": 0.05993,
+      "records": [
+        "regex-log__dWHyXPL/reproduced/reply-5.json"
+      ]
+    },
+    "resp_0300817326f8dc66016ab63524cb2887d181acc79ce910acb2": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 6336,
+        "cached": 4480,
+        "output": 174,
+        "reasoning": 0
+      },
+      "cost_usd": 0.03174,
+      "records": [
+        "regex-log__dWHyXPL/reproduced/reply-6.json"
+      ]
+    },
+    "resp_07308f9610144e88016ab625ba579887d1818e0716eb6f7a13": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 933,
+        "cached": 0,
+        "output": 29,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01078,
+      "records": [
+        "regex-log__mArbFXZ/reproduced/reply-1.json"
+      ]
+    },
+    "resp_07308f9610144e88016ab625bcea9887d1bc771aa95ff396be": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1306,
+        "cached": 0,
+        "output": 1455,
+        "reasoning": 336
+      },
+      "cost_usd": 0.08581,
+      "records": [
+        "regex-log__mArbFXZ/reproduced/reply-2.json"
+      ]
+    },
+    "resp_07308f9610144e88016ab625ec146c87d19d3401159f2fd892": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 3923,
+        "cached": 0,
+        "output": 1081,
+        "reasoning": 0
+      },
+      "cost_usd": 0.09328,
+      "records": [
+        "regex-log__mArbFXZ/reproduced/reply-3.json"
+      ]
+    },
+    "resp_07308f9610144e88016ab62611c0f487d1aaeefac1f9693692": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 6132,
+        "cached": 3712,
+        "output": 62,
+        "reasoning": 0
+      },
+      "cost_usd": 0.031012,
+      "records": [
+        "regex-log__mArbFXZ/reproduced/reply-4.json"
+      ]
+    },
+    "resp_07308f9610144e88016ab6261703cc87d1aa69dbf4932cf21d": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 8159,
+        "cached": 6016,
+        "output": 1095,
+        "reasoning": 34
+      },
+      "cost_usd": 0.082196,
+      "records": [
+        "regex-log__mArbFXZ/reproduced/reply-5.json"
+      ]
+    },
+    "resp_07308f9610144e88016ab62639df0c87d1940b27c3d9423a68": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 10470,
+        "cached": 7936,
+        "output": 1041,
+        "reasoning": 54
+      },
+      "cost_usd": 0.085326,
+      "records": [
+        "regex-log__mArbFXZ/reproduced/reply-6.json"
+      ]
+    },
+    "resp_07308f9610144e88016ab6265c177087d18308eb172c744416": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 12580,
+        "cached": 10240,
+        "output": 164,
+        "reasoning": 0
+      },
+      "cost_usd": 0.04184,
+      "records": [
+        "regex-log__mArbFXZ/reproduced/reply-7.json"
+      ]
+    },
+    "resp_0a70d8e70ccd1c86016ab62dfe161487d1a168c1f80244b929": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 933,
+        "cached": 0,
+        "output": 29,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01078,
+      "records": [
+        "regex-log__mu2EN2J/reproduced/reply-1.json"
+      ]
+    },
+    "resp_0a70d8e70ccd1c86016ab62e00e5f087d19ac54f6c4c6798c5": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1307,
+        "cached": 0,
+        "output": 776,
+        "reasoning": 155
+      },
+      "cost_usd": 0.05187,
+      "records": [
+        "regex-log__mu2EN2J/reproduced/reply-2.json"
+      ]
+    },
+    "resp_0a70d8e70ccd1c86016ab62e19c98c87d1934ff3bf173fbbe8": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2747,
+        "cached": 0,
+        "output": 620,
+        "reasoning": 0
+      },
+      "cost_usd": 0.05847,
+      "records": [
+        "regex-log__mu2EN2J/reproduced/reply-3.json"
+      ]
+    },
+    "resp_0a70d8e70ccd1c86016ab62e2e54ec87d18b4390308dfc84d0": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 4035,
+        "cached": 1152,
+        "output": 64,
+        "reasoning": 0
+      },
+      "cost_usd": 0.033182,
+      "records": [
+        "regex-log__mu2EN2J/reproduced/reply-4.json"
+      ]
+    },
+    "resp_0a70d8e70ccd1c86016ab62e321ab487d1900ef094c64e90bd": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 6068,
+        "cached": 3840,
+        "output": 945,
+        "reasoning": 36
+      },
+      "cost_usd": 0.07337,
+      "records": [
+        "regex-log__mu2EN2J/reproduced/reply-5.json"
+      ]
+    },
+    "resp_0a70d8e70ccd1c86016ab62e504b2087d1b62508b545556359": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 8211,
+        "cached": 5888,
+        "output": 165,
+        "reasoning": 0
+      },
+      "cost_usd": 0.037368,
+      "records": [
+        "regex-log__mu2EN2J/reproduced/reply-6.json"
+      ]
+    },
+    "resp_029a6dae3df685e0016ab6378e845c87d18f195b52a409b88b": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 985,
+        "cached": 0,
+        "output": 44,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01205,
+      "records": [
+        "sparql-university__DA7rUVB/reproduced/reply-1.json"
+      ]
+    },
+    "resp_029a6dae3df685e0016ab637921ee887d1ab005d8f8915733d": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 3738,
+        "cached": 0,
+        "output": 117,
+        "reasoning": 0
+      },
+      "cost_usd": 0.04323,
+      "records": [
+        "sparql-university__DA7rUVB/reproduced/reply-2.json"
+      ]
+    },
+    "resp_029a6dae3df685e0016ab637976f1487d1b2730abc611dc721": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 6261,
+        "cached": 3584,
+        "output": 101,
+        "reasoning": 0
+      },
+      "cost_usd": 0.035404,
+      "records": [
+        "sparql-university__DA7rUVB/reproduced/reply-3.json"
+      ]
+    },
+    "resp_029a6dae3df685e0016ab6379cbb2087d1a63a08c578367a13": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 6507,
+        "cached": 6144,
+        "output": 98,
+        "reasoning": 20
+      },
+      "cost_usd": 0.014674,
+      "records": [
+        "sparql-university__DA7rUVB/reproduced/reply-4.json"
+      ]
+    },
+    "resp_029a6dae3df685e0016ab637a3736887d1855e5441f92ba04c": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 7680,
+        "cached": 6272,
+        "output": 184,
+        "reasoning": 46
+      },
+      "cost_usd": 0.029552,
+      "records": [
+        "sparql-university__DA7rUVB/reproduced/reply-5.json"
+      ]
+    },
+    "resp_0c223474ce6f978f016ab62bb11a6887d1aecc1c4b04c3bc14": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 982,
+        "cached": 0,
+        "output": 42,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01192,
+      "records": [
+        "sparql-university__EWVxjcq/reproduced/reply-1.json"
+      ]
+    },
+    "resp_0c223474ce6f978f016ab62bb3e61487d184e8c4c3fd19d795": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2729,
+        "cached": 0,
+        "output": 48,
+        "reasoning": 0
+      },
+      "cost_usd": 0.02969,
+      "records": [
+        "sparql-university__EWVxjcq/reproduced/reply-2.json"
+      ]
+    },
+    "resp_0c223474ce6f978f016ab62bba97a087d199fe8ff54a36f29e": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 6108,
+        "cached": 0,
+        "output": 50,
+        "reasoning": 0
+      },
+      "cost_usd": 0.06358,
+      "records": [
+        "sparql-university__EWVxjcq/reproduced/reply-3.json"
+      ]
+    },
+    "resp_0c223474ce6f978f016ab62bbe2f3887d1b95c693e0eff29cf": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 7911,
+        "cached": 5888,
+        "output": 76,
+        "reasoning": 29
+      },
+      "cost_usd": 0.029918,
+      "records": [
+        "sparql-university__EWVxjcq/reproduced/reply-4.json"
+      ]
+    },
+    "resp_0c223474ce6f978f016ab62bc5004c87d1a421a7a434812008": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 8216,
+        "cached": 7680,
+        "output": 191,
+        "reasoning": 64
+      },
+      "cost_usd": 0.02259,
+      "records": [
+        "sparql-university__EWVxjcq/reproduced/reply-5.json"
+      ]
+    },
+    "resp_02036728d09cb11c016ab62f42fd6487d195aa082a1138eaf6": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 986,
+        "cached": 0,
+        "output": 42,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01196,
+      "records": [
+        "sparql-university__HZrQvfq/reproduced/reply-1.json"
+      ]
+    },
+    "resp_02036728d09cb11c016ab62f459d5c87d1a03d9c4437fa82c6": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2806,
+        "cached": 0,
+        "output": 110,
+        "reasoning": 0
+      },
+      "cost_usd": 0.03356,
+      "records": [
+        "sparql-university__HZrQvfq/reproduced/reply-2.json"
+      ]
+    },
+    "resp_02036728d09cb11c016ab62f4a658887d1b27602a747e3c485": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 6308,
+        "cached": 2688,
+        "output": 138,
+        "reasoning": 0
+      },
+      "cost_usd": 0.045788,
+      "records": [
+        "sparql-university__HZrQvfq/reproduced/reply-3.json"
+      ]
+    },
+    "resp_02036728d09cb11c016ab62f500b7087d1b94cb4b929021720": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 8288,
+        "cached": 6144,
+        "output": 105,
+        "reasoning": 35
+      },
+      "cost_usd": 0.032834,
+      "records": [
+        "sparql-university__HZrQvfq/reproduced/reply-4.json"
+      ]
+    },
+    "resp_02036728d09cb11c016ab62f574d6487d1ae52bd24e174428b": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 10095,
+        "cached": 8064,
+        "output": 269,
+        "reasoning": 91
+      },
+      "cost_usd": 0.041824,
+      "records": [
+        "sparql-university__HZrQvfq/reproduced/reply-5.json"
+      ]
+    },
+    "resp_0b580129d7ff7a09016ab632d50df087d1b93b294b67e19c9c": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 982,
+        "cached": 0,
+        "output": 42,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01192,
+      "records": [
+        "sparql-university__R26rnoi/reproduced/reply-1.json"
+      ]
+    },
+    "resp_0b580129d7ff7a09016ab632d8422087d1a4f98261c2685081": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 3404,
+        "cached": 0,
+        "output": 124,
+        "reasoning": 0
+      },
+      "cost_usd": 0.04024,
+      "records": [
+        "sparql-university__R26rnoi/reproduced/reply-2.json"
+      ]
+    },
+    "resp_0b580129d7ff7a09016ab632de1ec487d195aa137a54279fb0": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 6936,
+        "cached": 0,
+        "output": 137,
+        "reasoning": 0
+      },
+      "cost_usd": 0.07621,
+      "records": [
+        "sparql-university__R26rnoi/reproduced/reply-3.json"
+      ]
+    },
+    "resp_0b580129d7ff7a09016ab632e3bc2087d1986c68d0c105e2f3": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 8820,
+        "cached": 6784,
+        "output": 172,
+        "reasoning": 29
+      },
+      "cost_usd": 0.035744,
+      "records": [
+        "sparql-university__R26rnoi/reproduced/reply-4.json"
+      ]
+    },
+    "resp_0b580129d7ff7a09016ab632ecf61887d199749b35f9c26a68": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 9248,
+        "cached": 8704,
+        "output": 250,
+        "reasoning": 60
+      },
+      "cost_usd": 0.026644,
+      "records": [
+        "sparql-university__R26rnoi/reproduced/reply-5.json"
+      ]
+    },
+    "resp_0e16a2e375175801016ab6282c296487d1baa7085110edee3c": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 983,
+        "cached": 0,
+        "output": 42,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01193,
+      "records": [
+        "sparql-university__i4EPKes/reproduced/reply-1.json"
+      ]
+    },
+    "resp_0e16a2e375175801016ab6282ed58087d18c386230b27a2e13": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2726,
+        "cached": 0,
+        "output": 106,
+        "reasoning": 0
+      },
+      "cost_usd": 0.03256,
+      "records": [
+        "sparql-university__i4EPKes/reproduced/reply-2.json"
+      ]
+    },
+    "resp_0e16a2e375175801016ab62834737c87d1a5c404d685efb4d0": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 6222,
+        "cached": 2560,
+        "output": 109,
+        "reasoning": 0
+      },
+      "cost_usd": 0.04463,
+      "records": [
+        "sparql-university__i4EPKes/reproduced/reply-3.json"
+      ]
+    },
+    "resp_0e16a2e375175801016ab6283ab49887d19254b593dbd50fde": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 7946,
+        "cached": 0,
+        "output": 81,
+        "reasoning": 19
+      },
+      "cost_usd": 0.08351,
+      "records": [
+        "sparql-university__i4EPKes/reproduced/reply-4.json"
+      ]
+    },
+    "resp_0e16a2e375175801016ab6283fd28c87d18952f363db230a1e": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 8827,
+        "cached": 7808,
+        "output": 223,
+        "reasoning": 77
+      },
+      "cost_usd": 0.029148,
+      "records": [
+        "sparql-university__i4EPKes/reproduced/reply-5.json"
+      ]
+    },
+    "resp_06543268c81c26fe016ab625ba4d8c87d19aa0e8f741d2a36a": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 982,
+        "cached": 0,
+        "output": 42,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01192,
+      "records": [
+        "sparql-university__jefGE3t/reproduced/reply-1.json"
+      ]
+    },
+    "resp_06543268c81c26fe016ab625be649087d1be48ef0b890fa192": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2699,
+        "cached": 0,
+        "output": 109,
+        "reasoning": 0
+      },
+      "cost_usd": 0.03244,
+      "records": [
+        "sparql-university__jefGE3t/reproduced/reply-2.json"
+      ]
+    },
+    "resp_06543268c81c26fe016ab625c33ee087d1bd047003355819c6": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 6198,
+        "cached": 2560,
+        "output": 122,
+        "reasoning": 0
+      },
+      "cost_usd": 0.04504,
+      "records": [
+        "sparql-university__jefGE3t/reproduced/reply-3.json"
+      ]
+    },
+    "resp_06543268c81c26fe016ab625c8b4c087d1886f3cd73bd22344": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 8143,
+        "cached": 6016,
+        "output": 115,
+        "reasoning": 32
+      },
+      "cost_usd": 0.033036,
+      "records": [
+        "sparql-university__jefGE3t/reproduced/reply-4.json"
+      ]
+    },
+    "resp_06543268c81c26fe016ab625ce7e0c87d180b3893d0605c960": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 8492,
+        "cached": 7936,
+        "output": 216,
+        "reasoning": 47
+      },
+      "cost_usd": 0.024296,
+      "records": [
+        "sparql-university__jefGE3t/reproduced/reply-5.json"
+      ]
+    },
+    "resp_012e2c0e83bf56f2016ab628678f8087d1b0b497310f314da9": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 767,
+        "cached": 0,
+        "output": 55,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01042,
+      "records": [
+        "write-compressor__AdqzkqJ/reproduced/reply-1.json"
+      ]
+    },
+    "resp_012e2c0e83bf56f2016ab6286b208087d195fac16d1f5c8138": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1661,
+        "cached": 0,
+        "output": 109,
+        "reasoning": 0
+      },
+      "cost_usd": 0.02206,
+      "records": [
+        "write-compressor__AdqzkqJ/reproduced/reply-2.json"
+      ]
+    },
+    "resp_012e2c0e83bf56f2016ab628704fd887d18269cfbf9ac8dcd4": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2058,
+        "cached": 0,
+        "output": 206,
+        "reasoning": 41
+      },
+      "cost_usd": 0.03088,
+      "records": [
+        "write-compressor__AdqzkqJ/reproduced/reply-3.json"
+      ]
+    },
+    "resp_012e2c0e83bf56f2016ab62878b02487d19952ade99be04cf7": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2568,
+        "cached": 0,
+        "output": 335,
+        "reasoning": 10
+      },
+      "cost_usd": 0.04243,
+      "records": [
+        "write-compressor__AdqzkqJ/reproduced/reply-4.json"
+      ]
+    },
+    "resp_0a235ade10967f55016ab627008e8087d187f1965f406d1331": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 771,
+        "cached": 0,
+        "output": 63,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01086,
+      "records": [
+        "write-compressor__PMcdu2M/reproduced/reply-1.json"
+      ]
+    },
+    "resp_0a235ade10967f55016ab627056c8887d18deba50a09f161b9": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1651,
+        "cached": 0,
+        "output": 109,
+        "reasoning": 0
+      },
+      "cost_usd": 0.02196,
+      "records": [
+        "write-compressor__PMcdu2M/reproduced/reply-2.json"
+      ]
+    },
+    "resp_0a235ade10967f55016ab6270a861487d19f5756c7239e1dd7": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2025,
+        "cached": 1536,
+        "output": 112,
+        "reasoning": 0
+      },
+      "cost_usd": 0.012026,
+      "records": [
+        "write-compressor__PMcdu2M/reproduced/reply-3.json"
+      ]
+    },
+    "resp_05ea07b34d3f9b56016ab62f61cf1087d1848d256232e26d92": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 771,
+        "cached": 0,
+        "output": 55,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01046,
+      "records": [
+        "write-compressor__Y6JMAvX/reproduced/reply-1.json"
+      ]
+    },
+    "resp_05ea07b34d3f9b56016ab62f6542b487d18b610f4544cef01f": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1610,
+        "cached": 0,
+        "output": 108,
+        "reasoning": 0
+      },
+      "cost_usd": 0.0215,
+      "records": [
+        "write-compressor__Y6JMAvX/reproduced/reply-2.json"
+      ]
+    },
+    "resp_05ea07b34d3f9b56016ab62f6b67e087d1889dfb6dd037eb20": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1981,
+        "cached": 1408,
+        "output": 123,
+        "reasoning": 0
+      },
+      "cost_usd": 0.013288,
+      "records": [
+        "write-compressor__Y6JMAvX/reproduced/reply-3.json"
+      ]
+    },
+    "resp_08827d1a0ede20c2016ab62ed1590c87d1abc77af5087b0415": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 770,
+        "cached": 0,
+        "output": 63,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01085,
+      "records": [
+        "write-compressor__a7ExoaT/reproduced/reply-1.json"
+      ]
+    },
+    "resp_08827d1a0ede20c2016ab62ed4b39c87d18fc9c57a4c96bd27": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1816,
+        "cached": 0,
+        "output": 112,
+        "reasoning": 0
+      },
+      "cost_usd": 0.02376,
+      "records": [
+        "write-compressor__a7ExoaT/reproduced/reply-2.json"
+      ]
+    },
+    "resp_08827d1a0ede20c2016ab62ed994c887d19ad41852ac503c90": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2218,
+        "cached": 0,
+        "output": 374,
+        "reasoning": 23
+      },
+      "cost_usd": 0.04088,
+      "records": [
+        "write-compressor__a7ExoaT/reproduced/reply-3.json"
+      ]
+    },
+    "resp_006a2127e997aed0016ab6356b9bf087d1abc203175fc9286e": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 773,
+        "cached": 0,
+        "output": 55,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01048,
+      "records": [
+        "write-compressor__hfBx6Mh/reproduced/reply-1.json"
+      ]
+    },
+    "resp_006a2127e997aed0016ab6356ea29487d1a917147619ead82f": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1564,
+        "cached": 0,
+        "output": 109,
+        "reasoning": 0
+      },
+      "cost_usd": 0.02109,
+      "records": [
+        "write-compressor__hfBx6Mh/reproduced/reply-2.json"
+      ]
+    },
+    "resp_006a2127e997aed0016ab63574e69487d19ac3c448edaf9452": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1939,
+        "cached": 1408,
+        "output": 203,
+        "reasoning": 0
+      },
+      "cost_usd": 0.016868,
+      "records": [
+        "write-compressor__hfBx6Mh/reproduced/reply-3.json"
+      ]
+    },
+    "resp_0136c72a5790c0a8016ab6359c4bb087d1b84166b3da3e40ee": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 773,
+        "cached": 0,
+        "output": 49,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01018,
+      "records": [
+        "write-compressor__mWyWPBC/reproduced/reply-1.json"
+      ]
+    },
+    "resp_0136c72a5790c0a8016ab635a02ea087d1992add438e9d8353": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1613,
+        "cached": 0,
+        "output": 109,
+        "reasoning": 0
+      },
+      "cost_usd": 0.02158,
+      "records": [
+        "write-compressor__mWyWPBC/reproduced/reply-2.json"
+      ]
+    },
+    "resp_0136c72a5790c0a8016ab635a65b8087d18d96c0a6b15bcf1b": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1990,
+        "cached": 0,
+        "output": 114,
+        "reasoning": 0
+      },
+      "cost_usd": 0.0256,
+      "records": [
+        "write-compressor__mWyWPBC/reproduced/reply-3.json"
+      ]
+    }
+  }
+}
