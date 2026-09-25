@@ -57,6 +57,7 @@ async fn a_job_past_its_cap_is_killed_and_reported() {
         // On macOS the watch killed the group, and the report says so.
         Enforcement::Watch => {
             assert!(ended.over_memory(), "{memory:?} {:?}", ended.ending);
+            assert_eq!(memory.unenforced, None);
         }
     }
 }
@@ -137,10 +138,10 @@ async fn on_macos_a_capped_job_is_watched() {
         .run()
         .await;
     assert!(ended.ending.success(), "{:?}", ended.ending);
-    assert_eq!(
-        ended.memory.map(|memory| memory.enforcement),
-        Some(Enforcement::Watch)
-    );
+    let memory = ended.memory.expect("the job ran under a cap");
+    assert_eq!(memory.enforcement, Enforcement::Watch);
+    // The watch held the cap for the whole run.
+    assert_eq!(memory.unenforced, None);
 }
 
 #[tokio::test]

@@ -62,6 +62,10 @@
 //! passes the cap. That counts the tree and reports a kill, as a scope does,
 //! but a process that leaves the group is not counted, and a job can pass
 //! the cap by what it allocates between two samples before it is killed.
+//! A group the watch can't list is not an empty one: the watch kills it
+//! rather than let it run uncapped, and [`Memory::unenforced`] says why.
+//! Linux has a sampler too, over `/proc`, so the watch is tested where the
+//! workspace's tests run; Linux jobs are not watched.
 //!
 //! Where the child still has to set the resource limit and the system
 //! refuses it, the spawn fails with a message that names the cap and
@@ -114,6 +118,11 @@ pub struct Memory {
     /// and a watch can say so; under [`Enforcement::DataLimit`] this is
     /// always `false`, and a job its limit ended reads as a failure.
     pub exceeded: bool,
+    /// Why the cap stopped holding before the job ended, when it did. A
+    /// watch that can't read the job's memory kills the job rather than let
+    /// it run uncapped, and says why here. `None` means the cap held for the
+    /// whole run.
+    pub unenforced: Option<String>,
 }
 
 /// What enforced a job's memory cap.
@@ -198,6 +207,9 @@ fn watches() -> bool {
 pub(crate) struct Handshake {
     max: u64,
     scope: bool,
+    /// Whether a job without a scope is watched; [`watches`] unless a test
+    /// says otherwise.
+    watch: bool,
     /// Read end of the report pipe, and write end of the gate pipe.
     report: OwnedFd,
     gate: OwnedFd,
@@ -289,6 +301,7 @@ pub(crate) fn arm_with(command: &mut Command, max: u64, scope: bool) -> Result<H
     Ok(Handshake {
         max,
         scope,
+        watch: watches(),
         report: report_read,
         gate: gate_write,
         child_ends: Some((report_write, gate_read)),
@@ -308,11 +321,19 @@ fn interrupted() -> bool {
 }
 
 impl Handshake {
+    /// Watches the job where no scope holds it, as macOS does, so a test
+    /// takes that path on any platform.
+    #[cfg(test)]
+    pub(crate) fn watched(mut self) -> Self {
+        self.watch = true;
+        self
+    }
+
     /// Starts the helper. Call this just before the spawn, and
     /// [`Serving::finish`] just after it.
     pub(crate) fn serve(mut self) -> Serving {
         let child_ends = self.child_ends.take();
-        let (max, scope) = (self.max, self.scope);
+        let (max, scope, watches) = (self.max, self.scope, self.watch);
         let helper = std::thread::spawn(move || {
             let mut report = std::fs::File::from(self.report);
             let mut gate = std::fs::File::from(self.gate);
@@ -325,7 +346,7 @@ impl Handshake {
             // The child leads its own process group by now, since the
             // group is set before the handshake runs, so the group the
             // watch samples is the job's from its first instruction.
-            let watch = (placed.is_none() && watches()).then(|| Watch::start(pid, max));
+            let watch = (placed.is_none() && watches).then(|| Watch::start(pid, max));
             let answer = match (&placed, &watch) {
                 (Some(_), _) => SCOPED,
                 (None, Some(_)) => WATCHED,
@@ -379,6 +400,7 @@ impl Placed {
             max: self.max,
             enforcement: self.enforcement.clone(),
             exceeded: false,
+            unenforced: None,
         }
     }
 
@@ -394,15 +416,16 @@ impl Placed {
     /// This blocks for up to [`SETTLE_WALL`] while systemd notices the
     /// scope is empty; the asynchronous callers run it on a blocking thread.
     pub(crate) fn settle(self) -> Memory {
-        let exceeded = match (&self.enforcement, &self.watch) {
-            (Enforcement::Scope(unit), _) => settle_scope(unit),
+        let (exceeded, unenforced) = match (&self.enforcement, &self.watch) {
+            (Enforcement::Scope(unit), _) => (settle_scope(unit), None),
             (Enforcement::Watch, Some(watch)) => watch.stop(),
-            _ => false,
+            _ => (false, None),
         };
         Memory {
             max: self.max,
             enforcement: self.enforcement,
             exceeded,
+            unenforced,
         }
     }
 }
@@ -427,26 +450,55 @@ fn refusal(enforcement: &Enforcement, max: u64, error: &std::io::Error) -> Strin
 pub(crate) struct Watch {
     stop: AtomicBool,
     exceeded: AtomicBool,
+    /// Why the watch stopped holding the cap, when a sample failed.
+    unenforced: std::sync::Mutex<Option<String>>,
     thread: std::sync::Mutex<Option<JoinHandle<()>>>,
 }
+
+/// What one sample of a group found: its total footprint in bytes, `None`
+/// when the group is empty, or why the group couldn't be listed.
+type Sample = Result<Option<u64>, String>;
 
 impl Watch {
     /// Starts sampling the process group `group`, and kills it once the
     /// group's footprint passes `max` bytes.
     fn start(group: i32, max: u64) -> Arc<Self> {
+        Self::start_with(group, max, footprint)
+    }
+
+    /// [`Watch::start`] with the sampler named, so a test can make one fail.
+    fn start_with(
+        group: i32,
+        max: u64,
+        sample: fn(i32, &mut Vec<libc::pid_t>) -> Sample,
+    ) -> Arc<Self> {
         let watch = Arc::new(Watch {
             stop: AtomicBool::new(false),
             exceeded: AtomicBool::new(false),
+            unenforced: std::sync::Mutex::new(None),
             thread: std::sync::Mutex::new(None),
         });
         let watching = Arc::clone(&watch);
         let thread = std::thread::spawn(move || {
             let mut pids = Vec::new();
             while !watching.stop.load(Ordering::Relaxed) {
-                // An empty group is a finished job, and its identifier may
-                // be reused, so the watch ends with it.
-                let Some(footprint) = footprint(group, &mut pids) else {
-                    return;
+                let footprint = match sample(group, &mut pids) {
+                    Ok(Some(footprint)) => footprint,
+                    // An empty group is a finished job, and its identifier
+                    // may be reused, so the watch ends with it.
+                    Ok(None) => return,
+                    // A group the watch can't list may still be running, and
+                    // nothing else holds its memory, so it ends here.
+                    Err(why) => {
+                        crate::group::end(group);
+                        *watching
+                            .unenforced
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(format!(
+                            "the supervisor couldn't read the job's memory, so it ended the job rather than run it without its cap: {why}"
+                        ));
+                        return;
+                    }
                 };
                 if footprint > max {
                     watching.exceeded.store(true, Ordering::Relaxed);
@@ -463,8 +515,9 @@ impl Watch {
         watch
     }
 
-    /// Stops the watch and says whether it killed the job.
-    fn stop(&self) -> bool {
+    /// Stops the watch and says whether it killed the job for passing the
+    /// cap, and why the cap stopped holding when it did.
+    fn stop(&self) -> (bool, Option<String>) {
         self.stop.store(true, Ordering::Relaxed);
         let thread = self
             .thread
@@ -474,24 +527,41 @@ impl Watch {
         if let Some(thread) = thread {
             let _ = thread.join();
         }
-        self.exceeded.load(Ordering::Relaxed)
+        let unenforced = self
+            .unenforced
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+        (self.exceeded.load(Ordering::Relaxed), unenforced)
     }
 }
 
-/// The total physical footprint of the processes in `group`, in bytes, or
-/// `None` when the group is empty. `pids` is scratch space the watch keeps
-/// between samples.
+/// The total physical footprint of the processes in `group`, in bytes,
+/// `None` when the group is empty, or why the group couldn't be listed.
+/// `pids` is scratch space the watch keeps between samples.
 #[cfg(target_os = "macos")]
-fn footprint(group: i32, pids: &mut Vec<libc::pid_t>) -> Option<u64> {
+fn footprint(group: i32, pids: &mut Vec<libc::pid_t>) -> Sample {
     if pids.is_empty() {
         pids.resize(256, 0);
     }
     let listed = loop {
-        let room = libc::c_int::try_from(std::mem::size_of_val(pids.as_slice())).ok()?;
+        let room = libc::c_int::try_from(std::mem::size_of_val(pids.as_slice()))
+            .map_err(|_| "the process list outgrew its buffer".to_string())?;
+        // `proc_listpgrppids` returns 0 both for an empty group and for a
+        // failed call, and only the failure sets `errno`.
+        // SAFETY: `__error` returns this thread's `errno`, which is writable.
+        unsafe { *libc::__error() = 0 };
         // SAFETY: the buffer has `room` bytes, and the call writes at most
         // that many.
         let listed = unsafe { libc::proc_listpgrppids(group, pids.as_mut_ptr().cast(), room) };
-        let listed = usize::try_from(listed).ok().filter(|&listed| listed > 0)?;
+        if listed <= 0 {
+            let error = std::io::Error::last_os_error();
+            if listed < 0 || error.raw_os_error().is_some_and(|code| code != 0) {
+                return Err(format!("couldn't list process group {group}: {error}"));
+            }
+            return Ok(None);
+        }
+        let listed = usize::try_from(listed).unwrap_or(0);
         // A full buffer may have left members out.
         if listed < pids.len() || pids.len() >= 1 << 16 {
             break listed.min(pids.len());
@@ -518,14 +588,60 @@ fn footprint(group: i32, pids: &mut Vec<libc::pid_t>) -> Option<u64> {
             total = total.saturating_add(info.ri_phys_footprint);
         }
     }
-    Some(total)
+    Ok(Some(total))
 }
 
-/// Watching is macOS only; elsewhere the group reads as empty, which ends a
-/// watch at once.
-#[cfg(not(target_os = "macos"))]
-fn footprint(_group: i32, _pids: &mut Vec<libc::pid_t>) -> Option<u64> {
-    None
+/// The total resident memory of the processes in `group`, in bytes, from
+/// `/proc`, `None` when the group is empty, or why `/proc` couldn't be read.
+/// Linux jobs are not watched; this is how the watch is tested here.
+#[cfg(target_os = "linux")]
+fn footprint(group: i32, _pids: &mut Vec<libc::pid_t>) -> Sample {
+    let entries =
+        std::fs::read_dir("/proc").map_err(|error| format!("couldn't read /proc: {error}"))?;
+    // SAFETY: `sysconf` reads one integer and returns one.
+    let page = u64::try_from(unsafe { libc::sysconf(libc::_SC_PAGESIZE) }).unwrap_or(4096);
+    let mut total = None::<u64>;
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(pid) = name
+            .to_str()
+            .filter(|pid| pid.bytes().all(|byte| byte.is_ascii_digit()))
+        else {
+            continue;
+        };
+        // A process that exited since the listing counts for nothing.
+        let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat")) else {
+            continue;
+        };
+        if process_group(&stat) != Some(group) {
+            continue;
+        }
+        let resident = std::fs::read_to_string(format!("/proc/{pid}/statm"))
+            .ok()
+            .and_then(|statm| statm.split_whitespace().nth(1)?.parse::<u64>().ok())
+            .unwrap_or(0);
+        total = Some(
+            total
+                .unwrap_or(0)
+                .saturating_add(resident.saturating_mul(page)),
+        );
+    }
+    Ok(total)
+}
+
+/// The process group in a `/proc/<pid>/stat` line: the third field after
+/// the command, which is parenthesized and may hold spaces or parentheses.
+#[cfg(target_os = "linux")]
+fn process_group(stat: &str) -> Option<i32> {
+    let (_, rest) = stat.rsplit_once(')')?;
+    rest.split_whitespace().nth(2)?.parse().ok()
+}
+
+/// No sampler on this platform. Nothing here watches a job, and a watch
+/// that did would end it at the first sample rather than run it uncapped.
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+fn footprint(_group: i32, _pids: &mut Vec<libc::pid_t>) -> Sample {
+    Err("this platform has no way to read a process group's memory".to_string())
 }
 
 /// Makes a pipe whose ends close on `exec`, so the program the child runs
@@ -849,7 +965,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     fn a_footprint_counts_every_process_in_the_group() {
         let mut command = Command::new("sh");
         command.args(["-c", "sleep 5 & sleep 5"]);
@@ -858,12 +974,91 @@ mod tests {
         let group = i32::try_from(child.id()).unwrap();
         std::thread::sleep(Duration::from_millis(200));
         let mut pids = Vec::new();
-        let total = footprint(group, &mut pids).expect("the group is running");
+        let total = footprint(group, &mut pids)
+            .unwrap()
+            .expect("the group is running");
         assert!(total > 0);
         crate::group::end(group);
         let _ = child.wait();
         std::thread::sleep(Duration::from_millis(100));
-        assert_eq!(footprint(group, &mut pids), None);
+        assert_eq!(footprint(group, &mut pids), Ok(None));
+    }
+
+    /// Runs `script` watched, as macOS runs every job without a scope,
+    /// under a cap of `max` bytes.
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    fn watched(script: &str, max: u64) -> (std::process::ExitStatus, Memory) {
+        let mut command = Command::new("sh");
+        command.args(["-c", script]).stdout(Stdio::null());
+        std::os::unix::process::CommandExt::process_group(&mut command, 0);
+        let serving = arm_with(&mut command, max, false)
+            .unwrap()
+            .watched()
+            .serve();
+        let spawned = command.spawn();
+        let placed = serving.finish();
+        assert_eq!(placed.enforcement, Enforcement::Watch);
+        let status = spawned.unwrap().wait().unwrap();
+        (status, placed.settle())
+    }
+
+    #[test]
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    fn a_watched_group_past_its_cap_is_killed_and_reported() {
+        // `tail` holds a line it hasn't seen the end of, and a gibibyte of
+        // zeros has no newline, so it grows until something stops it.
+        let (status, memory) = watched("head -c 1073741824 /dev/zero | tail", 64 << 20);
+        assert!(!status.success(), "{status:?}");
+        assert!(memory.exceeded, "{memory:?}");
+        assert_eq!(memory.unenforced, None);
+    }
+
+    #[test]
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    fn a_watched_group_under_its_cap_runs_and_the_cap_held() {
+        let (status, memory) = watched("echo held", 256 << 20);
+        assert!(status.success(), "{status:?}");
+        assert!(!memory.exceeded);
+        assert_eq!(memory.unenforced, None);
+    }
+
+    #[test]
+    fn a_group_the_watch_cannot_list_is_killed_and_the_lapse_recorded() {
+        fn unlistable(group: i32, _pids: &mut Vec<libc::pid_t>) -> Sample {
+            Err(format!("couldn't list process group {group}: denied"))
+        }
+        let mut command = Command::new("sleep");
+        command.arg("30");
+        std::os::unix::process::CommandExt::process_group(&mut command, 0);
+        let mut child = command.spawn().unwrap();
+        let group = i32::try_from(child.id()).unwrap();
+        let watch = Watch::start_with(group, 256 << 20, unlistable);
+        // The watch kills the group at its first sample rather than wait.
+        let status = child.wait().unwrap();
+        assert!(!status.success(), "{status:?}");
+        let (exceeded, unenforced) = watch.stop();
+        assert!(!exceeded, "a lapse is not a job past its cap");
+        let why = unenforced.expect("the record says the cap stopped holding");
+        assert!(why.contains("rather than run it without its cap"), "{why}");
+        assert!(why.ends_with("denied"), "{why}");
+    }
+
+    #[test]
+    fn an_empty_group_ends_the_watch_without_a_lapse() {
+        fn empty(_group: i32, _pids: &mut Vec<libc::pid_t>) -> Sample {
+            Ok(None)
+        }
+        let watch = Watch::start_with(-1, 256 << 20, empty);
+        std::thread::sleep(WATCH_EVERY * 2);
+        assert_eq!(watch.stop(), (false, None));
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn the_process_group_is_read_past_an_awkward_command_name() {
+        assert_eq!(process_group("42 (sh) S 1 42 42 0 -1"), Some(42));
+        assert_eq!(process_group("42 (a) b (c)) R 7 99 42 0"), Some(99));
+        assert_eq!(process_group("42 (sh"), None);
     }
 
     #[test]

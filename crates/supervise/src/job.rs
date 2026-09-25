@@ -232,7 +232,10 @@ pub(crate) async fn settle(placed: Option<Placed>) -> Option<Memory> {
     let fallback = placed.clone();
     match tokio::task::spawn_blocking(move || placed.settle()).await {
         Ok(memory) => Some(memory),
-        Err(_) => Some(fallback.unsettled()),
+        Err(_) => Some(Memory {
+            unenforced: Some("the supervisor couldn't settle the job's memory cap".to_string()),
+            ..fallback.unsettled()
+        }),
     }
 }
 

@@ -168,7 +168,10 @@ passes the cap. The job is reported with `Enforcement::Watch`, and
 `exceeded: true` when the watch killed it. Like a scope, the watch counts
 the tree and reports the kill. Unlike one, it misses a process that left the
 group, and a job can pass the cap by what it allocates between two samples
-before it is killed.
+before it is killed. A group the watch can't list is not treated as an empty
+one: the watch kills it rather than let it run without a cap, and
+`Memory::unenforced` says why. That field is `None` when the cap held for
+the whole run, under any enforcement.
 
 **Nested supervision.** A supervised program that supervises jobs of its own
 puts each in a scope beside its own, under the same slice, not inside it: a
@@ -234,5 +237,8 @@ binary again as a job that allocates past a 64 MiB cap and checks that it is
 killed and reported as over its cap, that a job under its cap and a job that
 crashes are not, that a grandchild started at once is already in the scope,
 that a `setsid` descendant ends with the scope, and on macOS that a capped
-job is watched. `crates/coder` and
+job is watched. The unit tests in `src/memory.rs` run the watch on Linux as
+well, with a sampler that reads `/proc`: a group past its cap is killed and
+reported, one under it runs, a group the watch can't list is killed and the
+lapse recorded, and an empty group ends the watch without one. `crates/coder` and
 `crates/coderbench` each repeat the marker case through their own call site.
