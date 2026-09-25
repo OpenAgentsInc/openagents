@@ -60,6 +60,37 @@ fn a_new_heading_ends_an_example_section() {
 }
 
 #[test]
+fn final_obligations_exclude_temporary_removed_and_relocated_artifacts() {
+    for text in [
+        "Write scratch.txt as an intermediate file, then delete it before finishing.",
+        "Create a temporary file scratch.txt.",
+        "Write scratch.txt. Delete scratch.txt when finished.",
+        "Write scratch.txt. Remove it before finishing.",
+        "Write /app/work/result.txt. Remove /app/work when finished.",
+        "Write scratch.txt. Rename scratch.txt to result.txt.",
+        "Write scratch.txt. Move it to result.txt.",
+        "Write scratch.txt. Clean up with:\n```sh\nrm scratch.txt\n```",
+        "Write scratch.txt. scratch.txt must be at most 4 bytes. Delete scratch.txt.",
+    ] {
+        assert!(
+            plan("fixture", text, "/app").obligations.is_empty(),
+            "{text}"
+        );
+    }
+    for text in [
+        "Write scratch.txt. Write result.txt. Delete scratch.txt.",
+        "Write result.txt. Delete /app/old.txt.",
+        "Delete /app/old.txt. Write result.txt.",
+        "Move all inputs to /app/inputs/. Write result.txt.",
+        "Write scratch.txt. Move it to /app/inputs/. Write result.txt.",
+    ] {
+        let p = plan("fixture", text, "/app");
+        assert_eq!(p.obligations.len(), 1, "{text}");
+        assert_eq!(p.obligations[0].path, "/app/result.txt", "{text}");
+    }
+}
+
+#[test]
 fn limits_need_an_independent_output_obligation_and_exact_units() {
     for (text, maximum) in [
         (

@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use super::Outcome;
-use super::extract::{as_path, is_output, segment};
+use super::extract::{Block, Unit, as_path, is_output, segment};
 use super::host::{Host, Stat};
 
 pub const PLAN_SCHEMA: &str = "openagents.coder-one.literal-artifact-plan.v1";
@@ -117,6 +117,9 @@ fn uncertain(text: &str) -> bool {
                     | "could"
                     | "example"
                     | "examples"
+                    | "temporary"
+                    | "intermediate"
+                    | "transient"
                     | "not"
                     | "never"
                     | "don't"
@@ -173,11 +176,91 @@ fn maximum(after: &str) -> Option<u64> {
     }
 }
 
+fn words(text: &str) -> Vec<String> {
+    text.split(|c: char| !c.is_ascii_alphabetic())
+        .filter(|s| !s.is_empty())
+        .map(str::to_ascii_lowercase)
+        .collect()
+}
+
+fn retire(text: &str, workdir: &str, active: &BTreeSet<String>, retired: &mut BTreeSet<String>) {
+    let tokens = words(text);
+    let removes = tokens
+        .iter()
+        .any(|w| matches!(w.as_str(), "delete" | "remove" | "unlink" | "rm" | "rmdir"));
+    let moves = tokens
+        .iter()
+        .any(|w| matches!(w.as_str(), "move" | "rename" | "mv"));
+    if !removes && !moves {
+        return;
+    }
+    let found = occurrences(text, workdir);
+    // A cleanup instruction without a named path cannot identify which of the
+    // earlier outputs remains. Abstain instead of resolving anaphora by guess.
+    let Some((start, _, first)) = found.first() else {
+        retired.extend(active.iter().cloned());
+        return;
+    };
+    if !removes && moves {
+        let prefix = words(&text[..*start]);
+        if prefix
+            .last()
+            .is_some_and(|w| matches!(w.as_str(), "to" | "into"))
+        {
+            retired.extend(
+                active
+                    .iter()
+                    .filter(|path| !Path::new(path).starts_with(first))
+                    .cloned(),
+            );
+        } else {
+            retired.extend(
+                active
+                    .iter()
+                    .filter(|path| Path::new(path).starts_with(first))
+                    .cloned(),
+            );
+        }
+    } else {
+        retired.extend(
+            active
+                .iter()
+                .filter(|path| found.iter().any(|(_, _, p)| Path::new(path).starts_with(p)))
+                .cloned(),
+        );
+    }
+}
+
+fn retired_paths(
+    units: &[Unit],
+    blocks: &[Block],
+    outputs: &BTreeMap<String, String>,
+    workdir: &str,
+) -> BTreeSet<String> {
+    let mut active = BTreeSet::new();
+    let mut retired = BTreeSet::new();
+    for (index, unit) in units.iter().enumerate() {
+        active.extend(
+            outputs
+                .iter()
+                .filter(|(_, span)| **span == unit.text)
+                .map(|(path, _)| path.clone()),
+        );
+        retire(&unit.text, workdir, &active, &mut retired);
+        for block in blocks.iter().filter(|b| b.lead == Some(index)) {
+            for line in block.body.lines() {
+                retire(line, workdir, &active, &mut retired);
+            }
+        }
+    }
+    retired
+}
+
 /// Extract only unconditional, explicit outputs and their literal byte limits.
 /// Unsupported wording stays outside the plan; no missing item means success.
 #[must_use]
 pub fn plan(task: &str, instruction: &str, workdir: &str) -> Plan {
-    let (units, _) = segment(instruction);
+    let (units, blocks) = segment(instruction);
     let headings: BTreeSet<_> = instruction
         .lines()
         .filter_map(|line| {
@@ -278,6 +361,8 @@ pub fn plan(task: &str, instruction: &str, workdir: &str) -> Plan {
             }
         }
     }
+    let retired = retired_paths(&units, &blocks, &outputs, workdir);
+    obligations.retain(|item| !retired.contains(&item.path));
     for (i, item) in obligations.iter_mut().enumerate() {
         item.id = format!("L{}", i + 1);
     }
