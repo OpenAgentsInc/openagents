@@ -281,8 +281,8 @@ pub fn plan(task: &str, instruction: &str, workdir: &str) -> Plan {
     let mut context = String::new();
     let declaration = Regex::new(r"(?i)^(?:please |you must |you shall )?(?:write|create|save|produce|generate|output|emit|deliver|store)\b")
         .expect("literal output declaration pattern");
-    let deferred = Regex::new(r"(?i)\b(?:to|for)\s+(?:write|writ(e|ing)|creat(e|ing)|sav(e|ing)|generat(e|ing)|produc(e|ing)|output|print|emit|store)\b")
-        .expect("deferred output action pattern");
+    let deferred =
+        Regex::new(r"(?i)\b(?:to|for)\s+[A-Za-z]").expect("deferred output action pattern");
     for unit in &units {
         if headings.contains(unit.text.as_str()) {
             context.clear();
@@ -327,6 +327,13 @@ pub fn plan(task: &str, instruction: &str, workdir: &str) -> Plan {
                         | "contents"
                         | "function"
                         | "method"
+                        | "generating"
+                        | "producing"
+                        | "saving"
+                        | "writing"
+                        | "creating"
+                        | "printing"
+                        | "outputting"
                 )
             });
             if !blocked
