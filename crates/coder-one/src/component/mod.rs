@@ -29,6 +29,7 @@ pub mod monitor;
 pub mod pack;
 pub mod repair;
 pub mod replay;
+pub mod review;
 pub mod scripted;
 pub mod stall;
 pub mod support;
@@ -150,6 +151,7 @@ pub fn registry() -> Vec<Box<dyn Component>> {
         Box::new(stall::StallComponent),
         Box::new(stall::NextComponent),
         Box::new(finish::FinishComponent),
+        Box::new(review::ReviewComponent),
         Box::new(HandoffComponent),
         Box::new(SystemSelect),
         Box::new(checks::Checks),

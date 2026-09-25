@@ -520,6 +520,26 @@ impl ReviewDelta {
     }
 }
 
+/// The review rule's decision (`control.review`, issue #9637): which
+/// trigger started the review, or that none did.
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct ReviewRule {
+    /// The session whose candidate the rule read.
+    pub session: Option<u64>,
+    /// Whether the review ran.
+    pub review: bool,
+    /// The triggers that fired, `none`, or `unknown: …` when only an
+    /// unknown reading started the review.
+    pub trigger: String,
+    /// Each trigger's reading, `fired`, `clear`, or `unknown`, and why.
+    pub readings: Vec<(String, String, String)>,
+    pub reason: String,
+    pub unknown_fires: Option<bool>,
+    /// The review's concerns, each with its requirement ID and command,
+    /// when the review ran and the loop recorded them.
+    pub concerns: Option<Vec<Value>>,
+}
+
 /// Each session's claim beside the verifier.
 #[derive(Clone, Debug, Default, Serialize)]
 pub struct Claims {
@@ -568,6 +588,9 @@ pub struct Card {
     pub waste: Waste,
     pub reversals: Reversals,
     pub review: Vec<ReviewDelta>,
+    /// The review rule's decision, or `None` when the policy didn't run
+    /// the rule.
+    pub review_rule: Option<ReviewRule>,
     pub claims: Claims,
     pub reference: Option<Reference>,
     /// Why a section is unknown, in words.
@@ -1073,6 +1096,7 @@ pub fn characterize(run: &Run, options: &Options) -> Card {
     executed(&mut card, &records, episode_dir.as_deref());
     reversals(&mut card, &selection, &analysis);
     review(&mut card, &selection);
+    card.review_rule = episode_dir.as_deref().and_then(read_review_rule);
     claims(&mut card, &records);
     reference(&mut card, &analysis, options);
     if records.sessions.is_empty() {
@@ -1830,6 +1854,58 @@ fn reversals(card: &mut Card, selection: &Selection, analysis: &crate::runs_anal
     }
     card.reversals.between_sessions = Some(found);
 }
+
+/// The review rule's record from the lean loop's dispatch records
+/// (`artifacts/microluna-N.json`): the last `lean.review_rule` move and
+/// the concerns that followed it.
+fn read_review_rule(episode: &Path) -> Option<ReviewRule> {
+    let mut files: Vec<PathBuf> = std::fs::read_dir(episode.join("artifacts"))
+        .ok()?
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| {
+            let name = path.file_name().unwrap_or_default().to_string_lossy();
+            name.starts_with("microluna-") && name.ends_with(".json") && !name.contains(".atif")
+        })
+        .collect();
+    files.sort();
+    let mut found = None;
+    for file in files {
+        let Some(record) = read_json(&file) else {
+            continue;
+        };
+        let moves = record["moves"].as_array().cloned().unwrap_or_default();
+        let Some(at) = moves.iter().rposition(|m| m["kind"] == "lean.review_rule") else {
+            continue;
+        };
+        let rule = &moves[at];
+        let concerns = moves[at..]
+            .iter()
+            .find(|m| m["kind"] == "lean.review_concerns")
+            .and_then(|m| m["concerns"].as_array().cloned());
+        found = Some(ReviewRule {
+            session: rule["session"].as_u64(),
+            review: rule["review"].as_bool().unwrap_or(false),
+            trigger: rule["trigger"].as_str().unwrap_or(UNKNOWN_WORD).to_owned(),
+            readings: rule["triggers"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .map(|r| {
+                    let word = |key: &str| r[key].as_str().unwrap_or_default().to_owned();
+                    (word("trigger"), word("reading"), word("detail"))
+                })
+                .collect(),
+            reason: rule["reason"].as_str().unwrap_or_default().to_owned(),
+            unknown_fires: rule["unknown_fires"].as_bool(),
+            concerns,
+        });
+    }
+    found
+}
+
+/// What a missing word reads as.
+const UNKNOWN_WORD: &str = "unknown";
 
 fn review(card: &mut Card, selection: &Selection) {
     let executed = card.executed.host_commands.clone();

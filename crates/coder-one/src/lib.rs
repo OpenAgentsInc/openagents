@@ -58,6 +58,7 @@ pub mod proposal;
 pub mod record;
 pub mod repair;
 pub mod requirements;
+pub mod review_rule;
 pub mod say;
 pub mod scripted;
 pub mod session;

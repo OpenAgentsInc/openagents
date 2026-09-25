@@ -127,7 +127,8 @@ a session, so that row is `not recorded`.
 digest changed from the snapshot before it, and for each file whether the
 change touched code or only docstrings and comments, from the two retained
 workspaces. Scores before and after, and the host-executed records of the
-two candidates.
+two candidates. When the policy runs the [review rule](#review-rule), which
+trigger started the review, or that none did and the review didn't run.
 
 **Claims against outcomes.** Each session's finish status and summary, the
 verifier's reward and tests, the host's final score and whether a full
@@ -256,6 +257,43 @@ writes them, and `baseline::read_commands` reads its commands back.
 The card counts lines and advisory lines, and beside the reward it puts
 whether each line's last result agrees: a passing line agrees with reward 1
 and a failing line with reward below 1.
+
+### Review rule
+
+`control.review`
+([#9637](https://github.com/OpenAgentsInc/openagents/issues/9637)) decides
+whether the lean loop's review session runs and records the decision as a
+`lean.review_rule` move in the dispatch record,
+`artifacts/microluna-<n>.json`. When the review ran, a
+`lean.review_concerns` move follows with its concerns. The card reads the
+last decision; when a policy doesn't run the rule, the rows say `not
+recorded`.
+
+```json
+{
+  "kind": "lean.review_rule",
+  "schema": "openagents.coder-one.review-rule.v1",
+  "version": "review-rule-v1",
+  "session": 1,
+  "review": true,
+  "fired": ["uncovered"],
+  "unknown": ["regressed"],
+  "unknown_fires": true,
+  "trigger": "uncovered",
+  "triggers": [
+    {"trigger": "score", "reading": "clear", "detail": "the frozen score was full, 6 of 6"},
+    {"trigger": "uncovered", "reading": "fired", "detail": "1 of 2 deliverable and check requirements have no executed check that touches their path or command: R3", "requirements": ["R3"]}
+  ],
+  "reason": "the review runs: 1 of 2 deliverable and check requirements have no executed check that touches their path or command: R3"
+}
+```
+
+| Row | Meaning |
+| --- | --- |
+| `review.rule.trigger` | The triggers that fired, `none`, or `unknown: …` when only a trigger that read `unknown` started the review |
+| `review.rule.ran` | Whether the review ran |
+| `review.rule.<trigger>` | `score`, `regressed`, `hardcoded`, or `uncovered`: `fired`, `clear`, or `unknown`, with why |
+| `review.rule.concerns` | The concerns the review reported, each tied to a requirement ID and, where it gave one, a command |
 
 ### Defect sites
 

@@ -23,6 +23,7 @@ pub const USAGE: &str = "usage: coder-one component list [--json]
                                   [--live-limit N]
        coder-one component replay control.finish [--traces DIR]... [--exclude-task NAME]...
                                   [--baselines FILE] --out DIR
+       coder-one component replay control.review [--traces DIR]... [--labels FILE] --out DIR
 
 --jev defaults to recorded: answers replay from each fixture's jev-recorded.json,
 and a changed state or question set misses. live calls Jev with TYPESAFE_API_KEY;
@@ -54,7 +55,13 @@ summary.json to --out. --exclude-task omits a task before reading its records;
 the measurement protocol supplies these names. Jobs containing truth-confirmation
 or truth-control are always omitted. It asks no model. --baselines reads a baseline
 measurement's records (tasks.<task>.commands) and holds each Microluna session on
-those tasks to its task's baseline commands, run from /app.";
+those tasks to its task's baseline commands, run from /app.
+
+replay control.review asks, for every retained lean-loop dispatch under each
+--traces directory that reached its self-check, what the review rule (issue
+#9637) would have decided from the records the trial kept, and writes rows.jsonl
+and summary.json to --out. --labels names a file of {trial, reward} labels for
+trials that didn't keep their reward. It asks no model.";
 
 /// A live Jev client from `TYPESAFE_API_KEY` or `~/.openagents/jev.json`.
 ///
@@ -95,6 +102,7 @@ struct Flags {
     partitions: Vec<String>,
     excluded_tasks: Vec<String>,
     baselines: Option<PathBuf>,
+    labels: Option<PathBuf>,
 }
 
 impl Flags {
@@ -120,6 +128,7 @@ impl Flags {
             partitions: Vec::new(),
             excluded_tasks: Vec::new(),
             baselines: None,
+            labels: None,
         };
         let mut args = args.iter();
         while let Some(arg) = args.next() {
@@ -141,6 +150,7 @@ impl Flags {
                 "--baselines" => flags.baselines = Some(value("--baselines")?.into()),
                 "--partition" => flags.partitions.push(value("--partition")?),
                 "--exclude-task" => flags.excluded_tasks.push(value("--exclude-task")?),
+                "--labels" => flags.labels = Some(value("--labels")?.into()),
                 "--arm" => flags.arm = Some(value("--arm")?),
                 "--out" => flags.out = Some(value("--out")?.into()),
                 "--export" => flags.export = Some(value("--export")?.into()),
@@ -313,6 +323,9 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
         "replay" if flags.positional.first().map(String::as_str) == Some("control.finish") => {
             replay_finish(&flags)
         }
+        "replay" if flags.positional.first().map(String::as_str) == Some("control.review") => {
+            replay_review(&flags)
+        }
         "replay" => {
             if flags.positional.first().map(String::as_str) != Some("evidence.pack") {
                 return Err(format!(
@@ -447,6 +460,38 @@ fn replay_finish(flags: &Flags) -> Result<i32, String> {
     }
     crate::record::write_atomic(&out.join("rows.jsonl"), lines.as_bytes())?;
     let summary = super::finish::summary(&rows, &sources);
+    let text = serde_json::to_string_pretty(&summary).map_err(|error| error.to_string())?;
+    crate::record::write_atomic(&out.join("summary.json"), format!("{text}\n").as_bytes())?;
+    print_json(&summary)?;
+    Ok(0)
+}
+
+fn replay_review(flags: &Flags) -> Result<i32, String> {
+    let out = flags
+        .out
+        .clone()
+        .ok_or("replay control.review needs --out DIR")?;
+    let roots = if flags.traces_all.is_empty() {
+        vec![
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../bench/terminal-bench/traces"),
+        ]
+    } else {
+        flags.traces_all.clone()
+    };
+    let labels = match &flags.labels {
+        Some(path) => super::review::read_labels(path)?,
+        None => std::collections::BTreeMap::new(),
+    };
+    let rows = super::review::replay(&roots, &labels);
+    std::fs::create_dir_all(&out).map_err(|error| error.to_string())?;
+    let mut lines = String::new();
+    for row in &rows {
+        lines.push_str(&serde_json::to_string(row).map_err(|error| error.to_string())?);
+        lines.push('\n');
+    }
+    crate::record::write_atomic(&out.join("rows.jsonl"), lines.as_bytes())?;
+    let summary = super::review::summary(&rows);
     let text = serde_json::to_string_pretty(&summary).map_err(|error| error.to_string())?;
     crate::record::write_atomic(&out.join("summary.json"), format!("{text}\n").as_bytes())?;
     print_json(&summary)?;
