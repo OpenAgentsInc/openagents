@@ -1,0 +1,33 @@
+{
+  "schema": "openagents.truthful-checks-rule.v1",
+  "selection_partition": "calibration",
+  "source_review": {
+    "model": "gpt-6-astra",
+    "effort": "high",
+    "scope": false,
+    "threshold": 0.9,
+    "record": "astra"
+  },
+  "report_audit": {
+    "threshold": 0.5
+  },
+  "combination": "fail if source review or report audit reaches its threshold; otherwise unknown",
+  "calibration": {
+    "trials": 132,
+    "task_groups": 26,
+    "failures": 62,
+    "true_fail_calls": 13,
+    "false_fail_calls": 0,
+    "missing_source_packets": 38
+  },
+  "selection_note": "Both Astra variants give the same union counts. Original two-question review costs fewer Jev tokens and wins the cost tie. No Luna threshold qualifies. The additionally inspected report cutoffs are excluded.",
+  "comparison": "185 historical trials on 32 task groups held out from this fit; previously inspected report-only comparison, not pristine validation",
+  "prospective": "Eight fresh Microluna task groups, with known prior shadow-relay exposure reported separately",
+  "frozen_source_commit": "c07f9309c6",
+  "digests": {
+    "crates/coder-one/src/checks/review.rs": "1857c95faf8fbacf7f86505f0a720bd1da04636390a143f49187d03f52df368d",
+    "crates/coder-one/src/checks/report_audit.rs": "bd5d7b78656cfa569e426ec4e5181c4dd686774c7c9c6118fdcb4111a9a956fe",
+    "bench/terminal-bench/experiments/2026-09-25-candidate-review/prepare.py": "7b98268fcea766881ba427b3d96726c046777b461189d8479c6bb8251fe69658",
+    "bench/terminal-bench/experiments/2026-09-25-candidate-review/protocol.md": "815f2fae6847897d6ebec1662a2b45cce453de3616e0b7ff01f0e5a53c976b96"
+  }
+}
