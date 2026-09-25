@@ -527,6 +527,12 @@ session (about 20% of agent time, for one docstring).
 - **Trials 1 and 2 ran at the same time** on a shared host, which affects
   their wall times and not their outcomes.
 
+## Next
+
+The next iteration built from these mechanisms, and the run card that would
+have made this reconstruction unnecessary, are in
+[Microluna v18](../coder/design/microluna-v18.md).
+
 ## Records
 
 Each trial directory under
