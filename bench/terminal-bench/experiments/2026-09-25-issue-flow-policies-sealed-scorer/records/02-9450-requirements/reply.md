@@ -1,0 +1,7 @@
+- Removed the outdated item from “What is not built,” linked the sentence-to-program flow to docs/programs.md, and added reviewer steps for retained writing worktrees. Checked with git diff --check.
+- Review: Reviewed the staged documentation diff and checked the referenced program flow against `docs/programs.md` and `coder::turn::run` callers. No issue was found; no files changed and no tests were needed for this documentation-only review.
+- Review: Rewrote the flagged documentation in complete prose, adding explanatory lines for the program entry point and retained writing worktrees. Ran `git diff --check` successfully; these documentation-only changes have no applicable failing test to rerun.
+- Review: Reworded the delegate worktree instructions into complete, plain-language steps and added a separate line for reviewing the changes. Verified the resulting text with grep; no targeted failing test was available for this documentation-only change.
+- Review: Rewrote the retained-checkout instructions in docs/coder/delegate.md using explicit, complete steps and additional lines. Ran git diff --check successfully.
+
+Published nothing. The changes are staged in /Users/christopherdavid/.openagents/coder-one/issue-flow-policies-sealed-scorer-20260925/02-9450-requirements/runs/issue-eval-9450-delegate-stale-bullet-microluna-gpt-6-luna-1790369354077/repo (1 file changed, 11 insertions(+), 4 deletions(-)). The host's tests and checks still find 1 problem.

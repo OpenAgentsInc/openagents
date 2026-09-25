@@ -1,0 +1,80 @@
+{
+  "entry": "9597-minitask-explanation",
+  "grade": {
+    "verdict": "failed",
+    "detail": "7 of 8 checks passed; failed: view-gives-time",
+    "passed": 7,
+    "total": 8,
+    "changed": [
+      "crates/gym/src/coder_minitasks.rs",
+      "docs/coder/guides/coder-one-minitasks.md"
+    ],
+    "checks": [
+      {
+        "id": "gym-minitask-tests",
+        "group": "fix_tests",
+        "kind": "command",
+        "passed": true,
+        "detail": "`cargo test -q -p gym --lib coder_minitasks` passed 1 tests",
+        "milliseconds": 10496
+      },
+      {
+        "id": "view-names-tb4",
+        "group": "deliverables",
+        "kind": "command",
+        "passed": true,
+        "detail": "`cargo run -q -p gym --bin gym -- coder minitasks --runs-dir \"$ISSUE_EVAL_TMP\"` succeeded",
+        "milliseconds": 10006
+      },
+      {
+        "id": "view-gives-cost",
+        "group": "deliverables",
+        "kind": "command",
+        "passed": true,
+        "detail": "`cargo run -q -p gym --bin gym -- coder minitasks --runs-dir \"$ISSUE_EVAL_TMP\"` succeeded",
+        "milliseconds": 825
+      },
+      {
+        "id": "view-gives-time",
+        "group": "deliverables",
+        "kind": "command",
+        "passed": false,
+        "detail": "the output of `cargo run -q -p gym --bin gym -- coder minitasks --runs-dir \"$ISSUE_EVAL_TMP\"` doesn't match (?i)\\bseconds?\\b: Coder One mini-task runs · 0 runs · local episodes with their own graders, not Terminal-Bench attempts\nstarted           task                   executor                 outcome          grade          time\n  No runs. Record one with `coder-one minitask run ID`.\n  Grading runs after the episode; each task's grader checks its stated workspace condition.\n  Verdicts: passed, failed, or unavailable.\n  Fast local screen, not a TB4 result. Use Terminal-Bench 4.0 for benchmark claims.\n  Measured handoff: Opus single-pass averaged 22.0 s and $0.0537 per run.\n  Scripted runs take about 1 s.\n  Details: docs/coder/guides/coder-one-minitasks.md",
+        "milliseconds": 1046
+      },
+      {
+        "id": "view-says-how-graded",
+        "group": "deliverables",
+        "kind": "command",
+        "passed": true,
+        "detail": "`cargo run -q -p gym --bin gym -- coder minitasks --runs-dir \"$ISSUE_EVAL_TMP\"` succeeded",
+        "milliseconds": 992
+      },
+      {
+        "id": "guide-names-tb4",
+        "group": "deliverables",
+        "kind": "contains",
+        "passed": true,
+        "detail": "docs/coder/guides/coder-one-minitasks.md:19 matches Terminal-Bench 4\\.0|TB4",
+        "milliseconds": 0
+      },
+      {
+        "id": "guide-changed",
+        "group": "deliverables",
+        "kind": "changed",
+        "passed": true,
+        "detail": "docs/coder/guides/coder-one-minitasks.md changed",
+        "milliseconds": 0
+      },
+      {
+        "id": "guide-links",
+        "group": "deliverables",
+        "kind": "links",
+        "passed": true,
+        "detail": "6 relative links in docs/coder/guides/coder-one-minitasks.md resolve",
+        "milliseconds": 0
+      }
+    ]
+  },
+  "reward": 0.0
+}

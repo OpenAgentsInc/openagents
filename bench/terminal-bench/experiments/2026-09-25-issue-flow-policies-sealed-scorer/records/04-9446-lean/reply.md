@@ -1,0 +1,6 @@
+- Added a repo-owned `scripts/coderdev` launcher that builds `coder` using pinned Rust 1.97.1 before launch, preserves caller cwd/arguments, honors `CARGO_TARGET_DIR`, scopes optional credential files to the child process, and reports revision/dirty state/executable path. Documented usage and reload guidance and added stub checks. `sh -n` passed; stub checks covered forwarding, unrelated cwd, target override, repeated build invocation, and build-failure stopping; evaluation score: 5/5.
+- Review: Replaced all three slash constructions in the README with plain-language wording. Ran the coderdev stub acceptance checks; they passed. The combined command returned 1 because grep correctly found no remaining flagged phrases.
+- Review: Rewrote the four README passages in plain, complete sentences and reflowed the surrounding text. Ran scripts/test-coderdev.sh; it passed.
+- Review: Reworded the README sentence to use explicit wording for environment variables and file presence. Ran the coderdev stub checks and git diff whitespace check successfully.
+
+Published nothing. The changes are staged in /Users/christopherdavid/.openagents/coder-one/issue-flow-policies-sealed-scorer-20260925/04-9446-lean/runs/issue-eval-9446-coderdev-launcher-microluna-gpt-6-luna-1790370142373/repo (3 files changed, 72 insertions(+)).

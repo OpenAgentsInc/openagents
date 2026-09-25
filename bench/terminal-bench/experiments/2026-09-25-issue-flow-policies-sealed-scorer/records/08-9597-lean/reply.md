@@ -1,0 +1,7 @@
+- Documented mini-tasks as hidden-grader, fast local screens, clarified they are not TB4 results, and added the explanation to the Gym view plus assertions. Evaluation script scores 4/4; `cargo test -p gym coder_minitasks --lib` passes (1 test).
+- Review: Fixed the guide’s stray leading space, shortened the TUI explanations, and extended the mini-task view test to assert the selected data row and new explanation remain visible. The mini-task unit test passed; the attempted TUI-specific filter matched no tests.
+- Review: The existing change adds unsupported shorthand in the mini-task view and guide, and gym tests also fail on stale learning-answer fingerprints. Full tests were run but do not pass.
+- Review: Inspected the failing learning fixtures and found evidence-key mismatches; unable to safely update the recorded answers without identifying the changed evidence states. The full requested test rerun was not completed.
+- Review: Reworded the mini-task display and guide to use complete names and plain language. Re-ran the all-features gym tests; they still fail in run-learning tests because fixture recorded answers are missing for current run evidence, with additional failures reported by the supplied test run.
+
+Published nothing. The changes are staged in /Users/christopherdavid/.openagents/coder-one/issue-flow-policies-sealed-scorer-20260925/08-9597-lean/runs/issue-eval-9597-minitask-explanation-microluna-gpt-6-luna-1790372943274/repo (3 files changed, 16 insertions(+)). The host's tests and checks still find 1 problem.

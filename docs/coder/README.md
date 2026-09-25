@@ -29,3 +29,7 @@ a v0.5 artifact plugs into it.
 
 [Decision model documentation](../decision-models/README.md) covers the
 models, API, and measurements that inform Coder's decisions.
+
+The [issue-flow policy comparison](measurements/2026-09-25-issue-flow-policies.md)
+records the retained requirements default, all completed traces, and the
+operator-directed stop of the second round.

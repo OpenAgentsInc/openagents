@@ -1,0 +1,98 @@
+diff --git a/crates/coder/src/delegate.rs b/crates/coder/src/delegate.rs
+index eb8e2c0..fad5f74 100644
+--- a/crates/coder/src/delegate.rs
++++ b/crates/coder/src/delegate.rs
+@@ -836,6 +836,9 @@ pub struct Delegation {
+     /// What the executor printed on stdout, capped at [`OUTPUT_MAX`] and
+     /// marked when the cap cut it.
+     pub output: String,
++    /// The executor's final answer, separated from its narration when the
++    /// adapter can identify it. `output` remains the complete transcript.
++    pub answer: String,
+     /// What it printed on stderr, capped the same way. A refusal arrives
+     /// here.
+     pub detail: String,
+@@ -871,7 +874,7 @@ impl Delegation {
+     #[must_use]
+     pub fn correct(&self) -> Option<bool> {
+         let expected = self.task.expected.as_deref()?;
+-        Some(self.answered() && normalize(&self.output) == normalize(expected))
++        Some(self.answered() && normalize(&self.answer) == normalize(expected))
+     }
+ 
+     /// What the delegation comes to, judged against the answer the task
+@@ -921,6 +924,24 @@ impl Delegation {
+     }
+ }
+ 
++/// Devin CLI emits its final response as the last non-empty paragraph after
++/// its progress narration. Keep stdout intact as the transcript, but grade
++/// only that final paragraph.
++fn final_message(transcript: &str) -> String {
++    let mut message = Vec::new();
++    for line in transcript.lines().rev() {
++        if line.trim().is_empty() {
++            if !message.is_empty() {
++                break;
++            }
++        } else {
++            message.push(line.trim());
++        }
++    }
++    message.reverse();
++    message.join("\n")
++}
++
+ /// One executor, one working directory, and the width a fan-out may reach.
+ #[derive(Clone, Debug)]
+ pub struct Delegator {
+@@ -1516,6 +1537,7 @@ impl Delegator {
+             workdir,
+             concurrent_max: self.concurrent_max,
+             status: reported.status,
++            answer: final_message(&reported.output),
+             output: reported.output,
+             detail: reported.detail,
+             bytes: reported.bytes,
+@@ -2000,6 +2022,17 @@ mod tests {
+             .collect()
+     }
+ 
++    #[test]
++    fn final_message_separates_answer_without_discarding_narration() {
++        let transcript = "I'll inspect the files first.\nConfirmed: changes are done.\n\ndone\n";
++        assert_eq!(final_message(transcript), "done");
++        assert!(transcript.contains("I'll inspect the files first."));
++        assert_eq!(
++            final_message("Narration.\n\nThe answer is:\n42\nsecond line\n"),
++            "The answer is:\n42\nsecond line"
++        );
++    }
++
+     /// The answer is stdout, and it is graded against what the task
+     /// expected.
+     #[tokio::test]
+diff --git a/crates/coder/src/relay.rs b/crates/coder/src/relay.rs
+index c237fc4..85abfa1 100644
+--- a/crates/coder/src/relay.rs
++++ b/crates/coder/src/relay.rs
+@@ -1065,6 +1065,7 @@ impl RelayDoor {
+             workdir: PathBuf::from(&self.worker_hex),
+             concurrent_max: width,
+             status,
++            answer: output.trim().to_string(),
+             output,
+             detail,
+             bytes,
+diff --git a/crates/coder/src/runtime.rs b/crates/coder/src/runtime.rs
+index ddbbe5e..bda5ed4 100644
+--- a/crates/coder/src/runtime.rs
++++ b/crates/coder/src/runtime.rs
+@@ -1679,6 +1679,7 @@ mod tests {
+             workdir: PathBuf::from("/work"),
+             concurrent_max: 6,
+             status: crate::delegate::Status::Answered,
++            answer: output.to_string(),
+             output: output.to_string(),
+             detail: String::new(),
+             bytes: output.len() as u64,

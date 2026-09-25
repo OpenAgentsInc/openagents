@@ -175,3 +175,14 @@ tasks with replacement, keeping each task's two repeats together. It
 reports the 2.5th and 97.5th percentiles of the lean-minus-requirements
 pass, cost, and time differences. Four tasks still give weak coverage of
 future work. These intervals do not change the registered decision rule.
+
+## Operator stop: 2026-09-25 22:04:39 UTC
+
+The operator requested ending the study and closing #9624 with its existing
+results. Slots 1–8 completed; slot 9 was interrupted; slots 10–16 never
+started. The complete first round is reported with the original one-repeat
+decision table. This stop is a user-directed amendment, not the registered
+budget stop, and the planned second round remains incomplete. Both arms
+pass 1/4; lean is 17.7% cheaper, below the 20% tie threshold. Requirements
+remains the default. The partial ninth attempt and both invalid studies
+remain retained and counted separately. No live attempt resumes.

@@ -1,0 +1,20 @@
+diff --git a/docs/coder/delegate.md b/docs/coder/delegate.md
+index 9d24fcf..5e01a98 100644
+--- a/docs/coder/delegate.md
++++ b/docs/coder/delegate.md
+@@ -258,6 +258,9 @@ delegation and runs the executor in it. A read-only delegation's checkout
+ is removed when the delegation ends; a writing delegation's stays where
+ the executor left it — its edits are owed to a reviewer, not silently
+ merged or discarded — and the recorded call names the retained path.
++The reviewer can run `git worktree list` to find retained checkouts. They
++can inspect the changes in a retained checkout, then merge them or remove
++the worktree. The program runs the delegate; the operator finishes its work.
+ 
+ A delegator that was **not** told refuses a task asking for a worktree with
+ `isolation_unavailable`, and any delegator refuses a task that says it
+@@ -327,5 +330,3 @@ repository the delegates run in, which matters because a git worktree under
+   the retained checkout keeps them, and `crates/coder-boundary` snapshots
+   observe a tree before and after a run; the CoderBench side that grades
+   a run against that observation is separate work.
+-- **Reaching a fan-out from an operator's sentence.** `coder::runtime` runs
+-  the program, and the program still runs from a caller in Rust.

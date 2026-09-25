@@ -1,7 +1,7 @@
 {
   "schema": "openagents.coder-one.policy.v1",
   "name": "coder-issue-flow",
-  "note": "The issue flow's loop on Microluna: the terminal's requirements loop with more groups, sessions, time, and spend, and a Jev check of each part of the focus after each edit session. The issue flow's review session and its gate run after the loop, before a pull request opens. The default until the issue-flow evaluation set measures issue-flow-lean.json against it.",
+  "note": "The issue flow's loop on Microluna: the terminal's requirements loop with more groups, sessions, time, and spend, and a Jev check of each part of the focus after each edit session. The issue flow's review session and its gate run after the loop, before a pull request opens. The 2026-09-25 stopped development comparison retained this default: tied artifact passes and a lean cost saving below the registered 20% threshold.",
   "policy": {
     "jev": {
       "mode": "deep",

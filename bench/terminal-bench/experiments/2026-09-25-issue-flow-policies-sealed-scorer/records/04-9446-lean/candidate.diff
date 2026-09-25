@@ -1,0 +1,95 @@
+diff --git a/README.md b/README.md
+index 44bf63d..d318e66 100644
+--- a/README.md
++++ b/README.md
+@@ -96,6 +96,24 @@ live in `docs/coder/`: the service spec, the relay backend plan, and
+ 
+ ## Run it
+ 
++To launch the program for local development, run
++`scripts/coderdev [coder arguments...]`.
++The script builds the `coder` package and binary on every invocation.
++It uses the Rust 1.97.1 toolchain pinned for this repository.
++Cargo reuses fresh build artifacts, then the script runs the program from your
++current directory and forwards arguments. Build failures stop the launch.
++`CARGO_TARGET_DIR` overrides the default repository-local target directory.
++The launcher prints the source revision, whether the source is clean or dirty,
++and the executable path to stderr.
++This information identifies the state of the source code.
++It does not establish when the binary was built.
++The launcher can load the environment variables in `$HOME/.openagents/.env`
++and `$HOME/.openagents/coder.env` when those files are present.
++It loads them only into its own process and does not display their contents.
++After changing the launcher, reload your shell function or alias, or invoke
++`scripts/coderdev` directly; point an alias at this repo-owned script rather
++than editing unrelated shell configuration.
++
+ ```bash
+ cargo run -p coder                                  # the terminal
+ cargo run -p coder -- -p "count the crates"         # one turn, from a script
+diff --git a/scripts/coderdev b/scripts/coderdev
+new file mode 100755
+index 0000000..58ffef8
+--- /dev/null
++++ b/scripts/coderdev
+@@ -0,0 +1,19 @@
++#!/bin/sh
++# Build with the repository-pinned toolchain, then run from caller's directory.
++set -eu
++repo=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
++caller=$PWD
++# Keep explicit override; otherwise Cargo's normal per-worktree target location.
++export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-"$repo/target"}
++# Optional local env files sourced only in this process; never echoed.
++for envfile in "$HOME/.openagents/.env" "$HOME/.openagents/coder.env"; do
++    if [ -f "$envfile" ]; then set -a; . "$envfile"; set +a; fi
++done
++cd "$repo"
++cargo +1.97.1 build --package coder --bin coder
++binary="$CARGO_TARGET_DIR/debug/coder"
++revision=$(git -C "$repo" rev-parse --short HEAD 2>/dev/null || echo unknown)
++if [ -n "$(git -C "$repo" status --porcelain 2>/dev/null)" ]; then dirty=dirty; else dirty=clean; fi
++printf 'coderdev: revision=%s source=%s executable=%s\n' "$revision" "$dirty" "$binary" >&2
++cd "$caller"
++exec "$binary" "$@"
+diff --git a/scripts/test-coderdev.sh b/scripts/test-coderdev.sh
+new file mode 100755
+index 0000000..725abf2
+--- /dev/null
++++ b/scripts/test-coderdev.sh
+@@ -0,0 +1,35 @@
++#!/bin/sh
++# Stub acceptance checks for forwarding, working directory, target override, build failure.
++set -eu
++root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
++tmp="$root/.coderdev-test-$$"
++mkdir "$tmp"
++trap 'rm -rf "$tmp"' EXIT HUP INT TERM
++mkdir -p "$tmp/bin" "$tmp/repo/scripts" "$tmp/work" "$tmp/target/debug"
++cp "$root/scripts/coderdev" "$tmp/repo/scripts/coderdev"
++cat >"$tmp/bin/cargo" <<'EOF'
++#!/bin/sh
++printf '%s\n' "$*" >>"$LOG"
++[ "${FAIL_BUILD:-}" != yes ]
++EOF
++cat >"$tmp/bin/git" <<'EOF'
++#!/bin/sh
++case "$*" in *rev-parse*) echo abc123;; *) exit 0;; esac
++EOF
++cat >"$tmp/target/debug/coder" <<'EOF'
++#!/bin/sh
++printf 'cwd=%s\n' "$PWD" >"$RESULT"
++printf '<%s>\n' "$@" >>"$RESULT"
++EOF
++chmod +x "$tmp/bin/"* "$tmp/target/debug/coder"
++export PATH="$tmp/bin:$PATH" LOG="$tmp/log" RESULT="$tmp/result" CARGO_TARGET_DIR="$tmp/target"
++cd "$tmp/work"
++"$tmp/repo/scripts/coderdev" --alpha 'two words'
++grep -q '^cwd=.*/work$' "$RESULT"
++grep -q '^<--alpha>$' "$RESULT"; grep -q '^<two words>$' "$RESULT"
++[ "$(wc -l <"$LOG" | tr -d ' ')" = 1 ]
++"$tmp/repo/scripts/coderdev" >/dev/null 2>&1
++[ "$(wc -l <"$LOG" | tr -d ' ')" = 2 ]
++FAIL_BUILD=yes; export FAIL_BUILD
++if "$tmp/repo/scripts/coderdev" >/dev/null 2>&1; then echo 'build failure launched' >&2; exit 1; fi
++echo 'coderdev stub checks passed'

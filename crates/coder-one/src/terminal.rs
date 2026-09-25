@@ -197,9 +197,9 @@ pub fn policy() -> Manifest {
 pub const MICROLUNA_POLICY_FILE: &str = "terminal-microluna.json";
 
 /// The manifest the issue flow's turn runs: the requirements loop with
-/// more groups, sessions, time, and spend. It stays the default until the
-/// issue-flow evaluation set measures [`ISSUE_LEAN_POLICY_FILE`] against
-/// it.
+/// more groups, sessions, time, and spend. The 2026-09-25 development
+/// comparison retained it: tied artifact passes and less than the required
+/// 20% cost saving for the lean policy.
 pub const ISSUE_POLICY_FILE: &str = "issue-flow.json";
 
 /// The issue flow on the lean loop, for an operator or an evaluation to

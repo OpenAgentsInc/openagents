@@ -1,0 +1,10 @@
+- Added executable scripts/coderdev, a documented repo-owned Cargo freshness-checking launcher for the explicit coder binary, and README usage notes including working-directory and shell reload behavior. Checked shell syntax and diff whitespace.
+- Documented that coderdev inherits exported credentials from the calling shell and does not load or print secrets; existing credential-file loading should remain in the caller's subshell wrapper. Verified launcher shell syntax and diff whitespace.
+- Pinned the repo-owned launcher explicitly to Rust 1.97.1 while retaining Cargo's locked freshness-aware run for package `coder`, binary `coder`. Verified shell syntax, whitespace, and successfully ran `./scripts/coderdev --help`, which built and launched the executable.
+- Made relative CARGO_TARGET_DIR handling explicit by anchoring it to the invocation directory; documented the behavior. Verified shell syntax, diff whitespace, and a pinned-toolchain coder build/launch via --help.
+- Added build identity reporting to coderdev and added fixture coverage for freshness, failure, cwd, arguments, and target override. Shell syntax passed, but fixture tests fail before completing; diff whitespace check was not reached.
+- Documented how to update only the local coderdev shell function to call the repo launcher, preserve any existing credential loading, and reload the shell config. Corrected fixture expectations so unchanged source asserts build reuse. Shell syntax, fixture tests, and git diff whitespace checks passed.
+- Review: Reviewed the supplied change and ran scripts/test-coderdev.sh; it passed. Made no changes.
+- Review: Reworded the README instruction into complete, plain language and added a line to clarify the recommended local-development command. Ran `./scripts/test-coderdev.sh`; it passed.
+
+Published nothing. The changes are staged in /Users/christopherdavid/.openagents/coder-one/issue-flow-policies-sealed-scorer-20260925/03-9446-requirements/runs/issue-eval-9446-coderdev-launcher-microluna-gpt-6-luna-1790369585416/repo (3 files changed, 111 insertions(+)).

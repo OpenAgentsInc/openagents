@@ -1,0 +1,165 @@
+{
+  "slot": 2,
+  "entry": "9450",
+  "arm": "requirements",
+  "archive": "records/02-9450-requirements/traces.tar.gz",
+  "sha256": "fea2cf13c9944fd41095480639a3ecaeb90ec198216994bc895980128caa3d7b",
+  "bytes": 227953,
+  "files": [
+    {
+      "path": "episode.atif.jsonl",
+      "bytes": 720137,
+      "sha256": "8b97dcf7f905b0f015967d019c946f3038f87bf4a67ac414af824e0529c4c6b1"
+    },
+    {
+      "path": "manifest.json",
+      "bytes": 27440,
+      "sha256": "c382e07e17ee051e34ba8ab6299440b700e76e633a781272933473bf8d747e02"
+    },
+    {
+      "path": "artifacts/reply.md",
+      "bytes": 1473,
+      "sha256": "e2e021ceea50983d59d5a60394347d3e0ec12f551ec1fcb41c450a916106fae5"
+    },
+    {
+      "path": "artifacts/candidate.diff",
+      "bytes": 2165,
+      "sha256": "40d49c41d0d4f6df8a30eba9d4300d9af95446d678dd6c2ccbe4e683c0a5c70d"
+    },
+    {
+      "path": "verification/grade.json",
+      "bytes": 1254,
+      "sha256": "43f259111870d763243b513eebcc875e8c048cd81086db5e7608e605a6091819"
+    },
+    {
+      "path": "review-0/artifacts/microluna-1-1.atif.jsonl",
+      "bytes": 33466,
+      "sha256": "87a672fa91860fc299cc251bdb7129588d6139ce7d50c4a9d625b66904312f41"
+    },
+    {
+      "path": "review-0/artifacts/microluna-1.json",
+      "bytes": 2734,
+      "sha256": "4daf15b021716c497d81f2f1b725ffba95d383d5f315993ecd231568dece612b"
+    },
+    {
+      "path": "review-1/artifacts/microluna-1-1.atif.jsonl",
+      "bytes": 36298,
+      "sha256": "aedf336c6f3cf6d0ae77b69451034b7ac8e3093b58d6ebf49ced74bdf7b9f7c9"
+    },
+    {
+      "path": "review-1/artifacts/microluna-1.json",
+      "bytes": 2592,
+      "sha256": "9fd5dfa0a2d8daab1ab27397aaf9ef09fd943ae90056801e457872683645ea19"
+    },
+    {
+      "path": "seal/bin/gh",
+      "bytes": 79,
+      "sha256": "d437d81c4662acf3c92d967ae0330f6820b568b7b4b18911caa8f12a5fc2053f"
+    },
+    {
+      "path": "review-3/artifacts/microluna-1-1.atif.jsonl",
+      "bytes": 18534,
+      "sha256": "9d2f5a97b7f342d6afb8c82d8d3d687bb0830a2ee710a296864f8b2b5d4626ea"
+    },
+    {
+      "path": "review-3/artifacts/microluna-1.json",
+      "bytes": 2273,
+      "sha256": "5b42c0196243c9b13c29caa4967bb19e983afce1bf1228350d27ab6961311a1c"
+    },
+    {
+      "path": "review-2/artifacts/microluna-1-1.atif.jsonl",
+      "bytes": 18302,
+      "sha256": "dffda6c406d230dba006eed5903e4b3dfbef7c159942b50e219ab03e6153813e"
+    },
+    {
+      "path": "review-2/artifacts/microluna-1.json",
+      "bytes": 2489,
+      "sha256": "0835e56feca754e63d0866baa2b20a510ab480620961b5bbc0ac4f9cfaf07fa0"
+    },
+    {
+      "path": "artifacts/artifacts/microluna-1-4.atif.jsonl",
+      "bytes": 35489,
+      "sha256": "de3d8775d2a3dc1e9f99a1babe0fb7f0c18ecb64bf371a3d3dc9fcc7c2c8fedc"
+    },
+    {
+      "path": "artifacts/artifacts/microluna-1-1.atif.jsonl",
+      "bytes": 37719,
+      "sha256": "67c1a091ec330bb913ed41fc9288d870074154300f0d95b144398a669e9e47ba"
+    },
+    {
+      "path": "artifacts/artifacts/microluna-1-6.atif.jsonl",
+      "bytes": 34634,
+      "sha256": "bee363528e46e23a380904702aaaca715c2d6527326bdf0d4133d4de1abd3ba2"
+    },
+    {
+      "path": "artifacts/artifacts/microluna-1-3.atif.jsonl",
+      "bytes": 27276,
+      "sha256": "5f294278f2468d8a347554d9dede348cbe61134be447a056eb2d7daa288d11b3"
+    },
+    {
+      "path": "artifacts/artifacts/microluna-1-5.atif.jsonl",
+      "bytes": 33177,
+      "sha256": "c6e79cb96acb8fea4bbec992edcd691e05497b01b8d49949d28d2cd0ae596287"
+    },
+    {
+      "path": "artifacts/artifacts/microluna-1-8.atif.jsonl",
+      "bytes": 27430,
+      "sha256": "633a27368fd07bbf5911342dbb32c3040c94157478295475097df8be0116ee11"
+    },
+    {
+      "path": "artifacts/artifacts/microluna-1.json",
+      "bytes": 21930,
+      "sha256": "d97c5f32c32a94b64e32f5427e043fcd86ce6917565d183568a19f2a12b0b781"
+    },
+    {
+      "path": "artifacts/artifacts/microluna-1-2.atif.jsonl",
+      "bytes": 31147,
+      "sha256": "005dd34000dd034b02b3da3d51d3f42fe52da44aed70cdadd3e78c56f5157a2f"
+    },
+    {
+      "path": "artifacts/artifacts/microluna-1-7.atif.jsonl",
+      "bytes": 31762,
+      "sha256": "7327c00589a0b7aa8bd42d8632203f9ab90d922d33d27cdb45494e1a1a77b73c"
+    },
+    {
+      "path": "artifacts/verification/checks-microluna-1-1.json",
+      "bytes": 10399,
+      "sha256": "f0e0c4d801f0dafd465e4c2e7ffe57a32ed381b57f79198def76fb9672365abb"
+    },
+    {
+      "path": "artifacts/verification/checks-microluna-1-6.json",
+      "bytes": 10399,
+      "sha256": "f0e0c4d801f0dafd465e4c2e7ffe57a32ed381b57f79198def76fb9672365abb"
+    },
+    {
+      "path": "artifacts/verification/checks-microluna-1-7.json",
+      "bytes": 10399,
+      "sha256": "f0e0c4d801f0dafd465e4c2e7ffe57a32ed381b57f79198def76fb9672365abb"
+    },
+    {
+      "path": "artifacts/verification/checks-microluna-1-8.json",
+      "bytes": 10399,
+      "sha256": "f0e0c4d801f0dafd465e4c2e7ffe57a32ed381b57f79198def76fb9672365abb"
+    },
+    {
+      "path": "artifacts/verification/checks-microluna-1-4.json",
+      "bytes": 10399,
+      "sha256": "f0e0c4d801f0dafd465e4c2e7ffe57a32ed381b57f79198def76fb9672365abb"
+    },
+    {
+      "path": "artifacts/verification/checks-microluna-1-5.json",
+      "bytes": 10399,
+      "sha256": "f0e0c4d801f0dafd465e4c2e7ffe57a32ed381b57f79198def76fb9672365abb"
+    },
+    {
+      "path": "artifacts/verification/checks-microluna-1-2.json",
+      "bytes": 10399,
+      "sha256": "f0e0c4d801f0dafd465e4c2e7ffe57a32ed381b57f79198def76fb9672365abb"
+    },
+    {
+      "path": "artifacts/verification/checks-microluna-1-3.json",
+      "bytes": 10399,
+      "sha256": "f0e0c4d801f0dafd465e4c2e7ffe57a32ed381b57f79198def76fb9672365abb"
+    }
+  ]
+}

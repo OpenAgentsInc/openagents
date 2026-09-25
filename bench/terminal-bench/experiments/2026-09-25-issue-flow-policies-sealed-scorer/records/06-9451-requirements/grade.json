@@ -1,0 +1,43 @@
+{
+  "entry": "9451-delegate-answer-channel",
+  "grade": {
+    "verdict": "failed",
+    "detail": "2 of 3 checks passed; failed: fix-test-answer-channel",
+    "passed": 2,
+    "total": 3,
+    "changed": [
+      "crates/coder/src/delegate.rs",
+      "crates/coder/src/relay.rs",
+      "crates/coder/src/runtime.rs",
+      "crates/coder/src/trace.rs",
+      "crates/coder/src/worktree.rs"
+    ],
+    "checks": [
+      {
+        "id": "fix-test-answer-channel",
+        "group": "fix_tests",
+        "kind": "command",
+        "passed": false,
+        "detail": "`cargo test -q -p coder --lib issue_eval_` exited exit status: 101: error[E0599]: no method named `answer` found for struct `delegate::Delegation` in the current scope\n    --> crates/coder/src/delegate.rs:1901:27\n     |\n 821 | pub struct Delegation {\n     | --------------------- method `answer` not found for this struct\n...\n1901 |         assert_eq!(graded.answer(), \"done\");\n     |                           ^^^^^^ field, not a method\n     |\nhelp: remove the arguments\n     |\n1901 -         assert_eq!(graded.answer(), \"done\");\n1901 +         assert_eq!(graded.answer, \"done\");\n     |\nhelp: there is a method `answered` with a similar name\n     |\n1901 |         assert_eq!(graded.answered(), \"done\");\n     |                                 ++\n\nerror[E0599]: no method named `transcript` found for struct `delegate::Delegation` in the current scope\n    --> crates/coder/src/delegate.rs:1904:20\n     |\n 821 | pub struct Delegation {\n     | --------------------- method `transcript` not found for this struct\n...\n1904 |             graded.transcript(),\n     |                    ^^^^^^^^^^ method not found in `delegate::Delegation`\n\nFor more information about this error, try `rustc --explain E0599`.\nerror: could not compile `coder` (lib test) due to 2 previous errors",
+        "milliseconds": 3661
+      },
+      {
+        "id": "delegate-tests",
+        "group": "fix_tests",
+        "kind": "command",
+        "passed": true,
+        "detail": "`cargo test -q -p coder --lib delegate::` passed 36 tests",
+        "milliseconds": 9754
+      },
+      {
+        "id": "trace-keeps-transcript",
+        "group": "deliverables",
+        "kind": "contains",
+        "passed": true,
+        "detail": "crates/coder/src/trace.rs:380 matches \"transcript\"",
+        "milliseconds": 0
+      }
+    ]
+  },
+  "reward": 0.0
+}

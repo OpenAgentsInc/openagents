@@ -1,0 +1,81 @@
+{
+  "entry": "9597-minitask-explanation",
+  "grade": {
+    "verdict": "failed",
+    "detail": "7 of 8 checks passed; failed: view-gives-cost",
+    "passed": 7,
+    "total": 8,
+    "changed": [
+      "crates/gym/src/coder_minitasks.rs",
+      "crates/gym/src/terminal_bench_tui.rs",
+      "docs/coder/guides/coder-one-minitasks.md"
+    ],
+    "checks": [
+      {
+        "id": "gym-minitask-tests",
+        "group": "fix_tests",
+        "kind": "command",
+        "passed": true,
+        "detail": "`cargo test -q -p gym --lib coder_minitasks` passed 1 tests",
+        "milliseconds": 10467
+      },
+      {
+        "id": "view-names-tb4",
+        "group": "deliverables",
+        "kind": "command",
+        "passed": true,
+        "detail": "`cargo run -q -p gym --bin gym -- coder minitasks --runs-dir \"$ISSUE_EVAL_TMP\"` succeeded",
+        "milliseconds": 10164
+      },
+      {
+        "id": "view-gives-cost",
+        "group": "deliverables",
+        "kind": "command",
+        "passed": false,
+        "detail": "the output of `cargo run -q -p gym --bin gym -- coder minitasks --runs-dir \"$ISSUE_EVAL_TMP\"` doesn't match \\$\\d: Coder One mini-task runs · 0 runs · local episodes with their own graders, not Terminal-Bench attempts\nstarted           task                   executor                 outcome          grade          time\n  No runs. Record one with `coder-one minitask run ID`.\nMini-tasks are fast local screens, not Terminal-Bench 4.0 benchmark results.\nScripted runs take about one second and use no model inference.\nReal runs use model inference; see the mini-tasks guide for details.\nEach hidden grader checks a small failure family; see the mini-tasks guide.",
+        "milliseconds": 1006
+      },
+      {
+        "id": "view-gives-time",
+        "group": "deliverables",
+        "kind": "command",
+        "passed": true,
+        "detail": "`cargo run -q -p gym --bin gym -- coder minitasks --runs-dir \"$ISSUE_EVAL_TMP\"` succeeded",
+        "milliseconds": 1008
+      },
+      {
+        "id": "view-says-how-graded",
+        "group": "deliverables",
+        "kind": "command",
+        "passed": true,
+        "detail": "`cargo run -q -p gym --bin gym -- coder minitasks --runs-dir \"$ISSUE_EVAL_TMP\"` succeeded",
+        "milliseconds": 1007
+      },
+      {
+        "id": "guide-names-tb4",
+        "group": "deliverables",
+        "kind": "contains",
+        "passed": true,
+        "detail": "docs/coder/guides/coder-one-minitasks.md:13 matches Terminal-Bench 4\\.0|TB4",
+        "milliseconds": 0
+      },
+      {
+        "id": "guide-changed",
+        "group": "deliverables",
+        "kind": "changed",
+        "passed": true,
+        "detail": "docs/coder/guides/coder-one-minitasks.md changed",
+        "milliseconds": 0
+      },
+      {
+        "id": "guide-links",
+        "group": "deliverables",
+        "kind": "links",
+        "passed": true,
+        "detail": "6 relative links in docs/coder/guides/coder-one-minitasks.md resolve",
+        "milliseconds": 0
+      }
+    ]
+  },
+  "reward": 0.0
+}

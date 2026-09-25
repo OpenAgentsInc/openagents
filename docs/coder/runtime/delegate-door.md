@@ -147,8 +147,9 @@ Terminal-Bench runs (`coder_one::micro::lean`): up to four work sessions,
 a frozen evaluation script that keeps the best-scoring workspace, finishes
 turned back while that score is below full, a spend bound per session, a
 300-second bound per command, retained candidates, and a read-only review.
-It isn't the default: the issue-flow evaluation set (issue #9625) decides
-between it and `issue-flow.json`. On a checkout above the workspace copy
+It isn't the default. The [stopped development comparison](../measurements/2026-09-25-issue-flow-policies.md)
+found 1/4 passing artifacts per policy and a 17.7% cost saving for lean,
+below the registered 20% threshold for a tie. Requirements remains the default. On a checkout above the workspace copy
 bound (20,000 files or 256 MiB), keep-best and candidate retention can't
 copy the workspace, so the loop keeps its last workspace instead.
 

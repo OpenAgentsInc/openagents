@@ -1,0 +1,13 @@
+{
+  "started_at": "2026-09-25T20:44:50.110692+00:00",
+  "pid": 37426,
+  "status": "stopped",
+  "slot": 9,
+  "entry": "9450",
+  "arm": "requirements",
+  "counted_usd": 0.292180078,
+  "updated_at": "2026-09-25T22:04:39.665941+00:00",
+  "reason": "User requested ending the study and closing #9624 with results as they stand.",
+  "completed": 8,
+  "interrupted_slot": 9
+}

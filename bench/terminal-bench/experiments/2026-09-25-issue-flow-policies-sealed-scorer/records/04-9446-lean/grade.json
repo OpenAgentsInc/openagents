@@ -1,0 +1,41 @@
+{
+  "entry": "9446-coderdev-launcher",
+  "grade": {
+    "verdict": "failed",
+    "detail": "2 of 3 checks passed; failed: fix-test-script",
+    "passed": 2,
+    "total": 3,
+    "changed": [
+      "README.md",
+      "scripts/coderdev",
+      "scripts/test-coderdev.sh"
+    ],
+    "checks": [
+      {
+        "id": "fix-test-script",
+        "group": "fix_tests",
+        "kind": "command",
+        "passed": false,
+        "detail": "`bash scripts/test-coderdev.sh` exited exit status: 64: ",
+        "milliseconds": 12897
+      },
+      {
+        "id": "launcher-added",
+        "group": "deliverables",
+        "kind": "changed",
+        "passed": true,
+        "detail": "scripts/coderdev changed",
+        "milliseconds": 0
+      },
+      {
+        "id": "launcher-documented",
+        "group": "deliverables",
+        "kind": "contains",
+        "passed": true,
+        "detail": "README.md:100 matches coderdev",
+        "milliseconds": 0
+      }
+    ]
+  },
+  "reward": 0.0
+}

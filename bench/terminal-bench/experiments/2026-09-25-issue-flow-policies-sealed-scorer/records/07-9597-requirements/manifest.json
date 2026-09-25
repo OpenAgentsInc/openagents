@@ -1,0 +1,787 @@
+{
+  "schema": "openagents.coder-one.minitask-run.v1",
+  "kind": "issue-eval",
+  "id": "issue-eval-9597-minitask-explanation-1790372189427",
+  "task": {
+    "id": "9597-minitask-explanation",
+    "family": "issue-eval development · docs+gym-view",
+    "part": "development",
+    "category": "docs+gym-view",
+    "issue": 9597,
+    "base": "7c5b53f41401e1da5ddfc3b04b9fcb9631d42c93",
+    "fix": "ab1af819d58538e5df2c53a12c8a32b03fd42d11",
+    "entry_digest": "184779dcbc9f2cab4f7bcd7fe2ca61b58d48a9d54ff77be376513e4f38ff380f",
+    "set_digest": "b85ff8426d91c44f5f3382d396ffaeca3d9d408ea84ed2194772ba381203a104"
+  },
+  "executor": {
+    "kind": "microluna",
+    "label": "microluna-gpt-6-luna"
+  },
+  "policy": {
+    "source": "issue-flow.json",
+    "name": "coder-issue-flow",
+    "digest": "738c69582ca35af817b957857999893fe46df8d9239bfed42ac2a32b39eecb02"
+  },
+  "sealed": {
+    "github_withheld": true,
+    "network_off": true,
+    "prefetch": "fetched",
+    "read_isolation": "candidate-and-toolchain-v1",
+    "readable": [
+      "/Users/christopherdavid/.cargo/bin",
+      "/Users/christopherdavid/.rustup/toolchains",
+      "/Users/christopherdavid/.rustup/settings.toml",
+      "/Users/christopherdavid/.cargo/registry",
+      "/Applications/Xcode.app",
+      "/Library/Preferences/com.apple.dt.Xcode.plist"
+    ],
+    "writable_tool_state": [
+      "/Users/christopherdavid/.openagents/coder-one/issue-flow-policies-sealed-scorer-20260925/07-9597-requirements/runs/issue-eval-9597-minitask-explanation-microluna-gpt-6-luna-1790372189427/seal/cargo-home"
+    ]
+  },
+  "contamination": {
+    "contaminated": false,
+    "attempts": [],
+    "blocked": 0,
+    "traces_read": 8
+  },
+  "contaminated": false,
+  "gate_tests": {
+    "mode": "confined",
+    "backend": "/usr/bin/sandbox-exec",
+    "network": "off",
+    "credentials_withheld": true,
+    "writable": [
+      "/Users/christopherdavid/.openagents/coder-one/issue-flow-policies-sealed-scorer-20260925/07-9597-requirements/runs/issue-eval-9597-minitask-explanation-microluna-gpt-6-luna-1790372189427/repo",
+      "/Users/christopherdavid/.openagents/coder-one/issue-flow-policies-sealed-scorer-20260925/07-9597-requirements/runs/issue-eval-9597-minitask-explanation-microluna-gpt-6-luna-1790372189427/seal/cargo-home",
+      "/private/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/.tmp5SUsPG"
+    ],
+    "reads_confined": true,
+    "readable": [
+      "/Users/christopherdavid/.openagents/coder-one/issue-flow-policies-sealed-scorer-20260925/07-9597-requirements/runs/issue-eval-9597-minitask-explanation-microluna-gpt-6-luna-1790372189427/seal/bin",
+      "/Users/christopherdavid/.openagents/coder-one/issue-flow-policies-sealed-scorer-20260925/07-9597-requirements/runs/issue-eval-9597-minitask-explanation-microluna-gpt-6-luna-1790372189427/seal/gh-config",
+      "/Users/christopherdavid/.cargo/bin",
+      "/Users/christopherdavid/.rustup/toolchains",
+      "/Users/christopherdavid/.rustup/settings.toml",
+      "/Users/christopherdavid/.cargo/registry",
+      "/Applications/Xcode.app",
+      "/Library/Preferences/com.apple.dt.Xcode.plist"
+    ],
+    "deadline_seconds": 1200,
+    "output_kept_bytes": 1048576,
+    "prefetch": "skipped",
+    "packages": [
+      "gym"
+    ],
+    "reason": null
+  },
+  "gate_incomplete": false,
+  "outcome": "finished",
+  "grade": {
+    "verdict": "failed",
+    "detail": "7 of 8 checks passed; failed: view-gives-time",
+    "passed": 7,
+    "total": 8,
+    "fix_tests": "1/1",
+    "deliverables": "6/7",
+    "checks": [
+      {
+        "id": "gym-minitask-tests",
+        "group": "fix_tests",
+        "kind": "command",
+        "passed": true,
+        "detail": "`cargo test -q -p gym --lib coder_minitasks` passed 1 tests",
+        "milliseconds": 10496
+      },
+      {
+        "id": "view-names-tb4",
+        "group": "deliverables",
+        "kind": "command",
+        "passed": true,
+        "detail": "`cargo run -q -p gym --bin gym -- coder minitasks --runs-dir \"$ISSUE_EVAL_TMP\"` succeeded",
+        "milliseconds": 10006
+      },
+      {
+        "id": "view-gives-cost",
+        "group": "deliverables",
+        "kind": "command",
+        "passed": true,
+        "detail": "`cargo run -q -p gym --bin gym -- coder minitasks --runs-dir \"$ISSUE_EVAL_TMP\"` succeeded",
+        "milliseconds": 825
+      },
+      {
+        "id": "view-gives-time",
+        "group": "deliverables",
+        "kind": "command",
+        "passed": false,
+        "detail": "the output of `cargo run -q -p gym --bin gym -- coder minitasks --runs-dir \"$ISSUE_EVAL_TMP\"` doesn't match (?i)\\bseconds?\\b: Coder One mini-task runs · 0 runs · local episodes with their own graders, not Terminal-Bench attempts\nstarted           task                   executor                 outcome          grade          time\n  No runs. Record one with `coder-one minitask run ID`.\n  Grading runs after the episode; each task's grader checks its stated workspace condition.\n  Verdicts: passed, failed, or unavailable.\n  Fast local screen, not a TB4 result. Use Terminal-Bench 4.0 for benchmark claims.\n  Measured handoff: Opus single-pass averaged 22.0 s and $0.0537 per run.\n  Scripted runs take about 1 s.\n  Details: docs/coder/guides/coder-one-minitasks.md",
+        "milliseconds": 1046
+      },
+      {
+        "id": "view-says-how-graded",
+        "group": "deliverables",
+        "kind": "command",
+        "passed": true,
+        "detail": "`cargo run -q -p gym --bin gym -- coder minitasks --runs-dir \"$ISSUE_EVAL_TMP\"` succeeded",
+        "milliseconds": 992
+      },
+      {
+        "id": "guide-names-tb4",
+        "group": "deliverables",
+        "kind": "contains",
+        "passed": true,
+        "detail": "docs/coder/guides/coder-one-minitasks.md:19 matches Terminal-Bench 4\\.0|TB4",
+        "milliseconds": 0
+      },
+      {
+        "id": "guide-changed",
+        "group": "deliverables",
+        "kind": "changed",
+        "passed": true,
+        "detail": "docs/coder/guides/coder-one-minitasks.md changed",
+        "milliseconds": 0
+      },
+      {
+        "id": "guide-links",
+        "group": "deliverables",
+        "kind": "links",
+        "passed": true,
+        "detail": "6 relative links in docs/coder/guides/coder-one-minitasks.md resolve",
+        "milliseconds": 0
+      }
+    ],
+    "changed": [
+      "crates/gym/src/coder_minitasks.rs",
+      "docs/coder/guides/coder-one-minitasks.md"
+    ]
+  },
+  "reward": 0.0,
+  "cost": {
+    "luna_usd": 0.02062432,
+    "jev_usd": 0.0016274580000000002,
+    "total_usd": 0.022251778000000003,
+    "lower_bound_usd": 0.022251778000000003
+  },
+  "usage": {
+    "tokens": {
+      "input": null,
+      "cache": 462592,
+      "output": 4905,
+      "note": "input sums generation, Jev, and delegate input tokens, the delegate's cache reads and writes included; cache is the delegate's cache reads when a delegation ran, and generation's reported cached input otherwise"
+    },
+    "cost": {
+      "amount_usd": 0.022251778000000003,
+      "lower_bound_usd": 0.022251778000000003,
+      "unknown_calls": 0,
+      "provenance": "mixed",
+      "covers": "generation (provider_reported), jev (price_estimate), and delegate (cli_list_price or cli_reported for Claude Code, price_estimate for Codex); each is under components, and ledger lists every call"
+    },
+    "calls": {
+      "generation": 0,
+      "decisions": 22,
+      "decisions_skipped": 0,
+      "delegates": 5,
+      "failed": 0,
+      "retries": 0
+    },
+    "components": {
+      "generation": {
+        "input_tokens": 0,
+        "cached_input_tokens": null,
+        "output_tokens": 0,
+        "cost_usd": 0.0,
+        "cost_lower_bound_usd": 0.0,
+        "cost_provenance": "provider_reported",
+        "unpriced_calls": 0,
+        "failed_calls_unknown_charge": 0
+      },
+      "jev": {
+        "model": "jev-1.13.0",
+        "requests": 22,
+        "priced": 22,
+        "known_zero": 0,
+        "unknown": 0,
+        "skipped": 0,
+        "input_tokens": 38749,
+        "input_tokens_priced": 38749,
+        "output_tokens_billed": false,
+        "cost_usd": 0.0016274580000000002,
+        "cost_lower_bound_usd": 0.0016274580000000002,
+        "cost_provenance": "price_estimate",
+        "rate": "$0.042 per million input tokens, retrieved 2026-09-22"
+      },
+      "delegate": {
+        "agent": "microluna",
+        "model": "gpt-6-luna",
+        "credential": "codex_auth_json",
+        "agents": [
+          "microluna",
+          "microluna",
+          "microluna",
+          "microluna",
+          "microluna"
+        ],
+        "models": [
+          "gpt-6-luna",
+          "gpt-6-luna",
+          "gpt-6-luna",
+          "gpt-6-luna",
+          "gpt-6-luna"
+        ],
+        "delegations": 5,
+        "turns": 54,
+        "api_calls": 54,
+        "units": {
+          "native_turns": 54,
+          "model_calls": 54,
+          "completed_items": 54
+        },
+        "input_tokens": 135459,
+        "cache_read_input_tokens": 462592,
+        "cache_creation_input_tokens": null,
+        "total_input_tokens": null,
+        "output_tokens": 4905,
+        "input_tokens_per_call": [],
+        "max_input_tokens_per_call": null,
+        "cost_usd": 0.02062432,
+        "cost_lower_bound_usd": 0.02062432,
+        "cost_provenance": "price_estimate",
+        "unknown_dispatches": 0,
+        "cost_note": "A list-price estimate from reported token usage: the provider reports no cost. Rates are OpenAI's standard short-context list prices, supplied by the operator on 2026-09-22.",
+        "dispatches": [
+          {
+            "component": "delegate",
+            "id": "delegate-1",
+            "name": "delegate",
+            "agent": "microluna",
+            "model": "gpt-6-luna",
+            "model_requested": "gpt-6-luna",
+            "credential": "codex_auth_json",
+            "status": "answered",
+            "outcome": "Completed",
+            "charge": "priced",
+            "cost_usd": 0.0088167,
+            "cost_lower_bound_usd": 0.0088167,
+            "provenance": "price_estimate",
+            "basis": "the session reported its usage",
+            "milliseconds": 176142,
+            "units": {
+              "native_turns": 23,
+              "model_calls": 23,
+              "completed_items": 23
+            },
+            "deadline": null
+          },
+          {
+            "component": "delegate",
+            "id": "delegate-1",
+            "name": "delegate",
+            "agent": "microluna",
+            "model": "gpt-6-luna",
+            "model_requested": "gpt-6-luna",
+            "credential": "codex_auth_json",
+            "status": "answered",
+            "outcome": "Completed",
+            "charge": "priced",
+            "cost_usd": 0.0018364600000000003,
+            "cost_lower_bound_usd": 0.0018364600000000003,
+            "provenance": "price_estimate",
+            "basis": "the session reported its usage",
+            "milliseconds": 34472,
+            "units": {
+              "native_turns": 7,
+              "model_calls": 7,
+              "completed_items": 7
+            },
+            "deadline": null
+          },
+          {
+            "component": "delegate",
+            "id": "delegate-1",
+            "name": "delegate",
+            "agent": "microluna",
+            "model": "gpt-6-luna",
+            "model_requested": "gpt-6-luna",
+            "credential": "codex_auth_json",
+            "status": "answered",
+            "outcome": "Completed",
+            "charge": "priced",
+            "cost_usd": 0.0028447400000000005,
+            "cost_lower_bound_usd": 0.0028447400000000005,
+            "provenance": "price_estimate",
+            "basis": "the session reported its usage",
+            "milliseconds": 97893,
+            "units": {
+              "native_turns": 7,
+              "model_calls": 7,
+              "completed_items": 7
+            },
+            "deadline": null
+          },
+          {
+            "component": "delegate",
+            "id": "delegate-1",
+            "name": "delegate",
+            "agent": "microluna",
+            "model": "gpt-6-luna",
+            "model_requested": "gpt-6-luna",
+            "credential": "codex_auth_json",
+            "status": "answered",
+            "outcome": "Completed",
+            "charge": "priced",
+            "cost_usd": 0.0039584600000000005,
+            "cost_lower_bound_usd": 0.0039584600000000005,
+            "provenance": "price_estimate",
+            "basis": "the session reported its usage",
+            "milliseconds": 59246,
+            "units": {
+              "native_turns": 7,
+              "model_calls": 7,
+              "completed_items": 7
+            },
+            "deadline": null
+          },
+          {
+            "component": "delegate",
+            "id": "delegate-1",
+            "name": "delegate",
+            "agent": "microluna",
+            "model": "gpt-6-luna",
+            "model_requested": "gpt-6-luna",
+            "credential": "codex_auth_json",
+            "status": "answered",
+            "outcome": "Completed",
+            "charge": "priced",
+            "cost_usd": 0.00316796,
+            "cost_lower_bound_usd": 0.00316796,
+            "provenance": "price_estimate",
+            "basis": "the session reported its usage",
+            "milliseconds": 205139,
+            "units": {
+              "native_turns": 10,
+              "model_calls": 10,
+              "completed_items": 10
+            },
+            "deadline": null
+          }
+        ]
+      }
+    },
+    "ledger": [
+      {
+        "component": "jev",
+        "id": "jev_asks_only-1",
+        "name": "jev_asks_only",
+        "model": "jev-1.13.0",
+        "outcome": "Completed",
+        "charge": "priced",
+        "cost_usd": 0.00001953,
+        "provenance": "price_estimate",
+        "basis": "the response reported its input tokens",
+        "milliseconds": 353,
+        "input_tokens": 465
+      },
+      {
+        "component": "jev",
+        "id": "jev_requirements-1",
+        "name": "jev_requirements",
+        "model": "jev-1.13.0",
+        "outcome": "Completed",
+        "charge": "priced",
+        "cost_usd": 0.00007341600000000002,
+        "provenance": "price_estimate",
+        "basis": "the response reported its input tokens",
+        "milliseconds": 168,
+        "input_tokens": 1748
+      },
+      {
+        "component": "jev",
+        "id": "jev_probe-2",
+        "name": "jev_probe",
+        "model": "jev-1.13.0",
+        "outcome": "Completed",
+        "charge": "priced",
+        "cost_usd": 0.000025872,
+        "provenance": "price_estimate",
+        "basis": "the response reported its input tokens",
+        "milliseconds": 161,
+        "input_tokens": 616
+      },
+      {
+        "component": "jev",
+        "id": "jev-survey-3",
+        "name": "jev_survey",
+        "model": "jev-1.13.0",
+        "outcome": "Completed",
+        "charge": "priced",
+        "cost_usd": 0.00022633800000000003,
+        "provenance": "price_estimate",
+        "basis": "the response reported its input tokens",
+        "milliseconds": 194,
+        "input_tokens": 5389
+      },
+      {
+        "component": "jev",
+        "id": "jev-survey-4",
+        "name": "jev_survey",
+        "model": "jev-1.13.0",
+        "outcome": "Completed",
+        "charge": "priced",
+        "cost_usd": 0.00017388000000000004,
+        "provenance": "price_estimate",
+        "basis": "the response reported its input tokens",
+        "milliseconds": 382,
+        "input_tokens": 4140
+      },
+      {
+        "component": "jev",
+        "id": "jev-parts-1-1",
+        "name": "jev_parts_met",
+        "model": "jev-1.13.0",
+        "outcome": "Completed",
+        "charge": "priced",
+        "cost_usd": 0.000081984,
+        "provenance": "price_estimate",
+        "basis": "the response reported its input tokens",
+        "milliseconds": 405,
+        "input_tokens": 1952
+      },
+      {
+        "component": "jev",
+        "id": "jev-report-verdict",
+        "name": "jev_report_verdict",
+        "model": "jev-1.13.0",
+        "outcome": "Completed",
+        "charge": "priced",
+        "cost_usd": 0.000062664,
+        "provenance": "price_estimate",
+        "basis": "the response reported its input tokens",
+        "milliseconds": 195,
+        "input_tokens": 1492
+      },
+      {
+        "component": "jev",
+        "id": "jev-next-move-1-1",
+        "name": "jev_next_move",
+        "model": "jev-1.13.0",
+        "outcome": "Completed",
+        "charge": "priced",
+        "cost_usd": 0.00007413000000000001,
+        "provenance": "price_estimate",
+        "basis": "the response reported its input tokens",
+        "milliseconds": 209,
+        "input_tokens": 1765
+      },
+      {
+        "component": "jev",
+        "id": "jev-parts-1-2",
+        "name": "jev_parts_met",
+        "model": "jev-1.13.0",
+        "outcome": "Completed",
+        "charge": "priced",
+        "cost_usd": 0.00008244600000000002,
+        "provenance": "price_estimate",
+        "basis": "the response reported its input tokens",
+        "milliseconds": 173,
+        "input_tokens": 1963
+      },
+      {
+        "component": "jev",
+        "id": "jev-report-verdict",
+        "name": "jev_report_verdict",
+        "model": "jev-1.13.0",
+        "outcome": "Completed",
+        "charge": "priced",
+        "cost_usd": 0.00006371400000000001,
+        "provenance": "price_estimate",
+        "basis": "the response reported its input tokens",
+        "milliseconds": 164,
+        "input_tokens": 1517
+      },
+      {
+        "component": "jev",
+        "id": "jev-next-move-1-2",
+        "name": "jev_next_move",
+        "model": "jev-1.13.0",
+        "outcome": "Completed",
+        "charge": "priced",
+        "cost_usd": 0.00006615000000000001,
+        "provenance": "price_estimate",
+        "basis": "the response reported its input tokens",
+        "milliseconds": 169,
+        "input_tokens": 1575
+      },
+      {
+        "component": "jev",
+        "id": "jev-parts-1-3",
+        "name": "jev_parts_met",
+        "model": "jev-1.13.0",
+        "outcome": "Completed",
+        "charge": "priced",
+        "cost_usd": 0.00008526000000000001,
+        "provenance": "price_estimate",
+        "basis": "the response reported its input tokens",
+        "milliseconds": 163,
+        "input_tokens": 2030
+      },
+      {
+        "component": "jev",
+        "id": "jev-report-verdict",
+        "name": "jev_report_verdict",
+        "model": "jev-1.13.0",
+        "outcome": "Completed",
+        "charge": "priced",
+        "cost_usd": 0.00006342,
+        "provenance": "price_estimate",
+        "basis": "the response reported its input tokens",
+        "milliseconds": 147,
+        "input_tokens": 1510
+      },
+      {
+        "component": "jev",
+        "id": "jev-next-move-1-3",
+        "name": "jev_next_move",
+        "model": "jev-1.13.0",
+        "outcome": "Completed",
+        "charge": "priced",
+        "cost_usd": 0.00006531,
+        "provenance": "price_estimate",
+        "basis": "the response reported its input tokens",
+        "milliseconds": 148,
+        "input_tokens": 1555
+      },
+      {
+        "component": "delegate",
+        "id": "delegate-1",
+        "name": "delegate",
+        "agent": "microluna",
+        "model": "gpt-6-luna",
+        "model_requested": "gpt-6-luna",
+        "credential": "codex_auth_json",
+        "status": "answered",
+        "outcome": "Completed",
+        "charge": "priced",
+        "cost_usd": 0.0088167,
+        "cost_lower_bound_usd": 0.0088167,
+        "provenance": "price_estimate",
+        "basis": "the session reported its usage",
+        "milliseconds": 176142,
+        "units": {
+          "native_turns": 23,
+          "model_calls": 23,
+          "completed_items": 23
+        },
+        "deadline": null
+      },
+      {
+        "component": "delegate",
+        "id": "delegate-1",
+        "name": "delegate",
+        "agent": "microluna",
+        "model": "gpt-6-luna",
+        "model_requested": "gpt-6-luna",
+        "credential": "codex_auth_json",
+        "status": "answered",
+        "outcome": "Completed",
+        "charge": "priced",
+        "cost_usd": 0.0018364600000000003,
+        "cost_lower_bound_usd": 0.0018364600000000003,
+        "provenance": "price_estimate",
+        "basis": "the session reported its usage",
+        "milliseconds": 34472,
+        "units": {
+          "native_turns": 7,
+          "model_calls": 7,
+          "completed_items": 7
+        },
+        "deadline": null
+      },
+      {
+        "component": "jev",
+        "id": "jev_stale_dependents-1",
+        "name": "jev_stale_dependents",
+        "model": "jev-1.13.0",
+        "outcome": "Completed",
+        "charge": "priced",
+        "cost_usd": 0.00006770400000000001,
+        "provenance": "price_estimate",
+        "basis": "the response reported its input tokens",
+        "milliseconds": 239,
+        "input_tokens": 1612
+      },
+      {
+        "component": "jev",
+        "id": "jev_plain_text-1",
+        "name": "jev_plain_text",
+        "model": "jev-1.13.0",
+        "outcome": "Completed",
+        "charge": "priced",
+        "cost_usd": 0.000048132000000000006,
+        "provenance": "price_estimate",
+        "basis": "the response reported its input tokens",
+        "milliseconds": 170,
+        "input_tokens": 1146
+      },
+      {
+        "component": "delegate",
+        "id": "delegate-1",
+        "name": "delegate",
+        "agent": "microluna",
+        "model": "gpt-6-luna",
+        "model_requested": "gpt-6-luna",
+        "credential": "codex_auth_json",
+        "status": "answered",
+        "outcome": "Completed",
+        "charge": "priced",
+        "cost_usd": 0.0028447400000000005,
+        "cost_lower_bound_usd": 0.0028447400000000005,
+        "provenance": "price_estimate",
+        "basis": "the session reported its usage",
+        "milliseconds": 97893,
+        "units": {
+          "native_turns": 7,
+          "model_calls": 7,
+          "completed_items": 7
+        },
+        "deadline": null
+      },
+      {
+        "component": "jev",
+        "id": "jev_stale_dependents-1",
+        "name": "jev_stale_dependents",
+        "model": "jev-1.13.0",
+        "outcome": "Completed",
+        "charge": "priced",
+        "cost_usd": 0.00006770400000000001,
+        "provenance": "price_estimate",
+        "basis": "the response reported its input tokens",
+        "milliseconds": 445,
+        "input_tokens": 1612
+      },
+      {
+        "component": "jev",
+        "id": "jev_plain_text-1",
+        "name": "jev_plain_text",
+        "model": "jev-1.13.0",
+        "outcome": "Completed",
+        "charge": "priced",
+        "cost_usd": 0.000048132000000000006,
+        "provenance": "price_estimate",
+        "basis": "the response reported its input tokens",
+        "milliseconds": 154,
+        "input_tokens": 1146
+      },
+      {
+        "component": "delegate",
+        "id": "delegate-1",
+        "name": "delegate",
+        "agent": "microluna",
+        "model": "gpt-6-luna",
+        "model_requested": "gpt-6-luna",
+        "credential": "codex_auth_json",
+        "status": "answered",
+        "outcome": "Completed",
+        "charge": "priced",
+        "cost_usd": 0.0039584600000000005,
+        "cost_lower_bound_usd": 0.0039584600000000005,
+        "provenance": "price_estimate",
+        "basis": "the session reported its usage",
+        "milliseconds": 59246,
+        "units": {
+          "native_turns": 7,
+          "model_calls": 7,
+          "completed_items": 7
+        },
+        "deadline": null
+      },
+      {
+        "component": "jev",
+        "id": "jev_stale_dependents-1",
+        "name": "jev_stale_dependents",
+        "model": "jev-1.13.0",
+        "outcome": "Completed",
+        "charge": "priced",
+        "cost_usd": 0.00006770400000000001,
+        "provenance": "price_estimate",
+        "basis": "the response reported its input tokens",
+        "milliseconds": 198,
+        "input_tokens": 1612
+      },
+      {
+        "component": "jev",
+        "id": "jev_plain_text-1",
+        "name": "jev_plain_text",
+        "model": "jev-1.13.0",
+        "outcome": "Completed",
+        "charge": "priced",
+        "cost_usd": 0.000048132000000000006,
+        "provenance": "price_estimate",
+        "basis": "the response reported its input tokens",
+        "milliseconds": 253,
+        "input_tokens": 1146
+      },
+      {
+        "component": "delegate",
+        "id": "delegate-1",
+        "name": "delegate",
+        "agent": "microluna",
+        "model": "gpt-6-luna",
+        "model_requested": "gpt-6-luna",
+        "credential": "codex_auth_json",
+        "status": "answered",
+        "outcome": "Completed",
+        "charge": "priced",
+        "cost_usd": 0.00316796,
+        "cost_lower_bound_usd": 0.00316796,
+        "provenance": "price_estimate",
+        "basis": "the session reported its usage",
+        "milliseconds": 205139,
+        "units": {
+          "native_turns": 10,
+          "model_calls": 10,
+          "completed_items": 10
+        },
+        "deadline": null
+      },
+      {
+        "component": "jev",
+        "id": "jev_stale_dependents-1",
+        "name": "jev_stale_dependents",
+        "model": "jev-1.13.0",
+        "outcome": "Completed",
+        "charge": "priced",
+        "cost_usd": 0.00006770400000000001,
+        "provenance": "price_estimate",
+        "basis": "the response reported its input tokens",
+        "milliseconds": 426,
+        "input_tokens": 1612
+      },
+      {
+        "component": "jev",
+        "id": "jev_plain_text-1",
+        "name": "jev_plain_text",
+        "model": "jev-1.13.0",
+        "outcome": "Completed",
+        "charge": "priced",
+        "cost_usd": 0.000048132000000000006,
+        "provenance": "price_estimate",
+        "basis": "the response reported its input tokens",
+        "milliseconds": 171,
+        "input_tokens": 1146
+      }
+    ]
+  },
+  "started_at": "2026-09-25T21:36:29.427Z",
+  "milliseconds": 751708,
+  "flow_milliseconds": 727262,
+  "grading_milliseconds": 23547,
+  "version": "coder-one 0.1.0 (dev)",
+  "files": {
+    "invocation_log": "episode.atif.jsonl",
+    "grade": "verification/grade.json",
+    "diff": "artifacts/candidate.diff",
+    "reply": "artifacts/reply.md",
+    "workdir": "repo",
+    "artifacts": "artifacts"
+  }
+}

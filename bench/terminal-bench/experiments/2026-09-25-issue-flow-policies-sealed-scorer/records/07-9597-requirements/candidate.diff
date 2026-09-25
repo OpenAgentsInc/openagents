@@ -1,0 +1,47 @@
+diff --git a/crates/gym/src/coder_minitasks.rs b/crates/gym/src/coder_minitasks.rs
+index 5c287797..9963af49 100644
+--- a/crates/gym/src/coder_minitasks.rs
++++ b/crates/gym/src/coder_minitasks.rs
+@@ -325,6 +325,12 @@ pub fn lines(runs: &[Run], errors: &[String], selected: Option<usize>) -> Vec<St
+             .iter()
+             .map(|error| format!("Could not read: {error}")),
+     );
++    lines.push("  Grading runs after the episode; each task's grader checks its stated workspace condition.".to_owned());
++    lines.push("  Verdicts: passed, failed, or unavailable.".to_owned());
++    lines.push("  Fast local screen, not a TB4 result. Use Terminal-Bench 4.0 for benchmark claims.".to_owned());
++    lines.push("  Measured handoff: Opus single-pass averaged 22.0 s and $0.0537 per run.".to_owned());
++    lines.push("  Scripted runs take about 1 s.".to_owned());
++    lines.push("  Details: docs/coder/guides/coder-one-minitasks.md".to_owned());
+     if let Some(run) = selected.and_then(|index| runs.get(index)) {
+         lines.push(String::new());
+         lines.extend(run.detail_lines());
+@@ -489,6 +495,11 @@ pub(crate) mod tests {
+         assert!(run.timeline.as_ref().unwrap().complete);
+         let text = lines(&runs, &errors, Some(0)).join("\n");
+         assert!(text.contains("not Terminal-Bench attempts"), "{text}");
++        assert!(text.contains("each task's grader checks its stated workspace condition"), "{text}");
++        assert!(text.contains("Verdicts: passed, failed, or unavailable"), "{text}");
++        assert!(text.contains("Fast local screen"), "{text}");
++        assert!(text.contains("22.0 s and $0.0537 per run"), "{text}");
++        assert!(text.contains("docs/coder/guides/coder-one-minitasks.md"), "{text}");
+         assert!(text.contains("Grade: failed"), "{text}");
+         assert!(text.contains("Session control: start done"), "{text}");
+         assert!(text.contains("Episode timeline"), "{text}");
+diff --git a/docs/coder/guides/coder-one-minitasks.md b/docs/coder/guides/coder-one-minitasks.md
+index 949cbbf3..20987869 100644
+--- a/docs/coder/guides/coder-one-minitasks.md
++++ b/docs/coder/guides/coder-one-minitasks.md
+@@ -12,6 +12,13 @@ components alone come first, in the
+ [component guide](coder-one-components.md), and a Terminal-Bench trial comes
+ after.
+ 
++Mini-tasks are a fast local screen: their grader checks a specific failure
++family after an episode, not a Terminal-Bench score. In the recorded
++four-task handoff comparison, a single Opus pass averaged 22.0 seconds and
++$0.0537 per run (the measured results below); scripted runs take about a
++second with no model or container. A pass here is not a TB4 benchmark result:
++use Terminal-Bench 4.0 tasks for benchmark claims.
++
+ ## The mini-tasks
+ 
+ Each task covers one failure family from the v3 Luna trials, or a recovery:

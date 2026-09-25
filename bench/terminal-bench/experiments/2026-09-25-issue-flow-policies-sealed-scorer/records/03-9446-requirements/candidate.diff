@@ -1,0 +1,134 @@
+diff --git a/README.md b/README.md
+index 44bf63d..75219cf 100644
+--- a/README.md
++++ b/README.md
+@@ -96,6 +96,37 @@ live in `docs/coder/`: the service spec, the relay backend plan, and
+ 
+ ## Run it
+ 
++For local development, run `./scripts/coderdev` to build and launch Coder.
++This is preferable to launching a previously built `target/debug/coder`
++directly. It invokes Cargo for the
++explicit `coder` package and binary, using the pinned toolchain in
++`rust-toolchain.toml`; Cargo checks freshness and rebuilds changed source
++before launch. A build error stops execution. The wrapper locates the
++manifest independently but leaves the process in your current directory,
++so Coder still operates on the project you invoked it from. The normal
++`CARGO_TARGET_DIR` override is honored; a relative override is anchored to
++the invocation directory for both the Cargo build and executable. Pass Coder
++arguments after the command, for example `./scripts/coderdev -p 'count the
++crates'`. Cargo's normal `CARGO_TARGET_DIR` override applies. After editing
++your shell alias to call this script, reload that shell configuration (or
++open a new shell) for the change to take effect. The script inherits the
++calling shell's exported environment; keep any existing credential-file
++loading in your shell function's subshell and have it invoke this script.
++It neither loads credential files itself nor prints environment values. For
++example, replace the body of an existing local function (do not overwrite
++the rest of your shell configuration) with the repo path for your checkout:
++
++```sh
++coderdev() (
++  # Preserve your existing credential-file loading here, if any.
++  exec /path/to/openagents/scripts/coderdev "$@"
++)
++```
++
++After saving the shell configuration, run `source ~/.zshrc` (or the
++corresponding file for your shell), or open a new shell. This changes only
++that function; it does not require replacing other shell customizations.
++
+ ```bash
+ cargo run -p coder                                  # the terminal
+ cargo run -p coder -- -p "count the crates"         # one turn, from a script
+diff --git a/scripts/coderdev b/scripts/coderdev
+new file mode 100755
+index 0000000..f29cd6d
+--- /dev/null
++++ b/scripts/coderdev
+@@ -0,0 +1,27 @@
++#!/bin/sh
++# Build and launch the repository's coder binary using Cargo's freshness checks.
++set -eu
++
++repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
++# Cargo interprets a relative target directory from the caller's directory.
++# Make that explicit before supplying the repository manifest so the build
++# and launched executable use the same override without changing directories.
++if [ "${CARGO_TARGET_DIR+x}" = x ] && [ -n "$CARGO_TARGET_DIR" ]; then
++    case $CARGO_TARGET_DIR in
++        /*) ;;
++        *) CARGO_TARGET_DIR=$(pwd -P)/$CARGO_TARGET_DIR
++           export CARGO_TARGET_DIR ;;
++    esac
++fi
++cargo +1.97.1 build --locked --manifest-path "$repo_root/Cargo.toml" -p coder --bin coder
++
++revision=$(git -C "$repo_root" rev-parse --short=12 HEAD 2>/dev/null || printf 'unknown')
++if git -C "$repo_root" diff --quiet -- . 2>/dev/null &&
++   git -C "$repo_root" diff --cached --quiet -- . 2>/dev/null; then
++    dirty=no
++else
++    dirty=yes
++fi
++target_dir=${CARGO_TARGET_DIR:-"$repo_root/target"}
++printf 'coderdev: source=%s dirty=%s executable=%s/debug/coder\n' "$revision" "$dirty" "$target_dir"
++exec "$target_dir/debug/coder" "$@"
+diff --git a/scripts/test-coderdev.sh b/scripts/test-coderdev.sh
+new file mode 100755
+index 0000000..db5eb6b
+--- /dev/null
++++ b/scripts/test-coderdev.sh
+@@ -0,0 +1,53 @@
++#!/bin/sh
++# Fixture tests for coderdev; no network or real build is performed.
++set -eu
++root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
++tmp=$(mktemp -d "$root/.coderdev-test.XXXXXX")
++trap 'rm -rf "$tmp"' EXIT HUP INT TERM
++mkdir -p "$tmp/bin" "$tmp/work" "$tmp/target/debug"
++echo initial >"$tmp/source"
++cat >"$tmp/bin/cargo" <<'STUB'
++#!/bin/sh
++set -eu
++[ "$1" = +1.97.1 ]
++shift
++[ "$1" = build ]
++shift
++[ "$1" = --locked ]
++shift
++[ "$1" = --manifest-path ]
++case "$2" in */Cargo.toml) ;; *) exit 31;; esac
++shift 2
++[ "$1 $2 $3 $4" = '-p coder --bin coder' ]
++if [ "${FAIL_BUILD:-}" = 1 ]; then exit 42; fi
++out=${CARGO_TARGET_DIR:-"$root/target"}/debug
++mkdir -p "$out"
++printf '%s\n' "#!/bin/sh" 'printf "%s\\n" "$PWD" "$@" >"$RESULT"' >"$out/coder"
++chmod +x "$out/coder"
++# Stub Cargo's incremental freshness check with a source timestamp marker.
++stamp=$CARGO_TARGET_DIR/.fixture-stamp
++if [ ! -f "$stamp" ] || [ "$FIXTURE_SOURCE" -nt "$stamp" ]; then
++    echo build >>"$BUILDS"
++    touch "$stamp"
++fi
++STUB
++chmod +x "$tmp/bin/cargo"
++export PATH="$tmp/bin:$PATH" BUILDS="$tmp/builds" RESULT="$tmp/result" FIXTURE_SOURCE="$tmp/source"
++cd "$tmp/work"
++CARGO_TARGET_DIR="$tmp/target" "$root/scripts/coderdev" 'two words' ''
++[ "$(wc -l <"$BUILDS" | tr -d ' ')" = 1 ]
++[ "$(sed -n '1p' "$RESULT")" = "$tmp/work" ]
++[ "$(sed -n '2p' "$RESULT")" = 'two words' ]
++[ ! -s "$(sed -n '3p' "$RESULT")" ]
++# Second unchanged launch reuses the fixture executable; changed-source launch rebuilds.
++CARGO_TARGET_DIR="$tmp/target" "$root/scripts/coderdev" >/dev/null 2>&1
++[ "$(wc -l <"$BUILDS" | tr -d ' ')" = 1 ]
++sleep 1
++echo changed >>"$tmp/source"
++CARGO_TARGET_DIR="$tmp/target" "$root/scripts/coderdev" >/dev/null 2>&1
++[ "$(wc -l <"$BUILDS" | tr -d ' ')" = 2 ]
++# Failed build must not execute the previously built binary.
++rm -f "$RESULT"
++if FAIL_BUILD=1 CARGO_TARGET_DIR="$tmp/target" "$root/scripts/coderdev"; then exit 1; fi
++[ ! -e "$RESULT" ]
++echo 'coderdev fixture tests passed'

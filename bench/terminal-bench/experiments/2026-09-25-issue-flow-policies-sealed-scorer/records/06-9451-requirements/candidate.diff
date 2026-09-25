@@ -1,0 +1,148 @@
+diff --git a/crates/coder/src/delegate.rs b/crates/coder/src/delegate.rs
+index eb8e2c0..db11811 100644
+--- a/crates/coder/src/delegate.rs
++++ b/crates/coder/src/delegate.rs
+@@ -836,6 +836,9 @@ pub struct Delegation {
+     /// What the executor printed on stdout, capped at [`OUTPUT_MAX`] and
+     /// marked when the cap cut it.
+     pub output: String,
++    /// The executor's final answer, separated from any preceding narration.
++    /// When no adapter-specific answer is available this is the full output.
++    pub answer: String,
+     /// What it printed on stderr, capped the same way. A refusal arrives
+     /// here.
+     pub detail: String,
+@@ -871,7 +874,7 @@ impl Delegation {
+     #[must_use]
+     pub fn correct(&self) -> Option<bool> {
+         let expected = self.task.expected.as_deref()?;
+-        Some(self.answered() && normalize(&self.output) == normalize(expected))
++        Some(self.answered() && normalize(&self.answer) == normalize(expected))
+     }
+ 
+     /// What the delegation comes to, judged against the answer the task
+@@ -891,7 +894,7 @@ impl Delegation {
+     #[must_use]
+     pub fn recorded_output(&self) -> String {
+         if self.answered() {
+-            return self.output.trim().to_string();
++            return self.answer.trim().to_string();
+         }
+         match self.detail.trim() {
+             "" => self.status.to_string(),
+@@ -1516,6 +1519,7 @@ impl Delegator {
+             workdir,
+             concurrent_max: self.concurrent_max,
+             status: reported.status,
++            answer: reported.output.trim().lines().last().unwrap_or("").to_string(),
+             output: reported.output,
+             detail: reported.detail,
+             bytes: reported.bytes,
+@@ -1536,7 +1540,15 @@ impl Delegator {
+ /// promising isolation.
+ #[must_use]
+ pub fn boundary_supported() -> bool {
+-    Boundary::readonly().build().is_ok()
++    let Ok(boundary) = Boundary::readonly().build() else {
++        return false;
++    };
++    let Ok(command) = boundary.command("/usr/bin/true", std::iter::empty::<&str>()) else {
++        return false;
++    };
++    std::process::Command::from(command)
++        .status()
++        .is_ok_and(|status| status.success())
+ }
+ 
+ /// What one delegation came back as, before it is paired with the task
+@@ -2000,22 +2012,23 @@ mod tests {
+             .collect()
+     }
+ 
+-    /// The answer is stdout, and it is graded against what the task
+-    /// expected.
++    /// The final executor message is graded separately from its narration.
+     #[tokio::test]
+     async fn a_delegate_answers_and_is_graded() {
+         if !boundary_supported() {
+             return;
+         }
+         let dir = tempfile::tempdir().unwrap();
+-        let binary = stub(dir.path(), "devin", "printf '5\\n'");
++        let binary = stub(dir.path(), "devin", "printf 'I checked the files and completed the item.\\ndone\\n'");
+         let delegator = Delegator::new(executor(&binary)).in_directory(dir.path());
+ 
+         let right = delegator
+-            .run(Task::reading("how many", "crates/atif/src/document.rs").expecting("5"))
++            .run(Task::reading("complete the item", "crates/atif/src/document.rs").expecting("done"))
+             .await;
+         assert_eq!(right.status, Status::Answered);
+-        assert_eq!(right.recorded_output(), "5");
++        assert_eq!(right.answer, "done");
++        assert!(right.output.contains("I checked the files"));
++        assert_eq!(right.recorded_output(), "done");
+         assert_eq!(right.correct(), Some(true));
+         assert_eq!(right.verdict(), Verdict::Passed);
+         assert_eq!(right.outcome(), atif::Outcome::Completed);
+diff --git a/crates/coder/src/relay.rs b/crates/coder/src/relay.rs
+index c237fc4..7be5511 100644
+--- a/crates/coder/src/relay.rs
++++ b/crates/coder/src/relay.rs
+@@ -1065,6 +1065,7 @@ impl RelayDoor {
+             workdir: PathBuf::from(&self.worker_hex),
+             concurrent_max: width,
+             status,
++            answer: output.trim().lines().last().unwrap_or("").to_string(),
+             output,
+             detail,
+             bytes,
+diff --git a/crates/coder/src/runtime.rs b/crates/coder/src/runtime.rs
+index ddbbe5e..c327c49 100644
+--- a/crates/coder/src/runtime.rs
++++ b/crates/coder/src/runtime.rs
+@@ -1679,6 +1679,7 @@ mod tests {
+             workdir: PathBuf::from("/work"),
+             concurrent_max: 6,
+             status: crate::delegate::Status::Answered,
++            answer: output.trim().to_string(),
+             output: output.to_string(),
+             detail: String::new(),
+             bytes: output.len() as u64,
+diff --git a/crates/coder/src/trace.rs b/crates/coder/src/trace.rs
+index a5eb231..2142d87 100644
+--- a/crates/coder/src/trace.rs
++++ b/crates/coder/src/trace.rs
+@@ -376,6 +376,8 @@ impl Recorder {
+                 json!(retained.display().to_string()),
+             );
+         }
++        extra.insert("answer".to_string(), json!(delegation.answer));
++        extra.insert("transcript".to_string(), json!(delegation.output));
+         let call = Call {
+             id: self.next_call_id(),
+             name: DELEGATE_CALL.to_string(),
+@@ -385,7 +387,7 @@ impl Recorder {
+                 "prompt": task.prompt,
+                 "bounds": task.bounds.declared(),
+             }),
+-            output: delegation.recorded_output(),
++            output: delegation.output.clone(),
+             outcome: delegation.outcome(),
+             milliseconds: delegation.elapsed.as_millis() as u64,
+             purpose: (!task.purpose.is_empty()).then(|| task.purpose.clone()),
+diff --git a/crates/coder/src/worktree.rs b/crates/coder/src/worktree.rs
+index 3e33137..9e54c04 100644
+--- a/crates/coder/src/worktree.rs
++++ b/crates/coder/src/worktree.rs
+@@ -19,7 +19,10 @@ use std::time::{Duration, Instant};
+ use supervise::{Job, Limits};
+ 
+ const GIT_WALL: Duration = Duration::from_secs(30);
+-const LOCK_WALL: Duration = Duration::from_secs(30);
++// Git worktree operations can be slow on loaded hosts, and each transaction
++// serializes across processes as well as tasks. Keep the timeout comfortably
++// above the expected cost of a burst of additions and removals.
++const LOCK_WALL: Duration = Duration::from_secs(120);
+ 
+ /// A detached checkout owned by one delegation.
+ #[derive(Debug)]

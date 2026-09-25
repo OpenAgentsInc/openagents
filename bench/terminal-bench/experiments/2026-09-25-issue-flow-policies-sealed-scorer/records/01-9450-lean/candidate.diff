@@ -1,0 +1,40 @@
+diff --git a/docs/coder/delegate.md b/docs/coder/delegate.md
+index 9d24fcf..1def7ea 100644
+--- a/docs/coder/delegate.md
++++ b/docs/coder/delegate.md
+@@ -5,9 +5,13 @@ stated bound, and records each as an ATIF `Call` named `delegate`.
+ 
+ Status: implemented in `crates/coder` (`delegate.rs`, recorded by
+ `trace.rs`). The executor is `devin-local`, the Devin CLI on the operator's
+-computer. A `delegate` step of a program reaches this through
+-`coder::runtime`; what still runs from a caller in Rust is the program,
+-not the fan-out.
++computer. `coder::turn::run` asks `openagents.program.v1` to classify the
++sentence as either a program or something else. When the answer is a
++program, Coder runs that program with `Runtime::run`.
++The runtime executes the program's steps in order, including any delegate
++step that reaches this fan-out. See
++[`How a sentence reaches it`](../programs.md#how-a-sentence-reaches-it) for
++the route and its CoderBench example.
+ 
+ Read [`../programs.md`](../programs.md) for why delegation is reached
+ through a program rather than offered to the model, and
+@@ -272,6 +276,12 @@ delegations from a worktree under `/private/tmp` came back with `Refusing
+ to run in an untrusted workspace`. A worktree inside a checkout the
+ operator already trusts is accepted.
+ 
++To find the worktree retained by a writing delegate, open a terminal at the
++repository root and run `git worktree list`. The command prints the paths of
++the repository's worktrees. Inspect the retained worktree's changes, then
++merge them into your branch or remove the worktree. The program runs the
++delegate; you finish its work.
++
+ Worktrees separate edits; the filesystem boundary is what prohibits
+ writes. A recorded call still says `wrote: null` rather than claiming a
+ check nobody runs — what a delegate actually changed is the workspace
+@@ -327,5 +337,3 @@ repository the delegates run in, which matters because a git worktree under
+   the retained checkout keeps them, and `crates/coder-boundary` snapshots
+   observe a tree before and after a run; the CoderBench side that grades
+   a run against that observation is separate work.
+-- **Reaching a fan-out from an operator's sentence.** `coder::runtime` runs
+-  the program, and the program still runs from a caller in Rust.

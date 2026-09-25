@@ -1,0 +1,66 @@
+[
+  {
+    "slot": 1,
+    "entry": "9450",
+    "arm": "lean",
+    "archive": "records/01-9450-lean/traces.tar.gz",
+    "sha256": "b76be59ee002268f8d2e59e608820bb75afc1bbf5601ccc27e8a71cdf5ee0488",
+    "bytes": 8523345
+  },
+  {
+    "slot": 2,
+    "entry": "9450",
+    "arm": "requirements",
+    "archive": "records/02-9450-requirements/traces.tar.gz",
+    "sha256": "fea2cf13c9944fd41095480639a3ecaeb90ec198216994bc895980128caa3d7b",
+    "bytes": 227953
+  },
+  {
+    "slot": 3,
+    "entry": "9446",
+    "arm": "requirements",
+    "archive": "records/03-9446-requirements/traces.tar.gz",
+    "sha256": "f54d7bfdcdb6ade020f6e248af36bf834a90ac5f1380e0307be5c7c484f65803",
+    "bytes": 342534
+  },
+  {
+    "slot": 4,
+    "entry": "9446",
+    "arm": "lean",
+    "archive": "records/04-9446-lean/traces.tar.gz",
+    "sha256": "1e97d5d761cd7be152a314c74a8f6b110fc0686ac3678be861a4e1d2e412a8d9",
+    "bytes": 8052162
+  },
+  {
+    "slot": 5,
+    "entry": "9451",
+    "arm": "lean",
+    "archive": "records/05-9451-lean/traces.tar.gz",
+    "sha256": "6dca189bbb2ce5af96a13d865962b7afc15867a80b7eeb2cad108e75d8d654a3",
+    "bytes": 9791392
+  },
+  {
+    "slot": 6,
+    "entry": "9451",
+    "arm": "requirements",
+    "archive": "records/06-9451-requirements/traces.tar.gz",
+    "sha256": "64185995c4ff9d77dcc3dfda700a7719b83068bd24444b3d9e90ecb1793d9611",
+    "bytes": 407798
+  },
+  {
+    "slot": 7,
+    "entry": "9597",
+    "arm": "requirements",
+    "archive": "records/07-9597-requirements/traces.tar.gz",
+    "sha256": "805e6b946e9de0715bf0b40616c79af65dfffef96f040062050fba653a3c1d46",
+    "bytes": 242188
+  },
+  {
+    "slot": 8,
+    "entry": "9597",
+    "arm": "lean",
+    "archive": "records/08-9597-lean/traces.tar.gz",
+    "sha256": "e75c7bf82b67adbce8bcd8f1d21b82ba70cd1173f473eb332e991e1a7c6f7b45",
+    "bytes": 4327283
+  }
+]

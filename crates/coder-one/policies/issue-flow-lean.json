@@ -1,7 +1,7 @@
 {
   "schema": "openagents.coder-one.policy.v1",
   "name": "coder-issue-flow-lean",
-  "note": "The issue flow on the lean loop: up to four work sessions from a strong first one, a frozen evaluation script that keeps the best-scoring workspace, finishes turned back while the score is below full, a spend bound per session and a 300-second bound per command, retained candidates, and a read-only review. Unmeasured on issues: select it with CODER_ISSUE_POLICY until the issue-flow evaluation set compares it with issue-flow.json. The issue flow's review session and gate still run after the loop.",
+  "note": "The issue flow on the lean loop: up to four work sessions from a strong first one, a frozen evaluation script that keeps the best-scoring workspace, finishes turned back while the score is below full, a spend bound per session and a 300-second bound per command, retained candidates, and a read-only review. Measured on four development issues on 2026-09-25: artifact passes tied and the cost saving was below the registered 20% threshold, so this remains opt-in through CODER_ISSUE_POLICY. The operator stopped the planned second round. The issue flow's review session and gate still run after the loop.",
   "policy": {
     "jev": {
       "mode": "deep",

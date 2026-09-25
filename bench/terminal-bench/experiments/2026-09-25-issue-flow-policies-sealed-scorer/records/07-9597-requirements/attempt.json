@@ -1,0 +1,42 @@
+{
+  "slot": 7,
+  "entry": "9597",
+  "arm": "requirements",
+  "started_at": "2026-09-25T21:36:29.415963+00:00",
+  "command": [
+    "/Users/christopherdavid/.codex/worktrees/issue-flow-default/target/debug/coder-one",
+    "issue-eval",
+    "run",
+    "9597",
+    "--policy",
+    "issue-flow.json",
+    "--jev",
+    "live",
+    "--model",
+    "gpt-6-luna",
+    "--network",
+    "off",
+    "--source",
+    "/Users/christopherdavid/.codex/worktrees/issue-flow-default/openagents",
+    "--set",
+    "/Users/christopherdavid/.codex/worktrees/issue-flow-default/openagents/crates/coder-one/issues-eval",
+    "--target-dir",
+    "/Users/christopherdavid/.codex/worktrees/issue-flow-default/grader-target",
+    "--out",
+    "/Users/christopherdavid/.openagents/coder-one/issue-flow-policies-sealed-scorer-20260925/07-9597-requirements/runs",
+    "--json"
+  ],
+  "ended_at": "2026-09-25T21:49:01.102670+00:00",
+  "exit_code": 1,
+  "manifest": "/Users/christopherdavid/.openagents/coder-one/issue-flow-policies-sealed-scorer-20260925/07-9597-requirements/runs/issue-eval-9597-minitask-explanation-microluna-gpt-6-luna-1790372189427/manifest.json",
+  "counted_usd": 0.022251778000000003,
+  "cost_complete": true,
+  "verdict": "failed",
+  "contaminated": false,
+  "policy": {
+    "source": "issue-flow.json",
+    "name": "coder-issue-flow",
+    "digest": "738c69582ca35af817b957857999893fe46df8d9239bfed42ac2a32b39eecb02"
+  },
+  "milliseconds": 751708
+}

@@ -1,0 +1,42 @@
+{
+  "slot": 5,
+  "entry": "9451",
+  "arm": "lean",
+  "started_at": "2026-09-25T21:05:47.962380+00:00",
+  "command": [
+    "/Users/christopherdavid/.codex/worktrees/issue-flow-default/target/debug/coder-one",
+    "issue-eval",
+    "run",
+    "9451",
+    "--policy",
+    "issue-flow-lean.json",
+    "--jev",
+    "live",
+    "--model",
+    "gpt-6-luna",
+    "--network",
+    "off",
+    "--source",
+    "/Users/christopherdavid/.codex/worktrees/issue-flow-default/openagents",
+    "--set",
+    "/Users/christopherdavid/.codex/worktrees/issue-flow-default/openagents/crates/coder-one/issues-eval",
+    "--target-dir",
+    "/Users/christopherdavid/.codex/worktrees/issue-flow-default/grader-target",
+    "--out",
+    "/Users/christopherdavid/.openagents/coder-one/issue-flow-policies-sealed-scorer-20260925/05-9451-lean/runs",
+    "--json"
+  ],
+  "ended_at": "2026-09-25T21:20:07.995824+00:00",
+  "exit_code": 1,
+  "manifest": "/Users/christopherdavid/.openagents/coder-one/issue-flow-policies-sealed-scorer-20260925/05-9451-lean/runs/issue-eval-9451-delegate-answer-channel-microluna-gpt-6-luna-1790370347970/manifest.json",
+  "counted_usd": 0.034239476000000005,
+  "cost_complete": true,
+  "verdict": "failed",
+  "contaminated": false,
+  "policy": {
+    "source": "issue-flow-lean.json",
+    "name": "coder-issue-flow-lean",
+    "digest": "fc8934ddf33c64d09be4829874673f6d83db7e5317d7fd58cb582ed21e57d2f9"
+  },
+  "milliseconds": 860038
+}

@@ -203,6 +203,13 @@ noninteractive view. The plain `gym-terminal` command without
 
 ## Coder One benchmark evidence
 
+The [issue-flow policy comparison](docs/coder/measurements/2026-09-25-issue-flow-policies.md)
+retains the requirements default: both policies passed 1/4 development
+issues; lean was 17.7% cheaper and 22.2% faster across attempts, below the
+20% cost-saving tie threshold. The operator stopped the planned second
+round. Full traces, the interrupted attempt, grader limitations, and costs
+remain retained; this is not a Terminal-Bench or repeatability result.
+
 The [completed Microluna v18 family](docs/terminal-bench/2026-09-25-microluna-v18-family.md)
 passed **0/9 confirmation and 0/9 development attempts**. The completed cohort
 meets the numerical loss condition; source changes after setup-only failures and

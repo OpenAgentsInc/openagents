@@ -1,0 +1,37 @@
+diff --git a/docs/coder/delegate.md b/docs/coder/delegate.md
+index 9d24fcf..28ba5a3 100644
+--- a/docs/coder/delegate.md
++++ b/docs/coder/delegate.md
+@@ -9,8 +9,10 @@ computer. A `delegate` step of a program reaches this through
+ `coder::runtime`; what still runs from a caller in Rust is the program,
+ not the fan-out.
+ 
+-Read [`../programs.md`](../programs.md) for why delegation is reached
+-through a program rather than offered to the model, and
++The [programs guide](../programs.md) explains how an operator's sentence
++reaches a running program. The `coder::turn::run` function starts that
++program from the operator's turn. It also explains why delegation is
++available through a program rather than offered directly to the model. Read
+ [NIP-CAP](../../nips/openagents/NIP-CAP.md) for what a capability manifest
+ says about an executor.
+ 
+@@ -259,6 +261,13 @@ is removed when the delegation ends; a writing delegation's stays where
+ the executor left it — its edits are owed to a reviewer, not silently
+ merged or discarded — and the recorded call names the retained path.
+ 
++When a delegate is allowed to write and runs in its own Git worktree, find
++the retained checkout by running `git worktree list`. Use the listed path
++to open the retained checkout in your editor, then review the delegate's
++changes there. If you want to keep those changes, merge them into your
++branch. If you do not want to keep them, remove the worktree instead.
++The program runs the work; you finish it as the operator.
++
+ A delegator that was **not** told refuses a task asking for a worktree with
+ `isolation_unavailable`, and any delegator refuses a task that says it
+ writes into the directory it shares with five siblings, with
+@@ -327,5 +336,3 @@ repository the delegates run in, which matters because a git worktree under
+   the retained checkout keeps them, and `crates/coder-boundary` snapshots
+   observe a tree before and after a run; the CoderBench side that grades
+   a run against that observation is separate work.
+-- **Reaching a fan-out from an operator's sentence.** `coder::runtime` runs
+-  the program, and the program still runs from a caller in Rust.

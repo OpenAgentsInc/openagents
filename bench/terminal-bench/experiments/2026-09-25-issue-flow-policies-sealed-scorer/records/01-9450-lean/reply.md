@@ -1,0 +1,7 @@
+- Updated the delegation documentation as requested and added the required evaluation script. The script checks routing/link, stale bullet removal, retained worktree location, reviewer actions, and the remaining not-built feature; it reports SCORE 5 5. `git diff --check` passes.
+- Review: Reviewed the documentation diff against the referenced program-routing section. Found an inaccurate worktree-review instruction: uncommitted worktree edits cannot be merged into the current branch with `git merge` as written. No files were changed during review.
+- Review: Reworded both passages in docs/coder/delegate.md with complete, explicit sentences and added lines instead of compressed phrasing. Checked the patch with `git diff --check`; no documentation-specific test was found.
+- Review: Rewrote the flagged passages in docs/coder/delegate.md in complete, plain wording and reflowed them onto additional lines. Ran git diff --check successfully.
+- Review: Clarified program execution in the delegation documentation and explained where and how to list retained worktrees. `git diff --check` passed.
+
+Published nothing. The changes are staged in /Users/christopherdavid/.openagents/coder-one/issue-flow-policies-sealed-scorer-20260925/01-9450-lean/runs/issue-eval-9450-delegate-stale-bullet-microluna-gpt-6-luna-1790369090176/repo (1 file changed, 13 insertions(+), 5 deletions(-)). The host's tests and checks still find 3 problems.

@@ -1,0 +1,550 @@
+{
+  "schema": "openagents.issue-flow-policy-comparison.v1",
+  "state": {
+    "started_at": "2026-09-25T20:44:50.110692+00:00",
+    "pid": 37426,
+    "status": "stopped",
+    "slot": 9,
+    "entry": "9450",
+    "arm": "requirements",
+    "counted_usd": 0.292180078,
+    "updated_at": "2026-09-25T22:04:39.665941+00:00",
+    "reason": "User requested ending the study and closing #9624 with results as they stand.",
+    "completed": 8,
+    "interrupted_slot": 9
+  },
+  "repeats_per_cell": 1,
+  "arms": {
+    "lean": {
+      "attempts": 4,
+      "passed": 1,
+      "pass_wilson_95": [
+        0.04558726080970055,
+        0.6993581574175981
+      ],
+      "entries_passed": [
+        "9450"
+      ],
+      "contaminated": 0,
+      "finished": 4,
+      "finished_and_passed": 1,
+      "checks_passed": 14,
+      "checks_total": 18,
+      "cost_complete": true,
+      "counted_usd": 0.08955333800000001,
+      "mean_cost_usd": 0.022388334500000003,
+      "cost_per_pass_usd": 0.08955333800000001,
+      "mean_total_seconds": 490.17625,
+      "mean_flow_seconds": 476.89799999999997,
+      "mean_grading_seconds": 12.621
+    },
+    "requirements": {
+      "attempts": 4,
+      "passed": 1,
+      "pass_wilson_95": [
+        0.04558726080970055,
+        0.6993581574175981
+      ],
+      "entries_passed": [
+        "9450"
+      ],
+      "contaminated": 0,
+      "finished": 1,
+      "finished_and_passed": 0,
+      "checks_passed": 15,
+      "checks_total": 18,
+      "cost_complete": true,
+      "counted_usd": 0.108870816,
+      "mean_cost_usd": 0.027217704,
+      "cost_per_pass_usd": 0.108870816,
+      "mean_total_seconds": 629.74025,
+      "mean_flow_seconds": 615.91575,
+      "mean_grading_seconds": 12.55025
+    }
+  },
+  "per_entry": {
+    "9446": {
+      "lean": {
+        "attempts": 1,
+        "passed": 0,
+        "pass_wilson_95": [
+          0,
+          0.7934506856227626
+        ],
+        "entries_passed": [],
+        "contaminated": 0,
+        "finished": 1,
+        "finished_and_passed": 0,
+        "checks_passed": 2,
+        "checks_total": 3,
+        "cost_complete": true,
+        "counted_usd": 0.014485614,
+        "mean_cost_usd": 0.014485614,
+        "cost_per_pass_usd": null,
+        "mean_total_seconds": 205.496,
+        "mean_flow_seconds": 192.037,
+        "mean_grading_seconds": 12.923
+      },
+      "requirements": {
+        "attempts": 1,
+        "passed": 0,
+        "pass_wilson_95": [
+          0,
+          0.7934506856227626
+        ],
+        "entries_passed": [],
+        "contaminated": 0,
+        "finished": 0,
+        "finished_and_passed": 0,
+        "checks_passed": 2,
+        "checks_total": 3,
+        "cost_complete": true,
+        "counted_usd": 0.028910138000000002,
+        "mean_cost_usd": 0.028910138000000002,
+        "cost_per_pass_usd": null,
+        "mean_total_seconds": 556.622,
+        "mean_flow_seconds": 542.052,
+        "mean_grading_seconds": 13.178
+      }
+    },
+    "9450": {
+      "lean": {
+        "attempts": 1,
+        "passed": 1,
+        "pass_wilson_95": [
+          0.20654931437723745,
+          1
+        ],
+        "entries_passed": [
+          "9450"
+        ],
+        "contaminated": 0,
+        "finished": 1,
+        "finished_and_passed": 1,
+        "checks_passed": 4,
+        "checks_total": 4,
+        "cost_complete": true,
+        "counted_usd": 0.013514994000000002,
+        "mean_cost_usd": 0.013514994000000002,
+        "cost_per_pass_usd": 0.013514994000000002,
+        "mean_total_seconds": 263.804,
+        "mean_flow_seconds": 263.231,
+        "mean_grading_seconds": 0.032
+      },
+      "requirements": {
+        "attempts": 1,
+        "passed": 1,
+        "pass_wilson_95": [
+          0.20654931437723745,
+          1
+        ],
+        "entries_passed": [
+          "9450"
+        ],
+        "contaminated": 0,
+        "finished": 0,
+        "finished_and_passed": 0,
+        "checks_passed": 4,
+        "checks_total": 4,
+        "cost_complete": true,
+        "counted_usd": 0.017961297999999997,
+        "mean_cost_usd": 0.017961297999999997,
+        "cost_per_pass_usd": 0.017961297999999997,
+        "mean_total_seconds": 231.244,
+        "mean_flow_seconds": 230.062,
+        "mean_grading_seconds": 0.033
+      }
+    },
+    "9451": {
+      "lean": {
+        "attempts": 1,
+        "passed": 0,
+        "pass_wilson_95": [
+          0,
+          0.7934506856227626
+        ],
+        "entries_passed": [],
+        "contaminated": 0,
+        "finished": 1,
+        "finished_and_passed": 0,
+        "checks_passed": 1,
+        "checks_total": 3,
+        "cost_complete": true,
+        "counted_usd": 0.034239476000000005,
+        "mean_cost_usd": 0.034239476000000005,
+        "cost_per_pass_usd": null,
+        "mean_total_seconds": 860.038,
+        "mean_flow_seconds": 845.535,
+        "mean_grading_seconds": 13.712
+      },
+      "requirements": {
+        "attempts": 1,
+        "passed": 0,
+        "pass_wilson_95": [
+          0,
+          0.7934506856227626
+        ],
+        "entries_passed": [],
+        "contaminated": 0,
+        "finished": 0,
+        "finished_and_passed": 0,
+        "checks_passed": 2,
+        "checks_total": 3,
+        "cost_complete": true,
+        "counted_usd": 0.03974760199999999,
+        "mean_cost_usd": 0.03974760199999999,
+        "cost_per_pass_usd": null,
+        "mean_total_seconds": 979.387,
+        "mean_flow_seconds": 964.287,
+        "mean_grading_seconds": 13.443
+      }
+    },
+    "9597": {
+      "lean": {
+        "attempts": 1,
+        "passed": 0,
+        "pass_wilson_95": [
+          0,
+          0.7934506856227626
+        ],
+        "entries_passed": [],
+        "contaminated": 0,
+        "finished": 1,
+        "finished_and_passed": 0,
+        "checks_passed": 7,
+        "checks_total": 8,
+        "cost_complete": true,
+        "counted_usd": 0.027313254000000002,
+        "mean_cost_usd": 0.027313254000000002,
+        "cost_per_pass_usd": null,
+        "mean_total_seconds": 631.367,
+        "mean_flow_seconds": 606.789,
+        "mean_grading_seconds": 23.817
+      },
+      "requirements": {
+        "attempts": 1,
+        "passed": 0,
+        "pass_wilson_95": [
+          0,
+          0.7934506856227626
+        ],
+        "entries_passed": [],
+        "contaminated": 0,
+        "finished": 1,
+        "finished_and_passed": 0,
+        "checks_passed": 7,
+        "checks_total": 8,
+        "cost_complete": true,
+        "counted_usd": 0.022251778000000003,
+        "mean_cost_usd": 0.022251778000000003,
+        "cost_per_pass_usd": null,
+        "mean_total_seconds": 751.708,
+        "mean_flow_seconds": 727.262,
+        "mean_grading_seconds": 23.547
+      }
+    }
+  },
+  "pass_delta_lean_minus_requirements": 0,
+  "lean_at_least_20_percent_cheaper": false,
+  "contamination_veto": false,
+  "selected_default": "requirements",
+  "paired_task_bootstrap": {
+    "pass_difference": {
+      "task_differences": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "mean": 0.0,
+      "percentile_95": [
+        0.0,
+        0.0
+      ],
+      "resamples": 256
+    },
+    "seconds_difference": {
+      "task_differences": [
+        -351.126,
+        32.559999999999974,
+        -119.34899999999993,
+        -120.34100000000001
+      ],
+      "mean": -139.564,
+      "percentile_95": [
+        -293.18174999999997,
+        -5.665250000000022
+      ],
+      "resamples": 256
+    },
+    "cost_difference": {
+      "task_differences": [
+        -0.014424524000000001,
+        -0.004446303999999995,
+        -0.005508125999999988,
+        0.005061475999999999
+      ],
+      "mean": -0.004829369499999996,
+      "percentile_95": [
+        -0.011929968999999999,
+        0.002419075500000002
+      ],
+      "resamples": 256
+    }
+  },
+  "runs": [
+    {
+      "slot": 1,
+      "entry": "9450",
+      "arm": "lean",
+      "manifest": "/Users/christopherdavid/.openagents/coder-one/issue-flow-policies-sealed-scorer-20260925/01-9450-lean/runs/issue-eval-9450-delegate-stale-bullet-microluna-gpt-6-luna-1790369090176/manifest.json",
+      "id": "issue-eval-9450-delegate-stale-bullet-1790369090176",
+      "policy": {
+        "source": "issue-flow-lean.json",
+        "name": "coder-issue-flow-lean",
+        "digest": "fc8934ddf33c64d09be4829874673f6d83db7e5317d7fd58cb582ed21e57d2f9"
+      },
+      "outcome": "finished",
+      "passed": true,
+      "contaminated": false,
+      "blocked_attempts": 0,
+      "gate_incomplete": false,
+      "checks_passed": 4,
+      "checks_total": 4,
+      "failed_checks": [],
+      "cost": {
+        "luna_usd": 0.012766260000000001,
+        "jev_usd": 0.000748734,
+        "total_usd": 0.013514994000000002,
+        "lower_bound_usd": 0.013514994000000002
+      },
+      "counted_usd": 0.013514994000000002,
+      "total_seconds": 263.804,
+      "flow_seconds": 263.231,
+      "grading_seconds": 0.032
+    },
+    {
+      "slot": 2,
+      "entry": "9450",
+      "arm": "requirements",
+      "manifest": "/Users/christopherdavid/.openagents/coder-one/issue-flow-policies-sealed-scorer-20260925/02-9450-requirements/runs/issue-eval-9450-delegate-stale-bullet-microluna-gpt-6-luna-1790369354077/manifest.json",
+      "id": "issue-eval-9450-delegate-stale-bullet-1790369354077",
+      "policy": {
+        "source": "issue-flow.json",
+        "name": "coder-issue-flow",
+        "digest": "738c69582ca35af817b957857999893fe46df8d9239bfed42ac2a32b39eecb02"
+      },
+      "outcome": "stuck",
+      "passed": true,
+      "contaminated": false,
+      "blocked_attempts": 0,
+      "gate_incomplete": false,
+      "checks_passed": 4,
+      "checks_total": 4,
+      "failed_checks": [],
+      "cost": {
+        "luna_usd": 0.015490899999999998,
+        "jev_usd": 0.0024703979999999995,
+        "total_usd": 0.017961297999999997,
+        "lower_bound_usd": 0.017961297999999997
+      },
+      "counted_usd": 0.017961297999999997,
+      "total_seconds": 231.244,
+      "flow_seconds": 230.062,
+      "grading_seconds": 0.033
+    },
+    {
+      "slot": 3,
+      "entry": "9446",
+      "arm": "requirements",
+      "manifest": "/Users/christopherdavid/.openagents/coder-one/issue-flow-policies-sealed-scorer-20260925/03-9446-requirements/runs/issue-eval-9446-coderdev-launcher-microluna-gpt-6-luna-1790369585416/manifest.json",
+      "id": "issue-eval-9446-coderdev-launcher-1790369585416",
+      "policy": {
+        "source": "issue-flow.json",
+        "name": "coder-issue-flow",
+        "digest": "738c69582ca35af817b957857999893fe46df8d9239bfed42ac2a32b39eecb02"
+      },
+      "outcome": "stuck",
+      "passed": false,
+      "contaminated": false,
+      "blocked_attempts": 0,
+      "gate_incomplete": false,
+      "checks_passed": 2,
+      "checks_total": 3,
+      "failed_checks": [
+        "fix-test-script"
+      ],
+      "cost": {
+        "luna_usd": 0.025128920000000003,
+        "jev_usd": 0.0037812180000000003,
+        "total_usd": 0.028910138000000002,
+        "lower_bound_usd": 0.028910138000000002
+      },
+      "counted_usd": 0.028910138000000002,
+      "total_seconds": 556.622,
+      "flow_seconds": 542.052,
+      "grading_seconds": 13.178
+    },
+    {
+      "slot": 4,
+      "entry": "9446",
+      "arm": "lean",
+      "manifest": "/Users/christopherdavid/.openagents/coder-one/issue-flow-policies-sealed-scorer-20260925/04-9446-lean/runs/issue-eval-9446-coderdev-launcher-microluna-gpt-6-luna-1790370142373/manifest.json",
+      "id": "issue-eval-9446-coderdev-launcher-1790370142373",
+      "policy": {
+        "source": "issue-flow-lean.json",
+        "name": "coder-issue-flow-lean",
+        "digest": "fc8934ddf33c64d09be4829874673f6d83db7e5317d7fd58cb582ed21e57d2f9"
+      },
+      "outcome": "finished",
+      "passed": false,
+      "contaminated": false,
+      "blocked_attempts": 0,
+      "gate_incomplete": false,
+      "checks_passed": 2,
+      "checks_total": 3,
+      "failed_checks": [
+        "fix-test-script"
+      ],
+      "cost": {
+        "luna_usd": 0.01338534,
+        "jev_usd": 0.001100274,
+        "total_usd": 0.014485614,
+        "lower_bound_usd": 0.014485614
+      },
+      "counted_usd": 0.014485614,
+      "total_seconds": 205.496,
+      "flow_seconds": 192.037,
+      "grading_seconds": 12.923
+    },
+    {
+      "slot": 5,
+      "entry": "9451",
+      "arm": "lean",
+      "manifest": "/Users/christopherdavid/.openagents/coder-one/issue-flow-policies-sealed-scorer-20260925/05-9451-lean/runs/issue-eval-9451-delegate-answer-channel-microluna-gpt-6-luna-1790370347970/manifest.json",
+      "id": "issue-eval-9451-delegate-answer-channel-1790370347970",
+      "policy": {
+        "source": "issue-flow-lean.json",
+        "name": "coder-issue-flow-lean",
+        "digest": "fc8934ddf33c64d09be4829874673f6d83db7e5317d7fd58cb582ed21e57d2f9"
+      },
+      "outcome": "finished",
+      "passed": false,
+      "contaminated": false,
+      "blocked_attempts": 0,
+      "gate_incomplete": false,
+      "checks_passed": 1,
+      "checks_total": 3,
+      "failed_checks": [
+        "fix-test-answer-channel",
+        "trace-keeps-transcript"
+      ],
+      "cost": {
+        "luna_usd": 0.03291614,
+        "jev_usd": 0.001323336,
+        "total_usd": 0.034239476000000005,
+        "lower_bound_usd": 0.034239476000000005
+      },
+      "counted_usd": 0.034239476000000005,
+      "total_seconds": 860.038,
+      "flow_seconds": 845.535,
+      "grading_seconds": 13.712
+    },
+    {
+      "slot": 6,
+      "entry": "9451",
+      "arm": "requirements",
+      "manifest": "/Users/christopherdavid/.openagents/coder-one/issue-flow-policies-sealed-scorer-20260925/06-9451-requirements/runs/issue-eval-9451-delegate-answer-channel-microluna-gpt-6-luna-1790371208916/manifest.json",
+      "id": "issue-eval-9451-delegate-answer-channel-1790371208916",
+      "policy": {
+        "source": "issue-flow.json",
+        "name": "coder-issue-flow",
+        "digest": "738c69582ca35af817b957857999893fe46df8d9239bfed42ac2a32b39eecb02"
+      },
+      "outcome": "stuck",
+      "passed": false,
+      "contaminated": false,
+      "blocked_attempts": 0,
+      "gate_incomplete": false,
+      "checks_passed": 2,
+      "checks_total": 3,
+      "failed_checks": [
+        "fix-test-answer-channel"
+      ],
+      "cost": {
+        "luna_usd": 0.035901619999999995,
+        "jev_usd": 0.0038459820000000004,
+        "total_usd": 0.03974760199999999,
+        "lower_bound_usd": 0.03974760199999999
+      },
+      "counted_usd": 0.03974760199999999,
+      "total_seconds": 979.387,
+      "flow_seconds": 964.287,
+      "grading_seconds": 13.443
+    },
+    {
+      "slot": 7,
+      "entry": "9597",
+      "arm": "requirements",
+      "manifest": "/Users/christopherdavid/.openagents/coder-one/issue-flow-policies-sealed-scorer-20260925/07-9597-requirements/runs/issue-eval-9597-minitask-explanation-microluna-gpt-6-luna-1790372189427/manifest.json",
+      "id": "issue-eval-9597-minitask-explanation-1790372189427",
+      "policy": {
+        "source": "issue-flow.json",
+        "name": "coder-issue-flow",
+        "digest": "738c69582ca35af817b957857999893fe46df8d9239bfed42ac2a32b39eecb02"
+      },
+      "outcome": "finished",
+      "passed": false,
+      "contaminated": false,
+      "blocked_attempts": 0,
+      "gate_incomplete": false,
+      "checks_passed": 7,
+      "checks_total": 8,
+      "failed_checks": [
+        "view-gives-time"
+      ],
+      "cost": {
+        "luna_usd": 0.02062432,
+        "jev_usd": 0.0016274580000000002,
+        "total_usd": 0.022251778000000003,
+        "lower_bound_usd": 0.022251778000000003
+      },
+      "counted_usd": 0.022251778000000003,
+      "total_seconds": 751.708,
+      "flow_seconds": 727.262,
+      "grading_seconds": 23.547
+    },
+    {
+      "slot": 8,
+      "entry": "9597",
+      "arm": "lean",
+      "manifest": "/Users/christopherdavid/.openagents/coder-one/issue-flow-policies-sealed-scorer-20260925/08-9597-lean/runs/issue-eval-9597-minitask-explanation-microluna-gpt-6-luna-1790372943274/manifest.json",
+      "id": "issue-eval-9597-minitask-explanation-1790372943274",
+      "policy": {
+        "source": "issue-flow-lean.json",
+        "name": "coder-issue-flow-lean",
+        "digest": "fc8934ddf33c64d09be4829874673f6d83db7e5317d7fd58cb582ed21e57d2f9"
+      },
+      "outcome": "finished",
+      "passed": false,
+      "contaminated": false,
+      "blocked_attempts": 0,
+      "gate_incomplete": false,
+      "checks_passed": 7,
+      "checks_total": 8,
+      "failed_checks": [
+        "view-gives-cost"
+      ],
+      "cost": {
+        "luna_usd": 0.02633436,
+        "jev_usd": 0.0009788940000000001,
+        "total_usd": 0.027313254000000002,
+        "lower_bound_usd": 0.027313254000000002
+      },
+      "counted_usd": 0.027313254000000002,
+      "total_seconds": 631.367,
+      "flow_seconds": 606.789,
+      "grading_seconds": 23.817
+    }
+  ]
+}
