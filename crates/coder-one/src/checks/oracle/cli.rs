@@ -8,7 +8,10 @@ use super::write::Bounds;
 use crate::component::jev::{JevMode, Recorded, RecordedAnswer};
 
 /// The oracle commands' usage.
-pub const USAGE: &str = "usage: coder-one checks oracle offline TASK... --out DIR [--jobs DIR] [--tasks DIR]
+pub const USAGE: &str = "usage: coder-one checks oracle write TASK_DIR --image IMAGE --out DIR [--workdir DIR]
+                                   [--jev off|recorded|live] [--recorded FILE] [--session-usd N]
+                                   [--writer-turns N] [--writer-sec N] [--effort LEVEL]
+       coder-one checks oracle offline TASK... --out DIR [--jobs DIR] [--tasks DIR]
                                      [--image IMAGE] [--grades DIR]... [--kinds snapshot,final,candidate,reconstruction]
                                      [--trials NAME,...] [--exclude-job TEXT]... [--workers N]
                                      [--jev off|recorded|live] [--recorded FILE]
@@ -26,7 +29,15 @@ oracle already in <out>/<task>/oracle.json for the same spec is reused, so
 a rerun makes no Luna call. --budget-usd bounds Luna across all tasks
 (default 1.00), --session-usd each session (default 0.08). It writes
 <out>/<task>/find.json, spec.json, oracle.json, oracle/, writer.json,
-results.json, and labels.json. Containers are named oracle-9656-*.";
+results.json, and labels.json. Containers are named oracle-9656-*.
+
+write is the host's step before a trial: from TASK_DIR/instruction.md and
+the task's image, which must already be on this machine, it finds or
+writes the task's oracle, the writer in a fresh container of the image
+with no network, and writes oracle.json, spec.json, writer.json,
+find.json, and record.json to --out. record.json says whether an oracle
+came out, its digest, and what the writing cost. It exits 0 with an
+oracle, 1 without one. Jev is live by default (--jev).";
 
 /// Runs an oracle command.
 ///
@@ -38,6 +49,9 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
     let Some((verb, rest)) = args.split_first() else {
         return Err(USAGE.to_string());
     };
+    if verb == "write" {
+        return write_command(rest).await;
+    }
     if verb != "offline" {
         return Err(USAGE.to_string());
     }
@@ -211,6 +225,103 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
         }
     }
     Ok(i32::from(failed > 0))
+}
+
+/// `coder-one checks oracle write`: the host's step before a trial.
+async fn write_command(args: &[String]) -> Result<i32, String> {
+    let mut positional = Vec::new();
+    let mut flags: Vec<(String, String)> = Vec::new();
+    let mut rest = args.iter();
+    while let Some(arg) = rest.next() {
+        if arg.starts_with("--") {
+            let value = rest.next().ok_or(format!("{arg} needs a value"))?;
+            flags.push((arg.clone(), value.clone()));
+        } else {
+            positional.push(arg.clone());
+        }
+    }
+    let known = [
+        "--image",
+        "--out",
+        "--workdir",
+        "--jev",
+        "--recorded",
+        "--session-usd",
+        "--writer-turns",
+        "--writer-sec",
+        "--effort",
+    ];
+    if let Some((unknown, _)) = flags.iter().find(|(k, _)| !known.contains(&k.as_str())) {
+        return Err(format!("unknown option {unknown}\n{USAGE}"));
+    }
+    let one = |name: &str| {
+        flags
+            .iter()
+            .rev()
+            .find(|(k, _)| k == name)
+            .map(|(_, v)| v.clone())
+    };
+    let number = |name: &str, default: f64| -> Result<f64, String> {
+        one(name).map_or(Ok(default), |v| {
+            v.parse::<f64>()
+                .ok()
+                .filter(|n| *n >= 0.0)
+                .ok_or(format!("{name} is a number, not {v}"))
+        })
+    };
+    let [task_dir] = positional.as_slice() else {
+        return Err(format!("write needs exactly one TASK_DIR\n{USAGE}"));
+    };
+    let defaults = Bounds::default();
+    let options = super::host::Options {
+        task_dir: PathBuf::from(task_dir),
+        image: one("--image").ok_or(format!("write needs --image\n{USAGE}"))?,
+        out: PathBuf::from(one("--out").ok_or(format!("write needs --out\n{USAGE}"))?),
+        workdir: one("--workdir"),
+        bounds: Bounds {
+            turns: number("--writer-turns", defaults.turns as f64)? as usize,
+            wall: Duration::from_secs(
+                number("--writer-sec", defaults.wall.as_secs() as f64)? as u64
+            ),
+            usd: number("--session-usd", defaults.usd)?,
+            effort: Some(one("--effort").unwrap_or_else(|| "high".to_string())),
+            ..Bounds::default()
+        },
+    };
+    let mode = match one("--jev").as_deref().unwrap_or("live") {
+        "off" => JevMode::Off,
+        "recorded" => {
+            let path = one("--recorded").ok_or("--jev recorded needs --recorded FILE")?;
+            JevMode::Recorded(Recorded::load(Path::new(&path))?)
+        }
+        "live" => {
+            let dir = crate::credentials::openagents_dir().ok_or("HOME is not set")?;
+            let key = crate::credentials::jev_key(|name| std::env::var(name).ok(), &dir)?;
+            JevMode::Live(crate::credentials::jev_client(&key.secret)?)
+        }
+        other => return Err(format!("--jev is off, recorded, or live, not {other}")),
+    };
+    let task = options
+        .task_dir
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let wire = crate::micro::codex_wire(&format!("oracle-host-{task}-{}", atif::now_ms()));
+    let docker: std::sync::Arc<dyn super::contain::Docker> =
+        std::sync::Arc::new(super::contain::Cli);
+    let record =
+        super::host::write_for_trial(wire.as_ref().map_err(Clone::clone), docker, &mode, &options)
+            .await?;
+    let status = record["status"].as_str().unwrap_or_default();
+    crate::say::line(&format!(
+        "oracle ▸ {task}: {status}{}",
+        record["why"]
+            .as_str()
+            .map(|why| format!(": {why}"))
+            .or_else(|| record["digest"].as_str().map(|d| format!(", digest {d}")))
+            .unwrap_or_default()
+    ));
+    Ok(i32::from(record["digest"].as_str().is_none()))
 }
 
 fn write(path: &Path, value: &impl serde::Serialize) -> Result<(), String> {

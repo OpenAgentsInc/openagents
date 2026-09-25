@@ -783,3 +783,193 @@ async fn a_real_writer_container_keeps_everything_but_the_oracle() {
     .unwrap();
     assert!(left.is_empty(), "{left}");
 }
+
+/// Places `oracle` and `spec` as the harness does, and returns the plan the
+/// loop would read with `digest` in its environment.
+fn delivered(
+    oracle: &Oracle,
+    spec: Option<&Spec>,
+    digest: &str,
+) -> (tempfile::TempDir, deliver::Plan) {
+    let root = tempfile::tempdir().unwrap();
+    std::fs::write(
+        root.path().join("oracle.json"),
+        serde_json::to_string_pretty(oracle).unwrap(),
+    )
+    .unwrap();
+    if let Some(spec) = spec {
+        std::fs::write(
+            root.path().join("spec.json"),
+            serde_json::to_string_pretty(spec).unwrap(),
+        )
+        .unwrap();
+    }
+    let dir = root.path().display().to_string();
+    let digest = digest.to_string();
+    let plan = deliver::plan(
+        |name| match name {
+            deliver::DIR_ENV => Some(dir.clone()),
+            deliver::DIGEST_ENV => Some(digest.clone()),
+            _ => None,
+        },
+        true,
+    );
+    (root, plan)
+}
+
+#[test]
+fn a_delivered_oracle_with_its_recorded_digest_is_used() {
+    let spec = spec_with(&["O1", "P1"]);
+    let oracle = written(&spec);
+    let (root, plan) = delivered(&oracle, Some(&spec), &oracle.digest);
+    let (found, record) = deliver::receive(&plan);
+    let (got, got_spec) = found.expect("the oracle is used");
+    assert_eq!(got.digest, oracle.digest);
+    assert_eq!(got.files, oracle.files);
+    assert_eq!(got_spec.unwrap().digest, spec.digest);
+    assert_eq!(record["status"], "delivered");
+    assert_eq!(record["verified"], true);
+    assert_eq!(record["digest"], oracle.digest.as_str());
+    // The loop runs it from the verified files, staged in its own place.
+    let stage = root.path().join("stage");
+    deliver::stage(&got, &stage).unwrap();
+    assert_eq!(
+        std::fs::read_to_string(stage.join("oracle.py")).unwrap(),
+        "print()"
+    );
+}
+
+#[test]
+fn a_delivered_oracle_whose_digest_differs_from_the_record_is_refused() {
+    let spec = spec_with(&["O1"]);
+    let oracle = written(&spec);
+    let (_root, plan) = delivered(&oracle, Some(&spec), &"0".repeat(64));
+    let (found, record) = deliver::receive(&plan);
+    assert!(found.is_none());
+    assert_eq!(record["status"], "refused");
+    assert_eq!(record["verified"], false);
+    assert!(record["why"].as_str().unwrap().contains("host recorded"));
+}
+
+#[test]
+fn a_changed_oracle_file_is_refused_even_with_its_old_digest() {
+    let spec = spec_with(&["O1"]);
+    let oracle = written(&spec);
+    let mut changed = oracle.clone();
+    changed
+        .files
+        .insert("oracle.py".to_string(), "print('passed')".to_string());
+    let (_root, plan) = delivered(&changed, Some(&spec), &oracle.digest);
+    let (found, record) = deliver::receive(&plan);
+    assert!(found.is_none());
+    assert_eq!(record["status"], "refused");
+    assert!(record["why"].as_str().unwrap().contains("digest to"));
+}
+
+#[test]
+fn a_delivered_oracle_with_another_spec_is_refused() {
+    let spec = spec_with(&["O1"]);
+    let oracle = written(&spec);
+    let other = spec_with(&["O1", "P9"]);
+    let (_root, plan) = delivered(&oracle, Some(&other), &oracle.digest);
+    let (found, record) = deliver::receive(&plan);
+    assert!(found.is_none());
+    assert_eq!(record["status"], "refused");
+}
+
+#[test]
+fn a_missing_delivered_oracle_leaves_the_loop_without_one_and_says_so() {
+    let root = tempfile::tempdir().unwrap();
+    let dir = root.path().join("absent").display().to_string();
+    let plan = deliver::plan(
+        |name| match name {
+            deliver::DIR_ENV => Some(dir.clone()),
+            deliver::DIGEST_ENV => Some("a".repeat(64)),
+            _ => None,
+        },
+        true,
+    );
+    let (found, record) = deliver::receive(&plan);
+    assert!(found.is_none());
+    assert_eq!(record["status"], "missing");
+    assert!(record["why"].as_str().unwrap().contains("oracle.json"));
+}
+
+#[test]
+fn a_task_container_never_writes_its_own_oracle() {
+    // Nothing delivered, in a task container: no oracle, and no writer.
+    let plan = deliver::plan(|_| None, true);
+    assert!(matches!(plan, deliver::Plan::Unavailable(_)));
+    let (found, record) = deliver::receive(&plan);
+    assert!(found.is_none());
+    assert_eq!(record["status"], "unavailable");
+    // The host said it couldn't write one.
+    let plan = deliver::plan(
+        |name| (name == deliver::DIGEST_ENV).then(|| deliver::UNAVAILABLE.to_string()),
+        true,
+    );
+    assert!(matches!(plan, deliver::Plan::Unavailable(_)));
+    // Outside a task container with nothing delivered, the loop writes it.
+    assert_eq!(deliver::plan(|_| None, false), deliver::Plan::WriteHere);
+}
+
+#[test]
+fn a_found_checker_is_delivered_without_a_spec() {
+    let oracle = Oracle {
+        schema: String::new(),
+        task: "t".to_string(),
+        source: Source::Found,
+        command: Some("./check.sh".to_string()),
+        origin: Some("check.sh".to_string()),
+        files: BTreeMap::new(),
+        spec: None,
+        writer: Value::Null,
+        digest: String::new(),
+    }
+    .sealed();
+    let (_root, plan) = delivered(&oracle, None, &oracle.digest);
+    let (found, _) = deliver::receive(&plan);
+    let (got, spec) = found.unwrap();
+    assert_eq!(got.command.as_deref(), Some("./check.sh"));
+    assert!(spec.is_none());
+}
+
+#[tokio::test]
+async fn the_host_step_refuses_an_image_that_isnt_on_the_machine() {
+    let root = tempfile::tempdir().unwrap();
+    let task_dir = root.path().join("some-task");
+    std::fs::create_dir_all(&task_dir).unwrap();
+    std::fs::write(task_dir.join("instruction.md"), "Print the sum.\n").unwrap();
+    let docker = std::sync::Arc::new(FakeDocker {
+        image_error: Some("docker image failed: No such image".to_string()),
+        ..FakeDocker::default()
+    });
+    let options = host::Options {
+        task_dir,
+        image: "example/task:1".to_string(),
+        out: root.path().join("out"),
+        workdir: None,
+        bounds: write::Bounds::default(),
+    };
+    let wire: Result<&crate::micro::Wire, String> = Err("no model in tests".to_string());
+    let record = host::write_for_trial(
+        wire,
+        docker.clone(),
+        &crate::component::jev::JevMode::Off,
+        &options,
+    )
+    .await
+    .unwrap();
+    assert_eq!(record["status"], "unavailable");
+    assert!(
+        record["why"]
+            .as_str()
+            .unwrap()
+            .contains("isn't on this machine")
+    );
+    assert!(record["digest"].is_null());
+    assert!(root.path().join("out/record.json").is_file());
+    assert!(!root.path().join("out/oracle.json").exists());
+    // Only the image was inspected: nothing was created or pulled.
+    assert!(docker.calls().iter().all(|c| c[0] == "image"));
+}

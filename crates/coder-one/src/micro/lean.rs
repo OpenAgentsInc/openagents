@@ -293,7 +293,10 @@ pub struct Lean {
     /// from the task's stated definition ([`crate::checks::oracle`]), and
     /// run it on the untouched workspace. An oracle that fails there then
     /// replaces the frozen self-score for keep-best, and the loop won't
-    /// accept a `done` finish while it fails. Needs `keep_best`. Accepted
+    /// accept a `done` finish while it fails. Inside a task container the
+    /// loop never writes the oracle: it uses the one the host wrote before
+    /// the trial, after checking its digest, or runs without one
+    /// ([`crate::checks::oracle::deliver`]). Needs `keep_best`. Accepted
     /// only once the offline measurement admits it
     /// ([`crate::checks::oracle::ADMITTED`]); absent, as in every manifest
     /// before it, nothing runs.
@@ -328,20 +331,6 @@ fn oracle_sec() -> u64 {
 
 fn oracle_usd() -> f64 {
     crate::checks::oracle::write::Bounds::default().usd
-}
-
-/// Names the task's image for the oracle writer's own container.
-pub const ORACLE_IMAGE_ENV: &str = "CODER_ONE_TASK_IMAGE";
-
-/// The task's image for the oracle writer's container: the one the harness
-/// names in [`ORACLE_IMAGE_ENV`], or else the task's kept image on this
-/// machine. `None` when neither is known, which refuses the writer.
-fn oracle_image(task: &str) -> Option<String> {
-    std::env::var(ORACLE_IMAGE_ENV)
-        .ok()
-        .map(|image| image.trim().to_string())
-        .filter(|image| !image.is_empty())
-        .or_else(|| crate::accept::offline::image(task))
 }
 
 /// The oracle beside the lean loop, once it's ready.
@@ -1849,7 +1838,56 @@ impl Micro {
         let mut jev_usd = 0.0;
         let mut spec = None;
         let mut writer = Value::Null;
-        let made = if let Some(command) = &located.command {
+        // In a task container, the host writes the oracle before the trial
+        // and the loop only receives it; it never writes one there. A
+        // checker the task names needs no writing, so it's used when
+        // nothing was delivered.
+        let plan = oracle::deliver::plan(
+            |name| std::env::var(name).ok(),
+            self.isolation == Isolation::TaskContainer,
+        );
+        let (delivered, delivery) = oracle::deliver::receive(&plan);
+        let not_here = match &plan {
+            oracle::deliver::Plan::Unavailable(_) if located.command.is_none() => true,
+            oracle::deliver::Plan::Unavailable(_) | oracle::deliver::Plan::WriteHere => false,
+            oracle::deliver::Plan::Delivered { .. } => true,
+        };
+        let made = if not_here {
+            let Some((oracle, delivered_spec)) = delivered else {
+                crate::say::line(&format!(
+                    "  microluna ▸ no oracle: {}",
+                    delivery["why"].as_str().unwrap_or("it wasn't delivered")
+                ));
+                return (
+                    None,
+                    json!({
+                        "kind": "lean.oracle",
+                        "oracle": null,
+                        "delivery": delivery,
+                        "usd": 0.0,
+                    }),
+                );
+            };
+            if let Err(error) = oracle::deliver::stage(&oracle, &dir) {
+                return (
+                    None,
+                    json!({
+                        "kind": "lean.oracle",
+                        "oracle": null,
+                        "delivery": delivery,
+                        "error": format!("the delivered oracle couldn't be staged: {error}"),
+                        "usd": 0.0,
+                    }),
+                );
+            }
+            crate::say::line(&format!(
+                "  microluna ▸ the host's oracle arrived and matches its digest {}",
+                &oracle.digest[..12.min(oracle.digest.len())]
+            ));
+            writer = json!({ "delivered": true });
+            spec = delivered_spec;
+            Some(oracle)
+        } else if let Some(command) = &located.command {
             crate::say::line("  microluna ▸ the task names a checker; it is the oracle");
             Some(
                 Oracle {
@@ -1884,22 +1922,14 @@ impl Micro {
                         "  microluna ▸ a separate session writes an oracle from the task's \
                          stated definition",
                     );
-                    // The writer's reads are confined, which a task
-                    // container can't enforce: there it runs in a fresh
-                    // container of the task's image, or is refused.
-                    let container = (self.isolation == Isolation::TaskContainer).then(|| {
-                        oracle::contain::Image {
-                            reference: oracle_image(&prepared.title).unwrap_or_default(),
-                            withheld: vec![self.workdir.clone(), base.clone()],
-                            docker: std::sync::Arc::new(oracle::contain::Cli),
-                        }
-                    });
+                    // Outside a task container ([`oracle::deliver::plan`]),
+                    // the writer runs in a boundary that confines its
+                    // reads.
                     let bounds = write::Bounds {
                         turns: settings.writer_turns,
                         wall: Duration::from_secs(settings.writer_sec).min(self.deadline),
                         usd: settings.writer_usd,
                         isolation: self.isolation,
-                        container,
                         ..write::Bounds::default()
                     };
                     match write::write(wire, &made, &dir, &bounds, Some(&self.artifacts)).await {
@@ -1928,6 +1958,7 @@ impl Micro {
                 json!({
                     "kind": "lean.oracle",
                     "oracle": null,
+                    "delivery": delivery,
                     "find": located,
                     "writer": writer,
                     "usd": usd + jev_usd,
@@ -1953,6 +1984,7 @@ impl Micro {
             "kind": "lean.oracle",
             "oracle": oracle.digest,
             "source": oracle.source,
+            "delivery": delivery,
             "find": located,
             "spec": spec.as_ref().map(|s| s.digest.clone()),
             "writer": writer,

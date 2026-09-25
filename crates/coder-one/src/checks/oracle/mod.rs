@@ -32,13 +32,22 @@
 //!    passing. Every result is a [`super::acceptance::Acceptance`] in the
 //!    independently supported tier.
 //!
+//! In a Harbor trial, the lean loop runs inside the task's container and
+//! can't start the writer's own. Because an oracle depends only on the
+//! task's words and image, the host writes it before the trial starts
+//! ([`host`], `coder-one checks oracle write`), and the trial receives only
+//! the finished files, which the loop checks against their digests
+//! ([`deliver`]).
+//!
 //! The lean loop's `oracle` switch (`micro::lean::LeanOracle`) is refused
 //! until the offline measurement admits the component ([`ADMITTED`]).
 
 pub mod cli;
 pub mod contain;
 pub mod define;
+pub mod deliver;
 pub mod find;
+pub mod host;
 pub mod offline;
 #[cfg(test)]
 mod tests;
