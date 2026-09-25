@@ -113,6 +113,8 @@ from failing runs, Fable's and ours, for the pitfalls.
 | `risk-scorer-replay` | 5 of 5 | 10 min 38 s |
 | `coq-block-bound` | 5 of 5 | 12 min 29 s |
 | `sound-change-cascade` | 5 of 5 | 17 min 2 s |
+| `telecom-entity-resolution` | 5 of 5 | 21 min 13 s |
+| `payments-pipeline-fix` | 5 of 5 | 24 min 52 s |
 
 A card describes strategy, not answers: no fix, no bug location, no
 expected value, and no verifier test name. Only the judge on the host
