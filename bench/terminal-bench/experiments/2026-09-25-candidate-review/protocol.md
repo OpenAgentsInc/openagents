@@ -68,3 +68,25 @@ quotation marks and whitespace normalization in citation matching, with a
 minimum eight-character quote. This changes no requirement text or finding.
 Replay the retained Luna replies through the corrected matcher and Jev; do not
 regenerate reviews. Keep both versions and account for the repeated Jev calls.
+
+## Prospective Microluna cohort
+
+Freeze eight CPU task groups outside all 58 original task groups:
+`distributed-dedup`, `formal-crypto`, `freecad-impeller`,
+`freecad-spring-clip`, `math-eval-grader`, `pretrain-shard-corruption`,
+`shadow-relay`, and `vpp-loss-divergence`. Choose them by text artifact
+availability and CPU execution, not by correctness labels. Other new task groups
+require a specific GPU, supply only binary/visual artifacts to this text review,
+or depend primarily on service state. This is a selected text-review population,
+not an estimate over the whole benchmark.
+
+Run one fresh candidate per task with the retained v13 binary
+`5e9aa12daf74` (`sha256:7df7cde47d0f16c8f9200cbd21899254588c0b587f3bbe6f2272fd2eedfb0f5d`)
+and `prospective-policy.json`: unchanged Microluna generation and selection,
+with final scenario checks, original report verdict, and bounded snapshots added.
+No repair, second executor, or response to the official verifier is enabled.
+Run at most two trials concurrently, retaining all setup failures separately.
+Do not inspect official labels until the complete review rule is frozen and
+reviews are retained. The other agent's previously announced shadow-relay failure
+is known; this task is new to the label fit but not globally unobserved. Report it
+separately from the seven other groups.
