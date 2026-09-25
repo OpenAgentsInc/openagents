@@ -142,6 +142,10 @@ pub struct Lean {
     /// Add the standard-form practice ([`STANDARD_FORMS`]).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub standard_forms: bool,
+    /// Ask the evaluation script to score on fresh inputs when the task
+    /// is judged on inputs it doesn't provide ([`FRESH_INPUTS`]).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub fresh_inputs: bool,
     /// Keep candidate snapshots and the evaluator in the artifacts, prefer
     /// an earlier tie, and validate the submitted workspace again.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -867,6 +871,20 @@ with its answer, treat them as a sample of a general rule, not as the answer. Th
 on inputs you haven't seen. Set part of the examples aside as held out, such as every fifth one, \
 develop on the rest, and measure on the held-out part. Never copy the examples, their answers, \
 or a table of them into the solution, and never have the solution read a provided answer file.";
+
+/// Added to the score guidance with `fresh_inputs`. In every live fire loop
+/// run that failed on `interleaved-vigenere`, `risk-scorer-replay`, and
+/// `telecom-entity-resolution`, Luna scored its work only on the provided
+/// sample and failed on the graded inputs; Fable 5.1's winners on all three
+/// built fresh cases first: generated inputs, random inputs checked against
+/// a provided program, or a field held back as labels.
+pub const FRESH_INPUTS: &str = "When the task is judged on inputs it doesn't give you, such as \
+freshly generated ones, hidden test data, or inputs made with other keys or seeds, make the \
+script build several new inputs the way the task describes them, with answers you can check, and \
+score the solution on those, not only on the provided sample. You can make them with a generator \
+you write from the task's description, with random inputs compared against a program the task \
+provides, or by holding back part of the provided data or one of its fields as the answer. A score \
+on the provided sample alone can't tell a general solution from one fitted to that sample.";
 
 /// Added with `keep_best` until the score script exists: where to write it.
 #[must_use]
@@ -2938,6 +2956,10 @@ impl Micro {
             if lean.keep_best && !have_score && !checking {
                 guidance.push_str("\n\n");
                 guidance.push_str(&score_guidance(&eval));
+                if lean.fresh_inputs {
+                    guidance.push(' ');
+                    guidance.push_str(FRESH_INPUTS);
+                }
             }
             if checking && lean.holdout {
                 guidance.push_str("\n\n");

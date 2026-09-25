@@ -1485,6 +1485,7 @@ fn lean_shape() -> lean::Lean {
         symptoms: false,
         example_first: false,
         standard_forms: false,
+        fresh_inputs: false,
         rationale: false,
         departures: Vec::new(),
         suspects: crate::departures::CommentMode::Keywords,
@@ -3448,4 +3449,22 @@ async fn a_failing_oracle_refuses_a_done_finish_and_replaces_the_self_score() {
     assert_eq!(moves[2]["kept"], true, "{record:#}");
     let stopped = record["stopped"].as_str().unwrap();
     assert!(stopped.contains("session 2 ended done"), "{stopped}");
+}
+
+#[test]
+fn fresh_inputs_is_off_by_default_and_keeps_old_manifests_unchanged() {
+    let off: lean::Lean =
+        serde_json::from_value(json!({ "sessions": 1, "source_chars": 1000 })).unwrap();
+    assert!(!off.fresh_inputs);
+    assert!(
+        !serde_json::to_string(&off)
+            .unwrap()
+            .contains("fresh_inputs")
+    );
+    let on: lean::Lean = serde_json::from_value(
+        json!({ "sessions": 1, "source_chars": 1000, "fresh_inputs": true }),
+    )
+    .unwrap();
+    assert!(on.fresh_inputs);
+    assert!(lean::FRESH_INPUTS.contains("not only on the provided sample"));
 }
