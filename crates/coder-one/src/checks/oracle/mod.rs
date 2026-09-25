@@ -20,8 +20,10 @@
 //!    boundary input becomes a case.
 //! 3. **Write** ([`write`]). A separate Luna session sees only the spec:
 //!    the definition, the input and output formats, the parameters, and
-//!    the cases. It never sees the implementation or a candidate. It
-//!    writes `oracle.py`, which checks a finished workspace case by case.
+//!    the cases. It never sees the implementation or a candidate: its
+//!    commands may read only its own directory, the task files a caller
+//!    grants, and the system's programs. It writes `oracle.py`, which
+//!    checks a finished workspace case by case.
 //! 4. **Run** ([`run`]). Code runs the oracle on the candidate, in a
 //!    network-less container or a writing boundary, and once on the
 //!    untouched workspace: an oracle that passes there is trivially

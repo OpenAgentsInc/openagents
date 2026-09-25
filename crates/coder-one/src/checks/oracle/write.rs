@@ -8,11 +8,19 @@
 //! on that directory with no network, so it can test the oracle on inputs
 //! it builds itself.
 //!
+//! The boundary also confines what its commands read: that directory, the
+//! paths in [`Bounds::readable`] (the task's instruction and the untouched
+//! task files it may see, when a caller grants them), a scratch directory,
+//! and the system's program directories. The candidate workspace, other
+//! trials' records, and the rest of the host are out of sight, so a
+//! `find /` finds none of them. A host that can't confine reads refuses
+//! every command rather than run it with reads open.
+//!
 //! It writes `oracle.py`, which a host later runs as
 //! `python3 oracle.py WORKDIR CASES` against a finished workspace. The
 //! oracle prints one JSON line per case ([`PROTOCOL`]).
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use microluna::{Brief, Config, Ending, Evidence, Isolation, Transport};
@@ -72,8 +80,13 @@ pub struct Bounds {
     /// The reasoning effort.
     pub effort: Option<String>,
     /// How the session's commands are confined: a writing boundary on its
-    /// own directory, or the task's container when that is the boundary.
+    /// own directory. Their reads are always confined too, so a task
+    /// container, which can't confine reads, refuses every command.
     pub isolation: Isolation,
+    /// What else the writer's commands may read, besides its own
+    /// directory: the task's instruction and the untouched task files it
+    /// may see. Never a candidate workspace or another trial's records.
+    pub readable: Vec<PathBuf>,
 }
 
 impl Default for Bounds {
@@ -84,6 +97,7 @@ impl Default for Bounds {
             usd: 0.08,
             effort: Some("high".to_string()),
             isolation: Isolation::Boundary,
+            readable: Vec::new(),
         }
     }
 }
@@ -186,7 +200,8 @@ pub async fn write<T: Transport>(
     let workspace = microluna::Workspace::new(dir)
         .map_err(|e| e.to_string())?
         .isolated_by(bounds.isolation)
-        .sealed_by(seal);
+        .sealed_by(seal)
+        .confining_reads(bounds.readable.clone());
     let name = format!("oracle-writer-{}", spec.task);
     let config = Config {
         max_turns: bounds.turns,
@@ -245,6 +260,8 @@ pub async fn write<T: Transport>(
             "wall_sec": bounds.wall.as_secs(),
             "usd": bounds.usd,
             "effort": bounds.effort,
+            "reads": "confined",
+            "readable": bounds.readable,
         },
     });
     let Ok(program) = std::fs::read_to_string(dir.join("oracle.py")) else {

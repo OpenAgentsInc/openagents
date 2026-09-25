@@ -17,15 +17,17 @@
 //!   version-control tool the observation is meant to check.
 //!
 //! This is filesystem write enforcement, plus network denial when the
-//! caller asks for it with [`Spec::offline`]. It never confines reads, and
-//! it bounds neither time nor output nor memory; those belong to the
-//! supervisor the caller already runs, `crates/supervise`.
+//! caller asks for it with [`Spec::offline`], and read confinement when
+//! the caller asks for it with [`Spec::confining_reads`] or
+//! [`Spec::readable`]. It bounds neither time nor output nor memory;
+//! those belong to the supervisor the caller already runs,
+//! `crates/supervise`.
 
 pub mod boundary;
 pub mod snapshot;
 
 pub use boundary::{
     BACKEND, BUBBLEWRAP, BUBBLEWRAP_NIXOS, BUBBLEWRAP_PATHS, Boundary, Error, Held, SANDBOX_EXEC,
-    Spec, backend_path,
+    SYSTEM_READS, Spec, backend_path,
 };
 pub use snapshot::{Change, Fault, Limits, Snapshot, Verdict, compare};

@@ -241,3 +241,116 @@ fn the_brief_holds_the_spec_and_nothing_else() {
     assert!(text.contains("sum of the inputs"));
     assert!(text.contains("\\\"P1\\\""));
 }
+
+fn usage() -> microluna::TokenUsage {
+    microluna::TokenUsage {
+        input: 100,
+        cached: 0,
+        output: 10,
+        reasoning: 0,
+    }
+}
+
+fn run_call(id: &str, command: &str) -> microluna::Reply {
+    microluna::fake::call(
+        id,
+        "run_command",
+        &json!({ "command": command, "timeout_seconds": 20 }),
+        usage(),
+    )
+}
+
+fn finish_call(id: &str) -> microluna::Reply {
+    microluna::fake::call(
+        id,
+        "finish",
+        &json!({ "status": "done", "summary": "wrote it", "answer": "" }),
+        usage(),
+    )
+}
+
+/// The writer's commands read its own directory and the task files the
+/// caller grants, and nothing beside them: a retained candidate's output
+/// is out of reach, and a search of the temporary and home directories
+/// finds it nowhere. The model is a scripted fake.
+#[tokio::test]
+async fn the_writer_reads_only_its_directory_and_the_granted_task_files() {
+    let root = tempfile::tempdir().unwrap();
+    let task = root.path().join("task");
+    let candidate = root.path().join("candidate");
+    std::fs::create_dir_all(&task).unwrap();
+    std::fs::create_dir_all(&candidate).unwrap();
+    std::fs::write(task.join("instruction.md"), "Sum the inputs.\n").unwrap();
+    std::fs::write(candidate.join("out.step"), "a candidate\n").unwrap();
+    let dir = root.path().join("writer");
+    std::fs::create_dir_all(&dir).unwrap();
+    if let Err(error) = coder_boundary::Boundary::writing(&dir)
+        .confining_reads()
+        .offline()
+        .build()
+    {
+        eprintln!("skipped: no enforced boundary on this host ({error})");
+        return;
+    }
+    let transport = microluna::fake::FakeTransport::new(vec![
+        run_call(
+            "c1",
+            &format!(
+                "cp spec.json spec-seen.json && cp {}/instruction.md seen.md",
+                task.display()
+            ),
+        ),
+        run_call(
+            "c2",
+            &format!("cp {}/out.step leaked.step", candidate.display()),
+        ),
+        run_call(
+            "c3",
+            "find /tmp /home /root -name out.step > found.txt 2>/dev/null; true",
+        ),
+        microluna::fake::call(
+            "c4",
+            "write_file",
+            &json!({ "path": "oracle.py", "contents": "print()\n" }),
+            usage(),
+        ),
+        finish_call("c5"),
+    ]);
+    let bounds = write::Bounds {
+        readable: vec![task.clone()],
+        ..write::Bounds::default()
+    };
+    let (oracle, record) = write::write(&transport, &spec_with(&["O1"]), &dir, &bounds, None)
+        .await
+        .unwrap();
+    assert!(oracle.is_some(), "{record}");
+    assert_eq!(record["bounds"]["reads"], json!("confined"));
+    assert!(dir.join("spec-seen.json").exists());
+    assert_eq!(
+        std::fs::read_to_string(dir.join("seen.md")).unwrap(),
+        "Sum the inputs.\n"
+    );
+    assert!(!dir.join("leaked.step").exists());
+    let found = std::fs::read_to_string(dir.join("found.txt")).unwrap();
+    assert!(found.trim().is_empty(), "{found}");
+}
+
+/// A task container can't confine reads, so a writer there runs no
+/// command at all.
+#[tokio::test]
+async fn the_writer_runs_no_command_in_a_task_container() {
+    let root = tempfile::tempdir().unwrap();
+    let dir = root.path().join("writer");
+    let transport = microluna::fake::FakeTransport::new(vec![
+        run_call("c1", "echo x > ran.txt"),
+        finish_call("c2"),
+    ]);
+    let bounds = write::Bounds {
+        isolation: microluna::Isolation::TaskContainer,
+        ..write::Bounds::default()
+    };
+    let (_, record) = write::write(&transport, &spec_with(&["O1"]), &dir, &bounds, None)
+        .await
+        .unwrap();
+    assert!(!dir.join("ran.txt").exists(), "{record}");
+}

@@ -1870,6 +1870,8 @@ impl Micro {
                         "  microluna ▸ a separate session writes an oracle from the task's \
                          stated definition",
                     );
+                    // The writer's reads are confined, which a task
+                    // container can't enforce: there it runs no command.
                     let bounds = write::Bounds {
                         turns: settings.writer_turns,
                         wall: Duration::from_secs(settings.writer_sec).min(self.deadline),

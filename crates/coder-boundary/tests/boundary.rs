@@ -234,6 +234,17 @@ fn a_platform_without_a_backend_refuses() {
     assert!(matches!(error, Error::Unsupported(_)), "{error}");
 }
 
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+#[test]
+fn a_platform_without_a_backend_refuses_to_confine_reads() {
+    let dir = TempDir::new().unwrap();
+    let error = Boundary::readonly()
+        .readable(dir.path())
+        .build()
+        .unwrap_err();
+    assert!(matches!(error, Error::Unsupported(_)), "{error}");
+}
+
 /// The enforced half. These tests run the wrapped command under the
 /// supervisor's blocking half, on the platforms with a backend.
 #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -519,6 +530,105 @@ mod enforced {
         assert_eq!(ending, Ending::Exited(Some(0)), "stderr: {stderr}");
         let open = Boundary::readonly().build().unwrap();
         assert!(!open.offline());
+    }
+
+    /// A read-confined boundary lets the command read what it was handed
+    /// and write its scratch, and nothing else: a directory beside the
+    /// readable one, the process's other files, and other processes are
+    /// out of sight.
+    #[test]
+    fn a_read_confined_boundary_reads_only_what_it_names() {
+        if !backend() {
+            return;
+        }
+        let task = TempDir::new().unwrap();
+        let candidate = TempDir::new().unwrap();
+        let parent = TempDir::new().unwrap();
+        std::fs::write(task.path().join("instruction.md"), "the task\n").unwrap();
+        std::fs::write(candidate.path().join("out.step"), "a candidate\n").unwrap();
+        let boundary = Boundary::readonly()
+            .readable(task.path())
+            .owned_scratch_under(parent.path())
+            .offline()
+            .build()
+            .unwrap();
+        assert!(boundary.confines_reads());
+        let scratch = boundary.scratch().unwrap().canonicalize().unwrap();
+        let task_dir = task.path().canonicalize().unwrap();
+        let candidate_dir = candidate.path().canonicalize().unwrap();
+        let (ending, stderr) = run(
+            &boundary,
+            &format!(
+                "grep -q 'the task' \"$1/instruction.md\" || exit 11; \
+                 if cat \"$2/out.step\" 2>/dev/null; then exit 12; fi; \
+                 if ls \"$2\" 2>/dev/null; then exit 13; fi; \
+                 if find /tmp -name out.step 2>/dev/null | grep -q .; then exit 14; fi; \
+                 if printf x > \"$1/written\" 2>/dev/null; then exit 15; fi; \
+                 printf x > \"$3/written\" || exit 16; \
+                 if [ -e /proc/{} ]; then exit 17; fi",
+                std::process::id()
+            ),
+            &[task_dir.clone(), candidate_dir, scratch.clone()],
+            &scratch,
+        );
+        assert_eq!(ending, Ending::Exited(Some(0)), "stderr: {stderr}");
+        assert!(!task_dir.join("written").exists());
+        assert!(scratch.join("written").exists());
+    }
+
+    /// Reads confined, the host's home and temporary directories hold
+    /// nothing the command can list, and the program search path keeps
+    /// only the directories the command can read.
+    #[test]
+    fn a_read_confined_boundary_hides_the_home_directory() {
+        if !backend() {
+            return;
+        }
+        let boundary = Boundary::readonly().confining_reads().build().unwrap();
+        let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else {
+            return;
+        };
+        let Ok(home) = home.canonicalize() else {
+            return;
+        };
+        let path = boundary.search_path(&std::env::var_os("PATH").unwrap_or_default());
+        for entry in std::env::split_paths(&path) {
+            assert!(
+                !entry.starts_with(&home),
+                "{} is in the home directory",
+                entry.display()
+            );
+        }
+        let (ending, stderr) = run(
+            &boundary,
+            "if ls \"$1\" 2>/dev/null | grep -q .; then exit 11; fi",
+            &[home],
+            Path::new("/"),
+        );
+        assert_eq!(ending, Ending::Exited(Some(0)), "stderr: {stderr}");
+    }
+
+    /// The profile spells the same policy: a blanket read deny after the
+    /// write rules, then the exceptions.
+    #[test]
+    fn the_profile_denies_reads_first_and_allows_after() {
+        if !backend() {
+            return;
+        }
+        let task = TempDir::new().unwrap();
+        let boundary = Boundary::readonly().readable(task.path()).build().unwrap();
+        let profile = boundary.profile();
+        let deny = profile.find("(deny file-read*)\n").unwrap();
+        let allow = profile
+            .find(&format!(
+                "(allow file-read* (subpath \"{}\")",
+                task.path().canonicalize().unwrap().display()
+            ))
+            .unwrap();
+        assert!(deny < allow, "{profile}");
+        let open = Boundary::readonly().build().unwrap();
+        assert!(!open.confines_reads());
+        assert!(!open.profile().contains("file-read"), "{}", open.profile());
     }
 
     #[test]

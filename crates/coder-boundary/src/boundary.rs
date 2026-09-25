@@ -15,9 +15,24 @@
 //! evaluates rules in order, so a deny followed by an allow beneath it is
 //! an exception; a mount namespace stacks binds in order, so a read-only
 //! root followed by a writable bind beneath it is the same exception. Both
-//! cover the whole process tree, and neither confines reads or time — see
-//! the crate root. Network is open unless the caller asks for
-//! [`Spec::offline`].
+//! cover the whole process tree, and neither bounds time — see the crate
+//! root. Network is open unless the caller asks for [`Spec::offline`].
+//! Reads are open unless the caller asks for [`Spec::confining_reads`].
+//!
+//! # Confined reads
+//!
+//! A command that must not see the host, such as an oracle writer that
+//! may read only the task's words and its own directory, gets a boundary
+//! with [`Spec::confining_reads`] or [`Spec::readable`]. It may then read
+//! only the system's program directories ([`SYSTEM_READS`]), the paths it
+//! was handed as readable, and the paths it may write. On Linux, `bwrap`
+//! starts from an empty root, binds exactly those paths, mounts a fresh
+//! `/tmp`, and gives the command a process namespace of its own so
+//! `/proc` shows no other process. On macOS the profile denies
+//! `file-read*` and then allows those same paths; file metadata stays
+//! readable everywhere, because the loader needs it, so a command there
+//! can test whether a path exists but can't list a directory or read a
+//! file outside the set.
 //!
 //! # The two policies
 //!
@@ -87,6 +102,43 @@ pub const BUBBLEWRAP_NIXOS: &str = "/run/current-system/sw/bin/bwrap";
 /// The boundary never searches `PATH`: a writable directory on the search
 /// path would let anything that can write there choose the sandbox.
 pub const BUBBLEWRAP_PATHS: [&str; 2] = [BUBBLEWRAP, BUBBLEWRAP_NIXOS];
+
+/// The system directories a read-confined command may read on this
+/// platform: where the shell, interpreters, shared libraries, and system
+/// configuration live. Nothing here is a user's home, a temporary
+/// directory, or a workspace. A path that doesn't exist on the host is
+/// left out; on Linux a path that is a symbolic link, such as `/bin` on a
+/// merged-`/usr` system, is recreated as the same link rather than bound.
+pub const SYSTEM_READS: &[&str] = if cfg!(target_os = "macos") {
+    &[
+        "/usr",
+        "/bin",
+        "/sbin",
+        "/System",
+        "/Library/Apple",
+        "/Library/Developer",
+        "/Library/Frameworks",
+        "/private/etc",
+        "/private/var/db/dyld",
+        "/private/var/db/timezone",
+        "/dev",
+        "/opt/homebrew",
+        "/nix/store",
+    ]
+} else {
+    &[
+        "/usr",
+        "/bin",
+        "/sbin",
+        "/lib",
+        "/lib32",
+        "/lib64",
+        "/libx32",
+        "/etc",
+        "/nix/store",
+        "/run/current-system",
+    ]
+};
 
 /// The backend binary this host would use: on Linux, the first of
 /// [`BUBBLEWRAP_PATHS`] that exists, else [`BUBBLEWRAP`] so the refusal
@@ -198,6 +250,8 @@ pub struct Spec {
     writable: Vec<PathBuf>,
     protected: Vec<PathBuf>,
     sealed: Vec<PathBuf>,
+    readable: Vec<PathBuf>,
+    confined: bool,
     scratch_under: Option<PathBuf>,
     offline: bool,
     backend: PathBuf,
@@ -210,6 +264,8 @@ impl Spec {
             writable: Vec::new(),
             protected: Vec::new(),
             sealed: Vec::new(),
+            readable: Vec::new(),
+            confined: false,
             scratch_under: None,
             offline: false,
             backend: PathBuf::from(backend_path()),
@@ -269,6 +325,30 @@ impl Spec {
         self
     }
 
+    /// The command may read only the system's program directories
+    /// ([`SYSTEM_READS`]), the paths named with [`Spec::readable`], and
+    /// the paths it may write: the checkout, the writable paths, and the
+    /// owned scratch. Everything else on the host, including every
+    /// protected and sealed path, is unreadable. See the module docs for
+    /// how each backend enforces it.
+    #[must_use]
+    pub fn confining_reads(mut self) -> Self {
+        self.confined = true;
+        self
+    }
+
+    /// A path a read-confined command may read but not write, such as a
+    /// task's untouched files. Naming one confines reads
+    /// ([`Spec::confining_reads`]). The path must exist and is resolved
+    /// like every other; a readable path may sit anywhere, because
+    /// reading it grants no write.
+    #[must_use]
+    pub fn readable(mut self, path: impl Into<PathBuf>) -> Self {
+        self.readable.push(path.into());
+        self.confined = true;
+        self
+    }
+
     /// Resolves every configured path, checks the overlaps a profile
     /// cannot express, writes the profile, and returns the boundary that
     /// owns it. On a platform with no enforced backend this is
@@ -282,6 +362,10 @@ impl Spec {
         let mut sealed = Vec::with_capacity(self.sealed.len());
         for path in &self.sealed {
             sealed.push(existing(path)?);
+        }
+        let mut readable = Vec::with_capacity(self.readable.len());
+        for path in &self.readable {
+            readable.push(existing(path)?);
         }
         let mut writable = Vec::with_capacity(self.writable.len() + 1);
         for path in &self.writable {
@@ -347,6 +431,19 @@ impl Spec {
                  (allow network-outbound (remote ip \"localhost:*\"))\n",
             );
         }
+        if self.confined {
+            // The same order as the writes: a blanket deny, then the
+            // exceptions. Metadata stays readable because the loader and
+            // path resolution stat every ancestor of what they open.
+            profile.push_str("(deny file-read*)\n(allow file-read-metadata)\n");
+            profile.push_str("(allow file-read* (literal \"/\"))\n");
+            for path in SYSTEM_READS {
+                profile.push_str(&allow_read(Path::new(path))?);
+            }
+            for path in readable.iter().chain(checkout.iter()).chain(&writable) {
+                profile.push_str(&allow_read(path)?);
+            }
+        }
 
         // Validation first, refusal second: on a platform with no
         // backend, every answer above still describes the spec that was
@@ -378,6 +475,8 @@ impl Spec {
             writable,
             protected,
             sealed,
+            readable,
+            confined: self.confined,
             offline: self.offline,
         })
     }
@@ -401,6 +500,8 @@ pub struct Boundary {
     writable: Vec<PathBuf>,
     protected: Vec<PathBuf>,
     sealed: Vec<PathBuf>,
+    readable: Vec<PathBuf>,
+    confined: bool,
     offline: bool,
 }
 
@@ -453,7 +554,9 @@ impl Boundary {
     /// only while the boundary is held.
     #[must_use]
     pub fn arguments(&self) -> Vec<std::ffi::OsString> {
-        if cfg!(target_os = "linux") {
+        if cfg!(target_os = "linux") && self.confined {
+            self.confined_arguments()
+        } else if cfg!(target_os = "linux") {
             let mut args: Vec<std::ffi::OsString> = [
                 "--die-with-parent",
                 "--ro-bind",
@@ -483,6 +586,61 @@ impl Boundary {
         } else {
             vec!["-f".into(), self.file.path().into()]
         }
+    }
+
+    /// The `bwrap` arguments of a read-confined boundary. `bwrap` starts
+    /// from an empty root, so nothing is readable until it is bound: the
+    /// system directories read-only, then the readable paths read-only,
+    /// then the writable paths writable, each stacking over what came
+    /// before. `/tmp` is a fresh, empty file system, and the command gets
+    /// a process namespace of its own, so `/proc` names no process
+    /// outside it and no other process's working directory.
+    fn confined_arguments(&self) -> Vec<std::ffi::OsString> {
+        let mut args: Vec<std::ffi::OsString> = [
+            "--die-with-parent",
+            "--unshare-pid",
+            "--dev",
+            "/dev",
+            "--proc",
+            "/proc",
+            "--tmpfs",
+            "/tmp",
+        ]
+        .into_iter()
+        .map(Into::into)
+        .collect();
+        for path in SYSTEM_READS {
+            let path = Path::new(path);
+            let Ok(meta) = std::fs::symlink_metadata(path) else {
+                continue;
+            };
+            if meta.file_type().is_symlink() {
+                if let Ok(target) = std::fs::read_link(path) {
+                    args.push("--symlink".into());
+                    args.push(target.into());
+                    args.push(path.into());
+                }
+            } else {
+                args.push("--ro-bind".into());
+                args.push(path.into());
+                args.push(path.into());
+            }
+        }
+        for path in &self.readable {
+            args.push("--ro-bind".into());
+            args.push(path.into());
+            args.push(path.into());
+        }
+        for path in self.checkout.iter().chain(&self.writable) {
+            args.push("--bind".into());
+            args.push(path.into());
+            args.push(path.into());
+        }
+        if self.offline {
+            args.push("--unshare-net".into());
+        }
+        args.push("--".into());
+        args
     }
 
     /// The profile file, for a caller that builds its own supervised
@@ -527,6 +685,59 @@ impl Boundary {
     #[must_use]
     pub fn sealed(&self) -> &[PathBuf] {
         &self.sealed
+    }
+
+    /// The readable paths a read-confined boundary grants, canonicalized.
+    #[must_use]
+    pub fn readable(&self) -> &[PathBuf] {
+        &self.readable
+    }
+
+    /// Whether the command may read only the paths the boundary names;
+    /// see [`Spec::confining_reads`].
+    #[must_use]
+    pub fn confines_reads(&self) -> bool {
+        self.confined
+    }
+
+    /// A program search path for a read-confined command, from `path`
+    /// (such as the host's `PATH`): each directory resolved through its
+    /// symbolic links and kept only when the command can read it. A
+    /// directory in a home profile that resolves into a readable system
+    /// directory, such as a Nix profile, is kept under its resolved name;
+    /// one the command can't read is dropped rather than left to fail. On
+    /// a boundary that doesn't confine reads, `path` comes back unchanged.
+    #[must_use]
+    pub fn search_path(&self, path: &OsStr) -> std::ffi::OsString {
+        if !self.confined {
+            return path.to_os_string();
+        }
+        let mut kept: Vec<PathBuf> = Vec::new();
+        for entry in std::env::split_paths(path) {
+            let Ok(real) = entry.canonicalize() else {
+                continue;
+            };
+            if self.can_read(&real) && !kept.contains(&real) {
+                kept.push(real);
+            }
+        }
+        std::env::join_paths(kept).unwrap_or_default()
+    }
+
+    /// Whether a resolved path lies beneath something a read-confined
+    /// command may read.
+    fn can_read(&self, path: &Path) -> bool {
+        SYSTEM_READS
+            .iter()
+            .map(Path::new)
+            .filter_map(|p| p.canonicalize().ok())
+            .any(|p| path.starts_with(p))
+            || self
+                .readable
+                .iter()
+                .chain(self.checkout.iter())
+                .chain(&self.writable)
+                .any(|p| path.starts_with(p))
     }
 
     /// Whether the command runs with no network beyond loopback; see
@@ -662,6 +873,15 @@ fn deny(path: &Path) -> Result<String, Error> {
     ))
 }
 
+/// An allow rule for reading one path and everything beneath it, after
+/// the blanket read deny.
+fn allow_read(path: &Path) -> Result<String, Error> {
+    let path = quoted(path)?;
+    Ok(format!(
+        "(allow file-read* (subpath {path}) (literal {path}))\n"
+    ))
+}
+
 /// An allow rule for one writable path, after every deny.
 fn allow(path: &Path) -> Result<String, Error> {
     let path = quoted(path)?;
@@ -743,6 +963,31 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let missing = dir.path().join("absent");
         assert!(matches!(existing(&missing), Err(Error::Resolve { .. })));
+    }
+
+    /// A read-confined spec refuses the same way when its backend is
+    /// missing: confining reads never falls back to an open command.
+    #[test]
+    fn a_read_confined_spec_with_a_missing_backend_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut spec = Boundary::readonly().readable(dir.path());
+        spec.backend = PathBuf::from("/nonexistent/backend");
+        let error = spec.build().unwrap_err();
+        assert!(
+            matches!(error, Error::Unavailable(_) | Error::Unsupported(_)),
+            "{error}"
+        );
+    }
+
+    /// A missing readable path is a refusal, like any other.
+    #[test]
+    fn a_missing_readable_path_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let error = Boundary::readonly()
+            .readable(dir.path().join("absent"))
+            .build()
+            .unwrap_err();
+        assert!(matches!(error, Error::Resolve { .. }), "{error}");
     }
 
     /// The backend path is fixed, and this module's own tests reach the

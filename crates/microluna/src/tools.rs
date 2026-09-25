@@ -323,6 +323,9 @@ pub struct Workspace {
     command_max: Duration,
     /// What an evaluation run cuts commands off from, when it does.
     seal: Option<crate::Seal>,
+    /// When set, commands may read only these paths, the workspace root,
+    /// their scratch, and the system's program directories.
+    reads: Option<Vec<PathBuf>>,
 }
 
 impl Workspace {
@@ -339,6 +342,7 @@ impl Workspace {
             observe_only: false,
             command_max: COMMAND_WALL_MAX,
             seal: None,
+            reads: None,
         })
     }
 
@@ -383,6 +387,27 @@ impl Workspace {
         self.read_only = true;
         self.observe_only = true;
         self
+    }
+
+    /// The same workspace, with every command's reads confined: a command
+    /// may read only `readable`, the workspace root, its own scratch
+    /// directory, the seal's stub directory, and the system's program
+    /// directories (`coder_boundary::SYSTEM_READS`). The host's home,
+    /// temporary files, and every other workspace are out of sight. Only
+    /// an enforced boundary can confine reads: under
+    /// [`Isolation::TaskContainer`] a command is refused rather than run
+    /// with reads open.
+    #[must_use]
+    pub fn confining_reads(mut self, readable: Vec<PathBuf>) -> Self {
+        self.reads = Some(readable);
+        self
+    }
+
+    /// Whether commands run with their reads confined; see
+    /// [`Workspace::confining_reads`].
+    #[must_use]
+    pub fn confines_reads(&self) -> bool {
+        self.reads.is_some()
     }
 
     /// The same workspace, with commands confined by `isolation`.
@@ -522,6 +547,19 @@ impl Workspace {
                 } else {
                     spec
                 };
+                let spec = match &self.reads {
+                    None => spec,
+                    Some(readable) => {
+                        let mut spec = spec.confining_reads();
+                        for path in readable {
+                            spec = spec.readable(path);
+                        }
+                        if let Some(seal) = &self.seal {
+                            spec = spec.readable(seal.stubs());
+                        }
+                        spec
+                    }
+                };
                 let boundary = match spec.owned_scratch_under(std::env::temp_dir()).build() {
                     Ok(boundary) => boundary,
                     Err(error) => {
@@ -545,12 +583,34 @@ impl Workspace {
                 if let Some(seal) = &self.seal {
                     seal.apply(&mut command);
                 }
+                if boundary.confines_reads() {
+                    // The host's search path names directories the command
+                    // can't read, such as a profile in the home directory;
+                    // keep the ones it can, under their resolved names.
+                    let path = command
+                        .get_envs()
+                        .find(|(name, _)| *name == "PATH")
+                        .and_then(|(_, value)| value.map(std::ffi::OsStr::to_os_string))
+                        .or_else(|| std::env::var_os("PATH"))
+                        .unwrap_or_default();
+                    command.env("PATH", boundary.search_path(&path));
+                    if let Some(scratch) = boundary.scratch() {
+                        command.env("HOME", scratch);
+                    }
+                }
                 supervise::Job::from_command(command)
                     .bounded(supervise::Limits::within(wall).keeping(COMMAND_KEEP))
                     .run_holding(boundary.hold())
                     .await
             }
             Isolation::TaskContainer => {
+                if self.reads.is_some() {
+                    return Outcome::refused(
+                        "The command did not run: this session may read only its own files, \
+                         and a task container can't limit what a command reads."
+                            .to_string(),
+                    );
+                }
                 if self.seal.as_ref().is_some_and(crate::Seal::offline) {
                     return Outcome::refused(
                         "The command did not run: this session is sealed offline, and a task \
@@ -606,6 +666,14 @@ impl Workspace {
         .noting("bytes", json!(ended.bytes()))
         .noting("truncated", json!(ended.truncated()))
         .noting("boundary", json!(self.isolation.word()))
+        .noting(
+            "reads",
+            json!(if self.reads.is_some() {
+                "confined"
+            } else {
+                "open"
+            }),
+        )
         .noting(
             "sealed",
             json!(self.seal.as_ref().map(|seal| if seal.offline() {
@@ -1010,6 +1078,93 @@ mod tests {
             assert_eq!(net.status, atif::Outcome::Completed, "{}", net.output);
             assert_eq!(net.output.lines().skip(1).collect::<Vec<_>>(), ["lo:"]);
         }
+    }
+
+    /// A session with confined reads runs commands on its own files and
+    /// the system's programs, and can't read a directory beside it.
+    #[tokio::test]
+    async fn a_read_confined_session_reads_only_its_own_files() {
+        let (_dir, workspace) = workspace();
+        let task = tempfile::tempdir().unwrap();
+        let other = tempfile::tempdir().unwrap();
+        std::fs::write(task.path().join("instruction.md"), "the task\n").unwrap();
+        std::fs::write(other.path().join("secret.txt"), "a candidate\n").unwrap();
+        std::fs::write(workspace.root().join("spec.json"), "{}\n").unwrap();
+        if let Err(error) = coder_boundary::Boundary::writing(workspace.root())
+            .confining_reads()
+            .build()
+        {
+            eprintln!("skipped: no enforced boundary on this host ({error})");
+            return;
+        }
+        let seal_dir = tempfile::tempdir().unwrap();
+        let workspace = workspace
+            .sealed_by(crate::Seal::create(seal_dir.path(), true).unwrap())
+            .confining_reads(vec![task.path().to_path_buf()]);
+        let inside = workspace
+            .call(
+                "run_command",
+                &json!({
+                    "command": format!(
+                        "pwd && cat spec.json && cat {}/instruction.md && echo x > made.txt",
+                        task.path().display()
+                    ),
+                    "timeout_seconds": 10
+                })
+                .to_string(),
+            )
+            .await;
+        assert_eq!(inside.status, atif::Outcome::Completed, "{}", inside.output);
+        assert!(inside.output.contains("the task"), "{}", inside.output);
+        assert!(
+            inside.output.contains(workspace.root().to_str().unwrap()),
+            "{}",
+            inside.output
+        );
+        assert_eq!(inside.extra["reads"], json!("confined"));
+        assert!(workspace.root().join("made.txt").exists());
+        let outside = workspace
+            .call(
+                "run_command",
+                &json!({
+                    "command": format!("cat {}/secret.txt", other.path().display()),
+                    "timeout_seconds": 10
+                })
+                .to_string(),
+            )
+            .await;
+        assert_eq!(outside.status, atif::Outcome::Failed, "{}", outside.output);
+        assert!(
+            !outside.output.contains("a candidate"),
+            "{}",
+            outside.output
+        );
+        let gh = workspace
+            .call(
+                "run_command",
+                r#"{"command":"gh issue view 1","timeout_seconds":10}"#,
+            )
+            .await;
+        assert!(gh.output.contains(crate::seal::GH_REFUSAL), "{}", gh.output);
+    }
+
+    /// A task container can't confine reads, so a read-confined session
+    /// there refuses every command instead of running it with reads open.
+    #[tokio::test]
+    async fn a_task_container_refuses_confined_reads() {
+        let (_dir, workspace) = workspace();
+        let workspace = workspace
+            .isolated_by(Isolation::TaskContainer)
+            .confining_reads(Vec::new());
+        let ran = workspace
+            .call(
+                "run_command",
+                r#"{"command":"echo hi > made.txt","timeout_seconds":10}"#,
+            )
+            .await;
+        assert_eq!(ran.status, atif::Outcome::Cancelled, "{}", ran.output);
+        assert!(ran.output.contains("can't limit what a command reads"));
+        assert!(!workspace.root().join("made.txt").exists());
     }
 
     #[tokio::test]
