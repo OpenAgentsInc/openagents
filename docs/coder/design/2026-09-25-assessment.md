@@ -1,5 +1,9 @@
 # Where Coder stands: assessment, 2026-09-25
 
+> **Update:** the [morning assessment](2026-09-25-morning-assessment.md)
+> adds everything that ran overnight, including `microluna-v18`'s 0 of 18 on
+> the pinned family.
+
 Status: assessment, written early on 2026-09-25 after reading the
 [determinism thesis](thesis.md), the [Luna pivot](luna-pivot.md),
 [Coder as a tunable system](../../optimization/coder-components.md), the
