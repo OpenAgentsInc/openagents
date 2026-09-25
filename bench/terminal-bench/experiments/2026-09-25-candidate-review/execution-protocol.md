@@ -32,3 +32,21 @@ qualifying cutoff before comparison. The historical partition is reused validati
 The prospective grades remain unopened. Preserve all calls, errors, source digests,
 input coverage, cost, time, and negative results. No threshold or question is tuned
 against the prospective outcomes.
+
+## Attribution correction before comparison
+
+Calibration exposed two false alarms caused by selecting the initial executor
+when `second.kept` was `first`. Both episodes had already escalated and repaired;
+one later persisted. The reader now follows the host's primary, escalation,
+repair, second-candidate, and persistence decisions in order and matches native
+session identities. It selects resumed streams numerically. Missing selected
+streams cannot fall back to an initial report. A retained repair excerpt remains
+explicitly partial and cannot supply execution observations. Failed restorations
+remain unknown. Best-of-N dispatches without supported attribution remain unknown.
+
+Preserve the first 132 execution-audit records as the negative V1 arm. Reassess
+the same 132 calibration trials under the corrected reader in a separate directory,
+with unchanged questions, input limits, threshold grid, and eligibility rule. No
+comparison execution scores have been generated. All prospective grades remain
+unopened. Existing frozen report-audit and readiness records retain their original
+inputs and are not silently relabeled as corrected observations.

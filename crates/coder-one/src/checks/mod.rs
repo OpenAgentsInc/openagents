@@ -52,6 +52,7 @@ pub mod selfreport;
 pub mod synthetic;
 pub mod truth;
 pub(crate) mod truth_micro;
+pub(crate) mod truth_selected;
 pub mod truthful;
 pub mod verdict;
 

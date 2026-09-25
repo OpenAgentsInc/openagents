@@ -14,7 +14,7 @@ p.add_argument('--manifest', type=Path, required=True)
 p.add_argument('--baseline', type=Path, required=True)
 p.add_argument('--records', type=Path, required=True)
 p.add_argument('--partition', required=True)
-p.add_argument('--feature', choices=['readiness', 'public-program', 'public-program-bounded'], required=True)
+p.add_argument('--feature', choices=['readiness', 'public-program', 'public-program-bounded', 'execution-audit'], required=True)
 p.add_argument('--threshold', type=float)
 p.add_argument('--out', type=Path, required=True)
 a = p.parse_args()
@@ -24,6 +24,8 @@ rows = []
 for item in manifest:
     original = baseline[(item['job'], item['trial'])]
     path = a.records / item['trial'] / a.feature / ('assessment.json' if a.feature == 'readiness' else 'observation.json')
+    if a.feature == 'execution-audit':
+        path = a.records / f'execution-audit-{a.partition}' / f"{item['trial']}.json"
     record = json.loads(path.read_text()) if path.exists() else None
     score = None
     if record and not record.get('error'):

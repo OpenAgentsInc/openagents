@@ -124,10 +124,12 @@ fn read(path: &Path) -> Result<Value, String> {
 fn build(row: &Value, jobs: &Path, records: &Path) -> Result<Value, String> {
     let job = row["job"].as_str().ok_or("Missing job")?;
     let trial = row["trial"].as_str().ok_or("Missing trial")?;
-    if [job, trial]
-        .iter()
-        .any(|s| Path::new(s).components().count() != 1 || *s == "..")
-    {
+    if [job, trial].iter().any(|s| {
+        !matches!(
+            Path::new(s).components().collect::<Vec<_>>().as_slice(),
+            [std::path::Component::Normal(_)]
+        )
+    }) {
         return Err("Job and trial must be single directory names".into());
     }
     let episode = jobs.join(job).join(trial).join("agent/episode");

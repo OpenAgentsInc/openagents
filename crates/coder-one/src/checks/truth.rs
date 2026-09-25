@@ -199,10 +199,13 @@ fn name(path: &Path) -> String {
         .unwrap_or_default()
 }
 
-/// The final report of the session that produced the kept candidate: the
-/// last session's, or the first's when a second executor ran and its
-/// candidate was set aside.
+/// The report attributed to the host's submitted candidate. Composed episodes
+/// follow explicit session identities and selections; older single-dispatch
+/// records use their retained stream order.
 pub(crate) fn final_report(episode: &Path, composition: &Value) -> super::truth_micro::Selected {
+    if composition["branches"].is_array() {
+        return super::truth_selected::select(episode, composition);
+    }
     let mut records: Vec<(usize, PathBuf, bool)> = children(&episode.join("artifacts"))
         .into_iter()
         .filter_map(|p| {
