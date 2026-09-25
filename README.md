@@ -29,6 +29,7 @@ labels implemented, partial, and proposed concepts.
 | Use typed decisions | [Decision models](docs/decision-models/README.md), [caller CLI](docs/decision-models/guides/caller.md), [Rust clients](docs/decision-models/guides/clients.md) |
 | Run decision services | [Gateway](docs/decision-models/service/gateway.md), [deployment](deploy/README.md) |
 | Operate a Minecraft agent | [Voyager](docs/voyager/README.md), [watch an episode](docs/minecraft/voyager-runbook.md) |
+| Walk the Verse desktop world | [Verse](docs/verse/README.md) |
 
 ## Run Coder
 
@@ -295,6 +296,7 @@ failure without regressions. The v8 results above do not evaluate v10.
 | [plugin](crates/plugin/), [plugin-pdk](crates/plugin-pdk/), [plugin-outline](crates/plugin-outline/) | Bounded plugin host, shared packet ABI, and diagnostic guest. |
 | [nostr](crates/nostr/), [nostr-relay](crates/nostr-relay/) | Protocol verification and the self-hostable PostgreSQL-backed relay. |
 | [voyager](crates/voyager/) | Minecraft curriculum, bounded programs, critics, skill retention, and traces through the separate [nightly Rust bridge](mc-bridge/). |
+| [verse](crates/verse/) | The Verse desktop world: an amber line city, a WoW-style player controller, a following agent, and multiplayer over Nostr with [NIP-MV](nips/openagents/NIP-MV.md). |
 
 The host owns permissions, deadlines, budgets, and execution boundaries.
 Typed judgments inform decisions; their shape does not establish correctness
@@ -323,6 +325,7 @@ For further design and operation:
 - [Programs](docs/programs.md), [extensions](docs/extensions/README.md), and [optimization proposals](docs/optimization/proposed-issues.md). The full DSPy/GEPA integration remains proposed.
 - [Decision models](docs/decision-models/README.md), including [Kev](docs/kev/README.md), [Laya](docs/laya/README.md), and [Lev](docs/lev/README.md).
 - [Voyager implementation](docs/voyager/README.md) and the broader [Minecraft guild specification](docs/minecraft/README.md).
+- [Verse desktop world](docs/verse/README.md) and the [games, MMORPGs, and 3D worlds source map](docs/game/README.md).
 - [Retained transcript archive](docs/transcripts/README.md).
 
 ## Verify and contribute

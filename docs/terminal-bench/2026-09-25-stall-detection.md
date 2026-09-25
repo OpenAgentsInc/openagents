@@ -13,7 +13,10 @@ passed. Requiring Jev to confirm a code signal cost recall in both
 partitions and left precision unchanged. The next-step choice showed no
 established benefit. This is an offline measurement on retained
 transcripts. It makes no live benchmark claim, and the detectors stay off
-in every manifest.
+in every manifest. A
+[follow-up](#follow-up-the-code-only-mode-an-in-session-action-and-a-remeasure)
+adds a code-only mode and an in-session action, remeasures them offline,
+and adds one manifest that hasn't run.
 
 ## What was built
 
@@ -231,3 +234,144 @@ The four component fixtures run with
 input tokens ($0.0153), **$0.0627 in total** at the repository's pinned
 $0.042 per million input tokens. No Luna session and no Terminal-Bench
 trial ran.
+
+## Follow-up: the code-only mode, an in-session action, and a remeasure
+
+After the first measurement, the detector gained a mode in which the
+code's suspect call decides, and an action inside a work session. Both were
+remeasured offline from the retained rows and recorded Jev answers. No
+model was called. **The evaluation labels were read in the first
+measurement, so the evaluation numbers below are not a fresh held-out
+result.** The only change from the first measurement is the rule. The rule
+itself was the first measurement's own recommendation, and it has no
+threshold to tune.
+
+### What changed
+
+- **`mode`.** `executor.microluna.lean.detect.mode` is `jev`, the default,
+  or `code`. In `jev` mode, Jev confirms a suspect checkpoint, as before.
+  In `code` mode, every suspect checkpoint is a stall. Jev is still asked
+  at a suspect checkpoint, and its answers are recorded beside the call in
+  `verdict.jev` and `answers`, report-only (`stall::decide_in`).
+- **`in_session`.** With `stall`, the lean loop also checks every 8 turns
+  inside a work session, from turn 8. It acts through a host watch that
+  Microluna now runs after each turn (`microluna::Watch`,
+  `run_watched`), beside the finish turn-back. A first stall tells the
+  session the evidence as a host message. A stall at the next checkpoint
+  after that ends the session, with the new `Ending::Host`. The
+  between-session re-brief and stop still apply after the session. Each
+  checkpoint is recorded under `in_session` in the session's lean move.
+- **Digests.** Both fields are omitted when they hold their defaults, so no
+  existing manifest's digest changed. One new manifest,
+  `crates/coder-one/policies/microluna-v15-stall.json`, is `microluna-v15`
+  with `detect: { stall: true, mode: "code", in_session: true }`. The
+  Terminal-Bench profile is `coder-one-microluna-v15-stall`. It hasn't run.
+- **Tests.** Scripted Luna replies (`microluna::fake`) cover these cases:
+  a session told at turn 8 and ended at turn 16, then re-briefed and
+  stopped between sessions; a session left alone without `in_session`; and
+  a recorded Jev answer saying the session progresses. That answer is kept
+  beside the code's call in `code` mode, and it keeps the session going in
+  `jev` mode. The Microluna tests cover a watch's message reaching the next
+  request, a watch ending the session, and no watch call after a finish or
+  the last turn.
+
+### Precision and recall
+
+`remeasure.py` computes these with the frozen thresholds for the `jev`
+rule. Intervals are 95% Wilson intervals.
+
+| Partition, checkpoints | Rule | Precision | Recall |
+| --- | --- | --- | --- |
+| Calibration, all 327 | **Code** | 109 of 121, 90% (83–94%) | 109 of 216, 50% (44–57%) |
+| | Jev-confirmed | 80 of 88, 91% (83–95%) | 80 of 216, 37% (31–44%) |
+| Calibration, 110 session ends | **Code** | 37 of 39, 95% (83–99%) | 37 of 85, 44% (34–54%) |
+| | Jev-confirmed | 27 of 28, 96% (82–99%) | 27 of 85, 32% (23–42%) |
+| Calibration, 217 in-session | **Code** | 72 of 82, 88% (79–93%) | 72 of 131, 55% (46–63%) |
+| | Jev-confirmed | 53 of 60, 88% (78–94%) | 53 of 131, 40% (32–49%) |
+| Evaluation, all 102 | **Code** | 45 of 54, 83% (71–91%) | 45 of 85, 53% (42–63%) |
+| | Jev-confirmed | 30 of 35, 86% (71–94%) | 30 of 85, 35% (26–46%) |
+| Evaluation, 42 session ends | **Code** | 17 of 18, 94% (74–99%) | 17 of 41, 41% (28–57%) |
+| | Jev-confirmed | 15 of 16, 94% (72–99%) | 15 of 41, 37% (24–52%) |
+| Evaluation, 60 in-session | **Code** | 28 of 36, 78% (62–88%) | 28 of 44, 64% (49–76%) |
+| | Jev-confirmed | 15 of 19, 79% (57–91%) | 15 of 44, 34% (22–49%) |
+
+The task bootstrap (10,000 samples, seed 9627) of code minus Jev-confirmed
+gives precision −4.4 to +7.1 points and recall +3.6 to +24.1 points on
+calibration, and precision −6.4 to +1.8 points and recall +1.1 to +37.1
+points on evaluation. The precision intervals include zero, and the recall
+intervals don't. The in-session evaluation precision, 78%, sits near that
+subset's base rate of 73% stalls.
+
+### False stops on passing attempts
+
+The 12 passing calibration attempts have 46 checkpoints, labeled or not.
+The code rule called a stall at none of them, and so did the Jev-confirmed
+rule. So neither replay below re-briefs, tells, stops, or ends a session in
+a passing attempt. No evaluation attempt passed, so the evaluation data
+can't test false stops on passes. That is still the largest gap.
+
+### Replayed actions
+
+These replays take every checkpoint, labeled or not, because a rule acts
+whatever the label says. So the Jev-confirmed evaluation replay counts 4
+stops, one more than the first measurement's 3: an unlabeled session end on
+`coq-block-bound` with 2 turns left.
+
+| Partition | Rule | Re-briefs | Stops | Stops before later progress | Turns after stops |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Calibration | **Code** | 25 | 7 | 0 | 233 |
+| | Jev-confirmed | 19 | 3 | 0 | 146 |
+| Evaluation | **Code** | 8 | 4 | 0 | 147 |
+| | Jev-confirmed | 8 | 4 | 0 | 128 |
+
+Between sessions, the first stall re-briefs the next session, and a stall
+right after a re-brief stops the work sessions. With the code rule, no stop
+came before later progress in either partition, and none fell in a passing
+attempt.
+
+| Partition | Rule | Told | Sessions ended | Ended before later progress | A gain in the cut turns | Session turns cut |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Calibration (108 sessions) | **Code** | 62 | 15 | 1 | 0 known, 1 unknown | 152 |
+| | Jev-confirmed | 52 | 8 | 1 | 0 known, 1 unknown | 85 |
+| Evaluation (34 sessions) | **Code** | 22 | 8 | 2 | 1 known, 1 unknown | 83 |
+| | Jev-confirmed | 15 | 3 | 1 | 0 known, 1 unknown | 15 |
+
+Inside a session, the first stall tells the session, and a stall at the
+next checkpoint after that ends it. Ending a session isn't ending the
+attempt: the lean loop starts the next session. So "before later progress"
+counts a score gain anywhere later in the attempt. The narrower column
+counts a gain inside the turns the end cut. It is known when no gain came
+after the session's end, and unknown when gains came both inside and after.
+
+### Negative result
+
+- **The code rule's in-session end cut one known gain.** On
+  `shadow-relay__fdHf7Fy`, the code rule ended session 2 at turn 16. The
+  attempt's last score gain came between turns 24 and 32 of that session,
+  so the end would have cut it. The attempt failed either way, and the
+  Jev-confirmed rule never ended that session. It's one case, but it's the
+  cost of the code rule's recall: more ends, and one of them fell before a
+  gain.
+- **Replays can't predict a live run.** A message or a re-brief changes
+  what Luna does next, so every later count assumes nothing changed.
+
+### Which mode the new manifest uses
+
+`code`, with `in_session` on. It matched the Jev-confirmed precision within
+noise in both partitions, had higher recall with the bootstrap interval
+excluding zero in both, and made no call in a passing attempt. The
+evaluation case above is the risk to watch in a matched run. The shipped
+default stays `jev`, and no existing manifest turns the detector on.
+
+### Reproduce the remeasure
+
+`replay.py` reproduces the retained rows from the inputs and the recorded
+answers. The remeasure then reads the rows and labels only:
+
+```sh
+python3 bench/terminal-bench/experiments/2026-09-25-stall-detection/remeasure.py
+```
+
+It writes
+[`records/remeasure-code-only.json`](../../bench/terminal-bench/experiments/2026-09-25-stall-detection/records/remeasure-code-only.json),
+which lists every stop and every ended session with its trial.

@@ -234,7 +234,12 @@ In order:
    anatomy work to find TB4 tasks of that shape, pin a set of 10 before
    running, and measure the cheaper-work lane across them. That's the
    claim a customer would care about: "this kind of task, this reliable,
-   this much cheaper."
+   this much cheaper." Pinned on 2026-09-25, not yet run: the
+   [Luna-sized family pre-registration](../../../bench/terminal-bench/experiments/2026-09-25-luna-sized-family/protocol.md).
+   Only six untouched TB4 tasks qualify, not ten: three for development
+   and three for confirmation, with `microluna-v15` at 3 attempts each.
+   It's a win if at least 2 of the 3 confirmation tasks pass 2 of 3
+   attempts at under 10% of Fable low's cost per pass.
 5. **Treat the search tasks as capability gaps, logged** in the
    [capability-gap log](../../terminal-bench/capability-gaps.md). Don't
    tune the loop on them further. Revisit when a new Luna, a new
@@ -248,6 +253,42 @@ signal exists: all nine attempts missed the same two cases, seven of
 nine a third, and a check
 that catches those cases is the only lever that doesn't rely on Luna seeing
 them unprompted.
+
+## Update, 2026-09-25: the code work before the next run
+
+Everything below landed without a benchmark run, so none of it is a
+result yet; it's what the next runs can now measure.
+
+- **The product reads manifests (#9624).** Coder Terminal and the issue
+  flow load their Microluna setup from `terminal-microluna.json` and
+  `issue-flow.json`; `issue-flow-lean.json` runs the issue flow on the lean
+  loop. The issue-flow default stays the requirements loop until the
+  evaluation set measures the difference.
+- **An issue-flow evaluation set (#9625).** Eight past issues, split
+  development and held out before any measurement, with graders that fail
+  on each base commit and pass on each real fix. `coder-one issue-eval`
+  runs one without publishing. Evaluation runs are sealed: no GitHub
+  access, the network off, attempts recorded, and the gate's tests run in
+  the write boundary.
+- **Keep-best works on real repositories.** A candidate is what Git
+  tracks, so `.git` and build output no longer push a workspace over the
+  copy limit. Parallel first attempts are retained with their lane, which
+  the best-of-N experiment (#9587) needed.
+- **Stall detection (#9627).** Measured offline on 450 checkpoints: code
+  signals alone matched Jev-confirmed precision and caught more stalls,
+  with no call on any passing attempt. `microluna-v15-stall` enables it in
+  code mode, inside and between sessions; it hasn't run.
+- **The acceptance contract, measured (#9588, closed).** Not validated,
+  not default: green only twice in 48 graded Microluna workspaces, both
+  wrong, and red on all 12 that pass. `accept offline` now reads Microluna
+  trials, and an unknown reward is no longer counted as a failure.
+- **The capability-gap log (#9626, closed):**
+  [capability-gaps.md](../../terminal-bench/capability-gaps.md).
+- **The next experiment is pre-registered:**
+  [the Luna-sized family](../../../bench/terminal-bench/experiments/2026-09-25-luna-sized-family/protocol.md),
+  six untouched tasks with a confirmation split, `microluna-v15` pinned by
+  digest, and win and loss thresholds fixed before any result.
+- **The closing check (`verify.close`) is off.**
 
 ## Decisions for the operator
 

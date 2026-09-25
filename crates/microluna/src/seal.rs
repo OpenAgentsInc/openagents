@@ -115,7 +115,7 @@ impl Seal {
 /// A variable that configures or authenticates GitHub access: `GH_*` and
 /// `GITHUB_*`, such as `GH_TOKEN`, `GH_ENTERPRISE_TOKEN`, `GH_HOST`, and
 /// `GITHUB_TOKEN`.
-fn is_github(name: &str) -> bool {
+pub fn is_github(name: &str) -> bool {
     let upper = name.to_ascii_uppercase();
     upper.starts_with("GH_") || upper.starts_with("GITHUB_")
 }

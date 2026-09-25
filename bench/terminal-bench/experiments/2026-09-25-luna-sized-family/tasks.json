@@ -1,0 +1,3391 @@
+{
+  "schema": "openagents.tbench.family-preregistration.v1",
+  "experiment": "2026-09-25-luna-sized-family",
+  "written": "2026-09-25",
+  "sources": {
+    "fable": "bench/terminal-bench/reference/fable-5.1-replays.json",
+    "fable_retrieved_at": "2026-09-24T00:30:01.420471+00:00",
+    "task_list": "bench/terminal-bench/reference/tb4-leaderboard.json",
+    "catalog": "bench/terminal-bench/profiles/tasks.json (catalogs.tb4, v4.0.0)",
+    "signal_label_set": "crates/coder-one/fixtures/truth/rows.jsonl",
+    "stall_split": "bench/terminal-bench/experiments/2026-09-25-stall-detection/split.json",
+    "anatomy": "docs/terminal-bench/2026-09-24-task-anatomy.json"
+  },
+  "policy": {
+    "manifest": "crates/coder-one/policies/microluna-v15.json",
+    "name": "coder-one-microluna-v15",
+    "file_sha256": "161f51c78fc0f0f15949fc77f20e20cfaef5200a2cbd19a747bbec396d0dad0b",
+    "resolved_policy_digest": "d3e1396f7b5ad7b36ec39ade8ac483dc803d375d0d844916dfd1feafe2af2ea1",
+    "resolved_digest_source": "policy_digest recorded by all seven microluna-v15 trials on 2026-09-24 (dev set and held-out test set)",
+    "artifact": "coder-one 0.1.0 (83b48ccc08c8)",
+    "artifact_commit": "83b48ccc08c8f3ed7f5d25e41594e2efb348d105"
+  },
+  "score_rule": {
+    "shape": "2 repair of shipped source against stated symptoms or a normative local spec; 1 build or engineering to a clear specification; 0 search, inference, perception, proof, open optimization, or outside domain judgment",
+    "check": "2 an exact local reference, a reproducer, or runnable tests or examples ship with the task; 1 the stated criteria can be checked with a harness built from local tools; 0 no local ground truth",
+    "fable_low": "2 x (Fable 5.1 low passes / 5)",
+    "time": "Fable 5.1 low mean trial time: <=10 min 2, <=25 min 1.5, <=45 min 1, <=90 min 0.5, else 0",
+    "total": "sum, 0 to 8",
+    "luna_sized": "shape >= 1, check >= 1, Fable low >= 4 of 5, and Fable low mean trial time <= 45 min"
+  },
+  "family_rule": "untouched (no exclusion rule applies) and Fable 5.1 low passes at least 4 of 5",
+  "split_rule": "order the family by total score, descending, ties by SHA-256 of the task id ascending; pair ranks 1-2, 3-4, 5-6; within each pair the task whose SHA-256 of its id (UTF-8, no newline) is smaller is confirmation, the other development",
+  "family": [
+    "payments-pipeline-fix",
+    "mp-checkpoint-consolidation",
+    "cumulative-layout-shift",
+    "live-database-cutover",
+    "telecom-entity-resolution",
+    "photonic-waveguide-routing"
+  ],
+  "development": [
+    "mp-checkpoint-consolidation",
+    "live-database-cutover",
+    "photonic-waveguide-routing"
+  ],
+  "confirmation": [
+    "payments-pipeline-fix",
+    "cumulative-layout-shift",
+    "telecom-entity-resolution"
+  ],
+  "preregistration": {
+    "protocol": "bench/terminal-bench/experiments/2026-09-25-luna-sized-family/protocol.md",
+    "attempts_per_task": 3,
+    "counted_trials": 18,
+    "cheap_win": "at least 2 of 3 attempts pass, and the cost per pass (Luna and Jev, every counted attempt) is under 10% of Fable 5.1 low cost per pass on the task",
+    "win": "at least 2 of the 3 confirmation tasks are cheap wins",
+    "loss": "no confirmation task passes 2 of 3, and at most 1 of the 9 confirmation attempts passes",
+    "inconclusive": "any other result, or an invalid run",
+    "cost_ratio_max": 0.1,
+    "cost_ceiling_usd": 3.0,
+    "time_comparison": "trial time per pass against Fable 5.1 low trial time per pass; reported, not part of the win"
+  },
+  "tasks": [
+    {
+      "task": "atrx-vep-crispr",
+      "fable": {
+        "all_efforts": "9/25",
+        "by_effort": {
+          "low": "1/5",
+          "medium": "2/5",
+          "high": "3/5",
+          "xhigh": "2/5",
+          "max": "1/5"
+        },
+        "low_mean_trial_sec": 425.6,
+        "low_mean_cost_usd": 1.6684,
+        "low_cost_per_pass_usd": 8.3419,
+        "low_trial_sec_per_pass": 2127.8,
+        "all_mean_trial_sec": 831.3,
+        "all_missing_times": 0
+      },
+      "exclusions": [
+        {
+          "rule": "R4",
+          "why": "fitted or evaluated a signal: truthful-checks calibration half"
+        },
+        {
+          "rule": "R5",
+          "why": "hidden tests and reference solution read for the task anatomy"
+        }
+      ],
+      "score": {
+        "shape": 0,
+        "check": 1,
+        "fable_low": 0.4,
+        "time": 2.0,
+        "total": 3.4,
+        "shape_why": "sequence annotation that needs domain conventions",
+        "check_why": "a local annotation resource"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": false
+      },
+      "family": false,
+      "sha256": "bf0f71c08e472ab77116ac25f2635e26d8d4cfaf199517eac8cb33f3b9715463",
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "batched-eval-parity",
+      "fable": {
+        "all_efforts": "21/25",
+        "by_effort": {
+          "low": "4/5",
+          "medium": "5/5",
+          "high": "4/5",
+          "xhigh": "4/5",
+          "max": "4/5"
+        },
+        "low_mean_trial_sec": 661.7,
+        "low_mean_cost_usd": 3.6973,
+        "low_cost_per_pass_usd": 4.6217,
+        "low_trial_sec_per_pass": 827.1,
+        "all_mean_trial_sec": 1145.7,
+        "all_missing_times": 0
+      },
+      "exclusions": [
+        {
+          "rule": "R4",
+          "why": "target of the matched Opus controller test (2026-09-23), which tested the Coder One controller and briefing v15 runs under"
+        }
+      ],
+      "score": {
+        "shape": 2,
+        "check": 2,
+        "fable_low": 1.6,
+        "time": 1.5,
+        "total": 7.1,
+        "shape_why": "repair of a batched evaluator",
+        "check_why": "single-example semantics are a local reference"
+      },
+      "luna_sized": true,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": true
+      },
+      "family": false,
+      "sha256": "406c40f03423202ae2fbd5526aa7c9a1c6ddbc5f97a220b1a652dec348783057",
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "biped-contact-dynamics",
+      "fable": {
+        "all_efforts": "8/25",
+        "by_effort": {
+          "low": "3/5",
+          "medium": "1/5",
+          "high": "1/5",
+          "xhigh": "1/5",
+          "max": "2/5"
+        },
+        "low_mean_trial_sec": 4991.5,
+        "low_mean_cost_usd": 22.6459,
+        "low_cost_per_pass_usd": 37.7431,
+        "low_trial_sec_per_pass": 8319.2,
+        "all_mean_trial_sec": 5752.2,
+        "all_missing_times": 0
+      },
+      "exclusions": [
+        {
+          "rule": "R4",
+          "why": "fitted or evaluated a signal: truthful-checks calibration half"
+        },
+        {
+          "rule": "R5",
+          "why": "hidden tests and reference solution read for the task anatomy"
+        }
+      ],
+      "score": {
+        "shape": 1,
+        "check": 1,
+        "fable_low": 1.2,
+        "time": 0.5,
+        "total": 3.7,
+        "shape_why": "build a trajectory generator to a schema",
+        "check_why": "a starter script shows the schema"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": false
+      },
+      "family": false,
+      "sha256": "051fb6525cd28e81442bc939b2abf9840bd6c82eb4406f2159aa2a59be10083e",
+      "resources": {
+        "cpus": 4,
+        "memory_mb": 8192,
+        "storage_mb": 20480,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "bun-sourcemap-leak",
+      "fable": {
+        "all_efforts": "0/25",
+        "by_effort": {
+          "low": "0/5",
+          "medium": "0/5",
+          "high": "0/5",
+          "xhigh": "0/5",
+          "max": "0/5"
+        },
+        "low_mean_trial_sec": 124.9,
+        "low_mean_cost_usd": 0.6761,
+        "low_cost_per_pass_usd": null,
+        "low_trial_sec_per_pass": null,
+        "all_mean_trial_sec": 630.1,
+        "all_missing_times": 0
+      },
+      "exclusions": [
+        {
+          "rule": "R4",
+          "why": "fitted or evaluated a signal: truthful-checks calibration half"
+        },
+        {
+          "rule": "R5",
+          "why": "hidden tests and reference solution read for the task anatomy"
+        }
+      ],
+      "score": {
+        "shape": 2,
+        "check": 1,
+        "fable_low": 0.0,
+        "time": 2.0,
+        "total": 5.0,
+        "shape_why": "repair of a release pipeline",
+        "check_why": "a policy file states what may ship"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": false
+      },
+      "family": false,
+      "sha256": "c115edadae06c742c537421ba2fe62afdcc29c0e233e12c6f7cc6af0bdee974a",
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "cad-model",
+      "fable": {
+        "all_efforts": "17/25",
+        "by_effort": {
+          "low": "0/5",
+          "medium": "3/5",
+          "high": "4/5",
+          "xhigh": "5/5",
+          "max": "5/5"
+        },
+        "low_mean_trial_sec": 143.6,
+        "low_mean_cost_usd": 0.4953,
+        "low_cost_per_pass_usd": null,
+        "low_trial_sec_per_pass": null,
+        "all_mean_trial_sec": 529.6,
+        "all_missing_times": 0
+      },
+      "exclusions": [
+        {
+          "rule": "R3",
+          "why": "GPT-6 Luna trials exist: Luna baseline (#9583); a GPT-6 Luna row in the truthful-checks label set"
+        }
+      ],
+      "score": {
+        "shape": 0,
+        "check": 0,
+        "fable_low": 0.0,
+        "time": 2.0,
+        "total": 2.0,
+        "shape_why": "geometry read from an image",
+        "check_why": "no local reference"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": false
+      },
+      "family": false,
+      "sha256": "78c4aaf131170a9c20219f877e267ed532151c59c2c277193779d2fc3030fe8f",
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 8192,
+        "storage_mb": 10240,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "cargo-flight-dispatch",
+      "fable": {
+        "all_efforts": "0/25",
+        "by_effort": {
+          "low": "0/5",
+          "medium": "0/5",
+          "high": "0/5",
+          "xhigh": "0/5",
+          "max": "0/5"
+        },
+        "low_mean_trial_sec": 128.9,
+        "low_mean_cost_usd": 0.8338,
+        "low_cost_per_pass_usd": null,
+        "low_trial_sec_per_pass": null,
+        "all_mean_trial_sec": 444.2,
+        "all_missing_times": 0
+      },
+      "exclusions": [
+        {
+          "rule": "R3",
+          "why": "GPT-6 Luna trials exist: a GPT-6 Luna row in the truthful-checks label set"
+        },
+        {
+          "rule": "R4",
+          "why": "fitted or evaluated a signal: truthful-checks calibration half"
+        }
+      ],
+      "score": {
+        "shape": 2,
+        "check": 1,
+        "fable_low": 0.0,
+        "time": 2.0,
+        "total": 5.0,
+        "shape_why": "repair of a planner against reported symptoms",
+        "check_why": "data files state the operation"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": false
+      },
+      "family": false,
+      "sha256": "813760a2629ffe65b3df1023304d59417b63c527b36969109cac0666c5f14241",
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "coq-block-bound",
+      "fable": {
+        "all_efforts": "25/25",
+        "by_effort": {
+          "low": "5/5",
+          "medium": "5/5",
+          "high": "5/5",
+          "xhigh": "5/5",
+          "max": "5/5"
+        },
+        "low_mean_trial_sec": 778.4,
+        "low_mean_cost_usd": 4.3209,
+        "low_cost_per_pass_usd": 4.3209,
+        "low_trial_sec_per_pass": 778.4,
+        "all_mean_trial_sec": 1196.3,
+        "all_missing_times": 0
+      },
+      "exclusions": [
+        {
+          "rule": "R1",
+          "why": "Microluna held-out test set (microluna-v15, 2026-09-25)"
+        },
+        {
+          "rule": "R2",
+          "why": "in the capability-gap log"
+        },
+        {
+          "rule": "R3",
+          "why": "GPT-6 Luna trials exist: Luna baseline (#9583); Microluna jobs on the benchmark host"
+        },
+        {
+          "rule": "R4",
+          "why": "fitted or evaluated a signal: truthful-checks calibration half; stall-detection calibration or evaluation split"
+        },
+        {
+          "rule": "R5",
+          "why": "hidden tests and reference solution read for the task anatomy"
+        }
+      ],
+      "score": {
+        "shape": 0,
+        "check": 2,
+        "fable_low": 2.0,
+        "time": 1.5,
+        "total": 5.5,
+        "shape_why": "a formal proof",
+        "check_why": "the build command checks the proof"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": true
+      },
+      "family": false,
+      "sha256": "95feed6bf8a4d57b8dccce8af71b4f3f5253d76eae6e25db6675842c894b1b91",
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "ctr-optimization",
+      "fable": {
+        "all_efforts": "10/25",
+        "by_effort": {
+          "low": "1/5",
+          "medium": "2/5",
+          "high": "1/5",
+          "xhigh": "3/5",
+          "max": "3/5"
+        },
+        "low_mean_trial_sec": 17304.2,
+        "low_mean_cost_usd": 30.3283,
+        "low_cost_per_pass_usd": 151.6416,
+        "low_trial_sec_per_pass": 86521.0,
+        "all_mean_trial_sec": 17364.8,
+        "all_missing_times": 0
+      },
+      "exclusions": [
+        {
+          "rule": "R7",
+          "why": "the task's own simulated campaign runs 48 hours of 360 seconds, about 4.8 hours, past v15's 25-minute wall bound"
+        }
+      ],
+      "score": {
+        "shape": 0,
+        "check": 1,
+        "fable_low": 0.4,
+        "time": 0.0,
+        "total": 1.4,
+        "shape_why": "tuning a live campaign",
+        "check_why": "the API reports metrics"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": false
+      },
+      "family": false,
+      "sha256": "7e3c86b50f3974b91400d664e5f0ced2bd29f32678b1f4eb219a61d41c39d88b",
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 8192,
+        "storage_mb": 10240,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "cumulative-layout-shift",
+      "fable": {
+        "all_efforts": "22/25",
+        "by_effort": {
+          "low": "5/5",
+          "medium": "5/5",
+          "high": "3/5",
+          "xhigh": "5/5",
+          "max": "4/5"
+        },
+        "low_mean_trial_sec": 5005.8,
+        "low_mean_cost_usd": 14.3763,
+        "low_cost_per_pass_usd": 14.3763,
+        "low_trial_sec_per_pass": 5005.8,
+        "all_mean_trial_sec": 5191.0,
+        "all_missing_times": 0
+      },
+      "exclusions": [],
+      "score": {
+        "shape": 2,
+        "check": 1,
+        "fable_low": 2.0,
+        "time": 0.5,
+        "total": 5.5,
+        "shape_why": "repair of a site so pages measure zero layout shift",
+        "check_why": "the shift is measurable in a local browser"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": true,
+        "fable_low_reliable": true
+      },
+      "family": true,
+      "sha256": "25313fffcfce5b3fa3e46608f8543d682d98a8e4050c63a442b633694eeed47b",
+      "resources": {
+        "cpus": 4,
+        "memory_mb": 8192,
+        "storage_mb": 20480,
+        "gpus": 0
+      },
+      "split": "confirmation",
+      "pair": 2,
+      "rank": 3
+    },
+    {
+      "task": "data-anonymization",
+      "fable": {
+        "all_efforts": "0/25",
+        "by_effort": {
+          "low": "0/5",
+          "medium": "0/5",
+          "high": "0/5",
+          "xhigh": "0/5",
+          "max": "0/5"
+        },
+        "low_mean_trial_sec": 1714.8,
+        "low_mean_cost_usd": 3.6571,
+        "low_cost_per_pass_usd": null,
+        "low_trial_sec_per_pass": null,
+        "all_mean_trial_sec": 2160.8,
+        "all_missing_times": 0
+      },
+      "exclusions": [
+        {
+          "rule": "R5",
+          "why": "hidden tests and reference solution read for the task anatomy"
+        }
+      ],
+      "score": {
+        "shape": 1,
+        "check": 1,
+        "fable_low": 0.0,
+        "time": 1.0,
+        "total": 3.0,
+        "shape_why": "build a CLI to a policy file",
+        "check_why": "the policy file states the transforms"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": false
+      },
+      "family": false,
+      "sha256": "1b92fc8f0f9bc2edcebaddc01b696cf269a549264bcb59f43cbbc27b1b369db4",
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 8192,
+        "storage_mb": 10240,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "distributed-dedup",
+      "fable": {
+        "all_efforts": "24/25",
+        "by_effort": {
+          "low": "4/5",
+          "medium": "5/5",
+          "high": "5/5",
+          "xhigh": "5/5",
+          "max": "5/5"
+        },
+        "low_mean_trial_sec": 985.3,
+        "low_mean_cost_usd": 1.3296,
+        "low_cost_per_pass_usd": 1.662,
+        "low_trial_sec_per_pass": 1231.6,
+        "all_mean_trial_sec": 6111.4,
+        "all_missing_times": 0
+      },
+      "exclusions": [
+        {
+          "rule": "R3",
+          "why": "GPT-6 Luna trials exist: Microluna v13 trials in the #9584 prospective cohort"
+        },
+        {
+          "rule": "R4",
+          "why": "fitted or evaluated a signal: #9584 prospective cohort"
+        }
+      ],
+      "score": {
+        "shape": 1,
+        "check": 1,
+        "fable_low": 1.6,
+        "time": 1.5,
+        "total": 5.1,
+        "shape_why": "implement a trait to a stated specification",
+        "check_why": "a stated similarity rule"
+      },
+      "luna_sized": true,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": true
+      },
+      "family": false,
+      "sha256": "a04dcb19ff86592cffb2479faf61ce10861a09e2b7b13c865aaaf04cc8c9dbcc",
+      "resources": {
+        "cpus": 8,
+        "memory_mb": 16384,
+        "storage_mb": 15000,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "embedding-drift-monitor",
+      "fable": {
+        "all_efforts": "25/25",
+        "by_effort": {
+          "low": "5/5",
+          "medium": "5/5",
+          "high": "5/5",
+          "xhigh": "5/5",
+          "max": "5/5"
+        },
+        "low_mean_trial_sec": 186.5,
+        "low_mean_cost_usd": 0.8691,
+        "low_cost_per_pass_usd": 0.8691,
+        "low_trial_sec_per_pass": 186.5,
+        "all_mean_trial_sec": 891.4,
+        "all_missing_times": 0
+      },
+      "exclusions": [
+        {
+          "rule": "R1",
+          "why": "Microluna dev set (v9 to v17)"
+        },
+        {
+          "rule": "R3",
+          "why": "GPT-6 Luna trials exist: Luna baseline (#9583); a GPT-6 Luna row in the truthful-checks label set; Microluna jobs on the benchmark host"
+        },
+        {
+          "rule": "R4",
+          "why": "fitted or evaluated a signal: stall-detection calibration or evaluation split"
+        },
+        {
+          "rule": "R5",
+          "why": "hidden tests and reference solution read for the task anatomy"
+        }
+      ],
+      "score": {
+        "shape": 2,
+        "check": 1,
+        "fable_low": 2.0,
+        "time": 2.0,
+        "total": 7.0,
+        "shape_why": "repair of stated defects in shipped modules",
+        "check_why": "data scenarios ship with the task"
+      },
+      "luna_sized": true,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": true
+      },
+      "family": false,
+      "sha256": "3c888a0b80b96747d0fa4ccca22e0ba08decd134763bdfd463e5ba6218fb5986",
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "fin-saccr-rwa",
+      "fable": {
+        "all_efforts": "22/25",
+        "by_effort": {
+          "low": "3/5",
+          "medium": "5/5",
+          "high": "5/5",
+          "xhigh": "5/5",
+          "max": "4/5"
+        },
+        "low_mean_trial_sec": 249.0,
+        "low_mean_cost_usd": 1.361,
+        "low_cost_per_pass_usd": 2.2683,
+        "low_trial_sec_per_pass": 415.1,
+        "all_mean_trial_sec": 668.8,
+        "all_missing_times": 0
+      },
+      "exclusions": [
+        {
+          "rule": "R1",
+          "why": "Microluna held-out test set (microluna-v15, 2026-09-25)"
+        },
+        {
+          "rule": "R2",
+          "why": "in the capability-gap log"
+        },
+        {
+          "rule": "R3",
+          "why": "GPT-6 Luna trials exist: Luna baseline (#9583); Microluna jobs on the benchmark host"
+        },
+        {
+          "rule": "R4",
+          "why": "fitted or evaluated a signal: stall-detection calibration or evaluation split"
+        },
+        {
+          "rule": "R5",
+          "why": "hidden tests and reference solution read for the task anatomy"
+        }
+      ],
+      "score": {
+        "shape": 0,
+        "check": 0,
+        "fable_low": 1.2,
+        "time": 2.0,
+        "total": 3.2,
+        "shape_why": "a regulatory calculation that needs outside rules",
+        "check_why": "no local reference"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": false
+      },
+      "family": false,
+      "sha256": "f0bfbc0b1145193f28dfc71b347ba93643559269d0a2469bb9bb395f18fa72f7",
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "foodstuff-beta-activity",
+      "fable": {
+        "all_efforts": "0/25",
+        "by_effort": {
+          "low": "0/5",
+          "medium": "0/5",
+          "high": "0/5",
+          "xhigh": "0/5",
+          "max": "0/5"
+        },
+        "low_mean_trial_sec": 53.3,
+        "low_mean_cost_usd": 0.2903,
+        "low_cost_per_pass_usd": null,
+        "low_trial_sec_per_pass": null,
+        "all_mean_trial_sec": 359.7,
+        "all_missing_times": 0
+      },
+      "exclusions": [],
+      "score": {
+        "shape": 0,
+        "check": 0,
+        "fable_low": 0.0,
+        "time": 2.0,
+        "total": 2.0,
+        "shape_why": "a lab calculation from spreadsheets and a PDF",
+        "check_why": "no local reference"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": true,
+        "fable_low_reliable": false
+      },
+      "family": false,
+      "sha256": "449b10c14c304a4c8e0a983d37895fe71848117dd574999b65ae9ed07490c976",
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "formal-crypto",
+      "fable": {
+        "all_efforts": "19/25",
+        "by_effort": {
+          "low": "3/5",
+          "medium": "4/5",
+          "high": "4/5",
+          "xhigh": "4/5",
+          "max": "4/5"
+        },
+        "low_mean_trial_sec": 1124.6,
+        "low_mean_cost_usd": 5.5256,
+        "low_cost_per_pass_usd": 9.2094,
+        "low_trial_sec_per_pass": 1874.3,
+        "all_mean_trial_sec": 2636.1,
+        "all_missing_times": 0
+      },
+      "exclusions": [
+        {
+          "rule": "R3",
+          "why": "GPT-6 Luna trials exist: Microluna v13 trials in the #9584 prospective cohort"
+        },
+        {
+          "rule": "R4",
+          "why": "fitted or evaluated a signal: #9584 prospective cohort"
+        }
+      ],
+      "score": {
+        "shape": 0,
+        "check": 1,
+        "fable_low": 1.2,
+        "time": 1.5,
+        "total": 3.7,
+        "shape_why": "recover a plaintext by cryptanalysis",
+        "check_why": "a plaintext and ciphertext sample pair"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": false
+      },
+      "family": false,
+      "sha256": "08b6163be7a8b95e6b53249b4050751cf17d6118320f01bf2dae2b4530f6569f",
+      "resources": {
+        "cpus": 8,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "fp8-rmsnorm-gemm",
+      "fable": {
+        "all_efforts": "25/25",
+        "by_effort": {
+          "low": "5/5",
+          "medium": "5/5",
+          "high": "5/5",
+          "xhigh": "5/5",
+          "max": "5/5"
+        },
+        "low_mean_trial_sec": 2690.5,
+        "low_mean_cost_usd": 12.8603,
+        "low_cost_per_pass_usd": 12.8603,
+        "low_trial_sec_per_pass": 2690.5,
+        "all_mean_trial_sec": 4765.1,
+        "all_missing_times": 0
+      },
+      "exclusions": [
+        {
+          "rule": "R7",
+          "why": "needs a GPU"
+        }
+      ],
+      "score": {
+        "shape": 1,
+        "check": 2,
+        "fable_low": 2.0,
+        "time": 1.0,
+        "total": 6.0,
+        "shape_why": "a CUDA kernel to a stated ABI",
+        "check_why": "an example script checks the kernel"
+      },
+      "luna_sized": true,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": true
+      },
+      "family": false,
+      "sha256": "9051bbf20de684f0f16ab65417bcfb3a27d4b2f9bc793fa917d9c0305be76eab",
+      "resources": {
+        "cpus": 4,
+        "memory_mb": 16384,
+        "storage_mb": 30720,
+        "gpus": 1
+      },
+      "split": null
+    },
+    {
+      "task": "freecad-impeller",
+      "fable": {
+        "all_efforts": "0/25",
+        "by_effort": {
+          "low": "0/5",
+          "medium": "0/5",
+          "high": "0/5",
+          "xhigh": "0/5",
+          "max": "0/5"
+        },
+        "low_mean_trial_sec": 273.4,
+        "low_mean_cost_usd": 1.2706,
+        "low_cost_per_pass_usd": null,
+        "low_trial_sec_per_pass": null,
+        "all_mean_trial_sec": 1076.8,
+        "all_missing_times": 0
+      },
+      "exclusions": [
+        {
+          "rule": "R3",
+          "why": "GPT-6 Luna trials exist: Microluna v13 trials in the #9584 prospective cohort"
+        },
+        {
+          "rule": "R4",
+          "why": "fitted or evaluated a signal: #9584 prospective cohort"
+        },
+        {
+          "rule": "R6",
+          "why": "its group 'freecad' holds freecad-spring-clip"
+        }
+      ],
+      "score": {
+        "shape": 1,
+        "check": 0,
+        "fable_low": 0.0,
+        "time": 2.0,
+        "total": 3.0,
+        "shape_why": "a parametric CAD script to stated parameters",
+        "check_why": "no local reference"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": false
+      },
+      "family": false,
+      "sha256": "4b6d317437561ab9c361a6ad56b16b11f939a24814ef510f7772a3f96afd8c6c",
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "freecad-platform-drawing",
+      "fable": {
+        "all_efforts": "20/25",
+        "by_effort": {
+          "low": "1/5",
+          "medium": "4/5",
+          "high": "5/5",
+          "xhigh": "5/5",
+          "max": "5/5"
+        },
+        "low_mean_trial_sec": 122.6,
+        "low_mean_cost_usd": 0.5954,
+        "low_cost_per_pass_usd": 2.9768,
+        "low_trial_sec_per_pass": 613.0,
+        "all_mean_trial_sec": 482.1,
+        "all_missing_times": 0
+      },
+      "exclusions": [
+        {
+          "rule": "R6",
+          "why": "its group 'freecad' holds freecad-impeller, freecad-spring-clip"
+        }
+      ],
+      "score": {
+        "shape": 0,
+        "check": 0,
+        "fable_low": 0.4,
+        "time": 2.0,
+        "total": 2.4,
+        "shape_why": "geometry read from a drawing",
+        "check_why": "no local reference"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": false
+      },
+      "family": false,
+      "sha256": "7b9d356cbe7ba7ae5074a67c2281a85bcc0073a7d2e3437a98eebe5fb612842f",
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "freecad-spring-clip",
+      "fable": {
+        "all_efforts": "19/25",
+        "by_effort": {
+          "low": "2/5",
+          "medium": "4/5",
+          "high": "3/5",
+          "xhigh": "5/5",
+          "max": "5/5"
+        },
+        "low_mean_trial_sec": 709.3,
+        "low_mean_cost_usd": 3.6978,
+        "low_cost_per_pass_usd": 9.2444,
+        "low_trial_sec_per_pass": 1773.1,
+        "all_mean_trial_sec": 1584.7,
+        "all_missing_times": 0
+      },
+      "exclusions": [
+        {
+          "rule": "R3",
+          "why": "GPT-6 Luna trials exist: Microluna v13 trials in the #9584 prospective cohort"
+        },
+        {
+          "rule": "R4",
+          "why": "fitted or evaluated a signal: #9584 prospective cohort"
+        },
+        {
+          "rule": "R6",
+          "why": "its group 'freecad' holds freecad-impeller"
+        }
+      ],
+      "score": {
+        "shape": 1,
+        "check": 1,
+        "fable_low": 0.8,
+        "time": 1.5,
+        "total": 4.3,
+        "shape_why": "a parametric CAD script to stated parameters and invariants",
+        "check_why": "stated invariants"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": false
+      },
+      "family": false,
+      "sha256": "97ee1b9726383a058998b44cabeeb8bbe36997d8b7144e83b6f29feb213f16d9",
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "freight-dispatch-shift",
+      "fable": {
+        "all_efforts": "0/25",
+        "by_effort": {
+          "low": "0/5",
+          "medium": "0/5",
+          "high": "0/5",
+          "xhigh": "0/5",
+          "max": "0/5"
+        },
+        "low_mean_trial_sec": 724.2,
+        "low_mean_cost_usd": 3.4925,
+        "low_cost_per_pass_usd": null,
+        "low_trial_sec_per_pass": null,
+        "all_mean_trial_sec": 1940.5,
+        "all_missing_times": 0
+      },
+      "exclusions": [],
+      "score": {
+        "shape": 1,
+        "check": 1,
+        "fable_low": 0.0,
+        "time": 1.5,
+        "total": 3.5,
+        "shape_why": "build a stateful CLI to a schema",
+        "check_why": "a schema document"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": true,
+        "fable_low_reliable": false
+      },
+      "family": false,
+      "sha256": "4e4ff9376629f4a8f5375bdabc7d4936aa2f9a874b5dbbdd32ae9b5003900707",
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "glycan-ms2-elucidation",
+      "fable": {
+        "all_efforts": "0/25",
+        "by_effort": {
+          "low": "0/5",
+          "medium": "0/5",
+          "high": "0/5",
+          "xhigh": "0/5",
+          "max": "0/5"
+        },
+        "low_mean_trial_sec": 166.4,
+        "low_mean_cost_usd": 0.8217,
+        "low_cost_per_pass_usd": null,
+        "low_trial_sec_per_pass": null,
+        "all_mean_trial_sec": 955.7,
+        "all_missing_times": 0
+      },
+      "exclusions": [
+        {
+          "rule": "R4",
+          "why": "fitted or evaluated a signal: truthful-checks calibration half"
+        }
+      ],
+      "score": {
+        "shape": 0,
+        "check": 0,
+        "fable_low": 0.0,
+        "time": 2.0,
+        "total": 2.0,
+        "shape_why": "spectrum interpretation",
+        "check_why": "no local reference"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": false
+      },
+      "family": false,
+      "sha256": "54de6f6f285bd9cb5529ce4c8a39ae4e05a1909d50525f929fed2cde8397fdab",
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "gsea-proteomics",
+      "fable": {
+        "all_efforts": "19/25",
+        "by_effort": {
+          "low": "3/5",
+          "medium": "4/5",
+          "high": "4/5",
+          "xhigh": "4/5",
+          "max": "4/5"
+        },
+        "low_mean_trial_sec": 206.0,
+        "low_mean_cost_usd": 0.7458,
+        "low_cost_per_pass_usd": 1.243,
+        "low_trial_sec_per_pass": 343.4,
+        "all_mean_trial_sec": 531.3,
+        "all_missing_times": 0
+      },
+      "exclusions": [
+        {
+          "rule": "R1",
+          "why": "Microluna held-out test set (microluna-v15, 2026-09-25)"
+        },
+        {
+          "rule": "R2",
+          "why": "in the capability-gap log"
+        },
+        {
+          "rule": "R3",
+          "why": "GPT-6 Luna trials exist: Microluna jobs on the benchmark host"
+        },
+        {
+          "rule": "R4",
+          "why": "fitted or evaluated a signal: stall-detection calibration or evaluation split"
+        },
+        {
+          "rule": "R5",
+          "why": "hidden tests and reference solution read for the task anatomy"
+        }
+      ],
+      "score": {
+        "shape": 0,
+        "check": 0,
+        "fable_low": 1.2,
+        "time": 2.0,
+        "total": 3.2,
+        "shape_why": "a statistical analysis that needs domain choices",
+        "check_why": "no local reference"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": false
+      },
+      "family": false,
+      "sha256": "c7d501f4f0838f18b7fc69fa8a0dbad446bc5bac5b355679119450333b59fa7e",
+      "resources": {
+        "cpus": 4,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "heat-pump-warranty",
+      "fable": {
+        "all_efforts": "14/25",
+        "by_effort": {
+          "low": "2/5",
+          "medium": "4/5",
+          "high": "1/5",
+          "xhigh": "3/5",
+          "max": "4/5"
+        },
+        "low_mean_trial_sec": 483.6,
+        "low_mean_cost_usd": 4.3966,
+        "low_cost_per_pass_usd": 10.9914,
+        "low_trial_sec_per_pass": 1208.9,
+        "all_mean_trial_sec": 1065.2,
+        "all_missing_times": 0
+      },
+      "exclusions": [
+        {
+          "rule": "R3",
+          "why": "GPT-6 Luna trials exist: Luna baseline (#9583); a GPT-6 Luna row in the truthful-checks label set"
+        },
+        {
+          "rule": "R4",
+          "why": "fitted or evaluated a signal: truthful-checks calibration half"
+        }
+      ],
+      "score": {
+        "shape": 1,
+        "check": 0,
+        "fable_low": 0.8,
+        "time": 2.0,
+        "total": 3.8,
+        "shape_why": "decisions under local rules through a portal",
+        "check_why": "no local reference"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": false
+      },
+      "family": false,
+      "sha256": "db0749144ea49504d0a84c417c303da248d754ef2386f3ee1dbd85de9f852802",
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "hof-topology-interpenetration",
+      "fable": {
+        "all_efforts": "24/25",
+        "by_effort": {
+          "low": "4/5",
+          "medium": "5/5",
+          "high": "5/5",
+          "xhigh": "5/5",
+          "max": "5/5"
+        },
+        "low_mean_trial_sec": 1218.5,
+        "low_mean_cost_usd": 3.5011,
+        "low_cost_per_pass_usd": 4.3764,
+        "low_trial_sec_per_pass": 1523.1,
+        "all_mean_trial_sec": 1209.2,
+        "all_missing_times": 0
+      },
+      "exclusions": [
+        {
+          "rule": "R4",
+          "why": "fitted or evaluated a signal: truthful-checks calibration half"
+        }
+      ],
+      "score": {
+        "shape": 0,
+        "check": 0,
+        "fable_low": 1.6,
+        "time": 1.5,
+        "total": 3.1,
+        "shape_why": "crystal-network analysis",
+        "check_why": "no local reference"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": true
+      },
+      "family": false,
+      "sha256": "f9db2ff06e546ab2d3a72730f30e6b39d66566206e55c96f5cf3f61d09a4c2f3",
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 8192,
+        "storage_mb": 10240,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "html-js-filter",
+      "fable": {
+        "all_efforts": "5/25",
+        "by_effort": {
+          "low": "0/5",
+          "medium": "0/5",
+          "high": "0/5",
+          "xhigh": "3/5",
+          "max": "2/5"
+        },
+        "low_mean_trial_sec": 120.8,
+        "low_mean_cost_usd": 0.6406,
+        "low_cost_per_pass_usd": null,
+        "low_trial_sec_per_pass": null,
+        "all_mean_trial_sec": 2089.9,
+        "all_missing_times": 0
+      },
+      "exclusions": [
+        {
+          "rule": "R3",
+          "why": "GPT-6 Luna trials exist: Microluna jobs on the benchmark host"
+        },
+        {
+          "rule": "R4",
+          "why": "fitted or evaluated a signal: stall-detection calibration or evaluation split"
+        },
+        {
+          "rule": "R5",
+          "why": "hidden tests and reference solution read for the task anatomy"
+        }
+      ],
+      "score": {
+        "shape": 1,
+        "check": 1,
+        "fable_low": 0.0,
+        "time": 2.0,
+        "total": 4.0,
+        "shape_why": "build a sanitizer to a stated contract",
+        "check_why": "the agent can build its own cases"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": false
+      },
+      "family": false,
+      "sha256": "0f63c31b877a799da577234f85814bceeb6c8b1170f93d1d71c472215cb8505d",
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 8192,
+        "storage_mb": 10240,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "interleaved-vigenere",
+      "fable": {
+        "all_efforts": "23/25",
+        "by_effort": {
+          "low": "5/5",
+          "medium": "5/5",
+          "high": "5/5",
+          "xhigh": "5/5",
+          "max": "3/5"
+        },
+        "low_mean_trial_sec": 1481.3,
+        "low_mean_cost_usd": 4.6726,
+        "low_cost_per_pass_usd": 4.6726,
+        "low_trial_sec_per_pass": 1481.3,
+        "all_mean_trial_sec": 2035.3,
+        "all_missing_times": 0
+      },
+      "exclusions": [
+        {
+          "rule": "R1",
+          "why": "Microluna dev set (v9 to v17)"
+        },
+        {
+          "rule": "R2",
+          "why": "in the capability-gap log"
+        },
+        {
+          "rule": "R3",
+          "why": "GPT-6 Luna trials exist: a GPT-6 Luna row in the truthful-checks label set; Microluna jobs on the benchmark host"
+        },
+        {
+          "rule": "R4",
+          "why": "fitted or evaluated a signal: truthful-checks calibration half; stall-detection calibration or evaluation split"
+        },
+        {
+          "rule": "R5",
+          "why": "hidden tests and reference solution read for the task anatomy"
+        }
+      ],
+      "score": {
+        "shape": 0,
+        "check": 1,
+        "fable_low": 2.0,
+        "time": 1.5,
+        "total": 4.5,
+        "shape_why": "cipher identification by search",
+        "check_why": "a worked example"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": true
+      },
+      "family": false,
+      "sha256": "95ce2b181dcef89a3fb56d6060046967530536e0e8e98b797f98fd0a15489a66",
+      "resources": {
+        "cpus": 4,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "intrastat-meldung",
+      "fable": {
+        "all_efforts": "10/25",
+        "by_effort": {
+          "low": "4/5",
+          "medium": "2/5",
+          "high": "2/5",
+          "xhigh": "0/5",
+          "max": "2/5"
+        },
+        "low_mean_trial_sec": 450.2,
+        "low_mean_cost_usd": 3.6476,
+        "low_cost_per_pass_usd": 4.5595,
+        "low_trial_sec_per_pass": 562.7,
+        "all_mean_trial_sec": 609.9,
+        "all_missing_times": 0
+      },
+      "exclusions": [
+        {
+          "rule": "R5",
+          "why": "hidden tests and reference solution read for the task anatomy"
+        }
+      ],
+      "score": {
+        "shape": 1,
+        "check": 0,
+        "fable_low": 1.6,
+        "time": 2.0,
+        "total": 4.6,
+        "shape_why": "correct a staged declaration under an SOP",
+        "check_why": "no local reference"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": true
+      },
+      "family": false,
+      "sha256": "53bd681d49a47994609444c393bae7aac2684e9228bfcc5a240deb4ac52910ad",
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 8192,
+        "storage_mb": 20480,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "jax-speedrun-gpu",
+      "fable": {
+        "all_efforts": "17/25",
+        "by_effort": {
+          "low": "1/5",
+          "medium": "3/5",
+          "high": "5/5",
+          "xhigh": "4/5",
+          "max": "4/5"
+        },
+        "low_mean_trial_sec": 18884.1,
+        "low_mean_cost_usd": 39.2756,
+        "low_cost_per_pass_usd": 196.3779,
+        "low_trial_sec_per_pass": 94420.5,
+        "all_mean_trial_sec": 21104.3,
+        "all_missing_times": 1
+      },
+      "exclusions": [
+        {
+          "rule": "R7",
+          "why": "needs a GPU"
+        }
+      ],
+      "score": {
+        "shape": 0,
+        "check": 1,
+        "fable_low": 0.4,
+        "time": 0.0,
+        "total": 1.4,
+        "shape_why": "train a model under a time budget",
+        "check_why": "validation data"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": false
+      },
+      "family": false,
+      "sha256": "2307752d951845669f0e9c01514475f004b8165e2d4136aa14657b63ea6eeb06",
+      "resources": {
+        "cpus": 16,
+        "memory_mb": 32768,
+        "storage_mb": 1024000,
+        "gpus": 1
+      },
+      "split": null
+    },
+    {
+      "task": "ks-solver-cpp",
+      "fable": {
+        "all_efforts": "9/25",
+        "by_effort": {
+          "low": "1/5",
+          "medium": "2/5",
+          "high": "2/5",
+          "xhigh": "1/5",
+          "max": "3/5"
+        },
+        "low_mean_trial_sec": 739.5,
+        "low_mean_cost_usd": 2.2525,
+        "low_cost_per_pass_usd": 11.2625,
+        "low_trial_sec_per_pass": 3697.6,
+        "all_mean_trial_sec": 1621.6,
+        "all_missing_times": 0
+      },
+      "exclusions": [
+        {
+          "rule": "R3",
+          "why": "GPT-6 Luna trials exist: Luna baseline (#9583); a GPT-6 Luna row in the truthful-checks label set"
+        },
+        {
+          "rule": "R5",
+          "why": "hidden tests and reference solution read for the task anatomy"
+        }
+      ],
+      "score": {
+        "shape": 0,
+        "check": 1,
+        "fable_low": 0.4,
+        "time": 1.5,
+        "total": 2.9,
+        "shape_why": "a numerical PDE solver",
+        "check_why": "an oracle header"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": false
+      },
+      "family": false,
+      "sha256": "3ab9e1edd6f5b71edcf633be798a3738ff9ab2f91e633c3c24e80af2d25fcba2",
+      "resources": {
+        "cpus": 4,
+        "memory_mb": 8192,
+        "storage_mb": 10240,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "kv-live-surgery",
+      "fable": {
+        "all_efforts": "12/25",
+        "by_effort": {
+          "low": "2/5",
+          "medium": "3/5",
+          "high": "2/5",
+          "xhigh": "2/5",
+          "max": "3/5"
+        },
+        "low_mean_trial_sec": 1540.4,
+        "low_mean_cost_usd": 5.5295,
+        "low_cost_per_pass_usd": 13.8238,
+        "low_trial_sec_per_pass": 3850.9,
+        "all_mean_trial_sec": 4656.9,
+        "all_missing_times": 0
+      },
+      "exclusions": [],
+      "score": {
+        "shape": 0,
+        "check": 1,
+        "fable_low": 0.8,
+        "time": 1.0,
+        "total": 2.8,
+        "shape_why": "speed up and replace a live server shipped as a binary",
+        "check_why": "a load generator validates responses"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": true,
+        "fable_low_reliable": false
+      },
+      "family": false,
+      "sha256": "c17d8cbb35dbbe4ec11c7f8461c220332230621ea66792529caea1520e4f4137",
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "lake-temp-glm",
+      "fable": {
+        "all_efforts": "7/25",
+        "by_effort": {
+          "low": "0/5",
+          "medium": "1/5",
+          "high": "3/5",
+          "xhigh": "3/5",
+          "max": "0/5"
+        },
+        "low_mean_trial_sec": 2686.6,
+        "low_mean_cost_usd": 3.4144,
+        "low_cost_per_pass_usd": null,
+        "low_trial_sec_per_pass": null,
+        "all_mean_trial_sec": 5723.0,
+        "all_missing_times": 0
+      },
+      "exclusions": [],
+      "score": {
+        "shape": 0,
+        "check": 0,
+        "fable_low": 0.0,
+        "time": 1.0,
+        "total": 1.0,
+        "shape_why": "train a model scored on hidden profiles",
+        "check_why": "evaluation data is hidden"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": true,
+        "fable_low_reliable": false
+      },
+      "family": false,
+      "sha256": "f53da0fb7509cfa253f9ddf0c17b527123c15bfea65c7830a58fb2e3295a4332",
+      "resources": {
+        "cpus": 8,
+        "memory_mb": 8192,
+        "storage_mb": 20480,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "layout-config-recreation",
+      "fable": {
+        "all_efforts": "2/25",
+        "by_effort": {
+          "low": "0/5",
+          "medium": "0/5",
+          "high": "1/5",
+          "xhigh": "0/5",
+          "max": "1/5"
+        },
+        "low_mean_trial_sec": 7874.5,
+        "low_mean_cost_usd": 34.3053,
+        "low_cost_per_pass_usd": null,
+        "low_trial_sec_per_pass": null,
+        "all_mean_trial_sec": 6671.8,
+        "all_missing_times": 0
+      },
+      "exclusions": [
+        {
+          "rule": "R4",
+          "why": "fitted or evaluated a signal: truthful-checks calibration half"
+        },
+        {
+          "rule": "R5",
+          "why": "hidden tests and reference solution read for the task anatomy"
+        }
+      ],
+      "score": {
+        "shape": 0,
+        "check": 2,
+        "fable_low": 0.0,
+        "time": 0.0,
+        "total": 2.0,
+        "shape_why": "reverse-engineer a layout by search",
+        "check_why": "a renderer and the target image"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": false
+      },
+      "family": false,
+      "sha256": "44b68d96488dbcaff2ec5d7b76e2082d08a5737f010aa58806538e4184ae6765",
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 8192,
+        "storage_mb": 10240,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "layout-config-recreation2",
+      "fable": {
+        "all_efforts": "23/25",
+        "by_effort": {
+          "low": "3/5",
+          "medium": "5/5",
+          "high": "5/5",
+          "xhigh": "5/5",
+          "max": "5/5"
+        },
+        "low_mean_trial_sec": 5008.1,
+        "low_mean_cost_usd": 7.5614,
+        "low_cost_per_pass_usd": 12.6023,
+        "low_trial_sec_per_pass": 8346.9,
+        "all_mean_trial_sec": 2728.4,
+        "all_missing_times": 0
+      },
+      "exclusions": [
+        {
+          "rule": "R6",
+          "why": "its group 'layout' holds layout-config-recreation"
+        }
+      ],
+      "score": {
+        "shape": 0,
+        "check": 2,
+        "fable_low": 1.2,
+        "time": 0.5,
+        "total": 3.7,
+        "shape_why": "reverse-engineer a layout by search",
+        "check_why": "a renderer and the target image"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": false
+      },
+      "family": false,
+      "sha256": "02c9cd7b0a460089515a0a62c103c74f0338efcd6e7fb1ef876246a709192b99",
+      "resources": {
+        "cpus": 4,
+        "memory_mb": 8192,
+        "storage_mb": 10240,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "legacy-utility-triage",
+      "fable": {
+        "all_efforts": "14/25",
+        "by_effort": {
+          "low": "3/5",
+          "medium": "1/5",
+          "high": "1/5",
+          "xhigh": "5/5",
+          "max": "4/5"
+        },
+        "low_mean_trial_sec": 1362.6,
+        "low_mean_cost_usd": 5.712,
+        "low_cost_per_pass_usd": 9.5201,
+        "low_trial_sec_per_pass": 2271.0,
+        "all_mean_trial_sec": 1953.2,
+        "all_missing_times": 0
+      },
+      "exclusions": [
+        {
+          "rule": "R3",
+          "why": "GPT-6 Luna trials exist: Luna baseline (#9583)"
+        }
+      ],
+      "score": {
+        "shape": 1,
+        "check": 0,
+        "fable_low": 1.2,
+        "time": 1.5,
+        "total": 3.7,
+        "shape_why": "resolve cases in a GUI under a manual",
+        "check_why": "no local reference"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": false
+      },
+      "family": false,
+      "sha256": "b982479e211e8367dc306e8d12da7b4398b70ab1b05fcf4f20930bdf7dca32a4",
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 8192,
+        "storage_mb": 20480,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "live-database-cutover",
+      "fable": {
+        "all_efforts": "17/25",
+        "by_effort": {
+          "low": "4/5",
+          "medium": "4/5",
+          "high": "4/5",
+          "xhigh": "2/5",
+          "max": "3/5"
+        },
+        "low_mean_trial_sec": 2132.3,
+        "low_mean_cost_usd": 10.0899,
+        "low_cost_per_pass_usd": 12.6124,
+        "low_trial_sec_per_pass": 2665.4,
+        "all_mean_trial_sec": 3245.7,
+        "all_missing_times": 0
+      },
+      "exclusions": [],
+      "score": {
+        "shape": 1,
+        "check": 1,
+        "fable_low": 1.6,
+        "time": 1.0,
+        "total": 4.6,
+        "shape_why": "a zero-downtime database migration to a stated contract",
+        "check_why": "the current backend is a behavioral baseline"
+      },
+      "luna_sized": true,
+      "gate": {
+        "untouched": true,
+        "fable_low_reliable": true
+      },
+      "family": true,
+      "sha256": "4f283828219bb8127849fef4691513309ebf12f92f3ae10cd9fd628e704de91a",
+      "resources": {
+        "cpus": 16,
+        "memory_mb": 16384,
+        "storage_mb": 20480,
+        "gpus": 0
+      },
+      "split": "development",
+      "pair": 2,
+      "rank": 4
+    },
+    {
+      "task": "math-eval-grader",
+      "fable": {
+        "all_efforts": "11/25",
+        "by_effort": {
+          "low": "2/5",
+          "medium": "2/5",
+          "high": "1/5",
+          "xhigh": "4/5",
+          "max": "2/5"
+        },
+        "low_mean_trial_sec": 1406.6,
+        "low_mean_cost_usd": 5.0249,
+        "low_cost_per_pass_usd": 12.5622,
+        "low_trial_sec_per_pass": 3516.6,
+        "all_mean_trial_sec": 1569.3,
+        "all_missing_times": 0
+      },
+      "exclusions": [
+        {
+          "rule": "R3",
+          "why": "GPT-6 Luna trials exist: Microluna v13 trials in the #9584 prospective cohort"
+        },
+        {
+          "rule": "R4",
+          "why": "fitted or evaluated a signal: #9584 prospective cohort"
+        },
+        {
+          "rule": "R7",
+          "why": "needs a GPU"
+        }
+      ],
+      "score": {
+        "shape": 1,
+        "check": 2,
+        "fable_low": 0.8,
+        "time": 1.5,
+        "total": 5.3,
+        "shape_why": "an evaluation pipeline and grader",
+        "check_why": "labeled grader examples"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": false
+      },
+      "family": false,
+      "sha256": "1799a2177820ca1f364403d4ff371aecf4543c451b8a79ad8752c796256955a2",
+      "resources": {
+        "cpus": 8,
+        "memory_mb": 16384,
+        "storage_mb": 30720,
+        "gpus": 1
+      },
+      "split": null
+    },
+    {
+      "task": "medical-claims-processing",
+      "fable": {
+        "all_efforts": "0/25",
+        "by_effort": {
+          "low": "0/5",
+          "medium": "0/5",
+          "high": "0/5",
+          "xhigh": "0/5",
+          "max": "0/5"
+        },
+        "low_mean_trial_sec": 467.0,
+        "low_mean_cost_usd": 4.1508,
+        "low_cost_per_pass_usd": null,
+        "low_trial_sec_per_pass": null,
+        "all_mean_trial_sec": 997.3,
+        "all_missing_times": 0
+      },
+      "exclusions": [
+        {
+          "rule": "R4",
+          "why": "fitted or evaluated a signal: truthful-checks calibration half"
+        }
+      ],
+      "score": {
+        "shape": 2,
+        "check": 2,
+        "fable_low": 0.0,
+        "time": 2.0,
+        "total": 6.0,
+        "shape_why": "repair of a rules engine",
+        "check_why": "reference cases with expected flags"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": false
+      },
+      "family": false,
+      "sha256": "40355410996042ba3f9586b7eb22cd1960717149906b954c0f77b72cbc3f748d",
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 16384,
+        "storage_mb": 20480,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "mp-checkpoint-consolidation",
+      "fable": {
+        "all_efforts": "25/25",
+        "by_effort": {
+          "low": "5/5",
+          "medium": "5/5",
+          "high": "5/5",
+          "xhigh": "5/5",
+          "max": "5/5"
+        },
+        "low_mean_trial_sec": 1603.0,
+        "low_mean_cost_usd": 5.931,
+        "low_cost_per_pass_usd": 5.931,
+        "low_trial_sec_per_pass": 1603.0,
+        "all_mean_trial_sec": 1477.9,
+        "all_missing_times": 0
+      },
+      "exclusions": [],
+      "score": {
+        "shape": 1,
+        "check": 2,
+        "fable_low": 2.0,
+        "time": 1.0,
+        "total": 6.0,
+        "shape_why": "consolidate checkpoint shards to a stated key set",
+        "check_why": "reference logits and expected keys ship with the task"
+      },
+      "luna_sized": true,
+      "gate": {
+        "untouched": true,
+        "fable_low_reliable": true
+      },
+      "family": true,
+      "sha256": "ec0c139be116ba1efa62f17e72ac4ce209d3b510b9e47a9ea928b812085f2b40",
+      "resources": {
+        "cpus": 4,
+        "memory_mb": 4096,
+        "storage_mb": 5120,
+        "gpus": 0
+      },
+      "split": "development",
+      "pair": 1,
+      "rank": 2
+    },
+    {
+      "task": "music-harmony",
+      "fable": {
+        "all_efforts": "0/25",
+        "by_effort": {
+          "low": "0/5",
+          "medium": "0/5",
+          "high": "0/5",
+          "xhigh": "0/5",
+          "max": "0/5"
+        },
+        "low_mean_trial_sec": 418.9,
+        "low_mean_cost_usd": 2.1548,
+        "low_cost_per_pass_usd": null,
+        "low_trial_sec_per_pass": null,
+        "all_mean_trial_sec": 1443.8,
+        "all_missing_times": 0
+      },
+      "exclusions": [],
+      "score": {
+        "shape": 0,
+        "check": 0,
+        "fable_low": 0.0,
+        "time": 2.0,
+        "total": 2.0,
+        "shape_why": "harmonize a chorale from a PDF",
+        "check_why": "no local reference"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": true,
+        "fable_low_reliable": false
+      },
+      "family": false,
+      "sha256": "335898d5375466a03e4c5ede91b08ca5f2512e28cae388a0f39d1d567e1397a6",
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "mvcc-lsm-compaction",
+      "fable": {
+        "all_efforts": "13/25",
+        "by_effort": {
+          "low": "0/5",
+          "medium": "0/5",
+          "high": "4/5",
+          "xhigh": "4/5",
+          "max": "5/5"
+        },
+        "low_mean_trial_sec": 107.0,
+        "low_mean_cost_usd": 0.4628,
+        "low_cost_per_pass_usd": null,
+        "low_trial_sec_per_pass": null,
+        "all_mean_trial_sec": 429.1,
+        "all_missing_times": 0
+      },
+      "exclusions": [
+        {
+          "rule": "R3",
+          "why": "GPT-6 Luna trials exist: Luna baseline (#9583); a GPT-6 Luna row in the truthful-checks label set"
+        },
+        {
+          "rule": "R4",
+          "why": "fitted or evaluated a signal: truthful-checks calibration half"
+        }
+      ],
+      "score": {
+        "shape": 2,
+        "check": 2,
+        "fable_low": 0.0,
+        "time": 2.0,
+        "total": 6.0,
+        "shape_why": "diagnose and fix a storage defect",
+        "check_why": "a crash reproducer and a test suite"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": false
+      },
+      "family": false,
+      "sha256": "3cc28fbe73110a3637dafa82988e97084dc687ad07b7a7fc28a42d1530b86104",
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "nextjs-performance",
+      "fable": {
+        "all_efforts": "15/25",
+        "by_effort": {
+          "low": "3/5",
+          "medium": "2/5",
+          "high": "2/5",
+          "xhigh": "4/5",
+          "max": "4/5"
+        },
+        "low_mean_trial_sec": 332.5,
+        "low_mean_cost_usd": 1.7435,
+        "low_cost_per_pass_usd": 2.9058,
+        "low_trial_sec_per_pass": 554.2,
+        "all_mean_trial_sec": 1393.1,
+        "all_missing_times": 0
+      },
+      "exclusions": [
+        {
+          "rule": "R3",
+          "why": "GPT-6 Luna trials exist: Luna baseline (#9583); a GPT-6 Luna row in the truthful-checks label set"
+        }
+      ],
+      "score": {
+        "shape": 1,
+        "check": 1,
+        "fable_low": 1.2,
+        "time": 2.0,
+        "total": 5.2,
+        "shape_why": "improve web-app performance",
+        "check_why": "latency is measurable locally"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": false
+      },
+      "family": false,
+      "sha256": "c65f57670bc48c135488cd35a9c76ddbc885f01b5ed9cfb6677d120800a31149",
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 15360,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "ontology-kg-querying",
+      "fable": {
+        "all_efforts": "0/25",
+        "by_effort": {
+          "low": "0/5",
+          "medium": "0/5",
+          "high": "0/5",
+          "xhigh": "0/5",
+          "max": "0/5"
+        },
+        "low_mean_trial_sec": 590.3,
+        "low_mean_cost_usd": 7.0092,
+        "low_cost_per_pass_usd": null,
+        "low_trial_sec_per_pass": null,
+        "all_mean_trial_sec": 1174.1,
+        "all_missing_times": 0
+      },
+      "exclusions": [],
+      "score": {
+        "shape": 1,
+        "check": 1,
+        "fable_low": 0.0,
+        "time": 2.0,
+        "total": 4.0,
+        "shape_why": "a pipeline and queries over RDF bundles",
+        "check_why": "an earlier bundle as an example"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": true,
+        "fable_low_reliable": false
+      },
+      "family": false,
+      "sha256": "2e04144d9f03f621bcfb99e1fa223df4781e2977fbf4c096cf218db64df0e206",
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "payments-pipeline-fix",
+      "fable": {
+        "all_efforts": "25/25",
+        "by_effort": {
+          "low": "5/5",
+          "medium": "5/5",
+          "high": "5/5",
+          "xhigh": "5/5",
+          "max": "5/5"
+        },
+        "low_mean_trial_sec": 1604.3,
+        "low_mean_cost_usd": 6.2476,
+        "low_cost_per_pass_usd": 6.2476,
+        "low_trial_sec_per_pass": 1604.3,
+        "all_mean_trial_sec": 2734.2,
+        "all_missing_times": 0
+      },
+      "exclusions": [],
+      "score": {
+        "shape": 2,
+        "check": 1,
+        "fable_low": 2.0,
+        "time": 1.0,
+        "total": 6.0,
+        "shape_why": "repair of a small worker against stated symptoms",
+        "check_why": "the stated delivery bounds can be checked against the local broker"
+      },
+      "luna_sized": true,
+      "gate": {
+        "untouched": true,
+        "fable_low_reliable": true
+      },
+      "family": true,
+      "sha256": "b1a6b2bc95984c6085468ff3dc9777e813181df6f0315d4c245cb8530b65d055",
+      "resources": {
+        "cpus": 4,
+        "memory_mb": 8192,
+        "storage_mb": 10240,
+        "gpus": 0
+      },
+      "split": "confirmation",
+      "pair": 1,
+      "rank": 1
+    },
+    {
+      "task": "photonic-waveguide-routing",
+      "fable": {
+        "all_efforts": "16/25",
+        "by_effort": {
+          "low": "4/5",
+          "medium": "4/5",
+          "high": "5/5",
+          "xhigh": "2/5",
+          "max": "1/5"
+        },
+        "low_mean_trial_sec": 2316.9,
+        "low_mean_cost_usd": 9.5036,
+        "low_cost_per_pass_usd": 11.8794,
+        "low_trial_sec_per_pass": 2896.2,
+        "all_mean_trial_sec": 4368.2,
+        "all_missing_times": 0
+      },
+      "exclusions": [],
+      "score": {
+        "shape": 0,
+        "check": 1,
+        "fable_low": 1.6,
+        "time": 1.0,
+        "total": 3.6,
+        "shape_why": "route optimization",
+        "check_why": "the stated geometry rules check validity, not optimality"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": true,
+        "fable_low_reliable": true
+      },
+      "family": true,
+      "sha256": "9e089dd67c00c6c24e1fcb367d26d11b528ed2b33885dec3a809e1d8ec171df5",
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      },
+      "split": "development",
+      "pair": 3,
+      "rank": 6
+    },
+    {
+      "task": "pretrain-shard-corruption",
+      "fable": {
+        "all_efforts": "25/25",
+        "by_effort": {
+          "low": "5/5",
+          "medium": "5/5",
+          "high": "5/5",
+          "xhigh": "5/5",
+          "max": "5/5"
+        },
+        "low_mean_trial_sec": 3674.9,
+        "low_mean_cost_usd": 12.4313,
+        "low_cost_per_pass_usd": 12.4313,
+        "low_trial_sec_per_pass": 3674.9,
+        "all_mean_trial_sec": 3857.5,
+        "all_missing_times": 0
+      },
+      "exclusions": [
+        {
+          "rule": "R3",
+          "why": "GPT-6 Luna trials exist: Microluna v13 trials in the #9584 prospective cohort"
+        },
+        {
+          "rule": "R4",
+          "why": "fitted or evaluated a signal: #9584 prospective cohort"
+        }
+      ],
+      "score": {
+        "shape": 2,
+        "check": 2,
+        "fable_low": 2.0,
+        "time": 0.5,
+        "total": 6.5,
+        "shape_why": "restore a training run against a stated symptom",
+        "check_why": "the launcher reports the loss to reach"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": true
+      },
+      "family": false,
+      "sha256": "4449ef758ecf007ab4f57e570e2d346f8c3012299d6322f2286b9336a9604a71",
+      "resources": {
+        "cpus": 4,
+        "memory_mb": 8192,
+        "storage_mb": 4096,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "production-planning",
+      "fable": {
+        "all_efforts": "14/25",
+        "by_effort": {
+          "low": "3/5",
+          "medium": "3/5",
+          "high": "1/5",
+          "xhigh": "3/5",
+          "max": "4/5"
+        },
+        "low_mean_trial_sec": 520.4,
+        "low_mean_cost_usd": 3.5283,
+        "low_cost_per_pass_usd": 5.8805,
+        "low_trial_sec_per_pass": 867.3,
+        "all_mean_trial_sec": 1118.0,
+        "all_missing_times": 0
+      },
+      "exclusions": [
+        {
+          "rule": "R4",
+          "why": "target of the persistence experiments (persist-v8, persist-v10) and escalation (#9570, #9571); v15 turns persistence on"
+        }
+      ],
+      "score": {
+        "shape": 1,
+        "check": 1,
+        "fable_low": 1.2,
+        "time": 2.0,
+        "total": 5.2,
+        "shape_why": "a production plan through a gateway tool",
+        "check_why": "local databases and docs"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": false
+      },
+      "family": false,
+      "sha256": "e1135f9edc8753e0f0ad9aa19d84f481f7f8948026c1bc048eb8561b7d044eff",
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "protein-autointerp-disulfide",
+      "fable": {
+        "all_efforts": "1/25",
+        "by_effort": {
+          "low": "0/5",
+          "medium": "0/5",
+          "high": "0/5",
+          "xhigh": "0/5",
+          "max": "1/5"
+        },
+        "low_mean_trial_sec": 145.5,
+        "low_mean_cost_usd": 0.5129,
+        "low_cost_per_pass_usd": null,
+        "low_trial_sec_per_pass": null,
+        "all_mean_trial_sec": 770.3,
+        "all_missing_times": 0
+      },
+      "exclusions": [],
+      "score": {
+        "shape": 0,
+        "check": 1,
+        "fable_low": 0.0,
+        "time": 2.0,
+        "total": 3.0,
+        "shape_why": "infer an unknown feature from examples",
+        "check_why": "training examples"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": true,
+        "fable_low_reliable": false
+      },
+      "family": false,
+      "sha256": "288af7137c0437558158990e6f8fc59cdab02adbb8980d53fe4f38a49f582800",
+      "resources": {
+        "cpus": 4,
+        "memory_mb": 8192,
+        "storage_mb": 20480,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "react-lead-form",
+      "fable": {
+        "all_efforts": "15/25",
+        "by_effort": {
+          "low": "2/5",
+          "medium": "5/5",
+          "high": "3/5",
+          "xhigh": "3/5",
+          "max": "2/5"
+        },
+        "low_mean_trial_sec": 441.2,
+        "low_mean_cost_usd": 2.707,
+        "low_cost_per_pass_usd": 6.7675,
+        "low_trial_sec_per_pass": 1102.9,
+        "all_mean_trial_sec": 952.3,
+        "all_missing_times": 0
+      },
+      "exclusions": [
+        {
+          "rule": "R4",
+          "why": "fitted or evaluated a signal: truthful-checks calibration half"
+        }
+      ],
+      "score": {
+        "shape": 2,
+        "check": 2,
+        "fable_low": 0.8,
+        "time": 2.0,
+        "total": 6.8,
+        "shape_why": "repair of a shared submission workflow against local specs",
+        "check_why": "normative local specs and a submit command"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": false
+      },
+      "family": false,
+      "sha256": "9a47716931821672844a0b3b5cf5bda9f39c4a95cbcb53f08d6c3a4f73378779",
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "retro-console-soc",
+      "fable": {
+        "all_efforts": "25/25",
+        "by_effort": {
+          "low": "5/5",
+          "medium": "5/5",
+          "high": "5/5",
+          "xhigh": "5/5",
+          "max": "5/5"
+        },
+        "low_mean_trial_sec": 1959.6,
+        "low_mean_cost_usd": 10.3579,
+        "low_cost_per_pass_usd": 10.3579,
+        "low_trial_sec_per_pass": 1959.6,
+        "all_mean_trial_sec": 2440.5,
+        "all_missing_times": 0
+      },
+      "exclusions": [
+        {
+          "rule": "R4",
+          "why": "fitted or evaluated a signal: truthful-checks calibration half"
+        }
+      ],
+      "score": {
+        "shape": 1,
+        "check": 2,
+        "fable_low": 2.0,
+        "time": 1.0,
+        "total": 6.0,
+        "shape_why": "build a system-on-chip to a stated interface",
+        "check_why": "a test ROM and a simulator"
+      },
+      "luna_sized": true,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": true
+      },
+      "family": false,
+      "sha256": "ddc1b7323d62406f666873161677139998b0e7bd0accbb42d2ba228b3f16d7f9",
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "risk-scorer-replay",
+      "fable": {
+        "all_efforts": "25/25",
+        "by_effort": {
+          "low": "5/5",
+          "medium": "5/5",
+          "high": "5/5",
+          "xhigh": "5/5",
+          "max": "5/5"
+        },
+        "low_mean_trial_sec": 693.7,
+        "low_mean_cost_usd": 4.4458,
+        "low_cost_per_pass_usd": 4.4458,
+        "low_trial_sec_per_pass": 693.7,
+        "all_mean_trial_sec": 1137.0,
+        "all_missing_times": 0
+      },
+      "exclusions": [
+        {
+          "rule": "R3",
+          "why": "GPT-6 Luna trials exist: a GPT-6 Luna row in the truthful-checks label set"
+        },
+        {
+          "rule": "R4",
+          "why": "fitted or evaluated a signal: truthful-checks calibration half"
+        }
+      ],
+      "score": {
+        "shape": 2,
+        "check": 2,
+        "fable_low": 2.0,
+        "time": 1.5,
+        "total": 7.5,
+        "shape_why": "repair of an offline evaluator",
+        "check_why": "a black-box production command to probe"
+      },
+      "luna_sized": true,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": true
+      },
+      "family": false,
+      "sha256": "1ffea3b06f11801366aa7fcc498023b8e9a3ebc4ab46c2af2f3848d1fd3cfa88",
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "roy-polymorph-cn",
+      "fable": {
+        "all_efforts": "11/25",
+        "by_effort": {
+          "low": "0/5",
+          "medium": "4/5",
+          "high": "4/5",
+          "xhigh": "1/5",
+          "max": "2/5"
+        },
+        "low_mean_trial_sec": 44.4,
+        "low_mean_cost_usd": 0.2335,
+        "low_cost_per_pass_usd": null,
+        "low_trial_sec_per_pass": null,
+        "all_mean_trial_sec": 504.5,
+        "all_missing_times": 0
+      },
+      "exclusions": [
+        {
+          "rule": "R4",
+          "why": "fitted or evaluated a signal: truthful-checks calibration half"
+        }
+      ],
+      "score": {
+        "shape": 0,
+        "check": 0,
+        "fable_low": 0.0,
+        "time": 2.0,
+        "total": 2.0,
+        "shape_why": "fit a physical model to measurements",
+        "check_why": "no local reference"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": false
+      },
+      "family": false,
+      "sha256": "81368db8ec1438a6876fa565eb9bd4a914cfef69d05d0e7cfc4b13914bb8e002",
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "rs-archive-clone",
+      "fable": {
+        "all_efforts": "19/25",
+        "by_effort": {
+          "low": "3/5",
+          "medium": "3/5",
+          "high": "5/5",
+          "xhigh": "4/5",
+          "max": "4/5"
+        },
+        "low_mean_trial_sec": 4458.9,
+        "low_mean_cost_usd": 25.0624,
+        "low_cost_per_pass_usd": 41.7707,
+        "low_trial_sec_per_pass": 7431.5,
+        "all_mean_trial_sec": 4987.3,
+        "all_missing_times": 0
+      },
+      "exclusions": [
+        {
+          "rule": "R4",
+          "why": "fitted or evaluated a signal: truthful-checks calibration half"
+        }
+      ],
+      "score": {
+        "shape": 1,
+        "check": 2,
+        "fable_low": 1.2,
+        "time": 0.5,
+        "total": 4.7,
+        "shape_why": "clone a reference binary by probing",
+        "check_why": "the reference binary"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": false
+      },
+      "family": false,
+      "sha256": "06f27f5f641d49b008732bd8803b02305cb7556820a90abd5f83218bf70c5e39",
+      "resources": {
+        "cpus": 4,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "satb-audio-transcription",
+      "fable": {
+        "all_efforts": "16/25",
+        "by_effort": {
+          "low": "1/5",
+          "medium": "5/5",
+          "high": "3/5",
+          "xhigh": "4/5",
+          "max": "3/5"
+        },
+        "low_mean_trial_sec": 1721.8,
+        "low_mean_cost_usd": 7.9662,
+        "low_cost_per_pass_usd": 39.831,
+        "low_trial_sec_per_pass": 8609.1,
+        "all_mean_trial_sec": 1771.1,
+        "all_missing_times": 0
+      },
+      "exclusions": [],
+      "score": {
+        "shape": 0,
+        "check": 0,
+        "fable_low": 0.4,
+        "time": 1.0,
+        "total": 1.4,
+        "shape_why": "transcribe audio",
+        "check_why": "no local reference"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": true,
+        "fable_low_reliable": false
+      },
+      "family": false,
+      "sha256": "abe742f3c90d4e28cdb2f230fb433ae8deacbd3ce0dc6645ada8613e86cd5af7",
+      "resources": {
+        "cpus": 4,
+        "memory_mb": 8192,
+        "storage_mb": 10240,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "session-window-debug",
+      "fable": {
+        "all_efforts": "0/25",
+        "by_effort": {
+          "low": "0/5",
+          "medium": "0/5",
+          "high": "0/5",
+          "xhigh": "0/5",
+          "max": "0/5"
+        },
+        "low_mean_trial_sec": 158.5,
+        "low_mean_cost_usd": 0.9176,
+        "low_cost_per_pass_usd": null,
+        "low_trial_sec_per_pass": null,
+        "all_mean_trial_sec": 784.1,
+        "all_missing_times": 0
+      },
+      "exclusions": [
+        {
+          "rule": "R2",
+          "why": "in the capability-gap log"
+        },
+        {
+          "rule": "R3",
+          "why": "GPT-6 Luna trials exist: Microluna jobs on the benchmark host"
+        },
+        {
+          "rule": "R4",
+          "why": "fitted or evaluated a signal: truthful-checks calibration half; stall-detection calibration or evaluation split"
+        },
+        {
+          "rule": "R5",
+          "why": "hidden tests and reference solution read for the task anatomy"
+        }
+      ],
+      "score": {
+        "shape": 2,
+        "check": 1,
+        "fable_low": 0.0,
+        "time": 2.0,
+        "total": 5.0,
+        "shape_why": "repair of stated symptoms in shipped modules",
+        "check_why": "a design document"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": false
+      },
+      "family": false,
+      "sha256": "76ef9e829852a676d21212bd53d8be873f66c151df22a994a94ab12dfb9106f5",
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "sglang-qwen-burst",
+      "fable": {
+        "all_efforts": "4/25",
+        "by_effort": {
+          "low": "0/5",
+          "medium": "0/5",
+          "high": "1/5",
+          "xhigh": "1/5",
+          "max": "2/5"
+        },
+        "low_mean_trial_sec": 1489.7,
+        "low_mean_cost_usd": 5.335,
+        "low_cost_per_pass_usd": null,
+        "low_trial_sec_per_pass": null,
+        "all_mean_trial_sec": 2108.8,
+        "all_missing_times": 0
+      },
+      "exclusions": [
+        {
+          "rule": "R4",
+          "why": "fitted or evaluated a signal: truthful-checks calibration half"
+        }
+      ],
+      "score": {
+        "shape": 2,
+        "check": 1,
+        "fable_low": 0.0,
+        "time": 1.5,
+        "total": 4.5,
+        "shape_why": "fix a streaming-order defect",
+        "check_why": "a baseline configuration"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": false
+      },
+      "family": false,
+      "sha256": "9af775256dad4c83a4f82039dd9fae084ef06f6aa24de58e32589d3b1f45734c",
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 8192,
+        "storage_mb": 18000,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "shadow-relay",
+      "fable": {
+        "all_efforts": "24/25",
+        "by_effort": {
+          "low": "5/5",
+          "medium": "5/5",
+          "high": "5/5",
+          "xhigh": "5/5",
+          "max": "4/5"
+        },
+        "low_mean_trial_sec": 276.0,
+        "low_mean_cost_usd": 1.674,
+        "low_cost_per_pass_usd": 1.674,
+        "low_trial_sec_per_pass": 276.0,
+        "all_mean_trial_sec": 764.4,
+        "all_missing_times": 0
+      },
+      "exclusions": [
+        {
+          "rule": "R1",
+          "why": "Microluna held-out test set (microluna-v15, 2026-09-25)"
+        },
+        {
+          "rule": "R2",
+          "why": "in the capability-gap log"
+        },
+        {
+          "rule": "R3",
+          "why": "GPT-6 Luna trials exist: Luna baseline (#9583); Microluna jobs on the benchmark host; Microluna v13 trials in the #9584 prospective cohort"
+        },
+        {
+          "rule": "R4",
+          "why": "fitted or evaluated a signal: #9584 prospective cohort; stall-detection calibration or evaluation split"
+        },
+        {
+          "rule": "R5",
+          "why": "hidden tests and reference solution read for the task anatomy"
+        }
+      ],
+      "score": {
+        "shape": 0,
+        "check": 0,
+        "fable_low": 2.0,
+        "time": 2.0,
+        "total": 4.0,
+        "shape_why": "network forensics and decryption",
+        "check_why": "no local reference"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": true
+      },
+      "family": false,
+      "sha256": "069756c9875f08005da915205a3c8963eaa242f158afaa724feda9ee5f5cbc59",
+      "resources": {
+        "cpus": 8,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "sound-change-cascade",
+      "fable": {
+        "all_efforts": "25/25",
+        "by_effort": {
+          "low": "5/5",
+          "medium": "5/5",
+          "high": "5/5",
+          "xhigh": "5/5",
+          "max": "5/5"
+        },
+        "low_mean_trial_sec": 1349.8,
+        "low_mean_cost_usd": 5.2022,
+        "low_cost_per_pass_usd": 5.2022,
+        "low_trial_sec_per_pass": 1349.8,
+        "all_mean_trial_sec": 1726.6,
+        "all_missing_times": 0
+      },
+      "exclusions": [
+        {
+          "rule": "R1",
+          "why": "Microluna dev set (v9 to v17)"
+        },
+        {
+          "rule": "R2",
+          "why": "in the capability-gap log"
+        },
+        {
+          "rule": "R3",
+          "why": "GPT-6 Luna trials exist: Luna baseline (#9583); Microluna jobs on the benchmark host"
+        },
+        {
+          "rule": "R4",
+          "why": "fitted or evaluated a signal: stall-detection calibration or evaluation split"
+        },
+        {
+          "rule": "R5",
+          "why": "hidden tests and reference solution read for the task anatomy"
+        }
+      ],
+      "score": {
+        "shape": 0,
+        "check": 2,
+        "fable_low": 2.0,
+        "time": 1.5,
+        "total": 5.5,
+        "shape_why": "infer a rule cascade by search",
+        "check_why": "a rule engine and training pairs"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": true
+      },
+      "family": false,
+      "sha256": "180dc78b22356b6304ead5b0675a7fc521d079b408ecab723473c581aec63d4d",
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "takens-embedding-lean",
+      "fable": {
+        "all_efforts": "20/25",
+        "by_effort": {
+          "low": "3/5",
+          "medium": "3/5",
+          "high": "5/5",
+          "xhigh": "4/5",
+          "max": "5/5"
+        },
+        "low_mean_trial_sec": 2624.7,
+        "low_mean_cost_usd": 25.3123,
+        "low_cost_per_pass_usd": 42.1872,
+        "low_trial_sec_per_pass": 4374.5,
+        "all_mean_trial_sec": 4600.1,
+        "all_missing_times": 0
+      },
+      "exclusions": [
+        {
+          "rule": "R4",
+          "why": "fitted or evaluated a signal: truthful-checks calibration half"
+        }
+      ],
+      "score": {
+        "shape": 0,
+        "check": 2,
+        "fable_low": 1.2,
+        "time": 1.0,
+        "total": 4.2,
+        "shape_why": "a formal proof",
+        "check_why": "the build and an axiom audit"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": false
+      },
+      "family": false,
+      "sha256": "6c51a6a67ac14264afb06a66f650d14dbe09aa29c44f6c250b274ff5d9584e98",
+      "resources": {
+        "cpus": 4,
+        "memory_mb": 16384,
+        "storage_mb": 51200,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "telecom-entity-resolution",
+      "fable": {
+        "all_efforts": "25/25",
+        "by_effort": {
+          "low": "5/5",
+          "medium": "5/5",
+          "high": "5/5",
+          "xhigh": "5/5",
+          "max": "5/5"
+        },
+        "low_mean_trial_sec": 1327.8,
+        "low_mean_cost_usd": 6.0512,
+        "low_cost_per_pass_usd": 6.0512,
+        "low_trial_sec_per_pass": 1327.8,
+        "all_mean_trial_sec": 2631.1,
+        "all_missing_times": 0
+      },
+      "exclusions": [],
+      "score": {
+        "shape": 1,
+        "check": 0,
+        "fable_low": 2.0,
+        "time": 1.5,
+        "total": 4.5,
+        "shape_why": "cluster records to a stated output format",
+        "check_why": "no labels ship with the task; quality is scored on hidden pairs"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": true,
+        "fable_low_reliable": true
+      },
+      "family": true,
+      "sha256": "9062ba2faab6bf74b7cf1c80a3b2cce806e549202fca5b172c315614072109ff",
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 8192,
+        "storage_mb": 10240,
+        "gpus": 0
+      },
+      "split": "confirmation",
+      "pair": 3,
+      "rank": 5
+    },
+    {
+      "task": "uefi-bootkit",
+      "fable": {
+        "all_efforts": "16/25",
+        "by_effort": {
+          "low": "2/5",
+          "medium": "3/5",
+          "high": "3/5",
+          "xhigh": "5/5",
+          "max": "3/5"
+        },
+        "low_mean_trial_sec": 9903.9,
+        "low_mean_cost_usd": 32.3105,
+        "low_cost_per_pass_usd": 80.7764,
+        "low_trial_sec_per_pass": 24759.7,
+        "all_mean_trial_sec": 6453.8,
+        "all_missing_times": 0
+      },
+      "exclusions": [
+        {
+          "rule": "R3",
+          "why": "GPT-6 Luna trials exist: Luna baseline (#9583)"
+        },
+        {
+          "rule": "R4",
+          "why": "fitted or evaluated a signal: stall-detection calibration or evaluation split"
+        }
+      ],
+      "score": {
+        "shape": 0,
+        "check": 1,
+        "fable_low": 0.8,
+        "time": 0.0,
+        "total": 1.8,
+        "shape_why": "firmware reverse engineering",
+        "check_why": "the VM can be booted"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": false
+      },
+      "family": false,
+      "sha256": "e565690949a5c13b22364bed61f46251d85e7b55cc87af35ff87e52c6167e6d8",
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 16384,
+        "storage_mb": 10240,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "vba-userform-port",
+      "fable": {
+        "all_efforts": "2/25",
+        "by_effort": {
+          "low": "0/5",
+          "medium": "1/5",
+          "high": "0/5",
+          "xhigh": "0/5",
+          "max": "1/5"
+        },
+        "low_mean_trial_sec": 874.1,
+        "low_mean_cost_usd": 5.9497,
+        "low_cost_per_pass_usd": null,
+        "low_trial_sec_per_pass": null,
+        "all_mean_trial_sec": 1631.7,
+        "all_missing_times": 0
+      },
+      "exclusions": [
+        {
+          "rule": "R4",
+          "why": "fitted or evaluated a signal: truthful-checks calibration half"
+        },
+        {
+          "rule": "R5",
+          "why": "hidden tests and reference solution read for the task anatomy"
+        }
+      ],
+      "score": {
+        "shape": 1,
+        "check": 1,
+        "fable_low": 0.0,
+        "time": 1.5,
+        "total": 3.5,
+        "shape_why": "port an app to a stated stack",
+        "check_why": "the legacy project is the reference"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": false
+      },
+      "family": false,
+      "sha256": "ef2327fca04e4ff8471347dfaa8d8013a90928f68d123798f9383f4f5719c9b7",
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 8192,
+        "storage_mb": 20480,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "vf2-speedup-networkx",
+      "fable": {
+        "all_efforts": "7/25",
+        "by_effort": {
+          "low": "0/5",
+          "medium": "0/5",
+          "high": "1/5",
+          "xhigh": "1/5",
+          "max": "5/5"
+        },
+        "low_mean_trial_sec": 2470.9,
+        "low_mean_cost_usd": 11.4682,
+        "low_cost_per_pass_usd": null,
+        "low_trial_sec_per_pass": null,
+        "all_mean_trial_sec": 3699.3,
+        "all_missing_times": 0
+      },
+      "exclusions": [
+        {
+          "rule": "R5",
+          "why": "hidden tests and reference solution read for the task anatomy"
+        }
+      ],
+      "score": {
+        "shape": 1,
+        "check": 2,
+        "fable_low": 0.0,
+        "time": 1.0,
+        "total": 4.0,
+        "shape_why": "a faster drop-in library",
+        "check_why": "NetworkX is a local reference"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": false
+      },
+      "family": false,
+      "sha256": "5ef7fb070b875f825988a6199a752aebe9bf7a9fd898fde6c8f51b4a94573ddf",
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 8192,
+        "storage_mb": 10240,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "vllm-deepseek-streaming",
+      "fable": {
+        "all_efforts": "0/25",
+        "by_effort": {
+          "low": "0/5",
+          "medium": "0/5",
+          "high": "0/5",
+          "xhigh": "0/5",
+          "max": "0/5"
+        },
+        "low_mean_trial_sec": 669.2,
+        "low_mean_cost_usd": 3.7183,
+        "low_cost_per_pass_usd": null,
+        "low_trial_sec_per_pass": null,
+        "all_mean_trial_sec": 1236.5,
+        "all_missing_times": 0
+      },
+      "exclusions": [
+        {
+          "rule": "R4",
+          "why": "fitted or evaluated a signal: truthful-checks calibration half"
+        }
+      ],
+      "score": {
+        "shape": 2,
+        "check": 1,
+        "fable_low": 0.0,
+        "time": 1.5,
+        "total": 4.5,
+        "shape_why": "find and fix a streaming defect",
+        "check_why": "reported symptoms"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": false
+      },
+      "family": false,
+      "sha256": "3d6b83d94cae2c06b5e2e1214a30a00d1e45a7c8d9cb284215ed0e56b26d421c",
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "vpp-loss-divergence",
+      "fable": {
+        "all_efforts": "18/25",
+        "by_effort": {
+          "low": "1/5",
+          "medium": "4/5",
+          "high": "4/5",
+          "xhigh": "5/5",
+          "max": "4/5"
+        },
+        "low_mean_trial_sec": 921.2,
+        "low_mean_cost_usd": 4.4298,
+        "low_cost_per_pass_usd": 22.1492,
+        "low_trial_sec_per_pass": 4605.9,
+        "all_mean_trial_sec": 1462.9,
+        "all_missing_times": 0
+      },
+      "exclusions": [
+        {
+          "rule": "R3",
+          "why": "GPT-6 Luna trials exist: Microluna v13 trials in the #9584 prospective cohort"
+        },
+        {
+          "rule": "R4",
+          "why": "fitted or evaluated a signal: #9584 prospective cohort"
+        }
+      ],
+      "score": {
+        "shape": 2,
+        "check": 1,
+        "fable_low": 0.4,
+        "time": 1.5,
+        "total": 4.9,
+        "shape_why": "fix framework code to match a reference trace",
+        "check_why": "a deterministic trace"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": false
+      },
+      "family": false,
+      "sha256": "df00ad059470577a9b24f6ab06fe4ddfea6acc2ba14d17151ff749d0999fd7d3",
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 8192,
+        "storage_mb": 15360,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "wal-recovery-ordering",
+      "fable": {
+        "all_efforts": "1/25",
+        "by_effort": {
+          "low": "0/5",
+          "medium": "0/5",
+          "high": "0/5",
+          "xhigh": "1/5",
+          "max": "0/5"
+        },
+        "low_mean_trial_sec": 129.0,
+        "low_mean_cost_usd": 0.9044,
+        "low_cost_per_pass_usd": null,
+        "low_trial_sec_per_pass": null,
+        "all_mean_trial_sec": 536.1,
+        "all_missing_times": 0
+      },
+      "exclusions": [
+        {
+          "rule": "R3",
+          "why": "GPT-6 Luna trials exist: Luna baseline (#9583); a GPT-6 Luna row in the truthful-checks label set"
+        },
+        {
+          "rule": "R4",
+          "why": "fitted or evaluated a signal: truthful-checks calibration half"
+        }
+      ],
+      "score": {
+        "shape": 2,
+        "check": 1,
+        "fable_low": 0.0,
+        "time": 2.0,
+        "total": 5.0,
+        "shape_why": "repair of a storage implementation",
+        "check_why": "a stated contract"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": false
+      },
+      "family": false,
+      "sha256": "91e0d174c1f86c8b5b9b63574871fb92cbe4dcf75a17c5acb342d3d7b1f4b56f",
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      },
+      "split": null
+    },
+    {
+      "task": "wdm-design",
+      "fable": {
+        "all_efforts": "23/25",
+        "by_effort": {
+          "low": "5/5",
+          "medium": "5/5",
+          "high": "5/5",
+          "xhigh": "4/5",
+          "max": "4/5"
+        },
+        "low_mean_trial_sec": 12625.1,
+        "low_mean_cost_usd": 18.44,
+        "low_cost_per_pass_usd": 18.44,
+        "low_trial_sec_per_pass": 12625.1,
+        "all_mean_trial_sec": 13849.1,
+        "all_missing_times": 0
+      },
+      "exclusions": [
+        {
+          "rule": "R3",
+          "why": "GPT-6 Luna trials exist: Luna baseline (#9583)"
+        }
+      ],
+      "score": {
+        "shape": 0,
+        "check": 1,
+        "fable_low": 2.0,
+        "time": 0.0,
+        "total": 3.0,
+        "shape_why": "inverse design of a photonic device",
+        "check_why": "a simulator"
+      },
+      "luna_sized": false,
+      "gate": {
+        "untouched": false,
+        "fable_low_reliable": true
+      },
+      "family": false,
+      "sha256": "1c8d9ad7dc5ee07f77ed0ccedbbfa11f0cfece8ac448608693685ef53add5ca6",
+      "resources": {
+        "cpus": 8,
+        "memory_mb": 16384,
+        "storage_mb": 10240,
+        "gpus": 0
+      },
+      "split": null
+    }
+  ]
+}

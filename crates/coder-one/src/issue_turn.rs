@@ -24,6 +24,10 @@ use crate::record::Recorder;
 use crate::say::say;
 use crate::terminal::{Answer, Progress, Request};
 
+pub mod confined;
+
+pub use confined::Confinement;
+
 /// The most issue references offered to Jev.
 const CANDIDATES_MAX: usize = 12;
 
@@ -255,20 +259,22 @@ pub async fn run(
         prepared.workdir.display(),
         prepared.branch
     );
-    work(prepared, reference, on, recorder, true).await
+    work(prepared, reference, on, recorder, true).await.0
 }
 
 /// Works a prepared issue: the loop, the review, and the pre-pull-request
 /// gate, then, when `publish` is set, the commit, push, and draft pull
 /// request. Without `publish` the changes stay staged in the checkout, so
 /// the issue-flow evaluation can grade them without landing anything.
+/// The second half of the result is how the gate ran its tests, or `None`
+/// when the gate never ran.
 pub async fn work(
     prepared: Prepared,
     reference: Reference,
     on: Rc<dyn Fn(Progress)>,
     recorder: &Recorder,
     publish: bool,
-) -> Answer {
+) -> (Answer, Option<Confinement>) {
     let Prepared {
         inner,
         workdir,
@@ -289,6 +295,7 @@ pub async fn work(
     let execution_status = answer.report.status.clone();
     let execution_stuck = answer.stuck;
     let mut remaining: Vec<String> = Vec::new();
+    let mut tested: Option<Confinement> = None;
     if finished && let Some(text) = review_request(&workdir, reference.number) {
         say!("issue ▸ checking the code that uses what changed");
         let mut request = text;
@@ -317,8 +324,16 @@ pub async fn work(
             absorb(&mut answer, reviewed);
             say!("issue ▸ running the tests and checks on the change");
             let checked = Recorder::default();
-            remaining = gate(&workdir, inner.jev.as_ref(), &checked).await;
+            let (problems, ran) =
+                gate(&workdir, inner.jev.as_ref(), &checked, inner.seal.as_ref()).await;
+            remaining = problems;
             answer.steps.extend(checked.steps());
+            // A fix round can't give the host a boundary it lacks.
+            let incomplete = ran.as_ref().is_some_and(Confinement::incomplete);
+            tested = ran;
+            if incomplete {
+                break;
+            }
             if remaining.is_empty() {
                 say!("issue ▸ the tests pass and the checks found nothing");
                 break;
@@ -359,7 +374,7 @@ pub async fn work(
             &what,
             finished,
             answer.stuck,
-            &remaining,
+            &checked(&remaining, tested.as_ref()),
         )
     } else {
         keep(&workdir, &remaining)
@@ -389,7 +404,7 @@ pub async fn work(
     } else {
         format!("{what}\n\n{closing}")
     });
-    answer
+    (answer, tested)
 }
 
 /// Fetches the issue, clones its repository, and branches: the inner
@@ -551,8 +566,30 @@ fn default_branch(checkout: &Path) -> String {
     .unwrap_or_else(|| "main".to_string())
 }
 
+/// What a pull request body says about the gate: the problems the host's
+/// tests and checks still find, and how the tests ran.
+fn checked(remaining: &[String], tested: Option<&Confinement>) -> String {
+    let mut text = String::new();
+    if !remaining.is_empty() {
+        text.push_str(&format!(
+            "**The host's tests and checks still find problems:**\n\n{}\n\n",
+            remaining
+                .iter()
+                .map(|problem| format!("- {}", problem.replace('\n', " ")))
+                .collect::<Vec<_>>()
+                .join("\n")
+        ));
+    }
+    if let Some(tested) = tested {
+        text.push_str(&tested.describe());
+        text.push_str("\n\n");
+    }
+    text
+}
+
 /// Commits what the run changed, pushes the branch, and opens a draft
-/// pull request. Returns the closing line.
+/// pull request whose body opens with what the gate found, as
+/// [`checked`] words it. Returns the closing line.
 fn land(
     workdir: &Path,
     branch: &str,
@@ -560,7 +597,7 @@ fn land(
     reply: &str,
     finished: bool,
     stuck: bool,
-    remaining: &[String],
+    checked: &str,
 ) -> Result<String, String> {
     command(workdir, "git", &["add", "-A"])?;
     let changed = !Command::new("git")
@@ -603,20 +640,8 @@ fn land(
     } else {
         ""
     };
-    let problems = if remaining.is_empty() {
-        String::new()
-    } else {
-        format!(
-            "**The host's tests and checks still find problems:**\n\n{}\n\n",
-            remaining
-                .iter()
-                .map(|problem| format!("- {}", problem.replace('\n', " ")))
-                .collect::<Vec<_>>()
-                .join("\n")
-        )
-    };
     let body = format!(
-        "{warning}{problems}{summary}\n\n{stat}\n\nCloses {}\n\n---\nOpened by Coder.",
+        "{warning}{checked}{summary}\n\n{stat}\n\nCloses {}\n\n---\nOpened by Coder.",
         issue.url
     );
     let pr = command(
@@ -1039,17 +1064,31 @@ fn absorb(answer: &mut Answer, mut reviewed: Answer) {
 
 /// What the host finds wrong with the staged change, without a model:
 /// failing tests in the Rust packages it touches, style problems, and
-/// added figures that appear nowhere else in the repository.
-async fn gate(workdir: &Path, jev: Option<&jev::Client>, recorder: &Recorder) -> Vec<String> {
+/// added figures that appear nowhere else in the repository. The tests
+/// run as [`confined`] says, under `seal` in an evaluation run; the
+/// second half of the result is how they ran.
+async fn gate(
+    workdir: &Path,
+    jev: Option<&jev::Client>,
+    recorder: &Recorder,
+    seal: Option<&microluna::Seal>,
+) -> (Vec<String>, Option<Confinement>) {
     let _ = command(workdir, "git", &["add", "-A"]);
     let diff = command(workdir, "git", &["diff", "--cached", "-U0"]).unwrap_or_default();
-    let mut problems = test_failures(workdir, &diff);
+    let packages = changed_packages(workdir, &diff);
+    let (mut problems, tested) = match confined::Setup::for_run(workdir, seal) {
+        Ok(setup) => {
+            let (problems, tested) = confined::run(&setup, &packages).await;
+            (problems, Some(tested))
+        }
+        Err(why) => (vec![format!("the tests could not run: {why}")], None),
+    };
     problems.extend(style_problems(&diff));
     problems.extend(unsourced_figures(workdir, &diff));
     problems.extend(broken_links(workdir, &diff));
     problems.extend(stale_dependents(workdir, jev, recorder).await);
     problems.extend(unclear_text(&diff, jev, recorder).await);
-    problems
+    (problems, tested)
 }
 
 /// The most added texts the plain-language check asks about.
@@ -1207,62 +1246,6 @@ fn changed_packages(workdir: &Path, diff: &str) -> Vec<String> {
         }
     }
     packages
-}
-
-/// The most test output kept for one failing package.
-const TEST_OUTPUT_KEPT: usize = 3_000;
-
-/// Runs each changed package's tests with every feature on, in a target
-/// directory shared across issue runs, and reports the failing ones with
-/// the end of their output.
-fn test_failures(workdir: &Path, diff: &str) -> Vec<String> {
-    let target = crate::credentials::openagents_dir()
-        .map(|dir| dir.join("coder-one").join("target"))
-        .unwrap_or_else(|| workdir.join("target"));
-    let mut failures = Vec::new();
-    for package in changed_packages(workdir, diff) {
-        say!("issue ▸ running the {package} tests");
-        let output = Command::new("timeout")
-            .args([
-                "1200",
-                "cargo",
-                "test",
-                "-q",
-                "-p",
-                &package,
-                "--all-features",
-            ])
-            .env("CARGO_TARGET_DIR", &target)
-            .current_dir(workdir)
-            .output();
-        match output {
-            Ok(out) if out.status.success() => {}
-            Ok(out) => {
-                let text = format!(
-                    "{}{}",
-                    String::from_utf8_lossy(&out.stdout),
-                    String::from_utf8_lossy(&out.stderr)
-                );
-                let lines: Vec<&str> = text
-                    .lines()
-                    .filter(|l| {
-                        l.contains("FAILED")
-                            || l.contains("panicked")
-                            || l.starts_with("error")
-                            || l.contains("assertion")
-                            || l.trim_start().starts_with("left")
-                            || l.trim_start().starts_with("right")
-                    })
-                    .collect();
-                failures.push(format!(
-                    "the {package} tests fail (`cargo test -p {package} --all-features`): {}",
-                    crate::judge::clip(&lines.join("\n"), TEST_OUTPUT_KEPT)
-                ));
-            }
-            Err(error) => failures.push(format!("the {package} tests could not run: {error}")),
-        }
-    }
-    failures
 }
 
 /// Figures the change adds to prose or to strings, such as `$0.0041` or
@@ -1755,7 +1738,7 @@ mod tests {
             "Worked.",
             status == Status::Answered,
             stuck,
-            &[],
+            "",
         )
         .unwrap();
         assert!(result.contains("not committed"), "{result}");

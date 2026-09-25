@@ -229,6 +229,45 @@ pub enum Ending {
     Deadline,
     /// A request got no reply; the text says why.
     Transport(String),
+    /// The host's [`Watch`] ended the session; the text says why.
+    Host(String),
+}
+
+/// What the host does after a turn, as its [`Watch`] decides.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Intervention {
+    /// Let the session go on.
+    Continue,
+    /// Tell the session something before its next request: a host message
+    /// in its input, recorded as a system step.
+    Tell(String),
+    /// End the session now, with [`Ending::Host`]; the text says why and
+    /// is recorded as a system step.
+    End(String),
+}
+
+/// The host's look at a running session after each turn, beside the
+/// finish turn-back in [`Persist`]. A turn-back acts only when the model
+/// calls `finish`; a watch can act between any two turns.
+pub trait Watch {
+    /// Called after turn `turn` (from 1) ran its tool calls and left the
+    /// session running with turns to spare. `steps` are the session's
+    /// steps so far.
+    fn after_turn(
+        &mut self,
+        turn: usize,
+        steps: &[atif::Step],
+    ) -> impl Future<Output = Intervention>;
+}
+
+/// A watch that never intervenes.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct NoWatch;
+
+impl Watch for NoWatch {
+    async fn after_turn(&mut self, _turn: usize, _steps: &[atif::Step]) -> Intervention {
+        Intervention::Continue
+    }
 }
 
 /// What one session did and cost.
@@ -402,6 +441,19 @@ pub async fn run<T: Transport>(
     brief: &Brief,
     config: &Config,
     recorder: &mut Recorder,
+) -> Report {
+    run_watched(transport, workspace, brief, config, recorder, &mut NoWatch).await
+}
+
+/// Runs one session to its end, with `watch` looking after each turn:
+/// it may tell the session something, or end it with [`Ending::Host`].
+pub async fn run_watched<T: Transport, W: Watch>(
+    transport: &T,
+    workspace: &Workspace,
+    brief: &Brief,
+    config: &Config,
+    recorder: &mut Recorder,
+    watch: &mut W,
 ) -> Report {
     let started = Instant::now();
     let mut input = brief.input();
@@ -628,6 +680,20 @@ pub async fn run<T: Transport>(
                 report.finish = Some(finish);
                 report.ending = Ending::Finished;
                 break 'turns;
+            }
+        }
+        if report.turns < config.max_turns {
+            match watch.after_turn(report.turns, recorder.steps()).await {
+                Intervention::Continue => {}
+                Intervention::Tell(text) => {
+                    recorder.record(atif::Step::said(atif::Source::System, &text));
+                    input.push(user(&text));
+                }
+                Intervention::End(why) => {
+                    recorder.record(atif::Step::said(atif::Source::System, &why));
+                    report.ending = Ending::Host(why);
+                    break;
+                }
             }
         }
     }

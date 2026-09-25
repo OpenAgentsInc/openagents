@@ -189,7 +189,7 @@ pub async fn run(options: Options) -> Result<Ran, String> {
             eprintln!("{line}");
         }
     }));
-    let answer =
+    let (answer, tested) =
         crate::issue_turn::work(prepared, reference, on, &Recorder::default(), false).await;
     drop(captured);
     let flow_ms = millis(started);
@@ -255,6 +255,7 @@ pub async fn run(options: Options) -> Result<Ran, String> {
         policy: &policy,
         sealing: &sealing,
         scan: &scan,
+        tested: tested.as_ref(),
         outcome,
         grade: &grade,
         usage: &usage,
@@ -287,6 +288,7 @@ struct Manifested<'a> {
     policy: &'a crate::terminal::Selected,
     sealing: &'a super::sealed::Sealing,
     scan: &'a super::sealed::Scan,
+    tested: Option<&'a crate::issue_turn::Confinement>,
     outcome: &'a str,
     grade: &'a Grade,
     usage: &'a Value,
@@ -328,6 +330,10 @@ fn manifest(m: &Manifested) -> Value {
         "sealed": m.sealing,
         "contamination": m.scan.record(),
         "contaminated": m.scan.contaminated,
+        // How the pre-pull-request gate ran its tests; `null` when the
+        // gate never ran. Mode `refused` is an incomplete gate.
+        "gate_tests": m.tested,
+        "gate_incomplete": m.tested.is_some_and(crate::issue_turn::Confinement::incomplete),
         "outcome": m.outcome,
         "grade": {
             "verdict": m.grade.verdict,
@@ -501,6 +507,7 @@ mod tests {
             "{attempts:#?}"
         );
         assert_eq!(ran.manifest["contaminated"], false);
+        assert_eq!(ran.manifest["gate_incomplete"], false);
         // Nothing was committed, pushed, or opened: the checkout still
         // sits on the base commit with the change staged.
         let repo = ran.dir.join("repo");

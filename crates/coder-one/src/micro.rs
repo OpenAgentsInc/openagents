@@ -1184,6 +1184,7 @@ impl Ran {
             (Ending::TurnLimit, _) => "turn_limit".to_string(),
             (Ending::Deadline, _) => "deadline".to_string(),
             (Ending::Transport(_), _) => "transport".to_string(),
+            (Ending::Host(_), _) => "host_ended".to_string(),
             (Ending::Finished, None) => "finished".to_string(),
         }
     }
@@ -1194,6 +1195,7 @@ impl Ran {
             Some(finish) => format!("{}\n\nAnswer: {}", finish.summary, finish.answer),
             None => match &self.ending {
                 Ending::Transport(why) => format!("The session lost its provider: {why}"),
+                Ending::Host(why) => why.clone(),
                 Ending::Deadline => "The session's time bound passed.".to_string(),
                 Ending::TurnLimit => "The session used every turn it had.".to_string(),
                 _ => "The session stopped without calling finish.".to_string(),
@@ -1792,7 +1794,6 @@ impl Micro {
     }
 
     /// Runs one session where `place` says, recording it.
-    #[allow(clippy::too_many_lines)]
     async fn session_at(
         &self,
         number: u32,
@@ -1801,6 +1802,31 @@ impl Micro {
         brief: &Brief,
         read_only: bool,
         place: Place,
+    ) -> Ran {
+        self.session_watched(
+            number,
+            focus,
+            why,
+            brief,
+            read_only,
+            place,
+            &mut microluna::NoWatch,
+        )
+        .await
+    }
+
+    /// Runs one session where `place` says, with `watch` looking after
+    /// each turn ([`microluna::Watch`]), recording it.
+    #[allow(clippy::too_many_lines, clippy::too_many_arguments)]
+    async fn session_watched<W: microluna::Watch>(
+        &self,
+        number: u32,
+        focus: &[String],
+        why: &str,
+        brief: &Brief,
+        read_only: bool,
+        place: Place,
+        watch: &mut W,
     ) -> Ran {
         let started_at_ms = atif::now_ms();
         let workdir = place
@@ -2015,7 +2041,7 @@ impl Micro {
         });
         let report = match (&self.wire, workspace) {
             (Ok(wire), Ok(workspace)) => {
-                microluna::run(wire, &workspace, brief, &config, &mut recorder).await
+                microluna::run_watched(wire, &workspace, brief, &config, &mut recorder, watch).await
             }
             (Err(why), _) => microluna::Report {
                 ending: Ending::Transport(why.clone()),

@@ -155,6 +155,19 @@ implement this shared context system.
 | Decision door | Implemented | A `POST /v1/systemone` endpoint a world's `relay.decision_url` names — a local `kev-serve` or a live TypeSafe door. A `choice` answer orders admitted work; every call is recorded under `decisions/` with state, questions, model, raw response, and transport. |
 | Achievement label | Implemented | A NIP-32 `kind:1985` event the host's relay-management key signs after a reconciled quest — `openagents.voyager` / `quest-complete` targeting the member's pubkey — published to the episode relay and kept as `quest/label.json`. |
 
+## Verse
+
+| Term | Status | Definition |
+| --- | --- | --- |
+| Verse | Partial | The OpenAgents desktop world, `crates/verse`: a walkable 3D city in the Coder terminal's amber, after the June 2026 Tassadar run board (episode 240) and on the Ruins of Atlantis engine family. Players share one world over [NIP-MV](../nips/openagents/NIP-MV.md) and see each other's avatars and agents; live OpenAgents state is not implemented. See [verse](verse/README.md). |
+| Amber ladder | Implemented | The four `coder_terminal::Intensity` steps over one amber hue, plus the near-black field. Verse draws every line in a ladder step and every solid face in the field color. |
+| Mouselook | Implemented | Holding the right mouse button: the character turns to face the camera, then turns with the mouse, and `A`/`D` strafe instead of turning. Left drag orbits the camera without turning the character. |
+| NIP-MV | Implemented | Shared 3D worlds over Nostr, specified in [NIP-MV](../nips/openagents/NIP-MV.md): ephemeral pose frames (`23300`) and gestures (`23301`), durable entity states (`33301`), and world definitions (`33300`). `crates/verse` implements frames, gestures, and states; it does not publish world definitions. |
+| Pose frame | Implemented | A `23300` event carrying the current position and quaternion of one publisher's entities. Relays forward it and do not store it. Receivers order frames by session and sequence and draw them slightly in the past. |
+| Entity state | Implemented | A `33301` event recording where one entity was last and whether its publisher is online. Relays keep the latest per entity, which is how a player resumes and how resting players stay visible. |
+| Scan | Implemented | The agent's look-around after a chase: a one-shot query for entity states in the cells around it, answered by glancing at the nearest players or agents found. |
+| Greeting | Implemented | Two agents within 7 m of each other turn, bow, and hop, and each sends a NIP-MV `greet` gesture addressed to the other. A received greeting is returned once; a pair greets at most once every 45 s. |
+
 ## Capabilities and programs
 
 | Term | Status | Definition |

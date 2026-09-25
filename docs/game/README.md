@@ -32,9 +32,13 @@ wording.
   ruinsofatlantis.com." The Ruins of Atlantis GDD names the studio **Blue
   Rush Studios, a division of OpenAgents, Inc.** No transcript mentions
   "million" in connection with the studio.
-- The only game code on `main` today is the **Voyager Minecraft** work from
-  September 2026: `crates/voyager/`, `mc-bridge/`, `worlds/`, `quests/`, and
-  the specs in [`docs/minecraft/`](../minecraft/README.md).
+- The game code on `main` today is the **Voyager Minecraft** work from
+  September 2026 (`crates/voyager/`, `mc-bridge/`, `worlds/`, `quests/`, and
+  the specs in [`docs/minecraft/`](../minecraft/README.md)) and, since
+  2026-09-24, the new **Verse** desktop crate
+  ([`crates/verse/`](../../crates/verse), [`docs/verse/`](../verse/README.md)).
+  It is a Rust `wgpu` rebuild of the Verse on the Ruins of Atlantis engine
+  family, drawn only in the terminal's amber.
 - The most recent direction (episodes 283, 284, and 288, September 2026) is
   **coding agents as an MMORPG**. It covers XP and levels tied to verified
   accepted work, classes, daily quests, agentic auction houses, gamers as the

@@ -58,12 +58,13 @@ Two sets of candidates were graded against frozen suites:
    candidate. `accept offline` marks a trial `snapshot_graded` only when
    every check candidate has the snapshot's digest.
 2. **Microluna final workspaces.** No retained Microluna trial has that
-   snapshot, so `accept offline` can't read them. Instead,
-   [`run_finals.py`](../../bench/terminal-bench/experiments/2026-09-24-acceptance-first/run_finals.py)
-   rebuilds each graded Microluna trial's final workspace, the task image's
-   `/app` with the trial's collected deliverables copied over it, and runs
-   `coder-one accept run` on it with the frozen suite. This covers every
-   graded Microluna trial on the four tasks that have a frozen suite:
+   snapshot. Each graded Microluna trial's final workspace is instead
+   rebuilt as the task image's `/app` with the trial's collected
+   deliverables copied over it, and the frozen suite runs on it. The
+   published run did this with an ad hoc script; `accept offline --kinds
+   final` now does it directly and reproduces every published row (see
+   [Records and reproduction](#records-and-reproduction)). This covers
+   every graded Microluna trial on the four tasks that have a frozen suite:
    `embedding-drift-monitor` (25), `sound-change-cascade` (11),
    `interleaved-vigenere` (10), and `fin-saccr-rwa` (1), plus the
    [reconstructed v12 candidate before its editing review](2026-09-24-microluna-candidate-evidence.md#the-first-pass-reconstructed),
@@ -275,24 +276,76 @@ Everything is under
   the Coder One tables above, with Wilson intervals, and the excluded
   trials with reasons.
 - `records/microluna-finals.json` and `records/microluna-finals-summary.json`,
-  from `run_finals.py` and
+  from the first version of
+  [`run_finals.py`](../../bench/terminal-bench/experiments/2026-09-24-acceptance-first/run_finals.py)
+  and
   [`measure_finals.py`](../../bench/terminal-bench/experiments/2026-09-24-acceptance-first/measure_finals.py):
   every Microluna run, with the suite's red tests and the verifier's
   result.
 - `records/minitasks.json`: the mini-task runs.
 
-To rerun the Microluna measurement, point `run_finals.py` at a
-`coder-one` binary, the retained suites, and the Terminal-Bench jobs
-directory. Each `suite.accept.json` names the directory it was frozen in,
-so place the suites there or edit that path first; `accept run` refuses a
-suite whose files changed.
+### Reproduce the Microluna rows
+
+`coder-one accept offline` reads retained Microluna trials directly, so
+the Microluna measurement needs no workspace-building script. For each
+task and pass, copy the retained suite, its `suite.accept.json` and
+`suite/`, to `OUT/<task>/`, then run:
+
+```sh
+coder-one accept offline TASK --reuse --jev off --out OUT \
+  --image IMAGE --kinds final,reconstruction \
+  --reconstruction bench/terminal-bench/experiments/2026-09-24-candidate-evidence/records/reconstructed-v12-embedding-r1-before-review \
+  --trials NAME,...
+coder-one accept validity OUT
+```
+
+`--reuse` runs a suite copied beside its record from where it is now, and
+its digest still has to match. `IMAGE` is the image each task used:
+`accept-env/embedding-drift-monitor:latest`,
+`sound-change-cascade__avnavjz__env-main:latest`,
+`tbench-warm/interleaved-vigenere:environment-37a3e35da105ad0d814a`, and
+`accept-env/fin-saccr-rwa:latest`. `--trials` names the published set:
+every trial of a `tb4--*microluna*` job on the four tasks with a verifier
+reward. `run_finals.py` now runs exactly these commands for both passes
+and writes the rows in the shape `measure_finals.py` reads.
+
+On 2026-09-24 this reproduced all 96 published runs, 48 workspaces times
+2 passes, with the same reward, the same green call, the same count of
+green tests, and the same red tests on every row. `accept validity` prints
+the published Microluna table. Pass 2 was green on 2 workspaces, both
+failures, and red on 46, of which 34 failed; it kept none of the 12
+passes green. Pass 3 was never green, and 36 of its 48 red calls were
+failures. A trial whose
+deliverables Harbor couldn't collect, such as v10's and v16's
+`sound-change-cascade`, is the image's `/app` alone, as the published run
+had it.
+
+Without `--trials`, `accept offline` finds more than the published set,
+and the tables above don't include it:
+
+- **Three Microluna trials from other job names.** The #9587 best-of and
+  suite jobs (`tb4--micro-bo1`, `tb4--micro-bo3s`) ran Microluna on
+  `embedding-drift-monitor` twice and `sound-change-cascade` once, all
+  failures. Pass 2's suite was red on both `embedding-drift-monitor`
+  workspaces and green, 8 of 8, on the `sound-change-cascade` one. With
+  them, pass 2 is green on 3 trials, all failures.
+- **Two Microluna trials with no verifier reward** on
+  `embedding-drift-monitor`, reported as unknown.
+- **12 retained lean-loop candidates** from the candidate-evidence and v13
+  retained runs, each checked against the file identity its
+  `selection.json` recorded. With `--grades` pointing at
+  `2026-09-24-candidate-evidence/records/candidate-grades`, 11 have a
+  known reward: 5 passes and 6 failures. Pass 2's suite was red on all
+  12, as it is on every passing final workspace of the task.
 
 Two counting notes:
 
-- A trial whose verifier reward is unknown is left out here.
-  `coder-one accept validity` counts it as a verifier failure, which adds
-  3 correct-looking `bun-sourcemap-leak` failures to its pass 2 output
-  (31 of 49 agreement, against 28 of 46 here). That's a small bug in
-  `offline::Agreement::of`, left for #9584.
+- A trial whose verifier reward is unknown is left out here. Until this
+  fix, `coder-one accept validity` counted it as a verifier failure,
+  which added 3 correct-looking `bun-sourcemap-leak` failures to its
+  pass 2 output (31 of 49 agreement, against 28 of 46 here).
+  `offline::Agreement::of` now reports such a trial as unknown and leaves
+  it out of every count, and `accept validity` prints 28 of 46 with 3
+  unknown.
 - A suite with no tests can't be green, and both tools leave its trials
   out. That removed 14 of pass 1's trials.
