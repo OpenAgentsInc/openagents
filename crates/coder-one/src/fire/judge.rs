@@ -168,6 +168,9 @@ pub struct Run {
     pub notes: Vec<String>,
     pub refused_finishes: usize,
     pub judgments: Vec<Judgment>,
+    /// Each score the run measured itself at, from a `SCORE got of` line
+    /// in a command's output: seconds, got, of.
+    pub scores: Vec<(f64, f64, f64)>,
     pub components: Vec<String>,
     pub ended: bool,
 }
@@ -225,6 +228,9 @@ impl Run {
                 output,
             } if event.is_action() => {
                 let input = input_of(name, arguments);
+                for (got, of) in scores_in(output) {
+                    self.scores.push((t, got, of));
+                }
                 let edit = is_edit(name, &input);
                 if edit && self.first_edit.is_none() {
                     self.first_edit = Some(t);
@@ -246,6 +252,21 @@ impl Run {
     pub fn usd(&self) -> f64 {
         self.model_usd + self.jev_usd
     }
+}
+
+/// The scores a command's output reports, one per `SCORE got of` line:
+/// the form the lean loop's evaluation scripts print.
+#[must_use]
+pub fn scores_in(output: &str) -> Vec<(f64, f64)> {
+    output
+        .lines()
+        .filter_map(|line| {
+            let mut words = line.trim().strip_prefix("SCORE ")?.split_whitespace();
+            let got = words.next()?.parse().ok()?;
+            let of = words.next()?.parse().ok()?;
+            Some((got, of))
+        })
+        .collect()
 }
 
 /// What a tool call did, in one string.
@@ -434,6 +455,10 @@ pub fn request(run: &Run, card: &Card, now: u64) -> (Value, ::jev::Questions) {
         "earlier_actions": earlier,
         "recent_actions": recent,
         "previous_judgments": previous,
+        "score_history": run.scores.iter().rev().take(12).rev().map(|(t, got, of)| json!({
+            "t_s": t.round(),
+            "score": format!("{got}/{of}"),
+        })).collect::<Vec<_>>(),
     });
     let mut phase = ::jev::Choice::new(
         "Which of the winners' `phases` is the run in now, judging by `recent_actions`? Pick other when its actions match none of them.",
@@ -471,7 +496,7 @@ pub fn request(run: &Run, card: &Card, now: u64) -> (Value, ::jev::Questions) {
         .with(
             "stop",
             ::jev::Noul::new(
-                "If the run keeps to its current path, will it fail to finish the task, so it should be stopped now and fixed? Answer yes only when `recent_actions` show it, not because the run is early.",
+                "If the run keeps to its current path, will it fail to finish the task, so it should be stopped now and fixed? Answer yes only when `recent_actions` show it, not because the run is early. `score_history` holds each score the run measured itself at: a score that is still rising is progress even when it's low, and a plateau means no gain over several measurements. Compare the run's elapsed time with `winners_seconds_to_done`: well before that time, a partial result is expected.",
             ),
         );
     (state, questions)

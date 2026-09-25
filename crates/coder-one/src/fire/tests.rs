@@ -451,3 +451,19 @@ async fn replay_with_jev_off_stops_by_code_rules_and_writes_a_report() {
             .contains("no_edit")
     );
 }
+
+#[test]
+fn scores_come_from_score_lines_and_reach_the_request() {
+    assert_eq!(
+        judge::scores_in("x\nSCORE 228 780\nSCORE 0 0\nSCORE a b"),
+        vec![(228.0, 780.0), (0.0, 0.0)]
+    );
+    let run = run_with(&[(
+        2_000,
+        "run_command",
+        json!({"command": "score.sh"}),
+        "[exit 0]\nSCORE 155 780",
+    )]);
+    let (state, _) = judge::request(&run, &card(), 3_000);
+    assert_eq!(state["score_history"][0]["score"], "155/780");
+}
