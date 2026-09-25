@@ -39,8 +39,39 @@ def money(value):
     return number
 
 
-def price(usage, rule, *, before_agent=False):
-    """One versioned rule for the live ledger and final report."""
+def price(usage, rule, *, before_agent=False, oracle=None):
+    """One versioned rule for the live ledger and final report.
+
+    ``oracle`` is the trial's ``oracle-host.json`` (``tbench.oracle_host``),
+    when the host wrote an oracle before the agent started. Its cost is
+    added under that module's declared rule, even when the trial ended
+    before the agent ran.
+    """
+    base = _price(usage, rule, before_agent=before_agent)
+    if not oracle:
+        return base
+    extra = oracle.get('cost') or {}
+    counted = money(extra.get('counted_usd'))
+    recorded = extra.get('recorded_usd')
+    recorded = money(recorded) if recorded is not None else None
+    out = dict(base, oracle_host={'status': oracle.get('status'), 'digest': oracle.get('digest'),
+                                  'recorded_usd': None if recorded is None else str(recorded),
+                                  'counted_usd': str(counted)})
+    proven = base.get('recorded_usd') or base.get('lower_bound_usd') or '0'
+    out['lower_bound_usd'] = str(money(proven) + (recorded or 0))
+    if base['counted_usd'] is None:
+        return out
+    out['counted_usd'] = str(money(base['counted_usd']) + counted)
+    if base.get('recorded_usd') is not None and recorded is not None:
+        out['recorded_usd'] = str(money(base['recorded_usd']) + recorded)
+    else:
+        out['recorded_usd'] = None
+    if out['kind'] in ('known-zero', 'known-zero-before-agent') and counted > 0:
+        out['kind'] = 'host-oracle-before-agent' if before_agent else 'recorded'
+    return out
+
+
+def _price(usage, rule, *, before_agent=False):
     if rule['version'] != RULE:
         raise CohortError('unsupported cost rule')
     if before_agent:
@@ -335,12 +366,15 @@ def inspect(job: Path, rule):
         return None
     usage_path = results[0].parent / 'agent/episode/evaluation/usage.json'
     usage = json.loads(usage_path.read_text()) if usage_path.exists() else None
+    oracle_path = results[0].parent / 'agent/oracle-host.json'
+    oracle = json.loads(oracle_path.read_text()) if oracle_path.exists() else None
     before = ('agent_execution' in result and result['agent_execution'] is None
               and result.get('agent_result') is None and bool(result.get('exception_info')))
     reward = ((result.get('verifier_result') or {}).get('rewards') or {}).get('reward')
     graded = type(reward) in (int, float) and reward in (0, 1)
     return {'kind': 'graded' if graded else ('infrastructure' if before else 'incomplete'),
-            'reward': reward if graded else None, 'cost': price(usage, rule, before_agent=before and not graded),
+            'reward': reward if graded else None,
+            'cost': price(usage, rule, before_agent=before and not graded, oracle=oracle),
             'result_sha256': hashlib.sha256(results[0].read_bytes()).hexdigest(),
             'usage_sha256': hashlib.sha256(usage_path.read_bytes()).hexdigest() if usage_path.exists() else None}
 

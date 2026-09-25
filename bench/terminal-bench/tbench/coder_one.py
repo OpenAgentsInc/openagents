@@ -55,6 +55,12 @@ Every arm runs the contamination guard (``tbench.contamination``, issue
 #9590) on the host: before setup, over its policy manifest and the
 guidance in the checkout, refusing the trial on a finding; and after the
 run, over the episode's own briefings, recording what it found.
+
+When the manifest turns ``executor.microluna.lean.oracle`` on, the host
+writes the task's oracle before the agent installs and places it in the
+trial read-only (``tbench.oracle_host``, issue #9656). ``oracle_writer``
+names a ``coder-one`` binary that runs on the host; by default it's
+``artifact_path``. The step's cost is added to the trial's cost.
 """
 
 from __future__ import annotations
@@ -70,7 +76,7 @@ from typing import Any, ClassVar
 
 from harbor.environments.base import BaseEnvironment
 
-from tbench import contamination
+from tbench import contamination, oracle_host
 from tbench.coder_v05 import INSTALL_ROOT, CoderV05, EpisodeContractError
 from tbench.paths import PACKAGE_DIR
 
@@ -176,6 +182,9 @@ class CoderOne(CoderV05):
         self._policy: dict[str, Any] | None = load_policy(policy) if policy else None
         self._policy_file: Path | None = policy_file(policy) if policy else None
         self._instruction: str | None = None
+        self._oracle = oracle_host.settings(self._policy)
+        self._oracle_writer: str | None = kwargs.pop("oracle_writer", None)
+        self._oracle_record: dict[str, Any] | None = None
         lean = ((self._policy or {}).get("policy", {}).get("executor", {})
                  .get("microluna", {}).get("lean", {}))
         self._candidate_capture = kwargs.pop("candidate_capture", bool(lean.get("retain_candidates")))
@@ -217,7 +226,49 @@ class CoderOne(CoderV05):
             if not coverage["supported"] or not callable(getattr(environment, "candidate_pause", None)):
                 raise EpisodeContractError("candidate capture is unsupported: " +
                                            "; ".join(coverage["reasons"] or ["the environment lacks checkpoint pause support"]))
+        if self._oracle is not None:
+            await self._write_oracle(environment)
         await super().setup(environment)
+        if self._oracle_record is not None:
+            await oracle_host.deliver(
+                self, environment, self.logs_dir / "oracle", self._oracle_record
+            )
+
+    def _oracle_env(self) -> dict[str, str]:
+        """The host step's environment: this process's, with the Jev key
+        and the Codex login's directory the arm was given, by name."""
+        env = dict(os.environ)
+        for name in ("TYPESAFE_API_KEY", "CODER_ONE_JEV"):
+            value = self._get_env(name)
+            if value:
+                env[name] = value
+        auth = getattr(self, "codex_auth_path", lambda: None)()
+        if auth is not None and auth.name == "auth.json" and auth.is_file():
+            env["CODEX_HOME"] = str(auth.parent)
+        return env
+
+    async def _write_oracle(self, environment: BaseEnvironment) -> None:
+        """Write the task's oracle on the host (``tbench.oracle_host``). A
+        failure is recorded as ``unavailable``; the trial goes on without
+        an oracle."""
+        from .replay import ReplayError, task_dir
+
+        try:
+            task = task_dir(self.logs_dir.parent)
+        except ReplayError:
+            task = None
+        record = await asyncio.to_thread(
+            oracle_host.write,
+            self._oracle_writer or (str(Path(self._artifact_path).expanduser()) if self._artifact_path else None),
+            task,
+            oracle_host.task_image(environment),
+            self.logs_dir / "oracle",
+            self._oracle or {},
+            oracle_host.setup_budget_sec(self.logs_dir),
+            self._oracle_env(),
+        )
+        oracle_host.save(self.logs_dir, record)
+        self._oracle_record = record
 
     async def run(self, instruction: str, environment: BaseEnvironment, context) -> None:
         self._instruction = instruction
@@ -239,8 +290,22 @@ class CoderOne(CoderV05):
                 worker.cancel()
 
     def populate_context_post_run(self, context) -> None:
-        """Fold the bundle in, then check the run's own briefings."""
+        """Fold the bundle in, add the host oracle step's cost, then check
+        the run's own briefings."""
         super().populate_context_post_run(context)
+        oracle = self._oracle_record or oracle_host.load(self.logs_dir)
+        if oracle is not None:
+            counted = float(oracle["cost"]["counted_usd"])
+            if context.cost_usd is not None:
+                context.cost_usd = float(context.cost_usd) + counted
+            context.metadata = {
+                **(context.metadata or {}),
+                "oracle": {
+                    "status": oracle.get("status"),
+                    "digest": oracle.get("digest"),
+                    "counted_usd": oracle["cost"]["counted_usd"],
+                },
+            }
         report = contamination.run_check(
             self.logs_dir, instruction=self._instruction, artifact=self._artifact_path
         )
@@ -259,6 +324,7 @@ class CoderOne(CoderV05):
             env["CODER_ONE_CANDIDATE_CHECKPOINT"] = REMOTE
         if self._policy is not None:
             env["CODER_ONE_POLICY"] = json.dumps(self._policy, separators=(",", ":"))
+        env.update(oracle_host.episode_env(self._oracle_record))
         # With an exec timeout, the episode runs one deadline inside it.
         if self._episode_timeout_sec and "CODER_ONE_EPISODE_DEADLINE" not in env:
             env["CODER_ONE_EPISODE_DEADLINE"] = str(
