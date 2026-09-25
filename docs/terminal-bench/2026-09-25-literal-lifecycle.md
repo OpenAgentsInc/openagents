@@ -81,10 +81,14 @@ The original checker and previous replay bundles remain intact.
 ## Protocol amendment
 
 The [reserved confirmation protocol](../../bench/terminal-bench/experiments/2026-09-25-literal-confirmation/protocol.md)
-must pin the corrected checker and a new job suffix before generation. Its tasks,
+pins the corrected checker and the new `artifact-v2` job suffix before generation. Its tasks,
 executor artifacts, policies, reviewer, thresholds, budgets, primary comparator,
 and completion criterion stay fixed. The original unstarted protocol remains
-available as an explicitly superseded version.
+available as an explicitly superseded version. Regenerated plans and both clean
+contamination receipts are published in the protocol's separately verified
+260-file preparation bundle. The conservative lifecycle rule reduces literal
+coverage from five to three of the 15 reserved groups; that loss is disclosed,
+and no task-specific grammar adjustment recovers it.
 
 This follows the [September 25 assessment](../coder/design/2026-09-25-assessment.md):
 independently supported observations still need trustworthy interpretation.

@@ -160,3 +160,23 @@ thresholds, review profile, budgets, orchestration hashes, and primary evaluatio
 criterion remain fixed. The amended protocol and regenerated public plans must
 be published before launch. Wait for the separately owned v18 family run to
 finish, then use a new preparation directory; never reuse the superseded plans.
+
+
+The amended public plans are now retained before launch. The unchanged original
+file arm yields zero items on all 15 groups. The literal arm retains one
+obligation each for `extract-elf`, `large-scale-text-editing`, and
+`schemelike-metacircular-eval`, and abstains on the other 12 groups. Conservative
+lifecycle handling removes the earlier obligations for `filter-js-from-html`
+and `regex-chess`; their public instructions describe removal/replacement
+behavior, which this small grammar does not safely distinguish from cleanup.
+This is lost coverage, not evidence that those outputs are optional. Do not
+retune the grammar to recover these selected tasks. The remaining rule can
+still use the unchanged reproduced reviewer.
+
+Both contamination receipts are clean. All original and amended plans,
+configuration, task-file provenance, zero-candidate inventory, and the stopped
+original launcher are retained in the [preparation bundle](records/literal-preparation.tar.gz),
+SHA-256 `b6b00bdc98db2a8c3736f016709d034289752cd113148a93439485a893a82935`.
+Its [manifest](records/literal-preparation-files.json) binds 260 credential-scanned,
+separately restored, hash-verified files. Public environment inputs remain in the
+previously retained preflight bundle.
