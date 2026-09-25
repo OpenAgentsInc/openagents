@@ -1,0 +1,7 @@
+{
+  "what": "replay.py: every retained oracle rerun on every retained workspace and the untouched workspace of all 17 tasks, Jev from recorded answers, no Luna session",
+  "binary": "target/debug/coder-one built at 2dd5943639",
+  "identical": 128,
+  "different": [],
+  "note": "The first pass ran with a replay.py that didn't pass each task's image, so uefi-bootkit couldn't start; its 2 verdict lists matched once the image was passed."
+}

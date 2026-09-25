@@ -58,9 +58,10 @@ def main():
         for name in ("spec.json", "oracle.json"):
             if os.path.exists(os.path.join(src, name)):
                 shutil.copy(os.path.join(src, name), os.path.join(dst, name))
+        image = json.load(open(os.path.join(src, "results.json"))).get("image")
         subprocess.run(
             [
-                args.coder_one, "checks", "oracle", "offline", task,
+                args.coder_one, "checks", "oracle", "offline", task, "--image", image,
                 "--out", args.scratch, "--jev", "recorded", "--write", "off",
                 "--reuse-spec", "--grades", GRADES,
                 "--exclude-job", "9584", "--exclude-job", "truth-confirmation",

@@ -291,6 +291,15 @@ workspace line, Luna's next edit already went to the named line 76% of the
 time when it edited that file, and re-reading the named file took 0.15% of
 turns. [Report](../../terminal-bench/2026-09-25-failure-localization.md)
 
+`checks.oracle` (#9656) is built and refused by every policy until
+admitted. On the 17 tasks outside the mapped eleven, no task named a
+checker, and a blind Luna session wrote an oracle for each for under half
+a cent. A `fail` from a usable oracle was right 22 times in 22, and within
+3 mixed tasks it kept 5 of 5 passes green and called 10 of 19 failures
+red, too few passes to meet the bar. Two writers searched the host, so the
+writer needs a read boundary.
+[Report](../../terminal-bench/2026-09-25-oracle.md)
+
 ## Tracking
 
 - #9652
