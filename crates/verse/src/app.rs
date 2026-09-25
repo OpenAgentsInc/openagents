@@ -12,6 +12,7 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{CursorGrabMode, Window, WindowId};
 
+use crate::agent::Agent;
 use crate::avatar::{self, Gait};
 use crate::camera::FollowCamera;
 use crate::controller::{InputState, PlayerController};
@@ -47,8 +48,9 @@ pub fn capture(
     let world = world::build();
     let player = PlayerController::new(world::SPAWN, 0.0);
     let view = view(&camera, &player, width as f32 / height as f32);
-    let avatar = avatar::mesh(&player, &Gait::default());
-    render::capture(path, width, height, &world.mesh, view, &avatar)
+    let mut dynamic = avatar::mesh(&player, &Gait::default());
+    dynamic.extend(&Agent::new(&player).mesh());
+    render::capture(path, width, height, &world.mesh, view, &dynamic)
 }
 
 fn view(camera: &FollowCamera, player: &PlayerController, aspect: f32) -> View {
@@ -97,6 +99,7 @@ struct App {
     player: PlayerController,
     camera: FollowCamera,
     gait: Gait,
+    agent: Agent,
     keys: Keys,
     last: Instant,
     error: Option<String>,
@@ -109,6 +112,7 @@ impl App {
             renderer: None,
             world: world::build(),
             player: PlayerController::new(world::SPAWN, 0.0),
+            agent: Agent::new(&PlayerController::new(world::SPAWN, 0.0)),
             camera: FollowCamera::default(),
             gait: Gait::default(),
             keys: Keys::default(),
@@ -182,12 +186,15 @@ impl App {
         }
         self.gait
             .advance(self.player.speed, self.player.airborne(), dt);
+        self.agent.update(&self.player, dt);
 
         let Some(renderer) = &mut self.renderer else {
             return;
         };
         let view = view(&self.camera, &self.player, renderer.aspect());
-        renderer.draw(view, &avatar::mesh(&self.player, &self.gait));
+        let mut dynamic = avatar::mesh(&self.player, &self.gait);
+        dynamic.extend(&self.agent.mesh());
+        renderer.draw(view, &dynamic);
     }
 }
 

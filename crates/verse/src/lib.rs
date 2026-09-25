@@ -6,6 +6,7 @@
 //! a custom renderer). The palette is the Coder terminal's amber ladder and
 //! nothing else. Read `docs/verse/README.md`.
 
+pub mod agent;
 pub mod app;
 pub mod avatar;
 pub mod camera;

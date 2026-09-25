@@ -18,7 +18,26 @@ cargo run -p verse --release
 ```
 
 A 1440×900 window titled **Verse** opens with the character on a plaza,
-facing a pylon, with the city around the plaza.
+facing a pylon, with the city around the plaza. The player's agent, a
+floating 3D spade, hovers behind the character's right shoulder.
+
+## The agent
+
+The agent is a spade from a deck of cards, extruded into 3D and drawn like
+everything else: near-black faces and amber edges. It floats about 2.2 m up
+and follows the player:
+
+- It chases a point behind the player's right shoulder on a slightly
+  underdamped spring. It trails when you run and overshoots a little when
+  you stop.
+- The point it chases drifts slowly, so its distance from the player is
+  never exact.
+- It bobs and wobbles on several unrelated frequencies, leans into its own
+  speed, and turns lazily toward your heading.
+- A faint ring on the ground below it shows where it is.
+
+The agent has no behavior yet beyond following. Its game design is in
+[`gdd.md`](gdd.md).
 
 ## Controls
 
@@ -79,7 +98,7 @@ vertex in the world has another color.
 | Quarter | `#463100` | Fine ground grid, building floor bands, horizon base |
 | Half | `#835b00` | Streets, pylon rings, the character's ground ring, horizon ridge |
 | ThreeQuarters | `#c18600` | Building edges |
-| Full | `#ffb000` | Rooflines, masts, the pylon, the character |
+| Full | `#ffb000` | Rooflines, masts, the pylon, the character, the agent's front edge |
 | Field | `#080600` | Background, fog, solid faces |
 
 **Stack.** Verse uses the Ruins of Atlantis engine family:
@@ -114,6 +133,7 @@ The character collides with building footprints and the world edge.
 | [`src/camera.rs`](../../crates/verse/src/camera.rs) | `FollowCamera`: orbit, mouselook, zoom, settle, view-projection. |
 | [`src/world.rs`](../../crates/verse/src/world.rs) | Seeded city, ground grid, pylon, horizon. The same city every launch. |
 | [`src/avatar.rs`](../../crates/verse/src/avatar.rs) | The boxy line character and its distance-driven walk cycle. |
+| [`src/agent.rs`](../../crates/verse/src/agent.rs) | The floating spade agent: spring follow, bob, wobble, and geometry. |
 | [`src/mesh.rs`](../../crates/verse/src/mesh.rs) | The shared vertex format and line, quad, cube, and ring builders. |
 | [`src/palette.rs`](../../crates/verse/src/palette.rs) | The amber ladder in linear light. |
 | [`src/render.rs`](../../crates/verse/src/render.rs), [`src/shader.wgsl`](../../crates/verse/src/shader.wgsl) | Pipelines, fog, the window renderer, and PNG capture. |
