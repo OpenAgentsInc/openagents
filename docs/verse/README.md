@@ -36,7 +36,16 @@ and follows the player:
   speed, and turns lazily toward your heading.
 - A faint ring on the ground below it shows where it is.
 
-The agent has no behavior yet beyond following. Its game design is in
+It also plays emotes over that motion:
+
+| Emote | When | What it does |
+| --- | --- | --- |
+| Look around | You run for more than 0.6 s, stop, and it catches up to you. | Looks left, then right, then ahead. |
+| Spin | At random while idle beside you, every 5 to 12 s. | One full turn with a small lift. |
+| Look up and down | At random while idle. | Tips back to look up, then forward to look down. |
+| Barrel roll | At random while idle. | One full roll around its facing axis, rising a little. |
+
+The agent has no behavior yet beyond following and emoting. Its game design is in
 [`gdd.md`](gdd.md).
 
 ## Controls

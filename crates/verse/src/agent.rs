@@ -5,6 +5,11 @@
 //! the player moves and overshoots a little when the player stops. The
 //! target wanders, and the body bobs and wobbles on incommensurate
 //! frequencies, so the motion never settles into an exact repeat.
+//!
+//! On top of that motion the agent plays [`Emote`]s. After it chases a
+//! running player and catches up, it looks left and right. While it idles
+//! beside a still player, it now and then spins, looks up and down, or
+//! does a barrel roll.
 
 use coder_terminal::Intensity;
 use glam::{Mat4, Quat, Vec2, Vec3};
@@ -25,6 +30,137 @@ const DAMPING: f32 = 0.72;
 pub const SIZE: f32 = 0.75;
 /// Half the spade's thickness, in meters.
 const DEPTH: f32 = 0.05;
+/// Player speed, in meters per second, that counts as being chased.
+const CHASE_SPEED: f32 = 5.0;
+/// Seconds of chasing before a catch-up earns a look around.
+const CHASE_TIME: f32 = 0.6;
+/// Shortest and longest wait between idle emotes, in seconds.
+const IDLE_WAIT: (f32, f32) = (5.0, 12.0);
+
+/// A short gesture the agent plays over its ordinary motion.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Emote {
+    /// Look left, then right, then ahead. Played after catching up.
+    LookAround,
+    /// One full turn around the vertical axis.
+    Spin,
+    /// Tip back to look up, then forward to look down.
+    LookUpDown,
+    /// One full roll around the facing axis, with a small lift.
+    BarrelRoll,
+}
+
+impl Emote {
+    /// The emotes the agent picks from while idle.
+    pub const IDLE: [Emote; 3] = [Emote::Spin, Emote::LookUpDown, Emote::BarrelRoll];
+
+    /// Length in seconds.
+    #[must_use]
+    pub fn duration(self) -> f32 {
+        match self {
+            Emote::LookAround => 2.4,
+            Emote::Spin => 1.2,
+            Emote::LookUpDown => 1.8,
+            Emote::BarrelRoll => 1.1,
+        }
+    }
+
+    /// The pose at `u`, from 0 to 1: extra yaw, pitch, roll in radians and
+    /// extra height in meters. Every emote starts and ends at rest.
+    #[must_use]
+    pub fn pose(self, u: f32) -> Pose {
+        use std::f32::consts::TAU;
+        let u = u.clamp(0.0, 1.0);
+        match self {
+            Emote::LookAround => Pose {
+                yaw: 0.85
+                    * keys(
+                        u,
+                        &[
+                            (0.0, 0.0),
+                            (0.2, 1.0),
+                            (0.4, 1.0),
+                            (0.62, -1.0),
+                            (0.8, -1.0),
+                            (1.0, 0.0),
+                        ],
+                    ),
+                ..Pose::REST
+            },
+            Emote::Spin => Pose {
+                yaw: TAU * ease(u),
+                lift: 0.12 * (u * std::f32::consts::PI).sin(),
+                ..Pose::REST
+            },
+            Emote::LookUpDown => Pose {
+                pitch: 0.55
+                    * keys(
+                        u,
+                        &[
+                            (0.0, 0.0),
+                            (0.25, -1.0),
+                            (0.45, -1.0),
+                            (0.7, 1.0),
+                            (0.85, 1.0),
+                            (1.0, 0.0),
+                        ],
+                    ),
+                ..Pose::REST
+            },
+            Emote::BarrelRoll => Pose {
+                roll: TAU * ease(u),
+                lift: 0.25 * (u * std::f32::consts::PI).sin(),
+                ..Pose::REST
+            },
+        }
+    }
+}
+
+/// An emote's offset from the agent's ordinary pose.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Pose {
+    /// Extra turn around the vertical axis, in radians. Positive is left.
+    pub yaw: f32,
+    /// Extra tip around the side axis, in radians. Negative looks up.
+    pub pitch: f32,
+    /// Extra roll around the facing axis, in radians.
+    pub roll: f32,
+    /// Extra height, in meters.
+    pub lift: f32,
+}
+
+impl Pose {
+    /// No offset.
+    pub const REST: Pose = Pose {
+        yaw: 0.0,
+        pitch: 0.0,
+        roll: 0.0,
+        lift: 0.0,
+    };
+}
+
+/// Smoothstep between keyframes `(u, value)` sorted by `u`.
+fn keys(u: f32, frames: &[(f32, f32)]) -> f32 {
+    for pair in frames.windows(2) {
+        let ((u0, a), (u1, b)) = (pair[0], pair[1]);
+        if u <= u1 {
+            let t = ((u - u0) / (u1 - u0)).clamp(0.0, 1.0);
+            return a + (b - a) * ease(t);
+        }
+    }
+    frames.last().map_or(0.0, |f| f.1)
+}
+
+fn ease(t: f32) -> f32 {
+    t * t * (3.0 - 2.0 * t)
+}
+
+/// The emote playing now, and how far into it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Playing {
+    emote: Emote,
+    elapsed: f32,
+}
 
 /// The agent's motion state.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -35,6 +171,11 @@ pub struct Agent {
     /// Heading in radians, the same convention as the player's yaw.
     pub yaw: f32,
     time: f32,
+    playing: Option<Playing>,
+    chased: f32,
+    owed_look: bool,
+    idle_wait: f32,
+    rng: u64,
 }
 
 impl Agent {
@@ -46,7 +187,25 @@ impl Agent {
             vel: Vec3::ZERO,
             yaw: player.yaw,
             time: 0.0,
+            playing: None,
+            chased: 0.0,
+            owed_look: false,
+            idle_wait: IDLE_WAIT.0,
+            rng: 0x5eed_a6e7,
         }
+    }
+
+    /// The emote playing now, if any.
+    #[must_use]
+    pub fn emote(&self) -> Option<Emote> {
+        self.playing.map(|p| p.emote)
+    }
+
+    /// The current emote pose, or rest.
+    #[must_use]
+    pub fn pose(&self) -> Pose {
+        self.playing
+            .map_or(Pose::REST, |p| p.emote.pose(p.elapsed / p.emote.duration()))
     }
 
     /// Advances the agent by `dt` seconds toward its place beside `player`.
@@ -61,6 +220,60 @@ impl Agent {
         // Turn toward the player's heading, lazily.
         let delta = crate::controller::wrap(player.yaw - self.yaw);
         self.yaw = crate::controller::wrap(self.yaw + delta * (1.0 - 0.08f32.powf(dt)));
+
+        self.emotes(player, goal, dt);
+    }
+
+    fn emotes(&mut self, player: &PlayerController, goal: Vec3, dt: f32) {
+        if let Some(playing) = &mut self.playing {
+            playing.elapsed += dt;
+            if playing.elapsed >= playing.emote.duration() {
+                self.playing = None;
+            }
+        }
+
+        if player.speed > CHASE_SPEED {
+            self.chased += dt;
+            if self.chased > CHASE_TIME {
+                self.owed_look = true;
+            }
+        } else {
+            self.chased = 0.0;
+        }
+
+        let still = player.speed < 0.1 && !player.airborne();
+        let caught_up = self.pos.distance(goal) < 0.45 && self.vel.length() < 0.6;
+        if !still || !caught_up {
+            return;
+        }
+        if self.owed_look {
+            self.owed_look = false;
+            self.play(Emote::LookAround);
+            return;
+        }
+        if self.playing.is_none() {
+            self.idle_wait -= dt;
+            if self.idle_wait <= 0.0 {
+                let pick = Emote::IDLE[(self.random() * 3.0) as usize % 3];
+                self.play(pick);
+                self.idle_wait = IDLE_WAIT.0 + self.random() * (IDLE_WAIT.1 - IDLE_WAIT.0);
+            }
+        }
+    }
+
+    fn play(&mut self, emote: Emote) {
+        self.playing = Some(Playing {
+            emote,
+            elapsed: 0.0,
+        });
+    }
+
+    /// A uniform value in `[0, 1)` from a xorshift generator.
+    fn random(&mut self) -> f32 {
+        self.rng ^= self.rng << 13;
+        self.rng ^= self.rng >> 7;
+        self.rng ^= self.rng << 17;
+        (self.rng >> 40) as f32 / (1u64 << 24) as f32
     }
 
     /// The rendered transform: position plus bob, heading plus wobble.
@@ -69,10 +282,11 @@ impl Agent {
         let t = self.time;
         let bob = (t * 1.9).sin() * 0.07 + (t * 0.73).sin() * 0.04;
         let lean = self.vel.length().min(6.0) * 0.05;
-        let wobble = Quat::from_rotation_y(self.yaw + (t * 0.61).sin() * 0.35)
-            * Quat::from_rotation_x((t * 1.37).sin() * 0.12 + lean)
-            * Quat::from_rotation_z((t * 0.97).sin() * 0.10);
-        Mat4::from_rotation_translation(wobble, self.pos + Vec3::Y * bob)
+        let pose = self.pose();
+        let wobble = Quat::from_rotation_y(self.yaw + (t * 0.61).sin() * 0.35 + pose.yaw)
+            * Quat::from_rotation_x((t * 1.37).sin() * 0.12 + lean + pose.pitch)
+            * Quat::from_rotation_z((t * 0.97).sin() * 0.10 + pose.roll);
+        Mat4::from_rotation_translation(wobble, self.pos + Vec3::Y * (bob + pose.lift))
     }
 
     /// The agent's geometry for this frame: the spade and its ground ring.
@@ -205,6 +419,92 @@ mod tests {
             rest < 0.2,
             "and settles once the player stops, off by {rest}"
         );
+    }
+
+    #[test]
+    fn catching_up_after_a_run_earns_a_look_around() {
+        let mut pc = PlayerController::new(Vec3::ZERO, 0.0);
+        let mut agent = Agent::new(&pc);
+        let run = InputState {
+            forward: true,
+            ..Default::default()
+        };
+        let dt = 1.0 / 60.0;
+        for _ in 0..90 {
+            pc.update(&run, dt, &[], 1000.0);
+            agent.update(&pc, dt);
+            assert_eq!(agent.emote(), None, "no emote mid-chase");
+        }
+        let mut seen = false;
+        for _ in 0..240 {
+            pc.update(&InputState::default(), dt, &[], 1000.0);
+            agent.update(&pc, dt);
+            seen |= agent.emote() == Some(Emote::LookAround);
+        }
+        assert!(seen, "the agent looks around once it catches up");
+    }
+
+    #[test]
+    fn a_short_step_earns_no_look_around() {
+        let mut pc = PlayerController::new(Vec3::ZERO, 0.0);
+        let mut agent = Agent::new(&pc);
+        let run = InputState {
+            forward: true,
+            ..Default::default()
+        };
+        let dt = 1.0 / 60.0;
+        for _ in 0..12 {
+            pc.update(&run, dt, &[], 1000.0);
+            agent.update(&pc, dt);
+        }
+        for _ in 0..180 {
+            pc.update(&InputState::default(), dt, &[], 1000.0);
+            agent.update(&pc, dt);
+            assert_ne!(agent.emote(), Some(Emote::LookAround));
+        }
+    }
+
+    #[test]
+    fn an_idle_agent_plays_every_idle_emote() {
+        let pc = PlayerController::new(Vec3::ZERO, 0.0);
+        let mut agent = Agent::new(&pc);
+        let mut seen = Vec::new();
+        for _ in 0..(60 * 240) {
+            agent.update(&pc, 1.0 / 60.0);
+            if let Some(e) = agent.emote()
+                && !seen.contains(&e)
+            {
+                seen.push(e);
+            }
+        }
+        for e in Emote::IDLE {
+            assert!(seen.contains(&e), "{e:?} never played");
+        }
+    }
+
+    #[test]
+    fn every_emote_starts_and_ends_at_rest() {
+        use std::f32::consts::TAU;
+        for e in [
+            Emote::LookAround,
+            Emote::Spin,
+            Emote::LookUpDown,
+            Emote::BarrelRoll,
+        ] {
+            for u in [0.0, 1.0] {
+                let p = e.pose(u);
+                let turn = |a: f32| (a.rem_euclid(TAU)).min(TAU - a.rem_euclid(TAU));
+                assert!(turn(p.yaw) < 1e-4 && turn(p.pitch) < 1e-4 && turn(p.roll) < 1e-4);
+                assert!(p.lift.abs() < 1e-4, "{e:?} at {u}");
+            }
+        }
+    }
+
+    #[test]
+    fn the_look_around_goes_left_then_right() {
+        let left = Emote::LookAround.pose(0.3).yaw;
+        let right = Emote::LookAround.pose(0.7).yaw;
+        assert!(left > 0.8 && right < -0.8);
     }
 
     #[test]
