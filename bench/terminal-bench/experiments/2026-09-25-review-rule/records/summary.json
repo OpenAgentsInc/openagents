@@ -1,0 +1,447 @@
+{
+  "schema": "openagents.coder-one.review-rule-summary.v1",
+  "implementation": {
+    "name": "review-rule-v1",
+    "digest": "2cbe07c4c4891da2f8a7256398e1b57991bc348068bc1b8ec71804d333b3551a"
+  },
+  "all": {
+    "dispatches": 26,
+    "reached_review": 23,
+    "passes": 5,
+    "failures": 21,
+    "reward_unknown": 0,
+    "review_changed_workspace": {
+      "k": 5,
+      "n": 23,
+      "rate": 0.21739130434782608,
+      "wilson95": [
+        0.09663977965448592,
+        0.4190348318675122
+      ]
+    },
+    "review_ms": 1827235,
+    "review_usd": 0.07103924,
+    "triggers": {
+      "score": {
+        "clear": 23
+      },
+      "regressed": {
+        "unknown": 23
+      },
+      "hardcoded": {
+        "clear": 23
+      },
+      "uncovered": {
+        "unknown": 23
+      }
+    },
+    "uncovered_proxy_fired": {
+      "k": 3,
+      "n": 17,
+      "rate": 0.17647058823529413,
+      "wilson95": [
+        0.06191126589146398,
+        0.4102945877077837
+      ]
+    },
+    "rule_unknown_fires": {
+      "dispatches": 23,
+      "review_runs": 23,
+      "skipped": {
+        "k": 0,
+        "n": 23,
+        "rate": 0.0,
+        "wilson95": [
+          0.0,
+          0.14311662038507353
+        ]
+      },
+      "skipped_on_passes": {
+        "k": 0,
+        "n": 5,
+        "rate": 0.0,
+        "wilson95": [
+          0.0,
+          0.43448246865939283
+        ]
+      },
+      "fires_on_failures": {
+        "k": 18,
+        "n": 18,
+        "rate": 1.0,
+        "wilson95": [
+          0.8241207740667156,
+          1.0
+        ]
+      },
+      "saved_review_ms": 0,
+      "saved_review_usd": 0.0,
+      "saved_share_of_session_time": 0.0,
+      "saved_share_of_session_cost": 0.0,
+      "saved_share_of_agent_time": null
+    },
+    "rule_unknown_clear": {
+      "dispatches": 23,
+      "review_runs": 0,
+      "skipped": {
+        "k": 23,
+        "n": 23,
+        "rate": 1.0,
+        "wilson95": [
+          0.8568833796149266,
+          1.0
+        ]
+      },
+      "skipped_on_passes": {
+        "k": 5,
+        "n": 5,
+        "rate": 1.0,
+        "wilson95": [
+          0.5655175313406071,
+          1.0
+        ]
+      },
+      "fires_on_failures": {
+        "k": 0,
+        "n": 18,
+        "rate": 0.0,
+        "wilson95": [
+          0.0,
+          0.17587922593328437
+        ]
+      },
+      "saved_review_ms": 1827235,
+      "saved_review_usd": 0.07103924,
+      "saved_share_of_session_time": 0.19060008670301962,
+      "saved_share_of_session_cost": 0.19029845728554887,
+      "saved_share_of_agent_time": null
+    },
+    "rule_with_uncovered_proxy": {
+      "dispatches": 17,
+      "review_runs": 3,
+      "skipped": {
+        "k": 14,
+        "n": 17,
+        "rate": 0.8235294117647058,
+        "wilson95": [
+          0.5897054122922163,
+          0.938088734108536
+        ]
+      },
+      "skipped_on_passes": {
+        "k": 3,
+        "n": 3,
+        "rate": 1.0,
+        "wilson95": [
+          0.43850296436068037,
+          1.0
+        ]
+      },
+      "fires_on_failures": {
+        "k": 3,
+        "n": 14,
+        "rate": 0.21428571428571427,
+        "wilson95": [
+          0.07571386653293533,
+          0.4758923079830535
+        ]
+      },
+      "saved_review_ms": 1067788,
+      "saved_review_usd": 0.04436124,
+      "saved_share_of_session_time": 0.1499710251262577,
+      "saved_share_of_session_cost": 0.15632955237362314,
+      "saved_share_of_agent_time": null
+    }
+  },
+  "by_root": {
+    "/private/tmp/truth9584/restored-fresh-traces": {
+      "dispatches": 8,
+      "reached_review": 5,
+      "passes": 0,
+      "failures": 8,
+      "reward_unknown": 0,
+      "review_changed_workspace": {
+        "k": 1,
+        "n": 5,
+        "rate": 0.2,
+        "wilson95": [
+          0.03622410822563066,
+          0.6244653729700049
+        ]
+      },
+      "review_ms": 383027,
+      "review_usd": 0.01412198,
+      "triggers": {
+        "score": {
+          "clear": 5
+        },
+        "regressed": {
+          "unknown": 5
+        },
+        "hardcoded": {
+          "clear": 5
+        },
+        "uncovered": {
+          "unknown": 5
+        }
+      },
+      "uncovered_proxy_fired": {
+        "k": 3,
+        "n": 5,
+        "rate": 0.6,
+        "wilson95": [
+          0.23072427940911855,
+          0.8823792268590028
+        ]
+      },
+      "rule_unknown_fires": {
+        "dispatches": 5,
+        "review_runs": 5,
+        "skipped": {
+          "k": 0,
+          "n": 5,
+          "rate": 0.0,
+          "wilson95": [
+            0.0,
+            0.43448246865939283
+          ]
+        },
+        "skipped_on_passes": {
+          "k": 0,
+          "n": 0,
+          "rate": null,
+          "wilson95": null
+        },
+        "fires_on_failures": {
+          "k": 5,
+          "n": 5,
+          "rate": 1.0,
+          "wilson95": [
+            0.5655175313406071,
+            1.0
+          ]
+        },
+        "saved_review_ms": 0,
+        "saved_review_usd": 0.0,
+        "saved_share_of_session_time": 0.0,
+        "saved_share_of_session_cost": 0.0,
+        "saved_share_of_agent_time": null
+      },
+      "rule_unknown_clear": {
+        "dispatches": 5,
+        "review_runs": 0,
+        "skipped": {
+          "k": 5,
+          "n": 5,
+          "rate": 1.0,
+          "wilson95": [
+            0.5655175313406071,
+            1.0
+          ]
+        },
+        "skipped_on_passes": {
+          "k": 0,
+          "n": 0,
+          "rate": null,
+          "wilson95": null
+        },
+        "fires_on_failures": {
+          "k": 0,
+          "n": 5,
+          "rate": 0.0,
+          "wilson95": [
+            0.0,
+            0.43448246865939283
+          ]
+        },
+        "saved_review_ms": 383027,
+        "saved_review_usd": 0.01412198,
+        "saved_share_of_session_time": 0.13780200075839724,
+        "saved_share_of_session_cost": 0.11970894122453891,
+        "saved_share_of_agent_time": null
+      },
+      "rule_with_uncovered_proxy": {
+        "dispatches": 5,
+        "review_runs": 3,
+        "skipped": {
+          "k": 2,
+          "n": 5,
+          "rate": 0.4,
+          "wilson95": [
+            0.11762077314099711,
+            0.7692757205908813
+          ]
+        },
+        "skipped_on_passes": {
+          "k": 0,
+          "n": 0,
+          "rate": null,
+          "wilson95": null
+        },
+        "fires_on_failures": {
+          "k": 3,
+          "n": 5,
+          "rate": 0.6,
+          "wilson95": [
+            0.23072427940911855,
+            0.8823792268590028
+          ]
+        },
+        "saved_review_ms": 170978,
+        "saved_review_usd": 0.009363759999999999,
+        "saved_share_of_session_time": 0.06151292333352281,
+        "saved_share_of_session_cost": 0.07937454914117485,
+        "saved_share_of_agent_time": null
+      }
+    },
+    "bench/terminal-bench/traces": {
+      "dispatches": 18,
+      "reached_review": 18,
+      "passes": 5,
+      "failures": 13,
+      "reward_unknown": 0,
+      "review_changed_workspace": {
+        "k": 4,
+        "n": 18,
+        "rate": 0.2222222222222222,
+        "wilson95": [
+          0.09000928045845544,
+          0.45214584506003586
+        ]
+      },
+      "review_ms": 1444208,
+      "review_usd": 0.05691725999999999,
+      "triggers": {
+        "score": {
+          "clear": 18
+        },
+        "regressed": {
+          "unknown": 18
+        },
+        "hardcoded": {
+          "clear": 18
+        },
+        "uncovered": {
+          "unknown": 18
+        }
+      },
+      "uncovered_proxy_fired": {
+        "k": 0,
+        "n": 12,
+        "rate": 0.0,
+        "wilson95": [
+          0.0,
+          0.2424940095530979
+        ]
+      },
+      "rule_unknown_fires": {
+        "dispatches": 18,
+        "review_runs": 18,
+        "skipped": {
+          "k": 0,
+          "n": 18,
+          "rate": 0.0,
+          "wilson95": [
+            0.0,
+            0.17587922593328437
+          ]
+        },
+        "skipped_on_passes": {
+          "k": 0,
+          "n": 5,
+          "rate": 0.0,
+          "wilson95": [
+            0.0,
+            0.43448246865939283
+          ]
+        },
+        "fires_on_failures": {
+          "k": 13,
+          "n": 13,
+          "rate": 1.0,
+          "wilson95": [
+            0.7719046248681998,
+            1.0
+          ]
+        },
+        "saved_review_ms": 0,
+        "saved_review_usd": 0.0,
+        "saved_share_of_session_time": 0.0,
+        "saved_share_of_session_cost": 0.0,
+        "saved_share_of_agent_time": 0.0
+      },
+      "rule_unknown_clear": {
+        "dispatches": 18,
+        "review_runs": 0,
+        "skipped": {
+          "k": 18,
+          "n": 18,
+          "rate": 1.0,
+          "wilson95": [
+            0.8241207740667156,
+            1.0
+          ]
+        },
+        "skipped_on_passes": {
+          "k": 5,
+          "n": 5,
+          "rate": 1.0,
+          "wilson95": [
+            0.5655175313406071,
+            1.0
+          ]
+        },
+        "fires_on_failures": {
+          "k": 0,
+          "n": 13,
+          "rate": 0.0,
+          "wilson95": [
+            0.0,
+            0.22809537513180025
+          ]
+        },
+        "saved_review_ms": 1444208,
+        "saved_review_usd": 0.05691725999999999,
+        "saved_share_of_session_time": 0.21215882825278287,
+        "saved_share_of_session_cost": 0.22291206095332627,
+        "saved_share_of_agent_time": 0.20053138718158597
+      },
+      "rule_with_uncovered_proxy": {
+        "dispatches": 12,
+        "review_runs": 0,
+        "skipped": {
+          "k": 12,
+          "n": 12,
+          "rate": 1.0,
+          "wilson95": [
+            0.7575059904469021,
+            1.0
+          ]
+        },
+        "skipped_on_passes": {
+          "k": 3,
+          "n": 3,
+          "rate": 1.0,
+          "wilson95": [
+            0.43850296436068037,
+            1.0
+          ]
+        },
+        "fires_on_failures": {
+          "k": 0,
+          "n": 9,
+          "rate": 0.0,
+          "wilson95": [
+            0.0,
+            0.299145051727044
+          ]
+        },
+        "saved_review_ms": 896810,
+        "saved_review_usd": 0.034997480000000004,
+        "saved_share_of_session_time": 0.2066184439463867,
+        "saved_share_of_session_cost": 0.21108485160510831,
+        "saved_share_of_agent_time": 0.19341903806158672
+      }
+    }
+  }
+}
