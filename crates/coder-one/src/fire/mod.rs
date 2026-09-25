@@ -208,7 +208,14 @@ fn logs_dir(trial: &Path) -> PathBuf {
 }
 
 /// The verifier's reward, when the trial has one.
+///
+/// Only once the harness has written the trial's `result.json`: a task's
+/// test script can write a placeholder reward before its tests run and
+/// replace it at the end, so `reward.txt` alone isn't final.
 fn reward(trial: &Path) -> Option<f64> {
+    if !trial.join("result.json").is_file() {
+        return None;
+    }
     std::fs::read_to_string(trial.join("verifier/reward.txt"))
         .ok()
         .and_then(|text| text.trim().parse().ok())
@@ -447,10 +454,7 @@ async fn watch(
                 options.verifier_wait
             );
             let deadline = now_ms() + options.verifier_wait * 1000;
-            while reward(&trial).is_none()
-                && !trial.join("result.json").is_file()
-                && now_ms() < deadline
-            {
+            while !trial.join("result.json").is_file() && now_ms() < deadline {
                 tokio::time::sleep(Duration::from_secs(2)).await;
             }
             break Ending::Finished(reward(&trial));

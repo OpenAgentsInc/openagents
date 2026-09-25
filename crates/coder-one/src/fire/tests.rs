@@ -423,6 +423,7 @@ async fn replay_with_jev_off_stops_by_code_rules_and_writes_a_report() {
     .unwrap();
     std::fs::create_dir_all(trial.path().join("verifier")).unwrap();
     std::fs::write(trial.path().join("verifier/reward.txt"), "0\n").unwrap();
+    std::fs::write(trial.path().join("result.json"), "{}").unwrap();
     let card_path = trial.path().join("card.json");
     std::fs::write(&card_path, serde_json::to_string(&card()).unwrap()).unwrap();
     let out = trial.path().join("out");
