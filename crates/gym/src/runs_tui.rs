@@ -9,6 +9,7 @@
 //! switches to its transcript, and `A` to its analysis: the one
 //! `gym runs analyze --write` keeps beside the run, or, when none was
 //! kept, one computed from the records with Jev's cached answers only.
+//! `C` shows its run card, the page `gym runs characterize` prints.
 //!
 //! The drawing is `coder-terminal`'s: the amber [`Ladder`], the hairline
 //! [`frame`] with its [`rail`]s, the [`Scrollback`] that wraps each
@@ -97,6 +98,8 @@ pub enum Tab {
     Transcript,
     /// The run's analysis, from [`crate::runs_analysis`].
     Analysis,
+    /// The run's card, from [`crate::runs_card`].
+    Card,
 }
 
 /// One transcript block, ready to wrap.
@@ -159,6 +162,8 @@ struct Open {
     /// The analysis's Markdown, read or computed the first time `A` shows
     /// it.
     analysis: RefCell<Option<String>>,
+    /// The run card's Markdown, computed the first time `C` shows it.
+    card: RefCell<Option<String>>,
 }
 
 impl Open {
@@ -178,6 +183,7 @@ impl Open {
             file_hits: RefCell::new(Vec::new()),
             bottom: Cell::new(0),
             analysis: RefCell::new(None),
+            card: RefCell::new(None),
         }
     }
 
@@ -835,7 +841,7 @@ impl Pane {
             Key::Char('q') => return Reply::Quit,
             Key::Char('t') => {
                 open.tab = match open.tab {
-                    Tab::Summary | Tab::Analysis => Tab::Transcript,
+                    Tab::Summary | Tab::Analysis | Tab::Card => Tab::Transcript,
                     Tab::Transcript => Tab::Summary,
                 };
                 open.scroll.set(0);
@@ -844,7 +850,15 @@ impl Pane {
             Key::Char('A') => {
                 open.tab = match open.tab {
                     Tab::Analysis => Tab::Summary,
-                    Tab::Summary | Tab::Transcript => Tab::Analysis,
+                    Tab::Summary | Tab::Transcript | Tab::Card => Tab::Analysis,
+                };
+                open.scroll.set(0);
+                return Reply::Handled;
+            }
+            Key::Char('C') => {
+                open.tab = match open.tab {
+                    Tab::Card => Tab::Summary,
+                    Tab::Summary | Tab::Transcript | Tab::Analysis => Tab::Card,
                 };
                 open.scroll.set(0);
                 return Reply::Handled;
@@ -853,7 +867,7 @@ impl Pane {
             _ => {}
         }
         match open.tab {
-            Tab::Summary | Tab::Analysis => {
+            Tab::Summary | Tab::Analysis | Tab::Card => {
                 let scroll = open.scroll.get();
                 match key {
                     Key::Up | Key::Char('k') => open.scroll.set(scroll.saturating_sub(1)),
@@ -1301,7 +1315,7 @@ impl Pane {
         let (title, hint, keys, short) = match open.tab {
             Tab::Summary => (
                 "Summary",
-                "t shows the transcript, A the analysis",
+                "t shows the transcript, A the analysis, C the run card",
                 "↑↓ scroll · t transcript · w compare with best · p head-to-head · d details · x mark bad · v mark fine · u unmark · esc back · q quit",
                 "↑↓ t w A d x v u esc q",
             ),
@@ -1310,6 +1324,12 @@ impl Pane {
                 "A shows the summary",
                 "↑↓ scroll · A summary · t transcript · click path opens file · x mark bad · v mark fine · u unmark · esc back · q quit",
                 "↑↓ A t x v u esc q",
+            ),
+            Tab::Card => (
+                "Run card",
+                "C shows the summary",
+                "↑↓ scroll · C summary · A analysis · t transcript · x mark bad · v mark fine · u unmark · esc back · q quit",
+                "↑↓ C A t x v u esc q",
             ),
             Tab::Transcript => (
                 "Transcript",
@@ -1324,6 +1344,7 @@ impl Pane {
             Tab::Summary => self.render_summary(open, inner, buf),
             Tab::Transcript => self.render_transcript(open, inner, buf),
             Tab::Analysis => self.render_analysis(open, inner, buf),
+            Tab::Card => self.render_card(open, inner, buf),
         }
     }
 
@@ -1440,7 +1461,6 @@ impl Pane {
     /// The run's analysis: the stored `analysis.md`, or one computed now
     /// from the records and Jev's cached answers.
     fn render_analysis(&self, open: &Open, inner: Rect, buf: &mut Buffer) {
-        let width = usize::from(inner.width);
         let run = &open.detail.run;
         let markdown = open
             .analysis
@@ -1456,7 +1476,32 @@ impl Pane {
                 })
             })
             .clone();
-        let lines = crate::runs_analysis_markdown::pane_lines(&markdown, width);
+        self.draw_markdown(open, &markdown, inner, buf);
+    }
+
+    /// The run card: every number from the trial's retained records, with
+    /// cached Jev answers only.
+    fn render_card(&self, open: &Open, inner: Rect, buf: &mut Buffer) {
+        let run = &open.detail.run;
+        let markdown = open
+            .card
+            .borrow_mut()
+            .get_or_insert_with(|| {
+                if run.outcome == Outcome::Running {
+                    return "The run card is computed when the run ends.".to_owned();
+                }
+                crate::runs_card_render::markdown(&crate::runs_card::characterize(
+                    run,
+                    &crate::runs_card::Options::for_show(),
+                ))
+            })
+            .clone();
+        self.draw_markdown(open, &markdown, inner, buf);
+    }
+
+    fn draw_markdown(&self, open: &Open, markdown: &str, inner: Rect, buf: &mut Buffer) {
+        let width = usize::from(inner.width);
+        let lines = crate::runs_analysis_markdown::pane_lines(markdown, width);
         let room = usize::from(inner.height);
         let scroll = open.scroll.get().min(lines.len().saturating_sub(room));
         open.scroll.set(scroll);
@@ -2711,6 +2756,22 @@ pub(crate) mod tests {
             assert!(text.contains(phrase), "{phrase}: {text}");
         }
         pane.key(Key::Char('A'));
+        assert_eq!(pane.tab(), Some(Tab::Summary));
+    }
+
+    #[test]
+    fn capital_c_shows_the_run_card() {
+        let (_dir, mut pane) = pane();
+        select(&mut pane, "coq-block-bound");
+        pane.key(Key::Enter);
+        assert!(pane.to_text(140, 45).contains("C the run card"));
+        pane.key(Key::Char('C'));
+        assert_eq!(pane.tab(), Some(Tab::Card));
+        let text = pane.to_text(140, 45);
+        for phrase in ["Run card", "Run card: coq-block-bound", "Phase timeline"] {
+            assert!(text.contains(phrase), "{phrase}: {text}");
+        }
+        pane.key(Key::Char('C'));
         assert_eq!(pane.tab(), Some(Tab::Summary));
     }
 

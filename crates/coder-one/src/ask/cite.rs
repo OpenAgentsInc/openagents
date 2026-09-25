@@ -10,7 +10,8 @@
 //!   for every run the claim cites;
 //! - a file exists under the repository, and a cited line is within it;
 //! - a person's mark exists on a cited run, or on a cited step of it, in
-//!   the Gym's marks store.
+//!   the Gym's marks store;
+//! - a run card row exists on the cited run's card, with a known value.
 //!
 //! A claim with a citation that doesn't check, or with no citation at all,
 //! is marked unverified. It's kept: a person decides what to make of it.
@@ -38,6 +39,9 @@ pub struct RunFacts {
     /// A person's marks on the run: the step, or `None` for the whole run,
     /// and the verdict, `bad` or `clear`.
     pub marks: Vec<(Option<u64>, String)>,
+    /// The run card's rows by ID, with the value as the card prints it, or
+    /// `None` when the Gym computed no card. An unknown row is absent.
+    pub card: Option<BTreeMap<String, String>>,
 }
 
 impl RunFacts {
@@ -72,6 +76,17 @@ impl RunFacts {
                     )
                 })
                 .collect(),
+            card: shown["card"]["rows"].as_array().map(|rows| {
+                rows.iter()
+                    .filter(|row| !row["value"].is_null())
+                    .filter_map(|row| {
+                        Some((
+                            row["id"].as_str()?.to_string(),
+                            row["text"].as_str().unwrap_or_default().to_string(),
+                        ))
+                    })
+                    .collect()
+            }),
         })
     }
 }
@@ -89,6 +104,8 @@ pub struct Claim {
     pub marks: Vec<String>,
     /// For a highlights ask, the key of the highlight the claim drafts.
     pub highlight: Option<String>,
+    /// Run card rows it rests on: the run and the row's ID.
+    pub cards: Vec<(String, String)>,
     /// Why a citation didn't check, one line each.
     pub problems: Vec<String>,
     /// Citations checked, and how many held.
@@ -114,6 +131,7 @@ impl Claim {
             "files": self.files,
             "marks": self.marks,
             "highlight": self.highlight,
+            "card_rows": self.cards.iter().map(|(run, row)| json!({"run": run, "row": row})).collect::<Vec<_>>(),
             "verified": self.verified(),
             "problems": self.problems,
             "citations": self.citations,
@@ -155,6 +173,17 @@ pub fn claims(answer: &Value) -> Vec<Claim> {
                 .as_str()
                 .map(|key| key.trim().to_string())
                 .filter(|key| !key.is_empty()),
+            cards: claim["card_rows"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|c| {
+                    Some((
+                        c["run"].as_str()?.trim().to_string(),
+                        c["row"].as_str()?.trim().to_string(),
+                    ))
+                })
+                .collect(),
             problems: Vec::new(),
             citations: 0,
             valid: 0,
@@ -173,6 +202,7 @@ pub fn cited_runs(claims: &[Claim]) -> Vec<String> {
                 .cloned()
                 .chain(c.steps.iter().map(|(run, _)| run.clone()))
                 .chain(c.marks.iter().map(|mark| split_mark(mark).0.to_string()))
+                .chain(c.cards.iter().map(|(run, _)| run.clone()))
         })
         .collect();
     runs.sort();
@@ -245,6 +275,19 @@ pub fn check(claims: &mut [Claim], facts: &BTreeMap<String, Option<RunFacts>>, r
                         Some(step) => format!("no person marked step {step} of {run}"),
                         None => format!("no person marked {run}"),
                     }),
+                },
+                Err(why) => problems.push(why),
+            }
+        }
+        for (run, row) in &claim.cards {
+            citations += 1;
+            match resolve(run, facts) {
+                Ok(fact) => match fact.card.as_ref().map(|card| card.contains_key(row)) {
+                    Some(true) => valid += 1,
+                    Some(false) => {
+                        problems.push(format!("{row} isn't a known row on {}'s run card", fact.id))
+                    }
+                    None => problems.push(format!("the Gym has no run card for {}", fact.id)),
                 },
                 Err(why) => problems.push(why),
             }
@@ -342,6 +385,10 @@ mod tests {
             "transcript": [{"step": 1}, {"step": 2}, {"step": 3}],
             "marks": [{"run": "tb4--a/a__1", "step": null, "verdict": "bad"}, {"run": "tb4--a/a__1", "step": 2, "verdict": "bad"}],
             "learning": {"judgments": {"unearned_success": 0.97, "near_miss": 0.2}},
+            "card": {"rows": [
+                {"id": "session.1.model_share", "value": 0.641, "text": "64%"},
+                {"id": "checks.line_grades", "value": null, "text": "not recorded"},
+            ]},
         });
         let fact = RunFacts::from_show(&shown).unwrap();
         let unjudged = RunFacts {
@@ -351,6 +398,7 @@ mod tests {
             steps: 0,
             judgments: None,
             marks: Vec::new(),
+            card: None,
         };
         BTreeMap::from([
             ("tb4--a/a__1".to_string(), Some(fact.clone())),
@@ -431,5 +479,36 @@ mod tests {
         assert_eq!(totals["verified"], 3);
         // Unverified claims are kept, not dropped.
         assert_eq!(claims.len(), 11);
+    }
+
+    #[test]
+    fn card_row_citations_check_against_the_run_card() {
+        let repo = tempfile::tempdir().unwrap();
+        let answer = json!({"answer": "…", "claims": [
+            {"claim": "Model latency was 64% of session 1.", "runs": [], "steps": [], "judgments": [], "files": [], "marks": [],
+             "card_rows": [{"run": "tb4--a/a__1", "row": "session.1.model_share"}]},
+            {"claim": "An unknown row.", "runs": [], "steps": [], "judgments": [], "files": [], "marks": [],
+             "card_rows": [{"run": "tb4--a/a__1", "row": "checks.line_grades"}]},
+            {"claim": "A run with no card.", "runs": [], "steps": [], "judgments": [], "files": [], "marks": [],
+             "card_rows": [{"run": "tb4--b/b__1", "row": "session.1.turns"}]},
+        ]});
+        let mut claims = claims(&answer);
+        assert_eq!(cited_runs(&claims), vec!["tb4--a/a__1", "tb4--b/b__1"]);
+        check(&mut claims, &facts(), repo.path());
+        assert!(claims[0].verified(), "{:?}", claims[0]);
+        assert_eq!(
+            claims[0].to_json()["card_rows"][0]["row"],
+            "session.1.model_share"
+        );
+        assert!(
+            claims[1].problems[0].contains("isn't a known row"),
+            "{:?}",
+            claims[1]
+        );
+        assert!(
+            claims[2].problems[0].contains("no run card"),
+            "{:?}",
+            claims[2]
+        );
     }
 }

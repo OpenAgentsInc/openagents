@@ -203,6 +203,7 @@ mod tests {
             files: Vec::new(),
             marks: Vec::new(),
             highlight: key.map(str::to_string),
+            cards: Vec::new(),
             problems: Vec::new(),
             citations: runs.len(),
             valid: runs.len(),

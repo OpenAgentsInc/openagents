@@ -89,6 +89,9 @@ pub mod runs;
 pub mod runs_analysis;
 pub mod runs_analysis_markdown;
 pub mod runs_analysis_suite;
+pub mod runs_card;
+pub mod runs_card_render;
+pub mod runs_card_source;
 #[cfg(feature = "tui")]
 mod runs_files;
 pub mod runs_fingerprint;

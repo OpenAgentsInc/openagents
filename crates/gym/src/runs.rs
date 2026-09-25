@@ -1441,6 +1441,7 @@ Usage:
   gym runs agreement [--json]
   gym runs highlights [--rule RULE]... [--limit N] [--json]
   gym runs analyze RUN [--json] [--write] [--no-jev]
+  gym runs characterize RUN [--json] [--out DIR] | --all | diff A B
 
 RUN is a job name, job/trial, a trial name, or a piece of a job name that
 only one job has. --agent takes coder-one, claude-code, codex, or reference;
@@ -1497,6 +1498,12 @@ pub fn command(args: &[String], out: &mut impl Write) -> Result<i32, String> {
         .is_some_and(|word| crate::runs_marks::handles(word))
     {
         return crate::runs_marks::command(args, out);
+    }
+    if args
+        .first()
+        .is_some_and(|word| crate::runs_card_render::handles(word))
+    {
+        return crate::runs_card_render::command(args, out);
     }
     if args.first().map(String::as_str) == Some("analyze") {
         return crate::runs_analysis::command(&args[1..], out);
@@ -1762,6 +1769,11 @@ pub fn command(args: &[String], out: &mut impl Write) -> Result<i32, String> {
             let mut value = crate::runs_story::detail_json(&detail, now);
             value["learning"] = answer.map_or(Value::Null, |answer| answer.to_json(&rarity));
             value["marks"] = marks_json(&run.id());
+            if run.outcome != Outcome::Running {
+                value["card"] = crate::runs_card_render::card_json(
+                    &crate::runs_card::characterize(run, &crate::runs_card::Options::for_show()),
+                );
+            }
             write(
                 out,
                 &serde_json::to_string_pretty(&value).map_err(|e| e.to_string())?,
@@ -1795,6 +1807,18 @@ pub fn command(args: &[String], out: &mut impl Write) -> Result<i32, String> {
             )?,
         }
         write(out, "")?;
+        if run.outcome != Outcome::Running {
+            let card = crate::runs_card::characterize(run, &crate::runs_card::Options::for_show());
+            write(out, "Run card")?;
+            for line in crate::runs_card_render::summary_lines(&card) {
+                write(out, &format!("  {line}"))?;
+            }
+            write(
+                out,
+                &format!("  The whole card: gym runs characterize {}", run.id()),
+            )?;
+            write(out, "")?;
+        }
         let marked = crate::runs_marks::story_lines(&marks, &run.id());
         if !marked.is_empty() {
             write(out, "Marks")?;

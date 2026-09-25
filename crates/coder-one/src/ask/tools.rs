@@ -112,9 +112,22 @@ pub fn tools() -> Value {
                                 "judgments": { "type": "array", "items": { "type": "string" }, "description": "Jev judgment IDs it cites, such as unearned_success; each must hold for every cited run." },
                                 "files": { "type": "array", "items": { "type": "string" }, "description": "Repository files it rests on, as a path from the repository root, optionally with `:LINE`." },
                                 "marks": { "type": "array", "items": { "type": "string" }, "description": "A person's marks it rests on: `job/trial` for a mark on the run, `job/trial/STEP` for a mark on a step. Empty when it rests on none." },
-                                "highlight": { "type": "string", "description": "For a highlights ask, the key of the highlight this claim drafts, such as `cost-0d4bb2f6`; empty otherwise." }
+                                "highlight": { "type": "string", "description": "For a highlights ask, the key of the highlight this claim drafts, such as `cost-0d4bb2f6`; empty otherwise." },
+                                "card_rows": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "run": { "type": "string" },
+                                            "row": { "type": "string" }
+                                        },
+                                        "required": ["run", "row"],
+                                        "additionalProperties": false
+                                    },
+                                    "description": "Run card rows it rests on: the run as job/trial and the row's ID from `gym runs characterize RUN --json`, such as `session.1.model_share`. Empty when it rests on none."
+                                }
                             },
-                            "required": ["claim", "runs", "steps", "judgments", "files", "marks", "highlight"],
+                            "required": ["claim", "runs", "steps", "judgments", "files", "marks", "highlight", "card_rows"],
                             "additionalProperties": false
                         }
                     },
