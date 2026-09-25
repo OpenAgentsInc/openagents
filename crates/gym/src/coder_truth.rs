@@ -35,7 +35,7 @@ half and measured on the held-out half.
   --dir PATH      the truth directory (default ~/.openagents/coder-one/checks-truth)
   --set NAME      held-out (default), calibration, or all
   --family NAME   only one family: checks, scenario, requirements, support,
-                  self-report, control, report, or verdict
+                  self-report, control, report, microluna, or verdict
   --within        precision and recall on tasks the verifier both passed and
                   failed: whether a signal tells two attempts at one task apart
   --json          print versioned JSON instead of text";
@@ -137,6 +137,18 @@ pub fn lines(summary: &Value, set: &str, family: Option<&str>, within: bool) -> 
             "separates"
         ),
     ];
+    if let Some(note) = summary["validation_note"].as_str() {
+        out.insert(3, format!("  {note}"));
+    }
+    if let Some(coverage) = summary.get("evidence_coverage") {
+        out.insert(
+            3,
+            format!(
+                "  evidence: {} reports, {} missing, {} Microluna self-scores",
+                coverage["reports"], coverage["missing_reports"], coverage["microluna_scores"]
+            ),
+        );
+    }
     for m in summary["signals"][key].as_array().into_iter().flatten() {
         if family.is_some_and(|f| m["family"] != f) {
             continue;
@@ -166,6 +178,7 @@ pub fn lines(summary: &Value, set: &str, family: Option<&str>, within: bool) -> 
     out.push("  Held-out half: the combined verdict compared with today's checks".to_string());
     for (label, name) in [
         ("combined verdict", "verdict"),
+        ("corroborated", "corroborated"),
         ("today's checks", "todays_checks"),
     ] {
         let m = &summary["held_out"][name];

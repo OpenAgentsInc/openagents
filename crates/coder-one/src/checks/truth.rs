@@ -27,6 +27,8 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+pub use super::truth_micro::LocalScore;
+
 /// The schema of one labeled trial.
 pub const ROW_SCHEMA: &str = "openagents.coder-one.check-truth-row.v1";
 
@@ -59,6 +61,7 @@ impl Split {
 /// can't be tuned to the result.
 #[must_use]
 pub fn split_of(task: &str) -> Split {
+    let task = canonical_task(task);
     let digest = atif::digest(&json!({ "task": task }));
     let last = digest
         .chars()
@@ -69,6 +72,16 @@ pub fn split_of(task: &str) -> Split {
         Split::Calibration
     } else {
         Split::HeldOut
+    }
+}
+
+/// Bare and namespaced Terminal-Bench names must share one partition.
+#[must_use]
+pub fn canonical_task(task: &str) -> String {
+    if task.contains('/') {
+        task.to_string()
+    } else {
+        format!("terminal-bench/{task}")
     }
 }
 
@@ -136,6 +149,14 @@ pub struct Row {
     /// ID, when they were asked.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub report_answers: Option<BTreeMap<String, f64>>,
+    /// The self-written score of the selected Microluna candidate.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_score: Option<LocalScore>,
+    /// Retained file and session that supplied the report.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub report_source: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub report_unavailable: Option<String>,
 }
 
 impl Row {
@@ -178,27 +199,61 @@ fn name(path: &Path) -> String {
 /// The final report of the session that produced the kept candidate: the
 /// last session's, or the first's when a second executor ran and its
 /// candidate was set aside.
-fn final_report(episode: &Path, composition: &Value) -> Option<String> {
-    let mut streams: Vec<(usize, PathBuf)> = children(&episode.join("artifacts"))
+fn final_report(episode: &Path, composition: &Value) -> super::truth_micro::Selected {
+    let mut records: Vec<(usize, PathBuf, bool)> = children(&episode.join("artifacts"))
         .into_iter()
         .filter_map(|p| {
             let n = name(&p);
-            let index = n
-                .strip_prefix("delegate-")?
-                .strip_suffix(".stream.jsonl")?
-                .parse::<usize>()
-                .ok()?;
-            Some((index, p))
+            let (index, micro) = if let Some(index) = n
+                .strip_prefix("delegate-")
+                .and_then(|s| s.strip_suffix(".stream.jsonl"))
+            {
+                (index.parse::<usize>().ok()?, false)
+            } else {
+                (
+                    n.strip_prefix("microluna-")?
+                        .strip_suffix(".json")?
+                        .parse::<usize>()
+                        .ok()?,
+                    true,
+                )
+            };
+            Some((index, p, micro))
         })
         .collect();
-    streams.sort();
-    let kept_first = composition["second"]["kept"] == "first";
-    let chosen = if kept_first {
-        streams.first()
+    records.sort_by_key(|r| r.0);
+    let chosen = if composition["second"]["kept"] == "first" {
+        records.first()
     } else {
-        streams.last()
-    }?;
-    super::replay::final_report(&std::fs::read_to_string(&chosen.1).ok()?)
+        records.last()
+    };
+    let Some((_, path, micro)) = chosen else {
+        return super::truth_micro::Selected {
+            unavailable: Some("No executor report is retained".to_string()),
+            ..Default::default()
+        };
+    };
+    let source = format!("artifacts/{}", name(path));
+    if *micro {
+        return read_json(path).map_or_else(
+            || super::truth_micro::Selected {
+                unavailable: Some("The Microluna record is unreadable".to_string()),
+                ..Default::default()
+            },
+            |record| super::truth_micro::select(&record, &source),
+        );
+    }
+    let report = std::fs::read_to_string(path)
+        .ok()
+        .and_then(|s| super::replay::final_report(&s));
+    super::truth_micro::Selected {
+        unavailable: report
+            .is_none()
+            .then(|| "The executor stream has no final report".to_string()),
+        report,
+        source: Some(source),
+        ..Default::default()
+    }
 }
 
 /// Reads one trial: `<jobs>/<job>/<trial>` (the episode under
@@ -233,6 +288,10 @@ pub fn load(job: &str, dir: &Path) -> Option<Loaded> {
         || trial.split("__").next().unwrap_or_default().to_string(),
         str::to_string,
     );
+    let task = canonical_task(&task);
+    if !reward.is_finite() || !(0.0..=1.0).contains(&reward) {
+        return None;
+    }
     let arm = job.split("--").nth(1).unwrap_or_default().to_string();
 
     let candidate = composition["final_checks"]["candidate"].as_str();
@@ -313,7 +372,8 @@ pub fn load(job: &str, dir: &Path) -> Option<Loaded> {
         .first()
         .and_then(|e| e["summary"]["verdicts"]["failed"].as_u64())
         .is_some_and(|n| n > 0);
-    let report = final_report(&episode, &composition);
+    let selected = final_report(&episode, &composition);
+    let report = selected.report;
     let admissions: Vec<String> = report
         .as_deref()
         .map(super::selfreport::admissions)
@@ -330,6 +390,10 @@ pub fn load(job: &str, dir: &Path) -> Option<Loaded> {
         .as_ref()
         .and_then(|c| c["task"]["path"].as_str())
         .and_then(|p| std::fs::read_to_string(Path::new(p).join("instruction.md")).ok())
+        .or_else(|| {
+            read_json(&episode.join("artifacts/state.json"))
+                .and_then(|s| s["issue"]["body"].as_str().map(str::to_string))
+        })
         .map(|t| super::labeled::public_instruction(&t));
     Some(Loaded {
         row: Row {
@@ -357,6 +421,9 @@ pub fn load(job: &str, dir: &Path) -> Option<Loaded> {
             executor_unfinished: primary.is_some_and(|p| p["status"] != "answered"),
             report_chars: report.as_ref().map_or(0, |r| r.chars().count()),
             report_answers: None,
+            local_score: selected.score,
+            report_source: selected.source,
+            report_unavailable: selected.unavailable,
         },
         instruction,
         report,
@@ -613,6 +680,26 @@ pub fn catalog(rows: &[Row]) -> Vec<Signal> {
         "the calibrated combined verdict",
         move |r| super::verdict::judge(&super::verdict::Evidence::of_row(r), &params).says(),
     ));
+    let params = super::verdict::fitted();
+    signals.push(Signal::new(
+        "verdict.corroborated",
+        "verdict",
+        "the combined failure score corroborated by an admission (experimental)",
+        move |r| super::verdict::corroborated(&super::verdict::Evidence::of_row(r), &params).says(),
+    ));
+    signals.push(Signal::new(
+        "microluna.local-score",
+        "microluna",
+        "the selected candidate's self-written evaluator; a green score is not official acceptance",
+        |r| {
+            let s = r.local_score.as_ref()?;
+            (s.total > 0 && s.passed <= s.total).then_some(if s.passed == s.total {
+                Says::Pass
+            } else {
+                Says::Fail
+            })
+        },
+    ));
     signals
 }
 
@@ -830,8 +917,21 @@ pub fn summary(rows: &[Row]) -> Value {
         |id: &str, set: &[&Row]| signals.iter().find(|s| s.id == id).map(|s| measure(s, set));
     json!({
         "schema": SUMMARY_SCHEMA,
+        "predictions": rows.iter().map(|r| json!({
+            "job": r.job, "trial": r.trial, "task": canonical_task(&r.task),
+            "split": r.split, "reward": r.reward,
+            "calls": signals.iter().filter(|s| matches!(s.id.as_str(),
+                "checks.final" | "microluna.local-score" | "verdict.combined" | "verdict.corroborated"))
+                .map(|s| (s.id.clone(), (s.says)(r))).collect::<BTreeMap<_, _>>(),
+        })).collect::<Vec<_>>(),
         "label_set": spread(rows),
         "report_answers": answered,
+        "evidence_coverage": {
+            "reports": rows.iter().filter(|r| r.report_chars > 0).count(),
+            "missing_reports": rows.iter().filter(|r| r.report_chars == 0).count(),
+            "microluna_scores": rows.iter().filter(|r| r.local_score.is_some()).count(),
+        },
+        "validation_note": "Historical task split; repeatedly studied tasks and reused comparison results are not untouched validation. Wilson intervals treat trials as independent; use task-cluster intervals for repeated tasks.",
         "verdict": super::verdict::describe(&fitted),
         "refit": refit,
         "refit_matches": refit.as_ref().is_some_and(|r| {
@@ -842,6 +942,7 @@ pub fn summary(rows: &[Row]) -> Value {
         }),
         "held_out": {
             "verdict": pick("verdict.combined", &held_out),
+            "corroborated": pick("verdict.corroborated", &held_out),
             "todays_checks": pick("checks.final", &held_out),
         },
         "signals": {
@@ -911,6 +1012,7 @@ pub fn lines(summary: &Value, which: &str) -> Vec<String> {
     out.push("Held-out half, fail precision and failure recall:".to_string());
     for (label, key) in [
         ("combined verdict", "verdict"),
+        ("corroborated", "corroborated"),
         ("today's checks", "todays_checks"),
     ] {
         if let Ok(m) = serde_json::from_value::<Measure>(summary["held_out"][key].clone()) {
@@ -1053,10 +1155,45 @@ pub async fn ask_reports(
 pub fn read_rows(path: &Path) -> Result<Vec<Row>, String> {
     let text = std::fs::read_to_string(path)
         .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
-    text.lines()
+    let rows: Vec<Row> = text
+        .lines()
         .filter(|l| !l.trim().is_empty())
         .map(|l| serde_json::from_str::<Row>(l).map_err(|e| format!("{}: {e}", path.display())))
-        .collect()
+        .collect::<Result<_, _>>()?;
+    validate_rows(&rows)?;
+    Ok(rows)
+}
+
+/// Reject duplicate trials, invalid labels, and task aliases in different splits.
+///
+/// # Errors
+/// Returns the first inconsistency; fitting inconsistent rows is not permitted.
+pub fn validate_rows(rows: &[Row]) -> Result<(), String> {
+    let mut trials = BTreeSet::new();
+    let mut tasks = BTreeMap::new();
+    for row in rows {
+        if row.schema != ROW_SCHEMA || !row.reward.is_finite() || !(0.0..=1.0).contains(&row.reward)
+        {
+            return Err(format!("Invalid truth row or reward: {}", row.trial));
+        }
+        if !trials.insert((&row.job, &row.trial)) {
+            return Err(format!("Duplicate trial: {}/{}", row.job, row.trial));
+        }
+        let task = canonical_task(&row.task);
+        if tasks
+            .insert(task.clone(), row.split)
+            .is_some_and(|s| s != row.split)
+        {
+            return Err(format!("Task occurs in both partitions: {task}"));
+        }
+        if row.report_answers.as_ref().is_some_and(|a| {
+            a.values()
+                .any(|p| !p.is_finite() || !(0.0..=1.0).contains(p))
+        }) {
+            return Err(format!("Invalid report probability: {}", row.trial));
+        }
+    }
+    Ok(())
 }
 
 /// Writes rows as JSON lines, in trial order.
@@ -1088,6 +1225,7 @@ mod tests {
 
     #[test]
     fn a_task_is_in_one_split_only() {
+        assert_eq!(split_of("cad-model"), split_of("terminal-bench/cad-model"));
         assert_eq!(split_of("cad-model"), split_of("cad-model"));
         let splits: BTreeSet<Split> = ["a", "b", "c", "d", "e", "f", "g", "h"]
             .iter()

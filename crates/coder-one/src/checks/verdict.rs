@@ -225,11 +225,15 @@ impl Evidence {
     #[must_use]
     pub fn features(&self) -> Option<Vec<f64>> {
         let answers = self.report_answers.as_ref()?;
-        Some(vec![
-            *answers.get("strict_grader_accepts")?,
-            *answers.get("admits_unmet")?,
-            if self.admitted { 1.0 } else { 0.0 },
-        ])
+        let strict = *answers.get("strict_grader_accepts")?;
+        let unmet = *answers.get("admits_unmet")?;
+        if ![strict, unmet]
+            .iter()
+            .all(|p| p.is_finite() && (0.0..=1.0).contains(p))
+        {
+            return None;
+        }
+        Some(vec![strict, unmet, if self.admitted { 1.0 } else { 0.0 }])
     }
 }
 
@@ -255,7 +259,7 @@ pub struct Verdict {
     /// calls the verifier agreed with on tasks the fit never saw. `None`
     /// for unknown.
     pub precision: Option<f64>,
-    /// Why, in a sentence.
+    /// Why, including the population behind any stated precision.
     pub why: String,
 }
 
@@ -300,11 +304,25 @@ pub fn judge(evidence: &Evidence, params: &Params) -> Verdict {
             why: "Jev didn't answer the report questions".to_string(),
         };
     };
+    if params.weights.len() != x.len()
+        || !params.bias.is_finite()
+        || params.weights.iter().any(|w| !w.is_finite())
+        || params.fail_at.is_nan()
+        || params.pass_at.is_nan()
+        || params.pass_at >= params.fail_at
+    {
+        return Verdict {
+            call: "unknown".to_string(),
+            p_fail: None,
+            precision: None,
+            why: "Invalid verdict parameters".to_string(),
+        };
+    }
     let p = score(params, &x);
     let (call, precision, why) = if p >= params.fail_at {
         (
             "fail",
-            Some(ratio(HELD_OUT_FAIL)),
+            (params == &fitted()).then(|| ratio(HELD_OUT_FAIL)),
             format!(
                 "failure probability {p:.2} is at least {:.2}",
                 params.fail_at
@@ -313,7 +331,7 @@ pub fn judge(evidence: &Evidence, params: &Params) -> Verdict {
     } else if p <= params.pass_at {
         (
             "pass",
-            Some(ratio(HELD_OUT_PASS)),
+            (params == &fitted()).then(|| ratio(HELD_OUT_PASS)),
             format!(
                 "failure probability {p:.2} is at most {:.2}",
                 params.pass_at
@@ -333,8 +351,47 @@ pub fn judge(evidence: &Evidence, params: &Params) -> Verdict {
         call: call.to_string(),
         p_fail: Some(p),
         precision,
-        why,
+        why: if precision.is_some() {
+            format!(
+                "{why}; precision is historical, on 185 mostly Opus trials, not a guarantee for this candidate or Microluna"
+            )
+        } else {
+            why
+        },
     }
+}
+
+/// The corroboration threshold selected on the original calibration rows.
+pub const ADMISSION_AT: f64 = 0.8;
+/// Historical comparison counts for the frozen corroborated rule.
+pub const CORROBORATED_FAIL: (usize, usize) = (13, 20);
+
+/// An experimental alternative: retain a failure call only with an admission.
+/// This trades recall for precision. It is measured alongside the original
+/// verdict and does not change the episode's default decision policy.
+#[must_use]
+pub fn corroborated(evidence: &Evidence, params: &Params) -> Verdict {
+    let mut verdict = judge(evidence, params);
+    if verdict.call == "fail" {
+        let supported = evidence.admitted
+            || evidence
+                .report_answers
+                .as_ref()
+                .and_then(|a| a.get("admits_unmet"))
+                .is_some_and(|p| *p >= ADMISSION_AT);
+        if supported {
+            verdict.precision = (params == &fitted()).then(|| ratio(CORROBORATED_FAIL));
+            verdict
+                .why
+                .push_str("; corroborated by a reported unmet requirement");
+        } else {
+            verdict.call = "unknown".to_string();
+            verdict.precision = None;
+            verdict.why =
+                "The failure score lacks a corroborating admission; abstaining".to_string();
+        }
+    }
+    verdict
 }
 
 /// Fits the verdict on `rows`, which should be the calibration half: a
@@ -451,6 +508,7 @@ pub fn describe(params: &Params) -> Value {
         "targets": { "fail_precision": FAIL_TARGET, "pass_precision": PASS_TARGET, "min_support": MIN_SUPPORT },
         "stated": { "fail": HELD_OUT_FAIL, "pass": HELD_OUT_PASS },
         "params": params,
+        "corroboration": {"admission_at": ADMISSION_AT, "stated_fail": CORROBORATED_FAIL, "experimental": true},
     })
 }
 
@@ -598,6 +656,52 @@ mod tests {
         let v = judge(&Evidence::default(), &fitted());
         assert_eq!(v.call, "unknown");
         assert_eq!(v.says(), None);
+    }
+
+    #[test]
+    fn corroboration_replays_the_frozen_comparison_counts() {
+        let params = fitted();
+        let rows = rows();
+        let fail_calls: Vec<_> = rows
+            .iter()
+            .filter(|r| r.split == super::super::truth::Split::HeldOut)
+            .filter(|r| corroborated(&Evidence::of_row(r), &params).says() == Some(Says::Fail))
+            .collect();
+        assert_eq!(
+            (
+                fail_calls.iter().filter(|r| r.failed()).count(),
+                fail_calls.len()
+            ),
+            CORROBORATED_FAIL
+        );
+        for row in &rows {
+            let evidence = Evidence::of_row(row);
+            if corroborated(&evidence, &params).call == "fail" {
+                assert_eq!(judge(&evidence, &params).call, "fail");
+            }
+        }
+    }
+
+    #[test]
+    fn invalid_probabilities_abstain_and_custom_fits_have_no_inherited_precision() {
+        let mut evidence = Evidence {
+            report_answers: Some(BTreeMap::from([
+                ("strict_grader_accepts".to_string(), 0.0),
+                ("admits_unmet".to_string(), f64::NAN),
+            ])),
+            admitted: true,
+        };
+        assert_eq!(judge(&evidence, &fitted()).call, "unknown");
+        evidence
+            .report_answers
+            .as_mut()
+            .unwrap()
+            .insert("admits_unmet".to_string(), 1.0);
+        let mut custom = fitted();
+        custom.bias += 0.01;
+        let result = judge(&evidence, &custom);
+        assert_eq!(result.call, "fail");
+        assert!(result.precision.is_none());
     }
 
     #[test]
