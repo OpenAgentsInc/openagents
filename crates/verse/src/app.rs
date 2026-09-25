@@ -775,8 +775,7 @@ impl App {
         let overheads = self.overheads(now);
         let ui = match &self.atlas {
             Some(atlas) => {
-                let (log, name_of): (&chat::Log, NameOf<'_>) = match &self.session
-                {
+                let (log, name_of): (&chat::Log, NameOf<'_>) = match &self.session {
                     Some(s) => (&s.log, Box::new(|p: &str| s.name_of(p))),
                     None => (&self.offline_log, Box::new(str::to_owned)),
                 };
