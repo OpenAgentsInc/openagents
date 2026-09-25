@@ -566,7 +566,7 @@ fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
         .position(|window| window == needle)
 }
 
-fn excerpt(text: &str, max: usize) -> String {
+pub(crate) fn excerpt(text: &str, max: usize) -> String {
     let text = text.trim();
     match text.char_indices().nth(max) {
         Some((at, _)) => format!("{}…", &text[..at]),

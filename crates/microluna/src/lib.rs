@@ -25,6 +25,7 @@
 pub mod codex;
 pub mod fake;
 pub mod finish;
+pub mod openrouter;
 pub mod patch;
 pub mod price;
 pub mod remote;

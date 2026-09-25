@@ -4464,6 +4464,52 @@
       },
       "note": "The control arm of the pre-registered live oracle run (bench/terminal-bench/experiments/2026-09-25-oracle-live/protocol.md): microluna-v18 with checks.metric_target on, without checks.oracle. Agent setup time is 900 seconds in both arms, so the host oracle writer gets its full 600 seconds; the arms differ only in the policy manifest. $0.09 spend bound a dispatch.",
       "setup_timeout_sec": 900
+    },
+    "coder-one-microluna-openrouter": {
+      "role": "candidate",
+      "harbor_import_path": "tbench.coder_one:CoderOneTunable",
+      "version": null,
+      "model": "free",
+      "kwargs": {
+        "policy": "crates/coder-one/policies/microluna-v20.json",
+        "microluna_provider": "openrouter"
+      },
+      "required_kwargs": [
+        "artifact_path",
+        "artifact_sha256"
+      ],
+      "extra_allowed_hosts": [
+        "openagents.com",
+        "api.typesafe.ai",
+        "openrouter.ai"
+      ],
+      "agent_network": "allowlist",
+      "cost_provenance": "mixed",
+      "cost_note": "Microluna's dispatches go through OpenRouter as openai/gpt-6-luna and are list-price estimates from the exact token usage each Luna request reports, at OpenAI's standard short-context prices, supplied manually by the operator on 2026-09-22; Jev is a price estimate at the published input-token rate. Every dispatch (the first and the repair) is a delegate call in evaluation/usage.json. No Claude.",
+      "env_forward": [
+        "OPENAGENTS_API_KEY",
+        "OPENAGENTS_DOOR_URL",
+        "TYPESAFE_API_KEY",
+        "OPENROUTER_API_KEY"
+      ],
+      "auth_modes": {
+        "openrouter": {
+          "requires_all": [
+            "OPENAGENTS_API_KEY",
+            "TYPESAFE_API_KEY",
+            "OPENROUTER_API_KEY"
+          ],
+          "exclude_env": [
+            "CODEX_AUTH_JSON_PATH",
+            "CODEX_FORCE_AUTH_JSON",
+            "CLAUDE_CODE_OAUTH_TOKEN",
+            "ANTHROPIC_API_KEY",
+            "ANTHROPIC_AUTH_TOKEN"
+          ],
+          "note": "The door and Jev keys as in coder-one, and an OpenRouter key Microluna sends Luna requests with (issue #9665). No Codex login is placed, and no Claude credential is forwarded."
+        }
+      },
+      "note": "Coder One with Microluna on microluna-v20, sending Luna requests through OpenRouter instead of the Codex login (issue #9665). Policy variants override the policy kwarg."
     }
   }
 }

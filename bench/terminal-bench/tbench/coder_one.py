@@ -887,6 +887,15 @@ class CoderOneTunable(CoderOneDelegate):
             raise EpisodeContractError("coder-one-tunable needs a policy manifest")
         manifest = load_policy(policy)
         extra = kwargs.pop("executors", None) or {}
+        # Microluna's provider (issue #9665): ``codex`` sends through the
+        # Codex login; ``openrouter`` sends through OpenRouter on
+        # OPENROUTER_API_KEY and places no Codex login.
+        self._microluna_provider = str(kwargs.pop("microluna_provider", None) or "codex")
+        if self._microluna_provider not in ("codex", "openrouter"):
+            raise EpisodeContractError(
+                "microluna_provider must be codex or openrouter, "
+                f"not {self._microluna_provider!r}"
+            )
         self._agents: dict[str, str] = {}
         tiers = manifest_tiers(manifest) + [
             {"agent": agent, "version": version} for agent, version in extra.items()
@@ -935,7 +944,10 @@ class CoderOneTunable(CoderOneDelegate):
     def _needs_codex_login(self) -> bool:
         """Whether a tier signs in with the Codex login: Codex CLI, or
         Microluna in process."""
-        return "codex" in self._agents or "microluna" in getattr(self, "_in_process", set())
+        return "codex" in self._agents or (
+            "microluna" in getattr(self, "_in_process", set())
+            and getattr(self, "_microluna_provider", "codex") == "codex"
+        )
 
     def _takes_codex_login(self) -> bool:
         """Whether the episode takes the Codex login off the disk when it
@@ -944,8 +956,10 @@ class CoderOneTunable(CoderOneDelegate):
         Microluna reads the login once into memory. The Codex CLI reads its
         file for the whole run, so an arm that installs it keeps the file.
         """
-        return "microluna" in getattr(self, "_in_process", set()) and (
-            "codex" not in self._agents
+        return (
+            "microluna" in getattr(self, "_in_process", set())
+            and getattr(self, "_microluna_provider", "codex") == "codex"
+            and "codex" not in self._agents
         )
 
     async def install(self, environment: BaseEnvironment) -> None:
@@ -998,6 +1012,14 @@ class CoderOneTunable(CoderOneDelegate):
                 env["CODER_ONE_CODEX_BIN"] = self._codex_bin
         if self._takes_codex_login():
             env[TAKE_LOGIN_VAR] = "take"
+        if getattr(self, "_microluna_provider", "codex") == "openrouter":
+            key = self._get_env("OPENROUTER_API_KEY")
+            if not key:
+                raise EpisodeContractError(
+                    "microluna_provider openrouter needs OPENROUTER_API_KEY"
+                )
+            env["CODER_ONE_MICROLUNA_PROVIDER"] = "openrouter"
+            env["OPENROUTER_API_KEY"] = key
         return env
 
     def _check_doctor_report(self, report: str) -> None:

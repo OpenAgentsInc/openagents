@@ -47,6 +47,7 @@ use std::time::{Duration, Instant};
 use atif::document::{Source, Step};
 use microluna::codex::{CodexTransport, Login};
 use microluna::fake::FakeTransport;
+use microluna::openrouter::OpenRouterTransport;
 use microluna::{Brief, Config, Ending, Evidence, Isolation, TokenUsage, Transport};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
@@ -899,9 +900,11 @@ impl Policy {
     }
 }
 
-/// The transport a [`Micro`] sends through: the Codex login, or a script.
+/// The transport a [`Micro`] sends through: the Codex login, OpenRouter,
+/// or a script.
 pub enum Wire {
     Codex(CodexTransport),
+    OpenRouter(OpenRouterTransport),
     Fake(FakeTransport),
 }
 
@@ -912,6 +915,7 @@ impl Transport for Wire {
     ) -> Result<microluna::Reply, microluna::TransportError> {
         match self {
             Wire::Codex(transport) => transport.respond(request).await,
+            Wire::OpenRouter(transport) => transport.respond(request).await,
             Wire::Fake(transport) => transport.respond(request).await,
         }
     }
@@ -930,6 +934,19 @@ pub fn login_path() -> Option<PathBuf> {
 #[must_use]
 pub fn check_login() -> Vec<String> {
     println!("candidate capture: {}", checkpoint::VERSION);
+    if uses_openrouter() {
+        // The key is only checked for presence; it is never printed.
+        return match OpenRouterTransport::from_env() {
+            Ok(_) => {
+                println!(
+                    "microluna credential: openrouter ({} set)",
+                    microluna::openrouter::KEY_VAR
+                );
+                Vec::new()
+            }
+            Err(error) => vec![format!("microluna: {error}")],
+        };
+    }
     let Some(path) = login_path() else {
         return vec!["microluna: no CODEX_HOME or HOME to find the Codex login in".to_string()];
     };
@@ -952,6 +969,17 @@ pub fn check_login() -> Vec<String> {
         println!("microluna login: take (read into memory and removed when the run starts)");
     }
     Vec::new()
+}
+
+/// The variable that picks Microluna's provider: `openrouter` sends
+/// through OpenRouter on `OPENROUTER_API_KEY` (issue #9665); anything
+/// else, or nothing, sends through the Codex login.
+pub const PROVIDER_VAR: &str = "CODER_ONE_MICROLUNA_PROVIDER";
+
+/// Whether `CODER_ONE_MICROLUNA_PROVIDER` is `openrouter`.
+#[must_use]
+pub fn uses_openrouter() -> bool {
+    std::env::var(PROVIDER_VAR).is_ok_and(|value| value.trim().eq_ignore_ascii_case("openrouter"))
 }
 
 /// The variable that asks `episode run` to take the Codex login.
@@ -999,6 +1027,9 @@ pub fn take_login() -> Result<(), String> {
 ///
 /// The login's error, as a sentence.
 pub fn codex_wire(session_id: &str) -> Result<Wire, String> {
+    if uses_openrouter() {
+        return OpenRouterTransport::from_env().map(Wire::OpenRouter);
+    }
     if let Some(taken) = TAKEN.get() {
         let login = taken.clone()?;
         return CodexTransport::holding(login, session_id)
