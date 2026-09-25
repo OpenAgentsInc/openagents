@@ -12,6 +12,9 @@
 #                 repeat it for more; every card's task when omitted
 #   --parallel    start every task at once and write each stream to a
 #                 file instead of the terminal
+#   --agent-kwarg K=V
+#                 an adapter setting for tbench try, such as
+#                 candidate_capture=false; repeat it for more
 #   -- ...        options for `coder-one fire watch`, such as --clip 400,
 #                 --no-stop, or --budget-x 5 (`coder-one fire help`)
 #
@@ -32,14 +35,16 @@ arm="coder-one-microluna-v18"
 tasks=()
 parallel=0
 watch_args=()
+agent_kwargs=()
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --arm) arm="$2"; shift 2 ;;
     --task) tasks+=("$2"); shift 2 ;;
     --parallel) parallel=1; shift ;;
+    --agent-kwarg) agent_kwargs+=(--agent-kwarg "$2"); shift 2 ;;
     --) shift; watch_args=("$@"); break ;;
-    -h|--help) sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,29p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "fire-loop: unknown option $1" >&2; exit 2 ;;
   esac
 done
@@ -128,7 +133,7 @@ fire() {
       --no-retain --interval 5 \
       --agent-kwarg "artifact_path=$artifact_path" \
       --agent-kwarg "artifact_sha256=$artifact_sha256" \
-      --agent-kwarg "live_interval_sec=2"
+      --agent-kwarg "live_interval_sec=2" "${agent_kwargs[@]}"
   ) > "$harness" 2>&1 &
   pid=$!
   # The job runs in a process group of its own, so the stop reaches all of it.
