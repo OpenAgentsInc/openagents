@@ -146,6 +146,7 @@ pub fn registry() -> Vec<Box<dyn Component>> {
         Box::new(HandoffComponent),
         Box::new(SystemSelect),
         Box::new(checks::Checks),
+        Box::new(crate::checks::truthful::Truthful),
         Box::new(support::Support),
         Box::new(repair::Repair),
         Box::new(Close),

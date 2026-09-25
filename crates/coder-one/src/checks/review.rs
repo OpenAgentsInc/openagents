@@ -81,7 +81,7 @@ pub fn request(input: &Input) -> Request {
     }
 }
 
-fn request_value(request: &Request) -> Value {
+pub(crate) fn request_value(request: &Request) -> Value {
     json!({"model":request.model, "effort":request.effort, "instructions":request.instructions,
         "input":request.input, "tools":request.tools, "cache_key":request.cache_key, "parallel_tools":request.parallel_tools})
 }

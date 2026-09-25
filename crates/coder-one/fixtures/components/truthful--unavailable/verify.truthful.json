@@ -1,0 +1,21 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "verify.truthful",
+  "source": {
+    "kind": "synthetic",
+    "purpose": "Missing observations remain unknown."
+  },
+  "input": {
+    "candidate": {
+      "task": "Return twice the integer x.",
+      "files": {},
+      "coverage": "No final source retained."
+    },
+    "report": "Done.",
+    "review": null,
+    "audit": null
+  },
+  "retained": {
+    "call": "unknown"
+  }
+}
