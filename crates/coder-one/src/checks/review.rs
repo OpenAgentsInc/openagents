@@ -351,6 +351,42 @@ mod tests {
         assert!(score(&json!({"violation":{"noul":1.1},"consequential":{"noul":1.0}})).is_none());
     }
     #[test]
+    fn quote_formatting_is_normalized_without_changing_words() {
+        assert!(quoted("Return twice x", "“Return  twice\nx”"));
+        assert!(!quoted("Return twice x", "Return thrice x"));
+        assert!(!quoted("Return twice x", "x"));
+    }
+
+    #[tokio::test]
+    async fn an_unexpected_tool_is_retained_but_never_executed() {
+        let input = Input {
+            task: "Return twice x".into(),
+            files: BTreeMap::new(),
+            coverage: "No candidate files".into(),
+        };
+        let transport = RecordedReply(microluna::Reply {
+            model: "gpt-6-luna".into(),
+            items: vec![
+                json!({"type":"function_call", "name":"run_command", "call_id":"unexpected", "arguments":"{}"}),
+            ],
+            ..Default::default()
+        });
+        let dir = std::env::temp_dir().join(format!(
+            "review-refusal-{}-{}",
+            std::process::id(),
+            atif::now_ms()
+        ));
+        let result = run(&input, &transport, &JevMode::Off, &dir).await.unwrap();
+        assert!(result["review"].is_null());
+        assert!(result["error"].is_string());
+        assert_eq!(result["findings"], json!([]));
+        assert!(dir.join("request.json").is_file());
+        assert!(dir.join("reply.json").is_file());
+        assert!(dir.join("review.json").is_file());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
     fn review_inputs_refuse_label_fields() {
         assert!(
             serde_json::from_value::<Input>(
