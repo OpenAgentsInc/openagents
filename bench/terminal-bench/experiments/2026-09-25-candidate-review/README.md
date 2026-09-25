@@ -162,3 +162,24 @@ python3 costs.py "$MINI_RECORDS" /tmp/mini-costs.json
 The retained measurement and deduplicated costs are `records/mini-measurement.json`
 and `records/mini-costs.json`. Re-running `mini_review.py` makes new paid model
 calls and new evidence; it is not how to reproduce this table.
+
+## New archive confirmation
+
+The [frozen protocol](archive-confirmation-protocol.md) declares 72 trials on
+12 previously unused archived task groups. The candidate policies and check rule
+are fixed before generation. Its population is broader than TB4 and cannot
+establish a Fable comparison.
+
+`records/truth9584-archive-preflight.tar.gz` holds the 151-file environment and
+plan preflight, including both corrected setup failures, immutable image IDs,
+original/staged task hashes, exact job configs, and checker runtime hashes.
+`records/archive-preflight-files.json` verifies it. Archive SHA-256:
+`ae8f26f624284e8e77ba9113e0c8958d3774d7041801de6c2b1883f57abb13fe`.
+All files were restored and verified, with no exact credential matches.
+
+`archive_run.py --prepare-only` stages the jobs without inference; omit that flag
+only to start new paid attempts. `archive_checks.py --plans-only` extracts and
+executes the public file plans on pristine images; omit it only after the jobs
+finish, to inspect candidates without reading official outcomes. The latter
+requires `--runtime` naming the four-library checker runtime manifest. Keep
+outcomes unopened until all check and baseline predictions have been sealed.

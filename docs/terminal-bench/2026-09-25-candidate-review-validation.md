@@ -553,3 +553,14 @@ controller work and the broader family rerun are dependencies for later product
 claims, not evidence that #9584 is complete. Coordinate any new benchmark cohort
 with the other coderos agent before launch, keep all attempts and costs, and
 compare trial time with trial time.
+
+The [next confirmation protocol](../../bench/terminal-bench/experiments/2026-09-25-candidate-review/archive-confirmation-protocol.md)
+is frozen for 72 candidates on 12 previously unused archived task groups: three
+Luna and three Astra attempts per task. It combines narrow instruction-derived
+file checks with literal-citation reproduced review, keeps the executor unchanged,
+and requires prediction sealing before the official outcome join. Its public
+environments and check plans have passed preflight. The
+[151-file preflight bundle](../../bench/terminal-bench/experiments/2026-09-25-candidate-review/records/truth9584-archive-preflight.tar.gz)
+retains image identities, task hashes, exact job configurations, and both corrected
+setup failures. This broader archive population is component validation, not TB4
+or evidence of a Fable win. No confirmation outcome is claimed here.

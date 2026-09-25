@@ -20,6 +20,9 @@ The [mini controls](2026-09-25-candidate-review-validation.md#mini-controls-usef
 now detect all four deliberately broken candidates. They also exposed two real
 cancellation bugs in a passing fixture; the fixture and grader are fixed, with
 all original labels and transcripts retained. This remains development evidence.
+The [next frozen confirmation](../../bench/terminal-bench/experiments/2026-09-25-candidate-review/archive-confirmation-protocol.md)
+has 72 planned attempts on 12 unused archive task groups. Preflight passed;
+no outcome is claimed yet. This is component validation outside the TB4 table.
 
 **Microluna v13: 3/3 embedding passes at $0.01599 per accepted output**, including
 Jev, against Fable low's 5/5 at $0.8691. Microluna was slower. It passed **0/3

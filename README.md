@@ -218,6 +218,9 @@ detect all four deliberately broken fixtures and expose two cancellation cases
 that the mini-grader missed. Both fixture defects and the grader are fixed;
 the original labels and full reviews remain retained. These development controls
 do not replace the required confirmation on new task groups.
+The [next confirmation protocol](bench/terminal-bench/experiments/2026-09-25-candidate-review/archive-confirmation-protocol.md)
+freezes 72 attempts on 12 unused archive tasks, with environments and check plans
+verified before generation. No result from that cohort is claimed yet.
 
 Fresh Microluna v13 runs passed **3/3 embedding-drift-monitor attempts for
 $0.01599 per accepted result**, including Jev—about 1/54 of Fable low's
