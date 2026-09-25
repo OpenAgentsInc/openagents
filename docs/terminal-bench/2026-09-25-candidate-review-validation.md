@@ -650,3 +650,12 @@ includes both clean receipts and was restored and hash-verified.
 so new receipt directories are created, static setup refuses an unrecordable
 check, and post-run record failures remain explicit without throwing away the
 completed trial. This is outside the running cohort's unchanged checkout.
+
+The receipt fix passes 45 contamination and Coder One adapter tests. The default
+Cargo-based live test remains explicitly skipped; two separate calls to the
+actual pinned checker pass on both experiment policies and now create their
+previously absent receipt directories themselves. The
+[five-file proof](../../bench/terminal-bench/experiments/2026-09-25-candidate-review/records/truth9643-records.tar.gz)
+retains the test log, JUnit report, source commit, and both clean receipts;
+the [manifest](../../bench/terminal-bench/experiments/2026-09-25-candidate-review/records/truth9643-files.json)
+verifies the restored files. No model or candidate was rerun for this fix.

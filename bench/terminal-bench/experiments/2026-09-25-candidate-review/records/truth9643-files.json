@@ -1,0 +1,34 @@
+{
+  "schema": "openagents.retained-files.v1",
+  "archive": "truth9643-records.tar.gz",
+  "archive_sha256": "afbefb4feadd69e7d0b4d0cdff18824f5d843c9786dd9a5b1fa0ef6453baa3f5",
+  "exclusions": [],
+  "credential_scan": "exact local values, zero matches",
+  "files": [
+    {
+      "path": "astra/contamination-static.json",
+      "bytes": 277,
+      "sha256": "2542843de070f8e080a753e2ccff7fd67ac89c936945ecc2ebd0b369d0374cb4"
+    },
+    {
+      "path": "luna/contamination-static.json",
+      "bytes": 277,
+      "sha256": "2542843de070f8e080a753e2ccff7fd67ac89c936945ecc2ebd0b369d0374cb4"
+    },
+    {
+      "path": "source.json",
+      "bytes": 222,
+      "sha256": "f36243369cd642a7495f15a6d3999890f5b9210abf10f23c29b551c1e75f4ec4"
+    },
+    {
+      "path": "tests.log",
+      "bytes": 110,
+      "sha256": "738c2545affd574a42ee9a4847980a4c1c5b857a1b5a8177bae121f49475a913"
+    },
+    {
+      "path": "tests.xml",
+      "bytes": 6139,
+      "sha256": "ec51933cdd68e9339b4875966f0a35bbf4e9650905f36bf02ec049ca4296926d"
+    }
+  ]
+}
