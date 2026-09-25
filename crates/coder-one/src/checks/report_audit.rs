@@ -50,8 +50,24 @@ pub async fn assess(
     recorder: &Recorder,
     id: &str,
 ) -> Value {
+    assess_kind(task, report, mode, recorder, id, false).await
+}
+
+async fn assess_kind(
+    task: &str,
+    report: &str,
+    mode: &JevMode,
+    recorder: &Recorder,
+    id: &str,
+    features: bool,
+) -> Value {
+    let selected_questions = if features {
+        super::verdict::report_questions()
+    } else {
+        questions()
+    };
     let state = super::verdict::report_state(task, report);
-    let digest = crate::component::jev::key(&state, &json!(questions()));
+    let digest = crate::component::jev::key(&state, &json!(selected_questions));
     let asked = ask(
         mode,
         recorder,
@@ -60,15 +76,16 @@ pub async fn assess(
             name: "jev_concrete_report_failure",
             id: id.to_string(),
             state: state.clone(),
-            questions: questions(),
+            questions: selected_questions.clone(),
             parent: None,
             deadline: None,
         },
     )
     .await;
-    json!({"schema":"openagents.coder-one.report-audit.v1","digest":digest,
+    json!({"schema":if features { "openagents.coder-one.report-features.v1" } else { "openagents.coder-one.report-audit.v1" },"digest":digest,
         "public_task":task,"selected_report":report,
-        "state":state,"questions":questions(),"answers":asked.answers,
+        "state":state,"questions":selected_questions,"answers":asked.answers,
+        "admitted":!super::selfreport::admissions(report).is_empty(),
         "score":asked.answers.as_ref().and_then(score),"error":asked.error,
         "input_tokens":asked.input_tokens,"milliseconds":asked.milliseconds,
         "steps":recorder.steps()})
@@ -83,6 +100,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
     let (mut jobs, mut rows, mut out) = (None, None, None);
     let (mut trial_dir, mut input) = (None, None);
     let mut partition = "calibration".to_string();
+    let mut kind = "concrete".to_string();
     while let Some(arg) = args.next() {
         let value = args.next().ok_or("report-audit needs paired options")?;
         match arg.as_str() {
@@ -90,6 +108,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
             "--rows" => rows = Some(PathBuf::from(value)),
             "--out" => out = Some(PathBuf::from(value)),
             "--partition" => partition.clone_from(value),
+            "--kind" => kind.clone_from(value),
             "--trial-dir" => trial_dir = Some(PathBuf::from(value)),
             "--input" => input = Some(PathBuf::from(value)),
             _ => return Err(format!("Unknown report-audit option {arg}")),
@@ -98,6 +117,10 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
     if !["calibration", "held-out", "all"].contains(&partition.as_str()) {
         return Err("report-audit partition must be calibration, held-out, or all".to_string());
     }
+    if !["concrete", "verdict-features"].contains(&kind.as_str()) {
+        return Err("report-audit kind must be concrete or verdict-features".into());
+    }
+    let features = kind == "verdict-features";
     let out = out.ok_or("report-audit needs --out")?;
     std::fs::create_dir_all(&out).map_err(|e| e.to_string())?;
     let dir = crate::credentials::openagents_dir().ok_or("HOME is not set")?;
@@ -130,7 +153,15 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
             );
         }
         let mut record = if let Some(report) = selected.report {
-            assess(&input.task, &report, &mode, &Recorder::default(), id).await
+            assess_kind(
+                &input.task,
+                &report,
+                &mode,
+                &Recorder::default(),
+                id,
+                features,
+            )
+            .await
         } else {
             json!({"schema":"openagents.coder-one.report-audit.v1","score":null,"error":selected.unavailable})
         };
@@ -167,7 +198,12 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
             continue;
         };
         let state = super::verdict::report_state(&task, &report);
-        let digest = crate::component::jev::key(&state, &json!(questions()));
+        let selected_questions = if features {
+            super::verdict::report_questions()
+        } else {
+            questions()
+        };
+        let digest = crate::component::jev::key(&state, &json!(selected_questions));
         let path = out.join(format!("{}.json", row.trial));
         if path.exists() {
             let mut v: Value =
@@ -189,7 +225,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
             continue;
         }
         let recorder = Recorder::default();
-        let mut record = assess(&task, &report, &mode, &recorder, &row.trial).await;
+        let mut record = assess_kind(&task, &report, &mode, &recorder, &row.trial, features).await;
         record["job"] = json!(row.job);
         record["trial"] = json!(row.trial);
         crate::record::write_atomic(
