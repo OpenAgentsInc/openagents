@@ -46,7 +46,7 @@ pub mod replay;
 pub mod selfreport;
 pub mod synthetic;
 pub mod truth;
-mod truth_micro;
+pub(crate) mod truth_micro;
 pub mod verdict;
 
 use std::collections::BTreeMap;

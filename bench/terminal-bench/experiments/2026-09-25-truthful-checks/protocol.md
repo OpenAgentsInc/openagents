@@ -46,3 +46,18 @@ Add Microluna evidence to the truth CLI and Gym view. Preserve the legacy verdic
 as a comparison signal and state the population behind any reported precision.
 Test selection/restoration, missing evidence, task aliases, invalid probabilities,
 and replay reproducibility. Keep experimental verification off by default.
+
+## Post-measurement adapter correction
+
+After the frozen-rule comparison, source inspection found that six development
+trials retained a read-only review of the selected files. Selecting the earlier
+writer report discarded those observations even though the recorded file maps
+were identical. Preserve the initial result as `records/microluna-before-reviews/`.
+
+Correct the adapter to append a later review only when it is marked read-only,
+records no workspace change, and its nonempty file map equals the selected
+candidate's. Record each included session. Rerun the same questions and both
+unchanged verdicts; the six changed states need new answers. This is a
+post-measurement evidence repair on development data, not another held-out test
+or a threshold refit. A review of different files must not follow a restored
+candidate. Keep the initial and corrected rows and model responses.

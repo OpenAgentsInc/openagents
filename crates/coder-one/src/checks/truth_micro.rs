@@ -21,11 +21,12 @@ impl LocalScore {
 
 /// Evidence tied to the selected session, or an explicit reason it is missing.
 #[derive(Default)]
-pub(super) struct Selected {
+pub(crate) struct Selected {
     pub report: Option<String>,
     pub score: Option<LocalScore>,
     pub source: Option<String>,
     pub unavailable: Option<String>,
+    pub reviews: Vec<u64>,
 }
 
 fn missing(reason: &str) -> Selected {
@@ -37,7 +38,7 @@ fn missing(reason: &str) -> Selected {
 
 /// Prefer a recorded submission, then a restore, then the last sequential
 /// session. A failed or ambiguous selection never falls back to a later report.
-pub(super) fn select(record: &Value, source: &str) -> Selected {
+pub(crate) fn select(record: &Value, source: &str) -> Selected {
     let Some(sessions) = record["sessions"].as_array().filter(|s| !s.is_empty()) else {
         return missing("Microluna has no recorded sessions");
     };
@@ -72,12 +73,48 @@ pub(super) fn select(record: &Value, source: &str) -> Selected {
     else {
         return missing("The selected Microluna session is missing");
     };
-    let report = ["summary", "answer"]
+    let mut report = ["summary", "answer"]
         .into_iter()
         .filter_map(|k| session["finish"][k].as_str())
         .filter(|s| !s.trim().is_empty())
         .collect::<Vec<_>>()
         .join("\n\n");
+    let selected_files = moves
+        .iter()
+        .find(|m| m["kind"] == "lean" && m["after_session"].as_u64() == selected)
+        .and_then(|m| m["workspace_files"].as_object())
+        .filter(|files| !files.is_empty());
+    let mut reviews = Vec::new();
+    if let Some(files) = selected_files {
+        for review in sessions.iter().filter(|s| {
+            s["number"].as_u64() > selected
+                && s["read_only"] == true
+                && s["changed_workspace"] == false
+        }) {
+            let number = review["number"].as_u64();
+            let same_files = moves.iter().any(|m| {
+                m["kind"] == "lean"
+                    && m["after_session"].as_u64() == number
+                    && m["snapshot_error"].is_null()
+                    && m["workspace_files"].as_object() == Some(files)
+            });
+            if !same_files {
+                continue;
+            }
+            let text = ["summary", "answer"]
+                .into_iter()
+                .filter_map(|k| review["finish"][k].as_str())
+                .filter(|s| !s.trim().is_empty())
+                .collect::<Vec<_>>()
+                .join("\n\n");
+            if let Some(number) = number.filter(|_| !text.is_empty()) {
+                report.push_str(&format!(
+                    "\n\nRead-only review {number} of the same candidate files:\n{text}"
+                ));
+                reviews.push(number);
+            }
+        }
+    }
     let score = moves
         .iter()
         .rev()
@@ -91,6 +128,7 @@ pub(super) fn select(record: &Value, source: &str) -> Selected {
         .and_then(|m| LocalScore::read(&m["score"]));
     Selected {
         report: (!report.is_empty()).then_some(report.clone()),
+        reviews,
         score,
         source: Some(format!("{source}#session-{}", selected.unwrap_or(0))),
         unavailable: report
@@ -147,6 +185,23 @@ mod tests {
         let selected = select(&r, "loop");
         assert_eq!(selected.report.as_deref(), Some("discarded report"));
         assert_eq!(selected.score, None);
+    }
+
+    #[test]
+    fn unchanged_read_only_reviews_join_evidence_but_other_candidates_do_not() {
+        let mut r = record();
+        r["sessions"][1]["read_only"] = json!(true);
+        r["sessions"][1]["changed_workspace"] = json!(false);
+        r["moves"][0]["workspace_files"] = json!({"app.py":"same"});
+        r["moves"][1]["workspace_files"] = json!({"app.py":"same"});
+        let selected = select(&r, "loop");
+        assert_eq!(selected.reviews, [2]);
+        assert!(selected.report.unwrap().contains("Read-only review 2"));
+        r["moves"][1]["workspace_files"] = json!({"app.py":"different"});
+        assert!(select(&r, "loop").reviews.is_empty());
+        r["moves"][1]["workspace_files"] = json!({"app.py":"same"});
+        r["sessions"][1]["read_only"] = json!(false);
+        assert!(select(&r, "loop").reviews.is_empty());
     }
 
     #[test]

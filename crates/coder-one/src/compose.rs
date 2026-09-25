@@ -609,8 +609,8 @@ impl VerifyPolicy {
         if self.distrust.iter().any(|k| k.trim().is_empty()) {
             problems.push("verify.distrust names an empty scenario kind".to_string());
         }
-        if (!self.distrust.is_empty() || self.verdict) && !self.checks {
-            problems.push("verify.distrust and verify.verdict need verify.checks".to_string());
+        if !self.distrust.is_empty() && !self.checks {
+            problems.push("verify.distrust needs verify.checks".to_string());
         }
         if (self.self_report || self.optional_outputs || self.behavior) && !self.checks {
             problems.push(
@@ -1803,7 +1803,11 @@ where
 
     // verify.verdict on the first candidate, unless control.best_of
     // already asked it.
-    if first_verdict.is_none() && verify.verdict && usage_limited.is_none() && checked.is_some() {
+    if first_verdict.is_none()
+        && verify.verdict
+        && usage_limited.is_none()
+        && first_delegation.report.status == Status::Answered
+    {
         first_verdict = Some(assess_verdict(setup, &previous, "first").await);
     }
 

@@ -2193,6 +2193,16 @@ fn the_verdict_trigger_fires_only_on_a_failed_verdict() {
 }
 
 #[test]
+fn report_verdict_does_not_require_scenario_checks() {
+    let verify = super::VerifyPolicy {
+        verdict: true,
+        checks: false,
+        ..Default::default()
+    };
+    assert!(verify.validate().is_empty(), "{:?}", verify.validate());
+}
+
+#[test]
 fn verify_second_on_verdict_needs_verify_verdict() {
     let mut verify = manifest("tunable-v9-escalate.json").policy.verify.unwrap();
     verify.second.as_mut().unwrap().on = vec!["verdict".to_string()];

@@ -4840,6 +4840,20 @@ impl Executor for Micro {
             "stopped_by": Value::Null,
             "session_id": last.map(|r| r.session_id.clone()),
         });
+        // A restored candidate's earlier report and a read-only review of
+        // those same files are both evidence. A discarded edit is not.
+        if mode == "lean" {
+            let selected = checks::truth_micro::select(&record, "microluna");
+            result = selected.report.unwrap_or_else(|| {
+                format!(
+                    "No attributable final candidate report: {}",
+                    selected
+                        .unavailable
+                        .as_deref()
+                        .unwrap_or("selection is unknown")
+                )
+            });
+        }
         let file = self
             .artifacts
             .join(format!("microluna-{}.json", self.dispatch()));

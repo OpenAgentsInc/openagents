@@ -157,6 +157,9 @@ pub struct Row {
     pub report_source: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub report_unavailable: Option<String>,
+    /// Read-only review sessions proven to observe the same candidate files.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub review_sessions: Vec<u64>,
 }
 
 impl Row {
@@ -428,6 +431,7 @@ pub fn load(job: &str, dir: &Path) -> Option<Loaded> {
             local_score: selected.score,
             report_source: selected.source,
             report_unavailable: selected.unavailable,
+            review_sessions: selected.reviews,
         },
         instruction,
         report,
@@ -934,6 +938,7 @@ pub fn summary(rows: &[Row]) -> Value {
             "reports": rows.iter().filter(|r| r.report_chars > 0).count(),
             "missing_reports": rows.iter().filter(|r| r.report_chars == 0).count(),
             "microluna_scores": rows.iter().filter(|r| r.local_score.is_some()).count(),
+            "same_candidate_reviews": rows.iter().filter(|r| !r.review_sessions.is_empty()).count(),
         },
         "validation_note": "Historical task split; repeatedly studied tasks and reused comparison results are not untouched validation. Wilson intervals treat trials as independent; use task-cluster intervals for repeated tasks.",
         "verdict": super::verdict::describe(&fitted),
