@@ -1,0 +1,81 @@
+{
+  "schema": "openagents.coder-one.issue-eval-entry.v1",
+  "id": "9579-install-coder",
+  "category": "cli",
+  "issue": {
+    "repository": "OpenAgentsInc/openagents",
+    "number": 9579,
+    "title": "Coder Terminal: install this repository's build as `coder`",
+    "body": "## Goal\n\nMake `coder` on the operator's PATH run this repository's Coder Terminal\n(`crates/coder`). Today `~/.local/bin/coder` points at\n`~/.openagents/bin/coder`, a build from the separate `~/coder` repository\n(`~/.openagents/versions/coder-terminal-<sha>`). That's a different\nprogram, so none of this repository's Coder Terminal work, including the\nJev delegate door, is what runs when the operator types `coder`.\n\n## Plan\n\n1. **An install script.** `scripts/install-coder.sh` builds `crates/coder`\n   in release mode with the pinned toolchain, in a dedicated target\n   directory. It copies the binary to\n   `~/.openagents/versions/coder-openagents-<short-sha>` and swaps\n   `~/.openagents/bin/coder` to it atomically.\n   - It prints the previous target, so a rollback is one `ln -sfn`.\n   - `--rollback` restores the previous version.\n   - The design is reimplemented here. Nothing is copied from the other\n     repository's scripts.\n2. **Identity.** `coder --version` prints the repository, the commit, and\n   whether the tree was dirty, so it's obvious which Coder is running.\n3. **Doctor.** `coder doctor` reports which door a turn will use and why:\n   the delegation targets found (`claude`, `codex`), whether each is\n   authenticated, the Jev credential, and the fallback door.\n4. **Docs.** Update `docs/coder/` with the install, rollback, and\n   environment variables, and point the README at them.\n\n## Done when\n\n- After `./scripts/install-coder.sh`, typing `coder` opens this\n  repository's Coder Terminal, and `coder --version` shows its commit.\n- `coder doctor` reports the delegation target and fallback.\n- `--rollback` returns to the previous binary.\n\nRelated: the Jev delegate door issue.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n",
+    "created_at": "2026-09-23T17:58:48Z",
+    "frozen": "Title and body from GitHub on 2026-09-24: the issue has no recorded body edits (userContentEdits is empty) and no title renames, so the text is as it was when the issue was opened, before the fix."
+  },
+  "base": "6a250be81227377a81e36d9f4738402623d1e378",
+  "fix": {
+    "commits": [
+      "a55f667b0451c0a020118c29c674b5a0af6dc596",
+      "abe5d953fa930890fb25201496e9e8465f862ce3",
+      "a17f49a8414d4a990dea68ebcc0d73643317241f"
+    ],
+    "head": "a17f49a8414d4a990dea68ebcc0d73643317241f"
+  },
+  "checks": [
+    {
+      "id": "fix-test-script",
+      "group": "fix_tests",
+      "kind": "command",
+      "run": "bash scripts/test-install-coder.sh",
+      "timeout_secs": 300,
+      "tests": false,
+      "note": "The fix's test script: install over an older build, roll back, roll forward, and refuse a failed build.",
+      "files": {
+        "scripts/test-install-coder.sh": "9579-test-install-coder.sh"
+      }
+    },
+    {
+      "id": "install-script-added",
+      "group": "deliverables",
+      "kind": "changed",
+      "note": "`scripts/install-coder.sh` exists.",
+      "pattern": "^scripts/install-coder\\.sh$"
+    },
+    {
+      "id": "install-script-rolls-back",
+      "group": "deliverables",
+      "kind": "contains",
+      "note": "The install script takes `--rollback`.",
+      "path": "scripts/install-coder.sh",
+      "pattern": "--rollback"
+    },
+    {
+      "id": "install-script-parses",
+      "group": "deliverables",
+      "kind": "command",
+      "run": "bash -n scripts/install-coder.sh",
+      "timeout_secs": 60,
+      "tests": false,
+      "note": "The install script is valid shell."
+    },
+    {
+      "id": "docs-cover-install",
+      "group": "deliverables",
+      "kind": "changed_contains",
+      "note": "A page under docs/coder/ covers the install and rollback.",
+      "paths": "^docs/coder/.*\\.md$",
+      "pattern": "install-coder"
+    },
+    {
+      "id": "readme-points-at-install",
+      "group": "deliverables",
+      "kind": "contains",
+      "note": "The README points at the install.",
+      "path": "README.md",
+      "pattern": "install-coder"
+    }
+  ],
+  "notes": [
+    "The base already has `coder --version` and `coder doctor` (6a250be812 landed them for the delegate-door issue), so the work left is the install script, rollback, and the docs.",
+    "The fix is a55f667b04 (the script and its test) and a17f49a841 (the docs); abe5d953fa between them is an unrelated Coder One change.",
+    "The fix's test script drives the install through `CODER_INSTALL_CARGO`, `CODER_INSTALL_TARGET_DIR`, and `OPENAGENTS_HOME`, names the fix chose."
+  ]
+}

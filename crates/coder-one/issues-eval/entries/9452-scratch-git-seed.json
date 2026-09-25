@@ -1,0 +1,63 @@
+{
+  "schema": "openagents.coder-one.issue-eval-entry.v1",
+  "id": "9452-scratch-git-seed",
+  "category": "rust-behavior",
+  "issue": {
+    "repository": "OpenAgentsInc/openagents",
+    "number": 9452,
+    "title": "burn-down briefing commits the whole checkout to the scratch Git directory",
+    "body": "Found by the second burn-down episode (#9413). The `fan_out` briefing in `programs/burn-down.json` tells a delegate to `git init` a scratch Git directory and `git add -A`. A fresh scratch repository has no history, so the first commit holds every file in the worktree: 1158 files, 370,229 insertions, including `training/score-probe/results/*.jsonl`. `git fetch <worktree>/.coder-git HEAD` then hands the reviewer a commit whose diff cannot be read; the review had to diff the touched files against `HEAD` by hand.\n\n## What to do\n\nEither have the runtime seed the scratch directory before the delegate starts (a bare init plus one commit of the base tree, so the delegate's commit diffs against it), or change the briefing to add only the paths the item names (`touches`). The runtime knows both the base and the touched paths; the delegate should not have to.\n\n## Acceptance\n\n- `git -C <worktree>/.coder-git log -1 --stat` after a delegation shows only the files the item changed.\n- `docs/coder/delegate.md` and `docs/programs.md` describe the recipe as it is.",
+    "created_at": "2026-09-20T17:47:59Z",
+    "frozen": "Title and body from GitHub on 2026-09-24: the issue has no recorded body edits (userContentEdits is empty) and no title renames, so the text is as it was when the issue was opened, before the fix."
+  },
+  "base": "f666f3991656dd03fcbbe8274f4c4994e201e4ec",
+  "fix": {
+    "commits": [
+      "5cf7b757de6a2ea6e3de6d81169016f758730676"
+    ],
+    "head": "5cf7b757de6a2ea6e3de6d81169016f758730676"
+  },
+  "checks": [
+    {
+      "id": "fix-test-seeded-scratch",
+      "group": "fix_tests",
+      "kind": "command",
+      "run": "cargo test -q -p coder --lib issue_eval_",
+      "timeout_secs": 1800,
+      "tests": true,
+      "note": "The fix's test: a fresh delegation worktree's `.coder-git` holds the base, and a delegate's commit there holds only what it changed.",
+      "inject": {
+        "path": "crates/coder/src/worktree.rs",
+        "snippet": "9452-worktree.rs",
+        "after": "mod tests {"
+      }
+    },
+    {
+      "id": "worktree-tests",
+      "group": "fix_tests",
+      "kind": "command",
+      "run": "cargo test -q -p coder --lib worktree::",
+      "timeout_secs": 1800,
+      "tests": true,
+      "note": "The worktree module's own tests still pass."
+    },
+    {
+      "id": "briefing-stops-git-init",
+      "group": "deliverables",
+      "kind": "lacks",
+      "note": "The burn-down briefing no longer tells a delegate to `git init` the scratch directory, whose first commit held every file.",
+      "path": "programs/burn-down.json",
+      "pattern": "run `git init`"
+    },
+    {
+      "id": "delegate-md-describes-recipe",
+      "group": "deliverables",
+      "kind": "changed",
+      "note": "docs/coder/delegate.md describes the recipe as it is.",
+      "pattern": "^docs/coder/delegate\\.md$"
+    }
+  ],
+  "notes": [
+    "The issue allows two designs: seed the scratch directory, or brief the delegate to add only the touched paths. The fix's test, which the grader runs, checks the seeded design, so a candidate that only changes the briefing fails it."
+  ]
+}

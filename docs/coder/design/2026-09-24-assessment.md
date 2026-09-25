@@ -174,12 +174,11 @@ The biggest gaps:
 | #9558 Coder One on the full TB4 suite | Close as won't do in this form: it depends on Opus, Astra, and escalation tiers, which the pivot sets aside. Reopen as a Microluna full-suite issue once the targeted gate passes. |
 | #9577 Gym: mark bad runs and steps | Keep; blocked on the operator marking runs. |
 | #9598 Roadmap from the transcript archive | Keep for later, as the issue says. |
+| #9625 Issue flow: an evaluation set of past issues | The set exists: eight past issues in `crates/coder-one/issues-eval/`, split into development and held-out parts before any measurement, with graders that fail each base and pass each real fix. `coder-one issue-eval run` works an entry without publishing. No live run has been measured yet. #9597's 14 attempts are development history, not evidence. See the [issue-flow evaluation guide](../guides/coder-one-issue-eval.md). |
 
 Work with no issue yet:
 - Port the lean loop into Coder Terminal and the issue flow, reading a
   manifest.
-- An evaluation set for the issue flow: a handful of past issues graded
-  like mini-tasks, so issue-flow changes stop being fitted to one issue.
 - A capability-gap log: the two search tasks and `session-window-debug`
   are its first entries. Done: [capability-gap log](../../terminal-bench/capability-gaps.md)
   (#9626).

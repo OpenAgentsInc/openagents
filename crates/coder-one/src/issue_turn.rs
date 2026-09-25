@@ -209,10 +209,21 @@ pub async fn asked(request: &Request, recorder: &Recorder) -> Option<Reference> 
 }
 
 /// The issue as `gh` returns it.
-struct Fetched {
-    url: String,
-    title: String,
-    body: String,
+pub struct Fetched {
+    pub url: String,
+    pub title: String,
+    pub body: String,
+}
+
+/// A checkout set up to work an issue: the inner turn's request, the
+/// checkout, the local checkout that lent it a worktree, the branch, and
+/// the issue.
+pub struct Prepared {
+    pub inner: Request,
+    pub workdir: PathBuf,
+    pub source: Option<PathBuf>,
+    pub branch: String,
+    pub issue: Fetched,
 }
 
 /// Runs the issue flow for `reference` and returns the turn's answer.
@@ -224,8 +235,7 @@ pub async fn run(
     on: Rc<dyn Fn(Progress)>,
     recorder: &Recorder,
 ) -> Answer {
-    let prepared = prepare(request, &reference);
-    let (inner, workdir, source, branch, issue) = match prepared {
+    let prepared = match prepare(request, &reference) {
         Ok(prepared) => prepared,
         Err(why) => {
             say!(
@@ -240,10 +250,32 @@ pub async fn run(
         }
     };
     say!(
-        "issue ▸ working on #{} in {}, on branch {branch}",
+        "issue ▸ working on #{} in {}, on branch {}",
         reference.number,
-        workdir.display()
+        prepared.workdir.display(),
+        prepared.branch
     );
+    work(prepared, reference, on, recorder, true).await
+}
+
+/// Works a prepared issue: the loop, the review, and the pre-pull-request
+/// gate, then, when `publish` is set, the commit, push, and draft pull
+/// request. Without `publish` the changes stay staged in the checkout, so
+/// the issue-flow evaluation can grade them without landing anything.
+pub async fn work(
+    prepared: Prepared,
+    reference: Reference,
+    on: Rc<dyn Fn(Progress)>,
+    recorder: &Recorder,
+    publish: bool,
+) -> Answer {
+    let Prepared {
+        inner,
+        workdir,
+        source,
+        branch,
+        issue,
+    } = prepared;
     let mut answer = Box::pin(crate::terminal::answer(&inner, on.clone())).await;
     let mut before = recorder.steps();
     before.append(&mut answer.steps);
@@ -319,15 +351,19 @@ pub async fn run(
             .join("\n")
     };
     let finished = matches!(answer.report.status, crate::delegate::Status::Answered);
-    let outcome = land(
-        &workdir,
-        &branch,
-        &issue,
-        &what,
-        finished,
-        answer.stuck,
-        &remaining,
-    );
+    let outcome = if publish {
+        land(
+            &workdir,
+            &branch,
+            &issue,
+            &what,
+            finished,
+            answer.stuck,
+            &remaining,
+        )
+    } else {
+        keep(&workdir, &remaining)
+    };
     if outcome
         .as_ref()
         .is_ok_and(|line| line.starts_with("Opened"))
@@ -358,10 +394,7 @@ pub async fn run(
 
 /// Fetches the issue, clones its repository, and branches: the inner
 /// turn's request, the checkout, the branch, and the issue.
-fn prepare(
-    request: &Request,
-    reference: &Reference,
-) -> Result<(Request, PathBuf, Option<PathBuf>, String, Fetched), String> {
+fn prepare(request: &Request, reference: &Reference) -> Result<Prepared, String> {
     let repository = match &reference.repository {
         Some(repository) => repository.clone(),
         None => command(
@@ -484,7 +517,13 @@ fn prepare(
         artifacts: run_dir.join("artifacts"),
         ..request.clone()
     };
-    Ok((inner, workdir, source, branch, issue))
+    Ok(Prepared {
+        inner,
+        workdir,
+        source,
+        branch,
+        issue,
+    })
 }
 
 /// The top of the git checkout at `dir` when its `origin` is
@@ -596,6 +635,28 @@ fn land(
         ],
     )?;
     Ok(format!("Opened draft pull request {}.", pr.trim()))
+}
+
+/// Stages what the run changed and publishes nothing. Returns the
+/// closing line.
+fn keep(workdir: &Path, remaining: &[String]) -> Result<String, String> {
+    command(workdir, "git", &["add", "-A"])?;
+    let stat = command(workdir, "git", &["diff", "--cached", "--shortstat"])?;
+    let stat = stat.trim();
+    let problems = match remaining.len() {
+        0 => String::new(),
+        1 => " The host's tests and checks still find 1 problem.".to_string(),
+        n => format!(" The host's tests and checks still find {n} problems."),
+    };
+    Ok(format!(
+        "Published nothing. The changes are staged in {} ({}).{problems}",
+        workdir.display(),
+        if stat.is_empty() {
+            "nothing changed"
+        } else {
+            stat
+        }
+    ))
 }
 
 /// Preserve the executor's failure, or carry the review's failure forward.

@@ -190,6 +190,7 @@ pub async fn run_minitask(
             ))
         },
         isolation: Isolation::Boundary,
+        seal: None,
         traces: Some(artifacts.clone()),
         echo: options.echo,
     };

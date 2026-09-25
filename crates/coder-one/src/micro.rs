@@ -31,6 +31,7 @@
 //! beside them. Each move between sessions is a Jev decision and a
 //! `handoff` step, which the Gym shows as a hand-off.
 
+pub mod candidate;
 mod detect;
 pub mod lean;
 pub mod parallel;
@@ -1034,6 +1035,9 @@ pub struct Micro {
     pub prepared: Option<Prepared>,
     /// The last dispatch's loop record.
     pub last: Option<Value>,
+    /// What an evaluation run cuts every session's commands off from;
+    /// `None` outside one.
+    pub seal: Option<microluna::Seal>,
 }
 
 impl Micro {
@@ -1067,6 +1071,7 @@ impl Micro {
             subject: None,
             prepared: None,
             last: None,
+            seal: None,
         }
     }
 
@@ -1992,6 +1997,10 @@ impl Micro {
         };
         let workspace = microluna::Workspace::new(&workdir).map(|workspace| {
             let workspace = workspace.isolated_by(self.isolation);
+            let workspace = match &self.seal {
+                Some(seal) => workspace.sealed_by(seal.clone()),
+                None => workspace,
+            };
             let workspace = match place.command_max {
                 Some(max) => workspace.commands_within(max),
                 None => workspace,
@@ -2557,6 +2566,7 @@ impl Micro {
                 spend_usd: None,
             },
             isolation: self.isolation,
+            seal: self.seal.clone(),
             traces: Some(self.artifacts.clone()),
             echo: false,
         };

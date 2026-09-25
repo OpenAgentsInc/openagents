@@ -86,6 +86,8 @@ pub struct MicrolunaWriter<'a, T: Transport> {
     /// How the session's commands are confined. `Boundary` keeps them to
     /// the suite directory; `TaskContainer` trusts the container.
     pub isolation: Isolation,
+    /// What an evaluation run cuts the session's commands off from.
+    pub seal: Option<microluna::Seal>,
     /// Where each session's ATIF trace goes, when anywhere.
     pub traces: Option<PathBuf>,
     /// Print each step to standard error.
@@ -182,7 +184,13 @@ impl<T: Transport> MicrolunaWriter<'_, T> {
             }
         }
         let workspace = match microluna::Workspace::new(suite_dir) {
-            Ok(workspace) => workspace.isolated_by(self.isolation),
+            Ok(workspace) => {
+                let workspace = workspace.isolated_by(self.isolation);
+                match &self.seal {
+                    Some(seal) => workspace.sealed_by(seal.clone()),
+                    None => workspace,
+                }
+            }
             Err(error) => {
                 return Written {
                     ending: "transport".to_string(),

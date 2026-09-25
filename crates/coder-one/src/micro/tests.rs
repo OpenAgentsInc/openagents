@@ -1899,7 +1899,7 @@ fn candidate_identity_refuses_an_incomplete_inventory() {
 }
 
 #[test]
-fn protected_candidates_refuse_parallel_lanes_without_retained_lane_evidence() {
+fn candidate_evidence_accepts_parallel_lanes() {
     for protect_candidates in [false, true] {
         let shape = lean::Lean {
             keep_best: true,
@@ -1908,12 +1908,7 @@ fn protected_candidates_refuse_parallel_lanes_without_retained_lane_evidence() {
             lanes: 3,
             ..lean_shape()
         };
-        assert!(
-            shape
-                .validate()
-                .iter()
-                .any(|problem| problem.contains("one first-attempt lane"))
-        );
+        assert!(shape.validate().is_empty(), "{:?}", shape.validate());
     }
 }
 
@@ -2014,4 +2009,324 @@ async fn lanes_run_at_once_and_the_best_scoring_copy_is_kept() {
         "good\n"
     );
     assert_eq!(lanes["leaked"], false);
+}
+
+/// A score script that passes when `answer.txt` in the workspace, named by
+/// its absolute path as a task's scripts do, says `good`.
+fn answer_score(work: &Path, eval: &Path) -> String {
+    format!(
+        "mkdir -p {e} && printf '%s\\n' 'if grep -q good {w}/answer.txt 2>/dev/null; then echo SCORE 1 1; else echo SCORE 0 1; fi' > {e}/score.sh",
+        e = eval.display(),
+        w = work
+            .canonicalize()
+            .unwrap_or_else(|_| work.to_path_buf())
+            .display()
+    )
+}
+
+/// The scorer session, two lanes that write `lanes` answers and finish,
+/// and one sequential session that writes `worse`.
+fn lane_replies(score: String, lanes: [&str; 2]) -> Vec<microluna::Reply> {
+    vec![
+        call(
+            "s1",
+            "run_command",
+            &json!({ "command": score, "timeout_seconds": null }),
+            usage(1_000, 0, 30),
+        ),
+        finish("s2", "done", "Wrote the score."),
+        call(
+            "l1",
+            "write_file",
+            &json!({ "path": "answer.txt", "contents": format!("{}\n", lanes[0]) }),
+            usage(1_000, 0, 30),
+        ),
+        call(
+            "l2",
+            "write_file",
+            &json!({ "path": "answer.txt", "contents": format!("{}\n", lanes[1]) }),
+            usage(1_000, 0, 30),
+        ),
+        finish("l3", "done", "Wrote an answer."),
+        finish("l4", "done", "Wrote an answer."),
+        call(
+            "w1",
+            "write_file",
+            &json!({ "path": "answer.txt", "contents": "worse\n" }),
+            usage(1_000, 0, 30),
+        ),
+        finish("w2", "done", "Rewrote the answer."),
+    ]
+}
+
+fn lane_moves(moves: &[Value]) -> Vec<&Value> {
+    moves
+        .iter()
+        .filter(|m| m["kind"] == "lean" && m["batch"] == "lanes")
+        .collect()
+}
+
+#[tokio::test]
+async fn protected_lanes_retain_each_lane_and_submit_the_retained_winner() {
+    let dir = tempfile::tempdir().unwrap();
+    let work = dir.path().join("work");
+    let eval = lean::eval_dir(&work, Isolation::TaskContainer);
+    let _ = std::fs::remove_dir_all(&eval);
+    std::fs::create_dir_all(&work).unwrap();
+    let mut executor = micro(
+        dir.path(),
+        lane_replies(answer_score(&work, &eval), ["bad", "good"]),
+        lean_policy(lean::Lean {
+            sessions: 1,
+            self_check: false,
+            keep_best: true,
+            protect_candidates: true,
+            lanes: 2,
+            ..lean_shape()
+        }),
+    );
+    executor.prepared = Some(prepared());
+    executor.execute(&briefing(TASK)).await;
+    let record = executor.last.clone().unwrap();
+    let moves = record["moves"].as_array().unwrap();
+    let lanes = lane_moves(moves);
+    assert_eq!(lanes.len(), 2, "{moves:?}");
+    for (k, lane) in lanes.iter().enumerate() {
+        assert_eq!(lane["lane"], k + 1);
+        assert_eq!(lane["after_session"], k + 2);
+        assert!(lane["snapshot_error"].is_null(), "{lane}");
+        // Each lane is retained with its own identity.
+        let candidate = PathBuf::from(lane["candidate"].as_str().unwrap());
+        assert!(candidate.ends_with(format!("session-{}", k + 2)));
+        let identity = serde_json::to_value(lean::evidence_tree(&candidate).unwrap()).unwrap();
+        assert_eq!(lane["workspace_files"], identity);
+        assert!(lane["evaluator_files"].is_object());
+    }
+    let winner = lanes
+        .iter()
+        .find(|l| l["kept"] == true)
+        .expect("a kept lane");
+    assert_eq!(winner["score"], json!({"passed": 1, "total": 1}));
+    let summary = moves.iter().find(|m| m["kind"] == "lean.lanes").unwrap();
+    assert_eq!(summary["selected"]["lane"], winner["lane"]);
+    assert_eq!(
+        summary["selected"]["reason"],
+        lean::PROTECTED_LANE_SELECTION
+    );
+    assert_eq!(summary["selection_matches_workspace"], true);
+    // The sequential session scored lower, so the retained winner is
+    // restored and submitted.
+    assert_eq!(
+        std::fs::read_to_string(work.join("answer.txt")).unwrap(),
+        "good\n"
+    );
+    let submitted = moves.last().unwrap();
+    assert_eq!(submitted["kind"], "lean.submitted");
+    assert_eq!(submitted["selected_session"], winner["after_session"]);
+    assert_eq!(submitted["selected_lane"], winner["lane"]);
+    assert_eq!(submitted["selection_matches_workspace"], true);
+    assert_eq!(submitted["result"], "local_checks_passed");
+    assert_eq!(submitted["workspace_files"], winner["workspace_files"]);
+}
+
+#[tokio::test]
+async fn a_protected_lane_without_a_snapshot_cannot_be_kept() {
+    let dir = tempfile::tempdir().unwrap();
+    let work = dir.path().join("work");
+    let eval = lean::eval_dir(&work, Isolation::TaskContainer);
+    let _ = std::fs::remove_dir_all(&eval);
+    std::fs::create_dir_all(&work).unwrap();
+    // Lane 1 is session 2; its snapshot's path is taken by a file.
+    let retained = dir.path().join("artifacts/lean-1");
+    std::fs::create_dir_all(&retained).unwrap();
+    std::fs::write(retained.join("session-2"), "not a directory").unwrap();
+    let mut executor = micro(
+        dir.path(),
+        lane_replies(answer_score(&work, &eval), ["good", "good"]),
+        lean_policy(lean::Lean {
+            sessions: 1,
+            self_check: false,
+            keep_best: true,
+            protect_candidates: true,
+            lanes: 2,
+            ..lean_shape()
+        }),
+    );
+    executor.prepared = Some(prepared());
+    executor.execute(&briefing(TASK)).await;
+    let record = executor.last.clone().unwrap();
+    let moves = record["moves"].as_array().unwrap();
+    let lanes = lane_moves(moves);
+    assert!(lanes[0]["snapshot_error"].is_string(), "{}", lanes[0]);
+    assert_eq!(lanes[0]["kept"], false);
+    assert_eq!(lanes[1]["kept"], true);
+    let summary = moves.iter().find(|m| m["kind"] == "lean.lanes").unwrap();
+    assert_eq!(
+        summary["lanes"][0]["excluded"],
+        "its snapshot could not be retained"
+    );
+    assert_eq!(summary["selected"]["lane"], 2);
+    let submitted = moves.last().unwrap();
+    assert_eq!(submitted["selected_lane"], 2);
+    assert_eq!(submitted["selected_session"], 3);
+    assert_eq!(submitted["selection_matches_workspace"], true);
+}
+
+#[tokio::test]
+async fn retained_lanes_record_each_lane_and_the_submission_names_its_lane() {
+    let dir = tempfile::tempdir().unwrap();
+    let work = dir.path().join("work");
+    let eval = lean::eval_dir(&work, Isolation::TaskContainer);
+    let _ = std::fs::remove_dir_all(&eval);
+    std::fs::create_dir_all(&work).unwrap();
+    let mut replies = lane_replies(answer_score(&work, &eval), ["bad", "good"]);
+    // The sequential session keeps the lane's answer and only finishes.
+    replies.truncate(6);
+    replies.push(finish("w1", "done", "Checked the answer."));
+    let mut executor = micro(
+        dir.path(),
+        replies,
+        lean_policy(lean::Lean {
+            sessions: 1,
+            self_check: false,
+            keep_best: true,
+            retain_candidates: true,
+            lanes: 2,
+            ..lean_shape()
+        }),
+    );
+    executor.prepared = Some(prepared());
+    executor.execute(&briefing(TASK)).await;
+    let record = executor.last.clone().unwrap();
+    let moves = record["moves"].as_array().unwrap();
+    let lanes = lane_moves(moves);
+    assert_eq!(lanes.len(), 2);
+    let winner = lanes.iter().find(|l| l["kept"] == true).unwrap();
+    let summary = moves.iter().find(|m| m["kind"] == "lean.lanes").unwrap();
+    assert_eq!(summary["selected"]["reason"], lean::LANE_SELECTION);
+    assert_eq!(
+        std::fs::read_to_string(work.join("answer.txt")).unwrap(),
+        "good\n"
+    );
+    // The submission is the latest retained candidate with its files: the
+    // sequential session, which changed nothing, else the winning lane.
+    let submitted = moves.last().unwrap();
+    assert_eq!(submitted["selection_matches_workspace"], true);
+    assert_eq!(submitted["workspace_files"], winner["workspace_files"]);
+    assert_eq!(submitted["selected_session"], 4);
+    assert!(submitted["selected_lane"].is_null());
+    let sequential = moves
+        .iter()
+        .find(|m| m["kind"] == "lean" && m["after_session"] == 4)
+        .unwrap();
+    assert_eq!(sequential["workspace_files"], winner["workspace_files"]);
+}
+
+fn git(dir: &Path, args: &[&str]) {
+    let output = std::process::Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(["-c", "user.name=test", "-c", "user.email=test@example.com"])
+        .args(args)
+        .env_remove("GIT_DIR")
+        .env_remove("GIT_WORK_TREE")
+        .env_remove("GIT_INDEX_FILE")
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{args:?}: {output:?}");
+}
+
+#[tokio::test]
+async fn keep_best_snapshots_a_repository_with_big_ignored_build_output() {
+    let dir = tempfile::tempdir().unwrap();
+    let work = dir.path().join("work");
+    std::fs::create_dir_all(&work).unwrap();
+    git(&work, &["init", "-q"]);
+    std::fs::write(work.join(".gitignore"), "target/\n").unwrap();
+    std::fs::write(work.join("hello.txt"), "start\n").unwrap();
+    git(&work, &["add", "-A"]);
+    git(&work, &["commit", "-q", "-m", "start"]);
+    // Build output past the whole-workspace bound, as a sparse file.
+    std::fs::create_dir_all(work.join("target")).unwrap();
+    std::fs::File::create(work.join("target/big.bin"))
+        .unwrap()
+        .set_len(parallel::MAX_COPY_BYTES + 1)
+        .unwrap();
+    std::fs::write(work.join("target/app"), "binary").unwrap();
+    assert!(!parallel::copyable(&work));
+    let eval = lean::eval_dir(&work, Isolation::TaskContainer);
+    let _ = std::fs::remove_dir_all(&eval);
+    let script = format!(
+        "mkdir -p {e} && printf '%s\\n' 'if grep -q correct hello.txt; then echo SCORE 1 1; else echo SCORE 0 1; fi' > {e}/score.sh",
+        e = eval.display()
+    );
+    let mut executor = micro(
+        dir.path(),
+        vec![
+            call(
+                "a1",
+                "run_command",
+                &json!({"command": script}),
+                usage(100, 0, 10),
+            ),
+            call(
+                "a2",
+                "write_file",
+                &json!({"path":"hello.txt","contents":"correct\n"}),
+                usage(100, 0, 10),
+            ),
+            finish("a3", "blocked", "Another requirement is unknown."),
+            call(
+                "b1",
+                "write_file",
+                &json!({"path":"hello.txt","contents":"regression\n"}),
+                usage(100, 0, 10),
+            ),
+            call(
+                "b2",
+                "write_file",
+                &json!({"path":"added.txt","contents":"later\n"}),
+                usage(100, 0, 10),
+            ),
+            finish("b3", "blocked", "The score dropped."),
+        ],
+        lean_policy(lean::Lean {
+            sessions: 2,
+            self_check: false,
+            keep_best: true,
+            protect_candidates: true,
+            ..lean_shape()
+        }),
+    );
+    executor.prepared = Some(prepared());
+    executor.execute(&briefing(TASK)).await;
+    let record = executor.last.clone().unwrap();
+    let moves = record["moves"].as_array().unwrap();
+    assert!(moves[0]["snapshot_error"].is_null(), "{}", moves[0]);
+    assert_eq!(moves[0]["kept"], true);
+    let candidate = PathBuf::from(moves[0]["candidate"].as_str().unwrap());
+    assert!(!candidate.join("target").exists());
+    assert!(!candidate.join(".git").exists());
+    assert_eq!(
+        std::fs::read_to_string(candidate.join("hello.txt")).unwrap(),
+        "correct\n"
+    );
+    // The restore brings session 1 back and leaves the build output and
+    // the Git directory alone.
+    assert_eq!(
+        std::fs::read_to_string(work.join("hello.txt")).unwrap(),
+        "correct\n"
+    );
+    assert!(!work.join("added.txt").exists());
+    assert_eq!(
+        std::fs::read_to_string(work.join("target/app")).unwrap(),
+        "binary"
+    );
+    assert!(work.join("target/big.bin").is_file());
+    assert!(work.join(".git/HEAD").is_file());
+    let submitted = moves.last().unwrap();
+    assert_eq!(submitted["selected_session"], 1);
+    assert_eq!(submitted["selection_matches_workspace"], true);
+    assert_eq!(submitted["candidate_scope"], "git");
+    assert_eq!(submitted["identity_scope"], candidate::GIT_SCOPE);
 }

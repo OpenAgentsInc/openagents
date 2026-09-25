@@ -68,6 +68,7 @@ const USAGE: &str = "usage: coder-one doctor
        coder-one episode run --instruction-file F --output-dir D --contract C [--model M]
        coder-one component list|run|suite|extract   (coder-one component help)
        coder-one minitask list|run                  (coder-one minitask help)
+       coder-one issue-eval list|show|grade|verify|run|seal (coder-one issue-eval help)
        coder-one handoff run|compare                (coder-one handoff help)
        coder-one capabilities [--demonstrate] [--json]  (coder-one capabilities help)
        coder-one prompt list|show|capture           (coder-one prompt help)
@@ -93,6 +94,7 @@ async fn main() -> ExitCode {
         Some("episode") => return episode_command(&args[1..]).await,
         Some("component") => return component_command(&args[1..]).await,
         Some("minitask") => return minitask_command(&args[1..]).await,
+        Some("issue-eval") => return issue_eval_command(&args[1..]).await,
         Some("accept") => return accept_command(&args[1..]).await,
         Some("capabilities") => {
             return match coder_one::capabilities::command(&args[1..]).await {
@@ -365,6 +367,23 @@ async fn minitask_command(args: &[String]) -> ExitCode {
         return ExitCode::SUCCESS;
     }
     match coder_one::minitask::cli::command(args).await {
+        Ok(code) => ExitCode::from(u8::try_from(code).unwrap_or(1)),
+        Err(message) => {
+            eprintln!("coder-one: {message}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+async fn issue_eval_command(args: &[String]) -> ExitCode {
+    if matches!(
+        args.first().map(String::as_str),
+        Some("help" | "--help" | "-h") | None
+    ) {
+        println!("{}", coder_one::issue_eval::cli::USAGE);
+        return ExitCode::SUCCESS;
+    }
+    match coder_one::issue_eval::cli::command(args).await {
         Ok(code) => ExitCode::from(u8::try_from(code).unwrap_or(1)),
         Err(message) => {
             eprintln!("coder-one: {message}");

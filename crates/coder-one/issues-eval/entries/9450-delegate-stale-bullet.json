@@ -1,0 +1,57 @@
+{
+  "schema": "openagents.coder-one.issue-eval-entry.v1",
+  "id": "9450-delegate-stale-bullet",
+  "category": "docs",
+  "issue": {
+    "repository": "OpenAgentsInc/openagents",
+    "number": 9450,
+    "title": "delegate.md still says a fan-out cannot be reached from an operator's sentence",
+    "body": "\\`docs/coder/delegate.md\\`, section \"What is not built\", lists:\n\n> **Reaching a fan-out from an operator's sentence.** \\`coder::runtime\\` runs the program, and the program still runs from a caller in Rust.\n\nThat landed: \\`coder::turn::run\\` asks \\`openagents.program.v1\\` before it classifies, a program answer runs \\`Runtime::run\\`, and the CoderBench golden \\`devin-fan-out-six\\` is recorded from \\`coder -p\\` on Linux (\\`docs/programs.md\\`, \"How a sentence reaches it\"). The page also does not mention that a \\`delegate\\` step's \\`isolation: worktree\\` and \\`writes: true\\` retain a worktree under \\`.coder/worktrees\\` for a reviewer, which is how the \\`burn-down\\` program hands work back.\n\n## What to do\n\n- Remove or rewrite the stale bullet so the page states how the runtime is reached today, linking \\`docs/programs.md\\` rather than repeating it.\n- Under \"Isolation is provided or refused, never pretended\", say in one or two sentences what a reviewer does with a retained worktree (\\`git worktree list\\`, inspect, merge or remove) — the program runs it, the operator finishes it.\n- Google developer documentation style (\\`.agents/skills/google-developer-style/SKILL.md\\`). Change only \\`docs/coder/delegate.md\\`.\n\n## Acceptance\n\n- The \"What is not built\" section names only things that are not built.\n- A reader knows where a writing delegate's edits end up and what to do with them.",
+    "created_at": "2026-09-20T13:58:59Z",
+    "frozen": "Title and body from GitHub on 2026-09-24: the issue has no recorded body edits (userContentEdits is empty) and no title renames, so the text is as it was when the issue was opened, before the fix."
+  },
+  "base": "0737a2a23acbc6d2a756070e141d81761e4f96d1",
+  "fix": {
+    "commits": [
+      "aea10efb02d7d5347f0cdd744c12429e8568413e"
+    ],
+    "head": "aea10efb02d7d5347f0cdd744c12429e8568413e"
+  },
+  "checks": [
+    {
+      "id": "only-delegate-md",
+      "group": "deliverables",
+      "kind": "only_changed",
+      "note": "The issue says to change only docs/coder/delegate.md.",
+      "patterns": [
+        "^docs/coder/delegate\\.md$"
+      ]
+    },
+    {
+      "id": "stale-bullet-gone",
+      "group": "deliverables",
+      "kind": "lacks",
+      "note": "The stale bullet about reaching a fan-out from a sentence is gone.",
+      "path": "docs/coder/delegate.md",
+      "pattern": "Reaching a fan-out from an operator's sentence"
+    },
+    {
+      "id": "reviewer-worktree",
+      "group": "deliverables",
+      "kind": "contains",
+      "note": "The page says what a reviewer does with a retained worktree: find it in `git worktree list`, then merge or remove it.",
+      "path": "docs/coder/delegate.md",
+      "pattern": "(?s)git worktree list.{0,300}\\bmerg|\\bmerg.{0,300}git worktree list"
+    },
+    {
+      "id": "links-resolve",
+      "group": "deliverables",
+      "kind": "links",
+      "note": "Every relative link in the page resolves.",
+      "path": "docs/coder/delegate.md"
+    }
+  ],
+  "notes": [
+    "Docs only: the real fix added no tests, so every check is a deliverable."
+  ]
+}

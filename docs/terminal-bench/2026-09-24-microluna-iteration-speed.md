@@ -130,8 +130,23 @@ reason, copy time, and final submitted identity. It does not change tied-score
 replacement, edit permissions, stopping rules, or evaluator calls. A snapshot
 failure is recorded and does not block the underlying baseline selection.
 The existing `protect_candidates` experiment retains its separate behavior.
-Both recording modes refuse parallel first-attempt lanes until lane provenance
-is implemented.
+
+Both recording modes now accept parallel first-attempt lanes. Each lane is
+retained as `session-<n>` with its own identity, frozen score, and lane number,
+scored by a fresh copy of the frozen scorer so a lane can't edit the scorer it
+is judged by. The `lean.lanes` record names the selected lane and the rule that
+selected it, and `lean.submitted` names the selected session and lane. Under
+`protect_candidates`, only a lane with a retained snapshot can be kept, and the
+workspace becomes that retained snapshot. The
+[`microluna-v14-retained`](../../crates/coder-one/policies/microluna-v14-retained.json)
+manifest is v14 with `retain_candidates`; it hasn't run.
+
+In a Git work tree, a candidate is the files Git lists as tracked or untracked
+and not ignored. Snapshots, identities, and the 20,000-file and 256 MiB bound
+leave out the `.git` directory and ignored build output such as `target/`, and
+a restore leaves both in place. A workspace without Git is copied whole, as
+before. When a snapshot still can't be taken, the progress line and the
+session's record say why.
 
 The final `lean.submitted` record explicitly says
 `observed_without_revalidation` and `evaluation_rerun: false`. It identifies
@@ -343,7 +358,7 @@ again for Coder One, Microluna, and Gym. The final Linux Python run passed
 | --- | --- | --- |
 | [#9607](https://github.com/OpenAgentsInc/openagents/issues/9607) | Fresh repeated runs on both selected targets, with every sequential candidate retained | A repeatable Microluna win where Fable fails, plus broader confirmation of cheap successes |
 | [#9584](https://github.com/OpenAgentsInc/openagents/issues/9584) | Official candidate labels paired with the exact self-score and selected submission | A combined verdict with better measured failure precision and recall on held-out task groups |
-| [#9587](https://github.com/OpenAgentsInc/openagents/issues/9587) | A reusable post-run oracle grader for sequential candidates | Parallel-lane retention and the matched single/best-of-3/best-of-5 experiment |
+| [#9587](https://github.com/OpenAgentsInc/openagents/issues/9587) | A reusable post-run oracle grader for sequential candidates, and retention for parallel first-attempt lanes | The matched single/best-of-3/best-of-5 experiment |
 | [#9585](https://github.com/OpenAgentsInc/openagents/issues/9585) | Readable summary requests at every effort, with live measurements | The stated matched Luna-in-Codex comparison on three to five TB4 tasks |
 | [#9588](https://github.com/OpenAgentsInc/openagents/issues/9588) | More evidence that a frozen green score can disagree with official acceptance | Validated offline discrimination and the matched live acceptance-suite comparison; keep adoption experimental |
 | [#9608](https://github.com/OpenAgentsInc/openagents/issues/9608) | Completed positive-path audit through draft PR #9623, with full host and native traces | Acceptance is satisfied; #9597 and the draft PR remain in the other agent’s workflow |

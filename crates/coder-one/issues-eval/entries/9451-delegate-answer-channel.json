@@ -1,0 +1,56 @@
+{
+  "schema": "openagents.coder-one.issue-eval-entry.v1",
+  "id": "9451-delegate-answer-channel",
+  "category": "rust-behavior",
+  "issue": {
+    "repository": "OpenAgentsInc/openagents",
+    "number": 9451,
+    "title": "burn-down accept judges the executor's narration, not its answer",
+    "body": "Found by the second burn-down episode (#9413). Both delegations did their item, committed to the scratch Git directory, and were told to reply with the single word `done` (`expects: \"done\"`). The `accept` step judged both `failed`.\n\nThe `delegate` call's `output` is the Devin CLI's whole narration (\"I'll invoke the style skill and read the relevant files in parallel. ... Confirmed: lines 792–800 ...\"), not the final reply. `openagents.completion.v1` is asked whether that text answers `done`, and it does not.\n\n## What to do\n\nGive a delegation an answer channel apart from its transcript: the executor adapter's final message (the Devin CLI prints it last; a manifest field could name how to separate it), recorded under `answer` with the narration kept under `transcript`, and `accept` judges `answer`. Until then, `expects` on a writing item cannot pass and every burn-down reports `0 passed`.\n\n## Acceptance\n\n- A delegation whose final reply is `done` and whose narration is anything passes an item with `expects: \"done\"`.\n- The trace keeps the narration.\n- Test in `crates/coder` with a stub executor that narrates before answering.\n\nTrace: `~/burndown-8.atif.jsonl` on the coordinating host; the two edits landed as `e613dd5ee`.",
+    "created_at": "2026-09-20T17:47:58Z",
+    "frozen": "Title and body from GitHub on 2026-09-24: the issue has no recorded body edits (userContentEdits is empty) and no title renames, so the text is as it was when the issue was opened, before the fix."
+  },
+  "base": "e613dd5ee64afc7d13f13d088da816b57ba163de",
+  "fix": {
+    "commits": [
+      "f666f3991656dd03fcbbe8274f4c4994e201e4ec"
+    ],
+    "head": "f666f3991656dd03fcbbe8274f4c4994e201e4ec"
+  },
+  "checks": [
+    {
+      "id": "fix-test-answer-channel",
+      "group": "fix_tests",
+      "kind": "command",
+      "run": "cargo test -q -p coder --lib issue_eval_",
+      "timeout_secs": 1800,
+      "tests": true,
+      "note": "The fix's test: a narrating delegate whose answer is `done` passes, and the narration is kept.",
+      "inject": {
+        "path": "crates/coder/src/delegate.rs",
+        "snippet": "9451-delegate.rs",
+        "after": "mod tests {"
+      }
+    },
+    {
+      "id": "delegate-tests",
+      "group": "fix_tests",
+      "kind": "command",
+      "run": "cargo test -q -p coder --lib delegate::",
+      "timeout_secs": 1800,
+      "tests": true,
+      "note": "The delegate module's own tests still pass."
+    },
+    {
+      "id": "trace-keeps-transcript",
+      "group": "deliverables",
+      "kind": "contains",
+      "note": "The trace records the narration under `transcript`.",
+      "path": "crates/coder/src/trace.rs",
+      "pattern": "\"transcript\""
+    }
+  ],
+  "notes": [
+    "The fix's test names `Delegation::answer` and `Delegation::transcript` and the `Final answer:` mark the fix chose; the issue asks for `answer` and `transcript` but leaves the separator open, so a candidate can meet the issue and still fail the fix's test."
+  ]
+}

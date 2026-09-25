@@ -588,6 +588,7 @@ async fn the_microluna_writer_writes_into_the_suite_directory() {
         transport: &transport,
         config: Config::luna("accept-test"),
         isolation: Isolation::TaskContainer,
+        seal: None,
         traces: None,
         echo: false,
     };

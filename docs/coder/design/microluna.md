@@ -309,6 +309,23 @@ The [summary measurements](../../terminal-bench/2026-09-24-microluna-iteration-s
 record accepted settings, latency, cost, and the distinction from encrypted
 internal reasoning.
 
+### Lean-loop candidates
+
+With `executor.microluna.lean.keep_best`, the lean loop snapshots the best
+workspace and restores it at the end. With `retain_candidates` or
+`protect_candidates`, it also keeps every candidate, each sequential session's
+and each first-attempt lane's, under `artifacts/lean-<dispatch>/session-<n>`,
+with its identity and score in `selection.json`
+(`crates/coder-one/src/micro/lean.rs`).
+
+What a candidate is depends on the workspace
+(`crates/coder-one/src/micro/candidate.rs`). Without Git, it is the whole
+workspace. In a Git work tree, it is the files
+`git ls-files --cached --others --exclude-standard` lists, so the snapshot
+bound of 20,000 files and 256 MiB counts neither `.git` nor ignored build
+output, and a restore leaves both alone. Either way, an identity leaves out
+Git metadata, Python bytecode, and named caches.
+
 ## How to watch Microluna
 
 **In Coder Terminal**, with no setup: when `~/.codex/auth.json` has more

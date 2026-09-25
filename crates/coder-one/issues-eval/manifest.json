@@ -1,0 +1,36 @@
+{
+  "schema": "openagents.coder-one.issue-eval-set.v1",
+  "description": "Past OpenAgents issues with merged fixes, each pinned to the commit before its fix, for measuring issue-flow changes (#9625).",
+  "split": {
+    "decided": "2026-09-24, before any issue-flow change was measured on the set",
+    "rule": "Each part holds one docs entry, one Rust behavior entry, and one CLI entry; the development part also holds #9597, the only Gym view entry, because the flow was tuned on it. Twin issues filed together (#9449 and #9450, #9451 and #9452) are split across the parts.",
+    "development": [
+      "9597-minitask-explanation",
+      "9450-delegate-stale-bullet",
+      "9451-delegate-answer-channel",
+      "9446-coderdev-launcher"
+    ],
+    "held-out": [
+      "9449-worker-executor-troubleshooting",
+      "9448-preflight-configured-origin",
+      "9452-scratch-git-seed",
+      "9579-install-coder"
+    ]
+  },
+  "files": {
+    "entries/9446-coderdev-launcher.json": "98afa25e872fd697e358e39fe57cef59734b768b272c95966e992601255a310b",
+    "entries/9448-preflight-configured-origin.json": "6ec9563644f8a9f52aa65cd3f246de21f54db77e01ad4bd5d5ca99b9ba3d54d5",
+    "entries/9449-worker-executor-troubleshooting.json": "4bffec52a2604767bf715f8ead5f8835bf6f7538c26a2ea8a8d446207ded9b8c",
+    "entries/9450-delegate-stale-bullet.json": "a7f4e95d624a523c0ffc3c49aee685747f63c83df2f67017840a9f1405c413c2",
+    "entries/9451-delegate-answer-channel.json": "1e5978a0d79b207a7cbdbc909f10f4d3c67bcdced59d0a54f2f14a4fe2e159f5",
+    "entries/9452-scratch-git-seed.json": "db83e76d6fb91fb082b2348f9336ae85cdd1252a5b921fce89b2be66ee3fd3bd",
+    "entries/9579-install-coder.json": "3220586b0eca30216fc48200d0972c98479f505ef9c1a3f19a006729714ecaa1",
+    "entries/9597-minitask-explanation.json": "184779dcbc9f2cab4f7bcd7fe2ca61b58d48a9d54ff77be376513e4f38ff380f",
+    "hidden/9446-test-coderdev.sh": "5def317a3a9d0b46d796dfc24aa4430b57f95cd60b1ddc3b534d4c64bafd73d4",
+    "hidden/9448-preflight.rs": "1b93be184405e50a9526bf55f28d068e075b1a169f705d7c1e0b9ba40c76208c",
+    "hidden/9451-delegate.rs": "cd08a975b7f17fefad4877ab1f921966a19d9572298b550197f210a42570429b",
+    "hidden/9452-worktree.rs": "266cf980a58dda94091ff4a019b5feb578689b416d4dce2da191587873ac53f5",
+    "hidden/9579-test-install-coder.sh": "03ff031daae54f86c25d871a780c31c993607915dbf6e20e5ade3dd0919bde9b"
+  },
+  "digest": "b85ff8426d91c44f5f3382d396ffaeca3d9d408ea84ed2194772ba381203a104"
+}

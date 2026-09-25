@@ -1,0 +1,12 @@
+{
+  "trials": 19,
+  "checkpoints": 110,
+  "by_partition": {
+    "evaluation": 110
+  },
+  "jev": {
+    "live": 110
+  },
+  "live_input_tokens": 365333,
+  "live_usd": 0.015343986
+}

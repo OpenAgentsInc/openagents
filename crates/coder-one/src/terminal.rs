@@ -406,6 +406,11 @@ pub struct Request {
     /// flow's. A question and a review keep the terminal's single-session
     /// bounds whatever it says.
     pub policy: Option<Manifest>,
+    /// What an evaluation run cuts the Microluna sessions' commands off
+    /// from: GitHub and, when offline, the network. `None` on every turn
+    /// but an issue-flow evaluation's; the review and fix rounds inherit
+    /// it from the issue flow's turn.
+    pub seal: Option<microluna::Seal>,
 }
 
 /// What the turn reports while it runs.
@@ -1035,6 +1040,7 @@ async fn microluna_turn(turn: Turn<'_>) -> Answer {
             microluna::fake::FakeTransport::new(script.clone()),
         ));
     }
+    micro.seal.clone_from(&request.seal);
     micro.take_evidence(&prepared);
     recorder.watch(watcher(on.clone(), hushed, texts));
     let shape = match &micro.policy.lean {
@@ -1714,6 +1720,7 @@ mod tests {
             issue: false,
             review: false,
             policy: None,
+            seal: None,
         })
     }
 
