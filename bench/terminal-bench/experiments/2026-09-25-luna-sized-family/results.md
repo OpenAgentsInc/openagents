@@ -157,3 +157,18 @@ allowlist overlay that drops `expose:` from services it moves into the
 sidecar's namespace and keeps their host names resolvable. That change
 alters the protocol's launch conditions, so it needs a new
 pre-registration.
+
+## Update: the environment failure is fixed
+
+Commit `38092f57e8` fixes the environment failure. Under the allowlist,
+only the agent's container goes behind the egress sidecar. The task's
+other services stay on the task's network, made internal, so they have
+no route off the host, and the agent still reaches them by name. All
+three multi-service tasks now start under the allowlist. In an
+environment-only bring-up, with no agent or verifier, the agent's
+container reached its services and the three allowed hosts, and not
+`example.com`, `pypi.org`, or `http://1.1.1.1/`. Each trial's
+`network-policy.json` now records how each service was placed.
+
+This run's result stands. A rerun changes the launch conditions, so it
+needs a new pre-registration.
