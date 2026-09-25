@@ -207,6 +207,15 @@ JSON object a line; lines with another schema are skipped.
 The review delta pairs records by `session`: the records of the session
 before a review and of the review itself.
 
+`evidence.baseline` writes its records to `artifacts/lean-<n>/` and adds
+five fields the card doesn't read: `stated` (the instruction's command when
+the host ran it differently, such as `python3` for a stated `python`),
+`failed` (why it never ran), `confine` (`boundary` or `container`), and
+`stdout_bytes` and `stderr_bytes` (what each stream produced, before the
+16 KiB cap). Its digests are of the kept heads.
+[`crates/coder-one/src/baseline/`](../../crates/coder-one/src/baseline/)
+writes them, and `baseline::read_commands` reads its commands back.
+
 ### Check-line grades
 
 `artifacts/check-grades.json`, written at the freeze by `accept.grade`
