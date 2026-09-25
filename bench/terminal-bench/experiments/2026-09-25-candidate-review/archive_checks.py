@@ -58,8 +58,13 @@ def cli(container_id, args, dest):
 
 
 def copy_file(path, container_id, dest):
-    subprocess.run(['docker', 'cp', str(path), container_id + ':' + dest],
-                   capture_output=True, timeout=30, check=True)
+    # Docker's archive-copy endpoint refuses this read-only root even when the
+    # destination is a writable tmpfs. Stream bytes through the container instead.
+    done = subprocess.run(['docker', 'exec', '-i', container_id, 'sh', '-c',
+                           'cat > "$1"', 'sh', dest], input=path.read_bytes(),
+                          capture_output=True, timeout=30)
+    if done.returncode:
+        raise ValueError('Cannot stage a public check input: ' + done.stderr.decode(errors='replace'))
 
 
 def stop(container_id):
