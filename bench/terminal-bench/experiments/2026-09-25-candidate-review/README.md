@@ -56,3 +56,23 @@ observations, not permission to relabel an earlier run.
 with bounded state, and `run` executes programs in networkless Docker containers.
 The generated program is never imported on the host. For a changed admission,
 identical program/input executions are reused and the record says so.
+
+## Restore the fresh transcripts and candidates
+
+The separate `records/prospective-traces.tar.gz` contains content-addressed blobs
+for every fresh trial's agent and artifact files, plus its configurations.
+`records/prospective-trace-files.json` maps the original relative paths to each
+blob's size and SHA-256. It contains no official grading files. Restore into a
+new directory:
+
+```sh
+python3 restore_traces.py --manifest records/prospective-trace-files.json \
+  --archive records/prospective-traces.tar.gz --out /tmp/truthful-check-traces
+```
+
+The reader verifies all blobs and paths before writing files. It never overwrites
+an existing output directory. This restores the complete native transcripts,
+ATIF logs, reports, candidate snapshots, and collected deliverables. The initial
+bundle has 1,077 files in 533 unique blobs and was restored and hash-checked in
+full. `collect_fresh.py` reproduces collection from the frozen prospective
+manifest, scanning the current host's credential values before publication.
