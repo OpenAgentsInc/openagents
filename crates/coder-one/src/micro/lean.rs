@@ -281,13 +281,13 @@ pub struct Lean {
     /// the target is unmet or unmeasured ([`super::optimize`]). Absent, as
     /// in every manifest before it, nothing is measured.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub metric_target: Option<super::optimize::MetricTargetRule>,
+    pub metric_target: Option<Box<super::optimize::MetricTargetRule>>,
     /// `control.optimize` (issue #9657): after the loop, bounded rounds
     /// that keep a change only when the acceptance check still passes and
     /// the metric improves beyond its spread. Needs `metric_target` and
     /// `keep_best`. Absent, as in every manifest before it, no round runs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub optimize: Option<super::optimize::OptimizeRule>,
+    pub optimize: Option<Box<super::optimize::OptimizeRule>>,
     /// `checks.oracle` (issue #9656): before session 1, find a checker the
     /// instruction names or have a separate Luna session write an oracle
     /// from the task's stated definition ([`crate::checks::oracle`]), and
@@ -3540,6 +3540,7 @@ impl Micro {
             let acceptance = super::optimize::LeanAcceptance {
                 micro: self,
                 lean,
+                task: &prepared.title,
                 frozen: &frozen,
                 digest: evaluator_digest.as_ref(),
                 executed: lean.executed.as_ref().zip(executed_plan.as_ref()),

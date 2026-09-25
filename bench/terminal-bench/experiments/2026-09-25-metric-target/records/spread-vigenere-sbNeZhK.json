@@ -1,0 +1,81 @@
+{
+  "target": {
+    "quantity": "runtime",
+    "direction": "at_most",
+    "threshold": 30.0,
+    "unit": "s",
+    "relative": {
+      "kind": "absolute"
+    },
+    "sentence": "Each invocation must complete within 30 s.",
+    "number": "30 s",
+    "p": 0.0
+  },
+  "harness": "docker run --rm --network none -v /home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v11--interleaved-vigenere--manual-20260924T151338/interleaved-vigenere__sbNeZhK/artifacts/app/cracker.py:/app/cracker.py:ro -v /home/christopherdavid/openagents/.claude/worktrees/agent-a11e1babf29e16ef4/bench/terminal-bench/experiments/2026-09-25-metric-target/harness:/h:ro tbench-warm/interleaved-vigenere:environment-37a3e35da105ad0d814a python3 /h/vigenere.py",
+  "protocol": {
+    "warmup": 1,
+    "repeats": 5,
+    "run_sec": 300,
+    "budget_sec": 3600
+  },
+  "measurement": {
+    "value": 4.503607461985666,
+    "spread": 0.22494962700875476,
+    "values": [
+      4.503607461985666,
+      4.389303190982901,
+      4.418458711006679,
+      4.633041075954679,
+      4.83920244500041
+    ],
+    "error": null,
+    "tail": "exit 0\nMETRIC 4.83920244500041\n",
+    "runs": [
+      {
+        "side": "candidate",
+        "ok": true,
+        "printed": 4.461558866023552,
+        "seconds": 4.945710674,
+        "tail": "exit 0\nMETRIC 4.461558866023552\n"
+      },
+      {
+        "side": "candidate",
+        "ok": true,
+        "printed": 4.503607461985666,
+        "seconds": 4.967351688,
+        "tail": "exit 0\nMETRIC 4.503607461985666\n"
+      },
+      {
+        "side": "candidate",
+        "ok": true,
+        "printed": 4.389303190982901,
+        "seconds": 4.942295693,
+        "tail": "exit 0\nMETRIC 4.389303190982901\n"
+      },
+      {
+        "side": "candidate",
+        "ok": true,
+        "printed": 4.418458711006679,
+        "seconds": 5.059354365,
+        "tail": "exit 0\nMETRIC 4.418458711006679\n"
+      },
+      {
+        "side": "candidate",
+        "ok": true,
+        "printed": 4.633041075954679,
+        "seconds": 6.69578285,
+        "tail": "exit 0\nMETRIC 4.633041075954679\n"
+      },
+      {
+        "side": "candidate",
+        "ok": true,
+        "printed": 4.83920244500041,
+        "seconds": 6.575405237,
+        "tail": "exit 0\nMETRIC 4.83920244500041\n"
+      }
+    ]
+  },
+  "verdict": "met",
+  "confident": true,
+  "line": "runtime 4.5036 ± 0.2249 s over 5 runs; the target is 30: met"
+}

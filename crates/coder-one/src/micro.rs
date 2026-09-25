@@ -4978,4 +4978,6 @@ impl Executor for Micro {
 }
 
 #[cfg(test)]
+mod optimize_tests;
+#[cfg(test)]
 mod tests;

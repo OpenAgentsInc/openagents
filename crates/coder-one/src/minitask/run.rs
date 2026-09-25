@@ -52,7 +52,7 @@ pub enum ExecutorChoice {
     /// boundary that lets it write only the task's directory.
     Microluna {
         model: String,
-        policy: crate::micro::Policy,
+        policy: Box<crate::micro::Policy>,
     },
 }
 
@@ -518,7 +518,7 @@ pub async fn run(options: Options) -> Result<Ran, String> {
                 &artifacts,
                 recorder.clone(),
                 0,
-                policy.clone(),
+                (**policy).clone(),
                 microluna::Isolation::Boundary,
             );
             executor.episode = episode_deadline.clone();

@@ -1,0 +1,124 @@
+{
+  "target": {
+    "quantity": "speedup",
+    "direction": "at_least",
+    "threshold": 5000.0,
+    "unit": "x",
+    "relative": {
+      "kind": "named",
+      "name": "NetworkX"
+    },
+    "sentence": "The geometric mean of the per-case speedup ratios must be at least 5000x faster than NetworkX.",
+    "number": "5000x",
+    "p": 0.96
+  },
+  "harness": "docker run --rm --network none -v /home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-tunable-v3--vf2-speedup-networkx/vf2-speedup-networkx__jgSFKBL/artifacts/app:/app:ro -v /home/christopherdavid/openagents/.claude/worktrees/agent-a11e1babf29e16ef4/bench/terminal-bench/experiments/2026-09-25-metric-target/harness:/h:ro metric-target-9657/vf2-nx python3 /h/vf2.py \"$1\"",
+  "protocol": {
+    "warmup": 1,
+    "repeats": 5,
+    "run_sec": 300,
+    "budget_sec": 3600
+  },
+  "measurement": {
+    "value": 981057.0960759971,
+    "spread": 266154.90629714914,
+    "values": [
+      504356.90778152243,
+      988180.6298381983,
+      981057.0960759971,
+      1036666.7203758208,
+      967196.7258693824
+    ],
+    "error": null,
+    "tail": "phase calls: 600\nMETRIC 1.7206249564575653e-06\n",
+    "runs": [
+      {
+        "side": "reference",
+        "ok": true,
+        "printed": 1.7372466983312431,
+        "seconds": 11.197050308,
+        "tail": "phase calls: 3\nMETRIC 1.7372466983312431\n"
+      },
+      {
+        "side": "candidate",
+        "ok": true,
+        "printed": 1.6361382828714947e-6,
+        "seconds": 0.548458357,
+        "tail": "phase calls: 600\nMETRIC 1.6361382828714947e-06\n"
+      },
+      {
+        "side": "reference",
+        "ok": true,
+        "printed": 1.695172132012279,
+        "seconds": 7.119525836,
+        "tail": "phase calls: 3\nMETRIC 1.695172132012279\n"
+      },
+      {
+        "side": "candidate",
+        "ok": true,
+        "printed": 3.3610566363980374e-6,
+        "seconds": 0.589286501,
+        "tail": "phase calls: 600\nMETRIC 3.3610566363980374e-06\n"
+      },
+      {
+        "side": "candidate",
+        "ok": true,
+        "printed": 1.7013633623719216e-6,
+        "seconds": 0.521035493,
+        "tail": "phase calls: 600\nMETRIC 1.7013633623719216e-06\n"
+      },
+      {
+        "side": "reference",
+        "ok": true,
+        "printed": 1.6812543190123204,
+        "seconds": 6.817265117,
+        "tail": "phase calls: 3\nMETRIC 1.6812543190123204\n"
+      },
+      {
+        "side": "reference",
+        "ok": true,
+        "printed": 1.666699926330087,
+        "seconds": 6.65410488,
+        "tail": "phase calls: 3\nMETRIC 1.666699926330087\n"
+      },
+      {
+        "side": "candidate",
+        "ok": true,
+        "printed": 1.6988816787488758e-6,
+        "seconds": 0.524578251,
+        "tail": "phase calls: 600\nMETRIC 1.6988816787488758e-06\n"
+      },
+      {
+        "side": "candidate",
+        "ok": true,
+        "printed": 1.6698283919443687e-6,
+        "seconds": 0.510382449,
+        "tail": "phase calls: 600\nMETRIC 1.6698283919443687e-06\n"
+      },
+      {
+        "side": "reference",
+        "ok": true,
+        "printed": 1.7310555226673994,
+        "seconds": 6.870632523,
+        "tail": "phase calls: 3\nMETRIC 1.7310555226673994\n"
+      },
+      {
+        "side": "reference",
+        "ok": true,
+        "printed": 1.6641828243349057,
+        "seconds": 6.70193193,
+        "tail": "phase calls: 3\nMETRIC 1.6641828243349057\n"
+      },
+      {
+        "side": "candidate",
+        "ok": true,
+        "printed": 1.7206249564575653e-6,
+        "seconds": 0.767868081,
+        "tail": "phase calls: 600\nMETRIC 1.7206249564575653e-06\n"
+      }
+    ]
+  },
+  "verdict": "met",
+  "confident": true,
+  "line": "speedup 981057.0961 ± 266154.9063 x over 5 runs; the target is 5000: met"
+}

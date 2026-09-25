@@ -1,0 +1,40 @@
+{
+  "schema": "openagents.pattern.v1",
+  "id": "measure-then-improve",
+  "name": "Measure the stated numeric target, then improve it under a keep-if-better rule",
+  "summary": "When a task states a numeric goal for its finished work, such as a speedup, a latency, a cost, or a distance to a reference, measure it with a fixed harness and repeated runs, and never finish while it is unmet or unmeasured. Once the acceptance check passes, try one improvement at a time, and keep one only when the acceptance check still passes and the metric improves beyond the measured spread; otherwise restore the last passing workspace.",
+  "trigger": {
+    "kind": "semantic",
+    "detail": "Code finds every number in the instruction with its sentence; one Jev request per task judges, per number, whether it is a measured goal's threshold, its direction, its quantity, and what it is measured against (questions/metric-target.json). No phrase list picks a number."
+  },
+  "output": {
+    "kind": "check",
+    "detail": "A measurement with its spread from a frozen harness (provided, or written by one Luna session from the goal and the workspace's file names), compared with the threshold; control.finish holds a done finish while the target is unmet or unmeasured, and control.optimize keeps or restores each round's change by the acceptance check and the metric."
+  },
+  "components": [
+    {"path": "crates/coder-one/src/checks/metric_target/mod.rs", "item": "extract"},
+    {"path": "crates/coder-one/src/checks/metric_target/mod.rs", "item": "measure"},
+    {"path": "crates/coder-one/src/checks/metric_target/mod.rs", "item": "refusal"},
+    {"path": "crates/coder-one/src/micro/optimize.rs", "item": "MetricTargetRule"},
+    {"path": "crates/coder-one/src/micro/optimize.rs", "item": "OptimizeRule"},
+    {"path": "questions/metric-target.json", "item": "per_number"}
+  ],
+  "source_tasks": [
+    {"task": "mp-checkpoint-consolidation", "how": "Fable 5.1's passing runs measured the distance to reference logits and kept only option sets that reduced it.", "commits": ["c1d524f782"]},
+    {"task": "payments-pipeline-fix", "how": "Fable 5.1's passing runs measured the pipeline's latency with a fault harness before and after each change.", "commits": ["c1d524f782"]},
+    {"task": "telecom-entity-resolution", "how": "Fable 5.1's passing runs scored each change against a threshold table built from a proxy for the hidden metric.", "commits": ["c1d524f782"]},
+    {"task": "fp8-rmsnorm-gemm", "how": "Fable 5.1's passing runs timed the kernel against the reference, kept a backup, and restored it after a slower variant.", "commits": ["c1d524f782"]},
+    {"task": "distributed-dedup", "how": "Fable 5.1's passing runs measured the job's run time against its budget; a failing run never measured it.", "commits": ["c1d524f782"]},
+    {"task": "photonic-waveguide-routing", "how": "Fable 5.1's passing runs measured the routing cost with the provided checker and kept only improvements.", "commits": ["c1d524f782"]}
+  ],
+  "admission": {
+    "status": "candidate",
+    "record": "Not admitted. Built behind two switches, metric_target and optimize, absent from every manifest. Measured offline on the 61 tasks with retained Coder One or Microluna trials, less the eleven mapped tasks: with the frozen wording Jev held the right target first on 14 of the 19 tasks that state one, but also held a target on 30 of 42 tasks that state none, 29 of them the harness's own time allowance; one wording change, measured in-sample, cut the false positives to 1 and the right first target to 11. Admission needs matched mini-task runs on tasks other than the source tasks, then a pinned family.",
+    "measured_on": [],
+    "issues": ["#9657"],
+    "evidence": [
+      "docs/terminal-bench/2026-09-25-fable-pattern-map.md",
+      "docs/terminal-bench/2026-09-25-metric-target.md"
+    ]
+  }
+}

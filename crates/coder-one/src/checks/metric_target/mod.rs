@@ -868,7 +868,7 @@ pub(crate) trait Runner {
 
 /// How a target is measured.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(deny_unknown_fields, default)]
 pub struct Protocol {
     /// Unrecorded runs first, of each side.
     pub warmup: u32,

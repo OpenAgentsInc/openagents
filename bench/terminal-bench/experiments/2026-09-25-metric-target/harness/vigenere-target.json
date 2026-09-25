@@ -1,0 +1,10 @@
+{
+  "quantity": "runtime",
+  "direction": "at_most",
+  "threshold": 30.0,
+  "unit": "s",
+  "relative": {"kind": "absolute"},
+  "sentence": "Each invocation must complete within 30 s.",
+  "number": "30 s",
+  "p": 0.0
+}

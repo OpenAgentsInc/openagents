@@ -18,15 +18,18 @@
 //!   more than the measured spread; otherwise it restores the last passing
 //!   snapshot. The rounds run after the self-check, when there is one.
 //!
-//! The acceptance check sits behind [`Acceptance`]. Until the shared
-//! acceptance result from `checks.oracle` (#9656) is on main, the lean
-//! loop's own executed checks answer it ([`LeanAcceptance`]): the frozen
-//! score at full, and no `verify.executed` regression.
+//! The acceptance check sits behind [`AcceptanceCheck`], which returns the
+//! shared acceptance result (`checks::acceptance`, issue #9656). In the
+//! lean loop the loop's own executed checks answer it
+//! ([`LeanAcceptance`]): the frozen score at full, and no
+//! `verify.executed` regression.
 
 use std::collections::BTreeMap;
 
 use super::lean::{Lean, LeanExecuted};
 use super::*;
+use crate::accept::authority::Authority;
+use crate::checks::acceptance::{Acceptance, Case, Covers, Provenance, Triviality, Verdict};
 use crate::checks::contract::executed;
 use crate::checks::metric_target::{
     self as metric, Extracted, Harness, Measurement, Protocol, Run, Side, Target,
@@ -150,26 +153,41 @@ impl OptimizeRule {
     }
 }
 
-/// The acceptance check's result.
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) struct Accepted {
-    /// `None` when it couldn't run.
-    pub passed: Option<bool>,
-    pub detail: String,
-}
-
-/// The acceptance check `control.optimize` keeps a change behind.
-pub(crate) trait Acceptance {
+/// The acceptance check `control.optimize` keeps a change behind. It
+/// returns the shared acceptance result (`checks::acceptance`, issue
+/// #9656), so any check that reports one, such as `checks.oracle`'s, can
+/// answer it.
+pub(crate) trait AcceptanceCheck {
     /// Runs the check on the workspace as it is now; `round` names the
     /// run in its records.
-    async fn check(&self, round: u32) -> Accepted;
+    async fn check(&self, round: u32) -> Acceptance;
+}
+
+/// One case of the lean loop's acceptance result.
+fn case(id: &str, input: &str, verdict: Verdict, detail: String) -> Case {
+    Case {
+        id: id.to_string(),
+        covers: Covers {
+            input: Some(input.to_string()),
+            from: Some("command".to_string()),
+            ..Covers::default()
+        },
+        verdict,
+        observed: None,
+        expected: None,
+        detail: Some(detail),
+        milliseconds: 0,
+    }
 }
 
 /// The lean loop's own acceptance check: the frozen score at full, and no
-/// command that exited 0 on the untouched workspace failing now.
+/// command that exited 0 on the untouched workspace failing now. The score
+/// is a script a session wrote and nothing classified, so the result's
+/// authority is `unsupported`.
 pub(super) struct LeanAcceptance<'a> {
     pub micro: &'a Micro,
     pub lean: &'a Lean,
+    pub task: &'a str,
     /// The frozen score's directory and its digest at the freeze.
     pub frozen: &'a Path,
     pub digest: Option<&'a BTreeMap<String, String>>,
@@ -179,30 +197,41 @@ pub(super) struct LeanAcceptance<'a> {
     pub deadline: Instant,
 }
 
-impl Acceptance for LeanAcceptance<'_> {
-    async fn check(&self, round: u32) -> Accepted {
+impl AcceptanceCheck for LeanAcceptance<'_> {
+    async fn check(&self, round: u32) -> Acceptance {
+        let score_input = format!("sh {}/score.sh", self.frozen.display());
+        let mut cases = Vec::new();
         let intact = self
             .digest
             .is_some_and(|d| lean::evidence_tree(self.frozen).as_ref() == Ok(d));
-        if !intact {
-            return Accepted {
-                passed: None,
-                detail: "the frozen score is missing or changed".to_string(),
-            };
-        }
-        let left = self.deadline.saturating_duration_since(Instant::now());
-        let (score, tail) = self.micro.lean_score(self.frozen, self.lean, left).await;
-        let Some((p, t)) = score else {
-            return Accepted {
-                passed: None,
-                detail: format!("the score didn't run: {}", crate::judge::clip(&tail, 400)),
-            };
-        };
-        if p < t {
-            return Accepted {
-                passed: Some(false),
-                detail: format!("the score is {p} of {t}"),
-            };
+        if intact {
+            let left = self.deadline.saturating_duration_since(Instant::now());
+            let (score, tail) = self.micro.lean_score(self.frozen, self.lean, left).await;
+            cases.push(match score {
+                Some((p, t)) => case(
+                    "S1",
+                    &score_input,
+                    if p >= t {
+                        Verdict::Passed
+                    } else {
+                        Verdict::Failed
+                    },
+                    format!("the score is {p} of {t}"),
+                ),
+                None => case(
+                    "S1",
+                    &score_input,
+                    Verdict::CouldNotRun,
+                    format!("the score didn't run: {}", crate::judge::clip(&tail, 400)),
+                ),
+            });
+        } else {
+            cases.push(case(
+                "S1",
+                &score_input,
+                Verdict::CouldNotRun,
+                "the frozen score is missing or changed".to_string(),
+            ));
         }
         if let Some((rule, plan)) = self.executed {
             let place = executed::Place {
@@ -212,31 +241,49 @@ impl Acceptance for LeanAcceptance<'_> {
                 budget: Duration::from_secs(rule.budget_sec)
                     .min(self.deadline.saturating_duration_since(Instant::now())),
             };
+            let input = "the commands that exited 0 on the untouched workspace";
             match executed::after_session(plan, &place, 1_000 + round, None).await {
                 Ok(records) => {
                     let _ = executed::append(self.executed_file, &records);
-                    if executed::rejects(&records) {
-                        return Accepted {
-                            passed: Some(false),
-                            detail: format!(
-                                "the score is {p} of {t}, but a command that ran on the \
-                                 untouched workspace fails now"
-                            ),
-                        };
-                    }
+                    let rejected = executed::rejects(&records);
+                    cases.push(case(
+                        "E1",
+                        input,
+                        if rejected {
+                            Verdict::Failed
+                        } else {
+                            Verdict::Passed
+                        },
+                        if rejected {
+                            "a command that exited 0 on the untouched workspace fails now"
+                                .to_string()
+                        } else {
+                            "no command regressed".to_string()
+                        },
+                    ));
                 }
-                Err(error) => {
-                    return Accepted {
-                        passed: None,
-                        detail: format!("the executed checks didn't run: {error}"),
-                    };
-                }
+                Err(error) => cases.push(case(
+                    "E1",
+                    input,
+                    Verdict::CouldNotRun,
+                    format!("the executed checks didn't run: {error}"),
+                )),
             }
         }
-        Accepted {
-            passed: Some(true),
-            detail: format!("the score is {p} of {t}"),
-        }
+        Acceptance::new(
+            self.task,
+            &self.micro.workdir.display().to_string(),
+            Authority::Unsupported,
+            Provenance {
+                component: "microluna.lean".to_string(),
+                source: "written".to_string(),
+                origin: Some(score_input),
+                digest: self.digest.map(|d| atif::digest(&json!(d))),
+                detail: Value::Null,
+            },
+            cases,
+            Triviality::default(),
+        )
     }
 }
 
@@ -624,7 +671,7 @@ impl Micro {
     /// the metric improves beyond the spread. Returns the sessions, the
     /// records, what they cost, and a line for why the loop stopped.
     #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
-    pub(super) async fn optimize<A: Acceptance>(
+    pub(super) async fn optimize<A: AcceptanceCheck>(
         &self,
         prepared: &Prepared,
         rule: &OptimizeRule,
@@ -645,11 +692,11 @@ impl Micro {
         let wall = Duration::from_secs(rule.wall_sec).min(remaining);
         let left = || wall.saturating_sub(started.elapsed());
         let accepted = acceptance.check(0).await;
-        if accepted.passed != Some(true) {
+        if accepted.passed() != Some(true) {
             records.push(json!({
                 "kind": "lean.optimize_skipped",
                 "reason": "the workspace doesn't pass the acceptance check",
-                "acceptance": accepted.detail,
+                "acceptance": accepted.summary(),
             }));
             return (
                 sessions,
@@ -745,7 +792,7 @@ impl Micro {
             let lost = matches!(ran.ending, Ending::Transport(_));
             sessions.push(ran);
             let accepted = acceptance.check(round).await;
-            let (after, keep, reason) = if accepted.passed == Some(true) {
+            let (after, keep, reason) = if accepted.passed() == Some(true) {
                 let after = self.metric_measure(metric, left()).await;
                 let improved = after
                     .as_ref()
@@ -762,7 +809,7 @@ impl Micro {
                 (
                     None,
                     false,
-                    format!("the acceptance check doesn't pass: {}", accepted.detail),
+                    format!("the acceptance check doesn't pass: {}", accepted.summary()),
                 )
             };
             let mut restore_error = None;
@@ -803,7 +850,7 @@ impl Micro {
                 "round": round,
                 "session": number,
                 "status": status,
-                "acceptance": {"passed": accepted.passed, "detail": accepted.detail},
+                "acceptance": {"passed": accepted.passed(), "summary": accepted.summary(), "result": accepted},
                 "before": metric.record(metric.last.as_ref().unwrap_or(&before)),
                 "after": after.as_ref().map(|a| metric.record(a)),
                 "kept": keep,

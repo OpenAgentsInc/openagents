@@ -1,0 +1,10 @@
+{
+  "quantity": "speedup",
+  "direction": "at_least",
+  "threshold": 5000.0,
+  "unit": "x",
+  "relative": {"kind": "named", "name": "NetworkX"},
+  "sentence": "The geometric mean of the per-case speedup ratios must be at least 5000x faster than NetworkX.",
+  "number": "5000x",
+  "p": 0.96
+}

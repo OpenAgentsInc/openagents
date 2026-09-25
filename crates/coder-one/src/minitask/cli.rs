@@ -207,14 +207,14 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
                     policy.session_sec = policy.session_sec.min(deadline);
                     ExecutorChoice::Microluna {
                         model: model.clone().unwrap_or_else(|| executor.model.clone()),
-                        policy,
+                        policy: Box::new(policy),
                     }
                 }
                 "microluna" => ExecutorChoice::Microluna {
                     model: model
                         .clone()
                         .unwrap_or_else(|| Agent::Microluna.default_model().to_string()),
-                    policy: crate::micro::Policy {
+                    policy: Box::new(crate::micro::Policy {
                         mode: match microluna_mode.as_str() {
                             "single" => crate::micro::Mode::Single,
                             "requirements" => crate::micro::Mode::Requirements,
@@ -228,7 +228,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
                         read_first,
                         accept,
                         ..crate::micro::Policy::default()
-                    },
+                    }),
                 },
                 word => {
                     let agent = Agent::parse(word)?;

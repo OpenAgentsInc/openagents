@@ -70,3 +70,17 @@ measurement says how often the extraction is right on tasks it wasn't
 built from, and how often a failed trial ended with its stated target
 unmeasured or unmet while the session claimed done. Running the component
 in a policy needs matched mini-task runs first.
+
+## Changes after the first Jev answer
+
+- **The goal question's wording.** The frozen run's answers held a target
+  on 30 of 42 tasks with none, 29 of them the harness's closing sentence
+  about the time allowed for the task. One clause was added to the goal
+  question: "or the time allowed for doing the task itself". The frozen
+  run's summary is `records/summary-v1.json`; the changed run's is
+  `records/summary.json`. The changed numbers are in-sample.
+- **The vf2 harness.** The first version (`harness/vf2.py`) reused two
+  graph objects for every timed call, and a caching candidate read near a
+  million-fold. The second (`harness/vf2-fresh.py`) builds fresh graphs
+  for each call. Both results are kept.
+- No other function named above changed.
