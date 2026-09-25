@@ -7,7 +7,8 @@ winning runs measured the task's stated numeric goal with a harness, then
 improved it under a keep-if-better rule with a restore. No Terminal-Bench
 trial was run. Jev cost $0.034, recorded; Luna cost $0: the harnesses for
 the spread measurement were written by hand from each task's stated
-definition.
+definition. A second measurement the same day changed the extraction in
+code and cost $0.049 more in Jev.
 
 ## Result
 
@@ -46,13 +47,139 @@ The component is correct in the loop (five scripted-reply tests), and the
 measurement is sound where the harness matches the verifier's workload.
 The extraction is the weak half: it can't read numbers written as words or
 formulas, and a boilerplate sentence decides most of its false positives.
+[Extraction in code](#extraction-in-code-2026-09-25-second-measurement),
+later the same day, fixes both in code and measures the fix.
+
+## Extraction in code (2026-09-25, second measurement)
+
+Three code changes, with no benchmark fact in any of them, and the same
+frozen protocol: the same 61 tasks, the same labels, the same comparison
+rule, and a Jev budget of $0.10. No Luna session and no trial ran.
+
+### What changed
+
+1. **The host's own time limit is a known fact.** The lean loop passes the
+   episode's deadline into the component (`Context::host_limit`). Code
+   leaves out a sentence when every number in it is a time within 5% (at
+   least 300 seconds) of that limit, because the host keeps its deadline a
+   little inside the harness's. The rule matches on the value the host
+   passes, never on the sentence's wording, so it holds for any harness
+   that appends its deadline. A sentence that holds another number stays
+   whole. The offline run gives each task the limit the lean loop would
+   have: the agent timeout in the task's `task.toml`, less the 120 seconds
+   the Terminal-Bench adapter keeps back (`--host-limit task`).
+2. **Code finds more numbers, and fewer false ones**
+   (`crates/coder-one/src/checks/metric_target/numbers.rs`):
+   - Numbers written as words: `zero` through `nineteen`, the tens
+     (`twenty-five`), and `a hundred`, `two thousand`, or `3 million`. A
+     bare `one` counts only after a bound such as `at most`, because it's
+     more often a pronoun. `zero-copy`, `two-phase`, and `non-zero` aren't
+     numbers; `five-second` is.
+   - Powers of ten: `1e-7`, `10^{-7}`, `10^-7`, `10⁻⁷`, and `1.5 \times
+     10^{-3}`, with `\le10^{-5}` read after a LaTeX command. A dollar sign
+     that opens LaTeX math isn't money.
+   - Percentages (`98 %`, `10 percent`) and a time per item (`2s/call` is
+     2 seconds).
+   - Ranges: `5-10 seconds`, `10–20%`, and `2 to 4 hours` each give both
+     ends, and Jev is told which end it's reading. A date such as
+     `2024-01-15` isn't a range.
+   - Not numbers: ordinals (`95th`), a number that continues an
+     identifier (`26b5c67b`), and anything inside an HTML comment.
+   - A request asks about at most 40 numbers, up from 20. One task in
+     the 61 finds more (41).
+3. **Jev's answers choose the target, not the order.** The loop holds the
+   target Jev most likely calls a goal's threshold; before, it held the
+   first one in the instruction.
+
+Each form has a unit test in
+`crates/coder-one/src/checks/metric_target/tests.rs`.
+
+### Results
+
+With the new code, every labeled first target is among the numbers code
+offers, on all 19 goal tasks. Before, two weren't: `zero` as a word, and
+`10^{-7}`, which is LaTeX and also came after the 20-number bound. The
+`2s/call` target was offered before; Jev passed it over for the time
+allowance.
+
+| | First run, frozen wording | First run, changed wording | New code, frozen wording | New code, changed wording |
+| --- | ---: | ---: | ---: | ---: |
+| Tasks where Jev held a target | 46 | 15 | 19 | 17 |
+| True positives (of 19) | 16 | 14 | 18 | 15 |
+| False positives (of 42) | 30 | 1 | 1 | 2 |
+| False negatives | 3 | 5 | 1 | 4 |
+| True negatives | 12 | 41 | 41 | 40 |
+| **First target correct (of 19)** | **14** | **11** | **17** | **13** |
+| Any target matches the first label | 15 | 12 | 18 | 13 |
+| Quantity agrees on the first target | 12 | 10 | 14 | 11 |
+| Jev cost, recorded | $0.017 | $0.017 | $0.016 | $0.017 |
+
+To tell the changes apart, one more run used the frozen wording and the
+new code without the host limit, and two counts come from the recorded
+answers alone:
+
+- **Without the host limit**, the false positives return to 30 of 42, 29
+  of them the time-allowance sentence, and the first target is correct on
+  15 of 19. The host limit is what removes the false positives.
+- **Holding the first target in the instruction's order** instead of the
+  most likely one, from the same answers: 15 of 19 with the frozen wording
+  (17 by probability), and 11 of 19 with the changed wording (13).
+
+What's left, with the new code and the frozen wording:
+
+- `biped-contact-dynamics` states six targets. Jev's most likely one is
+  `0.005` (p = 0.93), which the label lists, but the label's first target
+  is the 1,200-second bound (p = 0.72). The rule counts only the first.
+- `data-anonymization`: `--max-memory 64MB` is still read as a parameter.
+- `gsea-proteomics`: the false discovery rate cutoffs (1% and 25%), which
+  the label marked borderline, are the one false positive.
+- `ks-solver-cpp` is held correctly by a thin margin: `10^{-7}` at p = 0.90
+  against a count of 17 at p = 0.88.
+
+The changed wording, with the new code, costs four tasks that the frozen
+wording gets right: it rejects three real run-time bounds (`55-second`,
+`30 s`, and `2s/call`) and drops the `6.4` loss target. The clause was
+written to remove the time-allowance sentence, which the host limit now
+removes in code.
+
+### The failed trials that claimed done
+
+The 14 failed trials that claimed done with the target unmeasured or
+unmet belong to six tasks. The new code holds the right target on all six
+tasks with the frozen wording (14 of 14 trials), and on four with the
+changed wording (12 of 14: it misses `pretrain-shard-corruption` and
+`interleaved-vigenere`). The first run held it on 3 and 2.
+
+Holding the right target is what `control.finish` needs, not what it
+catches. Of the 14, the 7 `ks-solver-cpp` trials measured their error on
+problems they built and read it as met; a harness the host writes from the
+stated definition can make the same mistake, as the `vf2-speedup-networkx`
+harness did. The `interleaved-vigenere` trial met its bound and failed on
+accuracy. The loop would have refused a done finish on at most the
+remaining 6, and only where its harness measured what the verifier
+measures.
+
+### What these numbers are worth
+
+Every new number is in-sample. The labels, the tasks, and the comparison
+rule are the frozen ones, but each code change was written after reading
+the first run's failures on these same 61 tasks. The frozen wording is the
+fairer column for the wording, because it was fixed before any answer was
+read. A held-out set of tasks is the next measurement before a policy uses
+the component; the switches stay off in every manifest.
+
+The measurement suggests returning the goal question to the frozen
+wording, since the host limit now does the clause's job. That's a wording
+change, measured here in-sample, and isn't part of this change.
 
 ## What was built
 
 - **`checks.metric_target`** (`crates/coder-one/src/checks/metric_target/`).
   1. Code finds every number in the instruction with its sentence, and the
      files and programs the instruction names. A digit that continues a
-     word, a path, or a version isn't a number.
+     word, a path, or a version isn't a number. The second measurement
+     changed this step; see
+     [Extraction in code](#extraction-in-code-2026-09-25-second-measurement).
   2. One Jev request per task asks four questions per number
      (`crates/coder-one/questions/metric-target.json`; it was under `questions/` when this was measured): a Noul, whether it's the threshold
      of a goal the finished work must meet when measured; a Choice of
@@ -250,9 +377,14 @@ measured, and measured wrong.
 ## Replay
 
 - `bench/terminal-bench/experiments/2026-09-25-metric-target/replay.sh`
-  reruns the extraction from `records/jev-recorded.json` alone and checks
-  it against `records/summary.json`. The frozen run's answers are in the
-  same file; `records/summary-v1.json` is its summary.
+  reruns the second measurement's three runs from
+  `records/jev-recorded-extraction-v2.json` alone and checks each against
+  its summary under `records/extraction-v2-*/`. The frozen wording is kept
+  as `questions-v1.json` and passed with `--questions`.
+- The first measurement's answers are in `records/jev-recorded.json`, with
+  its summaries in `records/summary-v1.json` and `records/summary.json`.
+  They were asked about the numbers the first extraction code found, so
+  they replay only at the commit that measured them, `68aa85cf63`.
 - `measure-spread.sh` reruns the spread measurement.
 
 ## Spend
@@ -261,5 +393,8 @@ measured, and measured wrong.
 | --- | ---: |
 | Jev, frozen wording (61 requests) | $0.0171 |
 | Jev, changed wording (61 requests) | $0.0173 |
+| Jev, new code, frozen wording (61 requests) | $0.0164 |
+| Jev, new code, changed wording (61 requests) | $0.0166 |
+| Jev, new code, frozen wording, no host limit (61 requests) | $0.0164 |
 | Luna | $0 |
 | Terminal-Bench trials | none |

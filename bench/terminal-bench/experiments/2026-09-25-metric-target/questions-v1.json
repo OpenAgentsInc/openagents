@@ -1,0 +1,62 @@
+{
+  "v": 1,
+  "id": "openagents.metric-target.v1",
+  "name": "The numeric goal a task states for its finished work",
+  "summary": "Code finds every number in the task's instruction, with its sentence, and the files and programs the instruction names. Jev answers four questions per number, in one request: whether it is the threshold of a measured goal, which way the bound points, what quantity it bounds, and what the measurement is relative to. Code parses the threshold and its unit from the number itself. A second question, asked only in a workspace, picks a provided script that measures the goal, or none.",
+  "per_number": {
+    "goal": {
+      "type": "noul",
+      "instructions": "Is the number in `{finding}` the threshold of a goal the finished work must meet when it is measured: a bound on how fast, how long, how costly, how large, how accurate, or how close to a reference the result is? Answer no when the number only says what to build or how: a parameter, a format, a count of items to produce, a limit the code must enforce as behavior, a date, a version, or the size of an input."
+    },
+    "direction": {
+      "type": "choice",
+      "instructions": "If the number in `{finding}` is the threshold of a measured goal, which way does the bound point?",
+      "criteria": {
+        "at_least": "The measured value must reach the number or exceed it: the goal sets a floor, as in at least, no less than, or faster than by a factor.",
+        "at_most": "The measured value must stay at the number or below it: the goal sets a ceiling, as in at most, within, under, or no more than.",
+        "neither": "The number sets no bound on a measured value."
+      }
+    },
+    "quantity": {
+      "type": "choice",
+      "instructions": "If the number in `{finding}` bounds a measured value, what quantity is measured?",
+      "criteria": {
+        "speedup": "How many times faster the work runs than a reference, or by what percentage.",
+        "runtime": "How long a whole run or a job takes.",
+        "latency": "How long one request, call, or operation takes.",
+        "throughput": "How much work is done per unit of time.",
+        "cost": "Money, or a cost the task defines, such as a route's length or a plan's total.",
+        "memory": "Memory or storage used while running.",
+        "size": "The size of an output, such as a file, a binary, or a model.",
+        "error": "An error, a loss, or a distance from a reference result; smaller is closer.",
+        "accuracy": "The share of cases the result gets right, or a similar quality rate.",
+        "score": "A score the task defines, from a metric or an evaluation.",
+        "count": "A count of failures, violations, or misses in the result.",
+        "other": "Something else, or no measured quantity."
+      }
+    },
+    "relative": {
+      "type": "choice",
+      "instructions": "If the number in `{finding}` bounds a measured value, what is the measurement compared with? Each entry of `references` is a file or program the task names. Pick the one the goal compares the finished work with, original when it compares the work with the code as it is before any change, or absolute when the number is an amount on its own and not a ratio or a difference from another measurement.",
+      "options": "supplied",
+      "criteria": {
+        "original": "The code as it is in the workspace before any change.",
+        "absolute": "Nothing: the number is an amount on its own."
+      }
+    }
+  },
+  "harness": {
+    "type": "choice",
+    "instructions": "Each entry of `scripts` is a file in the workspace with the start of its text. Which one, run as it is, measures the goal the task states for the finished work: it runs the work and reports the measured quantity or its run time? Pick none when no script does that, such as when a file only tests correctness, generates data, or is the work itself.",
+    "options": "supplied",
+    "criteria": {
+      "none": "No listed file measures the stated goal as it is."
+    }
+  },
+  "policy": {
+    "v": 1,
+    "evidence": [
+      "docs/terminal-bench/2026-09-25-metric-target.md"
+    ]
+  }
+}

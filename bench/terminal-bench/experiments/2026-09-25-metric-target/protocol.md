@@ -83,4 +83,18 @@ in a policy needs matched mini-task runs first.
   graph objects for every timed call, and a caching candidate read near a
   million-fold. The second (`harness/vf2-fresh.py`) builds fresh graphs
   for each call. Both results are kept.
+- **The extraction code, in a second measurement.** After reading both
+  runs' failures, `candidates`, `parse_number`, `request`, and
+  `targets_from` changed (they now live in part in `numbers.rs`): numbers
+  written as words, powers of ten, ranges, a time per item, no ordinals or
+  HTML comments, at most 40 numbers, a sentence that only restates the
+  host's own time limit left out, and the most likely target held rather
+  than the first. The labels, the population, the comparison rule, and
+  the Jev budget didn't change. Three runs used them:
+  `records/extraction-v2-frozen/` (the frozen wording, `questions-v1.json`,
+  with the host limit), `records/extraction-v2-current/` (the changed
+  wording, with the host limit), and
+  `records/extraction-v2-frozen-no-limit/` (the frozen wording, without
+  it). Their answers are in `records/jev-recorded-extraction-v2.json`, and
+  every number from them is in-sample.
 - No other function named above changed.
