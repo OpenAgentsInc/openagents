@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Open archive outcomes only after verifying a published prediction seal."""
 import argparse
+from datetime import datetime
 import json
 from pathlib import Path
 import subprocess
@@ -8,6 +9,16 @@ import subprocess
 from prepare import sha
 from reproduce import tree, write
 from seal_archive import population
+
+
+def elapsed(value):
+    if not value or not value.get('started_at') or not value.get('finished_at'):
+        return None
+    seconds = (datetime.fromisoformat(value['finished_at'].replace('Z', '+00:00'))
+               - datetime.fromisoformat(value['started_at'].replace('Z', '+00:00'))).total_seconds()
+    if seconds < 0:
+        raise ValueError('Official timing ends before it begins')
+    return seconds
 
 
 def published_seal(path, commit, git_path):
@@ -45,7 +56,10 @@ def labels(predictions, jobs, checks):
             raise ValueError('Unexpected official reward')
         result.append({k: row[k] for k in ('job', 'trial', 'task', 'executor')} | {
             'reward': reward, 'exception_type': (value.get('exception_info') or {}).get('exception_type'),
-            'result_sha256': sha(path)})
+            'result_sha256': sha(path),
+            'seconds': {'trial': elapsed(value),
+                        **{stage: elapsed(value.get(stage)) for stage in
+                           ('environment_setup', 'agent_setup', 'agent_execution', 'verifier')}}})
     return result
 
 

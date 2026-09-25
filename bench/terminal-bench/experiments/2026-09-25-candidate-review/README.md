@@ -211,8 +211,10 @@ python3 measure_archive.py --predictions records/archive-sealed.json \
 python3 archive_executor_costs.py --manifest "$COHORT/checks/manifest.json" \
   --jobs "$JOBS" --out records/archive-executor-costs.json
 python3 costs.py "$COHORT/checks" records/archive-review-costs.json
+python3 archive_resources.py --labels records/archive-labels.json \
+  --executor-costs records/archive-executor-costs.json --out records/archive-resources.json
 ```
 
-The last three commands make no model calls. `test_archive_seal.py` checks cohort
+These measurement and accounting commands make no model calls. `test_archive_seal.py` checks cohort
 completeness, duplicate and mismatched joins, unknown-evidence recall, and sealing
 without parsing grades. Run it with `test_archive_checks` and `test_reproduce`.
