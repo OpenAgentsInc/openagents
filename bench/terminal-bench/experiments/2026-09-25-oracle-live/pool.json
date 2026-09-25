@@ -1,0 +1,1562 @@
+{
+  "schema": "openagents.tbench.oracle-live-pool.v1",
+  "experiment": "2026-09-25-oracle-live",
+  "tb4_tasks": 66,
+  "strict_pool_before_e7_e8": [
+    "lake-temp-glm",
+    "wdm-design"
+  ],
+  "eligible": [
+    "hof-topology-interpenetration",
+    "satb-audio-transcription",
+    "takens-embedding-lean"
+  ],
+  "tasks": [
+    {
+      "task": "atrx-vep-crispr",
+      "rules": [
+        "E3 tuned-task list: anatomy, tunable"
+      ],
+      "eligible": false,
+      "fable_low": "1/5",
+      "fable_all": "9/25",
+      "fable_low_mean_min": 7.1,
+      "fable_low_cost_per_pass_usd": 8.3419,
+      "luna_sized": false,
+      "family_reasons": [
+        "fitted or evaluated a signal: truthful-checks calibration half",
+        "hidden tests and reference solution read for the task anatomy"
+      ],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "batched-eval-parity",
+      "rules": [
+        "E4 a metric target goal task"
+      ],
+      "eligible": false,
+      "fable_low": "4/5",
+      "fable_all": "21/25",
+      "fable_low_mean_min": 11.0,
+      "fable_low_cost_per_pass_usd": 4.6217,
+      "luna_sized": true,
+      "family_reasons": [
+        "target of the matched Opus controller test (2026-09-23), which tested the Coder One controller and briefing v15 runs under"
+      ],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "biped-contact-dynamics",
+      "rules": [
+        "E3 tuned-task list: anatomy",
+        "E4 a metric target goal task",
+        "E8 Fable 5.1 low passes 3 of 5 in a mean 83.2 minutes"
+      ],
+      "eligible": false,
+      "fable_low": "3/5",
+      "fable_all": "8/25",
+      "fable_low_mean_min": 83.2,
+      "fable_low_cost_per_pass_usd": 37.7431,
+      "luna_sized": false,
+      "family_reasons": [
+        "fitted or evaluated a signal: truthful-checks calibration half",
+        "hidden tests and reference solution read for the task anatomy"
+      ],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 4,
+        "memory_mb": 8192,
+        "storage_mb": 20480,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "bun-sourcemap-leak",
+      "rules": [
+        "E2 in the oracle tier 0 population",
+        "E3 tuned-task list: anatomy",
+        "E8 Fable 5.1 low passes 0 of 5 in a mean 2.1 minutes"
+      ],
+      "eligible": false,
+      "fable_low": "0/5",
+      "fable_all": "0/25",
+      "fable_low_mean_min": 2.1,
+      "fable_low_cost_per_pass_usd": null,
+      "luna_sized": false,
+      "family_reasons": [
+        "fitted or evaluated a signal: truthful-checks calibration half",
+        "hidden tests and reference solution read for the task anatomy"
+      ],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "cad-model",
+      "rules": [
+        "E2 in the oracle tier 0 population",
+        "E8 Fable 5.1 low passes 0 of 5 in a mean 2.4 minutes"
+      ],
+      "eligible": false,
+      "fable_low": "0/5",
+      "fable_all": "17/25",
+      "fable_low_mean_min": 2.4,
+      "fable_low_cost_per_pass_usd": null,
+      "luna_sized": false,
+      "family_reasons": [
+        "GPT-6 Luna trials exist: Luna baseline (#9583); a GPT-6 Luna row in the truthful-checks label set"
+      ],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 8192,
+        "storage_mb": 10240,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "cargo-flight-dispatch",
+      "rules": [
+        "E2 in the oracle tier 0 population",
+        "E3 tuned-task list: tunable",
+        "E8 Fable 5.1 low passes 0 of 5 in a mean 2.1 minutes"
+      ],
+      "eligible": false,
+      "fable_low": "0/5",
+      "fable_all": "0/25",
+      "fable_low_mean_min": 2.1,
+      "fable_low_cost_per_pass_usd": null,
+      "luna_sized": false,
+      "family_reasons": [
+        "GPT-6 Luna trials exist: a GPT-6 Luna row in the truthful-checks label set",
+        "fitted or evaluated a signal: truthful-checks calibration half"
+      ],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "coq-block-bound",
+      "rules": [
+        "E1 mapped by the Fable pattern map",
+        "E3 tuned-task list: held-out, iteration, anatomy",
+        "E7 its environment installs no Python 3"
+      ],
+      "eligible": false,
+      "fable_low": "5/5",
+      "fable_all": "25/25",
+      "fable_low_mean_min": 13.0,
+      "fable_low_cost_per_pass_usd": 4.3209,
+      "luna_sized": false,
+      "family_reasons": [
+        "Microluna held-out test set (microluna-v15, 2026-09-25)",
+        "in the capability-gap log",
+        "GPT-6 Luna trials exist: Luna baseline (#9583); Microluna jobs on the benchmark host",
+        "fitted or evaluated a signal: truthful-checks calibration half; stall-detection calibration or evaluation split",
+        "hidden tests and reference solution read for the task anatomy"
+      ],
+      "metric_target_population": false,
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "ctr-optimization",
+      "rules": [
+        "E4 a metric target goal task",
+        "E8 Fable 5.1 low passes 1 of 5 in a mean 288.4 minutes"
+      ],
+      "eligible": false,
+      "fable_low": "1/5",
+      "fable_all": "10/25",
+      "fable_low_mean_min": 288.4,
+      "fable_low_cost_per_pass_usd": 151.6416,
+      "luna_sized": false,
+      "family_reasons": [
+        "the task's own simulated campaign runs 48 hours of 360 seconds, about 4.8 hours, past v15's 25-minute wall bound"
+      ],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 8192,
+        "storage_mb": 10240,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "cumulative-layout-shift",
+      "rules": [
+        "E3 tuned-task list: family",
+        "E4 a metric target goal task",
+        "E7 its environment installs no Python 3",
+        "E8 Fable 5.1 low passes 5 of 5 in a mean 83.4 minutes"
+      ],
+      "eligible": false,
+      "fable_low": "5/5",
+      "fable_all": "22/25",
+      "fable_low_mean_min": 83.4,
+      "fable_low_cost_per_pass_usd": 14.3763,
+      "luna_sized": false,
+      "family_reasons": [],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 4,
+        "memory_mb": 8192,
+        "storage_mb": 20480,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "data-anonymization",
+      "rules": [
+        "E3 tuned-task list: anatomy",
+        "E4 a metric target goal task",
+        "E8 Fable 5.1 low passes 0 of 5 in a mean 28.6 minutes"
+      ],
+      "eligible": false,
+      "fable_low": "0/5",
+      "fable_all": "0/25",
+      "fable_low_mean_min": 28.6,
+      "fable_low_cost_per_pass_usd": null,
+      "luna_sized": false,
+      "family_reasons": [
+        "hidden tests and reference solution read for the task anatomy"
+      ],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 8192,
+        "storage_mb": 10240,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "distributed-dedup",
+      "rules": [
+        "E1 mapped by the Fable pattern map",
+        "E3 tuned-task list: confirmation",
+        "E7 its environment installs no Python 3"
+      ],
+      "eligible": false,
+      "fable_low": "4/5",
+      "fable_all": "24/25",
+      "fable_low_mean_min": 16.4,
+      "fable_low_cost_per_pass_usd": 1.662,
+      "luna_sized": true,
+      "family_reasons": [
+        "GPT-6 Luna trials exist: Microluna v13 trials in the #9584 prospective cohort",
+        "fitted or evaluated a signal: #9584 prospective cohort"
+      ],
+      "metric_target_population": false,
+      "resources": {
+        "cpus": 8,
+        "memory_mb": 16384,
+        "storage_mb": 15000,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "embedding-drift-monitor",
+      "rules": [
+        "E1 mapped by the Fable pattern map",
+        "E3 tuned-task list: dev, anatomy"
+      ],
+      "eligible": false,
+      "fable_low": "5/5",
+      "fable_all": "25/25",
+      "fable_low_mean_min": 3.1,
+      "fable_low_cost_per_pass_usd": 0.8691,
+      "luna_sized": true,
+      "family_reasons": [
+        "Microluna dev set (v9 to v17)",
+        "GPT-6 Luna trials exist: Luna baseline (#9583); a GPT-6 Luna row in the truthful-checks label set; Microluna jobs on the benchmark host",
+        "fitted or evaluated a signal: stall-detection calibration or evaluation split",
+        "hidden tests and reference solution read for the task anatomy"
+      ],
+      "metric_target_population": false,
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "fin-saccr-rwa",
+      "rules": [
+        "E2 in the oracle tier 0 population",
+        "E3 tuned-task list: held-out, anatomy"
+      ],
+      "eligible": false,
+      "fable_low": "3/5",
+      "fable_all": "22/25",
+      "fable_low_mean_min": 4.2,
+      "fable_low_cost_per_pass_usd": 2.2683,
+      "luna_sized": false,
+      "family_reasons": [
+        "Microluna held-out test set (microluna-v15, 2026-09-25)",
+        "in the capability-gap log",
+        "GPT-6 Luna trials exist: Luna baseline (#9583); Microluna jobs on the benchmark host",
+        "fitted or evaluated a signal: stall-detection calibration or evaluation split",
+        "hidden tests and reference solution read for the task anatomy"
+      ],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "foodstuff-beta-activity",
+      "rules": [
+        "E8 Fable 5.1 low passes 0 of 5 in a mean 0.9 minutes"
+      ],
+      "eligible": false,
+      "fable_low": "0/5",
+      "fable_all": "0/25",
+      "fable_low_mean_min": 0.9,
+      "fable_low_cost_per_pass_usd": null,
+      "luna_sized": false,
+      "family_reasons": [],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "formal-crypto",
+      "rules": [
+        "E3 tuned-task list: confirmation",
+        "E4 a metric target goal task",
+        "E7 its environment installs no Python 3"
+      ],
+      "eligible": false,
+      "fable_low": "3/5",
+      "fable_all": "19/25",
+      "fable_low_mean_min": 18.7,
+      "fable_low_cost_per_pass_usd": 9.2094,
+      "luna_sized": false,
+      "family_reasons": [
+        "GPT-6 Luna trials exist: Microluna v13 trials in the #9584 prospective cohort",
+        "fitted or evaluated a signal: #9584 prospective cohort"
+      ],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 8,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "fp8-rmsnorm-gemm",
+      "rules": [
+        "E1 mapped by the Fable pattern map",
+        "E6 needs a GPU"
+      ],
+      "eligible": false,
+      "fable_low": "5/5",
+      "fable_all": "25/25",
+      "fable_low_mean_min": 44.8,
+      "fable_low_cost_per_pass_usd": 12.8603,
+      "luna_sized": true,
+      "family_reasons": [
+        "needs a GPU"
+      ],
+      "metric_target_population": false,
+      "resources": {
+        "cpus": 4,
+        "memory_mb": 16384,
+        "storage_mb": 30720,
+        "gpus": 1
+      }
+    },
+    {
+      "task": "freecad-impeller",
+      "rules": [
+        "E3 tuned-task list: confirmation",
+        "E5 its group holds freecad-spring-clip",
+        "E8 Fable 5.1 low passes 0 of 5 in a mean 4.6 minutes"
+      ],
+      "eligible": false,
+      "fable_low": "0/5",
+      "fable_all": "0/25",
+      "fable_low_mean_min": 4.6,
+      "fable_low_cost_per_pass_usd": null,
+      "luna_sized": false,
+      "family_reasons": [
+        "GPT-6 Luna trials exist: Microluna v13 trials in the #9584 prospective cohort",
+        "fitted or evaluated a signal: #9584 prospective cohort",
+        "its group 'freecad' holds freecad-spring-clip"
+      ],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "freecad-platform-drawing",
+      "rules": [
+        "E5 its group holds freecad-impeller, freecad-spring-clip"
+      ],
+      "eligible": false,
+      "fable_low": "1/5",
+      "fable_all": "20/25",
+      "fable_low_mean_min": 2.0,
+      "fable_low_cost_per_pass_usd": 2.9768,
+      "luna_sized": false,
+      "family_reasons": [
+        "its group 'freecad' holds freecad-impeller, freecad-spring-clip"
+      ],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "freecad-spring-clip",
+      "rules": [
+        "E3 tuned-task list: confirmation",
+        "E5 its group holds freecad-impeller"
+      ],
+      "eligible": false,
+      "fable_low": "2/5",
+      "fable_all": "19/25",
+      "fable_low_mean_min": 11.8,
+      "fable_low_cost_per_pass_usd": 9.2444,
+      "luna_sized": false,
+      "family_reasons": [
+        "GPT-6 Luna trials exist: Microluna v13 trials in the #9584 prospective cohort",
+        "fitted or evaluated a signal: #9584 prospective cohort",
+        "its group 'freecad' holds freecad-impeller"
+      ],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "freight-dispatch-shift",
+      "rules": [
+        "E8 Fable 5.1 low passes 0 of 5 in a mean 12.1 minutes"
+      ],
+      "eligible": false,
+      "fable_low": "0/5",
+      "fable_all": "0/25",
+      "fable_low_mean_min": 12.1,
+      "fable_low_cost_per_pass_usd": null,
+      "luna_sized": false,
+      "family_reasons": [],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "glycan-ms2-elucidation",
+      "rules": [
+        "E8 Fable 5.1 low passes 0 of 5 in a mean 2.8 minutes"
+      ],
+      "eligible": false,
+      "fable_low": "0/5",
+      "fable_all": "0/25",
+      "fable_low_mean_min": 2.8,
+      "fable_low_cost_per_pass_usd": null,
+      "luna_sized": false,
+      "family_reasons": [
+        "fitted or evaluated a signal: truthful-checks calibration half"
+      ],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "gsea-proteomics",
+      "rules": [
+        "E2 in the oracle tier 0 population",
+        "E3 tuned-task list: held-out, iteration, anatomy",
+        "E7 its environment installs no Python 3"
+      ],
+      "eligible": false,
+      "fable_low": "3/5",
+      "fable_all": "19/25",
+      "fable_low_mean_min": 3.4,
+      "fable_low_cost_per_pass_usd": 1.243,
+      "luna_sized": false,
+      "family_reasons": [
+        "Microluna held-out test set (microluna-v15, 2026-09-25)",
+        "in the capability-gap log",
+        "GPT-6 Luna trials exist: Microluna jobs on the benchmark host",
+        "fitted or evaluated a signal: stall-detection calibration or evaluation split",
+        "hidden tests and reference solution read for the task anatomy"
+      ],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 4,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "heat-pump-warranty",
+      "rules": [
+        "E2 in the oracle tier 0 population",
+        "E3 tuned-task list: recall-study"
+      ],
+      "eligible": false,
+      "fable_low": "2/5",
+      "fable_all": "14/25",
+      "fable_low_mean_min": 8.1,
+      "fable_low_cost_per_pass_usd": 10.9914,
+      "luna_sized": false,
+      "family_reasons": [
+        "GPT-6 Luna trials exist: Luna baseline (#9583); a GPT-6 Luna row in the truthful-checks label set",
+        "fitted or evaluated a signal: truthful-checks calibration half"
+      ],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "hof-topology-interpenetration",
+      "rules": [],
+      "eligible": true,
+      "fable_low": "4/5",
+      "fable_all": "24/25",
+      "fable_low_mean_min": 20.3,
+      "fable_low_cost_per_pass_usd": 4.3764,
+      "luna_sized": false,
+      "family_reasons": [
+        "fitted or evaluated a signal: truthful-checks calibration half"
+      ],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 8192,
+        "storage_mb": 10240,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "html-js-filter",
+      "rules": [
+        "E2 in the oracle tier 0 population",
+        "E3 tuned-task list: iteration, recall-study",
+        "E8 Fable 5.1 low passes 0 of 5 in a mean 2.0 minutes"
+      ],
+      "eligible": false,
+      "fable_low": "0/5",
+      "fable_all": "5/25",
+      "fable_low_mean_min": 2.0,
+      "fable_low_cost_per_pass_usd": null,
+      "luna_sized": false,
+      "family_reasons": [
+        "GPT-6 Luna trials exist: Microluna jobs on the benchmark host",
+        "fitted or evaluated a signal: stall-detection calibration or evaluation split",
+        "hidden tests and reference solution read for the task anatomy"
+      ],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 8192,
+        "storage_mb": 10240,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "interleaved-vigenere",
+      "rules": [
+        "E2 in the oracle tier 0 population",
+        "E3 tuned-task list: dev, anatomy",
+        "E4 a metric target goal task"
+      ],
+      "eligible": false,
+      "fable_low": "5/5",
+      "fable_all": "23/25",
+      "fable_low_mean_min": 24.7,
+      "fable_low_cost_per_pass_usd": 4.6726,
+      "luna_sized": false,
+      "family_reasons": [
+        "Microluna dev set (v9 to v17)",
+        "in the capability-gap log",
+        "GPT-6 Luna trials exist: a GPT-6 Luna row in the truthful-checks label set; Microluna jobs on the benchmark host",
+        "fitted or evaluated a signal: truthful-checks calibration half; stall-detection calibration or evaluation split",
+        "hidden tests and reference solution read for the task anatomy"
+      ],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 4,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "intrastat-meldung",
+      "rules": [
+        "E1 mapped by the Fable pattern map",
+        "E3 tuned-task list: anatomy"
+      ],
+      "eligible": false,
+      "fable_low": "4/5",
+      "fable_all": "10/25",
+      "fable_low_mean_min": 7.5,
+      "fable_low_cost_per_pass_usd": 4.5595,
+      "luna_sized": false,
+      "family_reasons": [
+        "hidden tests and reference solution read for the task anatomy"
+      ],
+      "metric_target_population": false,
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 8192,
+        "storage_mb": 20480,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "jax-speedrun-gpu",
+      "rules": [
+        "E4 a metric target goal task",
+        "E6 needs a GPU",
+        "E8 Fable 5.1 low passes 1 of 5 in a mean 314.7 minutes"
+      ],
+      "eligible": false,
+      "fable_low": "1/5",
+      "fable_all": "17/25",
+      "fable_low_mean_min": 314.7,
+      "fable_low_cost_per_pass_usd": 196.3779,
+      "luna_sized": false,
+      "family_reasons": [
+        "needs a GPU"
+      ],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 16,
+        "memory_mb": 32768,
+        "storage_mb": 1024000,
+        "gpus": 1
+      }
+    },
+    {
+      "task": "ks-solver-cpp",
+      "rules": [
+        "E2 in the oracle tier 0 population",
+        "E3 tuned-task list: anatomy, recall-study",
+        "E4 a metric target goal task"
+      ],
+      "eligible": false,
+      "fable_low": "1/5",
+      "fable_all": "9/25",
+      "fable_low_mean_min": 12.3,
+      "fable_low_cost_per_pass_usd": 11.2625,
+      "luna_sized": false,
+      "family_reasons": [
+        "GPT-6 Luna trials exist: Luna baseline (#9583); a GPT-6 Luna row in the truthful-checks label set",
+        "hidden tests and reference solution read for the task anatomy"
+      ],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 4,
+        "memory_mb": 8192,
+        "storage_mb": 10240,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "kv-live-surgery",
+      "rules": [
+        "E4 a metric target goal task"
+      ],
+      "eligible": false,
+      "fable_low": "2/5",
+      "fable_all": "12/25",
+      "fable_low_mean_min": 25.7,
+      "fable_low_cost_per_pass_usd": 13.8238,
+      "luna_sized": false,
+      "family_reasons": [],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "lake-temp-glm",
+      "rules": [
+        "E8 Fable 5.1 low passes 0 of 5 in a mean 44.8 minutes"
+      ],
+      "eligible": false,
+      "fable_low": "0/5",
+      "fable_all": "7/25",
+      "fable_low_mean_min": 44.8,
+      "fable_low_cost_per_pass_usd": null,
+      "luna_sized": false,
+      "family_reasons": [],
+      "metric_target_population": false,
+      "resources": {
+        "cpus": 8,
+        "memory_mb": 8192,
+        "storage_mb": 20480,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "layout-config-recreation",
+      "rules": [
+        "E3 tuned-task list: anatomy",
+        "E4 a metric target goal task",
+        "E5 its group holds layout-config-recreation2",
+        "E7 its environment installs no Python 3",
+        "E8 Fable 5.1 low passes 0 of 5 in a mean 131.2 minutes"
+      ],
+      "eligible": false,
+      "fable_low": "0/5",
+      "fable_all": "2/25",
+      "fable_low_mean_min": 131.2,
+      "fable_low_cost_per_pass_usd": null,
+      "luna_sized": false,
+      "family_reasons": [
+        "fitted or evaluated a signal: truthful-checks calibration half",
+        "hidden tests and reference solution read for the task anatomy"
+      ],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 8192,
+        "storage_mb": 10240,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "layout-config-recreation2",
+      "rules": [
+        "E4 a metric target goal task",
+        "E5 its group holds layout-config-recreation",
+        "E8 Fable 5.1 low passes 3 of 5 in a mean 83.5 minutes"
+      ],
+      "eligible": false,
+      "fable_low": "3/5",
+      "fable_all": "23/25",
+      "fable_low_mean_min": 83.5,
+      "fable_low_cost_per_pass_usd": 12.6023,
+      "luna_sized": false,
+      "family_reasons": [
+        "its group 'layout' holds layout-config-recreation"
+      ],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 4,
+        "memory_mb": 8192,
+        "storage_mb": 10240,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "legacy-utility-triage",
+      "rules": [
+        "E2 in the oracle tier 0 population"
+      ],
+      "eligible": false,
+      "fable_low": "3/5",
+      "fable_all": "14/25",
+      "fable_low_mean_min": 22.7,
+      "fable_low_cost_per_pass_usd": 9.5201,
+      "luna_sized": false,
+      "family_reasons": [
+        "GPT-6 Luna trials exist: Luna baseline (#9583)"
+      ],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 8192,
+        "storage_mb": 20480,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "live-database-cutover",
+      "rules": [
+        "E3 tuned-task list: family",
+        "E4 a metric target goal task"
+      ],
+      "eligible": false,
+      "fable_low": "4/5",
+      "fable_all": "17/25",
+      "fable_low_mean_min": 35.5,
+      "fable_low_cost_per_pass_usd": 12.6124,
+      "luna_sized": true,
+      "family_reasons": [],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 16,
+        "memory_mb": 16384,
+        "storage_mb": 20480,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "math-eval-grader",
+      "rules": [
+        "E3 tuned-task list: confirmation",
+        "E4 a metric target goal task",
+        "E6 needs a GPU"
+      ],
+      "eligible": false,
+      "fable_low": "2/5",
+      "fable_all": "11/25",
+      "fable_low_mean_min": 23.4,
+      "fable_low_cost_per_pass_usd": 12.5622,
+      "luna_sized": false,
+      "family_reasons": [
+        "GPT-6 Luna trials exist: Microluna v13 trials in the #9584 prospective cohort",
+        "fitted or evaluated a signal: #9584 prospective cohort",
+        "needs a GPU"
+      ],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 8,
+        "memory_mb": 16384,
+        "storage_mb": 30720,
+        "gpus": 1
+      }
+    },
+    {
+      "task": "medical-claims-processing",
+      "rules": [
+        "E8 Fable 5.1 low passes 0 of 5 in a mean 7.8 minutes"
+      ],
+      "eligible": false,
+      "fable_low": "0/5",
+      "fable_all": "0/25",
+      "fable_low_mean_min": 7.8,
+      "fable_low_cost_per_pass_usd": null,
+      "luna_sized": false,
+      "family_reasons": [
+        "fitted or evaluated a signal: truthful-checks calibration half"
+      ],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 16384,
+        "storage_mb": 20480,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "mp-checkpoint-consolidation",
+      "rules": [
+        "E1 mapped by the Fable pattern map",
+        "E3 tuned-task list: family"
+      ],
+      "eligible": false,
+      "fable_low": "5/5",
+      "fable_all": "25/25",
+      "fable_low_mean_min": 26.7,
+      "fable_low_cost_per_pass_usd": 5.931,
+      "luna_sized": true,
+      "family_reasons": [],
+      "metric_target_population": false,
+      "resources": {
+        "cpus": 4,
+        "memory_mb": 4096,
+        "storage_mb": 5120,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "music-harmony",
+      "rules": [
+        "E8 Fable 5.1 low passes 0 of 5 in a mean 7.0 minutes"
+      ],
+      "eligible": false,
+      "fable_low": "0/5",
+      "fable_all": "0/25",
+      "fable_low_mean_min": 7.0,
+      "fable_low_cost_per_pass_usd": null,
+      "luna_sized": false,
+      "family_reasons": [],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "mvcc-lsm-compaction",
+      "rules": [
+        "E2 in the oracle tier 0 population",
+        "E3 tuned-task list: tunable",
+        "E8 Fable 5.1 low passes 0 of 5 in a mean 1.8 minutes"
+      ],
+      "eligible": false,
+      "fable_low": "0/5",
+      "fable_all": "13/25",
+      "fable_low_mean_min": 1.8,
+      "fable_low_cost_per_pass_usd": null,
+      "luna_sized": false,
+      "family_reasons": [
+        "GPT-6 Luna trials exist: Luna baseline (#9583); a GPT-6 Luna row in the truthful-checks label set",
+        "fitted or evaluated a signal: truthful-checks calibration half"
+      ],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "nextjs-performance",
+      "rules": [
+        "E7 its environment installs no Python 3"
+      ],
+      "eligible": false,
+      "fable_low": "3/5",
+      "fable_all": "15/25",
+      "fable_low_mean_min": 5.5,
+      "fable_low_cost_per_pass_usd": 2.9058,
+      "luna_sized": false,
+      "family_reasons": [
+        "GPT-6 Luna trials exist: Luna baseline (#9583); a GPT-6 Luna row in the truthful-checks label set"
+      ],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 15360,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "ontology-kg-querying",
+      "rules": [
+        "E8 Fable 5.1 low passes 0 of 5 in a mean 9.8 minutes"
+      ],
+      "eligible": false,
+      "fable_low": "0/5",
+      "fable_all": "0/25",
+      "fable_low_mean_min": 9.8,
+      "fable_low_cost_per_pass_usd": null,
+      "luna_sized": false,
+      "family_reasons": [],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "payments-pipeline-fix",
+      "rules": [
+        "E1 mapped by the Fable pattern map",
+        "E3 tuned-task list: family"
+      ],
+      "eligible": false,
+      "fable_low": "5/5",
+      "fable_all": "25/25",
+      "fable_low_mean_min": 26.7,
+      "fable_low_cost_per_pass_usd": 6.2476,
+      "luna_sized": true,
+      "family_reasons": [],
+      "metric_target_population": false,
+      "resources": {
+        "cpus": 4,
+        "memory_mb": 8192,
+        "storage_mb": 10240,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "photonic-waveguide-routing",
+      "rules": [
+        "E1 mapped by the Fable pattern map",
+        "E3 tuned-task list: family"
+      ],
+      "eligible": false,
+      "fable_low": "4/5",
+      "fable_all": "16/25",
+      "fable_low_mean_min": 38.6,
+      "fable_low_cost_per_pass_usd": 11.8794,
+      "luna_sized": false,
+      "family_reasons": [],
+      "metric_target_population": false,
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "pretrain-shard-corruption",
+      "rules": [
+        "E3 tuned-task list: confirmation",
+        "E4 a metric target goal task",
+        "E8 Fable 5.1 low passes 5 of 5 in a mean 61.2 minutes"
+      ],
+      "eligible": false,
+      "fable_low": "5/5",
+      "fable_all": "25/25",
+      "fable_low_mean_min": 61.2,
+      "fable_low_cost_per_pass_usd": 12.4313,
+      "luna_sized": false,
+      "family_reasons": [
+        "GPT-6 Luna trials exist: Microluna v13 trials in the #9584 prospective cohort",
+        "fitted or evaluated a signal: #9584 prospective cohort"
+      ],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 4,
+        "memory_mb": 8192,
+        "storage_mb": 4096,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "production-planning",
+      "rules": [
+        "E2 in the oracle tier 0 population",
+        "E3 tuned-task list: recall-study"
+      ],
+      "eligible": false,
+      "fable_low": "3/5",
+      "fable_all": "14/25",
+      "fable_low_mean_min": 8.7,
+      "fable_low_cost_per_pass_usd": 5.8805,
+      "luna_sized": false,
+      "family_reasons": [
+        "target of the persistence experiments (persist-v8, persist-v10) and escalation (#9570, #9571); v15 turns persistence on"
+      ],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "protein-autointerp-disulfide",
+      "rules": [
+        "E2 in the oracle tier 0 population",
+        "E3 tuned-task list: recall-study",
+        "E8 Fable 5.1 low passes 0 of 5 in a mean 2.4 minutes"
+      ],
+      "eligible": false,
+      "fable_low": "0/5",
+      "fable_all": "1/25",
+      "fable_low_mean_min": 2.4,
+      "fable_low_cost_per_pass_usd": null,
+      "luna_sized": false,
+      "family_reasons": [],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 4,
+        "memory_mb": 8192,
+        "storage_mb": 20480,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "react-lead-form",
+      "rules": [
+        "E7 its environment installs no Python 3"
+      ],
+      "eligible": false,
+      "fable_low": "2/5",
+      "fable_all": "15/25",
+      "fable_low_mean_min": 7.4,
+      "fable_low_cost_per_pass_usd": 6.7675,
+      "luna_sized": false,
+      "family_reasons": [
+        "fitted or evaluated a signal: truthful-checks calibration half"
+      ],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "retro-console-soc",
+      "rules": [
+        "E4 a metric target goal task"
+      ],
+      "eligible": false,
+      "fable_low": "5/5",
+      "fable_all": "25/25",
+      "fable_low_mean_min": 32.7,
+      "fable_low_cost_per_pass_usd": 10.3579,
+      "luna_sized": true,
+      "family_reasons": [
+        "fitted or evaluated a signal: truthful-checks calibration half"
+      ],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "risk-scorer-replay",
+      "rules": [
+        "E1 mapped by the Fable pattern map",
+        "E3 tuned-task list: recall-study"
+      ],
+      "eligible": false,
+      "fable_low": "5/5",
+      "fable_all": "25/25",
+      "fable_low_mean_min": 11.6,
+      "fable_low_cost_per_pass_usd": 4.4458,
+      "luna_sized": true,
+      "family_reasons": [
+        "GPT-6 Luna trials exist: a GPT-6 Luna row in the truthful-checks label set",
+        "fitted or evaluated a signal: truthful-checks calibration half"
+      ],
+      "metric_target_population": false,
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "roy-polymorph-cn",
+      "rules": [
+        "E7 its environment installs no Python 3",
+        "E8 Fable 5.1 low passes 0 of 5 in a mean 0.7 minutes"
+      ],
+      "eligible": false,
+      "fable_low": "0/5",
+      "fable_all": "11/25",
+      "fable_low_mean_min": 0.7,
+      "fable_low_cost_per_pass_usd": null,
+      "luna_sized": false,
+      "family_reasons": [
+        "fitted or evaluated a signal: truthful-checks calibration half"
+      ],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "rs-archive-clone",
+      "rules": [
+        "E3 tuned-task list: recall-study",
+        "E8 Fable 5.1 low passes 3 of 5 in a mean 74.3 minutes"
+      ],
+      "eligible": false,
+      "fable_low": "3/5",
+      "fable_all": "19/25",
+      "fable_low_mean_min": 74.3,
+      "fable_low_cost_per_pass_usd": 41.7707,
+      "luna_sized": false,
+      "family_reasons": [
+        "fitted or evaluated a signal: truthful-checks calibration half"
+      ],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 4,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "satb-audio-transcription",
+      "rules": [],
+      "eligible": true,
+      "fable_low": "1/5",
+      "fable_all": "16/25",
+      "fable_low_mean_min": 28.7,
+      "fable_low_cost_per_pass_usd": 39.831,
+      "luna_sized": false,
+      "family_reasons": [],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 4,
+        "memory_mb": 8192,
+        "storage_mb": 10240,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "session-window-debug",
+      "rules": [
+        "E2 in the oracle tier 0 population",
+        "E3 tuned-task list: iteration, anatomy",
+        "E8 Fable 5.1 low passes 0 of 5 in a mean 2.6 minutes"
+      ],
+      "eligible": false,
+      "fable_low": "0/5",
+      "fable_all": "0/25",
+      "fable_low_mean_min": 2.6,
+      "fable_low_cost_per_pass_usd": null,
+      "luna_sized": false,
+      "family_reasons": [
+        "in the capability-gap log",
+        "GPT-6 Luna trials exist: Microluna jobs on the benchmark host",
+        "fitted or evaluated a signal: truthful-checks calibration half; stall-detection calibration or evaluation split",
+        "hidden tests and reference solution read for the task anatomy"
+      ],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "sglang-qwen-burst",
+      "rules": [
+        "E3 tuned-task list: recall-study",
+        "E8 Fable 5.1 low passes 0 of 5 in a mean 24.8 minutes"
+      ],
+      "eligible": false,
+      "fable_low": "0/5",
+      "fable_all": "4/25",
+      "fable_low_mean_min": 24.8,
+      "fable_low_cost_per_pass_usd": null,
+      "luna_sized": false,
+      "family_reasons": [
+        "fitted or evaluated a signal: truthful-checks calibration half"
+      ],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 8192,
+        "storage_mb": 18000,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "shadow-relay",
+      "rules": [
+        "E1 mapped by the Fable pattern map",
+        "E3 tuned-task list: held-out, iteration, confirmation, anatomy"
+      ],
+      "eligible": false,
+      "fable_low": "5/5",
+      "fable_all": "24/25",
+      "fable_low_mean_min": 4.6,
+      "fable_low_cost_per_pass_usd": 1.674,
+      "luna_sized": false,
+      "family_reasons": [
+        "Microluna held-out test set (microluna-v15, 2026-09-25)",
+        "in the capability-gap log",
+        "GPT-6 Luna trials exist: Luna baseline (#9583); Microluna jobs on the benchmark host; Microluna v13 trials in the #9584 prospective cohort",
+        "fitted or evaluated a signal: #9584 prospective cohort; stall-detection calibration or evaluation split",
+        "hidden tests and reference solution read for the task anatomy"
+      ],
+      "metric_target_population": false,
+      "resources": {
+        "cpus": 8,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "sound-change-cascade",
+      "rules": [
+        "E2 in the oracle tier 0 population",
+        "E3 tuned-task list: dev, anatomy"
+      ],
+      "eligible": false,
+      "fable_low": "5/5",
+      "fable_all": "25/25",
+      "fable_low_mean_min": 22.5,
+      "fable_low_cost_per_pass_usd": 5.2022,
+      "luna_sized": false,
+      "family_reasons": [
+        "Microluna dev set (v9 to v17)",
+        "in the capability-gap log",
+        "GPT-6 Luna trials exist: Luna baseline (#9583); Microluna jobs on the benchmark host",
+        "fitted or evaluated a signal: stall-detection calibration or evaluation split",
+        "hidden tests and reference solution read for the task anatomy"
+      ],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "takens-embedding-lean",
+      "rules": [],
+      "eligible": true,
+      "fable_low": "3/5",
+      "fable_all": "20/25",
+      "fable_low_mean_min": 43.7,
+      "fable_low_cost_per_pass_usd": 42.1872,
+      "luna_sized": false,
+      "family_reasons": [
+        "fitted or evaluated a signal: truthful-checks calibration half"
+      ],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 4,
+        "memory_mb": 16384,
+        "storage_mb": 51200,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "telecom-entity-resolution",
+      "rules": [
+        "E1 mapped by the Fable pattern map",
+        "E3 tuned-task list: family"
+      ],
+      "eligible": false,
+      "fable_low": "5/5",
+      "fable_all": "25/25",
+      "fable_low_mean_min": 22.1,
+      "fable_low_cost_per_pass_usd": 6.0512,
+      "luna_sized": false,
+      "family_reasons": [],
+      "metric_target_population": false,
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 8192,
+        "storage_mb": 10240,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "uefi-bootkit",
+      "rules": [
+        "E2 in the oracle tier 0 population",
+        "E3 tuned-task list: iteration",
+        "E8 Fable 5.1 low passes 2 of 5 in a mean 165.1 minutes"
+      ],
+      "eligible": false,
+      "fable_low": "2/5",
+      "fable_all": "16/25",
+      "fable_low_mean_min": 165.1,
+      "fable_low_cost_per_pass_usd": 80.7764,
+      "luna_sized": false,
+      "family_reasons": [
+        "GPT-6 Luna trials exist: Luna baseline (#9583)",
+        "fitted or evaluated a signal: stall-detection calibration or evaluation split"
+      ],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 16384,
+        "storage_mb": 10240,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "vba-userform-port",
+      "rules": [
+        "E3 tuned-task list: anatomy",
+        "E4 a metric target goal task",
+        "E8 Fable 5.1 low passes 0 of 5 in a mean 14.6 minutes"
+      ],
+      "eligible": false,
+      "fable_low": "0/5",
+      "fable_all": "2/25",
+      "fable_low_mean_min": 14.6,
+      "fable_low_cost_per_pass_usd": null,
+      "luna_sized": false,
+      "family_reasons": [
+        "fitted or evaluated a signal: truthful-checks calibration half",
+        "hidden tests and reference solution read for the task anatomy"
+      ],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 8192,
+        "storage_mb": 20480,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "vf2-speedup-networkx",
+      "rules": [
+        "E3 tuned-task list: anatomy",
+        "E4 a metric target goal task",
+        "E8 Fable 5.1 low passes 0 of 5 in a mean 41.2 minutes"
+      ],
+      "eligible": false,
+      "fable_low": "0/5",
+      "fable_all": "7/25",
+      "fable_low_mean_min": 41.2,
+      "fable_low_cost_per_pass_usd": null,
+      "luna_sized": false,
+      "family_reasons": [
+        "hidden tests and reference solution read for the task anatomy"
+      ],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 8192,
+        "storage_mb": 10240,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "vllm-deepseek-streaming",
+      "rules": [
+        "E8 Fable 5.1 low passes 0 of 5 in a mean 11.2 minutes"
+      ],
+      "eligible": false,
+      "fable_low": "0/5",
+      "fable_all": "0/25",
+      "fable_low_mean_min": 11.2,
+      "fable_low_cost_per_pass_usd": null,
+      "luna_sized": false,
+      "family_reasons": [
+        "fitted or evaluated a signal: truthful-checks calibration half"
+      ],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "vpp-loss-divergence",
+      "rules": [
+        "E3 tuned-task list: confirmation",
+        "E4 a metric target goal task"
+      ],
+      "eligible": false,
+      "fable_low": "1/5",
+      "fable_all": "18/25",
+      "fable_low_mean_min": 15.4,
+      "fable_low_cost_per_pass_usd": 22.1492,
+      "luna_sized": false,
+      "family_reasons": [
+        "GPT-6 Luna trials exist: Microluna v13 trials in the #9584 prospective cohort",
+        "fitted or evaluated a signal: #9584 prospective cohort"
+      ],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 8192,
+        "storage_mb": 15360,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "wal-recovery-ordering",
+      "rules": [
+        "E2 in the oracle tier 0 population",
+        "E3 tuned-task list: recall-study",
+        "E8 Fable 5.1 low passes 0 of 5 in a mean 2.1 minutes"
+      ],
+      "eligible": false,
+      "fable_low": "0/5",
+      "fable_all": "1/25",
+      "fable_low_mean_min": 2.1,
+      "fable_low_cost_per_pass_usd": null,
+      "luna_sized": false,
+      "family_reasons": [
+        "GPT-6 Luna trials exist: Luna baseline (#9583); a GPT-6 Luna row in the truthful-checks label set",
+        "fitted or evaluated a signal: truthful-checks calibration half"
+      ],
+      "metric_target_population": true,
+      "resources": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "storage_mb": 10240,
+        "gpus": 0
+      }
+    },
+    {
+      "task": "wdm-design",
+      "rules": [
+        "E8 Fable 5.1 low passes 5 of 5 in a mean 210.4 minutes"
+      ],
+      "eligible": false,
+      "fable_low": "5/5",
+      "fable_all": "23/25",
+      "fable_low_mean_min": 210.4,
+      "fable_low_cost_per_pass_usd": 18.44,
+      "luna_sized": false,
+      "family_reasons": [
+        "GPT-6 Luna trials exist: Luna baseline (#9583)"
+      ],
+      "metric_target_population": false,
+      "resources": {
+        "cpus": 8,
+        "memory_mb": 16384,
+        "storage_mb": 10240,
+        "gpus": 0
+      }
+    }
+  ]
+}
