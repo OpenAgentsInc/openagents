@@ -643,6 +643,14 @@ pub struct LeanPersist {
     pub max_returns: u32,
     /// Turn back a finish whose status isn't `done`.
     pub not_done: bool,
+    /// Nobody answers the session: missing information doesn't excuse a
+    /// finish that isn't `done` ([`microluna::Persist::answerless`]).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub answerless: bool,
+    /// A finish that isn't `done` goes back with the split-the-stalled-step
+    /// direction ([`microluna::Persist::split_stalled`]).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub split_stalled: bool,
     /// Turns and seconds of the session that must be left for a finish to
     /// go back.
     pub reserve_turns: usize,
@@ -1086,6 +1094,8 @@ fn persist(
     Some(microluna::Persist {
         max_returns: gate.max_returns,
         not_done: gate.not_done,
+        answerless: gate.answerless,
+        split_stalled: gate.split_stalled,
         score_command,
         reserve_turns: gate.reserve_turns,
         reserve_sec: gate.reserve_sec,
@@ -1355,6 +1365,8 @@ impl Micro {
                 let persist = lean.persist.as_ref().map(|gate| microluna::Persist {
                     max_returns: gate.max_returns,
                     not_done: gate.not_done,
+                    answerless: gate.answerless,
+                    split_stalled: gate.split_stalled,
                     score_command: Some(format!("sh {}/score.sh", scorer.display())),
                     reserve_turns: gate.reserve_turns,
                     reserve_sec: gate.reserve_sec,

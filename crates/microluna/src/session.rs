@@ -176,6 +176,14 @@ pub struct Persist {
     /// Turn back a finish whose status isn't `done`, unless its cause is a
     /// missing tool or missing information.
     pub not_done: bool,
+    /// Nobody answers the session's questions, as in a headless episode:
+    /// missing information is no reason for `not_done` to let a finish
+    /// stand. A missing tool still is.
+    pub answerless: bool,
+    /// When a finish that isn't `done` goes back, say to split the step
+    /// that stalled into parts that can each be checked against the
+    /// task's own files, examples, or programs, and to do the first now.
+    pub split_stalled: bool,
     /// A shell command the host runs in the workspace on each finish. When
     /// it prints a last `SCORE <passed> <total>` line with `passed` below
     /// `total`, the finish is turned back.
@@ -841,13 +849,13 @@ async fn turn_back(
         return None;
     }
     let mut reasons = Vec::new();
-    if persist.not_done
-        && finish.status != tools::FinishStatus::Done
-        && !matches!(
-            finish.cause,
-            tools::Cause::MissingTool | tools::Cause::NeedsInformation
-        )
-    {
+    let excused = match finish.cause {
+        tools::Cause::MissingTool => true,
+        tools::Cause::NeedsInformation => !persist.answerless,
+        _ => false,
+    };
+    let stalled = persist.not_done && finish.status != tools::FinishStatus::Done && !excused;
+    if stalled {
         reasons.push(format!(
             "you finished as {} with {turns_left} turns left, and a hard task isn't a reason to \
              stop",
@@ -885,11 +893,19 @@ async fn turn_back(
     if reasons.is_empty() {
         return None;
     }
+    let split = if stalled && persist.split_stalled {
+        " Nobody will answer a question, so work from what the workspace holds. Split the step \
+         that stalled into smaller parts you can each check on their own against the task's own \
+         files, examples, or programs, such as a tool that reproduces a provided example before \
+         you use it on the real input, and do the first part now."
+    } else {
+        ""
+    };
     Some(format!(
         "The host turned this finish back: {}. Keep working with the turns you have. Look at \
          what still fails, find the general cause, and try a different approach from the one \
-         that stalled; measure after each change. Call finish again when the task is met or \
-         your turns are nearly spent.",
+         that stalled; measure after each change.{split} Call finish again when the task is met \
+         or your turns are nearly spent.",
         reasons.join("; and ")
     ))
 }

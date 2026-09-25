@@ -249,6 +249,8 @@ async fn a_refusal_does_not_count_against_the_turn_backs() {
         Some(microluna::Persist {
             max_returns: 1,
             not_done: false,
+            answerless: false,
+            split_stalled: false,
             score_command: Some("echo SCORE 0 1".to_string()),
             reserve_turns: 0,
             reserve_sec: 0,

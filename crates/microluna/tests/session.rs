@@ -469,6 +469,8 @@ async fn the_host_turns_back_a_finish_below_the_score_then_lets_one_stand() {
         persist: Some(microluna::Persist {
             max_returns: 3,
             not_done: true,
+            answerless: false,
+            split_stalled: false,
             score_command: Some("sh score.sh".to_string()),
             reserve_turns: 2,
             reserve_sec: 0,
@@ -496,6 +498,58 @@ async fn the_host_turns_back_a_finish_below_the_score_then_lets_one_stand() {
 }
 
 #[tokio::test]
+async fn with_nobody_to_answer_missing_information_is_no_reason_to_stop() {
+    let asks = |id: &str| {
+        call(
+            id,
+            "finish",
+            &json!({"status": "blocked", "summary": "Unsure.", "answer": "", "cause": "needs_information"}),
+            usage(10, 0, 5),
+        )
+    };
+    for answerless in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let workspace = Workspace::new(dir.path())
+            .unwrap()
+            .isolated_by(microluna::Isolation::TaskContainer);
+        let transport = FakeTransport::new(vec![asks("c1"), asks("c2")]);
+        let config = Config {
+            max_turns: 10,
+            persist: Some(microluna::Persist {
+                max_returns: 2,
+                not_done: true,
+                answerless,
+                split_stalled: true,
+                score_command: None,
+                reserve_turns: 2,
+                reserve_sec: 0,
+            }),
+            ..Config::luna("t")
+        };
+        let mut recorder = Recorder::new();
+        let report = run(
+            &transport,
+            &workspace,
+            &Brief::task("Try."),
+            &config,
+            &mut recorder,
+        )
+        .await;
+        let split = recorder
+            .steps()
+            .iter()
+            .any(|s| s.message.contains("Split the step that stalled"));
+        if answerless {
+            assert_eq!(report.turns, 2, "the first finish goes back");
+            assert!(split, "the turn-back says to split the stalled step");
+        } else {
+            assert_eq!(report.turns, 1, "missing information excuses the finish");
+            assert!(!split);
+        }
+    }
+}
+
+#[tokio::test]
 async fn a_blocked_finish_goes_back_until_the_returns_run_out() {
     let dir = tempfile::tempdir().unwrap();
     let workspace = Workspace::new(dir.path())
@@ -515,6 +569,8 @@ async fn a_blocked_finish_goes_back_until_the_returns_run_out() {
         persist: Some(microluna::Persist {
             max_returns: 2,
             not_done: true,
+            answerless: false,
+            split_stalled: false,
             score_command: None,
             reserve_turns: 2,
             reserve_sec: 0,
