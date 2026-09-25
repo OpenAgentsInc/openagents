@@ -5,7 +5,8 @@
 //! The fixture's input names the task and either a workspace directory
 //! (`workspace`, where a leading `~/` is the home directory) or the
 //! workspace's files inline (`files`, path to text). `sources` limits the
-//! miners; absent, all three run. The output holds every row with its
+//! miners; absent, all three run. `comments` is how `rationale` finds its
+//! comments: `keywords`, the default, or `lexicon-free` (issue #9652). The output holds every row with its
 //! probability and the rows the briefing would list, so a measurement can
 //! choose its own threshold from one run.
 
@@ -18,7 +19,7 @@ use serde_json::{Map, json};
 
 use super::jev::JevMode;
 use super::{Component, Fixture, Ran, input};
-use crate::departures::{self, Source};
+use crate::departures::{self, CommentMode, Source};
 use crate::record::{Implementation, Recorder};
 
 /// The `evidence.departures` component.
@@ -33,6 +34,10 @@ struct DeparturesInput {
     files: BTreeMap<String, String>,
     #[serde(default)]
     sources: Option<Vec<Source>>,
+    /// How `rationale` finds its comments: `keywords`, the default, or
+    /// `lexicon-free` (issue #9652).
+    #[serde(default)]
+    comments: CommentMode,
 }
 
 /// A directory that removes itself.
@@ -102,7 +107,7 @@ impl Component for Departures {
                 return Err(format!("no workspace at {}", workspace.display()));
             }
             let sources = input.sources.unwrap_or_else(|| Source::ALL.to_vec());
-            let ranked = departures::rank(
+            let ranked = departures::rank_with(
                 jev,
                 recorder,
                 &departures::Context {
@@ -113,6 +118,7 @@ impl Component for Departures {
                 &input.task,
                 &workspace,
                 &sources,
+                input.comments,
             )
             .await;
             let listed = departures::listed(&ranked.rows);
@@ -146,6 +152,7 @@ impl Component for Departures {
                     "calls": ranked.calls,
                     "sets": sets,
                     "methods": { "version": list.version, "digest": digest },
+                    "comments": input.comments.word(),
                 }),
                 metrics,
             })

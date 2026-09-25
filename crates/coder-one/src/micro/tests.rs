@@ -1487,6 +1487,7 @@ fn lean_shape() -> lean::Lean {
         standard_forms: false,
         rationale: false,
         departures: Vec::new(),
+        suspects: crate::departures::CommentMode::Keywords,
         lanes: 0,
         lane_sec: 0,
         failures: false,

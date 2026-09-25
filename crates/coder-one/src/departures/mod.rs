@@ -17,6 +17,10 @@
 //!   Jev asks whether the body departs from the method's standard
 //!   definition.
 //!
+//! `rationale` finds its comments with v13's keyword gate by default, or,
+//! in [`CommentMode::LexiconFree`], takes every comment attached to a
+//! function, its class, or its module ([`comments`], issue #9652).
+//!
 //! Code finds every candidate; Jev only ranks them. Each question's
 //! wording lives in a digested question set under `questions/`, and every
 //! request is recorded like any other Jev call. The miners never see a
@@ -32,7 +36,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::component::jev::{self as jev_component, JevMode};
+
+pub mod comments;
 use crate::record::{Implementation, Recorder};
+pub use comments::CommentMode;
 
 /// The component ID.
 pub const COMPONENT: &str = "evidence.departures";
@@ -287,10 +294,19 @@ impl Row {
     }
 }
 
-/// The candidates one source finds in `workspace`.
+/// The candidates one source finds in `workspace`, with v13's keyword
+/// gate for `rationale`.
 #[must_use]
 pub fn mine(source: Source, workspace: &Path) -> Vec<Candidate> {
+    mine_with(source, workspace, CommentMode::Keywords)
+}
+
+/// [`mine`] with `rationale`'s comments found by `mode`
+/// ([`comments`], issue #9652).
+#[must_use]
+pub fn mine_with(source: Source, workspace: &Path, mode: CommentMode) -> Vec<Candidate> {
     match source {
+        Source::Rationale if mode == CommentMode::LexiconFree => comments::candidates(workspace),
         Source::Rationale => rationale(workspace),
         Source::Docstring => docstrings(workspace),
         Source::StandardMethod => standard_methods(workspace, &methods().0),
@@ -329,6 +345,8 @@ pub struct Function {
     pub file: String,
     /// The 1-based line of its definition.
     pub line: usize,
+    /// The 1-based last line of its body.
+    pub end: usize,
     pub name: String,
     pub docstring: Option<String>,
     /// Its definition through the end of its parameter list.
@@ -411,6 +429,7 @@ pub fn python_functions(path: &str, text: &str) -> Vec<Function> {
         out.push(Function {
             file: path.to_string(),
             line: i + 1,
+            end: end.max(i + 1),
             name,
             docstring,
             signature: lines[i..=sig_end.min(lines.len() - 1)].join(" "),
@@ -531,6 +550,7 @@ pub fn brace_functions(path: &str, text: &str) -> Vec<Function> {
         out.push(Function {
             file: path.to_string(),
             line: i + 1,
+            end: end + 1,
             name,
             docstring: doc_comment_above(&lines, i),
             signature: lines[i..=open].join(" "),
@@ -885,9 +905,31 @@ pub async fn rank(
     workspace: &Path,
     sources: &[Source],
 ) -> Ranked {
+    rank_with(
+        jev,
+        recorder,
+        context,
+        task,
+        workspace,
+        sources,
+        CommentMode::Keywords,
+    )
+    .await
+}
+
+/// [`rank`] with `rationale`'s comments found by `mode`.
+pub async fn rank_with(
+    jev: &JevMode,
+    recorder: &Recorder,
+    context: &Context<'_>,
+    task: &str,
+    workspace: &Path,
+    sources: &[Source],
+    mode: CommentMode,
+) -> Ranked {
     let mut ranked = Ranked::default();
     for &source in sources {
-        let candidates = mine(source, workspace);
+        let candidates = mine_with(source, workspace, mode);
         for (n, request) in requests(source, task, &candidates).into_iter().enumerate() {
             let asked = jev_component::ask(
                 jev,
@@ -982,6 +1024,13 @@ pub fn evidence(listed: &[Row]) -> Option<microluna::Evidence> {
 /// thresholds, and the bounds, each by digest or value.
 #[must_use]
 pub fn implementation(sources: &[Source]) -> Implementation {
+    implementation_with(sources, CommentMode::Keywords)
+}
+
+/// [`implementation`] with `rationale`'s comment mode. The keyword gate
+/// adds nothing, so its digest is the one [`implementation`] always gave.
+#[must_use]
+pub fn implementation_with(sources: &[Source], mode: CommentMode) -> Implementation {
     let sets: BTreeMap<&str, Value> = sources
         .iter()
         .map(|s| {
@@ -993,17 +1042,21 @@ pub fn implementation(sources: &[Source]) -> Implementation {
         })
         .collect();
     let (list, digest) = methods();
+    let mut parameters = json!({
+        "sets": sets,
+        "methods": { "version": list.version, "digest": digest },
+        "max_candidates": MAX_CANDIDATES,
+        "max_listed": MAX_LISTED,
+        "batch": BATCH,
+        "body_chars": BODY_CHARS,
+    });
+    if let Some(record) = comments::record(mode) {
+        parameters["comments"] = json!(record);
+    }
     Implementation::new(
         COMPONENT,
         "comment, docstring, and standard-method miners ranked by Jev",
-        &json!({
-            "sets": sets,
-            "methods": { "version": list.version, "digest": digest },
-            "max_candidates": MAX_CANDIDATES,
-            "max_listed": MAX_LISTED,
-            "batch": BATCH,
-            "body_chars": BODY_CHARS,
-        }),
+        &parameters,
     )
 }
 

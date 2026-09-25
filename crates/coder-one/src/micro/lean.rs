@@ -169,6 +169,17 @@ pub struct Lean {
     /// default, leaves the v13 suspects as they were.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub departures: Vec<crate::departures::Source>,
+    /// How `rationale` finds its comments (issue #9652): `keywords`, v13's
+    /// phrase gate and the default, or `lexicon-free`, every comment and
+    /// docstring attached to a function, its class, or its module, up to
+    /// [`crate::departures::comments::MAX`]. Absent, as in every manifest
+    /// before it, the keyword gate runs and the manifest's digest doesn't
+    /// change.
+    #[serde(
+        default,
+        skip_serializing_if = "crate::departures::CommentMode::is_keywords"
+    )]
+    pub suspects: crate::departures::CommentMode,
     /// Attempts at the first work session that run at once, each in its
     /// own copy of the workspace with a different approach, before the
     /// sequential sessions: the host keeps the best by the frozen score.
@@ -574,6 +585,9 @@ impl Lean {
         if !self.departures.is_empty() && !self.rationale {
             problems.push("executor.microluna.lean.departures requires rationale".to_string());
         }
+        if !self.suspects.is_keywords() && !self.rationale {
+            problems.push("executor.microluna.lean.suspects requires rationale".to_string());
+        }
         if let Some(tiered) = &self.tiered {
             problems.extend(tiered.validate(self));
         }
@@ -978,18 +992,20 @@ impl Micro {
         (evidence, record, usd)
     }
 
-    /// The v13 comments and the admitted departure sources, ranked by Jev
+    /// The v13 comments, or with `mode` lexicon-free every attached
+    /// comment, and the admitted departure sources, ranked by Jev
     /// ([`crate::departures`]): the evidence for the listed rows, each
     /// with its kind, the record, and Jev's cost.
     async fn rank_departures(
         &self,
         prepared: &Prepared,
         extra: &[crate::departures::Source],
+        mode: crate::departures::CommentMode,
     ) -> (Option<Evidence>, Value, f64) {
         use crate::departures::{self, Source};
         let mut sources = vec![Source::Rationale];
         sources.extend(extra.iter().copied().filter(|s| *s != Source::Rationale));
-        let ranked = departures::rank(
+        let ranked = departures::rank_with(
             &prepared.jev,
             &self.recorder,
             &departures::Context {
@@ -1000,13 +1016,15 @@ impl Micro {
             &prepared.instruction,
             &self.workdir,
             &sources,
+            mode,
         )
         .await;
         let listed = departures::listed(&ranked.rows);
         let record = json!({
             "kind": "lean.suspects",
             "sources": sources.iter().map(|s| s.word()).collect::<Vec<_>>(),
-            "implementation": departures::implementation(&sources),
+            "comments": mode.word(),
+            "implementation": departures::implementation_with(&sources, mode),
             "rows": ranked.rows,
             "likely": listed.len(),
             "jev": ranked.calls,
@@ -2070,11 +2088,13 @@ impl Micro {
         let mut suspects_record = Value::Null;
         let mut suspects_listed = false;
         if lean.rationale {
-            let (evidence, record, usd) = if lean.departures.is_empty() {
-                self.rank_suspects(prepared).await
-            } else {
-                self.rank_departures(prepared, &lean.departures).await
-            };
+            let (evidence, record, usd) =
+                if lean.departures.is_empty() && lean.suspects.is_keywords() {
+                    self.rank_suspects(prepared).await
+                } else {
+                    self.rank_departures(prepared, &lean.departures, lean.suspects)
+                        .await
+                };
             if let Some(evidence) = evidence {
                 samples.insert(0, evidence);
                 suspects_listed = true;
