@@ -8,7 +8,7 @@ parser.add_argument('--jobs',type=Path,required=True)
 parser.add_argument('--manifest',type=Path)
 parser.add_argument('--prefix',default='prospective')
 args=parser.parse_args()
-home=Path.home();root=args.records;jobs=args.jobs;entries=[];blobs={};secret=set()
+home=Path.home();root=args.records;jobs=args.jobs;entries=[];blobs={};secret=set();seen_paths=set()
 def gather(v):
  if isinstance(v,str) and len(v)>24:secret.add(v.encode())
  elif isinstance(v,dict):
@@ -25,9 +25,12 @@ for row in json.loads((args.manifest or root/'prospective-manifest.json').read_t
   files.extend(p for p in base.rglob('*') if p.is_file() and not p.is_symlink())
  files.extend(p for p in [trial/'config.json',trial.parent/'config.json'] if p.exists())
  for p in sorted(set(files)):
+  name=str(p.relative_to(jobs))
+  if name in seen_paths:continue
+  seen_paths.add(name)
   data=p.read_bytes()
   if any(s and s in data for s in secret):raise RuntimeError('Credential content in '+str(p))
-  sha=hashlib.sha256(data).hexdigest(); name=str(p.relative_to(jobs));entries.append(dict(path=name,bytes=len(data),sha256=sha));blobs.setdefault(sha,p)
+  sha=hashlib.sha256(data).hexdigest();entries.append(dict(path=name,bytes=len(data),sha256=sha));blobs.setdefault(sha,p)
 manifest=dict(schema='openagents.content-addressed-traces.v1',contains_grades=False,files=entries,blobs=len(blobs),bytes=sum(p.stat().st_size for p in blobs.values()))
 (root/(args.prefix+'-trace-files.json')).write_text(json.dumps(manifest,indent=2)+'\n')
 archive=root/(args.prefix+'-traces.tar.gz')
