@@ -860,6 +860,7 @@ pub async fn select(
         };
         entries.push(json!({
             "number": number,
+            "workspace_copy": candidate.dir,
             "status": report.status.word(),
             "cost_usd": score.cost_usd,
             "charge": charge,

@@ -2346,17 +2346,12 @@ async fn each_candidate_works_in_its_own_copy_until_one_is_kept() {
     let best = &ran.record["best_of"];
     assert_eq!(best["kept"], 2, "{best:#}");
     assert_eq!(sum_in(&ran.work), 6);
-    // Every copy is gone once one is kept.
-    let copies = std::fs::read_dir(std::env::temp_dir())
-        .unwrap()
-        .flatten()
-        .filter(|e| {
-            e.file_name()
-                .to_string_lossy()
-                .starts_with(&format!("coder-one-best-of-{}-", std::process::id()))
-        })
-        .count();
-    assert_eq!(copies, 0);
+    // Only this episode's copies must be gone. Other tests can run candidates
+    // concurrently in the same process.
+    for candidate in best["candidates"].as_array().unwrap() {
+        let copy = Path::new(candidate["workspace_copy"].as_str().unwrap());
+        assert!(!copy.exists(), "Candidate copy remains: {}", copy.display());
+    }
 }
 
 #[tokio::test(flavor = "current_thread")]
