@@ -1,0 +1,83 @@
+{
+  "schema": "openagents.coder-one.jev-recorded.v1",
+  "entries": {
+    "64dca2a585efdbf7a6a12040a4053d7366d784bcd5c7c5f6ea535f796151b560": {
+      "name": "jev_departures_standard_method",
+      "model": "jev-1.13.0",
+      "answers": {
+        "method_0": {
+          "type": "noul",
+          "noul": 0.88
+        },
+        "method_1": {
+          "type": "noul",
+          "noul": 0.68
+        },
+        "method_2": {
+          "type": "noul",
+          "noul": 0.95
+        },
+        "method_3": {
+          "type": "noul",
+          "noul": 0.07
+        }
+      },
+      "input_tokens": 1327,
+      "output_tokens": 76,
+      "milliseconds": 145,
+      "source": "live component run of evidence.departures#departures-standard-method-0"
+    },
+    "70781d038d5d63c486faa3ff6ebbb12418fe12d08ab4e53bad3210028bdf5362": {
+      "name": "jev_suspects",
+      "model": "jev-1.13.0",
+      "answers": {
+        "suspect_0": {
+          "type": "noul",
+          "noul": 0.87
+        },
+        "suspect_1": {
+          "type": "noul",
+          "noul": 0.91
+        }
+      },
+      "input_tokens": 464,
+      "output_tokens": 42,
+      "milliseconds": 384,
+      "source": "live component run of evidence.departures#departures-rationale-0"
+    },
+    "fc8c08647d75d3a7eea1369303b4abe66617a1787b931ad2c3f9e3ff9609e90e": {
+      "name": "jev_departures_docstring",
+      "model": "jev-1.13.0",
+      "answers": {
+        "docstring_0": {
+          "type": "noul",
+          "noul": 0.11
+        },
+        "docstring_1": {
+          "type": "noul",
+          "noul": 0.92
+        },
+        "docstring_2": {
+          "type": "noul",
+          "noul": 0.52
+        },
+        "docstring_3": {
+          "type": "noul",
+          "noul": 0.52
+        },
+        "docstring_4": {
+          "type": "noul",
+          "noul": 0.83
+        },
+        "docstring_5": {
+          "type": "noul",
+          "noul": 0.06
+        }
+      },
+      "input_tokens": 1623,
+      "output_tokens": 124,
+      "milliseconds": 134,
+      "source": "live component run of evidence.departures#departures-docstring-0"
+    }
+  }
+}

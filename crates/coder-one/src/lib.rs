@@ -33,6 +33,7 @@ pub mod contamination;
 pub mod credentials;
 pub mod deadline;
 pub mod delegate;
+pub mod departures;
 pub mod effort;
 pub mod episode;
 pub mod generate;

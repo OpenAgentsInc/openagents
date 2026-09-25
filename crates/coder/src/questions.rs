@@ -779,6 +779,9 @@ mod tests {
             registry.ids(),
             [
                 "openagents.completion.v1",
+                "openagents.departure-docstring.v1",
+                "openagents.departure-rationale.v1",
+                "openagents.departure-standard-method.v1",
                 "openagents.evidence-relevance.v1",
                 "openagents.independence.v1",
                 "openagents.independence.v2",

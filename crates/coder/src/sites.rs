@@ -693,6 +693,9 @@ mod tests {
                 .collect::<Vec<_>>(),
             [
                 "openagents.completion.v1",
+                "openagents.departure-docstring.v1",
+                "openagents.departure-rationale.v1",
+                "openagents.departure-standard-method.v1",
                 "openagents.evidence-relevance.v1",
                 "openagents.independence.v1",
                 "openagents.independence.v2",
@@ -705,16 +708,24 @@ mod tests {
             assert!(set.digest.is_some(), "{} is digested", set.id);
         }
         // Every shipped set answers a site and every site answers its
-        // set, so the only report is the genuinely unbound set:
+        // set, so the only reports are the sets no Coder site binds:
         // `openagents.independence.v1` stays on disk after v2 took both
         // bindings — kept so the digests historical runs recorded stay
-        // resolvable. The inventory says so rather than letting a run
-        // find out at admission.
+        // resolvable — and the three departure sets are asked by Coder
+        // One's `evidence.departures`, which compiles them in. The
+        // inventory says so rather than letting a run find out at
+        // admission.
+        let unbound = |set: &str| Problem::UnboundSet {
+            set: set.to_string(),
+        };
         assert_eq!(
             inventory.problems(),
-            [Problem::UnboundSet {
-                set: "openagents.independence.v1".to_string()
-            },]
+            [
+                unbound("openagents.departure-docstring.v1"),
+                unbound("openagents.departure-rationale.v1"),
+                unbound("openagents.departure-standard-method.v1"),
+                unbound("openagents.independence.v1"),
+            ]
         );
     }
 

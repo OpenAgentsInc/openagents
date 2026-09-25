@@ -1,0 +1,16 @@
+{
+  "v": 1,
+  "id": "openagents.departure-docstring.v1",
+  "name": "Whether a function departs from its own docstring",
+  "summary": "Asks, once per documented function in the workspace, whether its code, or the way the listed call sites use it, departs from what its docstring states.",
+  "per_finding": {
+    "type": "noul",
+    "instructions": "The function in `{finding}` doesn't do what its docstring `{finding}.docstring` says, or the call sites in `{finding}.callers` break what that docstring requires of its input. Judge the docstring against `{finding}.body` and the call sites. A docstring that states an assumption the call sites don't meet counts as a departure. Wording, style, and missing detail don't count."
+  },
+  "policy": {
+    "v": 1,
+    "evidence": [
+      "docs/terminal-bench/2026-09-25-departures-offline.md"
+    ]
+  }
+}
