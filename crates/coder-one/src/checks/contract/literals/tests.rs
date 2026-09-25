@@ -29,6 +29,9 @@ fn refuses_optional_conditional_reference_and_unsafe_contexts() {
         "Write either '/app/first.csv' or '/app/second.csv'.",
         "Generate at least one sample file named \"/app/normal.txt\" or \"/app/exponential.txt\" containing your samples.",
         "Write a function that creates '/app/later.csv'.",
+        "Write a function to generate '/app/later.csv'.",
+        "Write a script for saving '/app/later.csv'.",
+        "Write code to output '/app/later.csv'.",
         "Write a command `echo data > /app/later.csv`.",
         "Write the contents of `/app/input.txt` to `/app/output.txt`.",
         "Run `python -c 'write /app/later.csv'`.",
@@ -80,6 +83,7 @@ fn final_obligations_exclude_temporary_removed_and_relocated_artifacts() {
     for text in [
         "Write scratch.txt. Write result.txt. Delete scratch.txt.",
         "Write result.txt. Delete /app/old.txt.",
+        "Write result.txt. Delete /tmp/old.txt.",
         "Delete /app/old.txt. Write result.txt.",
         "Move all inputs to /app/inputs/. Write result.txt.",
         "Write scratch.txt. Move it to /app/inputs/. Write result.txt.",

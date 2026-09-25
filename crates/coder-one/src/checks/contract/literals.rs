@@ -134,6 +134,13 @@ fn path_pattern() -> Regex {
 }
 
 fn occurrences(text: &str, workdir: &str) -> Vec<(usize, usize, String)> {
+    path_occurrences(text, workdir)
+        .into_iter()
+        .filter(|(_, _, path)| inside(path, workdir))
+        .collect()
+}
+
+fn path_occurrences(text: &str, workdir: &str) -> Vec<(usize, usize, String)> {
     path_pattern()
         .find_iter(text)
         .filter_map(|m| {
@@ -150,7 +157,7 @@ fn occurrences(text: &str, workdir: &str) -> Vec<(usize, usize, String)> {
                 return None;
             }
             let path = as_path(raw, workdir)?;
-            inside(&path, workdir).then_some((m.start(), end, path))
+            normalized_absolute(&path).then_some((m.start(), end, path))
         })
         .collect()
 }
@@ -194,7 +201,7 @@ fn retire(text: &str, workdir: &str, active: &BTreeSet<String>, retired: &mut BT
     if !removes && !moves {
         return;
     }
-    let found = occurrences(text, workdir);
+    let found = path_occurrences(text, workdir);
     // A cleanup instruction without a named path cannot identify which of the
     // earlier outputs remains. Abstain instead of resolving anaphora by guess.
     let Some((start, _, first)) = found.first() else {
@@ -274,6 +281,8 @@ pub fn plan(task: &str, instruction: &str, workdir: &str) -> Plan {
     let mut context = String::new();
     let declaration = Regex::new(r"(?i)^(?:please |you must |you shall )?(?:write|create|save|produce|generate|output|emit|deliver|store)\b")
         .expect("literal output declaration pattern");
+    let deferred = Regex::new(r"(?i)\b(?:to|for)\s+(?:write|writ(e|ing)|creat(e|ing)|sav(e|ing)|generat(e|ing)|produc(e|ing)|output|print|emit|store)\b")
+        .expect("deferred output action pattern");
     for unit in &units {
         if headings.contains(unit.text.as_str()) {
             context.clear();
@@ -316,11 +325,14 @@ pub fn plan(task: &str, instruction: &str, workdir: &str) -> Plan {
                         | "instructions"
                         | "documentation"
                         | "contents"
+                        | "function"
+                        | "method"
                 )
             });
             if !blocked
                 && declaration.is_match(&unit.text)
                 && !indirect
+                && !deferred.is_match(before)
                 && is_output(before) == Some(true)
                 && !outputs.contains_key(path)
             {
