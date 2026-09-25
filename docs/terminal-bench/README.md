@@ -1,17 +1,19 @@
 # Terminal-Bench status
 
-Updated on 2026-09-25 with the truthful-checks evidence repair and measurements. This page summarizes retained evidence, not the host's live queue.
+Updated on 2026-09-25 with candidate-review validation and its negative results. This page summarizes retained evidence, not the host's live queue.
 
 ## Latest status
 
-**Truthful checks now retain read-only reviews of the submitted candidate.**
-On 18 development trials, those observations let the unchanged verdict catch
-6 of 13 failures, versus zero from the selected writer reports alone. All six
-calls were correct, but the sample has only two tasks and no passing candidate
-with a protected read-only review. The stricter corroboration rule is not
-promoted. See the [measurement and implementation](2026-09-25-truthful-checks-microluna.md);
-[#9584](https://github.com/OpenAgentsInc/openagents/issues/9584) still needs
-untouched task-group validation.
+**Candidate source review has not improved truthful checks.** The first frozen
+source/report union caught 4/60 failures with 4/6 correct calls. A jointly
+calibrated alternative caught 15/60 with 15/33 correct calls. Neither improves
+both metrics over existing checks. Public executable programs detected too few
+calibration failures to qualify. A completion assessment and eight fresh
+Microluna trials remain under evaluation. See the
+[protocols, results, and implementation](2026-09-25-candidate-review-validation.md).
+[#9584](https://github.com/OpenAgentsInc/openagents/issues/9584) remains open;
+the [earlier report-evidence repair](2026-09-25-truthful-checks-microluna.md)
+remains useful independently of these rejected rules.
 
 **Microluna v13: 3/3 embedding passes at $0.01599 per accepted output**, including
 Jev, against Fable low's 5/5 at $0.8691. Microluna was slower. It passed **0/3
@@ -299,6 +301,7 @@ still need the quota audit. See [harness validation](tb4-results.md#harness-vali
 | [Microluna against Luna-in-Codex](2026-09-24-microluna.md) | Coder One's in-process Luna executor and its mini-handoff loop against Luna in the Codex CLI: four mini-tasks with passes, cost, time, and sessions per task; three TB4 tasks matched to #9583; the CRLF grader mismatch behind every `log-severity` failure; a worked handoff trace; and the two fixes the runs drove. |
 | [Task anatomy for the Microluna overnight effort](2026-09-24-task-anatomy.md) | 18 TB4 tasks taken apart for acceptance suites: what each verifier tests, the decisive facts with their sources, why Fable 5.1 fails, what our passing runs did differently, candidate tests that are red on the untouched workspace, and a feasibility ranking for Luna plus Microluna, with a [JSON companion](2026-09-24-task-anatomy.json). |
 | [Strategy fingerprints, Fable against Luna and Coder One](2026-09-24-strategy-fingerprints.md) | Every step of 505 trajectories on the Luna baseline subset placed in a phase, per-trajectory fingerprints, a worked Fable-against-Luna example, the candidate moves ranked with task counts, effect sizes, and run and step citations, what didn't separate winners from losers, and the Jev cost. |
+| [Candidate-review validation](2026-09-25-candidate-review-validation.md) | Frozen source/report unions, rejected executable checks, prospective cohort, and reproducible component records. |
 | [Truthful checks: Microluna evidence and corroboration](2026-09-25-truthful-checks-microluna.md) | Selected-candidate and read-only-review attribution, 18 Microluna trials, frozen corroboration comparison, task-cluster uncertainty, and reproducible retained responses. |
 | [Truthful checks, calibrated against graded runs](2026-09-24-truthful-checks.md) | The 317-trial label set split by task, every check signal's fail precision, failure recall, and pass rate with Wilson intervals, the combined verdict's held-out numbers against today's checks, the signals it drops, and what labeled data would close the issue. |
 | [Tunable v10 against v7 on four near-miss tasks](2026-09-24-persist-v10.md) | Persistence judged against what the checks flag, on GPT-6 Sol, against the matched v7 arm: first attempts on four tasks, cost and rounds per attempt, persistence attribution, and why the checks can't key progress. |

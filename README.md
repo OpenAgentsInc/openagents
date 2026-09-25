@@ -202,11 +202,13 @@ noninteractive view. The plain `gym-terminal` command without
 
 ## Coder One benchmark evidence
 
-The [truthful-checks audit](docs/terminal-bench/2026-09-25-truthful-checks-microluna.md)
-fixes missing Microluna reports and preserves read-only reviews of unchanged
-submitted files. Those reviews let the existing verdict catch 6/13 failures in
-an 18-trial development cohort, versus zero from writer reports alone. This is
-not yet validated on untouched task groups; #9584 remains open.
+The [candidate-review study](docs/terminal-bench/2026-09-25-candidate-review-validation.md)
+retains two failed source/report rules and a public executable-check experiment.
+Neither source rule improves both failure precision and recall; public programs
+have too little detection coverage. A separate completion assessment and eight
+fresh Microluna trials are under evaluation. #9584 remains open. The earlier
+[Microluna evidence repair](docs/terminal-bench/2026-09-25-truthful-checks-microluna.md)
+recovers selected reports and reviews of unchanged submitted files.
 
 Fresh Microluna v13 runs passed **3/3 embedding-drift-monitor attempts for
 $0.01599 per accepted result**, including Jev—about 1/54 of Fable low's
