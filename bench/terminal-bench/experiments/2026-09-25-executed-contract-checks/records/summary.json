@@ -1,0 +1,4805 @@
+{
+ "schema": "openagents.contract-checks.summary.v1",
+ "protocol": "protocol.md",
+ "resamples": 10000,
+ "seed": 9628,
+ "sets": {
+  "primary": {
+   "development": {
+    "candidates_with_reward": 81,
+    "candidates_without_reward": 5,
+    "errors": 1,
+    "tasks": 10,
+    "per_kind": {
+     "path": {
+      "fail_given_differed": {
+       "k": 4,
+       "n": 4,
+       "value": 1.0,
+       "wilson_95": [
+        0.5101,
+        1.0
+       ],
+       "task_bootstrap_95": {
+        "interval_95": [
+         1.0,
+         1.0
+        ],
+        "undefined": 1091
+       }
+      },
+      "pass_given_matched": {
+       "k": 2,
+       "n": 25,
+       "value": 0.08,
+       "wilson_95": [
+        0.0222,
+        0.2497
+       ],
+       "task_bootstrap_95": {
+        "interval_95": [
+         0.0,
+         0.1538
+        ],
+        "undefined": 3
+       }
+      },
+      "tasks_differed": 2,
+      "tasks_matched": 5
+     },
+     "format": {
+      "fail_given_differed": {
+       "k": 0,
+       "n": 0,
+       "value": null,
+       "wilson_95": null,
+       "task_bootstrap_95": {
+        "interval_95": null,
+        "undefined": 10000
+       }
+      },
+      "pass_given_matched": {
+       "k": 2,
+       "n": 16,
+       "value": 0.125,
+       "wilson_95": [
+        0.035,
+        0.3602
+       ],
+       "task_bootstrap_95": {
+        "interval_95": [
+         0.0,
+         0.1633
+        ],
+        "undefined": 50
+       }
+      },
+      "tasks_differed": 0,
+      "tasks_matched": 4
+     },
+     "interface": {
+      "fail_given_differed": {
+       "k": 0,
+       "n": 0,
+       "value": null,
+       "wilson_95": null,
+       "task_bootstrap_95": {
+        "interval_95": null,
+        "undefined": 10000
+       }
+      },
+      "pass_given_matched": {
+       "k": 0,
+       "n": 2,
+       "value": 0.0,
+       "wilson_95": [
+        0.0,
+        0.6576
+       ],
+       "task_bootstrap_95": {
+        "interval_95": [
+         0.0,
+         0.0
+        ],
+        "undefined": 3496
+       }
+      },
+      "tasks_differed": 0,
+      "tasks_matched": 1
+     },
+     "example": {
+      "fail_given_differed": {
+       "k": 10,
+       "n": 10,
+       "value": 1.0,
+       "wilson_95": [
+        0.7225,
+        1.0
+       ],
+       "task_bootstrap_95": {
+        "interval_95": [
+         1.0,
+         1.0
+        ],
+        "undefined": 3502
+       }
+      },
+      "pass_given_matched": {
+       "k": 0,
+       "n": 1,
+       "value": 0.0,
+       "wilson_95": [
+        0.0,
+        0.7935
+       ],
+       "task_bootstrap_95": {
+        "interval_95": [
+         0.0,
+         0.0
+        ],
+        "undefined": 3502
+       }
+      },
+      "tasks_differed": 1,
+      "tasks_matched": 1
+     },
+     "exit_code": {
+      "fail_given_differed": {
+       "k": 0,
+       "n": 0,
+       "value": null,
+       "wilson_95": null,
+       "task_bootstrap_95": {
+        "interval_95": null,
+        "undefined": 10000
+       }
+      },
+      "pass_given_matched": {
+       "k": 0,
+       "n": 11,
+       "value": 0.0,
+       "wilson_95": [
+        0.0,
+        0.2588
+       ],
+       "task_bootstrap_95": {
+        "interval_95": [
+         0.0,
+         0.0
+        ],
+        "undefined": 3502
+       }
+      },
+      "tasks_differed": 0,
+      "tasks_matched": 1
+     },
+     "command": {
+      "fail_given_differed": {
+       "k": 0,
+       "n": 0,
+       "value": null,
+       "wilson_95": null,
+       "task_bootstrap_95": {
+        "interval_95": null,
+        "undefined": 10000
+       }
+      },
+      "pass_given_matched": {
+       "k": 2,
+       "n": 7,
+       "value": 0.2857,
+       "wilson_95": [
+        0.0822,
+        0.6411
+       ],
+       "task_bootstrap_95": {
+        "interval_95": [
+         0.2857,
+         0.2857
+        ],
+        "undefined": 3414
+       }
+      },
+      "tasks_differed": 0,
+      "tasks_matched": 1
+     }
+    },
+    "calls": {
+     "candidates": 81,
+     "failures": 59,
+     "passes": 22,
+     "no_call": 43,
+     "fail_precision": {
+      "k": 12,
+      "n": 12,
+      "value": 1.0,
+      "wilson_95": [
+       0.7575,
+       1.0
+      ],
+      "task_bootstrap_95": {
+       "interval_95": [
+        1.0,
+        1.0
+       ],
+       "undefined": 1091
+      }
+     },
+     "failure_recall": {
+      "k": 12,
+      "n": 59,
+      "value": 0.2034,
+      "wilson_95": [
+       0.1204,
+       0.3227
+      ]
+     },
+     "pass_precision": {
+      "k": 4,
+      "n": 26,
+      "value": 0.1538,
+      "wilson_95": [
+       0.0615,
+       0.3353
+      ],
+      "task_bootstrap_95": {
+       "interval_95": [
+        0.0,
+        0.2222
+       ],
+       "undefined": 0
+      }
+     },
+     "pass_recall": {
+      "k": 4,
+      "n": 22,
+      "value": 0.1818,
+      "wilson_95": [
+       0.0731,
+       0.3852
+      ]
+     }
+    },
+    "within_task": {
+     "tasks": {
+      "embedding-drift-monitor": {
+       "passes": 17,
+       "failures": 22,
+       "pairs": 374,
+       "pairs_with_undefined_score": 374,
+       "concordance": 0.5,
+       "score_varies": false
+      },
+      "legacy-utility-triage": {
+       "passes": 1,
+       "failures": 2,
+       "pairs": 2,
+       "pairs_with_undefined_score": 2,
+       "concordance": 0.5,
+       "score_varies": false
+      },
+      "mvcc-lsm-compaction": {
+       "passes": 2,
+       "failures": 5,
+       "pairs": 10,
+       "pairs_with_undefined_score": 0,
+       "concordance": 0.5,
+       "score_varies": false
+      },
+      "sound-change-cascade": {
+       "passes": 2,
+       "failures": 12,
+       "pairs": 24,
+       "pairs_with_undefined_score": 0,
+       "concordance": 0.5833,
+       "score_varies": true
+      }
+     },
+     "mean_concordance": 0.5208,
+     "task_bootstrap_95": {
+      "interval_95": [
+       0.5,
+       0.5416
+      ],
+      "undefined": 48
+     },
+     "tasks_where_score_varies": 1
+    }
+   },
+   "held_out": {
+    "candidates_with_reward": 31,
+    "candidates_without_reward": 3,
+    "errors": 0,
+    "tasks": 7,
+    "per_kind": {
+     "path": {
+      "fail_given_differed": {
+       "k": 1,
+       "n": 1,
+       "value": 1.0,
+       "wilson_95": [
+        0.2065,
+        1.0
+       ],
+       "task_bootstrap_95": {
+        "interval_95": [
+         1.0,
+         1.0
+        ],
+        "undefined": 3460
+       }
+      },
+      "pass_given_matched": {
+       "k": 0,
+       "n": 2,
+       "value": 0.0,
+       "wilson_95": [
+        0.0,
+        0.6576
+       ],
+       "task_bootstrap_95": {
+        "interval_95": [
+         0.0,
+         0.0
+        ],
+        "undefined": 916
+       }
+      },
+      "tasks_differed": 1,
+      "tasks_matched": 2
+     },
+     "format": {
+      "fail_given_differed": {
+       "k": 0,
+       "n": 0,
+       "value": null,
+       "wilson_95": null,
+       "task_bootstrap_95": {
+        "interval_95": null,
+        "undefined": 10000
+       }
+      },
+      "pass_given_matched": {
+       "k": 0,
+       "n": 1,
+       "value": 0.0,
+       "wilson_95": [
+        0.0,
+        0.7935
+       ],
+       "task_bootstrap_95": {
+        "interval_95": [
+         0.0,
+         0.0
+        ],
+        "undefined": 3401
+       }
+      },
+      "tasks_differed": 0,
+      "tasks_matched": 1
+     },
+     "interface": {
+      "fail_given_differed": {
+       "k": 0,
+       "n": 0,
+       "value": null,
+       "wilson_95": null,
+       "task_bootstrap_95": {
+        "interval_95": null,
+        "undefined": 10000
+       }
+      },
+      "pass_given_matched": {
+       "k": 0,
+       "n": 0,
+       "value": null,
+       "wilson_95": null,
+       "task_bootstrap_95": {
+        "interval_95": null,
+        "undefined": 10000
+       }
+      },
+      "tasks_differed": 0,
+      "tasks_matched": 0
+     },
+     "example": {
+      "fail_given_differed": {
+       "k": 0,
+       "n": 0,
+       "value": null,
+       "wilson_95": null,
+       "task_bootstrap_95": {
+        "interval_95": null,
+        "undefined": 10000
+       }
+      },
+      "pass_given_matched": {
+       "k": 0,
+       "n": 0,
+       "value": null,
+       "wilson_95": null,
+       "task_bootstrap_95": {
+        "interval_95": null,
+        "undefined": 10000
+       }
+      },
+      "tasks_differed": 0,
+      "tasks_matched": 0
+     },
+     "exit_code": {
+      "fail_given_differed": {
+       "k": 0,
+       "n": 0,
+       "value": null,
+       "wilson_95": null,
+       "task_bootstrap_95": {
+        "interval_95": null,
+        "undefined": 10000
+       }
+      },
+      "pass_given_matched": {
+       "k": 0,
+       "n": 0,
+       "value": null,
+       "wilson_95": null,
+       "task_bootstrap_95": {
+        "interval_95": null,
+        "undefined": 10000
+       }
+      },
+      "tasks_differed": 0,
+      "tasks_matched": 0
+     },
+     "command": {
+      "fail_given_differed": {
+       "k": 1,
+       "n": 1,
+       "value": 1.0,
+       "wilson_95": [
+        0.2065,
+        1.0
+       ],
+       "task_bootstrap_95": {
+        "interval_95": [
+         1.0,
+         1.0
+        ],
+        "undefined": 3354
+       }
+      },
+      "pass_given_matched": {
+       "k": 0,
+       "n": 2,
+       "value": 0.0,
+       "wilson_95": [
+        0.0,
+        0.6576
+       ],
+       "task_bootstrap_95": {
+        "interval_95": [
+         0.0,
+         0.0
+        ],
+        "undefined": 3429
+       }
+      },
+      "tasks_differed": 1,
+      "tasks_matched": 1
+     }
+    },
+    "calls": {
+     "candidates": 31,
+     "failures": 28,
+     "passes": 3,
+     "no_call": 26,
+     "fail_precision": {
+      "k": 2,
+      "n": 2,
+      "value": 1.0,
+      "wilson_95": [
+       0.3424,
+       1.0
+      ],
+      "task_bootstrap_95": {
+       "interval_95": [
+        1.0,
+        1.0
+       ],
+       "undefined": 928
+      }
+     },
+     "failure_recall": {
+      "k": 2,
+      "n": 28,
+      "value": 0.0714,
+      "wilson_95": [
+       0.0198,
+       0.2265
+      ]
+     },
+     "pass_precision": {
+      "k": 0,
+      "n": 3,
+      "value": 0.0,
+      "wilson_95": [
+       0.0,
+       0.5615
+      ],
+      "task_bootstrap_95": {
+       "interval_95": [
+        0.0,
+        0.0
+       ],
+       "undefined": 965
+      }
+     },
+     "pass_recall": {
+      "k": 0,
+      "n": 3,
+      "value": 0.0,
+      "wilson_95": [
+       0.0,
+       0.5615
+      ]
+     }
+    },
+    "within_task": {
+     "tasks": {
+      "cad-model": {
+       "passes": 2,
+       "failures": 1,
+       "pairs": 2,
+       "pairs_with_undefined_score": 2,
+       "concordance": 0.5,
+       "score_varies": false
+      },
+      "heat-pump-warranty": {
+       "passes": 1,
+       "failures": 2,
+       "pairs": 2,
+       "pairs_with_undefined_score": 2,
+       "concordance": 0.5,
+       "score_varies": false
+      }
+     },
+     "mean_concordance": 0.5,
+     "task_bootstrap_95": {
+      "interval_95": [
+       0.5,
+       0.5
+      ],
+      "undefined": 907
+     },
+     "tasks_where_score_varies": 0
+    }
+   },
+   "both": {
+    "candidates_with_reward": 112,
+    "candidates_without_reward": 8,
+    "errors": 1,
+    "tasks": 17,
+    "per_kind": {
+     "path": {
+      "fail_given_differed": {
+       "k": 5,
+       "n": 5,
+       "value": 1.0,
+       "wilson_95": [
+        0.5655,
+        1.0
+       ],
+       "task_bootstrap_95": {
+        "interval_95": [
+         1.0,
+         1.0
+        ],
+        "undefined": 357
+       }
+      },
+      "pass_given_matched": {
+       "k": 2,
+       "n": 27,
+       "value": 0.0741,
+       "wilson_95": [
+        0.0206,
+        0.2337
+       ],
+       "task_bootstrap_95": {
+        "interval_95": [
+         0.0,
+         0.1463
+        ],
+        "undefined": 0
+       }
+      },
+      "tasks_differed": 3,
+      "tasks_matched": 7
+     },
+     "format": {
+      "fail_given_differed": {
+       "k": 0,
+       "n": 0,
+       "value": null,
+       "wilson_95": null,
+       "task_bootstrap_95": {
+        "interval_95": null,
+        "undefined": 10000
+       }
+      },
+      "pass_given_matched": {
+       "k": 2,
+       "n": 17,
+       "value": 0.1176,
+       "wilson_95": [
+        0.0329,
+        0.3434
+       ],
+       "task_bootstrap_95": {
+        "interval_95": [
+         0.0,
+         0.1579
+        ],
+        "undefined": 28
+       }
+      },
+      "tasks_differed": 0,
+      "tasks_matched": 5
+     },
+     "interface": {
+      "fail_given_differed": {
+       "k": 0,
+       "n": 0,
+       "value": null,
+       "wilson_95": null,
+       "task_bootstrap_95": {
+        "interval_95": null,
+        "undefined": 10000
+       }
+      },
+      "pass_given_matched": {
+       "k": 0,
+       "n": 2,
+       "value": 0.0,
+       "wilson_95": [
+        0.0,
+        0.6576
+       ],
+       "task_bootstrap_95": {
+        "interval_95": [
+         0.0,
+         0.0
+        ],
+        "undefined": 3559
+       }
+      },
+      "tasks_differed": 0,
+      "tasks_matched": 1
+     },
+     "example": {
+      "fail_given_differed": {
+       "k": 10,
+       "n": 10,
+       "value": 1.0,
+       "wilson_95": [
+        0.7225,
+        1.0
+       ],
+       "task_bootstrap_95": {
+        "interval_95": [
+         1.0,
+         1.0
+        ],
+        "undefined": 3568
+       }
+      },
+      "pass_given_matched": {
+       "k": 0,
+       "n": 1,
+       "value": 0.0,
+       "wilson_95": [
+        0.0,
+        0.7935
+       ],
+       "task_bootstrap_95": {
+        "interval_95": [
+         0.0,
+         0.0
+        ],
+        "undefined": 3568
+       }
+      },
+      "tasks_differed": 1,
+      "tasks_matched": 1
+     },
+     "exit_code": {
+      "fail_given_differed": {
+       "k": 0,
+       "n": 0,
+       "value": null,
+       "wilson_95": null,
+       "task_bootstrap_95": {
+        "interval_95": null,
+        "undefined": 10000
+       }
+      },
+      "pass_given_matched": {
+       "k": 0,
+       "n": 11,
+       "value": 0.0,
+       "wilson_95": [
+        0.0,
+        0.2588
+       ],
+       "task_bootstrap_95": {
+        "interval_95": [
+         0.0,
+         0.0
+        ],
+        "undefined": 3568
+       }
+      },
+      "tasks_differed": 0,
+      "tasks_matched": 1
+     },
+     "command": {
+      "fail_given_differed": {
+       "k": 1,
+       "n": 1,
+       "value": 1.0,
+       "wilson_95": [
+        0.2065,
+        1.0
+       ],
+       "task_bootstrap_95": {
+        "interval_95": [
+         1.0,
+         1.0
+        ],
+        "undefined": 3564
+       }
+      },
+      "pass_given_matched": {
+       "k": 2,
+       "n": 9,
+       "value": 0.2222,
+       "wilson_95": [
+        0.0632,
+        0.5474
+       ],
+       "task_bootstrap_95": {
+        "interval_95": [
+         0.0,
+         0.2857
+        ],
+        "undefined": 1235
+       }
+      },
+      "tasks_differed": 1,
+      "tasks_matched": 2
+     }
+    },
+    "calls": {
+     "candidates": 112,
+     "failures": 87,
+     "passes": 25,
+     "no_call": 69,
+     "fail_precision": {
+      "k": 14,
+      "n": 14,
+      "value": 1.0,
+      "wilson_95": [
+       0.7847,
+       1.0
+      ],
+      "task_bootstrap_95": {
+       "interval_95": [
+        1.0,
+        1.0
+       ],
+       "undefined": 94
+      }
+     },
+     "failure_recall": {
+      "k": 14,
+      "n": 87,
+      "value": 0.1609,
+      "wilson_95": [
+       0.0983,
+       0.2522
+      ]
+     },
+     "pass_precision": {
+      "k": 4,
+      "n": 29,
+      "value": 0.1379,
+      "wilson_95": [
+       0.055,
+       0.3056
+      ],
+      "task_bootstrap_95": {
+       "interval_95": [
+        0.0,
+        0.2105
+       ],
+       "undefined": 0
+      }
+     },
+     "pass_recall": {
+      "k": 4,
+      "n": 25,
+      "value": 0.16,
+      "wilson_95": [
+       0.064,
+       0.3465
+      ]
+     }
+    },
+    "within_task": {
+     "tasks": {
+      "cad-model": {
+       "passes": 2,
+       "failures": 1,
+       "pairs": 2,
+       "pairs_with_undefined_score": 2,
+       "concordance": 0.5,
+       "score_varies": false
+      },
+      "embedding-drift-monitor": {
+       "passes": 17,
+       "failures": 22,
+       "pairs": 374,
+       "pairs_with_undefined_score": 374,
+       "concordance": 0.5,
+       "score_varies": false
+      },
+      "heat-pump-warranty": {
+       "passes": 1,
+       "failures": 2,
+       "pairs": 2,
+       "pairs_with_undefined_score": 2,
+       "concordance": 0.5,
+       "score_varies": false
+      },
+      "legacy-utility-triage": {
+       "passes": 1,
+       "failures": 2,
+       "pairs": 2,
+       "pairs_with_undefined_score": 2,
+       "concordance": 0.5,
+       "score_varies": false
+      },
+      "mvcc-lsm-compaction": {
+       "passes": 2,
+       "failures": 5,
+       "pairs": 10,
+       "pairs_with_undefined_score": 0,
+       "concordance": 0.5,
+       "score_varies": false
+      },
+      "sound-change-cascade": {
+       "passes": 2,
+       "failures": 12,
+       "pairs": 24,
+       "pairs_with_undefined_score": 0,
+       "concordance": 0.5833,
+       "score_varies": true
+      }
+     },
+     "mean_concordance": 0.5139,
+     "task_bootstrap_95": {
+      "interval_95": [
+       0.5,
+       0.5416
+      ],
+      "undefined": 6
+     },
+     "tasks_where_score_varies": 1
+    }
+   }
+  },
+  "all_snapshots": {
+   "development": {
+    "candidates_with_reward": 23,
+    "candidates_without_reward": 0,
+    "errors": 0,
+    "tasks": 8,
+    "per_kind": {
+     "path": {
+      "fail_given_differed": {
+       "k": 1,
+       "n": 1,
+       "value": 1.0,
+       "wilson_95": [
+        0.2065,
+        1.0
+       ],
+       "task_bootstrap_95": {
+        "interval_95": [
+         1.0,
+         1.0
+        ],
+        "undefined": 3451
+       }
+      },
+      "pass_given_matched": {
+       "k": 3,
+       "n": 7,
+       "value": 0.4286,
+       "wilson_95": [
+        0.1582,
+        0.7495
+       ],
+       "task_bootstrap_95": {
+        "interval_95": [
+         0.0,
+         1.0
+        ],
+        "undefined": 218
+       }
+      },
+      "tasks_differed": 1,
+      "tasks_matched": 3
+     },
+     "format": {
+      "fail_given_differed": {
+       "k": 0,
+       "n": 0,
+       "value": null,
+       "wilson_95": null,
+       "task_bootstrap_95": {
+        "interval_95": null,
+        "undefined": 10000
+       }
+      },
+      "pass_given_matched": {
+       "k": 3,
+       "n": 6,
+       "value": 0.5,
+       "wilson_95": [
+        0.1876,
+        0.8124
+       ],
+       "task_bootstrap_95": {
+        "interval_95": [
+         0.0,
+         1.0
+        ],
+        "undefined": 960
+       }
+      },
+      "tasks_differed": 0,
+      "tasks_matched": 2
+     },
+     "interface": {
+      "fail_given_differed": {
+       "k": 0,
+       "n": 0,
+       "value": null,
+       "wilson_95": null,
+       "task_bootstrap_95": {
+        "interval_95": null,
+        "undefined": 10000
+       }
+      },
+      "pass_given_matched": {
+       "k": 0,
+       "n": 4,
+       "value": 0.0,
+       "wilson_95": [
+        0.0,
+        0.4899
+       ],
+       "task_bootstrap_95": {
+        "interval_95": [
+         0.0,
+         0.0
+        ],
+        "undefined": 3433
+       }
+      },
+      "tasks_differed": 0,
+      "tasks_matched": 1
+     },
+     "example": {
+      "fail_given_differed": {
+       "k": 1,
+       "n": 1,
+       "value": 1.0,
+       "wilson_95": [
+        0.2065,
+        1.0
+       ],
+       "task_bootstrap_95": {
+        "interval_95": [
+         1.0,
+         1.0
+        ],
+        "undefined": 3527
+       }
+      },
+      "pass_given_matched": {
+       "k": 0,
+       "n": 0,
+       "value": null,
+       "wilson_95": null,
+       "task_bootstrap_95": {
+        "interval_95": null,
+        "undefined": 10000
+       }
+      },
+      "tasks_differed": 1,
+      "tasks_matched": 0
+     },
+     "exit_code": {
+      "fail_given_differed": {
+       "k": 0,
+       "n": 0,
+       "value": null,
+       "wilson_95": null,
+       "task_bootstrap_95": {
+        "interval_95": null,
+        "undefined": 10000
+       }
+      },
+      "pass_given_matched": {
+       "k": 0,
+       "n": 1,
+       "value": 0.0,
+       "wilson_95": [
+        0.0,
+        0.7935
+       ],
+       "task_bootstrap_95": {
+        "interval_95": [
+         0.0,
+         0.0
+        ],
+        "undefined": 3527
+       }
+      },
+      "tasks_differed": 0,
+      "tasks_matched": 1
+     },
+     "command": {
+      "fail_given_differed": {
+       "k": 0,
+       "n": 1,
+       "value": 0.0,
+       "wilson_95": [
+        0.0,
+        0.7935
+       ],
+       "task_bootstrap_95": {
+        "interval_95": [
+         0.0,
+         0.0
+        ],
+        "undefined": 3493
+       }
+      },
+      "pass_given_matched": {
+       "k": 4,
+       "n": 4,
+       "value": 1.0,
+       "wilson_95": [
+        0.5101,
+        1.0
+       ],
+       "task_bootstrap_95": {
+        "interval_95": [
+         1.0,
+         1.0
+        ],
+        "undefined": 3493
+       }
+      },
+      "tasks_differed": 1,
+      "tasks_matched": 1
+     }
+    },
+    "calls": {
+     "candidates": 23,
+     "failures": 11,
+     "passes": 12,
+     "no_call": 6,
+     "fail_precision": {
+      "k": 2,
+      "n": 3,
+      "value": 0.6667,
+      "wilson_95": [
+       0.2077,
+       0.9385
+      ],
+      "task_bootstrap_95": {
+       "interval_95": [
+        0.0,
+        1.0
+       ],
+       "undefined": 235
+      }
+     },
+     "failure_recall": {
+      "k": 2,
+      "n": 11,
+      "value": 0.1818,
+      "wilson_95": [
+       0.0514,
+       0.477
+      ]
+     },
+     "pass_precision": {
+      "k": 7,
+      "n": 14,
+      "value": 0.5,
+      "wilson_95": [
+       0.268,
+       0.732
+      ],
+      "task_bootstrap_95": {
+       "interval_95": [
+        0.0,
+        1.0
+       ],
+       "undefined": 38
+      }
+     },
+     "pass_recall": {
+      "k": 7,
+      "n": 12,
+      "value": 0.5833,
+      "wilson_95": [
+       0.3195,
+       0.8067
+      ]
+     }
+    },
+    "within_task": {
+     "tasks": {
+      "legacy-utility-triage": {
+       "passes": 1,
+       "failures": 2,
+       "pairs": 2,
+       "pairs_with_undefined_score": 2,
+       "concordance": 0.5,
+       "score_varies": false
+      }
+     },
+     "mean_concordance": 0.5,
+     "task_bootstrap_95": {
+      "interval_95": [
+       0.5,
+       0.5
+      ],
+      "undefined": 3431
+     },
+     "tasks_where_score_varies": 0
+    }
+   },
+   "held_out": {
+    "candidates_with_reward": 31,
+    "candidates_without_reward": 3,
+    "errors": 0,
+    "tasks": 8,
+    "per_kind": {
+     "path": {
+      "fail_given_differed": {
+       "k": 2,
+       "n": 3,
+       "value": 0.6667,
+       "wilson_95": [
+        0.2077,
+        0.9385
+       ],
+       "task_bootstrap_95": {
+        "interval_95": [
+         0.5,
+         1.0
+        ],
+        "undefined": 976
+       }
+      },
+      "pass_given_matched": {
+       "k": 5,
+       "n": 14,
+       "value": 0.3571,
+       "wilson_95": [
+        0.1634,
+        0.6124
+       ],
+       "task_bootstrap_95": {
+        "interval_95": [
+         0.0,
+         0.8
+        ],
+        "undefined": 235
+       }
+      },
+      "tasks_differed": 2,
+      "tasks_matched": 3
+     },
+     "format": {
+      "fail_given_differed": {
+       "k": 0,
+       "n": 0,
+       "value": null,
+       "wilson_95": null,
+       "task_bootstrap_95": {
+        "interval_95": null,
+        "undefined": 10000
+       }
+      },
+      "pass_given_matched": {
+       "k": 0,
+       "n": 0,
+       "value": null,
+       "wilson_95": null,
+       "task_bootstrap_95": {
+        "interval_95": null,
+        "undefined": 10000
+       }
+      },
+      "tasks_differed": 0,
+      "tasks_matched": 0
+     },
+     "interface": {
+      "fail_given_differed": {
+       "k": 0,
+       "n": 0,
+       "value": null,
+       "wilson_95": null,
+       "task_bootstrap_95": {
+        "interval_95": null,
+        "undefined": 10000
+       }
+      },
+      "pass_given_matched": {
+       "k": 0,
+       "n": 0,
+       "value": null,
+       "wilson_95": null,
+       "task_bootstrap_95": {
+        "interval_95": null,
+        "undefined": 10000
+       }
+      },
+      "tasks_differed": 0,
+      "tasks_matched": 0
+     },
+     "example": {
+      "fail_given_differed": {
+       "k": 0,
+       "n": 0,
+       "value": null,
+       "wilson_95": null,
+       "task_bootstrap_95": {
+        "interval_95": null,
+        "undefined": 10000
+       }
+      },
+      "pass_given_matched": {
+       "k": 0,
+       "n": 0,
+       "value": null,
+       "wilson_95": null,
+       "task_bootstrap_95": {
+        "interval_95": null,
+        "undefined": 10000
+       }
+      },
+      "tasks_differed": 0,
+      "tasks_matched": 0
+     },
+     "exit_code": {
+      "fail_given_differed": {
+       "k": 0,
+       "n": 0,
+       "value": null,
+       "wilson_95": null,
+       "task_bootstrap_95": {
+        "interval_95": null,
+        "undefined": 10000
+       }
+      },
+      "pass_given_matched": {
+       "k": 0,
+       "n": 0,
+       "value": null,
+       "wilson_95": null,
+       "task_bootstrap_95": {
+        "interval_95": null,
+        "undefined": 10000
+       }
+      },
+      "tasks_differed": 0,
+      "tasks_matched": 0
+     },
+     "command": {
+      "fail_given_differed": {
+       "k": 4,
+       "n": 4,
+       "value": 1.0,
+       "wilson_95": [
+        0.5101,
+        1.0
+       ],
+       "task_bootstrap_95": {
+        "interval_95": [
+         1.0,
+         1.0
+        ],
+        "undefined": 3451
+       }
+      },
+      "pass_given_matched": {
+       "k": 1,
+       "n": 11,
+       "value": 0.0909,
+       "wilson_95": [
+        0.0162,
+        0.3774
+       ],
+       "task_bootstrap_95": {
+        "interval_95": [
+         0.0,
+         0.2
+        ],
+        "undefined": 1014
+       }
+      },
+      "tasks_differed": 1,
+      "tasks_matched": 2
+     }
+    },
+    "calls": {
+     "candidates": 31,
+     "failures": 20,
+     "passes": 11,
+     "no_call": 8,
+     "fail_precision": {
+      "k": 6,
+      "n": 7,
+      "value": 0.8571,
+      "wilson_95": [
+       0.4869,
+       0.9743
+      ],
+      "task_bootstrap_95": {
+       "interval_95": [
+        0.5,
+        1.0
+       ],
+       "undefined": 225
+      }
+     },
+     "failure_recall": {
+      "k": 6,
+      "n": 20,
+      "value": 0.3,
+      "wilson_95": [
+       0.1455,
+       0.519
+      ]
+     },
+     "pass_precision": {
+      "k": 5,
+      "n": 16,
+      "value": 0.3125,
+      "wilson_95": [
+       0.1416,
+       0.556
+      ],
+      "task_bootstrap_95": {
+       "interval_95": [
+        0.0,
+        0.8
+       ],
+       "undefined": 237
+      }
+     },
+     "pass_recall": {
+      "k": 5,
+      "n": 11,
+      "value": 0.4545,
+      "wilson_95": [
+       0.2127,
+       0.7199
+      ]
+     }
+    },
+    "within_task": {
+     "tasks": {
+      "bun-sourcemap-leak": {
+       "passes": 1,
+       "failures": 4,
+       "pairs": 4,
+       "pairs_with_undefined_score": 0,
+       "concordance": 0.5,
+       "score_varies": false
+      },
+      "heat-pump-warranty": {
+       "passes": 2,
+       "failures": 2,
+       "pairs": 4,
+       "pairs_with_undefined_score": 4,
+       "concordance": 0.5,
+       "score_varies": false
+      },
+      "production-planning": {
+       "passes": 4,
+       "failures": 2,
+       "pairs": 8,
+       "pairs_with_undefined_score": 0,
+       "concordance": 0.75,
+       "score_varies": true
+      },
+      "risk-scorer-replay": {
+       "passes": 1,
+       "failures": 1,
+       "pairs": 1,
+       "pairs_with_undefined_score": 0,
+       "concordance": 0.5,
+       "score_varies": false
+      }
+     },
+     "mean_concordance": 0.5625,
+     "task_bootstrap_95": {
+      "interval_95": [
+       0.5,
+       0.625
+      ],
+      "undefined": 46
+     },
+     "tasks_where_score_varies": 1
+    }
+   },
+   "both": {
+    "candidates_with_reward": 54,
+    "candidates_without_reward": 3,
+    "errors": 0,
+    "tasks": 16,
+    "per_kind": {
+     "path": {
+      "fail_given_differed": {
+       "k": 3,
+       "n": 4,
+       "value": 0.75,
+       "wilson_95": [
+        0.3006,
+        0.9544
+       ],
+       "task_bootstrap_95": {
+        "interval_95": [
+         0.5,
+         1.0
+        ],
+        "undefined": 333
+       }
+      },
+      "pass_given_matched": {
+       "k": 8,
+       "n": 21,
+       "value": 0.381,
+       "wilson_95": [
+        0.2075,
+        0.5912
+       ],
+       "task_bootstrap_95": {
+        "interval_95": [
+         0.0,
+         0.75
+        ],
+        "undefined": 3
+       }
+      },
+      "tasks_differed": 3,
+      "tasks_matched": 6
+     },
+     "format": {
+      "fail_given_differed": {
+       "k": 0,
+       "n": 0,
+       "value": null,
+       "wilson_95": null,
+       "task_bootstrap_95": {
+        "interval_95": null,
+        "undefined": 10000
+       }
+      },
+      "pass_given_matched": {
+       "k": 3,
+       "n": 6,
+       "value": 0.5,
+       "wilson_95": [
+        0.1876,
+        0.8124
+       ],
+       "task_bootstrap_95": {
+        "interval_95": [
+         0.0,
+         1.0
+        ],
+        "undefined": 1194
+       }
+      },
+      "tasks_differed": 0,
+      "tasks_matched": 2
+     },
+     "interface": {
+      "fail_given_differed": {
+       "k": 0,
+       "n": 0,
+       "value": null,
+       "wilson_95": null,
+       "task_bootstrap_95": {
+        "interval_95": null,
+        "undefined": 10000
+       }
+      },
+      "pass_given_matched": {
+       "k": 0,
+       "n": 4,
+       "value": 0.0,
+       "wilson_95": [
+        0.0,
+        0.4899
+       ],
+       "task_bootstrap_95": {
+        "interval_95": [
+         0.0,
+         0.0
+        ],
+        "undefined": 3496
+       }
+      },
+      "tasks_differed": 0,
+      "tasks_matched": 1
+     },
+     "example": {
+      "fail_given_differed": {
+       "k": 1,
+       "n": 1,
+       "value": 1.0,
+       "wilson_95": [
+        0.2065,
+        1.0
+       ],
+       "task_bootstrap_95": {
+        "interval_95": [
+         1.0,
+         1.0
+        ],
+        "undefined": 3609
+       }
+      },
+      "pass_given_matched": {
+       "k": 0,
+       "n": 0,
+       "value": null,
+       "wilson_95": null,
+       "task_bootstrap_95": {
+        "interval_95": null,
+        "undefined": 10000
+       }
+      },
+      "tasks_differed": 1,
+      "tasks_matched": 0
+     },
+     "exit_code": {
+      "fail_given_differed": {
+       "k": 0,
+       "n": 0,
+       "value": null,
+       "wilson_95": null,
+       "task_bootstrap_95": {
+        "interval_95": null,
+        "undefined": 10000
+       }
+      },
+      "pass_given_matched": {
+       "k": 0,
+       "n": 1,
+       "value": 0.0,
+       "wilson_95": [
+        0.0,
+        0.7935
+       ],
+       "task_bootstrap_95": {
+        "interval_95": [
+         0.0,
+         0.0
+        ],
+        "undefined": 3609
+       }
+      },
+      "tasks_differed": 0,
+      "tasks_matched": 1
+     },
+     "command": {
+      "fail_given_differed": {
+       "k": 4,
+       "n": 5,
+       "value": 0.8,
+       "wilson_95": [
+        0.3755,
+        0.9638
+       ],
+       "task_bootstrap_95": {
+        "interval_95": [
+         0.0,
+         1.0
+        ],
+        "undefined": 1173
+       }
+      },
+      "pass_given_matched": {
+       "k": 5,
+       "n": 15,
+       "value": 0.3333,
+       "wilson_95": [
+        0.1518,
+        0.5829
+       ],
+       "task_bootstrap_95": {
+        "interval_95": [
+         0.0,
+         1.0
+        ],
+        "undefined": 384
+       }
+      },
+      "tasks_differed": 2,
+      "tasks_matched": 3
+     }
+    },
+    "calls": {
+     "candidates": 54,
+     "failures": 31,
+     "passes": 23,
+     "no_call": 14,
+     "fail_precision": {
+      "k": 8,
+      "n": 10,
+      "value": 0.8,
+      "wilson_95": [
+       0.4902,
+       0.9433
+      ],
+      "task_bootstrap_95": {
+       "interval_95": [
+        0.4286,
+        1.0
+       ],
+       "undefined": 7
+      }
+     },
+     "failure_recall": {
+      "k": 8,
+      "n": 31,
+      "value": 0.2581,
+      "wilson_95": [
+       0.137,
+       0.4325
+      ]
+     },
+     "pass_precision": {
+      "k": 12,
+      "n": 30,
+      "value": 0.4,
+      "wilson_95": [
+       0.2459,
+       0.5768
+      ],
+      "task_bootstrap_95": {
+       "interval_95": [
+        0.0667,
+        0.75
+       ],
+       "undefined": 1
+      }
+     },
+     "pass_recall": {
+      "k": 12,
+      "n": 23,
+      "value": 0.5217,
+      "wilson_95": [
+       0.3296,
+       0.7076
+      ]
+     }
+    },
+    "within_task": {
+     "tasks": {
+      "bun-sourcemap-leak": {
+       "passes": 1,
+       "failures": 4,
+       "pairs": 4,
+       "pairs_with_undefined_score": 0,
+       "concordance": 0.5,
+       "score_varies": false
+      },
+      "heat-pump-warranty": {
+       "passes": 2,
+       "failures": 2,
+       "pairs": 4,
+       "pairs_with_undefined_score": 4,
+       "concordance": 0.5,
+       "score_varies": false
+      },
+      "legacy-utility-triage": {
+       "passes": 1,
+       "failures": 2,
+       "pairs": 2,
+       "pairs_with_undefined_score": 2,
+       "concordance": 0.5,
+       "score_varies": false
+      },
+      "production-planning": {
+       "passes": 4,
+       "failures": 2,
+       "pairs": 8,
+       "pairs_with_undefined_score": 0,
+       "concordance": 0.75,
+       "score_varies": true
+      },
+      "risk-scorer-replay": {
+       "passes": 1,
+       "failures": 1,
+       "pairs": 1,
+       "pairs_with_undefined_score": 0,
+       "concordance": 0.5,
+       "score_varies": false
+      }
+     },
+     "mean_concordance": 0.55,
+     "task_bootstrap_95": {
+      "interval_95": [
+       0.5,
+       0.625
+      ],
+      "undefined": 30
+     },
+     "tasks_where_score_varies": 1
+    }
+   }
+  }
+ },
+ "coverage": {
+  "bun-sourcemap-leak": {
+   "split": "held_out",
+   "plan": "78a9624b2a3227737f8243318910e0b8a675c022d745cd0e73631bcaba4c916a",
+   "items": {
+    "command": {
+     "check": 1
+    },
+    "path": {
+     "check": 1
+    }
+   },
+   "untouched": {
+    "command": {
+     "matched": 1
+    },
+    "path": {
+     "differed": 1
+    }
+   },
+   "outcomes_over_candidates": {
+    "command": {
+     "matched": 8
+    },
+    "path": {
+     "matched": 8
+    }
+   },
+   "candidates": 8,
+   "no_call": 0
+  },
+  "cad-model": {
+   "split": "held_out",
+   "plan": "2cb3cfa2fc8747d93b38ace6c313037d8c7bd35357fe7d0903dd7d51e0cc0169",
+   "items": {},
+   "untouched": {},
+   "outcomes_over_candidates": {},
+   "candidates": 4,
+   "no_call": 4
+  },
+  "cargo-flight-dispatch": {
+   "split": "held_out",
+   "plan": "66d073c6db9eb341d279b8752fa5acd24063bc690792e0ef37d8d86514cbcf2c",
+   "items": {
+    "command": {
+     "check": 1
+    }
+   },
+   "untouched": {
+    "command": {
+     "matched": 1
+    }
+   },
+   "outcomes_over_candidates": {
+    "command": {
+     "matched": 6
+    }
+   },
+   "candidates": 6,
+   "no_call": 0
+  },
+  "coq-block-bound": {
+   "split": "held_out",
+   "plan": "0f0ed19ab08816e69fdedca28ac26bfefc5d0bf8aac9348132b8c54b1eb464c7",
+   "items": {
+    "command": {
+     "check": 1
+    }
+   },
+   "untouched": {
+    "command": {
+     "matched": 1
+    }
+   },
+   "outcomes_over_candidates": {
+    "command": {
+     "matched": 2
+    }
+   },
+   "candidates": 2,
+   "no_call": 0
+  },
+  "embedding-drift-monitor": {
+   "split": "development",
+   "plan": "834e3da468a69b69d0f2346c4d9b43ed5926f40eca364f221f3b5c4520eac61b",
+   "items": {},
+   "untouched": {},
+   "outcomes_over_candidates": {},
+   "candidates": 45,
+   "no_call": 45
+  },
+  "fin-saccr-rwa": {
+   "split": "development",
+   "plan": "3eb494b19813960b62a1007ada33301bea44f5ba45506898f9e055297662eb75",
+   "items": {
+    "path": {
+     "check": 2
+    },
+    "format": {
+     "check": 2
+    }
+   },
+   "untouched": {
+    "format": {
+     "could_not_run": 2
+    },
+    "path": {
+     "differed": 2
+    }
+   },
+   "outcomes_over_candidates": {
+    "path": {
+     "matched": 8
+    },
+    "format": {
+     "matched": 8
+    }
+   },
+   "candidates": 4,
+   "no_call": 0
+  },
+  "gsea-proteomics": {
+   "split": "development",
+   "plan": "ecfe8852858d31c7d88c0444650eee973600906991fb016222687836f29a9d67",
+   "items": {
+    "path": {
+     "check": 3
+    },
+    "format": {
+     "check": 3
+    }
+   },
+   "untouched": {
+    "format": {
+     "could_not_run": 3
+    },
+    "path": {
+     "differed": 3
+    }
+   },
+   "outcomes_over_candidates": {
+    "path": {
+     "matched": 6,
+     "differed": 3
+    },
+    "format": {
+     "matched": 6,
+     "could_not_run": 3
+    }
+   },
+   "candidates": 3,
+   "no_call": 0
+  },
+  "heat-pump-warranty": {
+   "split": "held_out",
+   "plan": "98e25935d638900cc60ce757ad92ba02aecc6192272e2a377652ee3af7c78531",
+   "items": {},
+   "untouched": {},
+   "outcomes_over_candidates": {},
+   "candidates": 4,
+   "no_call": 4
+  },
+  "html-js-filter": {
+   "split": "held_out",
+   "plan": "6dd3b1c82d0cd74f9af60e9d9d7088800645c7f58c5e77428de96e2b9f026f71",
+   "items": {},
+   "untouched": {},
+   "outcomes_over_candidates": {},
+   "candidates": 2,
+   "no_call": 2
+  },
+  "interleaved-vigenere": {
+   "split": "development",
+   "plan": "aebd07b49d4e3151cf7bbcb896ad6b80a67b7f1c43dc7bc9e930fa706ff44903",
+   "items": {
+    "path": {
+     "check": 2
+    },
+    "exit_code": {
+     "check": 2
+    },
+    "example": {
+     "check": 2
+    }
+   },
+   "untouched": {
+    "example": {
+     "differed": 2
+    },
+    "exit_code": {
+     "matched": 2
+    },
+    "path": {
+     "differed": 2
+    }
+   },
+   "outcomes_over_candidates": {
+    "path": {
+     "matched": 19,
+     "differed": 3
+    },
+    "exit_code": {
+     "matched": 22
+    },
+    "example": {
+     "matched": 11,
+     "differed": 11
+    }
+   },
+   "candidates": 11,
+   "no_call": 0
+  },
+  "ks-solver-cpp": {
+   "split": "held_out",
+   "plan": "8323b80798d7828377a5174b25c8cfc4c0d02b51dc264fe9b4e8dcac3682e0a1",
+   "items": {
+    "command": {
+     "check": 1
+    },
+    "path": {
+     "check": 1
+    }
+   },
+   "untouched": {
+    "command": {
+     "differed": 1
+    },
+    "path": {
+     "differed": 1
+    }
+   },
+   "outcomes_over_candidates": {
+    "command": {
+     "differed": 4
+    },
+    "path": {
+     "matched": 4
+    }
+   },
+   "candidates": 4,
+   "no_call": 0
+  },
+  "legacy-utility-triage": {
+   "split": "development",
+   "plan": "c0652d9d03bfa3fb378568709572f48110416913132466f09261036e0d8144f5",
+   "items": {},
+   "untouched": {},
+   "outcomes_over_candidates": {},
+   "candidates": 3,
+   "no_call": 3
+  },
+  "mp-checkpoint-consolidation": {
+   "split": "development",
+   "plan": "0fd103e0d5d13daa3738ce52c947dbe994ecd03b1e993b22dd17e4ffbb5a2af8",
+   "items": {
+    "path": {
+     "check": 1
+    },
+    "format": {
+     "check": 1
+    }
+   },
+   "untouched": {
+    "format": {
+     "could_not_run": 1
+    },
+    "path": {
+     "differed": 1
+    }
+   },
+   "outcomes_over_candidates": {
+    "path": {
+     "matched": 1
+    },
+    "format": {
+     "matched": 1
+    }
+   },
+   "candidates": 1,
+   "no_call": 0
+  },
+  "mvcc-lsm-compaction": {
+   "split": "development",
+   "plan": "cc63633d07862f82b3de37fa673050bb7a13fac74a88fa87a6a265d9ae658d45",
+   "items": {
+    "path": {
+     "not_executable": 1
+    },
+    "command": {
+     "check": 2
+    }
+   },
+   "untouched": {
+    "command": {
+     "differed": 1,
+     "matched": 1
+    },
+    "path": {
+     "not_executable": 1
+    }
+   },
+   "outcomes_over_candidates": {
+    "path": {
+     "not_executable": 11
+    },
+    "command": {
+     "matched": 20,
+     "differed": 2
+    }
+   },
+   "candidates": 11,
+   "no_call": 0
+  },
+  "photonic-waveguide-routing": {
+   "split": "held_out",
+   "plan": "8f95cb424d35e59bf2d4fecf44feff875f312652bd1dbbea658a923a3a0c724d",
+   "items": {
+    "path": {
+     "check": 1
+    },
+    "format": {
+     "check": 1
+    }
+   },
+   "untouched": {
+    "format": {
+     "could_not_run": 1
+    },
+    "path": {
+     "differed": 1
+    }
+   },
+   "outcomes_over_candidates": {
+    "path": {
+     "matched": 1
+    },
+    "format": {
+     "matched": 1
+    }
+   },
+   "candidates": 1,
+   "no_call": 0
+  },
+  "production-planning": {
+   "split": "held_out",
+   "plan": "41cc949bff874178d5f840096014ea11fd282fb3b78e88803c1e9f35f3534c7d",
+   "items": {
+    "path": {
+     "check": 1
+    }
+   },
+   "untouched": {
+    "path": {
+     "differed": 1
+    }
+   },
+   "outcomes_over_candidates": {
+    "path": {
+     "matched": 5,
+     "differed": 1
+    }
+   },
+   "candidates": 6,
+   "no_call": 0
+  },
+  "protein-autointerp-disulfide": {
+   "split": "development",
+   "plan": "bb8b40b2e003ce960b66a32b152eb2ea39da2301527a968fe4afab2653408eb0",
+   "items": {
+    "path": {
+     "check": 1
+    },
+    "format": {
+     "check": 1
+    }
+   },
+   "untouched": {
+    "format": {
+     "could_not_run": 1
+    },
+    "path": {
+     "differed": 1
+    }
+   },
+   "outcomes_over_candidates": {
+    "path": {
+     "differed": 1
+    },
+    "format": {
+     "could_not_run": 1
+    }
+   },
+   "candidates": 1,
+   "no_call": 0
+  },
+  "risk-scorer-replay": {
+   "split": "held_out",
+   "plan": "45b1f13f64b6f571dfd3c0455d8666740e340096e57340b627eadd40d87d6f5f",
+   "items": {
+    "path": {
+     "check": 1
+    },
+    "format": {
+     "check": 1
+    },
+    "example": {
+     "not_executable": 1
+    }
+   },
+   "untouched": {
+    "example": {
+     "not_executable": 1
+    },
+    "format": {
+     "could_not_run": 1
+    },
+    "path": {
+     "differed": 1
+    }
+   },
+   "outcomes_over_candidates": {
+    "path": {
+     "differed": 2
+    },
+    "format": {
+     "could_not_run": 2
+    },
+    "example": {
+     "not_executable": 2
+    }
+   },
+   "candidates": 2,
+   "no_call": 0
+  },
+  "session-window-debug": {
+   "split": "held_out",
+   "plan": "db405758fdc4c83893f48c78a71cc1a091c7f2800f63e62ce0ae1e183d23c69a",
+   "items": {},
+   "untouched": {},
+   "outcomes_over_candidates": {},
+   "candidates": 22,
+   "no_call": 22
+  },
+  "sound-change-cascade": {
+   "split": "development",
+   "plan": "177f6eed647404330302ee82a9b86fbb1790f88a33dffcd13a2eb6fb393df780",
+   "items": {
+    "path": {
+     "check": 2
+    },
+    "format": {
+     "check": 2
+    },
+    "command": {
+     "not_executable": 2
+    }
+   },
+   "untouched": {
+    "command": {
+     "not_executable": 2
+    },
+    "format": {
+     "could_not_run": 2
+    },
+    "path": {
+     "differed": 2
+    }
+   },
+   "outcomes_over_candidates": {
+    "path": {
+     "differed": 4,
+     "matched": 26
+    },
+    "format": {
+     "could_not_run": 4,
+     "matched": 26
+    },
+    "command": {
+     "not_executable": 30
+    }
+   },
+   "candidates": 15,
+   "no_call": 0
+  },
+  "telecom-entity-resolution": {
+   "split": "development",
+   "plan": "60c98827424e4f612f2226fa40c2f46e410bed46ee74e920795478d28d36ea53",
+   "items": {
+    "path": {
+     "check": 1
+    },
+    "format": {
+     "check": 1
+    }
+   },
+   "untouched": {
+    "format": {
+     "could_not_run": 1
+    },
+    "path": {
+     "differed": 1
+    }
+   },
+   "outcomes_over_candidates": {},
+   "candidates": 1,
+   "no_call": 1
+  },
+  "uefi-bootkit": {
+   "split": "development",
+   "plan": "5119176f66115e66798da3c7bd58ad305f78978661266748521ff0d709065c1b",
+   "items": {},
+   "untouched": {},
+   "outcomes_over_candidates": {},
+   "candidates": 1,
+   "no_call": 1
+  },
+  "wal-recovery-ordering": {
+   "split": "development",
+   "plan": "3abc68274f926c071892d1195bfa3540fce724444d4d63bcb75ec5be1d05eb4a",
+   "items": {
+    "interface": {
+     "check": 3
+    }
+   },
+   "untouched": {
+    "interface": {
+     "matched": 3
+    }
+   },
+   "outcomes_over_candidates": {
+    "interface": {
+     "matched": 18
+    }
+   },
+   "candidates": 6,
+   "no_call": 0
+  }
+ },
+ "rows": [
+  {
+   "task": "bun-sourcemap-leak",
+   "split": "held_out",
+   "trial": "bun-sourcemap-leak__4KF3b8s",
+   "job": "tb4--coder-one-tunable-v8--bun-sourcemap-leak--v8-persist-9570-r1",
+   "kind": "snapshot",
+   "snapshot_graded": false,
+   "reward": null,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "path": "matched",
+    "command": "matched"
+   }
+  },
+  {
+   "task": "bun-sourcemap-leak",
+   "split": "held_out",
+   "trial": "bun-sourcemap-leak__5sZ7gks",
+   "job": "tb4--coder-one-tunable-v8--bun-sourcemap-leak--v8-persist-9570-r2",
+   "kind": "snapshot",
+   "snapshot_graded": false,
+   "reward": null,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "path": "matched",
+    "command": "matched"
+   }
+  },
+  {
+   "task": "bun-sourcemap-leak",
+   "split": "held_out",
+   "trial": "bun-sourcemap-leak__AhfCw5c",
+   "job": "tb4--coder-one-tunable-v8--bun-sourcemap-leak--v8-persist-9570-ca-r3",
+   "kind": "snapshot",
+   "snapshot_graded": false,
+   "reward": 1.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "path": "matched",
+    "command": "matched"
+   }
+  },
+  {
+   "task": "bun-sourcemap-leak",
+   "split": "held_out",
+   "trial": "bun-sourcemap-leak__F4t2d8w",
+   "job": "tb4--coder-one-tunable-v8--bun-sourcemap-leak--v8-persist-9570-ca-r1",
+   "kind": "snapshot",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "path": "matched",
+    "command": "matched"
+   }
+  },
+  {
+   "task": "bun-sourcemap-leak",
+   "split": "held_out",
+   "trial": "bun-sourcemap-leak__KSe7EpL",
+   "job": "tb4--coder-one-tunable-v7--bun-sourcemap-leak--v10-persist-9570-r1",
+   "kind": "snapshot",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "path": "matched",
+    "command": "matched"
+   }
+  },
+  {
+   "task": "bun-sourcemap-leak",
+   "split": "held_out",
+   "trial": "bun-sourcemap-leak__YgVxiUg",
+   "job": "tb4--coder-one-tunable-v8--bun-sourcemap-leak--v8-persist-9570-ca-r2",
+   "kind": "snapshot",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "path": "matched",
+    "command": "matched"
+   }
+  },
+  {
+   "task": "bun-sourcemap-leak",
+   "split": "held_out",
+   "trial": "bun-sourcemap-leak__hTfpu6P",
+   "job": "tb4--coder-one-tunable-v10--bun-sourcemap-leak--v10-persist-9570-r1",
+   "kind": "snapshot",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "path": "matched",
+    "command": "matched"
+   }
+  },
+  {
+   "task": "bun-sourcemap-leak",
+   "split": "held_out",
+   "trial": "bun-sourcemap-leak__wPKtee2",
+   "job": "tb4--coder-one-tunable-v8--bun-sourcemap-leak--v8-persist-9570-r1",
+   "kind": "snapshot",
+   "snapshot_graded": false,
+   "reward": null,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "path": "matched",
+    "command": "matched"
+   }
+  },
+  {
+   "task": "cad-model",
+   "split": "held_out",
+   "trial": "cad-model__PCPn5pW",
+   "job": "tb4--coder-one-matched-v8--cad-model--matched-v8-9567-r3",
+   "kind": "snapshot",
+   "snapshot_graded": true,
+   "reward": 1.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "cad-model",
+   "split": "held_out",
+   "trial": "cad-model__UpQfB2j",
+   "job": "tb4--coder-one-matched-v8--cad-model--matched-v8-9567-r1",
+   "kind": "snapshot",
+   "snapshot_graded": false,
+   "reward": 1.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "cad-model",
+   "split": "held_out",
+   "trial": "cad-model__VXuQNL9",
+   "job": "tb4--coder-one-matched-v8--cad-model--matched-v8-9567-r2",
+   "kind": "snapshot",
+   "snapshot_graded": true,
+   "reward": 1.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "cad-model",
+   "split": "held_out",
+   "trial": "cad-model__y7qrKEe",
+   "job": "tb4--micro-bo1--cad-model--best-of-9587-r1",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "cargo-flight-dispatch",
+   "split": "held_out",
+   "trial": "cargo-flight-dispatch__M5T7oW8",
+   "job": "try--coder-one-tunable-luna-snapshot--20260923T162706Z",
+   "kind": "snapshot",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "command": "matched"
+   }
+  },
+  {
+   "task": "cargo-flight-dispatch",
+   "split": "held_out",
+   "trial": "cargo-flight-dispatch__anfUuvh",
+   "job": "tb4--coder-one-tunable-v10--cargo-flight-dispatch--v10-persist-9570-r1",
+   "kind": "snapshot",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "command": "matched"
+   }
+  },
+  {
+   "task": "cargo-flight-dispatch",
+   "split": "held_out",
+   "trial": "cargo-flight-dispatch__eVK5hHc",
+   "job": "tb4--coder-one-tunable-v7--cargo-flight-dispatch--v10-persist-9570-r1",
+   "kind": "snapshot",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "command": "matched"
+   }
+  },
+  {
+   "task": "cargo-flight-dispatch",
+   "split": "held_out",
+   "trial": "cargo-flight-dispatch__gsjsQr3",
+   "job": "tb4--coder-one-tunable-v8--cargo-flight-dispatch--v8-persist-9570-r4",
+   "kind": "snapshot",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "command": "matched"
+   }
+  },
+  {
+   "task": "cargo-flight-dispatch",
+   "split": "held_out",
+   "trial": "cargo-flight-dispatch__jTTHMeh",
+   "job": "tb4--coder-one-tunable-v8--cargo-flight-dispatch--v8-persist-9570-r2",
+   "kind": "snapshot",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "command": "matched"
+   }
+  },
+  {
+   "task": "cargo-flight-dispatch",
+   "split": "held_out",
+   "trial": "cargo-flight-dispatch__kzGkiRi",
+   "job": "tb4--coder-one-tunable-v8--cargo-flight-dispatch--v8-persist-9570-r3",
+   "kind": "snapshot",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "command": "matched"
+   }
+  },
+  {
+   "task": "coq-block-bound",
+   "split": "held_out",
+   "trial": "coq-block-bound__3uq9QCe",
+   "job": "tb4--coder-one-microluna-v15--coq-block-bound--manual-20260924T202701",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "command": "matched"
+   }
+  },
+  {
+   "task": "coq-block-bound",
+   "split": "held_out",
+   "trial": "coq-block-bound__3wJAvgQ",
+   "job": "tb4--microluna-v1--coq-block-bound--9585-r1",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "command": "matched"
+   }
+  },
+  {
+   "task": "embedding-drift-monitor",
+   "split": "development",
+   "trial": "embedding-drift-monitor__26QyeXD",
+   "job": "tb4--coder-one-microluna-v8--embedding-drift-monitor--manual-20260924T122714",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "embedding-drift-monitor",
+   "split": "development",
+   "trial": "embedding-drift-monitor__2y5CheP",
+   "job": "tb4--coder-one-microluna-v10--embedding-drift-monitor--manual-20260924T145804",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "embedding-drift-monitor",
+   "split": "development",
+   "trial": "embedding-drift-monitor__6zRjd9n",
+   "job": "tb4--coder-one-microluna-v13-retained--embedding-drift-monitor",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 1.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "embedding-drift-monitor",
+   "split": "development",
+   "trial": "embedding-drift-monitor__6zRjd9n.lean-1.session-1",
+   "job": "tb4--coder-one-microluna-v13-retained--embedding-drift-monitor",
+   "kind": "candidate",
+   "snapshot_graded": false,
+   "reward": 1.0,
+   "reward_source": "submitted",
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "embedding-drift-monitor",
+   "split": "development",
+   "trial": "embedding-drift-monitor__6zRjd9n.lean-1.session-2",
+   "job": "tb4--coder-one-microluna-v13-retained--embedding-drift-monitor",
+   "kind": "candidate",
+   "snapshot_graded": false,
+   "reward": 1.0,
+   "reward_source": "submitted",
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "embedding-drift-monitor",
+   "split": "development",
+   "trial": "embedding-drift-monitor__9ZYbzjT",
+   "job": "tb4--coder-one-microluna-v15--embedding-drift-monitor--manual-20260924T165834",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 1.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "embedding-drift-monitor",
+   "split": "development",
+   "trial": "embedding-drift-monitor__KDeY8Bf",
+   "job": "tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r3",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "embedding-drift-monitor",
+   "split": "development",
+   "trial": "embedding-drift-monitor__KDeY8Bf.lean-1.session-1",
+   "job": "tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r3",
+   "kind": "candidate",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": "submitted",
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "embedding-drift-monitor",
+   "split": "development",
+   "trial": "embedding-drift-monitor__KDeY8Bf.lean-1.session-2",
+   "job": "tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r3",
+   "kind": "candidate",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": "submitted",
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "embedding-drift-monitor",
+   "split": "development",
+   "trial": "embedding-drift-monitor__MZYSp6A",
+   "job": "tb4--coder-one-microluna-solo--embedding-drift-monitor--manual-20260924T135147",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "embedding-drift-monitor",
+   "split": "development",
+   "trial": "embedding-drift-monitor__NG9vQg5",
+   "job": "tb4--coder-one-microluna-v12--embedding-drift-monitor--candidate-evidence-9607-r3",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 1.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "embedding-drift-monitor",
+   "split": "development",
+   "trial": "embedding-drift-monitor__PTsawB6",
+   "job": "tb4--micro-bo3s--embedding-drift-monitor--suite-9587-r1",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "embedding-drift-monitor",
+   "split": "development",
+   "trial": "embedding-drift-monitor__PemYnyR",
+   "job": "tb4--coder-one-microluna-v16--embedding-drift-monitor--manual-20260924T172613",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 1.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "embedding-drift-monitor",
+   "split": "development",
+   "trial": "embedding-drift-monitor__QAHE7De",
+   "job": "tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-3",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 1.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "embedding-drift-monitor",
+   "split": "development",
+   "trial": "embedding-drift-monitor__QAHE7De.lean-1.session-1",
+   "job": "tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-3",
+   "kind": "candidate",
+   "snapshot_graded": false,
+   "reward": null,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "embedding-drift-monitor",
+   "split": "development",
+   "trial": "embedding-drift-monitor__QAHE7De.lean-1.session-2",
+   "job": "tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-3",
+   "kind": "candidate",
+   "snapshot_graded": false,
+   "reward": 1.0,
+   "reward_source": "submitted",
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "embedding-drift-monitor",
+   "split": "development",
+   "trial": "embedding-drift-monitor__R7mX9UJ",
+   "job": "tb4--coder-one-microluna-v3--embedding-drift-monitor--microluna-overnight-9585-r1",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "embedding-drift-monitor",
+   "split": "development",
+   "trial": "embedding-drift-monitor__REGuz3v",
+   "job": "tb4--coder-one-microluna-v12--embedding-drift-monitor--candidate-evidence-9607-r2",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "embedding-drift-monitor",
+   "split": "development",
+   "trial": "embedding-drift-monitor__Uf8HNF3",
+   "job": "tb4--coder-one-microluna-v4--embedding-drift-monitor--microluna-budget-9585-r1",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "embedding-drift-monitor",
+   "split": "development",
+   "trial": "embedding-drift-monitor__UfYFodd",
+   "job": "tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "embedding-drift-monitor",
+   "split": "development",
+   "trial": "embedding-drift-monitor__UfYFodd.lean-1.session-1",
+   "job": "tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1",
+   "kind": "candidate",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": "submitted",
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "embedding-drift-monitor",
+   "split": "development",
+   "trial": "embedding-drift-monitor__UfYFodd.lean-1.session-2",
+   "job": "tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1",
+   "kind": "candidate",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": "submitted",
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "embedding-drift-monitor",
+   "split": "development",
+   "trial": "embedding-drift-monitor__UtNMMsq",
+   "job": "tb4--coder-one-microluna-v13--embedding-drift-monitor--manual-20260924T160541",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 1.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "embedding-drift-monitor",
+   "split": "development",
+   "trial": "embedding-drift-monitor__XhEFWEe",
+   "job": "tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": null,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "embedding-drift-monitor",
+   "split": "development",
+   "trial": "embedding-drift-monitor__ZfDzwcs",
+   "job": "tb4--coder-one-microluna-v12--embedding-drift-monitor--manual-20260924T153948",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "embedding-drift-monitor",
+   "split": "development",
+   "trial": "embedding-drift-monitor__aGH4F34",
+   "job": "tb4--coder-one-matched-v8--embedding-drift-monitor--matched-v8-9567-r2",
+   "kind": "snapshot",
+   "snapshot_graded": false,
+   "reward": 1.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "embedding-drift-monitor",
+   "split": "development",
+   "trial": "embedding-drift-monitor__cPwtk4c",
+   "job": "tb4--coder-one-microluna-v17--embedding-drift-monitor--manual-20260924T180856",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 1.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "embedding-drift-monitor",
+   "split": "development",
+   "trial": "embedding-drift-monitor__eh9ex5r",
+   "job": "tb4--coder-one-matched-v8--embedding-drift-monitor--matched-v8-9567-r1",
+   "kind": "snapshot",
+   "snapshot_graded": false,
+   "reward": 1.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "embedding-drift-monitor",
+   "split": "development",
+   "trial": "embedding-drift-monitor__es2dWha",
+   "job": "tb4--coder-one-microluna-v7--embedding-drift-monitor--manual-20260924T124146",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "embedding-drift-monitor",
+   "split": "development",
+   "trial": "embedding-drift-monitor__fF4Yb3V",
+   "job": "tb4--coder-one-microluna-v14--embedding-drift-monitor--manual-20260924T163424",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 1.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "embedding-drift-monitor",
+   "split": "development",
+   "trial": "embedding-drift-monitor__gQoArdr",
+   "job": "tb4--coder-one-microluna-v3--embedding-drift-monitor--microluna-budget-9585-r1",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": null,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "embedding-drift-monitor",
+   "split": "development",
+   "trial": "embedding-drift-monitor__mVNMcMn",
+   "job": "tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r2",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "embedding-drift-monitor",
+   "split": "development",
+   "trial": "embedding-drift-monitor__mVNMcMn.lean-1.session-1",
+   "job": "tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r2",
+   "kind": "candidate",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": "submitted",
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "embedding-drift-monitor",
+   "split": "development",
+   "trial": "embedding-drift-monitor__mVNMcMn.lean-1.session-2",
+   "job": "tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r2",
+   "kind": "candidate",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": "submitted",
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "embedding-drift-monitor",
+   "split": "development",
+   "trial": "embedding-drift-monitor__qTyzkkg",
+   "job": "tb4--coder-one-microluna-v13--embedding-drift-monitor--manual-20260924T162542",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 1.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "embedding-drift-monitor",
+   "split": "development",
+   "trial": "embedding-drift-monitor__qyc6VQw",
+   "job": "tb4--coder-one-microluna-v6--embedding-drift-monitor--manual-20260924T102404",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "embedding-drift-monitor",
+   "split": "development",
+   "trial": "embedding-drift-monitor__uU3ZNb9",
+   "job": "tb4--coder-one-microluna-v12--embedding-drift-monitor--candidate-evidence-9607-r1",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 1.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "embedding-drift-monitor",
+   "split": "development",
+   "trial": "embedding-drift-monitor__uU3ZNb9.reconstructed-v12-embedding-r1-before-review",
+   "job": "tb4--coder-one-microluna-v12--embedding-drift-monitor--candidate-evidence-9607-r1",
+   "kind": "reconstruction",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": "reconstruction",
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "embedding-drift-monitor",
+   "split": "development",
+   "trial": "embedding-drift-monitor__w2pYcZk",
+   "job": "tb4--coder-one-microluna-v9--embedding-drift-monitor--manual-20260924T140538",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "embedding-drift-monitor",
+   "split": "development",
+   "trial": "embedding-drift-monitor__w8ebMvJ",
+   "job": "tb4--micro-bo1--embedding-drift-monitor--suite-9587-r1",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "embedding-drift-monitor",
+   "split": "development",
+   "trial": "embedding-drift-monitor__y2bahob",
+   "job": "tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-2",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 1.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "embedding-drift-monitor",
+   "split": "development",
+   "trial": "embedding-drift-monitor__y2bahob.lean-1.session-1",
+   "job": "tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-2",
+   "kind": "candidate",
+   "snapshot_graded": false,
+   "reward": 1.0,
+   "reward_source": "submitted",
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "embedding-drift-monitor",
+   "split": "development",
+   "trial": "embedding-drift-monitor__y2bahob.lean-1.session-2",
+   "job": "tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-2",
+   "kind": "candidate",
+   "snapshot_graded": false,
+   "reward": 1.0,
+   "reward_source": "submitted",
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "embedding-drift-monitor",
+   "split": "development",
+   "trial": "embedding-drift-monitor__zsNLRYd",
+   "job": "tb4--coder-one-matched-v8--embedding-drift-monitor--matched-v8-9567-r3",
+   "kind": "snapshot",
+   "snapshot_graded": false,
+   "reward": 1.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "embedding-drift-monitor",
+   "split": "development",
+   "trial": "embedding-drift-monitor__zzXmfSE",
+   "job": "tb4--coder-one-microluna-v7--embedding-drift-monitor--manual-20260924T113920",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 1.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "fin-saccr-rwa",
+   "split": "development",
+   "trial": "fin-saccr-rwa__89KPMs9",
+   "job": "tb4--coder-one-matched-v8--fin-saccr-rwa--matched-v8-9567-r2",
+   "kind": "snapshot",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "path": "matched",
+    "format": "matched"
+   }
+  },
+  {
+   "task": "fin-saccr-rwa",
+   "split": "development",
+   "trial": "fin-saccr-rwa__E3d7o4p",
+   "job": "tb4--coder-one-matched-v8--fin-saccr-rwa--matched-v8-9567-r1",
+   "kind": "snapshot",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "path": "matched",
+    "format": "matched"
+   }
+  },
+  {
+   "task": "fin-saccr-rwa",
+   "split": "development",
+   "trial": "fin-saccr-rwa__GPBRV5j",
+   "job": "tb4--coder-one-matched-v8--fin-saccr-rwa--matched-v8-9567-r3",
+   "kind": "snapshot",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "path": "matched",
+    "format": "matched"
+   }
+  },
+  {
+   "task": "fin-saccr-rwa",
+   "split": "development",
+   "trial": "fin-saccr-rwa__uMNL3HS",
+   "job": "tb4--coder-one-microluna-v15--fin-saccr-rwa--manual-20260924T201919",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "path": "matched",
+    "format": "matched"
+   }
+  },
+  {
+   "task": "gsea-proteomics",
+   "split": "development",
+   "trial": "gsea-proteomics__5GhJGC7",
+   "job": "tb4--coder-one-microluna-v1--gsea-proteomics--microluna-overnight-9585-r1",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "path": "matched",
+    "format": "matched"
+   }
+  },
+  {
+   "task": "gsea-proteomics",
+   "split": "development",
+   "trial": "gsea-proteomics__KUpc2Ct",
+   "job": "tb4--coder-one-microluna-v15--gsea-proteomics--manual-20260924T201921",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "path": "matched",
+    "format": "matched"
+   }
+  },
+  {
+   "task": "gsea-proteomics",
+   "split": "development",
+   "trial": "gsea-proteomics__hVjDELK",
+   "job": "tb4--coder-one-microluna-v3--gsea-proteomics--microluna-overnight-9585-r1",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": null,
+   "reward_source": null,
+   "call": "fail",
+   "score": 0.0,
+   "error": null,
+   "kinds": {
+    "path": "differed"
+   }
+  },
+  {
+   "task": "heat-pump-warranty",
+   "split": "held_out",
+   "trial": "heat-pump-warranty__VSFJ726",
+   "job": "tb4--coder-one-matched-v8--heat-pump-warranty--matched-v8-9567-r2",
+   "kind": "snapshot",
+   "snapshot_graded": true,
+   "reward": 1.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "heat-pump-warranty",
+   "split": "held_out",
+   "trial": "heat-pump-warranty__XiAF7ri",
+   "job": "tb4--coder-one-matched-v8--heat-pump-warranty--matched-v8-9567-r1",
+   "kind": "snapshot",
+   "snapshot_graded": false,
+   "reward": 1.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "heat-pump-warranty",
+   "split": "held_out",
+   "trial": "heat-pump-warranty__XimLDF4",
+   "job": "tb4--coder-one-matched-v8--heat-pump-warranty--matched-v8-9567-r3",
+   "kind": "snapshot",
+   "snapshot_graded": true,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "heat-pump-warranty",
+   "split": "held_out",
+   "trial": "heat-pump-warranty__bgPdMox",
+   "job": "try--coder-one-tunable-v7--targets-9568b",
+   "kind": "snapshot",
+   "snapshot_graded": true,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "html-js-filter",
+   "split": "held_out",
+   "trial": "html-js-filter__EaX8vh7",
+   "job": "tb4--coder-one-microluna-v4--html-js-filter--microluna-budget-9585-r1",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": null,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "html-js-filter",
+   "split": "held_out",
+   "trial": "html-js-filter__aZvBopx",
+   "job": "try--coder-one-tunable-v7--targets-9568b",
+   "kind": "snapshot",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "interleaved-vigenere",
+   "split": "development",
+   "trial": "interleaved-vigenere__FryxfnM",
+   "job": "try--coder-one-tunable-luna-snapshot--20260923T162706Z",
+   "kind": "snapshot",
+   "snapshot_graded": true,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "fail",
+   "score": 0.8333333333333334,
+   "error": null,
+   "kinds": {
+    "path": "matched",
+    "example": "differed",
+    "exit_code": "matched"
+   }
+  },
+  {
+   "task": "interleaved-vigenere",
+   "split": "development",
+   "trial": "interleaved-vigenere__KoqMppM",
+   "job": "tb4--coder-one-microluna-v16--interleaved-vigenere--manual-20260924T172612",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "fail",
+   "score": 0.3333333333333333,
+   "error": null,
+   "kinds": {
+    "path": "differed",
+    "example": "differed",
+    "exit_code": "matched"
+   }
+  },
+  {
+   "task": "interleaved-vigenere",
+   "split": "development",
+   "trial": "interleaved-vigenere__LpxW5dB",
+   "job": "tb4--coder-one-microluna-solo--interleaved-vigenere--manual-20260924T135150",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "fail",
+   "score": 0.8333333333333334,
+   "error": null,
+   "kinds": {
+    "path": "matched",
+    "example": "differed",
+    "exit_code": "matched"
+   }
+  },
+  {
+   "task": "interleaved-vigenere",
+   "split": "development",
+   "trial": "interleaved-vigenere__MoPZqbY",
+   "job": "tb4--coder-one-microluna-v8--interleaved-vigenere--manual-20260924T123904",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "path": "matched",
+    "example": "matched",
+    "exit_code": "matched"
+   }
+  },
+  {
+   "task": "interleaved-vigenere",
+   "split": "development",
+   "trial": "interleaved-vigenere__P9nawsY",
+   "job": "tb4--coder-one-microluna-v17--interleaved-vigenere--manual-20260924T180706",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "fail",
+   "score": 0.8333333333333334,
+   "error": null,
+   "kinds": {
+    "path": "matched",
+    "example": "differed",
+    "exit_code": "matched"
+   }
+  },
+  {
+   "task": "interleaved-vigenere",
+   "split": "development",
+   "trial": "interleaved-vigenere__WXSZXNq",
+   "job": "tb4--coder-one-microluna-v12--interleaved-vigenere--manual-20260924T153948",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "fail",
+   "score": 0.8333333333333334,
+   "error": null,
+   "kinds": {
+    "path": "matched",
+    "example": "differed",
+    "exit_code": "matched"
+   }
+  },
+  {
+   "task": "interleaved-vigenere",
+   "split": "development",
+   "trial": "interleaved-vigenere__aV3x4ba",
+   "job": "tb4--coder-one-microluna-v13--interleaved-vigenere--manual-20260924T160541",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "fail",
+   "score": 0.8333333333333334,
+   "error": null,
+   "kinds": {
+    "path": "matched",
+    "example": "differed",
+    "exit_code": "matched"
+   }
+  },
+  {
+   "task": "interleaved-vigenere",
+   "split": "development",
+   "trial": "interleaved-vigenere__gUswV9Y",
+   "job": "tb4--coder-one-microluna-v9--interleaved-vigenere--manual-20260924T140542",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "fail",
+   "score": 0.8333333333333334,
+   "error": null,
+   "kinds": {
+    "path": "matched",
+    "example": "differed",
+    "exit_code": "matched"
+   }
+  },
+  {
+   "task": "interleaved-vigenere",
+   "split": "development",
+   "trial": "interleaved-vigenere__sbNeZhK",
+   "job": "tb4--coder-one-microluna-v11--interleaved-vigenere--manual-20260924T151338",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "fail",
+   "score": 0.8333333333333334,
+   "error": null,
+   "kinds": {
+    "path": "matched",
+    "example": "differed",
+    "exit_code": "matched"
+   }
+  },
+  {
+   "task": "interleaved-vigenere",
+   "split": "development",
+   "trial": "interleaved-vigenere__u2w5Zb7",
+   "job": "tb4--coder-one-microluna-v15--interleaved-vigenere--manual-20260924T165834",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "fail",
+   "score": 0.6666666666666666,
+   "error": null,
+   "kinds": {
+    "path": "differed",
+    "example": "differed",
+    "exit_code": "matched"
+   }
+  },
+  {
+   "task": "interleaved-vigenere",
+   "split": "development",
+   "trial": "interleaved-vigenere__zj5bwBL",
+   "job": "tb4--coder-one-microluna-v14--interleaved-vigenere--manual-20260924T163335",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "fail",
+   "score": 0.8333333333333334,
+   "error": null,
+   "kinds": {
+    "path": "matched",
+    "example": "differed",
+    "exit_code": "matched"
+   }
+  },
+  {
+   "task": "ks-solver-cpp",
+   "split": "held_out",
+   "trial": "ks-solver-cpp__Lt6izN8",
+   "job": "tb4--coder-one-matched-v8--ks-solver-cpp--matched-v8-9567-r2",
+   "kind": "snapshot",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "fail",
+   "score": 0.5,
+   "error": null,
+   "kinds": {
+    "path": "matched",
+    "command": "differed"
+   }
+  },
+  {
+   "task": "ks-solver-cpp",
+   "split": "held_out",
+   "trial": "ks-solver-cpp__PDuFFLt",
+   "job": "tb4--coder-one-matched-v8--ks-solver-cpp--matched-v8-9567-r1",
+   "kind": "snapshot",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "fail",
+   "score": 0.5,
+   "error": null,
+   "kinds": {
+    "path": "matched",
+    "command": "differed"
+   }
+  },
+  {
+   "task": "ks-solver-cpp",
+   "split": "held_out",
+   "trial": "ks-solver-cpp__pFx79Ga",
+   "job": "tb4--coder-one-matched-v8--ks-solver-cpp--matched-v8-9567-r3",
+   "kind": "snapshot",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "fail",
+   "score": 0.5,
+   "error": null,
+   "kinds": {
+    "path": "matched",
+    "command": "differed"
+   }
+  },
+  {
+   "task": "ks-solver-cpp",
+   "split": "held_out",
+   "trial": "ks-solver-cpp__z5fa8Zp",
+   "job": "try--coder-one-tunable-v7--targets-9568b",
+   "kind": "snapshot",
+   "snapshot_graded": true,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "fail",
+   "score": 0.5,
+   "error": null,
+   "kinds": {
+    "path": "matched",
+    "command": "differed"
+   }
+  },
+  {
+   "task": "legacy-utility-triage",
+   "split": "development",
+   "trial": "legacy-utility-triage__9KzpBTZ",
+   "job": "tb4--coder-one-matched-v8--legacy-utility-triage--matched-v8-9567-r2",
+   "kind": "snapshot",
+   "snapshot_graded": true,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "legacy-utility-triage",
+   "split": "development",
+   "trial": "legacy-utility-triage__RiZTd3U",
+   "job": "tb4--coder-one-matched-v8--legacy-utility-triage--matched-v8-9567-r3",
+   "kind": "snapshot",
+   "snapshot_graded": true,
+   "reward": 1.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "legacy-utility-triage",
+   "split": "development",
+   "trial": "legacy-utility-triage__rHThFTx",
+   "job": "tb4--coder-one-matched-v8--legacy-utility-triage--matched-v8-9567-r1",
+   "kind": "snapshot",
+   "snapshot_graded": true,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "mp-checkpoint-consolidation",
+   "split": "development",
+   "trial": "mp-checkpoint-consolidation__EU5sYa2",
+   "job": "tb4--coder-one-microluna-v15--mp-checkpoint-consolidation--family-a1-20260924T222001",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "path": "matched",
+    "format": "matched"
+   }
+  },
+  {
+   "task": "mvcc-lsm-compaction",
+   "split": "development",
+   "trial": "mvcc-lsm-compaction__4yfBDYL",
+   "job": "tb4--coder-one-matched-v8--mvcc-lsm-compaction--matched-v8-9567-r3",
+   "kind": "snapshot",
+   "snapshot_graded": false,
+   "reward": 1.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "command": "matched"
+   }
+  },
+  {
+   "task": "mvcc-lsm-compaction",
+   "split": "development",
+   "trial": "mvcc-lsm-compaction__HqVnu5N",
+   "job": "tb4--micro-bo3s--mvcc-lsm-compaction--suite-9587-r1",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 1.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "command": "matched"
+   }
+  },
+  {
+   "task": "mvcc-lsm-compaction",
+   "split": "development",
+   "trial": "mvcc-lsm-compaction__HtDYPFq",
+   "job": "tb4--micro-bo3--mvcc-lsm-compaction--best-of-9587-r1",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "command": "matched"
+   }
+  },
+  {
+   "task": "mvcc-lsm-compaction",
+   "split": "development",
+   "trial": "mvcc-lsm-compaction__JsFGzzJ",
+   "job": "tb4--coder-one-tunable-v7--mvcc-lsm-compaction--v10-persist-9570-r1",
+   "kind": "snapshot",
+   "snapshot_graded": true,
+   "reward": 1.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "command": "matched"
+   }
+  },
+  {
+   "task": "mvcc-lsm-compaction",
+   "split": "development",
+   "trial": "mvcc-lsm-compaction__QnXxhmp",
+   "job": "tb4--micro-bo3a--mvcc-lsm-compaction--suite-9587-smoke",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "command": "matched"
+   }
+  },
+  {
+   "task": "mvcc-lsm-compaction",
+   "split": "development",
+   "trial": "mvcc-lsm-compaction__cXLAxTv",
+   "job": "tb4--coder-one-tunable-v10--mvcc-lsm-compaction--v10-persist-9570-r1",
+   "kind": "snapshot",
+   "snapshot_graded": false,
+   "reward": 1.0,
+   "reward_source": null,
+   "call": "fail",
+   "score": 0.0,
+   "error": null,
+   "kinds": {
+    "command": "differed"
+   }
+  },
+  {
+   "task": "mvcc-lsm-compaction",
+   "split": "development",
+   "trial": "mvcc-lsm-compaction__d3kZswA",
+   "job": "tb4--micro-bo3s--mvcc-lsm-compaction--suite-9587-smoke",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "command": "matched"
+   }
+  },
+  {
+   "task": "mvcc-lsm-compaction",
+   "split": "development",
+   "trial": "mvcc-lsm-compaction__fby8phd",
+   "job": "tb4--micro-bo1--mvcc-lsm-compaction--best-of-9587-r1",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "command": "matched"
+   }
+  },
+  {
+   "task": "mvcc-lsm-compaction",
+   "split": "development",
+   "trial": "mvcc-lsm-compaction__pkCidVR",
+   "job": "tb4--coder-one-matched-v8--mvcc-lsm-compaction--matched-v8-9567-r2",
+   "kind": "snapshot",
+   "snapshot_graded": false,
+   "reward": 1.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "command": "matched"
+   }
+  },
+  {
+   "task": "mvcc-lsm-compaction",
+   "split": "development",
+   "trial": "mvcc-lsm-compaction__s5z5Kwr",
+   "job": "tb4--coder-one-matched-v8--mvcc-lsm-compaction--matched-v8-9567-r1",
+   "kind": "snapshot",
+   "snapshot_graded": false,
+   "reward": 1.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "command": "matched"
+   }
+  },
+  {
+   "task": "mvcc-lsm-compaction",
+   "split": "development",
+   "trial": "mvcc-lsm-compaction__wVnSsuQ",
+   "job": "tb4--micro-bo1--mvcc-lsm-compaction--suite-9587-r1",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "command": "matched"
+   }
+  },
+  {
+   "task": "photonic-waveguide-routing",
+   "split": "held_out",
+   "trial": "photonic-waveguide-routing__6HFMpZJ",
+   "job": "tb4--coder-one-microluna-v15--photonic-waveguide-routing--family-a1-20260924T225135",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "path": "matched",
+    "format": "matched"
+   }
+  },
+  {
+   "task": "production-planning",
+   "split": "held_out",
+   "trial": "production-planning__FRFigLe",
+   "job": "tb4--coder-one-tunable-v8--production-planning--v8-persist-9570-r4",
+   "kind": "snapshot",
+   "snapshot_graded": false,
+   "reward": 1.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "path": "matched"
+   }
+  },
+  {
+   "task": "production-planning",
+   "split": "held_out",
+   "trial": "production-planning__Vb5Fddr",
+   "job": "tb4--coder-one-tunable-v8--production-planning--v8-persist-9570-r3",
+   "kind": "snapshot",
+   "snapshot_graded": false,
+   "reward": 1.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "path": "matched"
+   }
+  },
+  {
+   "task": "production-planning",
+   "split": "held_out",
+   "trial": "production-planning__bMzvLfm",
+   "job": "tb4--coder-one-tunable-v7--production-planning--v10-persist-9570-r1",
+   "kind": "snapshot",
+   "snapshot_graded": false,
+   "reward": 1.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "path": "matched"
+   }
+  },
+  {
+   "task": "production-planning",
+   "split": "held_out",
+   "trial": "production-planning__rmraruG",
+   "job": "try--coder-one-tunable-v7--targets-9568b",
+   "kind": "snapshot",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "fail",
+   "score": 0.0,
+   "error": null,
+   "kinds": {
+    "path": "differed"
+   }
+  },
+  {
+   "task": "production-planning",
+   "split": "held_out",
+   "trial": "production-planning__sZAqAc6",
+   "job": "tb4--coder-one-tunable-v10--production-planning--v10-persist-9570-r1",
+   "kind": "snapshot",
+   "snapshot_graded": false,
+   "reward": 1.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "path": "matched"
+   }
+  },
+  {
+   "task": "production-planning",
+   "split": "held_out",
+   "trial": "production-planning__yzdyUnm",
+   "job": "tb4--coder-one-tunable-v8--production-planning--v8-persist-9570-r2",
+   "kind": "snapshot",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "path": "matched"
+   }
+  },
+  {
+   "task": "protein-autointerp-disulfide",
+   "split": "development",
+   "trial": "protein-autointerp-disulfide__BTX75Mq",
+   "job": "try--coder-one-tunable-v7--targets-9568b",
+   "kind": "snapshot",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "fail",
+   "score": 0.0,
+   "error": null,
+   "kinds": {
+    "path": "differed"
+   }
+  },
+  {
+   "task": "risk-scorer-replay",
+   "split": "held_out",
+   "trial": "risk-scorer-replay__sSqd7oF",
+   "job": "try--coder-one-tunable-luna-snapshot--20260923T162706Z",
+   "kind": "snapshot",
+   "snapshot_graded": false,
+   "reward": 1.0,
+   "reward_source": null,
+   "call": "fail",
+   "score": 0.0,
+   "error": null,
+   "kinds": {
+    "path": "differed"
+   }
+  },
+  {
+   "task": "risk-scorer-replay",
+   "split": "held_out",
+   "trial": "risk-scorer-replay__xWMSei4",
+   "job": "try--coder-one-tunable-v7--targets-9568b",
+   "kind": "snapshot",
+   "snapshot_graded": true,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "fail",
+   "score": 0.0,
+   "error": null,
+   "kinds": {
+    "path": "differed"
+   }
+  },
+  {
+   "task": "session-window-debug",
+   "split": "held_out",
+   "trial": "session-window-debug__3KVqBUz",
+   "job": "tb4--coder-one-microluna-v13-retained--session-window-debug-3",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "session-window-debug",
+   "split": "held_out",
+   "trial": "session-window-debug__3KVqBUz.lean-1.session-1",
+   "job": "tb4--coder-one-microluna-v13-retained--session-window-debug-3",
+   "kind": "candidate",
+   "snapshot_graded": false,
+   "reward": null,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "session-window-debug",
+   "split": "held_out",
+   "trial": "session-window-debug__3KVqBUz.lean-1.session-2",
+   "job": "tb4--coder-one-microluna-v13-retained--session-window-debug-3",
+   "kind": "candidate",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": "submitted",
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "session-window-debug",
+   "split": "held_out",
+   "trial": "session-window-debug__3v9FKP5",
+   "job": "tb4--coder-one-microluna-v13-retained--session-window-debug-2",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "session-window-debug",
+   "split": "held_out",
+   "trial": "session-window-debug__3v9FKP5.lean-1.session-1",
+   "job": "tb4--coder-one-microluna-v13-retained--session-window-debug-2",
+   "kind": "candidate",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": "submitted",
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "session-window-debug",
+   "split": "held_out",
+   "trial": "session-window-debug__3v9FKP5.lean-1.session-2",
+   "job": "tb4--coder-one-microluna-v13-retained--session-window-debug-2",
+   "kind": "candidate",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": "submitted",
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "session-window-debug",
+   "split": "held_out",
+   "trial": "session-window-debug__FDQKEwD",
+   "job": "tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "session-window-debug",
+   "split": "held_out",
+   "trial": "session-window-debug__PacT86C",
+   "job": "tb4--coder-one-microluna-v13-retained--session-window-debug",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "session-window-debug",
+   "split": "held_out",
+   "trial": "session-window-debug__PacT86C.lean-1.session-1",
+   "job": "tb4--coder-one-microluna-v13-retained--session-window-debug",
+   "kind": "candidate",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": "submitted",
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "session-window-debug",
+   "split": "held_out",
+   "trial": "session-window-debug__PacT86C.lean-1.session-2",
+   "job": "tb4--coder-one-microluna-v13-retained--session-window-debug",
+   "kind": "candidate",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": "submitted",
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "session-window-debug",
+   "split": "held_out",
+   "trial": "session-window-debug__XrKoUSB",
+   "job": "tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": null,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "session-window-debug",
+   "split": "held_out",
+   "trial": "session-window-debug__a7stmvT",
+   "job": "tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r3",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "session-window-debug",
+   "split": "held_out",
+   "trial": "session-window-debug__a7stmvT.lean-1.session-1",
+   "job": "tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r3",
+   "kind": "candidate",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": "submitted",
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "session-window-debug",
+   "split": "held_out",
+   "trial": "session-window-debug__a7stmvT.lean-1.session-2",
+   "job": "tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r3",
+   "kind": "candidate",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": "submitted",
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "session-window-debug",
+   "split": "held_out",
+   "trial": "session-window-debug__arofNZN",
+   "job": "tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r1",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "session-window-debug",
+   "split": "held_out",
+   "trial": "session-window-debug__arofNZN.lean-1.session-1",
+   "job": "tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r1",
+   "kind": "candidate",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": "submitted",
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "session-window-debug",
+   "split": "held_out",
+   "trial": "session-window-debug__arofNZN.lean-1.session-2",
+   "job": "tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r1",
+   "kind": "candidate",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": "submitted",
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "session-window-debug",
+   "split": "held_out",
+   "trial": "session-window-debug__az9j93b",
+   "job": "tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r3",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "session-window-debug",
+   "split": "held_out",
+   "trial": "session-window-debug__mAK56Nn",
+   "job": "tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r2",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "session-window-debug",
+   "split": "held_out",
+   "trial": "session-window-debug__vbWCjBZ",
+   "job": "tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r2",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "session-window-debug",
+   "split": "held_out",
+   "trial": "session-window-debug__vbWCjBZ.lean-1.session-1",
+   "job": "tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r2",
+   "kind": "candidate",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": "submitted",
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "session-window-debug",
+   "split": "held_out",
+   "trial": "session-window-debug__vbWCjBZ.lean-1.session-2",
+   "job": "tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r2",
+   "kind": "candidate",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": "submitted",
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "sound-change-cascade",
+   "split": "development",
+   "trial": "sound-change-cascade__HRb77dt",
+   "job": "tb4--coder-one-microluna-v16--sound-change-cascade--manual-20260924T172610",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "fail",
+   "score": 0.0,
+   "error": null,
+   "kinds": {
+    "path": "differed"
+   }
+  },
+  {
+   "task": "sound-change-cascade",
+   "split": "development",
+   "trial": "sound-change-cascade__JdK4E2N",
+   "job": "tb4--coder-one-microluna-v12--sound-change-cascade--manual-20260924T153948",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "path": "matched",
+    "format": "matched"
+   }
+  },
+  {
+   "task": "sound-change-cascade",
+   "split": "development",
+   "trial": "sound-change-cascade__JyWbEai",
+   "job": "tb4--coder-one-microluna-solo--sound-change-cascade--manual-20260924T135148",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "path": "matched",
+    "format": "matched"
+   }
+  },
+  {
+   "task": "sound-change-cascade",
+   "split": "development",
+   "trial": "sound-change-cascade__KUdjBfR",
+   "job": "tb4--coder-one-matched-v8--sound-change-cascade--matched-v8-9567-r3",
+   "kind": "snapshot",
+   "snapshot_graded": true,
+   "reward": 1.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "path": "matched",
+    "format": "matched"
+   }
+  },
+  {
+   "task": "sound-change-cascade",
+   "split": "development",
+   "trial": "sound-change-cascade__Kk7csF5",
+   "job": "tb4--coder-one-matched-v8--sound-change-cascade--matched-v8-9567-r1",
+   "kind": "snapshot",
+   "snapshot_graded": true,
+   "reward": 1.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "path": "matched",
+    "format": "matched"
+   }
+  },
+  {
+   "task": "sound-change-cascade",
+   "split": "development",
+   "trial": "sound-change-cascade__LjmbDpd",
+   "job": "tb4--coder-one-microluna-v13--sound-change-cascade--manual-20260924T160541",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "path": "matched",
+    "format": "matched"
+   }
+  },
+  {
+   "task": "sound-change-cascade",
+   "split": "development",
+   "trial": "sound-change-cascade__PLWMRFW",
+   "job": "tb4--coder-one-microluna-v9--sound-change-cascade--manual-20260924T140540",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "path": "matched",
+    "format": "matched"
+   }
+  },
+  {
+   "task": "sound-change-cascade",
+   "split": "development",
+   "trial": "sound-change-cascade__TJtdCHK",
+   "job": "tb4--coder-one-microluna-v17--sound-change-cascade--manual-20260924T180814",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "path": "matched",
+    "format": "matched"
+   }
+  },
+  {
+   "task": "sound-change-cascade",
+   "split": "development",
+   "trial": "sound-change-cascade__VeXHcfB",
+   "job": "tb4--coder-one-microluna-v10--sound-change-cascade--manual-20260924T145804",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "fail",
+   "score": 0.0,
+   "error": null,
+   "kinds": {
+    "path": "differed"
+   }
+  },
+  {
+   "task": "sound-change-cascade",
+   "split": "development",
+   "trial": "sound-change-cascade__YwnnSDc",
+   "job": "tb4--coder-one-microluna-v14--sound-change-cascade--manual-20260924T163335",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "path": "matched",
+    "format": "matched"
+   }
+  },
+  {
+   "task": "sound-change-cascade",
+   "split": "development",
+   "trial": "sound-change-cascade__qAxKAFg",
+   "job": "tb4--coder-one-microluna-v15--sound-change-cascade--manual-20260924T165834",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "path": "matched",
+    "format": "matched"
+   }
+  },
+  {
+   "task": "sound-change-cascade",
+   "split": "development",
+   "trial": "sound-change-cascade__subesUU",
+   "job": "tb4--micro-bo1--sound-change-cascade--suite-9587-r1",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "path": "matched",
+    "format": "matched"
+   }
+  },
+  {
+   "task": "sound-change-cascade",
+   "split": "development",
+   "trial": "sound-change-cascade__uQscUgB",
+   "job": "tb4--coder-one-microluna-v11--sound-change-cascade--manual-20260924T151338",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "path": "matched",
+    "format": "matched"
+   }
+  },
+  {
+   "task": "sound-change-cascade",
+   "split": "development",
+   "trial": "sound-change-cascade__uaGad7W",
+   "job": "tb4--coder-one-matched-v8--sound-change-cascade--matched-v8-9567-r2",
+   "kind": "snapshot",
+   "snapshot_graded": false,
+   "reward": 1.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "path": "matched",
+    "format": "matched"
+   }
+  },
+  {
+   "task": "sound-change-cascade",
+   "split": "development",
+   "trial": "sound-change-cascade__zVHhMHC",
+   "job": "tb4--coder-one-microluna-v8--sound-change-cascade--manual-20260924T123903",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "path": "matched",
+    "format": "matched"
+   }
+  },
+  {
+   "task": "telecom-entity-resolution",
+   "split": "development",
+   "trial": "telecom-entity-resolution__XKpWnaL",
+   "job": "tb4--coder-one-microluna-v15--telecom-entity-resolution--family-a1-20260924T225055",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": "docker cp failed: openat app/data/cable_customers.csv: permission denied",
+   "kinds": {}
+  },
+  {
+   "task": "uefi-bootkit",
+   "split": "development",
+   "trial": "uefi-bootkit__TKiKnQj",
+   "job": "tb4--microluna-v1--uefi-bootkit--9585-r1",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": null,
+   "score": null,
+   "error": null,
+   "kinds": {}
+  },
+  {
+   "task": "wal-recovery-ordering",
+   "split": "development",
+   "trial": "wal-recovery-ordering__387vPxY",
+   "job": "tb4--micro-bo3--wal-recovery-ordering--best-of-9587-r1",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": null,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "interface": "matched"
+   }
+  },
+  {
+   "task": "wal-recovery-ordering",
+   "split": "development",
+   "trial": "wal-recovery-ordering__DXqWif2",
+   "job": "tb4--coder-one-matched-v8--wal-recovery-ordering--matched-v8-9567-r1",
+   "kind": "snapshot",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "interface": "matched"
+   }
+  },
+  {
+   "task": "wal-recovery-ordering",
+   "split": "development",
+   "trial": "wal-recovery-ordering__qbhxq2M",
+   "job": "tb4--coder-one-matched-v8--wal-recovery-ordering--matched-v8-9567-r2",
+   "kind": "snapshot",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "interface": "matched"
+   }
+  },
+  {
+   "task": "wal-recovery-ordering",
+   "split": "development",
+   "trial": "wal-recovery-ordering__rojNpSF",
+   "job": "try--coder-one-tunable-v7--targets-9568b",
+   "kind": "snapshot",
+   "snapshot_graded": true,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "interface": "matched"
+   }
+  },
+  {
+   "task": "wal-recovery-ordering",
+   "split": "development",
+   "trial": "wal-recovery-ordering__uoUwaHU",
+   "job": "tb4--coder-one-matched-v8--wal-recovery-ordering--matched-v8-9567-r3",
+   "kind": "snapshot",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "interface": "matched"
+   }
+  },
+  {
+   "task": "wal-recovery-ordering",
+   "split": "development",
+   "trial": "wal-recovery-ordering__vWMdUMJ",
+   "job": "tb4--micro-bo1--wal-recovery-ordering--best-of-9587-r1",
+   "kind": "final",
+   "snapshot_graded": false,
+   "reward": 0.0,
+   "reward_source": null,
+   "call": "pass",
+   "score": 1.0,
+   "error": null,
+   "kinds": {
+    "interface": "matched"
+   }
+  }
+ ]
+}
