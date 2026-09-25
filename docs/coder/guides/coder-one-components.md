@@ -552,3 +552,38 @@ monitor` report the replay's trigger precision, stale answers, and cost
 per question, for the rules alone and beside Jev; `--json` prints the
 same as versioned JSON.
 
+
+## Experimental completion assessment
+
+`coder-one checks review --input FILE --out DIR` proposes static counterexamples
+from a public instruction and bounded final source files. It checks quotations
+and asks Jev whether each concern establishes a mandatory failure. Add
+`--model gpt-6-astra` for the stronger reviewer. `--scope strict` adds experimental
+scope questions. A review finding is not an executed test.
+
+`coder-one checks report-audit --trial-dir DIR --input FILE --out DIR` extracts
+the selected report and judges explicit unresolved failures. It does not read
+the official verifier. The `--rows FILE --jobs DIR --partition calibration`
+form supports retained studies; comparison partitions must be chosen explicitly.
+
+`verify.truthful` combines attributable retained source-review and report-audit
+records without inference. Its fixture contains `candidate`, `report`, `review`,
+and `audit`. It checks candidate, request, and question identity, recomputes scores,
+and returns `fail` or `unknown`. The frozen V1 rule failed validation and remains
+experimental; no policy enables it by default.
+
+`coder-one checks readiness --input FILE --out DIR` assesses the whole public task
+against final source, a selected report, and explicitly labeled observations.
+It records up to 12 requirement judgments and a numerical failure feature from
+Astra high. The number is not a calibrated probability of acceptance. The model
+executes no tools; a separate measured rule decides whether to act on the score.
+
+`coder-one checks public-program --input FILE --out DIR` generates a check program
+from public requirements and initial inputs. The command records code but never
+runs it. The retained experiment's runner executes generated programs in bounded,
+networkless Docker containers. Unsupported tooling, missing retained files, and
+execution errors remain unknown. Passing a partial check does not establish that
+the entire task passed.
+
+See the [validation and rejected alternatives](../../terminal-bench/2026-09-25-candidate-review-validation.md)
+and [protocols and reproduction scripts](../../../bench/terminal-bench/experiments/2026-09-25-candidate-review/).

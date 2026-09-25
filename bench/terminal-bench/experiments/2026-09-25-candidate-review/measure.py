@@ -14,6 +14,7 @@ spec.loader.exec_module(intervals)
 p = argparse.ArgumentParser()
 p.add_argument('--manifest', type=Path, required=True)
 p.add_argument('--rows', type=Path, required=True)
+p.add_argument('--records', type=Path, help='Use a relocated retained record directory')
 p.add_argument('--baseline', type=Path, required=True)
 p.add_argument('--partition', choices=['calibration', 'held-out', 'prospective'], required=True)
 p.add_argument('--threshold', type=float)
@@ -31,7 +32,7 @@ for item in manifest:
     label = labels[key]
     record = None
     if item.get('input'):
-        path = Path(item['input']).parent / a.record / 'review.json'
+        path = (a.records / item['trial'] if a.records else Path(item['input']).parent) / a.record / 'review.json'
         if path.exists():
             record = json.loads(path.read_text())
     scores = [f['score'] for f in record['findings'] if f['score'] is not None] if record else []

@@ -9,7 +9,12 @@ use super::{Input, Report, check, recover, synthetic};
 use crate::record::Recorder;
 
 /// The checks commands' usage.
-pub const USAGE: &str = "usage: coder-one checks review --input FILE --out DIR
+pub const USAGE: &str = "usage: coder-one checks readiness --input FILE --out DIR
+       coder-one checks review --input FILE --out DIR [--model MODEL] [--scope strict]
+       coder-one checks report-audit --rows FILE --jobs DIR --out DIR
+                                      [--partition calibration|held-out|all]
+       coder-one checks report-audit --trial-dir DIR --input FILE --out DIR
+       coder-one checks public-program --input FILE --out DIR
        coder-one checks synthetic [NAME] [--json]
        coder-one checks run --input FILE [--json]
        coder-one checks recover --traces DIR [--arm ARM|all] [--out DIR] [--json]
