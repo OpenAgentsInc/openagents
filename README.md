@@ -212,6 +212,12 @@ grades remain unchanged. This is not TB4, a Fable comparison, or a matched
 Coder ablation. Full transcripts, sealed predictions, costs, timings, and
 uncertainty are retained; `gym coder truth --confirmation PATH` reads the result.
 
+The follow-up [literal artifact checker](docs/terminal-bench/2026-09-25-literal-artifact-checks.md)
+catches three real failures with three calls, zero model tokens, and a 0.747-second
+median replay time. Its combined development result catches 7/11 failures at
+7/10 precision. The labels were already open, so this is not new confirmation;
+runtime policies remain unchanged.
+
 The [earlier candidate-review study](docs/terminal-bench/2026-09-25-candidate-review-validation.md)
 retains the rejected opinion-based rules, the negative 16-candidate evaluation,
 and mini controls that exposed two cancellation bugs in a passing fixture.

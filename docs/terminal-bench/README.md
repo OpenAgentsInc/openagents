@@ -4,6 +4,12 @@ Updated on 2026-09-25 with the completed archive confirmation. This page summari
 
 ## Latest status
 
+**Literal artifact checks catch three failures with three calls and no model
+tokens.** The median replay takes 0.747 seconds per candidate. Combining these
+checks with the earlier detector catches 7/11 failures at 7/10 precision on the
+already-opened 72 candidates. This is development evidence; runtime policies
+remain unchanged. See [implementation, controls, coverage, and retained records](2026-09-25-literal-artifact-checks.md).
+
 **The 72-candidate archive confirmation is complete.** Luna passes 26/36 and
 Astra 35/36 across 12 unused archived task groups. Executed checks detect 6/11
 official failures with 6/9 precision, versus 1/11 and 1/1 for scenario checks.

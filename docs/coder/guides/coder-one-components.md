@@ -558,6 +558,14 @@ same as versioned JSON.
 
 ## Experimental completion assessment
 
+`coder-one checks contract literal-plan --instruction FILE --workdir DIR --out PLAN`
+extracts explicit mandatory output paths and byte ceilings without a model.
+`coder-one checks contract literal-run --plan PLAN --out REPORT` executes the
+sealed necessary conditions using file metadata only. Missing paths and exceeded
+limits call `fail`; a match or unavailable evidence abstains. These separate
+versioned plans never certify completion and do not change the ordinary extractor
+or a runtime policy. See the [grammar, controls, development replay, and evidence](../../terminal-bench/2026-09-25-literal-artifact-checks.md).
+
 `coder-one checks review --input FILE --out DIR` proposes static counterexamples
 from a public instruction and bounded final source files. It checks quotations
 and asks Jev whether each concern establishes a mandatory failure. Add
