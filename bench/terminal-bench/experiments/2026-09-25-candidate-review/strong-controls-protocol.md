@@ -25,3 +25,12 @@ outside all original calibration groups; shadow-relay has the previously disclos
 prior exposure. Do not fit any rule or choose a favorable subset from these labels.
 If the controls also fail, say that the cohort cannot establish false-alarm behavior
 on correct candidates. Keep the full traces and exact selected candidates.
+
+## Retry an environment-start refusal
+
+The first Astra `vpp-loss-divergence` attempt exited before an agent or candidate
+record existed: Harbor refused its allowlist as unsupported. Preserve that attempt
+as an infrastructure failure and retry once under a new `9584-r2` job name with
+the identical executor binary and policy. This decision precedes all fresh grade
+reads. Do not replace a graded failure or select between candidates. Report both
+attempts, and use the retry in the paired cohort only if it produces a candidate.
