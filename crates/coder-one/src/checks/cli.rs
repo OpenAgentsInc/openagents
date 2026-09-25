@@ -17,6 +17,7 @@ pub const USAGE: &str = "usage: coder-one checks readiness --input FILE --out DI
        coder-one checks public-program --input FILE --out DIR
        coder-one checks contract plan|run|offline …    (coder-one checks contract help)
        coder-one checks conformance registry|run|offline …    (coder-one checks conformance help)
+       coder-one checks oracle offline …    (coder-one checks oracle help)
        coder-one checks synthetic [NAME] [--json]
        coder-one checks run --input FILE [--json]
        coder-one checks recover --traces DIR [--arm ARM|all] [--out DIR] [--json]
@@ -106,6 +107,9 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
     };
     if verb == "contract" {
         return super::contract::cli::command(rest).await;
+    }
+    if verb == "oracle" {
+        return super::oracle::cli::command(rest).await;
     }
     if verb == "conformance" {
         return super::conformance::cli::command(rest).await;

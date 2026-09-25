@@ -55,7 +55,7 @@ fn now() -> u128 {
         .map_or(0, |d| d.as_millis())
 }
 
-fn container_name(task: &str, what: &str) -> String {
+pub(crate) fn container_name(task: &str, what: &str) -> String {
     format!(
         "contract-check-{task}-{what}-{}-{}",
         std::process::id(),
@@ -99,7 +99,7 @@ pub fn workspaces(name: &str, options: &Options) -> Result<Vec<Trial>, String> {
 
 /// Starts a container of `image` with no network, runs `f` against it,
 /// and removes it whatever happens.
-async fn with_container<T, F, Fut>(
+pub(crate) async fn with_container<T, F, Fut>(
     runner: Docker,
     name: &str,
     scratch: &Path,
