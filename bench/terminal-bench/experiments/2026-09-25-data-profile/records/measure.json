@@ -1,0 +1,5625 @@
+{
+ "schema": "openagents.data-profile-offline.v1",
+ "issue": 9654,
+ "sets": {
+  "source": {
+   "tasks": 1,
+   "replayed": 1,
+   "not_replayed": {},
+   "entry_points": {
+    "named": {
+     "tasks_with_entry_point": 1,
+     "share": 1.0,
+     "wilson": [
+      0.21,
+      1.0
+     ],
+     "tasks_with_observable_run": 1,
+     "entries_by_kind": {
+      "module": 1
+     },
+     "tasks": [
+      "embedding-drift-monitor"
+     ]
+    },
+    "wide": {
+     "tasks_with_entry_point": 1,
+     "share": 1.0,
+     "wilson": [
+      0.21,
+      1.0
+     ],
+     "tasks_with_observable_run": 1,
+     "entries_by_kind": {
+      "module": 1
+     },
+     "tasks": [
+      "embedding-drift-monitor"
+     ]
+    }
+   },
+   "gained": [],
+   "lost": [],
+   "profile": {
+    "tasks_with_data_files": 1,
+    "tasks_with_findings": 1,
+    "files": 4,
+    "files_with_findings": 1,
+    "files_by_kind": {
+     "npy": 4
+    },
+    "findings_by_category": {
+     "all-zero rows": {
+      "files": 1,
+      "tasks": 1
+     },
+     "duplicate rows or records": {
+      "files": 1,
+      "tasks": 1
+     }
+    }
+   },
+   "time_ms": {
+    "profile_median": 47,
+    "profile_max": 47,
+    "discovery_wide_median": 17,
+    "discovery_wide_max": 17,
+    "run_median": 5174,
+    "run_max": 5174
+   },
+   "exposure": {
+    "tasks_labeled": 1,
+    "labels": 16,
+    "profile": {
+     "labels": 3,
+     "tasks": [
+      "embedding-drift-monitor"
+     ],
+     "wilson_tasks": [
+      0.21,
+      1.0
+     ]
+    },
+    "baseline_named": {
+     "labels": 4,
+     "tasks": [
+      "embedding-drift-monitor"
+     ]
+    },
+    "baseline_wide": {
+     "labels": 4,
+     "tasks": [
+      "embedding-drift-monitor"
+     ]
+    },
+    "either": {
+     "tasks": [
+      "embedding-drift-monitor"
+     ],
+     "wilson": [
+      0.21,
+      1.0
+     ]
+    }
+   }
+  },
+  "anatomy": {
+   "tasks": 17,
+   "replayed": 17,
+   "not_replayed": {},
+   "entry_points": {
+    "named": {
+     "tasks_with_entry_point": 7,
+     "share": 0.41,
+     "wilson": [
+      0.22,
+      0.64
+     ],
+     "tasks_with_observable_run": 5,
+     "entries_by_kind": {
+      "script": 3,
+      "named": 4
+     },
+     "tasks": [
+      "biped-contact-dynamics",
+      "bun-sourcemap-leak",
+      "coq-block-bound",
+      "data-anonymization",
+      "interleaved-vigenere",
+      "layout-config-recreation",
+      "sound-change-cascade"
+     ]
+    },
+    "wide": {
+     "tasks_with_entry_point": 7,
+     "share": 0.41,
+     "wilson": [
+      0.22,
+      0.64
+     ],
+     "tasks_with_observable_run": 5,
+     "entries_by_kind": {
+      "script": 3,
+      "named": 4
+     },
+     "tasks": [
+      "biped-contact-dynamics",
+      "bun-sourcemap-leak",
+      "coq-block-bound",
+      "data-anonymization",
+      "interleaved-vigenere",
+      "layout-config-recreation",
+      "sound-change-cascade"
+     ]
+    }
+   },
+   "gained": [],
+   "lost": [],
+   "profile": {
+    "tasks_with_data_files": 9,
+    "tasks_with_findings": 3,
+    "files": 64,
+    "files_with_findings": 6,
+    "files_by_kind": {
+     "csv": 23,
+     "json": 13,
+     "text": 26,
+     "tsv": 2
+    },
+    "findings_by_category": {
+     "empty fields or strings": {
+      "files": 5,
+      "tasks": 3
+     },
+     "rows with another field count": {
+      "files": 1,
+      "tasks": 1
+     },
+     "missing keys": {
+      "files": 1,
+      "tasks": 1
+     }
+    }
+   },
+   "time_ms": {
+    "profile_median": 0,
+    "profile_max": 11605,
+    "discovery_wide_median": 11,
+    "discovery_wide_max": 25,
+    "run_median": 1478,
+    "run_max": 5744
+   },
+   "exposure": {
+    "tasks_labeled": 16,
+    "labels": 277,
+    "profile": {
+     "labels": 1,
+     "tasks": [
+      "fin-saccr-rwa"
+     ],
+     "wilson_tasks": [
+      0.01,
+      0.28
+     ]
+    },
+    "baseline_named": {
+     "labels": 0,
+     "tasks": []
+    },
+    "baseline_wide": {
+     "labels": 0,
+     "tasks": []
+    },
+    "either": {
+     "tasks": [
+      "fin-saccr-rwa"
+     ],
+     "wilson": [
+      0.01,
+      0.28
+     ]
+    }
+   }
+  },
+  "family": {
+   "tasks": 6,
+   "replayed": 4,
+   "not_replayed": {
+    "cumulative-layout-shift": "no local image",
+    "live-database-cutover": "no local image"
+   },
+   "entry_points": {
+    "named": {
+     "tasks_with_entry_point": 0,
+     "share": 0.0,
+     "wilson": [
+      0.0,
+      0.49
+     ],
+     "tasks_with_observable_run": 0,
+     "entries_by_kind": {},
+     "tasks": []
+    },
+    "wide": {
+     "tasks_with_entry_point": 0,
+     "share": 0.0,
+     "wilson": [
+      0.0,
+      0.49
+     ],
+     "tasks_with_observable_run": 0,
+     "entries_by_kind": {},
+     "tasks": []
+    }
+   },
+   "gained": [],
+   "lost": [],
+   "profile": {
+    "tasks_with_data_files": 3,
+    "tasks_with_findings": 1,
+    "files": 7,
+    "files_with_findings": 4,
+    "files_by_kind": {
+     "csv": 4,
+     "json": 3
+    },
+    "findings_by_category": {
+     "empty fields or strings": {
+      "files": 4,
+      "tasks": 1
+     },
+     "mixed columns": {
+      "files": 4,
+      "tasks": 1
+     }
+    }
+   },
+   "time_ms": {
+    "profile_median": 0.0,
+    "profile_max": 899,
+    "discovery_wide_median": 6.0,
+    "discovery_wide_max": 17,
+    "run_median": null,
+    "run_max": null
+   }
+  },
+  "wider": {
+   "tasks": 42,
+   "replayed": 22,
+   "not_replayed": {
+    "batched-eval-parity": "no local image",
+    "ctr-optimization": "no local image",
+    "foodstuff-beta-activity": "no local image",
+    "fp8-rmsnorm-gemm": "no local image",
+    "freecad-platform-drawing": "no local image",
+    "glycan-ms2-elucidation": "no local image",
+    "hof-topology-interpenetration": "no local image",
+    "jax-speedrun-gpu": "no local image",
+    "kv-live-surgery": "no local image",
+    "lake-temp-glm": "no local image",
+    "layout-config-recreation2": "no local image",
+    "medical-claims-processing": "no local image",
+    "music-harmony": "no local image",
+    "nextjs-performance": "no local image",
+    "ontology-kg-querying": "no local image",
+    "react-lead-form": "no local image",
+    "retro-console-soc": "no local image",
+    "satb-audio-transcription": "no local image",
+    "takens-embedding-lean": "no local image",
+    "vllm-deepseek-streaming": "no local image"
+   },
+   "entry_points": {
+    "named": {
+     "tasks_with_entry_point": 7,
+     "share": 0.32,
+     "wilson": [
+      0.16,
+      0.53
+     ],
+     "tasks_with_observable_run": 7,
+     "entries_by_kind": {
+      "named": 4,
+      "make": 1,
+      "script": 5,
+      "module": 1
+     },
+     "tasks": [
+      "cargo-flight-dispatch",
+      "mvcc-lsm-compaction",
+      "pretrain-shard-corruption",
+      "production-planning",
+      "risk-scorer-replay",
+      "uefi-bootkit",
+      "vpp-loss-divergence"
+     ]
+    },
+    "wide": {
+     "tasks_with_entry_point": 7,
+     "share": 0.32,
+     "wilson": [
+      0.16,
+      0.53
+     ],
+     "tasks_with_observable_run": 7,
+     "entries_by_kind": {
+      "named": 4,
+      "make": 2,
+      "script": 5,
+      "module": 1
+     },
+     "tasks": [
+      "cargo-flight-dispatch",
+      "mvcc-lsm-compaction",
+      "pretrain-shard-corruption",
+      "production-planning",
+      "risk-scorer-replay",
+      "uefi-bootkit",
+      "vpp-loss-divergence"
+     ]
+    }
+   },
+   "gained": [],
+   "lost": [],
+   "profile": {
+    "tasks_with_data_files": 8,
+    "tasks_with_findings": 3,
+    "files": 39,
+    "files_with_findings": 4,
+    "files_by_kind": {
+     "csv": 4,
+     "json": 30,
+     "text": 4,
+     "tsv": 1
+    },
+    "findings_by_category": {
+     "empty fields or strings": {
+      "files": 2,
+      "tasks": 2
+     },
+     "null values": {
+      "files": 1,
+      "tasks": 1
+     },
+     "missing keys": {
+      "files": 2,
+      "tasks": 1
+     }
+    }
+   },
+   "time_ms": {
+    "profile_median": 0.0,
+    "profile_max": 25,
+    "discovery_wide_median": 7.5,
+    "discovery_wide_max": 52,
+    "run_median": 3986.0,
+    "run_max": 52335
+   }
+  }
+ },
+ "tasks": {
+  "atrx-vep-crispr": {
+   "set": "anatomy",
+   "image": "tbench-warm/atrx-vep-crispr:environment-003ee692305bb20c5a4c",
+   "workdir": "/app",
+   "reconstructed": false,
+   "profile": {
+    "files": [
+     {
+      "path": "data/CDS-information.txt",
+      "kind": "text",
+      "bytes": 620,
+      "whole": true,
+      "findings": [],
+      "ms": 2
+     },
+     {
+      "path": "data/InterPro-domain-information.tsv",
+      "kind": "tsv",
+      "bytes": 384857,
+      "whole": true,
+      "findings": [
+       "105 rows with a field count other than 1 (lines 3, 4, 5, 6, 7, \u2026)"
+      ],
+      "ms": 7
+     },
+     {
+      "path": "data/ensembl-vep-release-115/Bio/EnsEMBL/Variation/DBSQL/vcf_config.json",
+      "kind": "json",
+      "bytes": 69629,
+      "whole": true,
+      "findings": [
+       "871 missing keys under \"collections\"",
+       "6 empty strings"
+      ],
+      "ms": 5
+     },
+     {
+      "path": "data/ensembl-vep-release-115/homo_sapiens_refseq/115_GRCh38/info.txt",
+      "kind": "text",
+      "bytes": 3368,
+      "whole": true,
+      "findings": [],
+      "ms": 1
+     },
+     {
+      "path": "data/ensembl-vep-release-115/nextflow/nextflow_schema.json",
+      "kind": "json",
+      "bytes": 3744,
+      "whole": true,
+      "findings": [
+       "2 empty strings"
+      ],
+      "ms": 0
+     },
+     {
+      "path": "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/core/analysis.txt",
+      "kind": "text",
+      "bytes": 3035,
+      "whole": true,
+      "findings": [],
+      "ms": 1
+     },
+     {
+      "path": "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/core/analysis_description.txt",
+      "kind": "text",
+      "bytes": 11704,
+      "whole": true,
+      "findings": [],
+      "ms": 2
+     },
+     {
+      "path": "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/core/assembly.txt",
+      "kind": "text",
+      "bytes": 13124,
+      "whole": true,
+      "findings": [],
+      "ms": 2
+     },
+     {
+      "path": "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/core/attrib_type.txt",
+      "kind": "text",
+      "bytes": 30601,
+      "whole": true,
+      "findings": [],
+      "ms": 2
+     },
+     {
+      "path": "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/core/biotype.txt",
+      "kind": "text",
+      "bytes": 256,
+      "whole": true,
+      "findings": [],
+      "ms": 1
+     },
+     {
+      "path": "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/core/coord_system.txt",
+      "kind": "text",
+      "bytes": 299,
+      "whole": true,
+      "findings": [],
+      "ms": 1
+     },
+     {
+      "path": "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/core/dna.txt",
+      "kind": "text",
+      "bytes": 1259205,
+      "whole": true,
+      "findings": [],
+      "ms": 25
+     },
+     {
+      "path": "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/core/dna_align_feature.txt",
+      "kind": "text",
+      "bytes": 127057,
+      "whole": true,
+      "findings": [],
+      "ms": 6
+     },
+     {
+      "path": "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/core/exon.txt",
+      "kind": "text",
+      "bytes": 61895,
+      "whole": true,
+      "findings": [],
+      "ms": 3
+     },
+     {
+      "path": "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/core/exon_transcript.txt",
+      "kind": "text",
+      "bytes": 15883,
+      "whole": true,
+      "findings": [],
+      "ms": 2
+     },
+     {
+      "path": "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/core/external_db.txt",
+      "kind": "text",
+      "bytes": 35799,
+      "whole": true,
+      "findings": [],
+      "ms": 2
+     },
+     {
+      "path": "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/core/external_synonym.txt",
+      "kind": "text",
+      "bytes": 1989,
+      "whole": true,
+      "findings": [],
+      "ms": 2
+     },
+     {
+      "path": "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/core/gene.txt",
+      "kind": "text",
+      "bytes": 5960,
+      "whole": true,
+      "findings": [],
+      "ms": 3
+     },
+     {
+      "path": "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/core/gene_attrib.txt",
+      "kind": "text",
+      "bytes": 3968,
+      "whole": true,
+      "findings": [],
+      "ms": 2
+     },
+     {
+      "path": "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/core/identity_xref.txt",
+      "kind": "text",
+      "bytes": 6634,
+      "whole": true,
+      "findings": [],
+      "ms": 2
+     },
+     {
+      "path": "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/core/meta.txt",
+      "kind": "text",
+      "bytes": 9482,
+      "whole": true,
+      "findings": [],
+      "ms": 2
+     },
+     {
+      "path": "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/core/meta_coord.txt",
+      "kind": "text",
+      "bytes": 99,
+      "whole": true,
+      "findings": [],
+      "ms": 1
+     },
+     {
+      "path": "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/core/misc_attrib.txt",
+      "kind": "text",
+      "bytes": 5,
+      "whole": true,
+      "findings": [],
+      "ms": 1
+     },
+     {
+      "path": "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/core/object_xref.txt",
+      "kind": "text",
+      "bytes": 299631,
+      "whole": true,
+      "findings": [],
+      "ms": 17
+     }
+    ],
+    "skipped": [
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/core/ontology_xref.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/core/protein_align_feature.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/core/protein_feature.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/core/seq_region.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/core/seq_region_attrib.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/core/seq_region_synonym.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/core/supporting_feature.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/core/transcript.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/core/transcript_attrib.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/core/transcript_supporting_feature.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/core/translation.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/core/translation_attrib.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/core/unmapped_reason.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/core/xref.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/alignment.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/alignment_qc_flagstats.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/alignment_read_file.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/analysis.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/analysis_description.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/array.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/array_chip.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/associated_feature_type.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/associated_group.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/associated_motif_feature.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/associated_xref.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/binding_matrix.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/binding_matrix_frequencies.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/binding_matrix_transcription_factor_complex.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/chance.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/data_file.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/epigenome.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/execution_plan.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/experiment.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/experimental_group.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/external_db.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/external_feature.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/external_feature_file.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/external_synonym.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/fastqc.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/feature_set.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/feature_type.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/frip.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/identity_xref.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/idr.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/meta.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/meta_coord.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/mirna_target_feature.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/motif_feature.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/motif_feature_peak.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/motif_feature_regulatory_feature.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/object_xref.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/ontology_xref.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/peak.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/peak_calling.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/peak_calling_statistic.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/phantom_peak.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/probe.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/probe_feature.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/probe_feature_transcript.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/probe_mapping.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/probe_mapping_statistic.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/probe_seq.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/probe_set.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/probe_set_transcript.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/probe_transcript.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/read_file.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/read_file_experimental_configuration.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/regulatory_activity.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/regulatory_build.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/regulatory_build_epigenome.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/regulatory_build_statistic.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/regulatory_evidence.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/regulatory_feature.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/segmentation.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/segmentation_cell_table_ctcf.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/segmentation_cell_table_without_ctcf.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/segmentation_cell_tables.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/segmentation_file.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/segmentation_state_assignment.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/segmentation_state_emission.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/segmentation_statistic.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/transcription_factor.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/transcription_factor_complex.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/transcription_factor_complex_composition.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/underlying_structure.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/unmapped_object.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/unmapped_reason.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/funcgen/xref.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/otherfeatures/analysis.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/otherfeatures/analysis_description.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/otherfeatures/attrib_type.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/otherfeatures/biotype.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/otherfeatures/coord_system.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/otherfeatures/dna_align_feature.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/otherfeatures/exon.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/otherfeatures/exon_transcript.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/otherfeatures/external_db.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/otherfeatures/gene.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/otherfeatures/meta.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/otherfeatures/meta_coord.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/otherfeatures/object_xref.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/otherfeatures/seq_region.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/otherfeatures/seq_region_synonym.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/otherfeatures/supporting_feature.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/otherfeatures/transcript.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/otherfeatures/transcript_attrib.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/otherfeatures/translation.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/otherfeatures/unmapped_reason.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/otherfeatures/xref.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/variation/allele_synonym.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/variation/attrib.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/variation/attrib_set.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/variation/attrib_type.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/variation/failed_description.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/variation/individual_type.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/variation/meta.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/variation/meta_coord.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/variation/protein_function_predictions.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/variation/protein_function_predictions_attrib.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/variation/seq_region.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/variation/source.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/variation/structural_variation.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/variation/structural_variation_feature.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/variation/translation_md5.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/variation/variation.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/variation/variation_feature.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens/variation/variation_synonym.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens_coreonly/core/analysis.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens_coreonly/core/analysis_description.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens_coreonly/core/assembly.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens_coreonly/core/attrib_type.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens_coreonly/core/biotype.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens_coreonly/core/coord_system.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens_coreonly/core/dna.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens_coreonly/core/dna_align_feature.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens_coreonly/core/exon.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens_coreonly/core/exon_transcript.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens_coreonly/core/external_db.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens_coreonly/core/external_synonym.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens_coreonly/core/gene.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens_coreonly/core/gene_attrib.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens_coreonly/core/identity_xref.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens_coreonly/core/meta.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens_coreonly/core/meta_coord.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens_coreonly/core/misc_attrib.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens_coreonly/core/object_xref.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens_coreonly/core/ontology_xref.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens_coreonly/core/protein_align_feature.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens_coreonly/core/protein_feature.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens_coreonly/core/seq_region.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens_coreonly/core/seq_region_attrib.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens_coreonly/core/supporting_feature.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens_coreonly/core/transcript.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens_coreonly/core/transcript_attrib.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens_coreonly/core/transcript_supporting_feature.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens_coreonly/core/translation.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens_coreonly/core/translation_attrib.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens_coreonly/core/unmapped_reason.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/homo_vepiens_coreonly/core/xref.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/multi/ontology/alt_id.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/multi/ontology/aux_GO_Cross_product_review_map.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/multi/ontology/aux_GO_goslim_aspergillus_map.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/multi/ontology/aux_GO_goslim_candida_map.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/multi/ontology/aux_GO_goslim_generic_map.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/multi/ontology/aux_GO_goslim_metagenomics_map.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/multi/ontology/aux_GO_goslim_pir_map.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/multi/ontology/aux_GO_goslim_plant_map.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/multi/ontology/aux_GO_goslim_pombe_map.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/multi/ontology/aux_GO_goslim_yeast_map.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/multi/ontology/aux_GO_gosubset_prok_map.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/multi/ontology/aux_GO_high_level_annotation_qc_map.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/multi/ontology/aux_GO_mf_needs_review_map.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/multi/ontology/aux_GO_virus_checked_map.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/multi/ontology/aux_SO_DBVAR_map.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/multi/ontology/aux_SO_SOFA_map.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/multi/ontology/aux_SO_biosapiens_map.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/multi/ontology/closure.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/multi/ontology/meta.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/multi/ontology/ontology.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/multi/ontology/relation.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/multi/ontology/relation_type.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/multi/ontology/subset.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/multi/ontology/synonym.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/multi/ontology/term.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/mus_muscuvep/core/analysis.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/mus_muscuvep/core/analysis_description.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/mus_muscuvep/core/assembly.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/mus_muscuvep/core/attrib_type.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/mus_muscuvep/core/biotype.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/mus_muscuvep/core/coord_system.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/mus_muscuvep/core/dna.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/mus_muscuvep/core/dna_align_feature.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/mus_muscuvep/core/exon.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/mus_muscuvep/core/exon_transcript.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/mus_muscuvep/core/external_db.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/mus_muscuvep/core/external_synonym.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/mus_muscuvep/core/gene.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/mus_muscuvep/core/gene_attrib.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/mus_muscuvep/core/identity_xref.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/mus_muscuvep/core/meta.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/mus_muscuvep/core/meta_coord.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/mus_muscuvep/core/object_xref.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/mus_muscuvep/core/ontology_xref.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/mus_muscuvep/core/protein_align_feature.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/mus_muscuvep/core/protein_feature.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/mus_muscuvep/core/seq_region.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/mus_muscuvep/core/seq_region_attrib.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/mus_muscuvep/core/supporting_feature.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/mus_muscuvep/core/transcript.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/mus_muscuvep/core/transcript_attrib.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/mus_muscuvep/core/transcript_supporting_feature.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/mus_muscuvep/core/translation.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/mus_muscuvep/core/translation_attrib.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/mus_muscuvep/core/unmapped_reason.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test-genome-DBs/mus_muscuvep/core/xref.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test_core_region_config.json",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test_core_region_mouse_config.json",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/test_otherfeatures_region_config.json",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/testdata/cache/exac/homo_sapiens/84_GRCh38/info.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/testdata/cache/foo/84_bar/info.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/testdata/cache/foo/84_car/info.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/testdata/cache/homo_sapiens/84_GRCh38/info.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/testdata/cache/homo_sapiens_merged/84_GRCh38/info.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/testdata/cache/homo_sapiens_refseq/84_GRCh38/info.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/testdata/cache/sereal/homo_sapiens/84_GRCh38/info.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/testdata/chr_synonyms.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/testdata/filter/gene_list.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/testdata/haplotype_frequencies.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/testdata/haplotype_frequencies_nh.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/testdata/input/test_vr.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/ensembl-vep-release-115/t/translation_md5s.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "data/mutated-transcripts.txt",
+      "over the 24-file bound"
+     ]
+    ],
+    "ms": 129
+   },
+   "named": {
+    "ms": 5,
+    "entries": []
+   },
+   "wide": {
+    "ms": 11,
+    "entries": []
+   }
+  },
+  "batched-eval-parity": {
+   "set": "wider",
+   "image": null,
+   "workdir": null,
+   "reconstructed": false,
+   "skipped": "no local image"
+  },
+  "biped-contact-dynamics": {
+   "set": "anatomy",
+   "image": null,
+   "workdir": "/app",
+   "reconstructed": true,
+   "profile": {
+    "files": [
+     {
+      "path": "configs/visible.json",
+      "kind": "json",
+      "bytes": 741,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     }
+    ],
+    "skipped": [],
+    "ms": 0
+   },
+   "named": {
+    "ms": 19,
+    "entries": [
+     {
+      "kind": "named",
+      "command": "python /app/submission/solve.py --config CONFIG_JSON --output OUTPUT_DIR",
+      "refused": "it is a usage pattern with placeholder words",
+      "exit": null,
+      "timed_out": null,
+      "ms": null,
+      "observable": null
+     },
+     {
+      "kind": "script",
+      "command": "python3 make_trajectories.py",
+      "refused": null,
+      "exit": null,
+      "timed_out": null,
+      "ms": null,
+      "observable": null
+     }
+    ]
+   },
+   "wide": {
+    "ms": 25,
+    "entries": [
+     {
+      "kind": "named",
+      "command": "python /app/submission/solve.py --config CONFIG_JSON --output OUTPUT_DIR",
+      "refused": "it is a usage pattern with placeholder words",
+      "exit": null,
+      "timed_out": null,
+      "ms": null,
+      "observable": null
+     },
+     {
+      "kind": "script",
+      "command": "python3 make_trajectories.py",
+      "refused": null,
+      "exit": null,
+      "timed_out": null,
+      "ms": null,
+      "observable": null
+     }
+    ]
+   }
+  },
+  "bun-sourcemap-leak": {
+   "set": "anatomy",
+   "image": "accept-env/bun-sourcemap-leak:latest",
+   "workdir": "/app",
+   "reconstructed": false,
+   "profile": {
+    "files": [
+     {
+      "path": "visibility.json",
+      "kind": "json",
+      "bytes": 261,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     }
+    ],
+    "skipped": [],
+    "ms": 0
+   },
+   "named": {
+    "ms": 10,
+    "entries": [
+     {
+      "kind": "named",
+      "command": "bun run release",
+      "refused": null,
+      "exit": 0,
+      "timed_out": false,
+      "ms": 1478,
+      "observable": true
+     }
+    ]
+   },
+   "wide": {
+    "ms": 21,
+    "entries": [
+     {
+      "kind": "named",
+      "command": "bun run release",
+      "refused": null,
+      "exit": 0,
+      "timed_out": false,
+      "ms": 1478,
+      "observable": true
+     }
+    ]
+   }
+  },
+  "cad-model": {
+   "set": "wider",
+   "image": "accept-env/cad-model:latest",
+   "workdir": "/app",
+   "reconstructed": false,
+   "profile": {
+    "files": [],
+    "skipped": [],
+    "ms": 0
+   },
+   "named": {
+    "ms": 1,
+    "entries": []
+   },
+   "wide": {
+    "ms": 6,
+    "entries": []
+   }
+  },
+  "cargo-flight-dispatch": {
+   "set": "wider",
+   "image": "tbench-warm/cargo-flight-dispatch:environment-b2cf375ef4adfe315f6c",
+   "workdir": "/app",
+   "reconstructed": false,
+   "profile": {
+    "files": [
+     {
+      "path": "data/aircraft.json",
+      "kind": "json",
+      "bytes": 496,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     },
+     {
+      "path": "data/airports.json",
+      "kind": "json",
+      "bytes": 1685,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     },
+     {
+      "path": "data/manifest.json",
+      "kind": "json",
+      "bytes": 1257,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     },
+     {
+      "path": "data/weather.json",
+      "kind": "json",
+      "bytes": 1611,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     }
+    ],
+    "skipped": [],
+    "ms": 0
+   },
+   "named": {
+    "ms": 23,
+    "entries": [
+     {
+      "kind": "named",
+      "command": "python /app/dispatch.py --output /output/flight_plan.json",
+      "refused": null,
+      "exit": 0,
+      "timed_out": false,
+      "ms": 842,
+      "observable": true
+     }
+    ]
+   },
+   "wide": {
+    "ms": 44,
+    "entries": [
+     {
+      "kind": "named",
+      "command": "python /app/dispatch.py --output /output/flight_plan.json",
+      "refused": null,
+      "exit": 0,
+      "timed_out": false,
+      "ms": 842,
+      "observable": true
+     }
+    ]
+   }
+  },
+  "coq-block-bound": {
+   "set": "anatomy",
+   "image": "accept-env/coq-block-bound:latest",
+   "workdir": "/app",
+   "reconstructed": false,
+   "profile": {
+    "files": [],
+    "skipped": [],
+    "ms": 0
+   },
+   "named": {
+    "ms": 10,
+    "entries": [
+     {
+      "kind": "named",
+      "command": "coqc -Q . Top Main.v",
+      "refused": null,
+      "exit": 0,
+      "timed_out": false,
+      "ms": 1687,
+      "observable": true
+     }
+    ]
+   },
+   "wide": {
+    "ms": 21,
+    "entries": [
+     {
+      "kind": "named",
+      "command": "coqc -Q . Top Main.v",
+      "refused": null,
+      "exit": 0,
+      "timed_out": false,
+      "ms": 1687,
+      "observable": true
+     }
+    ]
+   }
+  },
+  "ctr-optimization": {
+   "set": "wider",
+   "image": null,
+   "workdir": null,
+   "reconstructed": false,
+   "skipped": "no local image"
+  },
+  "cumulative-layout-shift": {
+   "set": "family",
+   "image": null,
+   "workdir": null,
+   "reconstructed": false,
+   "skipped": "no local image"
+  },
+  "data-anonymization": {
+   "set": "anatomy",
+   "image": "tbench-warm/data-anonymization:environment-aa56c6e63796b1f7ebc2",
+   "workdir": "/app",
+   "reconstructed": false,
+   "profile": {
+    "files": [
+     {
+      "path": "input/account_memberships.csv",
+      "kind": "csv",
+      "bytes": 46150117,
+      "whole": false,
+      "findings": [],
+      "ms": 1689
+     },
+     {
+      "path": "input/accounts.csv",
+      "kind": "csv",
+      "bytes": 27793026,
+      "whole": true,
+      "findings": [],
+      "ms": 1589
+     },
+     {
+      "path": "input/devices.csv",
+      "kind": "csv",
+      "bytes": 10344645,
+      "whole": true,
+      "findings": [],
+      "ms": 635
+     },
+     {
+      "path": "input/events.csv",
+      "kind": "csv",
+      "bytes": 37016744,
+      "whole": false,
+      "findings": [],
+      "ms": 1995
+     },
+     {
+      "path": "input/identity_aliases.csv",
+      "kind": "csv",
+      "bytes": 158377644,
+      "whole": false,
+      "findings": [],
+      "ms": 1918
+     },
+     {
+      "path": "input/merger_history.csv",
+      "kind": "csv",
+      "bytes": 36641,
+      "whole": true,
+      "findings": [],
+      "ms": 3
+     },
+     {
+      "path": "input/orders.csv",
+      "kind": "csv",
+      "bytes": 36988920,
+      "whole": false,
+      "findings": [],
+      "ms": 1787
+     },
+     {
+      "path": "input/subject_links.csv",
+      "kind": "csv",
+      "bytes": 9199,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     },
+     {
+      "path": "input/subject_versions.csv",
+      "kind": "csv",
+      "bytes": 79973914,
+      "whole": false,
+      "findings": [],
+      "ms": 1982
+     }
+    ],
+    "skipped": [
+     [
+      "input/subjects.csv",
+      "over the 10000 ms bound"
+     ]
+    ],
+    "ms": 11605
+   },
+   "named": {
+    "ms": 11,
+    "entries": [
+     {
+      "kind": "named",
+      "command": "python3 /app/anon.py /app/input --policy /app/policy.yaml --output /app/output --seed 42 --max-memory 64MB",
+      "refused": null,
+      "exit": 2,
+      "timed_out": false,
+      "ms": 5744,
+      "observable": true
+     }
+    ]
+   },
+   "wide": {
+    "ms": 11,
+    "entries": [
+     {
+      "kind": "named",
+      "command": "python3 /app/anon.py /app/input --policy /app/policy.yaml --output /app/output --seed 42 --max-memory 64MB",
+      "refused": null,
+      "exit": 2,
+      "timed_out": false,
+      "ms": 5744,
+      "observable": true
+     }
+    ]
+   }
+  },
+  "distributed-dedup": {
+   "set": "wider",
+   "image": "truth9584-review/distributed-dedup:public-environment",
+   "workdir": "/app",
+   "reconstructed": false,
+   "profile": {
+    "files": [],
+    "skipped": [],
+    "ms": 0
+   },
+   "named": {
+    "ms": 2,
+    "entries": []
+   },
+   "wide": {
+    "ms": 5,
+    "entries": []
+   }
+  },
+  "embedding-drift-monitor": {
+   "set": "source",
+   "image": "accept-env/embedding-drift-monitor:latest",
+   "workdir": "/app",
+   "reconstructed": false,
+   "profile": {
+    "files": [
+     {
+      "path": "data/current_clear_drift.npy",
+      "kind": "npy",
+      "bytes": 102528,
+      "whole": true,
+      "findings": [],
+      "ms": 7
+     },
+     {
+      "path": "data/current_stable.npy",
+      "kind": "npy",
+      "bytes": 102528,
+      "whole": true,
+      "findings": [],
+      "ms": 5
+     },
+     {
+      "path": "data/current_with_zeros.npy",
+      "kind": "npy",
+      "bytes": 102528,
+      "whole": true,
+      "findings": [
+       "5 all-zero rows (rows 0, 20, 40, 60, 80)",
+       "4 duplicate rows"
+      ],
+      "ms": 6
+     },
+     {
+      "path": "data/reference_embeddings.npy",
+      "kind": "npy",
+      "bytes": 512128,
+      "whole": true,
+      "findings": [],
+      "ms": 27
+     }
+    ],
+    "skipped": [],
+    "ms": 47
+   },
+   "named": {
+    "ms": 7,
+    "entries": [
+     {
+      "kind": "module",
+      "command": "python3 -m drift_monitor data/reference_embeddings.npy data/current_clear_drift.npy data/current_stable.npy data/current_with_zeros.npy",
+      "refused": null,
+      "exit": 1,
+      "timed_out": false,
+      "ms": 5174,
+      "observable": true
+     }
+    ]
+   },
+   "wide": {
+    "ms": 17,
+    "entries": [
+     {
+      "kind": "module",
+      "command": "python3 -m drift_monitor data/reference_embeddings.npy data/current_clear_drift.npy data/current_stable.npy data/current_with_zeros.npy",
+      "refused": null,
+      "exit": 1,
+      "timed_out": false,
+      "ms": 5174,
+      "observable": true
+     }
+    ]
+   }
+  },
+  "fin-saccr-rwa": {
+   "set": "anatomy",
+   "image": "accept-env/fin-saccr-rwa:latest",
+   "workdir": "/app",
+   "reconstructed": false,
+   "profile": {
+    "files": [
+     {
+      "path": "inputs/counterparties.csv",
+      "kind": "csv",
+      "bytes": 125,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     },
+     {
+      "path": "inputs/csa_terms.csv",
+      "kind": "csv",
+      "bytes": 837,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     },
+     {
+      "path": "inputs/dispute_log.csv",
+      "kind": "csv",
+      "bytes": 497,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     },
+     {
+      "path": "inputs/fx_spot.csv",
+      "kind": "csv",
+      "bytes": 91,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     },
+     {
+      "path": "inputs/holiday_calendars/london.csv",
+      "kind": "csv",
+      "bytes": 217,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     },
+     {
+      "path": "inputs/holiday_calendars/ny.csv",
+      "kind": "csv",
+      "bytes": 217,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     },
+     {
+      "path": "inputs/holiday_calendars/target.csv",
+      "kind": "csv",
+      "bytes": 153,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     },
+     {
+      "path": "inputs/holiday_calendars/tokyo.csv",
+      "kind": "csv",
+      "bytes": 465,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     },
+     {
+      "path": "inputs/implied_vols.csv",
+      "kind": "csv",
+      "bytes": 95,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     },
+     {
+      "path": "inputs/portfolio.csv",
+      "kind": "csv",
+      "bytes": 1529,
+      "whole": true,
+      "findings": [
+       "83 empty fields in 7 columns"
+      ],
+      "ms": 0
+     },
+     {
+      "path": "inputs/risk_weights.csv",
+      "kind": "csv",
+      "bytes": 388,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     },
+     {
+      "path": "inputs/supervisory_factors.csv",
+      "kind": "csv",
+      "bytes": 427,
+      "whole": true,
+      "findings": [
+       "4 empty fields in 2 columns"
+      ],
+      "ms": 0
+     },
+     {
+      "path": "inputs/supervisory_vols.csv",
+      "kind": "csv",
+      "bytes": 98,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     }
+    ],
+    "skipped": [],
+    "ms": 1
+   },
+   "named": {
+    "ms": 2,
+    "entries": []
+   },
+   "wide": {
+    "ms": 5,
+    "entries": []
+   }
+  },
+  "foodstuff-beta-activity": {
+   "set": "wider",
+   "image": null,
+   "workdir": null,
+   "reconstructed": false,
+   "skipped": "no local image"
+  },
+  "formal-crypto": {
+   "set": "wider",
+   "image": "truth9584-review/formal-crypto:public-environment",
+   "workdir": "/app",
+   "reconstructed": false,
+   "profile": {
+    "files": [],
+    "skipped": [],
+    "ms": 0
+   },
+   "named": {
+    "ms": 1,
+    "entries": []
+   },
+   "wide": {
+    "ms": 4,
+    "entries": []
+   }
+  },
+  "fp8-rmsnorm-gemm": {
+   "set": "wider",
+   "image": null,
+   "workdir": null,
+   "reconstructed": false,
+   "skipped": "no local image"
+  },
+  "freecad-impeller": {
+   "set": "wider",
+   "image": "truth9584-review/freecad-impeller:public-environment",
+   "workdir": "/app",
+   "reconstructed": false,
+   "profile": {
+    "files": [],
+    "skipped": [],
+    "ms": 0
+   },
+   "named": {
+    "ms": 1,
+    "entries": []
+   },
+   "wide": {
+    "ms": 7,
+    "entries": []
+   }
+  },
+  "freecad-platform-drawing": {
+   "set": "wider",
+   "image": null,
+   "workdir": null,
+   "reconstructed": false,
+   "skipped": "no local image"
+  },
+  "freecad-spring-clip": {
+   "set": "wider",
+   "image": "truth9584-review/freecad-spring-clip:public-environment",
+   "workdir": "/app",
+   "reconstructed": false,
+   "profile": {
+    "files": [],
+    "skipped": [],
+    "ms": 0
+   },
+   "named": {
+    "ms": 2,
+    "entries": []
+   },
+   "wide": {
+    "ms": 6,
+    "entries": []
+   }
+  },
+  "freight-dispatch-shift": {
+   "set": "wider",
+   "image": "tbench-warm/freight-dispatch-shift:environment-c0adeae2667ef3619eea",
+   "workdir": "/workspace",
+   "reconstructed": false,
+   "profile": {
+    "files": [],
+    "skipped": [],
+    "ms": 0
+   },
+   "named": {
+    "ms": 2,
+    "entries": []
+   },
+   "wide": {
+    "ms": 5,
+    "entries": []
+   }
+  },
+  "glycan-ms2-elucidation": {
+   "set": "wider",
+   "image": null,
+   "workdir": null,
+   "reconstructed": false,
+   "skipped": "no local image"
+  },
+  "gsea-proteomics": {
+   "set": "anatomy",
+   "image": "tbench-warm/gsea-proteomics:environment-a607b9bf077806620db0",
+   "workdir": "/app",
+   "reconstructed": false,
+   "profile": {
+    "files": [
+     {
+      "path": "tools/GSEA_Linux_4.4.0/jdk/lib/tzdb.dat",
+      "kind": "text",
+      "bytes": 101731,
+      "whole": true,
+      "findings": [],
+      "ms": 9
+     }
+    ],
+    "skipped": [
+     [
+      "data/Full_dataset_curated.xlsx",
+      "no reader for .xlsx in this build"
+     ]
+    ],
+    "ms": 19
+   },
+   "named": {
+    "ms": 3,
+    "entries": []
+   },
+   "wide": {
+    "ms": 9,
+    "entries": []
+   }
+  },
+  "heat-pump-warranty": {
+   "set": "wider",
+   "image": "tbench-warm/heat-pump-warranty:environment-0804b73adee767030615",
+   "workdir": "/workspace",
+   "reconstructed": false,
+   "profile": {
+    "files": [],
+    "skipped": [],
+    "ms": 0
+   },
+   "named": {
+    "ms": 1,
+    "entries": []
+   },
+   "wide": {
+    "ms": 5,
+    "entries": []
+   }
+  },
+  "hof-topology-interpenetration": {
+   "set": "wider",
+   "image": null,
+   "workdir": null,
+   "reconstructed": false,
+   "skipped": "no local image"
+  },
+  "html-js-filter": {
+   "set": "anatomy",
+   "image": "accept-env/html-js-filter:latest",
+   "workdir": "/app",
+   "reconstructed": false,
+   "profile": {
+    "files": [],
+    "skipped": [],
+    "ms": 0
+   },
+   "named": {
+    "ms": 1,
+    "entries": []
+   },
+   "wide": {
+    "ms": 4,
+    "entries": []
+   }
+  },
+  "interleaved-vigenere": {
+   "set": "anatomy",
+   "image": "tbench-warm/interleaved-vigenere:environment-37a3e35da105ad0d814a",
+   "workdir": "/app",
+   "reconstructed": false,
+   "profile": {
+    "files": [
+     {
+      "path": "data/english_bigrams.json",
+      "kind": "json",
+      "bytes": 1569,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     },
+     {
+      "path": "data/english_unigrams.json",
+      "kind": "json",
+      "bytes": 366,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     },
+     {
+      "path": "data/sample_ciphertext.txt",
+      "kind": "text",
+      "bytes": 3081,
+      "whole": true,
+      "findings": [],
+      "ms": 3
+     },
+     {
+      "path": "data/sample_plaintext.txt",
+      "kind": "text",
+      "bytes": 3081,
+      "whole": true,
+      "findings": [],
+      "ms": 2
+     },
+     {
+      "path": "data/words.txt",
+      "kind": "text",
+      "bytes": 985084,
+      "whole": true,
+      "findings": [],
+      "ms": 114
+     }
+    ],
+    "skipped": [],
+    "ms": 120
+   },
+   "named": {
+    "ms": 18,
+    "entries": [
+     {
+      "kind": "named",
+      "command": "python cracker.py '/app/data/sample_ciphertext.txt'",
+      "refused": null,
+      "exit": 2,
+      "timed_out": false,
+      "ms": 402,
+      "observable": true
+     }
+    ]
+   },
+   "wide": {
+    "ms": 21,
+    "entries": [
+     {
+      "kind": "named",
+      "command": "python cracker.py '/app/data/sample_ciphertext.txt'",
+      "refused": null,
+      "exit": 2,
+      "timed_out": false,
+      "ms": 402,
+      "observable": true
+     }
+    ]
+   }
+  },
+  "intrastat-meldung": {
+   "set": "anatomy",
+   "image": null,
+   "workdir": "/workspace",
+   "reconstructed": true,
+   "profile": {
+    "files": [],
+    "skipped": [],
+    "ms": 0
+   },
+   "named": {
+    "ms": 2,
+    "entries": []
+   },
+   "wide": {
+    "ms": 4,
+    "entries": []
+   }
+  },
+  "jax-speedrun-gpu": {
+   "set": "wider",
+   "image": null,
+   "workdir": null,
+   "reconstructed": false,
+   "skipped": "no local image"
+  },
+  "ks-solver-cpp": {
+   "set": "anatomy",
+   "image": "tbench-warm/ks-solver-cpp:environment-5a909fd8c54b8859d1ef",
+   "workdir": "/app",
+   "reconstructed": false,
+   "profile": {
+    "files": [],
+    "skipped": [],
+    "ms": 0
+   },
+   "named": {
+    "ms": 13,
+    "entries": [
+     {
+      "kind": "named",
+      "command": "g++ -O3 -std=c++17 -DKS_SOLVER_LIBRARY -I/app",
+      "refused": "it is a compiler call that names no input file",
+      "exit": null,
+      "timed_out": null,
+      "ms": null,
+      "observable": null
+     }
+    ]
+   },
+   "wide": {
+    "ms": 12,
+    "entries": [
+     {
+      "kind": "named",
+      "command": "g++ -O3 -std=c++17 -DKS_SOLVER_LIBRARY -I/app",
+      "refused": "it is a compiler call that names no input file",
+      "exit": null,
+      "timed_out": null,
+      "ms": null,
+      "observable": null
+     }
+    ]
+   }
+  },
+  "kv-live-surgery": {
+   "set": "wider",
+   "image": null,
+   "workdir": null,
+   "reconstructed": false,
+   "skipped": "no local image"
+  },
+  "lake-temp-glm": {
+   "set": "wider",
+   "image": null,
+   "workdir": null,
+   "reconstructed": false,
+   "skipped": "no local image"
+  },
+  "layout-config-recreation": {
+   "set": "anatomy",
+   "image": null,
+   "workdir": "/app",
+   "reconstructed": true,
+   "profile": {
+    "files": [],
+    "skipped": [],
+    "ms": 0
+   },
+   "named": {
+    "ms": 17,
+    "entries": [
+     {
+      "kind": "script",
+      "command": "python3 render.py",
+      "refused": null,
+      "exit": null,
+      "timed_out": null,
+      "ms": null,
+      "observable": null
+     }
+    ]
+   },
+   "wide": {
+    "ms": 22,
+    "entries": [
+     {
+      "kind": "script",
+      "command": "python3 render.py",
+      "refused": null,
+      "exit": null,
+      "timed_out": null,
+      "ms": null,
+      "observable": null
+     }
+    ]
+   }
+  },
+  "layout-config-recreation2": {
+   "set": "wider",
+   "image": null,
+   "workdir": null,
+   "reconstructed": false,
+   "skipped": "no local image"
+  },
+  "legacy-utility-triage": {
+   "set": "wider",
+   "image": "accept-env/legacy-utility-triage:latest",
+   "workdir": "/workspace",
+   "reconstructed": false,
+   "profile": {
+    "files": [],
+    "skipped": [],
+    "ms": 0
+   },
+   "named": {
+    "ms": 1,
+    "entries": []
+   },
+   "wide": {
+    "ms": 7,
+    "entries": []
+   }
+  },
+  "live-database-cutover": {
+   "set": "family",
+   "image": null,
+   "workdir": null,
+   "reconstructed": false,
+   "skipped": "no local image"
+  },
+  "math-eval-grader": {
+   "set": "wider",
+   "image": "truth9584-review/math-eval-grader:public-environment",
+   "workdir": "/app",
+   "reconstructed": false,
+   "profile": {
+    "files": [
+     {
+      "path": "ENVIRONMENT.txt",
+      "kind": "text",
+      "bytes": 5537,
+      "whole": true,
+      "findings": [],
+      "ms": 4
+     }
+    ],
+    "skipped": [],
+    "ms": 4
+   },
+   "named": {
+    "ms": 1,
+    "entries": []
+   },
+   "wide": {
+    "ms": 8,
+    "entries": []
+   }
+  },
+  "medical-claims-processing": {
+   "set": "wider",
+   "image": null,
+   "workdir": null,
+   "reconstructed": false,
+   "skipped": "no local image"
+  },
+  "mp-checkpoint-consolidation": {
+   "set": "family",
+   "image": "accept-env/mp-checkpoint-consolidation:latest",
+   "workdir": "/app",
+   "reconstructed": false,
+   "profile": {
+    "files": [
+     {
+      "path": "reference_model/config.json",
+      "kind": "json",
+      "bytes": 371,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     },
+     {
+      "path": "reference_output/expected_keys.json",
+      "kind": "json",
+      "bytes": 6569,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     }
+    ],
+    "skipped": [],
+    "ms": 0
+   },
+   "named": {
+    "ms": 9,
+    "entries": []
+   },
+   "wide": {
+    "ms": 17,
+    "entries": []
+   }
+  },
+  "music-harmony": {
+   "set": "wider",
+   "image": null,
+   "workdir": null,
+   "reconstructed": false,
+   "skipped": "no local image"
+  },
+  "mvcc-lsm-compaction": {
+   "set": "wider",
+   "image": "accept-env/mvcc-lsm-compaction:latest",
+   "workdir": "/app",
+   "reconstructed": false,
+   "profile": {
+    "files": [
+     {
+      "path": "crash_report.txt",
+      "kind": "text",
+      "bytes": 2312,
+      "whole": true,
+      "findings": [],
+      "ms": 4
+     }
+    ],
+    "skipped": [],
+    "ms": 4
+   },
+   "named": {
+    "ms": 24,
+    "entries": [
+     {
+      "kind": "named",
+      "command": "make -C /app test",
+      "refused": null,
+      "exit": 0,
+      "timed_out": false,
+      "ms": 3927,
+      "observable": true
+     },
+     {
+      "kind": "named",
+      "command": "make -C /app repro",
+      "refused": null,
+      "exit": 2,
+      "timed_out": false,
+      "ms": 4045,
+      "observable": true
+     },
+     {
+      "kind": "make",
+      "command": "make test",
+      "refused": null,
+      "exit": 0,
+      "timed_out": false,
+      "ms": 4772,
+      "observable": true
+     }
+    ]
+   },
+   "wide": {
+    "ms": 52,
+    "entries": [
+     {
+      "kind": "named",
+      "command": "make -C /app test",
+      "refused": null,
+      "exit": 0,
+      "timed_out": false,
+      "ms": 3927,
+      "observable": true
+     },
+     {
+      "kind": "named",
+      "command": "make -C /app repro",
+      "refused": null,
+      "exit": 2,
+      "timed_out": false,
+      "ms": 4045,
+      "observable": true
+     },
+     {
+      "kind": "make",
+      "command": "make test",
+      "refused": null,
+      "exit": 0,
+      "timed_out": false,
+      "ms": 4772,
+      "observable": true
+     },
+     {
+      "kind": "make",
+      "command": "make all",
+      "refused": null,
+      "exit": 0,
+      "timed_out": false,
+      "ms": 14208,
+      "observable": true
+     }
+    ]
+   }
+  },
+  "nextjs-performance": {
+   "set": "wider",
+   "image": null,
+   "workdir": null,
+   "reconstructed": false,
+   "skipped": "no local image"
+  },
+  "ontology-kg-querying": {
+   "set": "wider",
+   "image": null,
+   "workdir": null,
+   "reconstructed": false,
+   "skipped": "no local image"
+  },
+  "payments-pipeline-fix": {
+   "set": "family",
+   "image": "tbench-warm/payments-pipeline-fix:environment-e1788f356e1d90e51c2e",
+   "workdir": "/app",
+   "reconstructed": false,
+   "profile": {
+    "files": [],
+    "skipped": [],
+    "ms": 0
+   },
+   "named": {
+    "ms": 4,
+    "entries": []
+   },
+   "wide": {
+    "ms": 7,
+    "entries": []
+   }
+  },
+  "photonic-waveguide-routing": {
+   "set": "family",
+   "image": "accept-env/photonic-waveguide-routing:latest",
+   "workdir": "/app",
+   "reconstructed": false,
+   "profile": {
+    "files": [
+     {
+      "path": "layout_spec.json",
+      "kind": "json",
+      "bytes": 3002,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     }
+    ],
+    "skipped": [],
+    "ms": 0
+   },
+   "named": {
+    "ms": 1,
+    "entries": []
+   },
+   "wide": {
+    "ms": 5,
+    "entries": []
+   }
+  },
+  "pretrain-shard-corruption": {
+   "set": "wider",
+   "image": "truth9584-review/pretrain-shard-corruption:public-environment",
+   "workdir": "/app",
+   "reconstructed": false,
+   "profile": {
+    "files": [
+     {
+      "path": "data/train/index.json",
+      "kind": "json",
+      "bytes": 2044,
+      "whole": true,
+      "findings": [
+       "4 null values"
+      ],
+      "ms": 0
+     }
+    ],
+    "skipped": [],
+    "ms": 1
+   },
+   "named": {
+    "ms": 22,
+    "entries": [
+     {
+      "kind": "named",
+      "command": "bash /app/run_pretrain.sh",
+      "refused": null,
+      "exit": 1,
+      "timed_out": false,
+      "ms": 52335,
+      "observable": true
+     },
+     {
+      "kind": "script",
+      "command": "python3 train_pretrain.py",
+      "refused": null,
+      "exit": 1,
+      "timed_out": false,
+      "ms": 1370,
+      "observable": true
+     }
+    ]
+   },
+   "wide": {
+    "ms": 40,
+    "entries": [
+     {
+      "kind": "named",
+      "command": "bash /app/run_pretrain.sh",
+      "refused": null,
+      "exit": 1,
+      "timed_out": false,
+      "ms": 52335,
+      "observable": true
+     },
+     {
+      "kind": "script",
+      "command": "python3 train_pretrain.py",
+      "refused": null,
+      "exit": 1,
+      "timed_out": false,
+      "ms": 1370,
+      "observable": true
+     }
+    ]
+   }
+  },
+  "production-planning": {
+   "set": "wider",
+   "image": "tbench-warm/production-planning:environment-6d8c29a2b4eaa1989638",
+   "workdir": "/app",
+   "reconstructed": false,
+   "profile": {
+    "files": [],
+    "skipped": [
+     [
+      "data/erp.db",
+      "no reader for .db in this build"
+     ],
+     [
+      "data/mes.db",
+      "no reader for .db in this build"
+     ],
+     [
+      "data/wms.db",
+      "no reader for .db in this build"
+     ]
+    ],
+    "ms": 0
+   },
+   "named": {
+    "ms": 18,
+    "entries": [
+     {
+      "kind": "script",
+      "command": "python3 data/dbgw.py",
+      "refused": null,
+      "exit": 2,
+      "timed_out": false,
+      "ms": 622,
+      "observable": true
+     }
+    ]
+   },
+   "wide": {
+    "ms": 24,
+    "entries": [
+     {
+      "kind": "script",
+      "command": "python3 data/dbgw.py",
+      "refused": null,
+      "exit": 2,
+      "timed_out": false,
+      "ms": 622,
+      "observable": true
+     }
+    ]
+   }
+  },
+  "protein-autointerp-disulfide": {
+   "set": "wider",
+   "image": "tbench-warm/protein-autointerp-disulfide:environment-756868cf785112c65743",
+   "workdir": "/app",
+   "reconstructed": false,
+   "profile": {
+    "files": [],
+    "skipped": [],
+    "ms": 0
+   },
+   "named": {
+    "ms": 1,
+    "entries": []
+   },
+   "wide": {
+    "ms": 5,
+    "entries": []
+   }
+  },
+  "react-lead-form": {
+   "set": "wider",
+   "image": null,
+   "workdir": null,
+   "reconstructed": false,
+   "skipped": "no local image"
+  },
+  "retro-console-soc": {
+   "set": "wider",
+   "image": null,
+   "workdir": null,
+   "reconstructed": false,
+   "skipped": "no local image"
+  },
+  "risk-scorer-replay": {
+   "set": "wider",
+   "image": "tbench-warm/risk-scorer-replay:environment-8961a5af053b9801d3e2",
+   "workdir": "/app",
+   "reconstructed": false,
+   "profile": {
+    "files": [
+     {
+      "path": "data/incidents/parity-2026-10/manifest.json",
+      "kind": "json",
+      "bytes": 249,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     },
+     {
+      "path": "data/incidents/parity-2026-10/reports/shadow_scores.csv",
+      "kind": "csv",
+      "bytes": 307,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     },
+     {
+      "path": "data/incidents/parity-2026-10/sources/requests.csv",
+      "kind": "csv",
+      "bytes": 585,
+      "whole": true,
+      "findings": [
+       "4 empty fields in 2 columns"
+      ],
+      "ms": 0
+     },
+     {
+      "path": "data/incidents/parity-2026-10/sources/review_events.csv",
+      "kind": "csv",
+      "bytes": 638,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     },
+     {
+      "path": "data/incidents/parity-2026-10/sources/thresholds.json",
+      "kind": "json",
+      "bytes": 94,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     }
+    ],
+    "skipped": [],
+    "ms": 0
+   },
+   "named": {
+    "ms": 13,
+    "entries": [
+     {
+      "kind": "module",
+      "command": "python3 -m parityctl",
+      "refused": null,
+      "exit": 2,
+      "timed_out": false,
+      "ms": 490,
+      "observable": true
+     },
+     {
+      "kind": "script",
+      "command": "sh rebuild_parity_report.sh",
+      "refused": null,
+      "exit": 0,
+      "timed_out": false,
+      "ms": 537,
+      "observable": true
+     }
+    ]
+   },
+   "wide": {
+    "ms": 26,
+    "entries": [
+     {
+      "kind": "module",
+      "command": "python3 -m parityctl",
+      "refused": null,
+      "exit": 2,
+      "timed_out": false,
+      "ms": 490,
+      "observable": true
+     },
+     {
+      "kind": "script",
+      "command": "sh rebuild_parity_report.sh",
+      "refused": null,
+      "exit": 0,
+      "timed_out": false,
+      "ms": 537,
+      "observable": true
+     }
+    ]
+   }
+  },
+  "roy-polymorph-cn": {
+   "set": "wider",
+   "image": "tbench-warm/roy-polymorph-cn:environment-6e0fbf526b9f7df325d2",
+   "workdir": "/app",
+   "reconstructed": false,
+   "profile": {
+    "files": [
+     {
+      "path": "data/TB3_Conf_Properties.csv",
+      "kind": "csv",
+      "bytes": 249,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     }
+    ],
+    "skipped": [],
+    "ms": 0
+   },
+   "named": {
+    "ms": 1,
+    "entries": []
+   },
+   "wide": {
+    "ms": 8,
+    "entries": []
+   }
+  },
+  "rs-archive-clone": {
+   "set": "wider",
+   "image": "tbench-warm/rs-archive-clone:environment-69177bf0978c06109c1f",
+   "workdir": "/app",
+   "reconstructed": false,
+   "profile": {
+    "files": [
+     {
+      "path": "examples/manifest.tsv",
+      "kind": "tsv",
+      "bytes": 185,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     },
+     {
+      "path": "examples/note.txt",
+      "kind": "text",
+      "bytes": 69,
+      "whole": true,
+      "findings": [],
+      "ms": 3
+     }
+    ],
+    "skipped": [],
+    "ms": 4
+   },
+   "named": {
+    "ms": 3,
+    "entries": []
+   },
+   "wide": {
+    "ms": 10,
+    "entries": []
+   }
+  },
+  "satb-audio-transcription": {
+   "set": "wider",
+   "image": null,
+   "workdir": null,
+   "reconstructed": false,
+   "skipped": "no local image"
+  },
+  "session-window-debug": {
+   "set": "anatomy",
+   "image": "accept-env/session-window-debug:latest",
+   "workdir": "/app",
+   "reconstructed": false,
+   "profile": {
+    "files": [],
+    "skipped": [],
+    "ms": 0
+   },
+   "named": {
+    "ms": 5,
+    "entries": []
+   },
+   "wide": {
+    "ms": 8,
+    "entries": []
+   }
+  },
+  "sglang-qwen-burst": {
+   "set": "wider",
+   "image": "tbench-warm/sglang-qwen-burst:environment-44f15ee7e748bcab5849",
+   "workdir": "/app/sglang",
+   "reconstructed": false,
+   "profile": {
+    "files": [
+     {
+      "path": "3rdparty/amd/wheel/sgl-kernel/CMakeLists_rocm.txt",
+      "kind": "text",
+      "bytes": 4913,
+      "whole": true,
+      "findings": [],
+      "ms": 2
+     },
+     {
+      "path": "docs_new/docs.json",
+      "kind": "json",
+      "bytes": 43802,
+      "whole": true,
+      "findings": [
+       "149 missing keys under \"redirects\""
+      ],
+      "ms": 2
+     },
+     {
+      "path": "examples/monitoring/grafana/dashboards/json/sglang-dashboard.json",
+      "kind": "json",
+      "bytes": 25134,
+      "whole": true,
+      "findings": [
+       "6 missing keys under \"panels\"",
+       "12 empty strings"
+      ],
+      "ms": 1
+     },
+     {
+      "path": "examples/profiler/nsys_profile_tools/sglang_engine_model.json",
+      "kind": "json",
+      "bytes": 2132,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     },
+     {
+      "path": "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=1,N=14336,device_name=NVIDIA_A100-SXM4-80GB,dtype=int8_w8a16.json",
+      "kind": "json",
+      "bytes": 2737,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     },
+     {
+      "path": "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=1,N=14336,device_name=NVIDIA_A100-SXM4-80GB.json",
+      "kind": "json",
+      "bytes": 2752,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     },
+     {
+      "path": "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=1,N=1792,device_name=NVIDIA_A100-SXM4-80GB,dtype=int8_w8a16.json",
+      "kind": "json",
+      "bytes": 4131,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     },
+     {
+      "path": "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=1,N=1792,device_name=NVIDIA_A100-SXM4-80GB.json",
+      "kind": "json",
+      "bytes": 4141,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     },
+     {
+      "path": "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=1,N=3072,device_name=NVIDIA_A100-SXM4-80GB,dtype=int8_w8a16.json",
+      "kind": "json",
+      "bytes": 4134,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     },
+     {
+      "path": "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=1,N=3072,device_name=NVIDIA_H100_80GB_HBM3,dtype=int8_w8a16.json",
+      "kind": "json",
+      "bytes": 4147,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     },
+     {
+      "path": "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=1,N=3072,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "kind": "json",
+      "bytes": 4150,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     },
+     {
+      "path": "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=1,N=3584,device_name=NVIDIA_A100-SXM4-80GB,dtype=int8_w8a16.json",
+      "kind": "json",
+      "bytes": 4131,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     },
+     {
+      "path": "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=1,N=3584,device_name=NVIDIA_A100-SXM4-80GB.json",
+      "kind": "json",
+      "bytes": 4153,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     },
+     {
+      "path": "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=1,N=7168,device_name=NVIDIA_A100-SXM4-80GB,dtype=int8_w8a16.json",
+      "kind": "json",
+      "bytes": 4136,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     },
+     {
+      "path": "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=1,N=7168,device_name=NVIDIA_A100-SXM4-80GB.json",
+      "kind": "json",
+      "bytes": 4147,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     },
+     {
+      "path": "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=144,N=512,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "kind": "json",
+      "bytes": 3244,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     },
+     {
+      "path": "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=16,N=1024,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "kind": "json",
+      "bytes": 3249,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     },
+     {
+      "path": "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=16,N=1024,device_name=NVIDIA_H200.json",
+      "kind": "json",
+      "bytes": 3255,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     },
+     {
+      "path": "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=16,N=1344,device_name=NVIDIA_A100-SXM4-40GB.json",
+      "kind": "json",
+      "bytes": 3254,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     },
+     {
+      "path": "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=16,N=1344,device_name=NVIDIA_A100-SXM4-80GB.json",
+      "kind": "json",
+      "bytes": 3250,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     },
+     {
+      "path": "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=16,N=1344,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "kind": "json",
+      "bytes": 3246,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     },
+     {
+      "path": "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=16,N=14336,device_name=NVIDIA_A100-SXM4-80GB,dtype=int8_w8a16.json",
+      "kind": "json",
+      "bytes": 2752,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     },
+     {
+      "path": "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=16,N=14336,device_name=NVIDIA_A100-SXM4-80GB.json",
+      "kind": "json",
+      "bytes": 2746,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     },
+     {
+      "path": "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=16,N=1792,device_name=NVIDIA_A100-SXM4-80GB,dtype=int8_w8a16.json",
+      "kind": "json",
+      "bytes": 4128,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     }
+    ],
+    "skipped": [
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=16,N=1792,device_name=NVIDIA_A100-SXM4-80GB.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=16,N=2048,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=16,N=2688,device_name=NVIDIA_A100-SXM4-80GB.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=16,N=2688,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=16,N=3072,device_name=NVIDIA_A100-SXM4-80GB,dtype=int8_w8a16.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=16,N=3072,device_name=NVIDIA_H100_80GB_HBM3,dtype=int8_w8a16.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=16,N=3200,device_name=NVIDIA_H100_80GB_HBM3,dtype=fp8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=16,N=3584,device_name=NVIDIA_A100-SXM4-80GB,dtype=int8_w8a16.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=16,N=3584,device_name=NVIDIA_A100-SXM4-80GB.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=16,N=6400,device_name=NVIDIA_H100_80GB_HBM3,dtype=fp8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=16,N=7168,device_name=NVIDIA_A100-SXM4-80GB,dtype=int8_w8a16.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=16,N=7168,device_name=NVIDIA_A100-SXM4-80GB.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=16,N=7168,device_name=NVIDIA_H100_80GB_HBM3,dtype=int8_w8a16.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=16,N=800,device_name=NVIDIA_H100_80GB_HBM3,dtype=fp8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=160,N=192,device_name=NVIDIA_A800-SXM4-80GB.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=20,N=2048,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=24,N=1024,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=256,N=128,device_name=NVIDIA_A100-SXM4-80GB,dtype=int8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=256,N=128,device_name=NVIDIA_A100-SXM4-80GB,dtype=int8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=256,N=128,device_name=NVIDIA_A800-SXM4-80GB,dtype=int8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=256,N=128,device_name=NVIDIA_A800-SXM4-80GB,dtype=int8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=256,N=128,device_name=NVIDIA_H100_80GB_HBM3,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=256,N=128,device_name=NVIDIA_H20,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=256,N=128,device_name=NVIDIA_H20,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=256,N=128,device_name=NVIDIA_L20Y,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=256,N=256,device_name=AMD_Instinct_MI300X,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=256,N=256,device_name=AMD_Instinct_MI325X,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=256,N=256,device_name=AMD_Radeon_Graphics,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=256,N=256,device_name=NVIDIA_B200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=256,N=256,device_name=NVIDIA_H20,dtype=int8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=256,N=256,device_name=NVIDIA_H200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=256,N=64,device_name=NVIDIA_A800-SXM4-80GB.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=256,N=64,device_name=NVIDIA_L20,dtype=int8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=256,N=64,device_name=NVIDIA_L40S,dtype=int8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=64,N=1024,device_name=NVIDIA_H100_80GB_HBM3,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=64,N=1280,device_name=NVIDIA_A100-SXM4-80GB.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=64,N=1280,device_name=NVIDIA_A800-SXM4-80GB.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=64,N=1280,device_name=NVIDIA_H100_80GB_HBM3,dtype=fp8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=64,N=1280,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=64,N=1280,device_name=NVIDIA_H200,dtype=fp8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=64,N=1280,device_name=NVIDIA_H200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=64,N=2560,device_name=NVIDIA_H100_80GB_HBM3,dtype=fp8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=64,N=2560,device_name=NVIDIA_H200,dtype=fp8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=64,N=2560,device_name=NVIDIA_H200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=64,N=320,device_name=NVIDIA_H100_80GB_HBM3,dtype=fp8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=64,N=320,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=64,N=320,device_name=NVIDIA_H200,dtype=fp8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=64,N=320,device_name=NVIDIA_H200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=64,N=512,device_name=NVIDIA_H200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=64,N=640,device_name=NVIDIA_A100-SXM4-80GB.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=64,N=640,device_name=NVIDIA_A800-SXM4-80GB.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=64,N=640,device_name=NVIDIA_GeForce_RTX_4090,dtype=fp8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=64,N=640,device_name=NVIDIA_H100_80GB_HBM3,dtype=fp8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=64,N=640,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=64,N=640,device_name=NVIDIA_H200,dtype=fp8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=64,N=640,device_name=NVIDIA_H200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=8,N=14336,device_name=AMD_Instinct_MI300X.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=8,N=14336,device_name=AMD_Instinct_MI325X.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=8,N=14336,device_name=AMD_Radeon_Graphics.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=8,N=14336,device_name=NVIDIA_H100_80GB_HBM3,dtype=fp8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=8,N=14336,device_name=NVIDIA_H200,dtype=fp8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=8,N=14336,device_name=NVIDIA_H200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=8,N=1792,device_name=AMD_Instinct_MI300X.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=8,N=1792,device_name=AMD_Instinct_MI325X.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=8,N=1792,device_name=AMD_Radeon_Graphics.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=8,N=1792,device_name=NVIDIA_A100-SXM4-40GB.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=8,N=1792,device_name=NVIDIA_A100-SXM4-80GB.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=8,N=1792,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=8,N=1792,device_name=NVIDIA_H200,dtype=fp8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=8,N=1792,device_name=NVIDIA_H200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=8,N=2048,device_name=NVIDIA_A100-SXM4-80GB.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=8,N=2048,device_name=NVIDIA_H100_80GB_HBM3,dtype=fp8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=8,N=2048,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=8,N=2048,device_name=NVIDIA_H200,dtype=fp8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=8,N=2048,device_name=NVIDIA_H200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=8,N=3584,device_name=AMD_Instinct_MI300X.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=8,N=3584,device_name=AMD_Instinct_MI325X.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=8,N=3584,device_name=AMD_Radeon_Graphics.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=8,N=3584,device_name=NVIDIA_A100-SXM4-40GB.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=8,N=3584,device_name=NVIDIA_A100-SXM4-80GB.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=8,N=3584,device_name=NVIDIA_GeForce_RTX_4090,dtype=fp8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=8,N=3584,device_name=NVIDIA_H100_80GB_HBM3,dtype=fp8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=8,N=3584,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=8,N=3584,device_name=NVIDIA_H200,dtype=fp8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=8,N=3584,device_name=NVIDIA_H200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=8,N=3584,device_name=NVIDIA_L40S.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=8,N=4096,device_name=AMD_Instinct_MI300X,dtype=fp8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=8,N=4096,device_name=AMD_Instinct_MI325X,dtype=fp8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=8,N=4096,device_name=AMD_Radeon_Graphics,dtype=fp8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=8,N=4096,device_name=NVIDIA_A100-SXM4-80GB.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=8,N=4096,device_name=NVIDIA_H100_80GB_HBM3,dtype=fp8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=8,N=4096,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=8,N=4096,device_name=NVIDIA_H200,dtype=fp8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=8,N=4096,device_name=NVIDIA_H200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=8,N=7168,device_name=AMD_Instinct_MI300X.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=8,N=7168,device_name=AMD_Instinct_MI325X.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=8,N=7168,device_name=AMD_Radeon_Graphics.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=8,N=7168,device_name=NVIDIA_A100-SXM4-80GB.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=8,N=7168,device_name=NVIDIA_H100_80GB_HBM3,dtype=fp8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=8,N=7168,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=8,N=7168,device_name=NVIDIA_H200,dtype=fp8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=8,N=7168,device_name=NVIDIA_H200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=8,N=8192,device_name=AMD_Instinct_MI300X,dtype=fp8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=8,N=8192,device_name=AMD_Instinct_MI325X,dtype=fp8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=8,N=8192,device_name=AMD_Radeon_Graphics,dtype=fp8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=8,N=8192,device_name=NVIDIA_H100_80GB_HBM3,dtype=fp8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_1_0/E=8,N=8192,device_name=NVIDIA_H200,dtype=fp8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_2_0/E=128,N=192,device_name=NVIDIA_A800-SXM4-80GB.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_2_0/E=128,N=192,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_2_0/E=128,N=192,device_name=NVIDIA_H20.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_2_0/E=128,N=192,device_name=NVIDIA_H200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_2_0/E=128,N=384,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_2_0/E=128,N=384,device_name=NVIDIA_H20,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_2_0/E=128,N=384,device_name=NVIDIA_H20.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_2_0/E=128,N=384,device_name=NVIDIA_H200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_2_0/E=128,N=384,device_name=NVIDIA_H200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_2_0/E=128,N=512,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_2_0/E=128,N=768,device_name=NVIDIA_A800-SXM4-80GB.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_2_0/E=128,N=768,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_2_0/E=128,N=768,device_name=NVIDIA_H20,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_2_0/E=128,N=768,device_name=NVIDIA_H20.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_2_0/E=128,N=768,device_name=NVIDIA_H200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_2_0/E=128,N=768,device_name=NVIDIA_H200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_2_0/E=128,N=96,device_name=NVIDIA_H20.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_2_0/E=129,N=352,device_name=NVIDIA_A800-SXM4-80GB,dtype=int8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_2_0/E=160,N=320,device_name=NVIDIA_A800-SXM4-80GB,dtype=int8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_2_0/E=161,N=192,device_name=NVIDIA_A800-SXM4-80GB,dtype=int8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_2_0/E=257,N=128,device_name=NVIDIA_H100_80GB_HBM3,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_2_0/E=257,N=128,device_name=NVIDIA_H20,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_2_0/E=257,N=256,device_name=NVIDIA_B200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_2_0/E=257,N=256,device_name=NVIDIA_H20,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_2_0/E=257,N=256,device_name=NVIDIA_H200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_2_0/E=264,N=128,device_name=NVIDIA_A800-SXM4-80GB,dtype=int8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_2_0/E=264,N=256,device_name=NVIDIA_B200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_2_0/E=264,N=256,device_name=NVIDIA_H20,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_2_0/E=264,N=256,device_name=NVIDIA_H200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_2_0/E=272,N=128,device_name=NVIDIA_A800-SXM4-80GB,dtype=int8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_2_0/E=272,N=128,device_name=NVIDIA_H100_80GB_HBM3,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_2_0/E=272,N=128,device_name=NVIDIA_H20,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_2_0/E=272,N=64,device_name=NVIDIA_A800-SXM4-80GB.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_2_0/E=288,N=64,device_name=NVIDIA_A800-SXM4-80GB.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_2_0/E=8,N=7168,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_3_0/E=16,N=1024,device_name=NVIDIA_B200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_3_1/E=128,N=352,device_name=NVIDIA_RTX_6000_Ada_Generation,dtype=fp8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_3_1/E=128,N=384,device_name=NVIDIA_H100_80GB_HBM3,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_3_1/E=128,N=384,device_name=NVIDIA_H20,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_3_1/E=128,N=768,device_name=NVIDIA_H20,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_3_1/E=128,N=768,device_name=NVIDIA_H20.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_3_1/E=160,N=192,device_name=NVIDIA_H200,dtype=fp8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_3_1/E=160,N=320,device_name=NVIDIA_H20-3e.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_3_1/E=160,N=384,device_name=NVIDIA_H200,dtype=fp8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_3_1/E=160,N=640,device_name=NVIDIA_H200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_3_1/E=257,N=128,device_name=NVIDIA_H20,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_3_1/E=257,N=128,device_name=NVIDIA_H200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_3_1/E=257,N=256,device_name=NVIDIA_B200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_3_1/E=257,N=256,device_name=NVIDIA_H20,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_3_1/E=257,N=256,device_name=NVIDIA_H20-3e,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_3_1/E=257,N=256,device_name=NVIDIA_H200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_3_1/E=384,N=128,device_name=NVIDIA_H20,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_3_1/E=384,N=128,device_name=NVIDIA_H200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_3_1/E=384,N=256,device_name=NVIDIA_H20-3e,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_3_1/E=385,N=128,device_name=NVIDIA_B200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_3_1/E=385,N=128,device_name=NVIDIA_H200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_3_1/E=8,N=7168,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_4_0/E=128,N=1856,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_4_0/E=128,N=1856,device_name=NVIDIA_L40S.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_4_0/E=128,N=192,device_name=NVIDIA_H200,dtype=fp8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_4_0/E=128,N=352,device_name=NVIDIA_RTX_5880_Ada_Generation,dtype=fp8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_4_0/E=128,N=384,device_name=NVIDIA_B200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_4_0/E=128,N=928,device_name=NVIDIA_L40S.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_4_0/E=129,N=352,device_name=NVIDIA_B200,dtype=fp8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_4_0/E=129,N=352,device_name=NVIDIA_RTX_PRO_6000_Blackwell_Max-Q_Workstation_Edition,dtype=fp8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_4_0/E=129,N=704,device_name=NVIDIA_B200,dtype=fp8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_4_0/E=160,N=384,device_name=NVIDIA_B200,dtype=fp8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_4_0/E=161,N=192,device_name=NVIDIA_H200,dtype=fp8_w8a8,per_channel_quant=True.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_4_0/E=161,N=384,device_name=NVIDIA_RTX_PRO_6000_Blackwell_Max-Q_Workstation_Edition,dtype=fp8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_4_0/E=256,N=256,device_name=NVIDIA_B200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_4_0/E=256,N=256,device_name=NVIDIA_B200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_4_0/E=256,N=256,device_name=NVIDIA_H800,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_4_0/E=256,N=512,device_name=NVIDIA_B200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_4_0/E=256,N=512,device_name=NVIDIA_H20.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_4_0/E=257,N=128,device_name=NVIDIA_H100_80GB_HBM3,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_4_0/E=257,N=256,device_name=NVIDIA_H20,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_4_0/E=257,N=256,device_name=NVIDIA_H20,dtype=fp8_w8a8,block_shape=[128, 128]_down.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_4_0/E=257,N=64,device_name=NVIDIA_A100-SXM4-80GB.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_4_0/E=384,N=128,device_name=,dtype=int4_w4a16.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_4_0/E=384,N=128,device_name=,dtype=int4_w4a16_down.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_4_0/E=384,N=256,device_name=NVIDIA_B200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_4_0/E=512,N=128,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_4_0/E=512,N=128,device_name=NVIDIA_H20-3e.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_4_0/E=512,N=128,device_name=NVIDIA_H200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_4_0/E=512,N=128,device_name=NVIDIA_H800,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_4_0/E=512,N=256,device_name=NVIDIA_B200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_4_0/E=512,N=256,device_name=NVIDIA_H20-3e.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_4_0/E=512,N=256,device_name=NVIDIA_H200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_4_0/E=512,N=64,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_4_0/E=512,N=64,device_name=NVIDIA_H200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=128,N=1344,device_name=NVIDIA_B200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=128,N=1344,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=128,N=1856,device_name=NVIDIA_B200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=128,N=1856,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=128,N=232,device_name=NVIDIA_B200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=128,N=232,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=128,N=2688,device_name=NVIDIA_B200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=128,N=2688,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=128,N=352,device_name=NVIDIA_B200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=128,N=352,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=128,N=464,device_name=NVIDIA_B200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=128,N=464,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=128,N=704,device_name=NVIDIA_B200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=128,N=704,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=128,N=928,device_name=NVIDIA_B200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=128,N=928,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=16,N=1856,device_name=NVIDIA_B200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=16,N=1856,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=16,N=2048,device_name=NVIDIA_B200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=161,N=192,device_name=NVIDIA_B200,dtype=fp8_w8a8,per_channel_quant=True.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=161,N=192,device_name=NVIDIA_H20,dtype=fp8_w8a8,per_channel_quant=True.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=161,N=192,device_name=NVIDIA_H20-3e,dtype=fp8_w8a8,per_channel_quant=True.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=161,N=192,device_name=NVIDIA_H200,dtype=fp8_w8a8,per_channel_quant=True.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=161,N=192,device_name=NVIDIA_H200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=161,N=192,device_name=NVIDIA_RTX_PRO_6000_Blackwell_Max-Q_Workstation_Edition,dtype=fp8_w8a8,per_channel_quant=True.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=161,N=192,device_name=NVIDIA_RTX_PRO_6000_Blackwell_Max-Q_Workstation_Edition.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=161,N=384,device_name=NVIDIA_B200,dtype=fp8_w8a8,per_channel_quant=True.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=161,N=384,device_name=NVIDIA_H200,dtype=fp8_w8a8,per_channel_quant=True.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=192,N=192,device_name=NVIDIA_B200,dtype=fp8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=192,N=192,device_name=NVIDIA_H20,dtype=fp8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=192,N=192,device_name=NVIDIA_H20,dtype=fp8_w8a8_down.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=192,N=192,device_name=NVIDIA_H20-3e,dtype=fp8_w8a8.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=192,N=192,device_name=NVIDIA_H20-3e,dtype=fp8_w8a8_down.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=192,N=192,device_name=NVIDIA_H20-3e.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=192,N=192,device_name=NVIDIA_H20-3e_down.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=192,N=192,device_name=NVIDIA_H20.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=192,N=192,device_name=NVIDIA_H20_down.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=20,N=1536,device_name=NVIDIA_H200,dtype=fp8_w8a8,per_channel_quant=True.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=20,N=1536,device_name=NVIDIA_H200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=256,N=1344,device_name=NVIDIA_B200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=256,N=1344,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=256,N=2688,device_name=NVIDIA_B200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=256,N=2688,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=256,N=384,device_name=NVIDIA_H100_80GB_HBM3,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=256,N=384,device_name=NVIDIA_H20,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=256,N=672,device_name=NVIDIA_B200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=256,N=672,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=257,N=256,device_name=NVIDIA_B200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=257,N=256,device_name=NVIDIA_H20,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=257,N=256,device_name=NVIDIA_H20,dtype=fp8_w8a8,block_shape=[128, 128]_down.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=257,N=256,device_name=NVIDIA_H20-3e,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=257,N=256,device_name=NVIDIA_H20-3e,dtype=fp8_w8a8,block_shape=[128, 128]_down.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=257,N=256,device_name=NVIDIA_H200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=257,N=256,device_name=NVIDIA_H200,dtype=fp8_w8a8,block_shape=[128, 128]_down.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=257,N=512,device_name=NVIDIA_B200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=257,N=512,device_name=NVIDIA_H200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=32,N=1792,device_name=NVIDIA_B200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=32,N=1792,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=32,N=1856,device_name=NVIDIA_B200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=32,N=1856,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=32,N=224,device_name=NVIDIA_B200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=32,N=224,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=32,N=448,device_name=NVIDIA_B200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=32,N=448,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=32,N=896,device_name=NVIDIA_B200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=32,N=896,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=32,N=928,device_name=NVIDIA_B200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=32,N=928,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=40,N=1536,device_name=NVIDIA_H200,dtype=fp8_w8a8,per_channel_quant=True.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=512,N=128,device_name=NVIDIA_B200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=512,N=128,device_name=NVIDIA_H100_80GB_HBM3,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=512,N=128,device_name=NVIDIA_H200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=512,N=1344,device_name=NVIDIA_B200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=512,N=1344,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=512,N=256,device_name=NVIDIA_B200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=512,N=256,device_name=NVIDIA_H100_80GB_HBM3,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=512,N=256,device_name=NVIDIA_H200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=512,N=2688,device_name=NVIDIA_B200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=512,N=2688,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=512,N=336,device_name=NVIDIA_B200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=512,N=336,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=512,N=672,device_name=NVIDIA_B200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=512,N=672,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=64,N=1536,device_name=NVIDIA_B200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=64,N=1536,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=64,N=1856,device_name=NVIDIA_B200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=64,N=1856,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=64,N=192,device_name=NVIDIA_B200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=64,N=192,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=64,N=2688,device_name=NVIDIA_B200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=64,N=2688,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=64,N=384,device_name=NVIDIA_B200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=64,N=384,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=64,N=464,device_name=NVIDIA_B200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=64,N=464,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=64,N=768,device_name=NVIDIA_B200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=64,N=768,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=64,N=928,device_name=NVIDIA_B200.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=64,N=928,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=65,N=1536,device_name=NVIDIA_H100_80GB_HBM3.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=65,N=1536,device_name=NVIDIA_H100_80GB_HBM3_down.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=80,N=640,device_name=NVIDIA_H200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_5_1/E=80,N=640,device_name=NVIDIA_H200,dtype=fp8_w8a8,block_shape=[128, 128]_down.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_6_0/E=32,N=1792,device_name=AMD_Instinct_MI325X.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_6_0/E=32,N=224,device_name=AMD_Instinct_MI325X.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_6_0/E=32,N=448,device_name=AMD_Instinct_MI325X.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_6_0/E=32,N=896,device_name=AMD_Instinct_MI325X.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_6_0/E=64,N=1536,device_name=AMD_Instinct_MI325X.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_6_0/E=64,N=192,device_name=AMD_Instinct_MI325X.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_6_0/E=64,N=384,device_name=AMD_Instinct_MI325X.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/configs/triton_3_6_0/E=64,N=768,device_name=AMD_Instinct_MI325X.json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=1280,K=5120,device_name=NVIDIA_B200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=1536,K=1536,device_name=NVIDIA_A100-SXM4-80GB,dtype=int8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=1536,K=1536,device_name=NVIDIA_A800-SXM4-80GB,dtype=int8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=1536,K=1536,device_name=NVIDIA_H100_80GB_HBM3,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=1536,K=1536,device_name=NVIDIA_H20,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=1536,K=1536,device_name=NVIDIA_L20Y,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=1536,K=7168,device_name=AMD_Instinct_MI300X,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=1536,K=7168,device_name=AMD_Instinct_MI325X,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=1536,K=7168,device_name=AMD_Radeon_Graphics,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=1536,K=7168,device_name=NVIDIA_A100-SXM4-80GB,dtype=int8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=1536,K=7168,device_name=NVIDIA_A800-SXM4-80GB,dtype=int8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=1536,K=7168,device_name=NVIDIA_H100_80GB_HBM3,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=1536,K=7168,device_name=NVIDIA_H20,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=1536,K=7168,device_name=NVIDIA_H200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=1536,K=7168,device_name=NVIDIA_L20Y,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=2048,K=4096,device_name=NVIDIA_L40,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=2048,K=512,device_name=NVIDIA_A100-SXM4-80GB,dtype=int8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=2048,K=512,device_name=NVIDIA_A800-SXM4-80GB,dtype=int8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=2048,K=512,device_name=NVIDIA_H100_80GB_HBM3,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=2048,K=512,device_name=NVIDIA_H20,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=2048,K=512,device_name=NVIDIA_H200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=2048,K=512,device_name=NVIDIA_L20Y,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=2304,K=7168,device_name=NVIDIA_A100-SXM4-80GB,dtype=int8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=2304,K=7168,device_name=NVIDIA_A800-SXM4-80GB,dtype=int8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=2304,K=7168,device_name=NVIDIA_H100_80GB_HBM3,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=2304,K=7168,device_name=NVIDIA_H20,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=2304,K=7168,device_name=NVIDIA_H200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=2304,K=7168,device_name=NVIDIA_L20Y,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=24576,K=1536,device_name=AMD_Instinct_MI300X,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=24576,K=1536,device_name=AMD_Instinct_MI325X,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=24576,K=1536,device_name=AMD_Radeon_Graphics,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=24576,K=7168,device_name=NVIDIA_A100-SXM4-80GB,dtype=int8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=24576,K=7168,device_name=NVIDIA_A800-SXM4-80GB,dtype=int8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=24576,K=7168,device_name=NVIDIA_B200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=24576,K=7168,device_name=NVIDIA_H100_80GB_HBM3,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=24576,K=7168,device_name=NVIDIA_H20,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=24576,K=7168,device_name=NVIDIA_H20,dtype=int8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=24576,K=7168,device_name=NVIDIA_H200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=24576,K=7168,device_name=NVIDIA_L20Y,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=256,K=7168,device_name=NVIDIA_A100-SXM4-80GB,dtype=int8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=256,K=7168,device_name=NVIDIA_A800-SXM4-80GB,dtype=int8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=256,K=7168,device_name=NVIDIA_H100_80GB_HBM3,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=256,K=7168,device_name=NVIDIA_H20,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=256,K=7168,device_name=NVIDIA_L20Y,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=3072,K=1536,device_name=AMD_Instinct_MI300X,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=3072,K=1536,device_name=AMD_Instinct_MI325X,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=3072,K=1536,device_name=AMD_Radeon_Graphics,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=3072,K=1536,device_name=NVIDIA_B200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=3072,K=1536,device_name=NVIDIA_H20,dtype=int8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=3072,K=1536,device_name=NVIDIA_H200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=3072,K=7168,device_name=NVIDIA_B200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=3072,K=7168,device_name=NVIDIA_H100_80GB_HBM3,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=3072,K=7168,device_name=NVIDIA_H20,dtype=int8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=3072,K=7168,device_name=NVIDIA_H200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=32768,K=512,device_name=AMD_Instinct_MI300X,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=32768,K=512,device_name=AMD_Instinct_MI325X,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=32768,K=512,device_name=AMD_Radeon_Graphics,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=32768,K=512,device_name=NVIDIA_A100-SXM4-80GB,dtype=int8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=32768,K=512,device_name=NVIDIA_A800-SXM4-80GB,dtype=int8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=32768,K=512,device_name=NVIDIA_B200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=32768,K=512,device_name=NVIDIA_H100_80GB_HBM3,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=32768,K=512,device_name=NVIDIA_H20,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=32768,K=512,device_name=NVIDIA_H20,dtype=int8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=32768,K=512,device_name=NVIDIA_H200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=32768,K=512,device_name=NVIDIA_L20Y,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=36864,K=7168,device_name=NVIDIA_H100_80GB_HBM3,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=36864,K=7168,device_name=NVIDIA_H200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=4096,K=512,device_name=AMD_Instinct_MI300X,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=4096,K=512,device_name=AMD_Instinct_MI325X,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=4096,K=512,device_name=AMD_Radeon_Graphics,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=4096,K=512,device_name=NVIDIA_B200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=4096,K=512,device_name=NVIDIA_H100_80GB_HBM3,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=4096,K=512,device_name=NVIDIA_H20,dtype=int8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=4096,K=512,device_name=NVIDIA_H200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=4608,K=7168,device_name=AMD_Instinct_MI300X,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=4608,K=7168,device_name=AMD_Instinct_MI325X,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=4608,K=7168,device_name=AMD_Radeon_Graphics,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=4608,K=7168,device_name=NVIDIA_B200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=4608,K=7168,device_name=NVIDIA_H100_80GB_HBM3,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=4608,K=7168,device_name=NVIDIA_H20,dtype=int8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=4608,K=7168,device_name=NVIDIA_H200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=512,K=7168,device_name=AMD_Instinct_MI300X,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=512,K=7168,device_name=AMD_Instinct_MI325X,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=512,K=7168,device_name=AMD_Radeon_Graphics,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=512,K=7168,device_name=NVIDIA_B200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=512,K=7168,device_name=NVIDIA_H20,dtype=int8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=512,K=7168,device_name=NVIDIA_H200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=5120,K=1024,device_name=NVIDIA_B200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=5120,K=2048,device_name=NVIDIA_L40,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=5120,K=3200,device_name=NVIDIA_B200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=576,K=7168,device_name=AMD_Instinct_MI300X,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=576,K=7168,device_name=AMD_Instinct_MI325X,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=576,K=7168,device_name=AMD_Radeon_Graphics,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=576,K=7168,device_name=NVIDIA_A100-SXM4-80GB,dtype=int8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=576,K=7168,device_name=NVIDIA_A800-SXM4-80GB,dtype=int8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=576,K=7168,device_name=NVIDIA_B200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=576,K=7168,device_name=NVIDIA_H100_80GB_HBM3,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=576,K=7168,device_name=NVIDIA_H20,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=576,K=7168,device_name=NVIDIA_H20,dtype=int8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=576,K=7168,device_name=NVIDIA_H200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=576,K=7168,device_name=NVIDIA_L20Y,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=6400,K=5120,device_name=NVIDIA_B200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=1024,device_name=NVIDIA_A100-SXM4-80GB,dtype=int8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=1024,device_name=NVIDIA_A800-SXM4-80GB,dtype=int8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=1024,device_name=NVIDIA_H100_80GB_HBM3,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=1024,device_name=NVIDIA_H20,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=1024,device_name=NVIDIA_H200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=1024,device_name=NVIDIA_L20Y,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=1152,device_name=NVIDIA_A100-SXM4-80GB,dtype=int8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=1152,device_name=NVIDIA_A800-SXM4-80GB,dtype=int8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=1152,device_name=NVIDIA_H100_80GB_HBM3,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=1152,device_name=NVIDIA_H20,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=1152,device_name=NVIDIA_H200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=1152,device_name=NVIDIA_L20Y,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=128,device_name=NVIDIA_A100-SXM4-80GB,dtype=int8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=128,device_name=NVIDIA_A800-SXM4-80GB,dtype=int8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=128,device_name=NVIDIA_H100_80GB_HBM3,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=128,device_name=NVIDIA_H20,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=128,device_name=NVIDIA_L20Y,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=16384,device_name=AMD_Instinct_MI300X,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=16384,device_name=AMD_Instinct_MI325X,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=16384,device_name=AMD_Radeon_Graphics,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=16384,device_name=NVIDIA_A100-SXM4-80GB,dtype=int8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=16384,device_name=NVIDIA_A800-SXM4-80GB,dtype=int8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=16384,device_name=NVIDIA_B200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=16384,device_name=NVIDIA_H100_80GB_HBM3,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=16384,device_name=NVIDIA_H20,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=16384,device_name=NVIDIA_H20,dtype=int8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=16384,device_name=NVIDIA_H200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=16384,device_name=NVIDIA_L20Y,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=18432,device_name=NVIDIA_A100-SXM4-80GB,dtype=int8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=18432,device_name=NVIDIA_A800-SXM4-80GB,dtype=int8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=18432,device_name=NVIDIA_B200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=18432,device_name=NVIDIA_H100_80GB_HBM3,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=18432,device_name=NVIDIA_H20,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=18432,device_name=NVIDIA_H20,dtype=int8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=18432,device_name=NVIDIA_H200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=18432,device_name=NVIDIA_L20Y,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=2048,device_name=AMD_Instinct_MI300X,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=2048,device_name=AMD_Instinct_MI325X,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=2048,device_name=AMD_Radeon_Graphics,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=2048,device_name=NVIDIA_B200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=2048,device_name=NVIDIA_H100_80GB_HBM3,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=2048,device_name=NVIDIA_H20,dtype=int8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=2048,device_name=NVIDIA_H200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=2304,device_name=AMD_Instinct_MI300X,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=2304,device_name=AMD_Instinct_MI325X,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=2304,device_name=AMD_Radeon_Graphics,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=2304,device_name=NVIDIA_B200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=2304,device_name=NVIDIA_H100_80GB_HBM3,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=2304,device_name=NVIDIA_H20,dtype=int8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=2304,device_name=NVIDIA_H200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=256,device_name=AMD_Instinct_MI300X,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=256,device_name=AMD_Instinct_MI325X,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=256,device_name=AMD_Radeon_Graphics,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=256,device_name=NVIDIA_B200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=256,device_name=NVIDIA_H20,dtype=int8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "python/sglang/srt/layers/quantization/configs/N=7168,K=256,device_name=NVIDIA_H200,dtype=fp8_w8a8,block_shape=[128, 128].json",
+      "over the 24-file bound"
+     ],
+     [
+      "scripts/ci/utils/diffusion/comparison_configs.json",
+      "over the 24-file bound"
+     ],
+     [
+      "sgl-kernel/THIRDPARTYNOTICES.txt",
+      "over the 24-file bound"
+     ],
+     [
+      "test/manual/quant/kv_cache_scales_llama3_1_8b.json",
+      "over the 24-file bound"
+     ],
+     [
+      "test/manual/quant/kv_cache_scales_llama3_8b.json",
+      "over the 24-file bound"
+     ],
+     [
+      "test/manual/quant/kv_cache_scales_qwen2_1_5b.json",
+      "over the 24-file bound"
+     ],
+     [
+      "test/registered/ascend/basic_function/parameter/deepseek_coder.json",
+      "over the 24-file bound"
+     ]
+    ],
+    "ms": 25
+   },
+   "named": {
+    "ms": 3,
+    "entries": []
+   },
+   "wide": {
+    "ms": 6,
+    "entries": []
+   }
+  },
+  "shadow-relay": {
+   "set": "anatomy",
+   "image": "truth9584-review/shadow-relay:public-environment",
+   "workdir": "/app",
+   "reconstructed": false,
+   "profile": {
+    "files": [
+     {
+      "path": "data/metadata.json",
+      "kind": "json",
+      "bytes": 238,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     },
+     {
+      "path": "data/network/dns_queries.log",
+      "kind": "text",
+      "bytes": 974920,
+      "whole": true,
+      "findings": [],
+      "ms": 58
+     },
+     {
+      "path": "data/network/flows.csv",
+      "kind": "csv",
+      "bytes": 6879983,
+      "whole": true,
+      "findings": [],
+      "ms": 480
+     },
+     {
+      "path": "data/vm/traces/trace_01.json",
+      "kind": "json",
+      "bytes": 4651,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     },
+     {
+      "path": "data/vm/traces/trace_02.json",
+      "kind": "json",
+      "bytes": 5173,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     },
+     {
+      "path": "data/vm/traces/trace_03.json",
+      "kind": "json",
+      "bytes": 4670,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     },
+     {
+      "path": "data/vm/traces/trace_04.json",
+      "kind": "json",
+      "bytes": 6675,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     },
+     {
+      "path": "data/vm/traces/trace_05.json",
+      "kind": "json",
+      "bytes": 9174,
+      "whole": true,
+      "findings": [],
+      "ms": 0
+     }
+    ],
+    "skipped": [],
+    "ms": 542
+   },
+   "named": {
+    "ms": 2,
+    "entries": []
+   },
+   "wide": {
+    "ms": 6,
+    "entries": []
+   }
+  },
+  "sound-change-cascade": {
+   "set": "anatomy",
+   "image": "tbench-warm/sound-change-cascade:environment-29d31c1952ffaa7ba0c7",
+   "workdir": "/app",
+   "reconstructed": false,
+   "profile": {
+    "files": [
+     {
+      "path": "data/train.tsv",
+      "kind": "tsv",
+      "bytes": 15187,
+      "whole": true,
+      "findings": [],
+      "ms": 5
+     },
+     {
+      "path": "engine/example_rules.json",
+      "kind": "json",
+      "bytes": 104,
+      "whole": true,
+      "findings": [
+       "1 empty fields in 1 columns"
+      ],
+      "ms": 0
+     }
+    ],
+    "skipped": [],
+    "ms": 5
+   },
+   "named": {
+    "ms": 9,
+    "entries": [
+     {
+      "kind": "script",
+      "command": "python3 engine/apply.py",
+      "refused": null,
+      "exit": 1,
+      "timed_out": false,
+      "ms": 624,
+      "observable": true
+     }
+    ]
+   },
+   "wide": {
+    "ms": 15,
+    "entries": [
+     {
+      "kind": "script",
+      "command": "python3 engine/apply.py",
+      "refused": null,
+      "exit": 1,
+      "timed_out": false,
+      "ms": 624,
+      "observable": true
+     }
+    ]
+   }
+  },
+  "takens-embedding-lean": {
+   "set": "wider",
+   "image": null,
+   "workdir": null,
+   "reconstructed": false,
+   "skipped": "no local image"
+  },
+  "telecom-entity-resolution": {
+   "set": "family",
+   "image": "accept-env/telecom-entity-resolution:latest",
+   "workdir": "/app",
+   "reconstructed": false,
+   "profile": {
+    "files": [
+     {
+      "path": "data/cable_customers.csv",
+      "kind": "csv",
+      "bytes": 2738748,
+      "whole": true,
+      "findings": [
+       "23,700 empty fields in 6 columns",
+       "column \"phone\" mixes 6,857 numbers with 15,421 other values"
+      ],
+      "ms": 225
+     },
+     {
+      "path": "data/internet_customers.csv",
+      "kind": "csv",
+      "bytes": 2709121,
+      "whole": true,
+      "findings": [
+       "16,530 empty fields in 5 columns",
+       "column \"ssn\" mixes 3,636 numbers with 13,225 other values",
+       "column \"phone\" mixes 6,527 numbers with 14,595 other values"
+      ],
+      "ms": 213
+     },
+     {
+      "path": "data/mobile_customers.csv",
+      "kind": "csv",
+      "bytes": 3073019,
+      "whole": true,
+      "findings": [
+       "29,490 empty fields in 7 columns",
+       "column \"ssn\" mixes 4,737 numbers with 17,445 other values",
+       "column \"phone\" mixes 7,042 numbers with 15,794 other values"
+      ],
+      "ms": 250
+     },
+     {
+      "path": "data/streaming_customers.csv",
+      "kind": "csv",
+      "bytes": 2636037,
+      "whole": true,
+      "findings": [
+       "14,241 empty fields in 4 columns",
+       "column \"phone\" mixes 6,547 numbers with 14,319 other values",
+       "column \"date_of_birth\" mixes 8,380 numbers with 9,681 other values"
+      ],
+      "ms": 209
+     }
+    ],
+    "skipped": [],
+    "ms": 899
+   },
+   "named": {
+    "ms": 1,
+    "entries": []
+   },
+   "wide": {
+    "ms": 5,
+    "entries": []
+   }
+  },
+  "uefi-bootkit": {
+   "set": "wider",
+   "image": "uefi-bootkit__al5vpch__env-main:latest",
+   "workdir": "/app",
+   "reconstructed": false,
+   "profile": {
+    "files": [],
+    "skipped": [],
+    "ms": 0
+   },
+   "named": {
+    "ms": 14,
+    "entries": [
+     {
+      "kind": "script",
+      "command": "bash run-vm.sh",
+      "refused": null,
+      "exit": 0,
+      "timed_out": false,
+      "ms": 15442,
+      "observable": true
+     }
+    ]
+   },
+   "wide": {
+    "ms": 20,
+    "entries": [
+     {
+      "kind": "script",
+      "command": "bash run-vm.sh",
+      "refused": null,
+      "exit": 0,
+      "timed_out": false,
+      "ms": 15442,
+      "observable": true
+     }
+    ]
+   }
+  },
+  "vba-userform-port": {
+   "set": "anatomy",
+   "image": null,
+   "workdir": "/workspace",
+   "reconstructed": true,
+   "profile": {
+    "files": [],
+    "skipped": [],
+    "ms": 0
+   },
+   "named": {
+    "ms": 1,
+    "entries": []
+   },
+   "wide": {
+    "ms": 4,
+    "entries": []
+   }
+  },
+  "vf2-speedup-networkx": {
+   "set": "anatomy",
+   "image": "tbench-warm/vf2-speedup-networkx:environment-16c5c6672a3a4a658c75",
+   "workdir": "/app",
+   "reconstructed": false,
+   "profile": {
+    "files": [],
+    "skipped": [],
+    "ms": 0
+   },
+   "named": {
+    "ms": 1,
+    "entries": []
+   },
+   "wide": {
+    "ms": 8,
+    "entries": []
+   }
+  },
+  "vllm-deepseek-streaming": {
+   "set": "wider",
+   "image": null,
+   "workdir": null,
+   "reconstructed": false,
+   "skipped": "no local image"
+  },
+  "vpp-loss-divergence": {
+   "set": "wider",
+   "image": "truth9584-review/vpp-loss-divergence:public-environment",
+   "workdir": "/app",
+   "reconstructed": false,
+   "profile": {
+    "files": [],
+    "skipped": [],
+    "ms": 0
+   },
+   "named": {
+    "ms": 28,
+    "entries": [
+     {
+      "kind": "script",
+      "command": "python3 pretrain.py",
+      "refused": null,
+      "exit": 0,
+      "timed_out": false,
+      "ms": 10408,
+      "observable": true
+     }
+    ]
+   },
+   "wide": {
+    "ms": 44,
+    "entries": [
+     {
+      "kind": "script",
+      "command": "python3 pretrain.py",
+      "refused": null,
+      "exit": 0,
+      "timed_out": false,
+      "ms": 10408,
+      "observable": true
+     }
+    ]
+   }
+  },
+  "wal-recovery-ordering": {
+   "set": "wider",
+   "image": "accept-env/wal-recovery-ordering:latest",
+   "workdir": "/app",
+   "reconstructed": false,
+   "profile": {
+    "files": [],
+    "skipped": [],
+    "ms": 0
+   },
+   "named": {
+    "ms": 6,
+    "entries": []
+   },
+   "wide": {
+    "ms": 9,
+    "entries": []
+   }
+  },
+  "wdm-design": {
+   "set": "wider",
+   "image": "wdm-design__po5dsxq__env-main:latest",
+   "workdir": "/app",
+   "reconstructed": false,
+   "profile": {
+    "files": [],
+    "skipped": [],
+    "ms": 0
+   },
+   "named": {
+    "ms": 2,
+    "entries": []
+   },
+   "wide": {
+    "ms": 6,
+    "entries": []
+   }
+  }
+ },
+ "cost_usd": 0.0
+}
