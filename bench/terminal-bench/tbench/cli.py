@@ -1131,6 +1131,11 @@ def cmd_cohort(args: argparse.Namespace) -> int:
     output = Path(args.output).expanduser().resolve()
     checkout = Path(__file__).resolve().parents[3]
     try:
+        if args.action == "status":
+            print(json.dumps(cohort.status(output), indent=2))
+            return 0
+        if not args.spec:
+            raise cohort.CohortError(f"{args.action} needs --spec")
         spec = json.loads(Path(args.spec).expanduser().read_text())
         cohort.validate(spec)
         if output.is_relative_to(checkout):
@@ -1495,8 +1500,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     add_experiment_parser(sub)
     cohort_parser = sub.add_parser("cohort", help="run or report a frozen cohort with durable spend holds")
-    cohort_parser.add_argument("action", choices=("run", "report", "plan"))
-    cohort_parser.add_argument("--spec", required=True, help="frozen cohort JSON specification")
+    cohort_parser.add_argument("action", choices=("run", "report", "plan", "status"),
+                               help="status reads the journal's spend without writing to it")
+    cohort_parser.add_argument("--spec", help="frozen cohort JSON specification; status does not need it")
     cohort_parser.add_argument("--output", required=True, help="durable ledger directory outside the checkout")
     cohort_parser.set_defaults(func=cmd_cohort)
     coverage = sub.add_parser("candidate-preflight", help="check per-session artifact capture coverage without inference")

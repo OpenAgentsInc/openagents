@@ -163,6 +163,19 @@ atomically written `report.json`; the reconstruction command requires the driver
 to be idle. Neither
 reporting nor restarting resets previous attempts, retries, or reservations.
 
+To check spend while a cohort runs, read the journal without writing to it:
+
+```sh
+uv run tbench cohort status --output /absolute/path/to/cohort-ledger
+```
+
+`status` needs no spec and takes no lock. It prints the counted spend, the
+amount held by reservations, a lower and an upper bound, the number of attempts
+whose full cost is unknown, and the remaining budget. The lower bound adds only
+the costs the usage records prove. The upper bound adds every hold to the counted
+spend; it is the most the cohort charges against its ceiling under the cost rule,
+not a limit on the provider's bill. `report.json` carries the same two bounds.
+
 ### One rule for execution and reporting
 
 | Evidence | Recorded cost | Counted cost and action |
@@ -227,6 +240,23 @@ runs the new rule over all 18 retained usage files. Six receive the open-request
 bound. The total is **$0.96359699**, matching the published conservative total,
 rather than the old driver's $0.4161044. The five earlier setup starts remain
 published in the original family report; no historical receipt is overwritten.
+
+`tests/test_cohort_v18_replay.py` feeds the retained v18 launch logs and outcome
+records through the cohort journal in their original order, without a trial or
+a model call. It shows what the journal would have done:
+
+1. It counts the five setup-only starts as known zeros, because each failed
+   before the agent ran and left no usage record. Payments and checkpoint each
+   use their one rerun.
+2. It refuses to continue after the harness source changes from `3a25a0ff1f`
+   to `0f2d7e6bf4`, and keeps the attempted identity as a deviation.
+3. Even with the original source, it refuses the restarted driver's fresh
+   payments and checkpoint starts, because those slots had no rerun left. The
+   layout slot's relaunch is its one permitted rerun.
+
+Run as its own cohort, the 18 completed attempts store a lower bound of
+**$0.68201621** and an upper bound of **$0.96359699** in `report.json`, with six
+attempts whose full cost is unknown.
 
 ## Validation
 

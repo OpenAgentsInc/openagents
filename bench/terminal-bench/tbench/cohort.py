@@ -100,7 +100,117 @@ def validate(spec):
             raise CohortError('invalid slot id')
 
 
-class Journal:
+def read_events(path: Path, *, allow_unterminated_tail=False):
+    """Reads a journal and checks its hash chain.
+
+    A driver writes each event as one line that ends in a newline. With
+    ``allow_unterminated_tail``, a final line without its newline is left out,
+    because a driver may be writing it, and the second value says so.
+    """
+    lines = path.read_text().split('\n')
+    tail = lines.pop()
+    if tail and not allow_unterminated_tail:
+        lines.append(tail)
+    events = []
+    for raw in lines:
+        event = json.loads(raw)
+        recorded = event.pop('digest')
+        if (digest(event) != recorded or event['sequence'] != len(events)
+                or event['previous'] != (events[-1]['digest'] if events else None)):
+            raise CohortError('cohort journal hash chain is invalid')
+        event['digest'] = recorded
+        events.append(event)
+    return events, bool(tail) and allow_unterminated_tail
+
+
+class Ledger:
+    """Attempts and spend computed from journal events, without writing."""
+    def __init__(self, spec: dict, events: list):
+        self.spec, self.events = spec, events
+
+    def attempts(self):
+        rows = {}
+        for event in self.events:
+            if event['kind'] == 'reserve':
+                rows[event['job']] = dict(event, state='reserved')
+            elif event['kind'] == 'started':
+                rows[event['job']].update(state='running', pid=event['pid'])
+            elif event['kind'] == 'settle':
+                rows[event['job']].update(state='settled', result=event['result'])
+        return rows
+
+    def accounting(self):
+        """Counts spend against the ceiling and bounds what was spent.
+
+        ``counted_usd`` is what the cost rule counts for settled attempts.
+        ``lower_bound_usd`` adds only amounts the usage records prove: exact
+        totals and the recorded part of an unfinished request.
+        ``upper_bound_usd`` is the counted amount plus every hold. It is the
+        most this cohort charges against its ceiling under the rule, not a
+        limit on a provider's bill.
+        """
+        charged, held, proven = Decimal(0), Decimal(0), Decimal(0)
+        unknown = []
+        open_request = []
+        breached = []
+        for row in self.attempts().values():
+            cost = row.get('result', {}).get('cost', {})
+            counted = cost.get('counted_usd')
+            known = cost.get('recorded_usd')
+            if known is None:
+                known = cost.get('lower_bound_usd')
+            if known is not None:
+                proven += money(known)
+            if cost.get('kind') == 'open-request-bound':
+                open_request.append(row['job'])
+            reserve = money(row['reservation_usd'])
+            if row['state'] != 'settled' or counted is None:
+                lower = cost.get('lower_bound_usd')
+                held += max(reserve, money(lower) if lower is not None else Decimal(0))
+                if row['state'] == 'settled':
+                    unknown.append(row['job'])
+            else:
+                charged += money(counted)
+                if money(counted) > reserve:
+                    breached.append(row['job'])
+        return {'counted_usd': str(charged), 'held_usd': str(held), 'unknown_jobs': unknown,
+                'open_request_jobs': open_request,
+                'lower_bound_usd': str(proven), 'upper_bound_usd': str(charged + held),
+                'reservation_breaches': breached,
+                'available_usd': str(money(self.spec['budget_usd']) - charged - held)}
+
+
+def status(directory: Path):
+    """Summarizes a cohort's spend from its journal without locking or writing.
+
+    It is safe to run while a driver owns the cohort.
+    """
+    path = directory / 'ledger.jsonl'
+    if not path.exists():
+        raise CohortError('no cohort journal in this directory')
+    events, unterminated = read_events(path, allow_unterminated_tail=True)
+    if not events or events[0]['kind'] != 'pin':
+        raise CohortError('the cohort journal does not start with its pinned spec')
+    spec = events[0]['spec']
+    view = Ledger(spec, events)
+    rows = list(view.attempts().values())
+    spend = view.accounting()
+    return {'schema': 'openagents.tbench.cohort-status.v1', 'id': spec['id'],
+            'ledger_head': events[-1]['digest'], 'events': len(events),
+            'unterminated_tail': unterminated,
+            'budget_usd': spec['budget_usd'], 'spent_usd': spend['counted_usd'],
+            'held_usd': spend['held_usd'],
+            'lower_bound_usd': spend['lower_bound_usd'],
+            'upper_bound_usd': spend['upper_bound_usd'],
+            'unknown_cost_count': len(spend['unknown_jobs']) + len(spend['open_request_jobs']),
+            'remaining_usd': spend['available_usd'],
+            'attempts': len(rows), 'running': sum(r['state'] != 'settled' for r in rows),
+            'graded': sum(r.get('result', {}).get('kind') == 'graded' for r in rows),
+            'planned': len(spec['schedule']),
+            'deviations': sum(e['kind'] == 'deviation' for e in events)}
+
+
+class Journal(Ledger):
     """An exclusive, fsynced append-only journal. Ambiguous launches keep holds."""
     def __init__(self, directory: Path, spec: dict, identity: dict):
         validate(spec)
@@ -116,14 +226,7 @@ class Journal:
         self.events = []
         try:
             if self.path.exists():
-                for raw in self.path.read_text().splitlines():
-                    event = json.loads(raw)
-                    recorded = event.pop('digest')
-                    if (digest(event) != recorded or event['sequence'] != len(self.events)
-                            or event['previous'] != (self.events[-1]['digest'] if self.events else None)):
-                        raise CohortError('cohort journal hash chain is invalid')
-                    event['digest'] = recorded
-                    self.events.append(event)
+                self.events = read_events(self.path)[0]
             if not self.events:
                 self.append('pin', spec=spec, identity=identity)
             elif self.events[0]['spec'] != spec or self.events[0]['identity'] != identity:
@@ -162,37 +265,6 @@ class Journal:
             os.close(descriptor)
         self.events.append(event)
         return event
-
-    def attempts(self):
-        rows = {}
-        for event in self.events:
-            if event['kind'] == 'reserve':
-                rows[event['job']] = dict(event, state='reserved')
-            elif event['kind'] == 'started':
-                rows[event['job']].update(state='running', pid=event['pid'])
-            elif event['kind'] == 'settle':
-                rows[event['job']].update(state='settled', result=event['result'])
-        return rows
-
-    def accounting(self):
-        charged, held = Decimal(0), Decimal(0)
-        unknown = []
-        breached = []
-        for row in self.attempts().values():
-            counted = row.get('result', {}).get('cost', {}).get('counted_usd')
-            reserve = money(row['reservation_usd'])
-            if row['state'] != 'settled' or counted is None:
-                lower = row.get('result', {}).get('cost', {}).get('lower_bound_usd')
-                held += max(reserve, money(lower) if lower is not None else Decimal(0))
-                if row['state'] == 'settled':
-                    unknown.append(row['job'])
-            else:
-                charged += money(counted)
-                if money(counted) > reserve:
-                    breached.append(row['job'])
-        return {'counted_usd': str(charged), 'held_usd': str(held), 'unknown_jobs': unknown,
-                'reservation_breaches': breached,
-                'available_usd': str(money(self.spec['budget_usd']) - charged - held)}
 
     def reserve(self, slot):
         attempts = [r for r in self.attempts().values() if r['slot'] == slot]
