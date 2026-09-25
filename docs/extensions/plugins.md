@@ -1,10 +1,11 @@
 # Wasm plugins
 
 Status: partly implemented. The host core and the program `module` step
-landed in #9519 on 2026-09-21. The rest of this document is the target
-specification for typed operations, shared evidence, and
-[program execution](programs.md); [What is built](#what-is-built) says which
-parts exist today.
+landed in #9519 on 2026-09-21, and step bounds, workspace snapshot grants,
+and cancellation reached the `module` step on 2026-09-25. The rest of this
+document is the target specification for typed operations, shared
+evidence, and [program execution](programs.md);
+[What is built](#what-is-built) says which parts exist today.
 
 In this document, *plugin* means an OpenAgents WebAssembly guest. It doesn't
 mean a Claude Code or Codex client package under `plugins/`; the
@@ -31,9 +32,12 @@ The host implements the two access modes as `plugin::Profile`:
 - `Pure` links no host imports. A guest that declares any import is
   refused with `HostError::Denied`.
 - `SnapshotRead` links one import, `oa_host.call`, which lists and reads
-  the handles issued for that invocation. A handle from another invocation
-  is `HostError::Stale`, and path traversal, symlink escape, and a partial
-  capture are refused.
+  the handles issued for that invocation. Listing a directory mints a
+  handle for each child, scoped to the invocation, so the guest can read
+  what it listed. A handle from another invocation is `HostError::Stale`,
+  and path traversal, symlink escape, and a partial capture are refused.
+  An entry name is a logical label; it may have `/`-separated segments,
+  but no segment is empty, `.`, or `..`.
 
 `plugin::Limits` bounds each call. The defaults are the following:
 
@@ -44,6 +48,11 @@ The host implements the two access modes as `plugin::Profile`:
 | `output_bytes` | 64 KiB | The response body. |
 | `read_bytes` | 64 KiB | Snapshot bytes that one call may read. |
 | `module_bytes` | 2 MiB | Guest module size accepted for compilation. |
+
+Setting the call's cancel flag stops a running guest, not only one that is
+about to start or is in a host call: a watcher thread bumps the Wasmtime
+epoch, and the guest traps at its next loop header or function entry with
+`HostError::Cancelled`.
 
 A call that doesn't return a value fails with a typed `HostError`:
 `Malformed`, `Denied`, `Limit`, `Stale`, `Failed`, `Cancelled`, or
@@ -60,24 +69,75 @@ In `crates/coder`, the program runtime runs a `module` step through
 `plugin::invoke` (`run_module` in `crates/coder/src/runtime.rs`), on the same
 path the terminal and `coder -p` share. Admission refuses a `module` step
 that carries no guest bytes (`bytes_base64`) or names a profile other than
-`pure` or `snapshot-read`. The step's `fuel` and `memory_bytes` bounds
-override the defaults, and a step that states no `fuel` gets 50,000,000.
-Admission also accepts `output_bytes` and `read_bytes` bounds, but the
-runtime doesn't pass them to the host, so the host defaults apply.
-A guest refusal, a crossed limit, and a cancellation map to the step's
-`refused`, `limit_exceeded`, and `cancelled` refusals.
+`pure` or `snapshot-read`.
+
+The runtime holds each step to the host's ceilings, which are the defaults
+in the table above except `fuel`, which is 50,000,000. An operator can set
+other ceilings with `Runtime::with_module_ceiling`. A step's `fuel`,
+`memory_bytes`, `output_bytes`, `read_bytes`, and `module_bytes` bounds
+reach the host and can only narrow those ceilings: admission refuses a
+bound wider than its ceiling as `bound_unenforceable`, and a guest that
+crosses a narrowed bound fails the step with the host's typed limit, such
+as `limit_exceeded` with `output bytes`. A child program's `module` step is
+held to the same ceilings, and a `program` step can't widen them for it.
+
+A `snapshot-read` step reads only what its `read` field names: a list of
+workspace-relative paths, where `.` names the whole workspace. A step with
+no `read` field is granted nothing and sees an empty listing. The safer
+default is to grant nothing: a program that forgets to scope its guest
+then shows an empty listing, rather than silently handing the guest every
+file in the checkout. Before the guest starts, the runtime reads each named
+file, and each file under a named directory, from the run's workspace into
+the snapshot. The guest gets one handle, `workspace`, whose listing names
+each file as `workspace/<relative path>`. Each file keeps at most the
+step's `read_bytes` and says when it kept fewer bytes than it has. A grant
+holds at most 1,024 entries and 16 MiB. A path that isn't plain and
+relative, such as one with `..`, is refused at admission as
+`scope_invalid`. A path that resolves outside the workspace, or a symlink
+whose target is outside it, refuses the step as `scope_escapes` before the
+guest starts. A symlink whose target stays inside is listed as a symlink
+and never followed. A `pure` step gets no snapshot and no handles, and a
+`pure` step that names a `read` scope is refused at admission.
+
+The following step, in a program's host binding or a host program document,
+lists the files under `docs/` and `README.md`, and reads no more than 4 KiB
+of them:
+
+```json
+{
+  "name": "outline",
+  "kind": "module",
+  "module": {
+    "profile": "snapshot-read",
+    "operation": "outline",
+    "read": ["docs", "README.md"],
+    "bytes_base64": "<guest bytes>"
+  },
+  "bounds": {"read_bytes": 4096}
+}
+```
+
+The `read` field lives in the host's step binding beside `bytes_base64`,
+not in the portable NIP-PRG definition, because which paths a guest may
+read is the machine's business, like the paths a source reads. The
+`crates/nostr` definition parser doesn't see it.
+
+The guest runs on a blocking thread under a cancel flag. The run's
+deadline sets the flag and waits for the guest to stop, and the step marks
+`cancelled` with the run. A run the caller drops sets the flag too. A guest
+refusal, a crossed limit, a denied import, and a cancellation map to the
+step's `refused`, `limit_exceeded`, `denied`, and `cancelled` refusals.
 
 The following aren't built yet:
 
 - The manifest, operation schemas, and compatibility checks in
   [Manifest and compatibility](#manifest-and-compatibility). The host takes
   guest bytes and an operation name; it doesn't read a manifest.
-- Snapshot grants from a program. The runtime passes an empty snapshot to
-  a `snapshot-read` module step, so that step has nothing to read.
-- A wall-time deadline, a host-call count bound, and a compilation cache.
-  Each call compiles the module again. The host checks cancellation before
-  the guest starts and at each host call, but the runtime doesn't yet
-  connect a run's cancellation to a module step.
+- Snapshots of anything other than workspace files, such as a document,
+  a dataset partition, or a service capture.
+- A wall-time bound of the host's own, a host-call count bound, and a
+  compilation cache. Each call compiles the module again. The only wall
+  bound on a guest is the run's deadline.
 - The [host roles](#host-roles): evidence preparation, output processing,
   and hook registration.
 - The full [build provenance](#authoring-and-build-provenance) and the

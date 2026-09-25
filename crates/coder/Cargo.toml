@@ -32,6 +32,7 @@ receipts = { path = "../receipts" }
 [dev-dependencies]
 coderbench = { path = "../coderbench" }
 tempfile = "3"
+wat = "1"
 
 [lints]
 workspace = true

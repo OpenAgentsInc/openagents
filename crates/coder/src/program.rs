@@ -94,7 +94,9 @@ pub struct Step {
     /// The address of the child program a `program` step runs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub program: Option<String>,
-    /// The module a `module` step runs, named by content hash.
+    /// The guest a `module` step runs: its bytes, profile, operation,
+    /// input, and, for a `snapshot-read` guest, the workspace paths it may
+    /// read.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub module: Option<Value>,
     /// What bounds the step. Every step carries bounds, and a host refuses
@@ -126,7 +128,8 @@ pub enum Kind {
     Delegate,
     /// Another program, by address.
     Program,
-    /// A WebAssembly module, by content hash. This host does not dispatch it.
+    /// A WebAssembly guest the step carries inline, run through the packet
+    /// ABI host under the `pure` or `snapshot-read` profile.
     Module,
     /// A native or adapter operation. The step names the operation. It
     /// does not carry a command or a path.
