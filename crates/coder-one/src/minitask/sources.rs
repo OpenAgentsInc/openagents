@@ -128,14 +128,18 @@ async def run_tasks(
             await task()
 
     workers = [asyncio.create_task(worker()) for _ in range(min(max_concurrent, len(tasks)))]
+    group = asyncio.gather(*workers)
     try:
-        # The handler owns cancellation. An unshielded gather also cancels its
-        # workers, so cancelling them again can interrupt slower cleanup.
-        await asyncio.shield(asyncio.gather(*workers))
+        # Avoid implicit cancellation through gather. The shutdown handler may
+        # already have cancelled a worker, so never cancel its cleanup again.
+        await asyncio.shield(group)
     except BaseException:
         for worker_task in workers:
-            worker_task.cancel()
+            if not worker_task.cancelling():
+                worker_task.cancel()
         await asyncio.gather(*workers, return_exceptions=True)
+        if group.done() and not group.cancelled():
+            group.exception()
         raise
 "#;
 

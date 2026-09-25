@@ -432,11 +432,14 @@ const CANCEL_GRADER: &str = r#"import asyncio, os, sys
 sys.path.insert(0, os.getcwd())
 from run import run_tasks
 log = sys.argv[1]
+mode = sys.argv[2]
+started = []
 def note(text):
     with open(log, "a") as f:
         f.write(text + "\n")
 def job(i):
     async def task():
+        started.append(asyncio.current_task())
         note(f"started {i}")
         try:
             await asyncio.sleep(60)
@@ -446,11 +449,26 @@ def job(i):
             await asyncio.sleep(0.01 if i == 0 else 0.1)
             note(f"cleaned {i}")
     return task
-async def main():
+async def run():
     try:
         await run_tasks([job(i) for i in range(3)], 2)
     finally:
         note("returned")
+async def main():
+    if mode == "direct":
+        await run()
+        return
+    runner = asyncio.create_task(run())
+    try:
+        await asyncio.Event().wait()
+    finally:
+        # Exercise a shutdown that starts worker cleanup before cancelling the
+        # background runner, as event-loop shutdown can do after one SIGINT.
+        for task in started:
+            task.cancel()
+        await asyncio.sleep(0)
+        runner.cancel()
+        await asyncio.gather(runner, return_exceptions=True)
 try:
     asyncio.run(main())
 except KeyboardInterrupt:
@@ -459,16 +477,36 @@ note("exited")
 "#;
 
 async fn grade_cancel(workdir: &Path, scratch: &Path) -> Grade {
+    for mode in ["direct", "background"] {
+        let grade = grade_cancel_mode(workdir, scratch, mode).await;
+        if grade.verdict != "passed" {
+            return Grade {
+                detail: format!("{mode}: {}", grade.detail),
+                ..grade
+            };
+        }
+    }
+    Grade::passed("both started tasks cleaned up after one interrupt in direct and background runs")
+}
+
+async fn grade_cancel_mode(workdir: &Path, scratch: &Path, mode: &str) -> Grade {
     let Some(python) = process::python() else {
         return Grade::unavailable("python3 is not on PATH");
     };
-    let log = scratch.join("grader-cancel.log");
+    let mode_scratch = scratch.join(format!("cancel-{mode}"));
+    if let Err(error) = std::fs::create_dir_all(&mode_scratch) {
+        return Grade::unavailable(format!(
+            "cannot retain the {mode} cancellation check: {error}"
+        ));
+    }
+    let log = mode_scratch.join("grader-cancel.log");
     let _ = std::fs::remove_file(&log);
     let mut command = Command::new(python);
     command
         .arg("-c")
         .arg(CANCEL_GRADER)
         .arg(&log)
+        .arg(mode)
         .current_dir(workdir)
         .env("PYTHONDONTWRITEBYTECODE", "1");
     let log_ready = log.clone();
@@ -479,7 +517,7 @@ async fn grade_cancel(workdir: &Path, scratch: &Path) -> Grade {
     };
     let interrupted = process::interrupt_when(
         command,
-        scratch,
+        &mode_scratch,
         &ready,
         Duration::from_secs(10),
         Duration::from_secs(5),
@@ -727,13 +765,16 @@ mod tests {
     async fn cancellation_grade_rejects_the_former_good_double_cancel_runner() {
         let task = find("cancel-cleanup").unwrap();
         // Restore the exact cancellation path in the former known-good fixture.
-        let previous = sources::RUN_AWAITED.replace(
-            "await asyncio.shield(asyncio.gather(*workers))",
-            "await asyncio.gather(*workers)",
+        let shield_only = sources::RUN_AWAITED.replace(
+            "if not worker_task.cancelling():\n                worker_task.cancel()",
+            "worker_task.cancel()",
         );
+        assert_ne!(shield_only, sources::RUN_AWAITED);
+        let previous = shield_only.replace("await asyncio.shield(group)", "await group");
         assert_ne!(previous, sources::RUN_AWAITED);
         for (name, source, expected) in [
-            ("shielded", sources::RUN_AWAITED, "passed"),
+            ("cancel-once", sources::RUN_AWAITED, "passed"),
+            ("shield-only", shield_only.as_str(), "failed"),
             ("double-cancel", previous.as_str(), "failed"),
             ("early-return", sources::RUN_EARLY_RETURN, "failed"),
         ] {
