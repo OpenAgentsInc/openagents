@@ -703,11 +703,8 @@ class CoderOneDelegate(CoderOne):
         )
         await environment.upload_file(str(auth), str(remote_auth))
         owned = f"{remote_auth} {CODEX_HOME}" + (f" {CODEX_SECRETS}" if take else "")
-        owner = (
-            f"chown {environment.default_user} {owned} && "
-            if environment.default_user is not None
-            else ""
-        )
+        user = await self._agent_user(environment)
+        owner = f"chown {user} {owned} && " if user is not None else ""
         closed = f"chmod 700 {CODEX_HOME} {CODEX_SECRETS} && " if take else ""
         await self.exec_as_root(
             environment,
@@ -716,6 +713,22 @@ class CoderOneDelegate(CoderOne):
                 f"ln -sf {remote_auth} {CODEX_HOME / 'auth.json'}"
             ),
         )
+
+    @staticmethod
+    async def _agent_user(environment: BaseEnvironment) -> str | None:
+        """The user the episode runs as, when it isn't root.
+
+        Harbor names it only when the task's configuration does. An image
+        whose Dockerfile ends with ``USER nobody`` runs the episode as
+        ``nobody`` without Harbor knowing, so ask the container.
+        """
+        if environment.default_user is not None:
+            return str(environment.default_user)
+        found = await environment.exec(command="id -un")
+        name = (found.stdout or "").strip()
+        if found.return_code != 0 or not name or name == "root" or not name.isprintable():
+            return None
+        return name
 
     async def _install_claude_network(self, environment: BaseEnvironment) -> None:
         await self.ensure_system_dependencies(

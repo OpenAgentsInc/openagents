@@ -161,6 +161,7 @@ class _CodexEnvironment:
     """Answers `codex --version`, records commands, uploads, and envs."""
 
     default_user = None
+    image_user = "root"
 
     def __init__(self, version: str = "codex-cli 0.155.1"):
         self.version = version
@@ -173,6 +174,8 @@ class _CodexEnvironment:
         self.envs.append(dict(env or {}))
         if command.endswith("codex --version") and command.startswith("/usr/local"):
             return _Result(self.version + "\n")
+        if command == "id -un":
+            return _Result(self.image_user + "\n")
         return _Result("ok")
 
     async def upload_file(self, source: str, target: str) -> None:
@@ -676,3 +679,21 @@ def test_collector_failure_cancels_episode_and_preserves_cleanup(tmp_path, monke
         asyncio.run(agent.run('fixture', object(), object()))
     assert isinstance(error.value.exceptions[0], OSError)
     assert cleaned == ['partial bundle collected']
+
+
+def test_the_login_goes_to_the_image_user_when_harbor_names_none(tmp_path, monkeypatch):
+    """An image that ends with USER nobody runs the episode as nobody."""
+    agent, _ = _codex_agent(tmp_path, monkeypatch)
+
+    class Environment(_CodexEnvironment):
+        image_user = "nobody"
+
+    environment = Environment()
+    asyncio.run(agent._place_codex_auth(environment, tmp_path / "auth.json"))
+    placed = next(command for command in environment.commands if "ln -sf" in command)
+    assert "chown nobody /tmp/codex-secrets/auth.json /tmp/codex-home && " in placed
+
+    root = _CodexEnvironment()
+    asyncio.run(agent._place_codex_auth(root, tmp_path / "auth.json"))
+    placed = next(command for command in root.commands if "ln -sf" in command)
+    assert "chown" not in placed
