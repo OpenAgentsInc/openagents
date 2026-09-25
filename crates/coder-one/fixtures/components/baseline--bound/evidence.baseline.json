@@ -1,0 +1,26 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "evidence.baseline",
+  "source": {
+    "kind": "synthetic",
+    "issue": 9633,
+    "case": "A named command that passes the bound is stopped and reported as over it, and isn't a baseline command."
+  },
+  "input": {
+    "task": "Run `sh slow.sh` to see the failure.\n",
+    "wall_sec": 1,
+    "files": {
+      "slow.sh": "echo start\nsleep 30\necho done\n"
+    }
+  },
+  "retained": {
+    "runs": [
+      {
+        "kind": "named",
+        "timed_out": true,
+        "command": "sh slow.sh"
+      }
+    ],
+    "refused": []
+  }
+}

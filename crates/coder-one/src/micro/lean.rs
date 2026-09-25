@@ -196,6 +196,14 @@ pub struct Lean {
     /// in every manifest before it, every finish stands.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub finish_rule: Option<LeanFinishRule>,
+    /// `evidence.baseline`: before session 1, run the task's own entry
+    /// points once in a bounded scratch copy, put what they did in every
+    /// brief as "Baseline behavior", record each run in
+    /// `executed-commands.jsonl`, and give the commands to the finish rule
+    /// ([`crate::baseline`], issue #9633). Absent, as in every manifest
+    /// before it, nothing runs before the session.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub baseline: bool,
 }
 
 /// `executor.microluna.lean.finish_rule`: how a `done` finish is held to
@@ -216,14 +224,10 @@ fn max_refusals() -> u32 {
 /// wherever its copy lives.
 pub const SCORE_NAME: &str = "score.sh";
 
-/// The task's baseline commands, which the finish rule also requires after
-/// the last edit. None are found yet, so the rule requires the score
-/// alone; `evidence.baseline` (issue #9633) supplies them.
-fn baseline_commands() -> Vec<String> {
-    Vec::new()
-}
-
 /// The finish rule for a lean session, when the manifest turns it on.
+/// `baseline` is the task's baseline commands (`evidence.baseline`, issue
+/// #9633), empty when the manifest doesn't run it, so the rule then
+/// requires the score alone.
 fn finish_rule(lean: &Lean, baseline: &[String]) -> Option<microluna::FinishRule> {
     lean.finish_rule.as_ref().map(|rule| microluna::FinishRule {
         score: vec![SCORE_NAME.to_string()],
@@ -825,6 +829,44 @@ impl Micro {
         });
         (departures::evidence(&listed), record, ranked.usd)
     }
+
+    /// `evidence.baseline` ([`crate::baseline`], issue #9633): runs the
+    /// task's entry points once in scratch copies, bounded by the loop's
+    /// time left, and appends a host-executed command record per run to
+    /// `executed-commands.jsonl` in the lean group's artifacts. Returns the
+    /// briefing section, the loop's record, and the baseline commands.
+    async fn run_baseline(
+        &self,
+        prepared: &Prepared,
+        left: Duration,
+    ) -> (Option<Evidence>, Value, Vec<String>) {
+        let wall = crate::baseline::WALL.min(left);
+        if wall < Duration::from_secs(5) {
+            return (
+                None,
+                json!({"kind": "lean.baseline", "none": "too little time left to run it"}),
+                Vec::new(),
+            );
+        }
+        let setup = crate::baseline::Setup {
+            root: self.workdir.clone(),
+            alias: self.workdir.display().to_string(),
+            wall,
+            container: self.isolation == Isolation::TaskContainer,
+        };
+        let found = crate::baseline::run(&prepared.instruction, &setup).await;
+        let file = self
+            .artifacts
+            .join(format!("lean-{}", self.dispatch()))
+            .join(crate::baseline::EXECUTED_FILE);
+        let mut record = found.summary();
+        record["records"] = match found.append_records(&file) {
+            Ok(()) if !found.runs.is_empty() => json!(file.display().to_string()),
+            Ok(()) => Value::Null,
+            Err(error) => json!({ "error": error }),
+        };
+        (found.evidence(), record, found.commands())
+    }
 }
 
 /// A candidate identity: each file's SHA-256 by relative path.
@@ -890,6 +932,7 @@ impl Micro {
         rules: &str,
         evidence: &[Evidence],
         samples: &[Evidence],
+        baseline: &[String],
         frozen: &Path,
         fields: &BTreeMap<String, BTreeSet<String>>,
         start_tree: &BTreeMap<String, String>,
@@ -914,6 +957,7 @@ impl Micro {
             dirs.push((dir, scorer));
         }
         let n = dirs.len();
+        let real = self.workdir.display().to_string();
         let deadline = match (wall_left(), lean.lane_sec) {
             (Some(left), 0) => Some(left),
             (Some(left), sec) => Some(left.min(Duration::from_secs(sec))),
@@ -954,7 +998,13 @@ impl Micro {
                         .filter(|m| *m != numbers[k])
                         .collect(),
                     persist,
-                    finish_rule: finish_rule(lean, &baseline_commands()),
+                    finish_rule: finish_rule(
+                        lean,
+                        &baseline
+                            .iter()
+                            .map(|c| rebase_text(c, &real, &dir.display().to_string()))
+                            .collect::<Vec<_>>(),
+                    ),
                     deadline,
                     spend_usd: lean.session_spend.then_some(share),
                     command_max: (lean.command_sec > 0)
@@ -1418,6 +1468,7 @@ impl Micro {
             }
         }
         let mut suspects_record = Value::Null;
+        let mut suspects_listed = false;
         if lean.rationale {
             let (evidence, record, usd) = if lean.departures.is_empty() {
                 self.rank_suspects(prepared).await
@@ -1426,9 +1477,21 @@ impl Micro {
             };
             if let Some(evidence) = evidence {
                 samples.insert(0, evidence);
+                suspects_listed = true;
             }
             suspects_record = record;
             spent_before += usd;
+        }
+        let mut baseline: Vec<String> = Vec::new();
+        let mut baseline_record = Value::Null;
+        if lean.baseline {
+            let (evidence, record, commands) = self.run_baseline(prepared, time_left()).await;
+            if let Some(evidence) = evidence {
+                // After the suspects, when there are any.
+                samples.insert(usize::from(suspects_listed), evidence);
+            }
+            baseline_record = record;
+            baseline = commands;
         }
         let wall = (lean.wall_sec > 0).then(|| Duration::from_secs(lean.wall_sec));
         let wall_left = || wall.map(|w| w.saturating_sub(started.elapsed()));
@@ -1472,6 +1535,9 @@ impl Micro {
         let mut spent = spent_before;
         if !suspects_record.is_null() {
             moves.push(suspects_record);
+        }
+        if !baseline_record.is_null() {
+            moves.push(baseline_record);
         }
         let mut history: Vec<String> = Vec::new();
         let mut flag_note: Option<String> = None;
@@ -1559,6 +1625,7 @@ impl Micro {
                         &rules,
                         &evidence,
                         &samples,
+                        &baseline,
                         &frozen,
                         &fields,
                         &start_tree,
@@ -1746,7 +1813,7 @@ impl Micro {
                     Place {
                         observe_only: checking && lean.observe_review,
                         persist: persist(lean, checking, have_score, &eval, &frozen),
-                        finish_rule: finish_rule(lean, &baseline_commands()),
+                        finish_rule: finish_rule(lean, &baseline),
                         deadline: wall_left(),
                         command_max: (lean.command_sec > 0)
                             .then(|| Duration::from_secs(lean.command_sec)),

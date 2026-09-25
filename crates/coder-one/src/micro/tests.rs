@@ -1493,6 +1493,7 @@ fn lean_shape() -> lean::Lean {
         structure: false,
         detect: None,
         finish_rule: None,
+        baseline: false,
     }
 }
 
@@ -1638,6 +1639,98 @@ async fn the_lean_loop_holds_a_done_finish_until_the_score_ran_after_the_last_ed
     assert_eq!(session["finish_refusals"], 1, "{record:#}");
     assert_eq!(session["unverified"], false);
     assert_eq!(session["turns"], 5);
+}
+
+#[tokio::test]
+async fn the_baseline_runs_before_session_one_and_the_finish_rule_requires_it() {
+    if coder_boundary::Boundary::writing(std::env::temp_dir())
+        .offline()
+        .build()
+        .is_err()
+    {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let work = dir.path().join("work");
+    std::fs::create_dir_all(&work).unwrap();
+    std::fs::write(work.join("Makefile"), "test:\n\t@echo baseline ran\n").unwrap();
+    let eval = lean::eval_dir(&work, Isolation::TaskContainer);
+    let _ = std::fs::remove_dir_all(&eval);
+    let script = format!(
+        "mkdir -p {e} && printf '%s\\n' 'if grep -q hello hello.txt; then echo SCORE 1 1; else echo SCORE 0 1; fi' > {e}/score.sh",
+        e = eval.display()
+    );
+    let mut executor = micro(
+        dir.path(),
+        vec![
+            call(
+                "a1",
+                "run_command",
+                &json!({ "command": script, "timeout_seconds": null }),
+                usage(1_000, 0, 30),
+            ),
+            call(
+                "a2",
+                "write_file",
+                &json!({ "path": "hello.txt", "contents": "hello\n" }),
+                usage(1_000, 0, 30),
+            ),
+            call(
+                "a3",
+                "run_command",
+                &json!({ "command": format!("sh {}/score.sh", eval.display()), "timeout_seconds": null }),
+                usage(1_000, 0, 30),
+            ),
+            finish("a4", "done", "Wrote hello.txt."),
+            call(
+                "a5",
+                "run_command",
+                &json!({ "command": "make test", "timeout_seconds": null }),
+                usage(1_000, 0, 30),
+            ),
+            finish("a6", "done", "Wrote hello.txt; the score is full."),
+        ],
+        lean_policy(lean::Lean {
+            sessions: 1,
+            self_check: false,
+            keep_best: true,
+            finish_rule: Some(lean::LeanFinishRule { max_refusals: 3 }),
+            baseline: true,
+            ..lean_shape()
+        }),
+    );
+    executor.prepared = Some(prepared());
+    executor.execute(&briefing(TASK)).await;
+    let record = executor.last.clone().unwrap();
+    let baseline = record["moves"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["kind"] == "lean.baseline")
+        .unwrap_or_else(|| panic!("no baseline record: {record:#}"));
+    assert_eq!(baseline["commands"], json!(["make test"]), "{baseline:#}");
+    assert_eq!(baseline["untouched"], true);
+    let file = std::path::PathBuf::from(baseline["records"].as_str().unwrap());
+    assert_eq!(crate::baseline::read_commands(&file), vec!["make test"]);
+    let session = &record["sessions"][0];
+    assert_eq!(session["status"], "done", "{record:#}");
+    assert_eq!(session["finish_refusals"], 1, "{record:#}");
+}
+
+#[test]
+fn the_baseline_switch_is_off_and_absent_by_default() {
+    let lean = lean_shape();
+    assert!(!lean.baseline);
+    assert!(
+        serde_json::to_value(&lean)
+            .unwrap()
+            .get("baseline")
+            .is_none()
+    );
+    let on: lean::Lean =
+        serde_json::from_value(json!({ "sessions": 1, "source_chars": 0, "baseline": true }))
+            .unwrap();
+    assert!(on.baseline);
 }
 
 #[test]

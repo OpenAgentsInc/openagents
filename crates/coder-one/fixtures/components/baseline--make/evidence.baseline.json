@@ -1,0 +1,27 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "evidence.baseline",
+  "source": {
+    "kind": "synthetic",
+    "issue": 9633,
+    "case": "A Makefile with a test target; the named library file is not a program."
+  },
+  "input": {
+    "task": "Fix the parser in `/app/parse.py` so the tests pass.\n",
+    "files": {
+      "Makefile": "build:\n\tpython3 -c \"print('built')\"\n\ntest:\n\tpython3 -c \"import parse; print('make test ran', parse.VERSION)\"\n",
+      "parse.py": "VERSION = 1\n\ndef parse(text):\n    return text.split()\n"
+    }
+  },
+  "retained": {
+    "runs": [
+      {
+        "kind": "make",
+        "exit": 0,
+        "command": "make test",
+        "stdout": "make test ran 1"
+      }
+    ],
+    "refused": []
+  }
+}

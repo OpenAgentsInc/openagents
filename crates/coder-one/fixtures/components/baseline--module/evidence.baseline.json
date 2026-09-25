@@ -1,0 +1,30 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "evidence.baseline",
+  "source": {
+    "kind": "synthetic",
+    "issue": 9633,
+    "case": "A package with __main__.py whose usage line fits the data files in the directory the instruction names; one file makes the program warn."
+  },
+  "input": {
+    "task": "The monitor at `/app/monitor/` compares windows against a reference. It's broken.\n\n`/app/data/` has the reference window and the current windows.\n",
+    "files": {
+      "monitor/__init__.py": "",
+      "monitor/__main__.py": "\"\"\"CLI: python -m monitor <reference.csv> <current.csv> [more...]\"\"\"\nimport sys\nimport warnings\n\n\ndef load(path):\n    with open(path) as handle:\n        return [[float(x) for x in line.split(\",\")] for line in handle if line.strip()]\n\n\ndef normalize(rows):\n    out = []\n    for row in rows:\n        norm = sum(x * x for x in row) ** 0.5\n        if norm == 0:\n            warnings.warn(\"invalid value encountered in divide\", RuntimeWarning)\n            out.append([float(\"nan\") for _ in row])\n        else:\n            out.append([x / norm for x in row])\n    return out\n\n\ndef main(argv):\n    if len(argv) < 2:\n        print(\"usage: monitor <reference.csv> <current.csv> [...]\", file=sys.stderr)\n        return 2\n    reference = normalize(load(argv[0]))\n    for path in argv[1:]:\n        current = normalize(load(path))\n        print(path, len(reference), len(current), current[0][0])\n    return 0\n\n\nif __name__ == \"__main__\":\n    sys.exit(main(sys.argv[1:]))\n",
+      "data/reference.csv": "1,0\n0,1\n",
+      "data/current_a.csv": "1,1\n",
+      "data/current_zero.csv": "0,0\n"
+    }
+  },
+  "retained": {
+    "runs": [
+      {
+        "kind": "module",
+        "exit": 0,
+        "command": "python3 -m monitor data/reference.csv data/current_a.csv data/current_zero.csv",
+        "stderr": "RuntimeWarning"
+      }
+    ],
+    "refused": []
+  }
+}

@@ -24,6 +24,7 @@
 //! `docs/terminal-bench/2026-09-25-executed-contract-checks.md`.
 
 pub mod cli;
+pub mod entry;
 pub mod extract;
 pub mod host;
 pub mod offline;

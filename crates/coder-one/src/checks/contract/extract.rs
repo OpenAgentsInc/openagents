@@ -425,7 +425,7 @@ fn output_at(units: &[Unit], index: usize, offset: usize) -> bool {
     false
 }
 
-fn tokens(name: &str) -> BTreeSet<String> {
+pub(crate) fn tokens(name: &str) -> BTreeSet<String> {
     name.split(|c: char| !c.is_ascii_alphanumeric())
         .map(str::to_lowercase)
         .filter(|t| t.len() > 1 && !GENERIC.contains(&t.as_str()))
@@ -436,7 +436,7 @@ fn file_name(path: &str) -> &str {
     path.rsplit('/').next().unwrap_or(path)
 }
 
-fn stem_tokens(path: &str) -> BTreeSet<String> {
+pub(crate) fn stem_tokens(path: &str) -> BTreeSet<String> {
     let name = file_name(path);
     let stem = name.rsplit_once('.').map_or(name, |(s, _)| s);
     tokens(stem)
