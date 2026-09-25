@@ -36,6 +36,200 @@ fn anatomy_evidence_keeps_only_facts_the_agent_can_see() {
     assert!(offline::anatomy_evidence(&path, "other").is_none());
 }
 
+fn joined(trial: &str, kind: offline::Kind, reward: Option<f64>, green: bool) -> offline::Joined {
+    let says = Some(if green {
+        crate::checks::truth::Says::Pass
+    } else {
+        crate::checks::truth::Says::Fail
+    });
+    offline::Joined {
+        task: "demo".to_string(),
+        trial: trial.to_string(),
+        kind,
+        reward,
+        snapshot_graded: false,
+        suite: says,
+        complete: says,
+        passed: 1,
+        total: 1,
+        checks: None,
+        verdict: None,
+    }
+}
+
+#[test]
+fn an_unknown_reward_is_counted_apart_never_as_a_failure() {
+    use offline::Kind::Snapshot;
+    let rows = [
+        joined("a", Snapshot, Some(1.0), true),
+        joined("b", Snapshot, Some(0.0), false),
+        joined("c", Snapshot, Some(0.0), true),
+        // A red suite on an ungraded trial used to count as a caught
+        // failure and an agreement.
+        joined("d", Snapshot, None, false),
+        joined("e", Snapshot, None, true),
+    ];
+    let value = offline::validity(&rows);
+    let a = &value["all_snapshots"]["suite_green"];
+    assert_eq!(a["trials"], 3);
+    assert_eq!(a["unknown"], 2);
+    assert_eq!(a["spoke"], 3);
+    assert_eq!(a["agreed"], 2);
+    assert_eq!(
+        (&a["fail_right"], &a["fail_called"]),
+        (&json!(1), &json!(1))
+    );
+    assert_eq!(
+        (&a["pass_right"], &a["pass_called"]),
+        (&json!(1), &json!(2))
+    );
+    assert_eq!((&a["failures"], &a["passes"]), (&json!(2), &json!(1)));
+    assert_eq!(value["microluna_finals"]["suite_green"]["trials"], 0);
+}
+
+#[test]
+fn validity_counts_each_kind_of_workspace_apart() {
+    use offline::Kind::{Candidate, Final, Reconstruction, Snapshot};
+    let rows = [
+        joined("s", Snapshot, Some(1.0), true),
+        joined("f", Final, Some(0.0), true),
+        joined("r", Reconstruction, Some(0.0), false),
+        joined("c", Candidate, Some(1.0), true),
+    ];
+    let value = offline::validity(&rows);
+    assert_eq!(value["all_snapshots"]["suite_green"]["trials"], 1);
+    assert_eq!(value["microluna_finals"]["suite_green"]["trials"], 2);
+    assert_eq!(value["microluna_finals"]["suite_green"]["pass_called"], 1);
+    assert_eq!(value["microluna_finals"]["suite_green"]["pass_right"], 0);
+    assert_eq!(
+        value["microluna_candidates"]["suite_green"]["pass_right"],
+        1
+    );
+}
+
+fn write(path: &Path, text: &str) {
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(path, text).unwrap();
+}
+
+/// A retained Microluna trial: one lean loop with two sessions, where the
+/// first session's candidate is the one submitted.
+fn microluna_trial(jobs: &Path) -> std::path::PathBuf {
+    let trial = jobs.join("tb4--micro--demo/demo__abc");
+    let episode = trial.join("agent/episode");
+    write(
+        &episode.join("manifest.json"),
+        &json!({"workdir": "/app", "delegate": {"agent": "microluna"}}).to_string(),
+    );
+    write(&trial.join("verifier/reward.txt"), "1\n");
+    write(
+        &trial.join("artifacts/manifest.json"),
+        &json!([
+            {"source": "/logs/artifacts", "destination": "artifacts/logs/artifacts", "status": "empty", "service": null},
+            {"source": "/app/src", "destination": "artifacts/app/src", "status": "ok", "service": null}
+        ])
+        .to_string(),
+    );
+    write(&trial.join("artifacts/app/src/main.py"), "print('final')\n");
+    write(
+        &trial.join("artifacts/app/src/__pycache__/main.cpython-312.pyc"),
+        "stale",
+    );
+    let lean = episode.join("artifacts/lean-1");
+    write(&lean.join("session-1/src/main.py"), "print('one')\n");
+    write(&lean.join("session-1/__pycache__/x.pyc"), "cache");
+    write(&lean.join("session-2/src/main.py"), "print('two')\n");
+    let one = offline::identity(&lean.join("session-1")).unwrap();
+    let two = offline::identity(&lean.join("session-2")).unwrap();
+    assert_eq!(one.len(), 1, "caches aren't part of the identity");
+    let moves = json!([
+        {"kind": "lean", "after_session": 1, "candidate": "/opt/openagents/episode/artifacts/lean-1/session-1", "snapshot_error": null, "workspace_files": one},
+        {"kind": "lean", "after_session": 2, "candidate": "/opt/openagents/episode/artifacts/lean-1/session-2", "snapshot_error": null, "workspace_files": two},
+        {"kind": "lean", "after_session": 3, "candidate": "/opt/openagents/episode/artifacts/lean-1/session-3", "snapshot_error": "workspace exceeds the snapshot bound", "workspace_files": null},
+        {"kind": "lean.restore", "session": 1},
+        {"kind": "lean.submitted", "selected_session": 1, "workspace_files": one}
+    ]);
+    write(&lean.join("selection.json"), &moves.to_string());
+    trial
+}
+
+#[test]
+fn offline_reads_a_microluna_trial_its_final_workspace_and_candidates() {
+    let dir = tempfile::tempdir().unwrap();
+    let jobs = dir.path().join("jobs");
+    microluna_trial(&jobs);
+    let found = offline::trials(&jobs, "demo");
+    let names: Vec<(&str, offline::Kind, Option<f64>)> = found
+        .iter()
+        .map(|t| (t.trial.as_str(), t.kind, t.reward))
+        .collect();
+    assert_eq!(
+        names,
+        [
+            ("demo__abc", offline::Kind::Final, Some(1.0)),
+            (
+                "demo__abc.lean-1.session-1",
+                offline::Kind::Candidate,
+                Some(1.0)
+            ),
+            ("demo__abc.lean-1.session-2", offline::Kind::Candidate, None),
+        ]
+    );
+    assert_eq!(found[1].reward_source.as_deref(), Some("submitted"));
+
+    // A candidate is its retained directory as the working directory.
+    let out = dir.path().join("out");
+    offline::materialize(&found[2], "unused", &out).unwrap();
+    assert_eq!(
+        std::fs::read_to_string(out.join("app/src/main.py")).unwrap(),
+        "print('two')\n"
+    );
+
+    // A candidate whose files changed since the loop recorded them isn't
+    // run.
+    write(
+        &found[2].source.as_ref().unwrap().join("src/main.py"),
+        "print('edited')\n",
+    );
+    let error = offline::materialize(&found[2], "unused", &out).unwrap_err();
+    assert!(error.contains("recorded file identity"), "{error}");
+}
+
+#[test]
+fn a_grade_record_gives_a_candidate_its_reward() {
+    let dir = tempfile::tempdir().unwrap();
+    let jobs = dir.path().join("jobs");
+    microluna_trial(&jobs);
+    let mut found = offline::trials(&jobs, "demo");
+    let files = found[2].files.clone().unwrap();
+    let grades = dir.path().join("grades");
+    write(
+        &grades.join("session-2/grade.json"),
+        &json!({
+            "trial": "demo__abc",
+            "workspace_files": files,
+            "grade": {"reward": 0.0, "exit": 0, "exception": null}
+        })
+        .to_string(),
+    );
+    // A verifier run that failed isn't a grade.
+    write(
+        &grades.join("broken/grade.json"),
+        &json!({
+            "trial": "demo__abc",
+            "workspace_files": files,
+            "grade": {"reward": 1.0, "exit": 1, "exception": "docker"}
+        })
+        .to_string(),
+    );
+    let graded = offline::grades(&grades);
+    assert_eq!(graded.len(), 1);
+    offline::apply_grades(&mut found, &graded);
+    assert_eq!(found[2].reward, Some(0.0));
+    assert_eq!(found[2].reward_source.as_deref(), Some("grade"));
+    assert_eq!(found[1].reward_source.as_deref(), Some("submitted"));
+}
+
 /// A writer that plays one scripted round per call: files to write and
 /// files to delete, relative to the suite directory.
 struct Scripted {

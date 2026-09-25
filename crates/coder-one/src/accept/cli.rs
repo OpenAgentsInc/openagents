@@ -14,8 +14,11 @@ use crate::component::jev::JevMode;
 pub const USAGE: &str = "usage: coder-one accept minitask ID [--sessions N] [--rounds N]
                                   [--jev live|off] [--out DIR] [--echo]
        coder-one accept offline TASK [--trials NAME,…] [--image IMAGE]
-                                  [--rounds N] [--jev live|off] [--out DIR]
-                                  [--reuse] [--facts ANATOMY.json] [--echo]
+                                  [--kinds KIND,…] [--grades DIR]…
+                                  [--reconstruction DIR]… [--workers N]
+                                  [--jobs DIR] [--rounds N] [--jev live|off]
+                                  [--out DIR] [--reuse] [--facts ANATOMY.json]
+                                  [--echo]
        coder-one accept validity DIR [--rows FILE] [--json]
        coder-one accept run RECORD WORKSPACE [--docker IMAGE --workdir DIR
                                   [--candidate DIR]] [--json]
@@ -27,12 +30,25 @@ then runs Microluna edit sessions until the suite is green or the
 sessions run out, and grades the result with the task's own grader.
 
 offline writes a suite for a Terminal-Bench task from its instruction, in
-its warm environment image, and runs it against every retained trial's
-post-executor snapshot. --facts gives the writer a task-anatomy file's
-decisive facts and test ideas for the task, keeping only those the
-instruction or the workspace supports. validity joins the offline records under DIR with
-the check-truth label rows and prints how often a green suite, today's
-checks, and the combined verdict agree with the verifier.
+its warm environment image, or reuses the one frozen under --out with
+--reuse, and runs it on every retained workspace of the task's trials
+under --jobs, each in a fresh container with no network. It reads four
+kinds: a Coder One trial's post-executor snapshot (snapshot), a Microluna
+trial's final workspace, the image's working directory with the
+artifacts Harbor collected over it (final), each candidate a Microluna
+lean loop retained, checked against its recorded file identity
+(candidate), and a reconstruction directory given with --reconstruction
+(reconstruction). --kinds keeps only the kinds named. A candidate's
+reward is known when its files are the submitted workspace's or when a
+grade record under a --grades directory matches them. --facts gives the
+writer a task-anatomy file's decisive facts and test ideas for the task,
+keeping only those the instruction or the workspace supports.
+
+validity joins the offline records under DIR with the check-truth label
+rows and prints how often a green suite, today's checks, and the
+combined verdict agree with the verifier, for Coder One snapshots,
+Microluna final workspaces, and Microluna candidates apart. A trial whose
+verifier reward is unknown is counted as unknown, never as a failure.
 
 run runs a frozen suite, from its record, on a workspace on this host
 (inside a coder-boundary writing boundary) or in a Docker image. check
@@ -72,6 +88,11 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
     let mut docker_image = None;
     let mut workdir = "/app".to_string();
     let mut candidate = None;
+    let mut kinds = Vec::new();
+    let mut grades = Vec::new();
+    let mut reconstructions = Vec::new();
+    let mut workers = 4usize;
+    let mut jobs = None;
     let mut iter = rest.iter();
     while let Some(arg) = iter.next() {
         let mut value = |name: &str| {
@@ -106,6 +127,20 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
             "--docker" => docker_image = Some(value("--docker")?),
             "--workdir" => workdir = value("--workdir")?,
             "--candidate" => candidate = Some(PathBuf::from(value("--candidate")?)),
+            "--kinds" => {
+                kinds = value("--kinds")?
+                    .split(',')
+                    .map(offline::Kind::parse)
+                    .collect::<Result<_, _>>()?;
+            }
+            "--grades" => grades.push(PathBuf::from(value("--grades")?)),
+            "--reconstruction" => reconstructions.push(PathBuf::from(value("--reconstruction")?)),
+            "--workers" => {
+                workers = value("--workers")?
+                    .parse()
+                    .map_err(|_| "--workers takes a count")?;
+            }
+            "--jobs" => jobs = Some(PathBuf::from(value("--jobs")?)),
             other if other.starts_with("--") => return Err(format!("unknown option {other}")),
             other => positional.push(other.to_string()),
         }
@@ -156,12 +191,16 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
                 .ok_or("no home directory; pass --out")?
                 .join("terminal-bench");
             let mut options = TaskOptions {
-                jobs: home.join("jobs"),
+                jobs: jobs.unwrap_or_else(|| home.join("jobs")),
                 tasks_dir: home.join("upstream/terminal-bench-v4.0.0/tasks"),
                 out: out.unwrap_or_else(|| home.join("accept-offline")),
                 image,
                 reuse,
                 only: trials,
+                kinds,
+                grades,
+                reconstructions,
+                workers,
                 define: super::Options::default(),
                 model: "gpt-6-luna".to_string(),
                 writer_turns: 50,
@@ -182,6 +221,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
                     "jev_usd": value["suite"]["jev_usd"],
                     "trials": value["trials"].as_array().map(|t| t.iter().map(|e| json!({
                         "trial": e["trial"]["trial"],
+                        "kind": e["trial"]["kind"],
                         "reward": e["trial"]["reward"],
                         "snapshot_graded": e["trial"]["snapshot_graded"],
                         "passed": e["run"]["passed"],
@@ -208,10 +248,12 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
                     serde_json::to_string_pretty(&value).unwrap_or_default()
                 );
             } else {
-                for (set, label) in [
-                    ("snapshot_graded", "trials whose snapshot was graded"),
-                    ("all_snapshots", "every trial with a snapshot"),
-                ] {
+                for (set, label) in offline::SETS {
+                    if value[set]["suite_green"]["trials"] == 0
+                        && value[set]["suite_green"]["unknown"] == 0
+                    {
+                        continue;
+                    }
                     println!("{label}:");
                     for signal in [
                         "suite_green",
@@ -221,7 +263,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
                     ] {
                         let a = &value[set][signal];
                         println!(
-                            "  {signal:<17} spoke {}/{}, agreed {}, fail right {}/{}, pass right {}/{}, failures caught {}/{}",
+                            "  {signal:<17} spoke {}/{}, agreed {}, fail right {}/{}, pass right {}/{}, failures caught {}/{}, passes kept {}/{}, unknown reward {}",
                             a["spoke"],
                             a["trials"],
                             a["agreed"],
@@ -230,14 +272,18 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
                             a["pass_right"],
                             a["pass_called"],
                             a["fail_right"],
-                            a["failures"]
+                            a["failures"],
+                            a["pass_right"],
+                            a["passes"],
+                            a["unknown"]
                         );
                     }
                 }
                 for j in &joined {
                     println!(
-                        "{:<44} reward {:<4} graded {:<5} suite {:<5} ({}/{}) checks {:<5} verdict {}",
+                        "{:<60} {:<14} reward {:<4} graded {:<5} suite {:<5} ({}/{}) checks {:<5} verdict {}",
                         j.trial,
+                        format!("{:?}", j.kind).to_lowercase(),
                         j.reward.map_or("?".to_string(), |r| r.to_string()),
                         j.snapshot_graded,
                         word(j.suite),

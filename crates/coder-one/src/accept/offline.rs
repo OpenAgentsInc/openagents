@@ -1,23 +1,46 @@
 //! Offline validity: does a green suite predict a verifier pass?
 //!
-//! For a Terminal-Bench task with retained, graded Coder One trials that
-//! kept a post-executor snapshot (`verify.snapshot`), [`task`] writes a
-//! suite from the task's words alone with Microluna, in the task's own
-//! environment image, then runs the frozen suite against every trial's
-//! snapshot restored into a fresh container of that image. [`validity`]
+//! For a Terminal-Bench task with retained, graded trials, [`task`] writes
+//! a suite from the task's words alone with Microluna, in the task's own
+//! environment image, then runs the frozen suite against every retained
+//! workspace restored into a fresh container of that image. [`validity`]
 //! joins the results with the check-truth label rows and counts how often
 //! "suite green" agrees with the verifier, beside today's checks and the
-//! combined verdict on the same trials.
+//! combined verdict on the same trials. A trial whose verifier reward is
+//! unknown is counted apart and never as a failure.
 //!
-//! The snapshot is the workspace right after the first executor. A trial
-//! whose later rounds changed the workspace was graded on a different
-//! candidate, so each trial says whether its check candidates all share
-//! one digest ([`Trial::snapshot_graded`]); only those count toward
-//! agreement.
+//! [`trials`] finds four kinds of workspace ([`Kind`]):
+//!
+//! - **Snapshot.** A Coder One trial's post-executor snapshot
+//!   (`agent/episode/snapshot/workspace.tar.gz`). The snapshot is the
+//!   workspace right after the first executor. A trial whose later rounds
+//!   changed the workspace was graded on a different candidate, so each
+//!   trial says whether its check candidates all share one digest
+//!   ([`Trial::snapshot_graded`]).
+//! - **Final.** A Microluna trial's final workspace: the image's working
+//!   directory with the deliverables Harbor collected at the end of the
+//!   trial (`artifacts/manifest.json`) copied over it. A file the trial
+//!   deleted is still there, and a file Harbor didn't collect is the
+//!   image's. A deliverable Harbor couldn't collect was missing when the
+//!   trial ended, so a trial whose collection found nothing is the image's
+//!   working directory; a trial with no collection record isn't read.
+//! - **Candidate.** A lean-loop candidate that Microluna retained under
+//!   `agent/episode/artifacts/lean-*/session-N`, checked against the file
+//!   identity `selection.json` recorded for it. A snapshot in the Git
+//!   scope holds only the files Git lists, so it goes over the image's
+//!   working directory instead of replacing it. Its reward is known when
+//!   its files are the submitted workspace's, or when a grade record from
+//!   `tbench candidates` or the candidate-evidence experiment matches its
+//!   files ([`grades`]).
+//! - **Reconstruction.** A final workspace with a reconstruction's source
+//!   files over it, graded by the verifier on its own
+//!   ([`reconstruction`]).
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use futures_util::StreamExt;
 use microluna::{Config, Isolation};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -32,18 +55,78 @@ use crate::record::Recorder;
 /// The schema of one task's validity record.
 pub const SCHEMA: &str = "openagents.coder-one.acceptance-validity.v1";
 
-/// One retained trial with a snapshot.
+/// Where a retained workspace comes from.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Kind {
+    /// A Coder One trial's post-executor snapshot.
+    #[default]
+    Snapshot,
+    /// A Microluna trial's final workspace: the image's working directory
+    /// with the trial's collected artifacts over it.
+    Final,
+    /// A lean-loop candidate that Microluna retained.
+    Candidate,
+    /// A final workspace with a reconstruction's source files over it.
+    Reconstruction,
+}
+
+impl Kind {
+    /// The kind a word names: `snapshot`, `final`, `candidate`, or
+    /// `reconstruction`.
+    ///
+    /// # Errors
+    ///
+    /// A message for any other word.
+    pub fn parse(word: &str) -> Result<Kind, String> {
+        match word {
+            "snapshot" => Ok(Kind::Snapshot),
+            "final" => Ok(Kind::Final),
+            "candidate" => Ok(Kind::Candidate),
+            "reconstruction" => Ok(Kind::Reconstruction),
+            other => Err(format!(
+                "a kind is snapshot, final, candidate, or reconstruction, not {other}"
+            )),
+        }
+    }
+}
+
+/// One retained workspace of a graded trial.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Trial {
+    /// The trial's directory name. A candidate or a reconstruction adds a
+    /// dot and what tells it apart, such as `task__abc.lean-1.session-2`.
     pub trial: String,
     pub job: String,
     pub episode: PathBuf,
-    /// The verifier's reward.
+    /// The verifier's reward, when it's known.
     pub reward: Option<f64>,
     /// Every check candidate of the episode has the snapshot's digest, so
-    /// the verifier graded the snapshot's workspace.
+    /// the verifier graded the snapshot's workspace. Only a snapshot can
+    /// have this.
     pub snapshot_graded: bool,
     pub workdir: String,
+    #[serde(default)]
+    pub kind: Kind,
+    /// The directory whose files are the workspace, for a candidate, or
+    /// that goes over the final workspace, for a reconstruction.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<PathBuf>,
+    /// The file identity the source must have: each path's SHA-256, as
+    /// the lean loop's `selection.json` or a reconstruction recorded it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub files: Option<BTreeMap<String, String>>,
+    /// Where a candidate's or a reconstruction's reward comes from:
+    /// `submitted` when its files are the submitted workspace's, `grade`
+    /// from a grade record, and `reconstruction` from the reconstruction's
+    /// own verifier run.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reward_source: Option<String>,
+    /// A candidate's snapshot scope as the lean loop recorded it: `plain`,
+    /// the whole working directory, or `git`, only the files Git lists as
+    /// tracked or untracked and not ignored.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope: Option<String>,
 }
 
 fn reward(trial_dir: &Path) -> Option<f64> {
@@ -76,8 +159,164 @@ fn snapshot_graded(episode: &Path) -> bool {
     !candidates.is_empty() && candidates.iter().all(|c| *c == candidates[0])
 }
 
-/// Every retained trial of `task` under `jobs` with a snapshot, in name
-/// order.
+fn read_json(path: &Path) -> Option<Value> {
+    serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()
+}
+
+/// Whether the episode's executor was Microluna.
+fn microluna(episode: &Path) -> bool {
+    let Some(manifest) = read_json(&episode.join("manifest.json")) else {
+        return false;
+    };
+    manifest.pointer("/delegate/agent").and_then(Value::as_str) == Some("microluna")
+        || manifest
+            .pointer("/policy/manifest/policy/executor/agent")
+            .and_then(Value::as_str)
+            == Some("microluna")
+}
+
+/// The artifacts Harbor collected from the trial's container: each
+/// entry's host path under the trial and its path in the container.
+/// Service artifacts and logs aren't the workspace.
+fn collected(trial_dir: &Path) -> Vec<(PathBuf, String)> {
+    let Some(Value::Array(entries)) = read_json(&trial_dir.join("artifacts/manifest.json")) else {
+        return Vec::new();
+    };
+    entries
+        .iter()
+        .filter(|e| e["status"] == "ok" && e["service"].is_null())
+        .filter_map(|e| {
+            let source = e["source"].as_str()?;
+            let destination = e["destination"].as_str()?;
+            (source.starts_with('/') && !source.starts_with("/logs/") && !source.contains(".."))
+                .then(|| (trial_dir.join(destination), source.to_string()))
+        })
+        .collect()
+}
+
+/// A workspace's file identity: each path's SHA-256, with a link's target
+/// as `link:TARGET`, skipping Git metadata, Python bytecode, and the cache
+/// directories that `micro::parallel::UNMERGED` names. It matches the lean
+/// loop's `evidence_tree`, so it compares with what `selection.json`
+/// recorded.
+///
+/// # Errors
+///
+/// A message for an unreadable entry or a special file.
+pub fn identity(dir: &Path) -> Result<BTreeMap<String, String>, String> {
+    let mut tree = BTreeMap::new();
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(at) = stack.pop() {
+        for entry in std::fs::read_dir(&at).map_err(|e| format!("{}: {e}", at.display()))? {
+            let entry = entry.map_err(|e| e.to_string())?;
+            let path = entry.path();
+            let kind = entry.file_type().map_err(|e| e.to_string())?;
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if kind.is_dir() {
+                if !crate::micro::parallel::UNMERGED.contains(&name.as_ref()) {
+                    stack.push(path);
+                }
+                continue;
+            }
+            if name.ends_with(".pyc") {
+                continue;
+            }
+            let relative = path.strip_prefix(dir).map_err(|e| e.to_string())?;
+            let relative = relative.to_str().ok_or("file path is not UTF-8")?;
+            let bytes = if kind.is_symlink() {
+                let target = std::fs::read_link(&path).map_err(|e| e.to_string())?;
+                format!(
+                    "link:{}",
+                    target.to_str().ok_or("link target is not UTF-8")?
+                )
+                .into_bytes()
+            } else if kind.is_file() {
+                std::fs::read(&path).map_err(|e| e.to_string())?
+            } else {
+                return Err(format!("unsupported workspace entry: {}", path.display()));
+            };
+            tree.insert(relative.to_string(), super::sha256(&bytes));
+        }
+    }
+    Ok(tree)
+}
+
+fn files_of(value: &Value) -> Option<BTreeMap<String, String>> {
+    serde_json::from_value(value.clone()).ok()
+}
+
+/// The lean loop's retained candidates of one Microluna trial, from each
+/// `lean-*/selection.json`: every session whose snapshot was kept, with
+/// the file identity recorded for it. A candidate whose files are the
+/// submitted workspace's takes the trial's reward.
+fn candidates(base: &Trial) -> Vec<Trial> {
+    let mut selections: Vec<PathBuf> = std::fs::read_dir(base.episode.join("artifacts"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            p.file_name()
+                .is_some_and(|n| n.to_string_lossy().starts_with("lean-"))
+                && p.join("selection.json").is_file()
+        })
+        .collect();
+    selections.sort();
+    let mut out = Vec::new();
+    for dir in selections {
+        let Some(Value::Array(moves)) = read_json(&dir.join("selection.json")) else {
+            continue;
+        };
+        let submitted = moves
+            .iter()
+            .rev()
+            .find(|m| m["kind"] == "lean.submitted")
+            .and_then(|m| files_of(&m["workspace_files"]));
+        let scope = moves
+            .iter()
+            .find_map(|m| m["candidate_scope"].as_str())
+            .map(str::to_string);
+        let lean = dir
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        for item in &moves {
+            let Some(number) = item["after_session"].as_u64() else {
+                continue;
+            };
+            let name = format!("session-{number}");
+            let recorded = item["candidate"]
+                .as_str()
+                .and_then(|c| Path::new(c).file_name())
+                .map(|n| n.to_string_lossy().into_owned());
+            if item["kind"] != "lean"
+                || recorded.as_deref() != Some(name.as_str())
+                || !item["snapshot_error"].is_null()
+            {
+                continue;
+            }
+            let files = files_of(&item["workspace_files"]);
+            let is_submitted = files.is_some() && files == submitted;
+            out.push(Trial {
+                trial: format!("{}.{lean}.{name}", base.trial),
+                reward: base.reward.filter(|_| is_submitted),
+                reward_source: is_submitted.then(|| "submitted".to_string()),
+                snapshot_graded: false,
+                kind: Kind::Candidate,
+                source: Some(dir.join(&name)),
+                files,
+                scope: scope.clone(),
+                ..base.clone()
+            });
+        }
+    }
+    out
+}
+
+/// Every retained workspace of `task` under `jobs`, in name order: each
+/// Coder One snapshot, each Microluna trial's final workspace, and each
+/// candidate that a Microluna lean loop retained.
 #[must_use]
 pub fn trials(jobs: &Path, task: &str) -> Vec<Trial> {
     let mut out = Vec::new();
@@ -93,20 +332,21 @@ pub fn trials(jobs: &Path, task: &str) -> Vec<Trial> {
             }
             let name = entry.file_name().to_string_lossy().into_owned();
             let episode = path.join("agent/episode");
-            if name.starts_with(&format!("{task}__"))
-                && episode.join("snapshot/workspace.tar.gz").is_file()
-            {
-                let manifest: Value =
-                    std::fs::read_to_string(episode.join("snapshot/snapshot.json"))
-                        .ok()
-                        .and_then(|t| serde_json::from_str(&t).ok())
-                        .unwrap_or(Value::Null);
-                let job = path
-                    .strip_prefix(jobs)
-                    .ok()
-                    .and_then(|p| p.components().next())
-                    .map(|c| c.as_os_str().to_string_lossy().into_owned())
-                    .unwrap_or_default();
+            if !name.starts_with(&format!("{task}__")) || !episode.is_dir() {
+                if depth < 3 {
+                    stack.push((path, depth + 1));
+                }
+                continue;
+            }
+            let job = path
+                .strip_prefix(jobs)
+                .ok()
+                .and_then(|p| p.components().next())
+                .map(|c| c.as_os_str().to_string_lossy().into_owned())
+                .unwrap_or_default();
+            if episode.join("snapshot/workspace.tar.gz").is_file() {
+                let manifest =
+                    read_json(&episode.join("snapshot/snapshot.json")).unwrap_or(Value::Null);
                 out.push(Trial {
                     trial: name,
                     job,
@@ -114,14 +354,285 @@ pub fn trials(jobs: &Path, task: &str) -> Vec<Trial> {
                     snapshot_graded: snapshot_graded(&episode),
                     workdir: manifest["workdir"].as_str().unwrap_or("/app").to_string(),
                     episode,
+                    kind: Kind::Snapshot,
+                    source: None,
+                    files: None,
+                    reward_source: None,
+                    scope: None,
                 });
-            } else if depth < 3 {
-                stack.push((path, depth + 1));
+            } else if microluna(&episode) && path.join("artifacts/manifest.json").is_file() {
+                let manifest = read_json(&episode.join("manifest.json")).unwrap_or(Value::Null);
+                let base = Trial {
+                    trial: name,
+                    job,
+                    reward: reward(&path),
+                    snapshot_graded: false,
+                    workdir: manifest["workdir"].as_str().unwrap_or("/app").to_string(),
+                    episode,
+                    kind: Kind::Final,
+                    source: None,
+                    files: None,
+                    reward_source: None,
+                    scope: None,
+                };
+                out.extend(candidates(&base));
+                out.push(base);
             }
         }
     }
     out.sort_by(|a, b| a.trial.cmp(&b.trial));
     out
+}
+
+/// One verifier grade of a retained candidate, from a record that names
+/// the trial and the candidate's file identity.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Grade {
+    pub trial: String,
+    pub files: BTreeMap<String, String>,
+    pub reward: f64,
+    pub record: PathBuf,
+}
+
+fn complete_reward(grade: &Value) -> Option<f64> {
+    let reward = grade["reward"].as_f64()?;
+    (grade["exit"].as_i64() == Some(0)
+        && grade["exception"].is_null()
+        && (reward == 0.0 || (reward - 1.0).abs() < f64::EPSILON))
+        .then_some(reward)
+}
+
+fn cached(path: &str) -> bool {
+    path.ends_with(".pyc")
+        || Path::new(path).parent().is_some_and(|parent| {
+            parent.components().any(|c| {
+                crate::micro::parallel::UNMERGED.contains(&c.as_os_str().to_string_lossy().as_ref())
+            })
+        })
+}
+
+/// Every candidate grade under `dir`: each `grade.json` that the
+/// candidate-evidence experiment wrote (`trial`, `workspace_files`, and
+/// `grade`) and each `candidate.json` that `tbench candidates` wrote
+/// (`trial`, `inputs.candidate`, and `grade`). Only a complete binary
+/// grade counts; a failed verifier run isn't a grade.
+#[must_use]
+pub fn grades(dir: &Path) -> Vec<Grade> {
+    let mut out = Vec::new();
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(at) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&at) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            let name = entry.file_name();
+            if name != "grade.json" && name != "candidate.json" {
+                continue;
+            }
+            let Some(value) = read_json(&path) else {
+                continue;
+            };
+            let Some(trial) = value["trial"]
+                .as_str()
+                .and_then(|t| Path::new(t).file_name())
+                .map(|t| t.to_string_lossy().into_owned())
+            else {
+                continue;
+            };
+            let files = if name == "grade.json" {
+                files_of(&value["workspace_files"])
+            } else if value["error"].is_null() {
+                // The inventory `tbench candidates` takes, reduced to the
+                // files the lean loop's identity keeps.
+                value["inputs"]["candidate"].as_object().map(|entries| {
+                    entries
+                        .iter()
+                        .filter(|(path, e)| e["kind"] == "file" && !cached(path))
+                        .filter_map(|(path, e)| {
+                            Some((path.clone(), e["sha256"].as_str()?.to_string()))
+                        })
+                        .collect()
+                })
+            } else {
+                None
+            };
+            if let (Some(files), Some(reward)) = (files, complete_reward(&value["grade"])) {
+                out.push(Grade {
+                    trial,
+                    files,
+                    reward,
+                    record: path,
+                });
+            }
+        }
+    }
+    out.sort_by(|a, b| a.record.cmp(&b.record));
+    out
+}
+
+/// Gives each candidate with no known reward the reward of a grade of the
+/// same trial with the same files.
+pub fn apply_grades(trials: &mut [Trial], grades: &[Grade]) {
+    for trial in trials.iter_mut().filter(|t| t.kind == Kind::Candidate) {
+        if trial.reward.is_some() {
+            continue;
+        }
+        let base = trial.trial.split('.').next().unwrap_or_default();
+        if let Some(grade) = grades
+            .iter()
+            .find(|g| g.trial == base && trial.files.as_ref() == Some(&g.files))
+        {
+            trial.reward = Some(grade.reward);
+            trial.reward_source = Some("grade".to_string());
+        }
+    }
+}
+
+/// The reconstruction in `dir`: `reconstruction.json`, which names the
+/// trial it starts from, its `source_files`, and the verifier's `grade`,
+/// beside `source-files/`.
+///
+/// # Errors
+///
+/// A message when the record doesn't read or its trial isn't among the
+/// final workspaces in `finals`.
+pub fn reconstruction(dir: &Path, finals: &[Trial]) -> Result<Trial, String> {
+    let record = read_json(&dir.join("reconstruction.json"))
+        .ok_or_else(|| format!("no readable reconstruction.json in {}", dir.display()))?;
+    let trial = record["trial"].as_str().unwrap_or_default();
+    let base = finals
+        .iter()
+        .find(|t| t.kind == Kind::Final && t.trial == trial)
+        .ok_or_else(|| format!("{}: no final workspace of {trial}", dir.display()))?;
+    let name = dir
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let reward = complete_reward(&record["grade"]);
+    Ok(Trial {
+        trial: format!("{trial}.{name}"),
+        reward,
+        reward_source: reward.map(|_| "reconstruction".to_string()),
+        snapshot_graded: false,
+        kind: Kind::Reconstruction,
+        source: Some(dir.join("source-files")),
+        files: files_of(&record["source_files"]),
+        ..base.clone()
+    })
+}
+
+/// Copies `from` over `to`, file by file, skipping `__pycache__`.
+fn overlay(from: &Path, to: &Path) -> Result<(), String> {
+    if from.is_file() {
+        if let Some(parent) = to.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        std::fs::copy(from, to).map_err(|e| format!("{}: {e}", from.display()))?;
+        return Ok(());
+    }
+    std::fs::create_dir_all(to).map_err(|e| format!("{}: {e}", to.display()))?;
+    for entry in std::fs::read_dir(from).map_err(|e| format!("{}: {e}", from.display()))? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        if entry.file_name() == "__pycache__" {
+            continue;
+        }
+        overlay(&entry.path(), &to.join(entry.file_name()))?;
+    }
+    Ok(())
+}
+
+/// Lays `trial`'s workspace out under `into` as paths from `/`, as
+/// [`Docker`] copies a candidate in.
+///
+/// - A snapshot unpacks its archive.
+/// - A final workspace copies the image's working directory out of a
+///   container that never starts, then copies the collected artifacts
+///   over it.
+/// - A reconstruction is the final workspace with its source files over
+///   it, once they match the recorded identity.
+/// - A candidate is its retained directory as the working directory, once
+///   it matches the identity `selection.json` recorded.
+///
+/// # Errors
+///
+/// A message when a source is missing, Docker fails, or a source's files
+/// differ from their recorded identity.
+pub fn materialize(trial: &Trial, image: &str, into: &Path) -> Result<(), String> {
+    let _ = std::fs::remove_dir_all(into);
+    std::fs::create_dir_all(into).map_err(|e| e.to_string())?;
+    let workdir = into.join(trial.workdir.trim_start_matches('/'));
+    let check = |source: &Path| -> Result<(), String> {
+        let recorded = trial
+            .files
+            .as_ref()
+            .ok_or_else(|| format!("{} has no recorded file identity", trial.trial))?;
+        if &identity(source)? == recorded {
+            Ok(())
+        } else {
+            Err(format!(
+                "{} differs from its recorded file identity",
+                source.display()
+            ))
+        }
+    };
+    let image_workdir = || -> Result<(), String> {
+        let parent = workdir.parent().ok_or("the working directory is /")?;
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        let id = docker(&["create", "--entrypoint", "sleep", image, "infinity"])?;
+        let copied = docker(&[
+            "cp",
+            &format!("{id}:{}", trial.workdir),
+            &parent.display().to_string(),
+        ]);
+        let _ = docker(&["rm", "-f", &id]);
+        copied.map(|_| ())
+    };
+    match trial.kind {
+        Kind::Snapshot => untar(&trial.episode.join("snapshot/workspace.tar.gz"), into),
+        Kind::Candidate => {
+            let source = trial
+                .source
+                .as_deref()
+                .ok_or("a candidate needs a source")?;
+            check(source)?;
+            if trial.scope.as_deref() == Some("git") {
+                // A Git-scope snapshot holds only the files Git lists, so
+                // ignored files come from the image.
+                image_workdir()?;
+                overlay(source, &workdir)
+            } else {
+                crate::handoff::copy_tree(source, &workdir)
+            }
+        }
+        Kind::Final | Kind::Reconstruction => {
+            if trial.kind == Kind::Reconstruction {
+                check(
+                    trial
+                        .source
+                        .as_deref()
+                        .ok_or("a reconstruction needs a source")?,
+                )?;
+            }
+            image_workdir()?;
+            let trial_dir = trial
+                .episode
+                .parent()
+                .and_then(Path::parent)
+                .ok_or("the episode isn't under a trial")?;
+            for (host, source) in collected(trial_dir) {
+                overlay(&host, &into.join(source.trim_start_matches('/')))?;
+            }
+            if let (Kind::Reconstruction, Some(source)) = (trial.kind, &trial.source) {
+                overlay(source, &workdir)?;
+            }
+            Ok(())
+        }
+    }
 }
 
 /// The task's environment image: the warm one,
@@ -149,8 +660,18 @@ pub struct TaskOptions {
     pub image: Option<String>,
     /// Reuse a suite already frozen under `out`.
     pub reuse: bool,
-    /// Only these trials, when given.
+    /// Only these trials, when given. A name also selects its candidates
+    /// and reconstructions.
     pub only: Vec<String>,
+    /// Only these kinds of workspace, when given.
+    pub kinds: Vec<Kind>,
+    /// Directories of candidate grade records ([`grades`]).
+    pub grades: Vec<PathBuf>,
+    /// Reconstruction directories ([`reconstruction`]); one whose trial
+    /// belongs to another task is skipped.
+    pub reconstructions: Vec<PathBuf>,
+    /// Workspaces whose suite runs overlap.
+    pub workers: usize,
     pub define: Options,
     pub model: String,
     pub writer_turns: usize,
@@ -237,21 +758,54 @@ fn untar(archive: &Path, into: &Path) -> Result<(), String> {
     }
 }
 
-/// Writes (or reuses) the suite for `task` and runs it on every trial's
-/// snapshot; the record is written to `out/<task>/validity.json`.
+/// The retained workspaces [`task`] measures: [`trials`], with the grades
+/// and reconstructions `options` names, narrowed to `options.only` and
+/// `options.kinds`.
+///
+/// # Errors
+///
+/// A message when a reconstruction of this task doesn't read.
+pub fn found(name: &str, options: &TaskOptions) -> Result<Vec<Trial>, String> {
+    let mut found = trials(&options.jobs, name);
+    let graded: Vec<Grade> = options.grades.iter().flat_map(|d| grades(d)).collect();
+    apply_grades(&mut found, &graded);
+    for dir in &options.reconstructions {
+        let belongs = read_json(&dir.join("reconstruction.json"))
+            .and_then(|r| r["trial"].as_str().map(str::to_string))
+            .is_some_and(|t| t.starts_with(&format!("{name}__")));
+        if belongs {
+            let rebuilt = reconstruction(dir, &found)?;
+            found.push(rebuilt);
+        }
+    }
+    found.sort_by(|a, b| a.trial.cmp(&b.trial));
+    if !options.only.is_empty() {
+        found.retain(|t| {
+            options
+                .only
+                .iter()
+                .any(|o| t.trial == *o || t.trial.starts_with(&format!("{o}.")))
+        });
+    }
+    if !options.kinds.is_empty() {
+        found.retain(|t| options.kinds.contains(&t.kind));
+    }
+    Ok(found)
+}
+
+/// Writes (or reuses) the suite for `task` and runs it on every retained
+/// workspace [`found`] lists; the record is written to
+/// `out/<task>/validity.json`.
 ///
 /// # Errors
 ///
 /// A message when the task, its image, or the Codex login is missing.
 #[allow(clippy::too_many_lines)]
 pub async fn task(name: &str, jev: &JevMode, options: &TaskOptions) -> Result<Value, String> {
-    let mut found = trials(&options.jobs, name);
-    if !options.only.is_empty() {
-        found.retain(|t| options.only.contains(&t.trial));
-    }
+    let found = found(name, options)?;
     if found.is_empty() {
         return Err(format!(
-            "no retained trial of {name} under {} has a snapshot",
+            "no retained workspace of {name} under {}",
             options.jobs.display()
         ));
     }
@@ -269,7 +823,17 @@ pub async fn task(name: &str, jev: &JevMode, options: &TaskOptions) -> Result<Va
     let record = AcceptanceSuite::record_path(&suite_dir);
     let recorder = Recorder::default();
     let suite = if options.reuse && record.is_file() {
-        AcceptanceSuite::load(&record)?
+        let mut suite = AcceptanceSuite::load(&record)?;
+        if suite.dir != suite_dir && suite_dir.is_dir() {
+            // A suite copied with its record, as the retained records are,
+            // runs from where it is now; its digest still has to match.
+            suite.dir.clone_from(&suite_dir);
+            for test in &mut suite.tests {
+                test.source =
+                    std::fs::read_to_string(suite_dir.join(&test.path)).unwrap_or_default();
+            }
+        }
+        suite
     } else {
         // The retained map was extracted from the same words, so the suite
         // and the trials' checks answer to the same requirement IDs.
@@ -335,55 +899,62 @@ pub async fn task(name: &str, jev: &JevMode, options: &TaskOptions) -> Result<Va
         suite
     };
     crate::say::line(&format!("accept ▸ {name}: {}", suite.headline()));
-    let mut results = Vec::new();
-    for trial in &found {
+    let one = |trial: &Trial| {
         let candidate = out.join(format!("candidate-{}", trial.trial));
-        let _ = std::fs::remove_dir_all(&candidate);
-        if let Err(error) = untar(&trial.episode.join("snapshot/workspace.tar.gz"), &candidate) {
-            results.push(json!({ "trial": trial, "error": error }));
-            continue;
-        }
-        // A candidate that names its packages gets them, as a verifier
-        // that grades in a separate container installs them.
-        let requirements = candidate
-            .join(trial.workdir.trim_start_matches('/'))
-            .join("requirements.txt");
-        let runner = Docker {
-            image: image.clone(),
-            workdir: trial.workdir.clone(),
-            candidate: Some(candidate.clone()),
-            test_sec: options.define.test_sec,
-            dev: None,
-            setup: requirements.is_file().then(|| SETUP.to_string()),
-        };
-        let ran = run(
-            &suite,
-            Path::new(&trial.workdir),
-            &runner,
-            Some(&recorder),
-            &trial.trial,
-        )
-        .await;
-        let _ = std::fs::remove_dir_all(&candidate);
-        match ran {
-            Ok(result) => {
-                crate::say::line(&format!(
-                    "accept ▸ {}: {} of {} tests pass; reward {:?}{}",
-                    trial.trial,
-                    result.passed,
-                    result.total,
-                    trial.reward,
-                    if trial.snapshot_graded {
-                        ""
-                    } else {
-                        " (the snapshot isn't the graded candidate)"
-                    }
-                ));
-                results.push(json!({ "trial": trial, "run": result }));
+        let (image, suite, recorder) = (&image, &suite, &recorder);
+        let trial = trial.clone();
+        async move {
+            if let Err(error) = materialize(&trial, image, &candidate) {
+                let _ = std::fs::remove_dir_all(&candidate);
+                crate::say::line(&format!("accept ▸ {}: {error}", trial.trial));
+                return json!({ "trial": trial, "error": error });
             }
-            Err(tampered) => results.push(json!({ "trial": trial, "error": tampered.to_string() })),
+            // A candidate that names its packages gets them, as a verifier
+            // that grades in a separate container installs them.
+            let requirements = candidate
+                .join(trial.workdir.trim_start_matches('/'))
+                .join("requirements.txt");
+            let runner = Docker {
+                image: image.clone(),
+                workdir: trial.workdir.clone(),
+                candidate: Some(candidate.clone()),
+                test_sec: options.define.test_sec,
+                dev: None,
+                setup: requirements.is_file().then(|| SETUP.to_string()),
+            };
+            let ran = run(
+                suite,
+                Path::new(&trial.workdir),
+                &runner,
+                Some(recorder),
+                &trial.trial,
+            )
+            .await;
+            let _ = std::fs::remove_dir_all(&candidate);
+            match ran {
+                Ok(result) => {
+                    crate::say::line(&format!(
+                        "accept ▸ {}: {} of {} tests pass; reward {:?}{}",
+                        trial.trial,
+                        result.passed,
+                        result.total,
+                        trial.reward,
+                        if trial.kind != Kind::Snapshot || trial.snapshot_graded {
+                            ""
+                        } else {
+                            " (the snapshot isn't the graded candidate)"
+                        }
+                    ));
+                    json!({ "trial": trial, "run": result })
+                }
+                Err(tampered) => json!({ "trial": trial, "error": tampered.to_string() }),
+            }
         }
-    }
+    };
+    let results: Vec<Value> = futures_util::stream::iter(found.iter().map(one))
+        .buffered(options.workers.max(1))
+        .collect()
+        .await;
     let value = json!({
         "schema": SCHEMA,
         "task": name,
@@ -414,6 +985,7 @@ pub async fn task(name: &str, jev: &JevMode, options: &TaskOptions) -> Result<Va
 pub struct Joined {
     pub task: String,
     pub trial: String,
+    pub kind: Kind,
     pub reward: Option<f64>,
     pub snapshot_graded: bool,
     /// The suite's call: pass when green.
@@ -430,9 +1002,15 @@ pub struct Joined {
 }
 
 /// A signal's agreement with the verifier over some trials.
+///
+/// A trial whose verifier reward is unknown says nothing about the
+/// signal: it's counted in `unknown` and in nothing else.
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct Agreement {
+    /// Trials with a known reward.
     pub trials: usize,
+    /// Trials left out because the verifier's reward is unknown.
+    pub unknown: usize,
     /// Trials where the signal spoke.
     pub spoke: usize,
     /// Trials where what it said matched the verifier.
@@ -443,19 +1021,27 @@ pub struct Agreement {
     /// Of the trials it called passed, how many passed.
     pub pass_right: usize,
     pub pass_called: usize,
-    /// Of the verifier's failures, how many it called failed.
+    /// The verifier's failures; `fail_right` of them the signal called
+    /// failed.
     pub failures: usize,
+    /// The verifier's passes; `pass_right` of them the signal called
+    /// passed.
+    pub passes: usize,
 }
 
 impl Agreement {
-    fn of(rows: &[&Joined], says: impl Fn(&Joined) -> Option<Says>) -> Agreement {
-        let mut out = Agreement {
-            trials: rows.len(),
-            ..Agreement::default()
-        };
+    pub(crate) fn of(rows: &[&Joined], says: impl Fn(&Joined) -> Option<Says>) -> Agreement {
+        let mut out = Agreement::default();
         for row in rows {
-            let passed = row.reward.is_some_and(|r| r >= 1.0);
-            if !passed {
+            let Some(reward) = row.reward else {
+                out.unknown += 1;
+                continue;
+            };
+            out.trials += 1;
+            let passed = reward >= 1.0;
+            if passed {
+                out.passes += 1;
+            } else {
                 out.failures += 1;
             }
             match says(row) {
@@ -507,10 +1093,16 @@ pub fn join(dir: &Path, rows: &Path) -> Result<Vec<Joined>, String> {
                 continue;
             };
             let run: Option<RunResult> = serde_json::from_value(entry["run"].clone()).ok();
-            let row = rows.iter().find(|r| r.trial == trial.trial);
+            // A label row describes the trial's own workspace, not a
+            // candidate or a reconstruction of it.
+            let row = rows
+                .iter()
+                .find(|r| r.trial == trial.trial)
+                .filter(|_| matches!(trial.kind, Kind::Snapshot | Kind::Final));
             out.push(Joined {
                 task: task.clone(),
                 trial: trial.trial.clone(),
+                kind: trial.kind,
                 reward: trial.reward.or_else(|| row.map(|r| r.reward)),
                 snapshot_graded: trial.snapshot_graded,
                 suite: run
@@ -536,12 +1128,32 @@ pub fn join(dir: &Path, rows: &Path) -> Result<Vec<Joined>, String> {
     Ok(out)
 }
 
-/// The three signals' agreement over the joined trials: over the trials
-/// whose snapshot was graded, and over all of them.
+/// The sets [`validity`] counts, by key, with a label and which joined
+/// trials each holds.
+pub const SETS: [(&str, &str); 4] = [
+    ("snapshot_graded", "Coder One snapshots the verifier graded"),
+    ("all_snapshots", "every Coder One snapshot"),
+    (
+        "microluna_finals",
+        "Microluna final workspaces and reconstructions",
+    ),
+    ("microluna_candidates", "Microluna retained candidates"),
+];
+
+fn in_set(set: &str, j: &Joined) -> bool {
+    match set {
+        "snapshot_graded" => j.kind == Kind::Snapshot && j.snapshot_graded,
+        "all_snapshots" => j.kind == Kind::Snapshot,
+        "microluna_finals" => matches!(j.kind, Kind::Final | Kind::Reconstruction),
+        "microluna_candidates" => j.kind == Kind::Candidate,
+        _ => false,
+    }
+}
+
+/// The three signals' agreement over the joined trials, in each of
+/// [`SETS`]. A trial with an unknown reward is counted apart.
 #[must_use]
 pub fn validity(joined: &[Joined]) -> Value {
-    let graded: Vec<&Joined> = joined.iter().filter(|j| j.snapshot_graded).collect();
-    let all: Vec<&Joined> = joined.iter().collect();
     let table = |rows: &[&Joined]| {
         json!({
             "suite_green": Agreement::of(rows, |j| j.suite),
@@ -550,9 +1162,11 @@ pub fn validity(joined: &[Joined]) -> Value {
             "combined_verdict": Agreement::of(rows, |j| j.verdict),
         })
     };
-    json!({
-        "snapshot_graded": table(&graded),
-        "all_snapshots": table(&all),
-        "trials": joined,
-    })
+    let mut out = serde_json::Map::new();
+    for (set, _) in SETS {
+        let rows: Vec<&Joined> = joined.iter().filter(|j| in_set(set, j)).collect();
+        out.insert(set.to_string(), table(&rows));
+    }
+    out.insert("trials".to_string(), json!(joined));
+    Value::Object(out)
 }

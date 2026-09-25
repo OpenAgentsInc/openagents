@@ -232,6 +232,55 @@ task, extracted from `bench/terminal-bench/traces` and scanned for
 credentials. A test extracts all 24 and reruns the packer and the probe keep
 question on them with recorded Jev.
 
+## Measure an acceptance suite on retained workspaces
+
+`accept.define` writes an executable acceptance suite before any fix.
+`coder-one accept offline` measures whether a frozen suite's green
+predicts a verifier pass, on the graded workspaces that trials left
+behind, with no model call when the suite already exists:
+
+```sh
+coder-one accept offline embedding-drift-monitor --reuse --jev off \
+  --out DIR --image accept-env/embedding-drift-monitor:latest \
+  --grades bench/terminal-bench/experiments/2026-09-24-candidate-evidence/records/candidate-grades
+coder-one accept validity DIR
+```
+
+Without `--reuse`, or with no suite frozen under `DIR/TASK/`, the command
+writes one first with Luna and Jev. With `--reuse`, a suite copied beside
+its record, as the retained records under `bench/` are, runs from where
+it is now; its digest still has to match. `--jobs DIR` names the
+Terminal-Bench jobs directory, `~/.openagents/terminal-bench/jobs` by
+default.
+
+It reads four kinds of workspace from each trial of the task; `--kinds`
+keeps only the kinds you name:
+
+- `snapshot`: a Coder One trial's post-executor snapshot,
+  `agent/episode/snapshot/workspace.tar.gz`.
+- `final`: a Microluna trial's final workspace, the image's working
+  directory with the deliverables Harbor collected (`artifacts/`) copied
+  over it. A file the trial deleted is still there.
+- `candidate`: each session a Microluna lean loop retained,
+  `agent/episode/artifacts/lean-N/session-M`, run only when its files
+  still match the identity `selection.json` recorded for it. A snapshot
+  whose `candidate_scope` is `git` holds only the files Git lists, so it
+  goes over the image's working directory instead of replacing it. Its
+  reward
+  is known when its files are the submitted workspace's, or when a grade
+  record under a `--grades` directory matches them: a `grade.json` from
+  the candidate-evidence experiment or a `candidate.json` from
+  `tbench candidates`.
+- `reconstruction`: a directory given with `--reconstruction`, holding a
+  `reconstruction.json` and its `source-files/`, laid over the named
+  trial's final workspace.
+
+Each workspace runs in a fresh container of the image with no network,
+`--workers` at a time. `accept validity` then counts Coder One snapshots,
+Microluna final workspaces, and Microluna candidates apart. A trial whose
+verifier reward is unknown is reported as unknown and left out of every
+agreement count, never counted as a failure.
+
 ## Run a study
 
 A study proposes candidate manifests, screens them cheapest first, and
