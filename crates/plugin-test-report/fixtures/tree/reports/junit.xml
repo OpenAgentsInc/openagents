@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<testsuites>
+  <testsuite name="pytest" errors="1" failures="1" skipped="1" tests="4" time="0.05">
+    <testcase classname="tests.test_core" name="test_add" file="tests/test_core.py" line="4" time="0.001" />
+    <testcase classname="tests.test_core" name="test_scale" file="tests/test_core.py" line="12" time="0.001">
+      <failure message="assert [2, 4] == [2, 4, 6]">def test_scale():
+&gt;       assert scale([1, 2], 2) == [2, 4, 6]
+E       assert [2, 4] == [2, 4, 6]
+
+tests/test_core.py:12: AssertionError</failure>
+    </testcase>
+    <testcase classname="tests.test_core" name="test_skip" time="0.0">
+      <skipped message="not on this platform" />
+    </testcase>
+    <testcase classname="tests.test_io" name="test_read" time="0.002">
+      <error message="">FileNotFoundError: [Errno 2] No such file or directory: 'data.csv'
+tests/test_io.py:7: FileNotFoundError</error>
+    </testcase>
+  </testsuite>
+</testsuites>

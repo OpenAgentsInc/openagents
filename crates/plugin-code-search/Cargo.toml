@@ -1,0 +1,17 @@
+[package]
+name = "plugin-code-search"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Code search guest: bounded literal and wildcard search over the files of a granted snapshot."
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+plugin-pdk = { path = "../plugin-pdk", features = ["guest"] }
+serde_json = "1"
+
+[lints]
+workspace = true

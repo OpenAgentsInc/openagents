@@ -2,7 +2,9 @@
 
 Status: partly implemented. The host core and the program `module` step
 landed in #9519 on 2026-09-21, and step bounds, workspace snapshot grants,
-and cancellation reached the `module` step on 2026-09-25. The rest of this
+and cancellation reached the `module` step on 2026-09-25. Three evidence
+guests and the program that runs them landed in #9630 on 2026-09-25, off by
+default and not yet measured. The rest of this
 document is the target specification for typed operations, shared
 evidence, and [program execution](programs.md);
 [What is built](#what-is-built) says which parts exist today.
@@ -26,6 +28,13 @@ Three crates implement the host core:
   guest. Its `echo` operation returns its input, and its `outline`
   operation lists a granted snapshot. The compiled guests are the fixtures
   in `crates/plugin/fixtures/`.
+
+With the `guest` feature, `plugin_pdk::guest` is the guest side of the ABI:
+`export_guest!` exports one handler as `oa_alloc`, `oa_free`, and
+`oa_handle`; `list`, `size`, and `read` wrap the `oa_host.call` import; and
+`MemoryHost` answers the same calls from files in memory, so a guest's
+logic runs in native tests. Three guests are built on it, as
+[Evidence guests](#evidence-guests) describes.
 
 The host implements the two access modes as `plugin::Profile`:
 
@@ -144,13 +153,136 @@ The following aren't built yet:
   [invocation receipt](#invocation-receipt). The build receipt holds only the
   three fields above, and the run records a module step's output, not a
   digested invocation receipt.
-- The authoring surface: no command initializes, builds, packages,
-  installs, or lists a plugin.
+- The authoring surface: no command initializes, packages, installs, or
+  lists a plugin. `scripts/build-plugin-guests.sh` builds and pins the
+  three evidence guests, and nothing else.
 - Resolving a module by digest in the product, and a remote plugin
-  catalog. A program carries its guest's bytes inline, and no program in
-  `programs/` uses a `module` step yet. The
+  catalog. A program carries its guest's bytes inline;
+  `programs/evidence-guests.json` is the one program in `programs/` that
+  uses `module` steps. The
   [interoperability suite](../coder/verification/2026-09-22-relay-interoperability.md)
   locates a guest over a relay and runs it, but only in a test.
+
+## Evidence guests
+
+The pre-reset Coder evidence plugins, removed in `dabc08102f`, went unused
+when they were offered to the model as tools. Three of them are rebuilt as
+`snapshot-read` guests that code calls as program steps. They reimplement
+the old plugins' purpose on the `openagents.plugin-packet.v1` ABI rather
+than port their code, which targeted a different ABI with mounts.
+
+| Guest | Crate | Operation | Input | Output |
+| --- | --- | --- | --- | --- |
+| Repository map | `crates/plugin-repo-map` | `map` | `max_files` | Files and bytes, languages by extension, top-level entries with their file counts, the directories one level below, the largest files, build manifests, and test files. It reads sizes, not contents. |
+| Code search | `crates/plugin-code-search` | `search` | `patterns` (1 to 16), `case_sensitive`, `whole_word`, and result bounds | Matching lines grouped by file, files that match more patterns first, with per-pattern counts. A pattern is literal text where `*` matches any run within a line. Binary, lock, and minified files are skipped. |
+| Test report | `crates/plugin-test-report` | `parse` | `paths`, or none to pick files by name, and `max_failures` | Each report's format and counts, and each failing test with its file, line, and message. The format comes from the content: JUnit XML, `cargo test` output, or pytest output. |
+
+Every output counts what its bounds left out, such as `truncated`,
+`files_unread`, or `complete: false`, rather than dropping it silently. Each
+crate has fixtures under `fixtures/tree` and native tests that run the
+guest's logic against `MemoryHost`.
+
+### Build and receipts
+
+Run the following command to build the three guests:
+
+```sh
+./scripts/build-plugin-guests.sh
+```
+
+It builds each crate for `wasm32-unknown-unknown` with the pinned 1.97.1
+toolchain and the workspace's `guest` profile (`opt-level = "z"`, LTO, and
+`panic = "abort"`), with the checkout and Cargo home paths remapped so the
+bytes don't depend on the machine. Two builds in separate target
+directories produce the same digests. The script then does the following:
+
+1. Copies each module to `crates/plugin/fixtures/<guest>.wasm`, following
+   the `outline.wasm` convention.
+2. Writes `crates/plugin/fixtures/<guest>.receipt.json`: the
+   `plugin::build_receipt` fields (the PDK source digest, over
+   `plugin-pdk/src/lib.rs` and `guest.rs`, the module digest, and the
+   profile), plus the guest source digest, over its `Cargo.toml` and
+   `src/lib.rs`, the size, the toolchain, and the target.
+3. Inlines each module into `programs/evidence-guests.json` as its step's
+   `bytes_base64`, and pins the module's digest and size in the step's
+   target.
+
+`crates/plugin/tests/guests.rs` runs each checked-in module through
+`plugin::invoke` over its crate's fixtures, and fails when a receipt no
+longer matches the module, the PDK source, or the guest source. Edit a
+guest or the PDK, then run the script.
+
+### How Coder One runs them
+
+`crates/coder-one/src/guests.rs` is a host for the program, because Coder
+One doesn't depend on `crates/coder`. It holds a step to the same rule as
+the terminal's runtime: a step's bounds narrow the host's ceilings and
+never widen them. It also refuses a step whose inline bytes don't match the
+digest its target pins. The program's bounds are wider than the terminal's
+default ceilings, so the terminal refuses the program at admission and never
+offers it to the program selection question.
+
+The switch is `policy.evidence.guests` in a Coder One policy manifest. It is
+absent by default, and absent leaves the manifest's digest unchanged. It
+names the steps to run and the seconds they share:
+
+```json
+"evidence": {
+  "probes": "v2",
+  "survey_files": 40,
+  "guests": {"steps": ["repo_map", "code_search", "test_report"], "seconds": 10}
+}
+```
+
+`{}` means all three steps and 10 seconds. The switch needs
+`evidence.probes`, because the guests run in the probe stage, after the
+probe battery. Code decides what each step does:
+
+- `repo_map` always runs.
+- `code_search` runs only when the issue yields search terms, and searches
+  for up to eight of them.
+- `test_report` runs only when a granted file's content shows a test
+  report, and parses only those files.
+
+The grant holds the workspace's files, without `.git`, `target`,
+`node_modules`, virtual environments, caches, or symlinks, at most 20,000
+files, 64 KiB of each, and 64 MiB in all. Code orders it, and a guest reads
+in that order: shallow paths before deep ones, such as a checked-in trace
+archive, then paths that name a search term, then source files. What the
+grant left out or cut is stated in each output. Each output becomes a
+probe output labeled `guest repo-map`, `guest code-search: <terms>`, or
+`guest test-report`, and faces the probe keep question with the battery's
+outputs, so what reaches the briefing is still Jev's choice. The run is
+recorded as the `evidence.guests` invocation.
+
+### Measurement plan
+
+No guest is kept because it exists. Each is kept only if it helps on the
+[issue-flow evaluation set](../coder/guides/coder-one-issue-eval.md)
+(#9625) or on the [mini-tasks](../coder/guides/coder-one-minitasks.md),
+measured against a matched baseline. No live run is part of #9630.
+
+1. **Arms.** The baseline is `issue-flow.json` unchanged. The treatment arms
+   add `policy.evidence.guests` with all three steps, then with each step
+   alone. Everything else in the manifest is the same, so each arm's digest
+   differs from the baseline's only by the switch.
+2. **Matching.** Each arm runs the same entries at the same base commits,
+   with the same model, deadlines, seal, and number of repeats, through
+   `coder-one issue-eval run ID --policy PATH`. Work on the development
+   part; run the held-out part only to confirm a guest that is already
+   chosen.
+3. **Targeted first.** Before a whole-set run, run one or two entries where
+   a guest should matter, such as a Rust behavior entry for the test-report
+   parser. Run the whole set only if the targeted runs show a large change.
+4. **Measures.** Per entry and arm: graded pass or fail, Luna and Jev cost,
+   wall time, the characters each guest put in the briefing, how often the
+   probe keep question kept each guest's output, and each guest's time,
+   skips, and refusals from the `evidence.guests` record.
+5. **Rule.** A guest stays in the default steps only if its arm passes at
+   least as many entries as the baseline and improves pass rate, cost, or
+   time beyond the spread between repeats. A guest whose output the keep
+   question almost never keeps, or that changes nothing, is dropped from the
+   default and then from the program.
 
 ## Guest boundary
 

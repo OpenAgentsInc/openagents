@@ -677,6 +677,7 @@ dependencies = [
  "indexmap",
  "jev",
  "microluna",
+ "plugin",
  "regex",
  "reqwest",
  "serde",
@@ -4107,6 +4108,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "plugin-code-search"
+version = "0.1.0"
+dependencies = [
+ "plugin-pdk",
+ "serde_json",
+]
+
+[[package]]
 name = "plugin-outline"
 version = "0.1.0"
 dependencies = [
@@ -4119,6 +4128,22 @@ name = "plugin-pdk"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "plugin-repo-map"
+version = "0.1.0"
+dependencies = [
+ "plugin-pdk",
+ "serde_json",
+]
+
+[[package]]
+name = "plugin-test-report"
+version = "0.1.0"
+dependencies = [
+ "plugin-pdk",
  "serde_json",
 ]
 

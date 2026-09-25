@@ -1,0 +1,93 @@
+{
+  "schema": "openagents.coder-one.jev-recorded.v1",
+  "entries": {
+    "210f95d8483cad2bbff2055e97f07647367658b82fed0ee05687d9d40b66ccd7": {
+      "name": "jev_contract_span",
+      "model": "jev-1.13.0",
+      "answers": {
+        "q1": {
+          "type": "noul",
+          "noul": 0.92
+        }
+      },
+      "input_tokens": 884,
+      "output_tokens": 21,
+      "milliseconds": 425,
+      "source": "checks contract: interleaved-vigenere"
+    },
+    "351fa2e93184035999ae4b771783210e4a7911f734f70f5f80a8ad777fc4a8b4": {
+      "name": "jev_contract_span",
+      "model": "jev-1.13.0",
+      "answers": {
+        "q1": {
+          "type": "noul",
+          "noul": 0.75
+        }
+      },
+      "input_tokens": 1435,
+      "output_tokens": 21,
+      "milliseconds": 395,
+      "source": "checks contract: ks-solver-cpp"
+    },
+    "98d7c8b73641df46dbcb1cc5cb40cb3486ec74517aaa76957cff38cfb658ec27": {
+      "name": "jev_contract_span",
+      "model": "jev-1.13.0",
+      "answers": {
+        "q1": {
+          "type": "noul",
+          "noul": 0.98
+        }
+      },
+      "input_tokens": 661,
+      "output_tokens": 21,
+      "milliseconds": 306,
+      "source": "checks contract: coq-block-bound"
+    },
+    "c77c61e997cc7e332ca005e9a4f47ad5ae4f07fb143cd296f1575334591090b9": {
+      "name": "jev_contract_span",
+      "model": "jev-1.13.0",
+      "answers": {
+        "q1": {
+          "type": "noul",
+          "noul": 0.91
+        }
+      },
+      "input_tokens": 938,
+      "output_tokens": 21,
+      "milliseconds": 327,
+      "source": "checks contract: cargo-flight-dispatch"
+    },
+    "da59ab2c679b65c90efbda3164a49f607f5c8103f3c32264817673ea97ce088a": {
+      "name": "jev_contract_span",
+      "model": "jev-1.13.0",
+      "answers": {
+        "q1": {
+          "type": "noul",
+          "noul": 0.83
+        },
+        "q2": {
+          "type": "noul",
+          "noul": 0.59
+        }
+      },
+      "input_tokens": 791,
+      "output_tokens": 38,
+      "milliseconds": 418,
+      "source": "checks contract: mvcc-lsm-compaction"
+    },
+    "eb337a5da14e5323d99ec07df7653f1e56c55bc16a604e1449404192cc29164e": {
+      "name": "jev_contract_span",
+      "model": "jev-1.13.0",
+      "answers": {
+        "q1": {
+          "type": "noul",
+          "noul": 0.75
+        }
+      },
+      "input_tokens": 1009,
+      "output_tokens": 21,
+      "milliseconds": 406,
+      "source": "checks contract: bun-sourcemap-leak"
+    }
+  }
+}

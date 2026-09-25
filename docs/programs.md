@@ -128,7 +128,7 @@ carries both, and `crates/coder` reads them:
 | Directory | What it holds |
 | --- | --- |
 | `capabilities/` | One `kind:30180` manifest per file. `devin-local` is the first; `coder-one-ask` is Coder One's read-only ask mode, and `gym` is the Gym's read-only binary for a command source. |
-| `programs/` | One `kind:30182` program per file: `delegate-fan-out`, `burn-down`, `review-changes`, `answer-question`, `run-suite`, `review-runs`. |
+| `programs/` | One `kind:30182` program per file: `delegate-fan-out`, `burn-down`, `review-changes`, `answer-question`, `run-suite`, `review-runs`, `evidence-guests`. |
 | `questions/` | One question set per file, addressed by identifier: `openagents.program.v1`, `openagents.independence.v1`, `openagents.independence.v2`, `openagents.completion.v1`. |
 | `sources/` | One task source per file. `work-list` reads a file, `gym-runs` runs a command; `request` is built in. |
 
@@ -597,7 +597,10 @@ that was there before. Three rules hold the path together:
   `burn-down`, `answer-question`, and `review-runs`; `run-suite` requires a protected
   verification plan that ordinary turns do not install, and
   `review-changes` requires a protected reviewer and captured artifact scope
-  that ordinary turns do not install. `burn-down` is `delegate-fan-out` with the `work-list` source in
+  that ordinary turns do not install. `evidence-guests` declares module
+  bounds wider than the terminal's default ceilings, so the terminal never
+  admits or offers it; Coder One's probe stage runs it when a manifest
+  turns it on, as [Evidence guests](#evidence-guests) describes. `burn-down` is `delegate-fan-out` with the `work-list` source in
   place of `request`, `isolation: worktree`, and thirty minutes per item:
   the program the backlog runs through, where the work is written to
   `.coder/work-list.json` by inspection and every delegate's worktree is
@@ -666,9 +669,37 @@ cannot see is in [`coderbench.md`](coderbench.md).
   a program or a module from a relay or a catalog. The
   [interoperability suite](coder/verification/2026-09-22-relay-interoperability.md)
   fetches a program and a guest over a relay in a test, but no product path
-  does. No program in `programs/` uses a `module` step yet.
+  does. `evidence-guests` is the one program in `programs/` with `module`
+  steps, and it carries its three guests inline.
 - **Grant a guest anything but workspace files.** A `snapshot-read`
   module step's `read` scope names workspace paths only.
+
+### Evidence guests
+
+`programs/evidence-guests.json` is the first program built from `module`
+steps. Each step runs a `snapshot-read` Wasm guest over a `read` scope of
+`.`:
+
+| Step | Guest | What it returns |
+| --- | --- | --- |
+| `repo_map` | `crates/plugin-repo-map`, operation `map` | Files, bytes, languages, top-level entries and the directories below them, the largest files, build manifests, and test files. |
+| `code_search` | `crates/plugin-code-search`, operation `search` | Lines that match up to 16 literal patterns, where `*` matches within a line, grouped by file, files that match more patterns first. |
+| `test_report` | `crates/plugin-test-report`, operation `parse` | Failing tests with file, line, and message from JUnit XML, `cargo test` output, and pytest output. |
+
+These revive the pre-reset evidence plugins, which the model never called
+when they were offered to it as tools. Here code calls them, and no model
+sees them as tools. Coder One's probe stage runs the program when a policy
+manifest sets `policy.evidence.guests` (for example, `"guests": {}` for all
+three steps), which needs `evidence.probes`. The switch is absent from
+every checked-in manifest, so no manifest's digest changed. Code decides
+each step's input: the search runs only when the issue yields search terms
+and uses them as its patterns, and the report parser runs only when a
+granted file's content shows a test report. Each output joins the probe
+battery's outputs at the probe keep question, so Jev decides what reaches
+the briefing, the same as for a command's output. `crates/coder-one/src/guests.rs`
+is that host; [Wasm plugins](extensions/plugins.md#evidence-guests) covers
+the build, the grant, and the measurement plan that decides whether each
+guest stays.
 
 ## What to build first
 

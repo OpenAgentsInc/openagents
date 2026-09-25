@@ -149,6 +149,13 @@ pub struct EvidencePolicy {
     pub probes: Probes,
     /// The most files the deep survey judges.
     pub survey_files: usize,
+    /// `evidence.guests`: the snapshot-read Wasm guests in
+    /// `programs/evidence-guests.json`, run by the probe stage, their
+    /// outputs offered to the probe keep question beside the probes'.
+    /// Needs `probes`. Absent, no guest runs, and the manifest's digest is
+    /// what it was before this field existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub guests: Option<crate::guests::Policy>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -533,6 +540,7 @@ impl Manifest {
                 evidence: EvidencePolicy {
                     probes: Probes::Off,
                     survey_files: crate::judge::SURVEY_FILES,
+                    guests: None,
                 },
                 control: ControlPolicy {
                     delegate: DelegateMode::Off,
@@ -618,6 +626,16 @@ impl Manifest {
         }
         if policy.evidence.probes != Probes::Off && policy.jev.mode != JevMode::Deep {
             problems.push("evidence.probes needs jev.mode = deep".to_string());
+        }
+        if let Some(guests) = &policy.evidence.guests {
+            if policy.evidence.probes == Probes::Off {
+                problems.push(
+                    "evidence.guests runs in the probe stage and needs evidence.probes".to_string(),
+                );
+            }
+            if let Err(problem) = guests.validate() {
+                problems.push(format!("evidence.guests: {problem}"));
+            }
         }
         if !(1..=crate::judge::SURVEY_FILES).contains(&policy.evidence.survey_files) {
             problems.push(format!(
@@ -958,6 +976,7 @@ impl Manifest {
             .probing(self.deep() && probes != Probes::Off)
             .probe_v2(self.deep() && probes == Probes::V2)
             .survey_files(self.policy.evidence.survey_files)
+            .guests(self.policy.evidence.guests.clone())
     }
 
     /// The executor this manifest configures, given what the host found.
@@ -2004,6 +2023,57 @@ mod tests {
         let error = Resolution::resolve(env_of(&[(POLICY_VAR, "{\"schema\":1}")]), None)
             .expect_err("not a manifest");
         assert!(error.contains("invalid"), "{error}");
+    }
+
+    /// `evidence.guests` is off unless a manifest names it, so no checked-in
+    /// manifest's digest changes; it runs in the probe stage and needs one;
+    /// and the switch reaches the judge.
+    #[test]
+    fn evidence_guests_are_off_by_default_and_need_probes() {
+        for (name, text) in REFERENCE {
+            let manifest = Manifest::parse(text).unwrap();
+            assert!(manifest.policy.evidence.guests.is_none(), "{name}");
+            let raw: Value = serde_json::from_str(text).unwrap();
+            assert!(raw["policy"]["evidence"].get("guests").is_none(), "{name}");
+        }
+        let text = include_str!("../policies/issue-flow.json");
+        let base = Manifest::parse(text).unwrap();
+        let mut raw: Value = serde_json::from_str(text).unwrap();
+        raw["policy"]["evidence"]["guests"] = json!({});
+        let on = Manifest::parse(&raw.to_string()).unwrap();
+        on.validate().unwrap();
+        assert_eq!(
+            on.policy.evidence.guests,
+            Some(crate::guests::Policy::default())
+        );
+        assert_ne!(on.digest(), base.digest());
+        let mut plain = on.clone();
+        plain.policy.evidence.guests = None;
+        assert_eq!(plain.digest(), base.digest());
+
+        let issue = Issue {
+            url: String::new(),
+            title: "t".to_string(),
+            body: "b".to_string(),
+            labels: vec![],
+        };
+        let judge = on.judge(None, PathBuf::from("."), &issue, Recorder::default());
+        assert_eq!(
+            judge.guest_policy(),
+            Some(&crate::guests::Policy::default())
+        );
+        let judge = base.judge(None, PathBuf::from("."), &issue, Recorder::default());
+        assert!(judge.guest_policy().is_none());
+
+        let mut off = on.clone();
+        off.policy.evidence.probes = Probes::Off;
+        assert!(off.validate().unwrap_err().contains("evidence.guests"));
+        let mut unknown = on;
+        unknown.policy.evidence.guests = Some(crate::guests::Policy {
+            steps: vec!["git_facts".to_string()],
+            ..crate::guests::Policy::default()
+        });
+        assert!(unknown.validate().unwrap_err().contains("git_facts"));
     }
 
     // Canaries: one per searchable field. Each shows that changing the

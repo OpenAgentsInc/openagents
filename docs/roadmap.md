@@ -167,7 +167,11 @@ model is never handed a toolbox to choose from.
 1. **Revive the evidence plugins as program steps**: code search, git facts,
    repo maps, and session search, as `SnapshotRead` Wasm guests run by
    `module` steps, each measured on the issue-flow evaluation set and kept only
-   if it helps.
+   if it helps. Started in #9630: a repository map, code search, and a
+   test-report parser, run by `programs/evidence-guests.json` from Coder
+   One's probe stage behind a manifest switch that's off by default. The
+   [measurement plan](extensions/plugins.md#measurement-plan) decides which
+   stay.
 2. **Programs that compose** (the specified `program` and `invoke` steps) and
    **local packages with locks** (built) become the way to share a workflow.
 3. **Publish the registries on the relay**: programs, capabilities, question

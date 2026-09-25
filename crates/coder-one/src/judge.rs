@@ -91,6 +91,9 @@ pub struct JevJudge {
     v2: bool,
     /// The most files the deep survey judges.
     survey_files: usize,
+    /// The evidence guests the probe stage runs, when the manifest turns
+    /// them on.
+    guests: Option<crate::guests::Policy>,
     /// The episode deadline every request and command is bounded by.
     deadline: Deadline,
     /// Requests the deadline skipped before they were sent.
@@ -156,6 +159,7 @@ impl JevJudge {
             probes: false,
             v2: false,
             survey_files: SURVEY_FILES,
+            guests: None,
             deadline: Deadline::unbounded(),
             skipped: 0,
         }
@@ -188,6 +192,19 @@ impl JevJudge {
             self.v2,
             self.survey_files,
         )
+    }
+
+    /// Turns on the evidence guests, which run in the probe stage.
+    #[must_use]
+    pub fn guests(mut self, policy: Option<crate::guests::Policy>) -> Self {
+        self.guests = policy;
+        self
+    }
+
+    /// The evidence guests the probe stage runs, if any.
+    #[must_use]
+    pub fn guest_policy(&self) -> Option<&crate::guests::Policy> {
+        self.guests.as_ref()
     }
 
     /// Turns on probe v2.
@@ -433,6 +450,61 @@ impl JevJudge {
         capture
     }
 
+    /// Runs the evidence guests as one recorded invocation and returns the
+    /// outputs that carry something, clipped like a probe's.
+    async fn run_guests(&mut self, policy: &crate::guests::Policy) -> Vec<Probe> {
+        let invocation = self.recorder.begin(
+            Start::new("evidence.guests", crate::guests::implementation(policy))
+                .named("evidence guests")
+                .reading(&json!({ "policy": policy, "keywords": self.keywords }))
+                .effect("observe"),
+        );
+        let Some(limit) = self
+            .deadline
+            .grant("guests", std::time::Duration::from_secs(policy.seconds))
+        else {
+            crate::say::say!("  guests ▸ skipped: no time left before the deadline");
+            self.recorder.end(
+                &invocation,
+                Finish::new(Outcome::Skipped).summary(json!({ "reason": "episode deadline" })),
+            );
+            return Vec::new();
+        };
+        let runs = crate::guests::run(&self.workdir, &self.keywords, policy, limit).await;
+        for run in &runs {
+            crate::say::say!(
+                "  guests ▸ {} {} in {}{}",
+                run.step,
+                run.status,
+                crate::say::seconds(u128::from(run.elapsed_ms)),
+                run.reason
+                    .as_deref()
+                    .map(|reason| format!(": {reason}"))
+                    .unwrap_or_default()
+            );
+        }
+        let probes: Vec<Probe> = runs
+            .iter()
+            .filter_map(|run| run.probe.clone())
+            .map(|probe| Probe {
+                output: clip(probe.output.trim(), PROBE_OUTPUT_CHARS),
+                ..probe
+            })
+            .collect();
+        let outcome = if runs.iter().any(|run| run.status == "ok") {
+            Outcome::Completed
+        } else {
+            Outcome::Skipped
+        };
+        self.recorder.end(
+            &invocation,
+            Finish::new(outcome)
+                .output(json!({ "runs": runs }))
+                .cost(Cost::none()),
+        );
+        probes
+    }
+
     /// Ends an operation's invocation with its record.
     fn finish_operation(&self, invocation: &str, capture: &crate::ops::Capture) {
         let outcome = if capture.refused.is_some() {
@@ -515,7 +587,7 @@ impl JevJudge {
                 "refused": captures.iter().filter(|c| c.refused.is_some()).count(),
             })),
         );
-        let outputs: Vec<Probe> = captures
+        let mut outputs: Vec<Probe> = captures
             .iter()
             .filter(|capture| capture.refused.is_none() && !capture.output.trim().is_empty())
             .map(|capture| Probe {
@@ -523,6 +595,11 @@ impl JevJudge {
                 output: clip(capture.output.trim(), PROBE_OUTPUT_CHARS),
             })
             .collect();
+        // Code runs the evidence guests when the manifest turns them on;
+        // their outputs face the same keep question as a probe's.
+        if let Some(policy) = self.guests.clone() {
+            outputs.extend(self.run_guests(&policy).await);
+        }
         let invocation = self.recorder.enter(
             Start::new("evidence.probes.selector", evidence::probe_implementation())
                 .named("probe keep question")

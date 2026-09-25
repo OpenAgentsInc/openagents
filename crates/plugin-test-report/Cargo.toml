@@ -1,0 +1,17 @@
+[package]
+name = "plugin-test-report"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Test-report guest: failing tests and their locations from JUnit XML, cargo test, or pytest output in a granted snapshot."
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+plugin-pdk = { path = "../plugin-pdk", features = ["guest"] }
+serde_json = "1"
+
+[lints]
+workspace = true

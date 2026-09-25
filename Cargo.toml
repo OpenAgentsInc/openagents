@@ -17,3 +17,15 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
 dbg_macro = "deny"
 todo = "deny"
 unimplemented = "deny"
+
+# The profile `scripts/build-plugin-guests.sh` builds Wasm guests with. The
+# guests are checked in and inlined into `programs/evidence-guests.json`,
+# so size is a review cost. No native build uses it.
+[profile.guest]
+inherits = "release"
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+debug = false
