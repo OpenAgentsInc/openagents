@@ -1,0 +1,46 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "control.finish",
+  "source": {
+    "kind": "synthetic",
+    "issue": 9638,
+    "case": "The same files through a different module aren't a baseline run, so the finish is refused."
+  },
+  "input": {
+    "rule": {
+      "score": [
+        "score.sh"
+      ],
+      "baseline": [
+        "python3 -m drift_monitor data/reference_embeddings.npy data/current_clear_drift.npy data/current_stable.npy data/current_with_zeros.npy"
+      ],
+      "max_refusals": 3
+    },
+    "marks": [
+      {
+        "edit": {
+          "path": "drift_monitor/normalize.py"
+        }
+      },
+      {
+        "ran": {
+          "command": "sh .microluna-eval/score.sh | tail -3",
+          "changed": []
+        }
+      },
+      {
+        "ran": {
+          "command": "python3 -m drift_monitor.cli data/reference_embeddings.npy data/current_clear_drift.npy data/current_stable.npy data/current_with_zeros.npy",
+          "changed": []
+        }
+      }
+    ],
+    "status": "done",
+    "refusals": 0,
+    "root": "/app"
+  },
+  "retained": {
+    "verdict": "refused",
+    "names": "drift_monitor/normalize.py"
+  }
+}

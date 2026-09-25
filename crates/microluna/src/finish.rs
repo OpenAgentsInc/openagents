@@ -20,15 +20,16 @@
 //! - **A score run** is a command that doesn't only read
 //!   ([`crate::tools::reads_only`]) and names one of [`FinishRule::score`],
 //!   such as `score.sh`.
-//! - **A baseline run** is a command that doesn't only read and contains
-//!   one of [`FinishRule::baseline`], spaces collapsed. The host finds the
+//! - **A baseline run** is a command that doesn't only read and runs one
+//!   of [`FinishRule::baseline`]: some piece of it has the same entry point
+//!   and the same set of arguments ([`Invocation`]). The host finds the
 //!   baseline commands (the task's own program, issue #9633); with none,
 //!   only the score is required.
 //!
 //! Issue #9638 and `docs/coder/design/microluna-v18.md`, change 7, record
 //! why.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::time::SystemTime;
 
@@ -77,24 +78,34 @@ impl FinishRule {
         }
     }
 
-    /// What `command` is, as the rule counts it. A command that only reads
-    /// is neither a score nor a baseline run, whatever it names.
+    /// What `command` is, as the rule counts it, with paths compared as
+    /// they're written. A command that only reads is neither a score nor
+    /// a baseline run, whatever it names.
     #[must_use]
     pub fn classify(&self, command: &str) -> Run {
+        self.classify_at(command, None)
+    }
+
+    /// What `command` is, as the rule counts it, run from the workspace
+    /// `root`: a path under `root` equals the same path relative to it.
+    #[must_use]
+    pub fn classify_at(&self, command: &str, root: Option<&str>) -> Run {
         if command.trim().is_empty()
             || crate::tools::reads_only("run_command", &json!({ "command": command }).to_string())
         {
             return Run::Other;
         }
-        let flat = collapse(command);
         let score = self
             .score
             .iter()
             .any(|name| !name.trim().is_empty() && names_to_run(command, name.trim()));
-        let baseline = self
-            .baseline
-            .iter()
-            .any(|base| !base.trim().is_empty() && flat.contains(&collapse(base)));
+        let runs = Invocation::all(command, root);
+        let baseline = !runs.is_empty()
+            && self.baseline.iter().any(|base| {
+                Invocation::all(base, root)
+                    .iter()
+                    .any(|wanted| runs.contains(wanted))
+            });
         match (score, baseline) {
             (true, true) => Run::Both,
             (true, false) => Run::Score,
@@ -102,6 +113,287 @@ impl FinishRule {
             (false, false) => Run::Other,
         }
     }
+}
+
+/// One program a command runs, as the baseline match compares it: the
+/// entry point and the set of arguments that aren't options.
+///
+/// - `python`, `python3`, and `python3.11` are one interpreter, and so are
+///   `sh` and `bash`. An interpreter's entry point is its `-m` module, its
+///   `-c` code, or its script's path; its own options before that are
+///   left out.
+/// - Any other program's entry point is the program itself; for `make`,
+///   the targets are the arguments.
+/// - A path is compared relative to the workspace root, so `/app/data/x`
+///   and `./data/x` both equal `data/x` when the root is `/app`. Argument
+///   order doesn't count, and neither do options, redirections,
+///   environment assignments, or a leading `env`, `time`, `nohup`, `exec`,
+///   or `timeout` wrapper.
+///
+/// A command is split into pieces at `;`, `&&`, `||`, `|`, `&`,
+/// parentheses, and line breaks, and here-document bodies are left out.
+/// The parse approximates the shell deterministically; it isn't a shell.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Invocation {
+    /// The program, with interpreters folded (`python`, `sh`), and what it
+    /// runs: `-m <module>`, `-c <code>`, or a script's path.
+    pub entry: Vec<String>,
+    /// The arguments that aren't options, with paths made relative to the
+    /// root.
+    pub args: BTreeSet<String>,
+}
+
+impl Invocation {
+    /// Every program `command` runs, in order. `cd`, `export`, `set`, and
+    /// `source` run none.
+    #[must_use]
+    pub fn all(command: &str, root: Option<&str>) -> Vec<Invocation> {
+        pieces(command)
+            .iter()
+            .filter_map(|words| Invocation::of(words, root))
+            .collect()
+    }
+
+    fn of(words: &[String], root: Option<&str>) -> Option<Invocation> {
+        let mut rest = words
+            .iter()
+            .map(String::as_str)
+            .skip_while(|w| assignment(w));
+        let mut program = rest.next()?;
+        loop {
+            match program {
+                "env" | "time" | "nohup" | "exec" | "command" => program = rest.next()?,
+                // `timeout [options] duration program`.
+                "timeout" => {
+                    rest.find(|w| !w.starts_with('-'))?;
+                    program = rest.next()?;
+                }
+                _ => break,
+            }
+            while assignment(program) {
+                program = rest.next()?;
+            }
+        }
+        let program = interpreter(&path(program, root));
+        if matches!(program.as_str(), "cd" | "export" | "set" | "source" | ".") {
+            return None;
+        }
+        let rest: Vec<&str> = rest.collect();
+        let mut entry = vec![program.clone()];
+        let mut at = 0;
+        if matches!(program.as_str(), "python" | "sh") {
+            while let Some(word) = rest.get(at).copied() {
+                at += 1;
+                if word == "-m" || word == "-c" {
+                    entry.push(word.to_string());
+                    entry.push((*rest.get(at)?).to_string());
+                    at += 1;
+                    break;
+                }
+                if word.starts_with('-') && word.len() > 1 {
+                    // Options that take a value: Python's `-W` and `-X`,
+                    // the shell's `-o`.
+                    if matches!(
+                        (program.as_str(), word),
+                        ("python", "-W" | "-X") | ("sh", "-o")
+                    ) {
+                        at += 1;
+                    }
+                    continue;
+                }
+                entry.push(path(word, root));
+                break;
+            }
+        }
+        let args = rest
+            .get(at..)
+            .unwrap_or_default()
+            .iter()
+            .filter(|w| !(w.starts_with('-') && w.len() > 1))
+            .map(|w| path(w, root))
+            .collect();
+        Some(Invocation { entry, args })
+    }
+}
+
+/// Whether `word` is an environment assignment, `NAME=value`.
+fn assignment(word: &str) -> bool {
+    word.split_once('=').is_some_and(|(name, _)| {
+        !name.is_empty()
+            && !name.starts_with(|c: char| c.is_ascii_digit())
+            && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+    })
+}
+
+/// A program's name with interpreters folded: `python3.11` and `python3`
+/// are `python`, and `bash` is `sh`. A program named by a path outside the
+/// workspace, such as `/usr/bin/make`, is its file name.
+fn interpreter(program: &str) -> String {
+    let name = program.rsplit('/').next().unwrap_or(program);
+    let python = name
+        .strip_prefix("python")
+        .is_some_and(|v| v.chars().all(|c| c.is_ascii_digit() || c == '.'));
+    if python {
+        "python".to_string()
+    } else if matches!(name, "sh" | "bash" | "dash") {
+        "sh".to_string()
+    } else if program.starts_with('/') {
+        name.to_string()
+    } else {
+        program.to_string()
+    }
+}
+
+/// `word` as a path relative to `root` when it's under it, with `./`
+/// prefixes and trailing slashes dropped.
+fn path(word: &str, root: Option<&str>) -> String {
+    let mut word = word;
+    if let Some(root) = root
+        .map(|r| r.trim_end_matches('/'))
+        .filter(|r| !r.is_empty())
+    {
+        if word.trim_end_matches('/') == root {
+            return ".".to_string();
+        }
+        if let Some(under) = word.strip_prefix(root).and_then(|w| w.strip_prefix('/')) {
+            word = under;
+        }
+    }
+    while let Some(under) = word.strip_prefix("./") {
+        word = under;
+    }
+    match word.trim_end_matches('/') {
+        "" => word.to_string(),
+        trimmed => trimmed.to_string(),
+    }
+}
+
+/// A command's words as the shell reads them so far.
+#[derive(Default)]
+struct Words {
+    pieces: Vec<Vec<String>>,
+    words: Vec<String>,
+    word: String,
+    /// A word has started, so an empty quoted word still counts.
+    started: bool,
+    /// The next word is a redirection's target: `Some(true)` for a
+    /// here-document's delimiter, `Some(false)` for a file.
+    target: Option<bool>,
+    /// Here-document delimiters whose bodies start at the next line.
+    delimiters: Vec<String>,
+}
+
+impl Words {
+    fn end_word(&mut self) {
+        if !self.started {
+            return;
+        }
+        let word = std::mem::take(&mut self.word);
+        match self.target.take() {
+            Some(true) => self.delimiters.push(word),
+            Some(false) => {}
+            None => self.words.push(word),
+        }
+        self.started = false;
+    }
+
+    fn end_piece(&mut self) {
+        self.end_word();
+        if !self.words.is_empty() {
+            self.pieces.push(std::mem::take(&mut self.words));
+        }
+    }
+}
+
+/// `command`'s pieces, each as its words: split at `;`, `&&`, `||`, `|`,
+/// `&`, parentheses, and line breaks outside quotes, with quotes removed,
+/// redirections and their targets dropped, and here-document bodies left
+/// out.
+fn pieces(command: &str) -> Vec<Vec<String>> {
+    let mut s = Words::default();
+    let mut chars = command.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\'' => {
+                s.started = true;
+                s.word.extend(chars.by_ref().take_while(|q| *q != '\''));
+            }
+            '"' => {
+                s.started = true;
+                while let Some(q) = chars.next() {
+                    match q {
+                        '"' => break,
+                        '\\' => s.word.extend(chars.next()),
+                        q => s.word.push(q),
+                    }
+                }
+            }
+            '\\' => match chars.next() {
+                Some('\n') | None => {}
+                Some(e) => {
+                    s.started = true;
+                    s.word.push(e);
+                }
+            },
+            '>' | '<' => {
+                // A descriptor number just before it, as in `2>`, is part
+                // of the redirection.
+                if !s.word.is_empty() && s.word.chars().all(|d| d.is_ascii_digit()) {
+                    s.word.clear();
+                    s.started = false;
+                }
+                s.end_word();
+                let mut heredoc = false;
+                if c == '<' && chars.peek() == Some(&'<') {
+                    chars.next();
+                    if chars.peek() == Some(&'<') {
+                        chars.next();
+                    } else {
+                        heredoc = true;
+                        if chars.peek() == Some(&'-') {
+                            chars.next();
+                        }
+                    }
+                } else if c == '>' && matches!(chars.peek(), Some('>' | '|')) {
+                    chars.next();
+                }
+                if chars.peek() == Some(&'&') {
+                    // `>&2` duplicates a descriptor and names no file.
+                    chars.next();
+                    while chars
+                        .peek()
+                        .is_some_and(|d| d.is_ascii_digit() || *d == '-')
+                    {
+                        chars.next();
+                    }
+                    continue;
+                }
+                s.target = Some(heredoc);
+            }
+            '&' if chars.peek() == Some(&'>') => s.end_word(),
+            ';' | '&' | '|' | '(' | ')' | '\n' => {
+                s.end_piece();
+                if c == '\n' {
+                    // Skip here-document bodies, each to its delimiter.
+                    for delimiter in std::mem::take(&mut s.delimiters) {
+                        while chars.peek().is_some() {
+                            let line: String = chars.by_ref().take_while(|l| *l != '\n').collect();
+                            if line.trim() == delimiter {
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            c if c.is_whitespace() => s.end_word(),
+            c => {
+                s.started = true;
+                s.word.push(c);
+            }
+        }
+    }
+    s.end_piece();
+    s.pieces
 }
 
 /// Whether `command` names `name` other than as a redirection's target, so
@@ -116,10 +408,6 @@ fn names_to_run(command: &str, name: &str) -> bool {
         }
     }
     false
-}
-
-fn collapse(text: &str) -> String {
-    text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 /// What one command counts as.
@@ -152,9 +440,22 @@ pub struct Ledger {
     pub last_score: Option<u64>,
     /// When the session last ran a baseline command.
     pub last_baseline: Option<u64>,
+    /// The workspace root commands run from, which a baseline match
+    /// compares paths against ([`FinishRule::classify_at`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub root: Option<String>,
 }
 
 impl Ledger {
+    /// An empty ledger for commands run from `root`.
+    #[must_use]
+    pub fn rooted(root: &Path) -> Self {
+        Ledger {
+            root: Some(root.display().to_string()),
+            ..Ledger::default()
+        }
+    }
+
     /// Notes an edit to `path`.
     pub fn edited(&mut self, path: &str) {
         self.at += 1;
@@ -166,7 +467,7 @@ impl Ledger {
     /// the command completed. A score or baseline run's changes are its
     /// outputs and aren't edits.
     pub fn ran(&mut self, rule: &FinishRule, command: &str, changed: &[String]) -> Run {
-        let run = rule.classify(command);
+        let run = rule.classify_at(command, self.root.as_deref());
         self.ran_as(run, changed);
         run
     }
@@ -351,6 +652,99 @@ mod tests {
             rule.classify("python3 -m monitor --input data.csv; sh score.sh"),
             Run::Both
         );
+    }
+
+    const DRIFT: &str = "python3 -m drift_monitor data/reference_embeddings.npy \
+                         data/current_clear_drift.npy data/current_stable.npy \
+                         data/current_with_zeros.npy";
+
+    #[test]
+    fn reordered_arguments_match() {
+        let rule = rule(&[DRIFT]);
+        assert_eq!(
+            rule.classify(
+                "python3 -m drift_monitor data/reference_embeddings.npy data/current_stable.npy \
+                 data/current_with_zeros.npy data/current_clear_drift.npy; echo exit=$?"
+            ),
+            Run::Baseline
+        );
+    }
+
+    #[test]
+    fn app_paths_and_python_match_under_the_root() {
+        let rule = rule(&[DRIFT]);
+        let command = "pwd; ls -la; python -m drift_monitor /app/data/reference_embeddings.npy \
+                       /app/data/current_stable.npy /app/data/current_clear_drift.npy \
+                       ./data/current_with_zeros.npy >/tmp/out.json 2>&1";
+        assert_eq!(rule.classify_at(command, Some("/app")), Run::Baseline);
+        assert_eq!(rule.classify_at(command, Some("/app/")), Run::Baseline);
+        // Without the root, `/app/data/x` isn't `data/x`.
+        assert_eq!(rule.classify(command), Run::Other);
+        // Another root isn't this one.
+        assert_eq!(rule.classify_at(command, Some("/work")), Run::Other);
+    }
+
+    #[test]
+    fn a_different_file_set_does_not_match() {
+        let rule = rule(&[DRIFT]);
+        // The stable window three times: the same entry point, fewer files.
+        let command = "python -m drift_monitor /app/data/reference_embeddings.npy \
+                       /app/data/current_stable.npy /app/data/current_stable.npy \
+                       /app/data/current_stable.npy; true";
+        assert_eq!(rule.classify_at(command, Some("/app")), Run::Other);
+        let fewer =
+            "python3 -m drift_monitor data/reference_embeddings.npy data/current_stable.npy";
+        assert_eq!(rule.classify_at(fewer, Some("/app")), Run::Other);
+        let more = format!("{DRIFT} data/extra.npy");
+        assert_eq!(rule.classify_at(&more, Some("/app")), Run::Other);
+    }
+
+    #[test]
+    fn a_different_module_does_not_match() {
+        let rule = rule(&[DRIFT]);
+        let command = DRIFT.replace("-m drift_monitor", "-m drift_monitor.cli");
+        assert_eq!(rule.classify_at(&command, Some("/app")), Run::Other);
+        let script = DRIFT.replace("-m drift_monitor", "drift_monitor/__main__.py");
+        assert_eq!(rule.classify_at(&script, Some("/app")), Run::Other);
+        assert_eq!(
+            rule.classify_at("python3 -m compileall -q drift_monitor", Some("/app")),
+            Run::Other
+        );
+    }
+
+    #[test]
+    fn a_here_document_body_is_not_a_run() {
+        let rule = rule(&[DRIFT]);
+        let body = format!("cat > /tmp/run.sh <<'SH'\n{DRIFT}\nSH\nsh /tmp/check.sh");
+        assert_eq!(rule.classify_at(&body, Some("/app")), Run::Other);
+        let after = format!("python3 - <<'PY'\nprint(1)\nPY\n{DRIFT} 2>/dev/null");
+        assert_eq!(rule.classify_at(&after, Some("/app")), Run::Baseline);
+    }
+
+    #[test]
+    fn entry_points_fold_interpreters_and_wrappers() {
+        let root = Some("/app");
+        let base = Invocation::all("python3 run.py --out out.csv in.csv", root);
+        for same in [
+            "python3.11 /app/run.py in.csv --out out.csv",
+            "PYTHONPATH=. timeout 60 python -u ./run.py in.csv --out=x --out out.csv",
+            "cd /app && env FOO=1 python3 run.py out.csv in.csv | tail -5",
+        ] {
+            assert!(Invocation::all(same, root).contains(&base[0]), "{same}");
+        }
+        assert_eq!(
+            Invocation::all("make test", root),
+            Invocation::all("/usr/bin/make test", root)
+        );
+        assert_ne!(
+            Invocation::all("make test", root),
+            Invocation::all("make check", root)
+        );
+        assert_eq!(
+            Invocation::all("bash ./scripts/run.sh a", root),
+            Invocation::all("sh /app/scripts/run.sh a", root)
+        );
+        assert!(Invocation::all("cd /app; export X=1", root).is_empty());
     }
 
     #[test]

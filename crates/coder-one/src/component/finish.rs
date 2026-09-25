@@ -12,8 +12,9 @@
 //! the session's history up to that point. Two populations, two rules:
 //!
 //! - **Microluna** sessions ran the lean loop, whose evaluation script is
-//!   `score.sh`: the rule as it ships, with no baseline commands, since
-//!   none are found yet (issue #9633).
+//!   `score.sh`: the rule as it ships. With `--baselines`, a session on a
+//!   task with baseline commands (issue #9633) is held to them too, run
+//!   from [`CONTAINER_ROOT`].
 //! - **Luna in Codex** sessions had no host score. The replay uses a
 //!   proxy: any command that runs code ([`runs_code`]) counts as the score
 //!   run. Reading, writing a file through a here-document, and moving
@@ -78,12 +79,19 @@ pub struct FinishInput {
     /// Refusals earlier in the session.
     #[serde(default)]
     pub refusals: u32,
+    /// The workspace root the commands ran from, such as `/app`, which a
+    /// baseline match compares paths against.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub root: Option<String>,
 }
 
-/// Folds `marks` into a ledger under `rule`.
+/// Folds `marks` into a ledger under `rule`, for commands run from `root`.
 #[must_use]
-pub fn ledger(rule: &FinishRule, marks: &[Mark]) -> Ledger {
-    let mut ledger = Ledger::default();
+pub fn ledger(rule: &FinishRule, marks: &[Mark], root: Option<&str>) -> Ledger {
+    let mut ledger = Ledger {
+        root: root.map(str::to_string),
+        ..Ledger::default()
+    };
     for mark in marks {
         match mark {
             Mark::Edit { path } => ledger.edited(path),
@@ -110,11 +118,12 @@ pub fn word(verdict: &Verdict) -> &'static str {
 pub fn implementation() -> Implementation {
     Implementation::new(
         COMPONENT,
-        "finish-rule-v1",
+        "finish-rule-v2",
         &json!({
             "max_refusals": microluna::finish::MAX_REFUSALS,
             "listing_max": microluna::finish::LISTING_MAX,
             "score": crate::micro::lean::SCORE_NAME,
+            "baseline_match": "entry point and argument set",
         }),
     )
 }
@@ -140,7 +149,7 @@ impl Component for FinishComponent {
     ) -> LocalBoxFuture<'a, Result<Ran, String>> {
         Box::pin(async move {
             let input: FinishInput = input(fixture)?;
-            let ledger = ledger(&input.rule, &input.marks);
+            let ledger = ledger(&input.rule, &input.marks, input.root.as_deref());
             let verdict =
                 microluna::finish::verdict(&ledger, &input.rule, input.status, input.refusals);
             let text = match &verdict {
@@ -424,13 +433,25 @@ pub struct Row {
     pub last_edit: Option<String>,
     pub edits: usize,
     pub score_runs: usize,
+    /// Commands that ran a baseline command, with `--baselines`.
+    #[serde(default)]
+    pub baseline_runs: usize,
     /// The verifier's reward for the trial, when known.
     pub reward: Option<f64>,
 }
 
-fn judge(session: &Session, rule: &FinishRule, base: &Row, rows: &mut Vec<Row>) {
-    let mut ledger = Ledger::default();
-    let (mut edits, mut scores, mut finishes) = (0, 0, 0);
+fn judge(
+    session: &Session,
+    rule: &FinishRule,
+    root: Option<&str>,
+    base: &Row,
+    rows: &mut Vec<Row>,
+) {
+    let mut ledger = Ledger {
+        root: root.map(str::to_string),
+        ..Ledger::default()
+    };
+    let (mut edits, mut scores, mut baselines, mut finishes) = (0, 0, 0, 0);
     for item in &session.items {
         match item {
             Item::Mark(Mark::Edit { path }) => {
@@ -438,8 +459,12 @@ fn judge(session: &Session, rule: &FinishRule, base: &Row, rows: &mut Vec<Row>) 
                 ledger.edited(path);
             }
             Item::Mark(Mark::Ran { command, changed }) => {
-                if ledger.ran(rule, command, changed) != Run::Other {
+                let run = ledger.ran(rule, command, changed);
+                if run != Run::Other {
                     scores += 1;
+                }
+                if matches!(run, Run::Baseline | Run::Both) {
+                    baselines += 1;
                 }
             }
             Item::Classified(run) => {
@@ -458,6 +483,7 @@ fn judge(session: &Session, rule: &FinishRule, base: &Row, rows: &mut Vec<Row>) 
                     last_edit: ledger.last_edit.as_ref().map(|(_, p)| p.clone()),
                     edits,
                     score_runs: scores,
+                    baseline_runs: baselines,
                     ..base.clone()
                 });
             }
@@ -513,9 +539,47 @@ pub struct Sources {
     pub luna_without_stream: Vec<String>,
 }
 
-/// Judges every `done` finish under `roots`.
+/// The workspace root of the retained Microluna sessions, which ran in the
+/// task's container.
+pub const CONTAINER_ROOT: &str = "/app";
+
+/// The baseline commands by task in a baseline measurement's records
+/// (`tasks.<task>.commands`, as `evidence.baseline`'s offline measurement
+/// writes them).
+///
+/// # Errors
+///
+/// Returns a message when the file can't be read or parsed.
+pub fn read_baselines(path: &Path) -> Result<BTreeMap<String, Vec<String>>, String> {
+    let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let records: Value =
+        serde_json::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?;
+    Ok(records["tasks"]
+        .as_object()
+        .into_iter()
+        .flatten()
+        .map(|(task, record)| {
+            let commands = record["commands"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect();
+            (task.clone(), commands)
+        })
+        .collect())
+}
+
+/// Judges every `done` finish under `roots`. A Microluna session on a task
+/// in `baselines` is held to that task's baseline commands too, run from
+/// [`CONTAINER_ROOT`].
 #[must_use]
-pub fn replay(roots: &[PathBuf], excluded_tasks: &[String]) -> (Vec<Row>, Sources) {
+pub fn replay(
+    roots: &[PathBuf],
+    excluded_tasks: &[String],
+    baselines: &BTreeMap<String, Vec<String>>,
+) -> (Vec<Row>, Sources) {
     let microluna_rule = FinishRule::score(&[crate::micro::lean::SCORE_NAME]);
     let mut rows = Vec::new();
     let mut sources = Sources {
@@ -557,6 +621,7 @@ pub fn replay(roots: &[PathBuf], excluded_tasks: &[String]) -> (Vec<Row>, Source
                 last_edit: None,
                 edits: 0,
                 score_runs: 0,
+                baseline_runs: 0,
                 reward: reward(&episode),
             };
             let mut files: Vec<PathBuf> = std::fs::read_dir(episode.join("artifacts"))
@@ -578,7 +643,20 @@ pub fn replay(roots: &[PathBuf], excluded_tasks: &[String]) -> (Vec<Row>, Source
                         session: name.trim_end_matches(".atif.jsonl").to_string(),
                         ..base.clone()
                     };
-                    judge(&microluna_session(&text), &microluna_rule, &base, &mut rows);
+                    let rule = match baselines.get(&base.task) {
+                        Some(commands) if !commands.is_empty() => FinishRule {
+                            baseline: commands.clone(),
+                            ..microluna_rule.clone()
+                        },
+                        _ => microluna_rule.clone(),
+                    };
+                    judge(
+                        &microluna_session(&text),
+                        &rule,
+                        Some(CONTAINER_ROOT),
+                        &base,
+                        &mut rows,
+                    );
                 }
             }
             if !arm.contains("luna") || arm.contains("microluna") {
@@ -622,6 +700,7 @@ pub fn replay(roots: &[PathBuf], excluded_tasks: &[String]) -> (Vec<Row>, Source
                 judge(
                     &codex_session(&text, false),
                     &microluna_rule,
+                    None,
                     &base,
                     &mut strict,
                 );
@@ -629,6 +708,7 @@ pub fn replay(roots: &[PathBuf], excluded_tasks: &[String]) -> (Vec<Row>, Source
                 judge(
                     &codex_session(&text, true),
                     &microluna_rule,
+                    None,
                     &base,
                     &mut loose,
                 );
@@ -760,6 +840,64 @@ pub fn summary(rows: &[Row], sources: &Sources) -> Value {
 mod tests {
     use super::*;
 
+    /// The 13 retained `embedding-drift-monitor` commands the #9633
+    /// measurement counted as the same run as the baseline: the baseline
+    /// match finds 12. The 13th passes the stable window three times; the
+    /// measurement counted it because a here-document before it names
+    /// every data file.
+    #[test]
+    fn the_retained_same_run_commands_match_the_baseline() {
+        let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let records = repo.join("bench/terminal-bench/experiments/2026-09-25-baseline/records");
+        let Ok(text) = std::fs::read_to_string(records.join("measure.json")) else {
+            return;
+        };
+        let measure: Value = serde_json::from_str(&text).unwrap();
+        let task = "embedding-drift-monitor";
+        let rule = FinishRule {
+            baseline: read_baselines(&records.join("measure.json")).unwrap()[task].clone(),
+            ..FinishRule::score(&["score.sh"])
+        };
+        let (mut same, mut matched, mut missed) = (0, 0, Vec::new());
+        for log in measure["logs"].as_array().unwrap() {
+            let Ok(text) = std::fs::read_to_string(repo.join(log["log"].as_str().unwrap())) else {
+                return;
+            };
+            let commands: Vec<String> = text
+                .lines()
+                .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+                .filter(|r| r["step"]["call"]["name"] == "run_command")
+                .filter_map(|r| {
+                    r["step"]["call"]["arguments"]["command"]
+                        .as_str()
+                        .map(str::to_string)
+                })
+                .collect();
+            for row in log["rows"].as_array().unwrap() {
+                if !row["rules"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|r| r == "same_run")
+                {
+                    continue;
+                }
+                let head = row["command"].as_str().unwrap();
+                let command = commands.iter().find(|c| c.starts_with(head)).unwrap();
+                same += 1;
+                match rule.classify_at(command, Some(CONTAINER_ROOT)) {
+                    Run::Baseline | Run::Both => matched += 1,
+                    _ => missed.push(command.clone()),
+                }
+            }
+        }
+        assert_eq!((same, matched), (13, 12), "{missed:#?}");
+        assert!(missed[0].contains(
+            "/app/data/current_stable.npy /app/data/current_stable.npy \
+             /app/data/current_stable.npy"
+        ));
+    }
+
     #[test]
     fn replay_excludes_declared_tasks_before_reading_their_logs() {
         let root = tempfile::tempdir().unwrap();
@@ -776,11 +914,11 @@ mod tests {
             std::fs::write(artifacts.join("microluna-1.atif.jsonl"), "\n").unwrap();
         }
         let roots = [root.path().to_path_buf()];
-        let (_, all) = replay(&roots, &[]);
+        let (_, all) = replay(&roots, &[], &BTreeMap::new());
         assert_eq!(all.microluna_logs, 2);
         assert_eq!(all.excluded_truth, 1);
         let excluded = vec!["reserved-fixture".to_string()];
-        let (_, filtered) = replay(&roots, &excluded);
+        let (_, filtered) = replay(&roots, &excluded, &BTreeMap::new());
         assert_eq!(filtered.microluna_logs, 1);
         assert_eq!(filtered.excluded_sealed, 1);
         assert_eq!(filtered.excluded_truth, 1);
@@ -805,6 +943,7 @@ mod tests {
         judge(
             &session,
             &FinishRule::score(&["score.sh"]),
+            None,
             &Row {
                 schema: ROW_SCHEMA.to_string(),
                 family: "luna-codex".to_string(),
@@ -819,6 +958,7 @@ mod tests {
                 last_edit: None,
                 edits: 0,
                 score_runs: 0,
+                baseline_runs: 0,
                 reward: None,
             },
             &mut rows,
