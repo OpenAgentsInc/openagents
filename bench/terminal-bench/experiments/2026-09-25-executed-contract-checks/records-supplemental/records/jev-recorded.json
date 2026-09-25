@@ -1,0 +1,19 @@
+{
+  "schema": "openagents.coder-one.jev-recorded.v1",
+  "entries": {
+    "78ee5e54a56b98480eddb311c1c670ad083ba2edc4af930047611b0af6586c08": {
+      "name": "jev_contract_span",
+      "model": "jev-1.13.0",
+      "answers": {
+        "q1": {
+          "type": "noul",
+          "noul": 0.94
+        }
+      },
+      "input_tokens": 899,
+      "output_tokens": 21,
+      "milliseconds": 378,
+      "source": "checks contract: pretrain-shard-corruption"
+    }
+  }
+}

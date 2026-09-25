@@ -1,0 +1,56 @@
+{
+  "schema": "openagents.contract-supplement-replay.v1",
+  "new_model_calls": 0,
+  "compared_fields": [
+    "candidate identity",
+    "item identity",
+    "item kind",
+    "item outcome",
+    "call",
+    "score",
+    "restoration error"
+  ],
+  "tasks": [
+    {
+      "task": "distributed-dedup",
+      "candidates": 2,
+      "same": true
+    },
+    {
+      "task": "formal-crypto",
+      "candidates": 2,
+      "same": true
+    },
+    {
+      "task": "freecad-impeller",
+      "candidates": 2,
+      "same": true
+    },
+    {
+      "task": "freecad-spring-clip",
+      "candidates": 2,
+      "same": true
+    },
+    {
+      "task": "math-eval-grader",
+      "candidates": 2,
+      "same": true
+    },
+    {
+      "task": "pretrain-shard-corruption",
+      "candidates": 2,
+      "same": true
+    },
+    {
+      "task": "shadow-relay",
+      "candidates": 2,
+      "same": true
+    },
+    {
+      "task": "vpp-loss-divergence",
+      "candidates": 2,
+      "same": true
+    }
+  ],
+  "identical_candidates": 16
+}

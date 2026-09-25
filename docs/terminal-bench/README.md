@@ -4,6 +4,13 @@ Updated on 2026-09-25 with the completed archive confirmation. This page summari
 
 ## Latest status
 
+**Executed-contract measurement is complete (#9628).** The
+[sixteen-candidate supplement](2026-09-25-executed-contract-supplement.md)
+replays the previously excluded eight tasks. Two missing-output detections are
+useful; two more failure calls come from distributed startup in the replay
+environment. Three of six pass calls are wrong. All 16 outcomes reproduce, and
+the component remains outside runtime policies.
+
 **Literal artifact checks catch three failures with three calls and no model
 tokens.** The median replay takes 0.747 seconds per candidate. Combining these
 checks with the earlier detector catches 7/11 failures at 7/10 precision on the
@@ -326,7 +333,7 @@ still need the quota audit. See [harness validation](tb4-results.md#harness-vali
 | [Microluna against Luna-in-Codex](2026-09-24-microluna.md) | Coder One's in-process Luna executor and its mini-handoff loop against Luna in the Codex CLI: four mini-tasks with passes, cost, time, and sessions per task; three TB4 tasks matched to #9583; the CRLF grader mismatch behind every `log-severity` failure; a worked handoff trace; and the two fixes the runs drove. |
 | [Task anatomy for the Microluna overnight effort](2026-09-24-task-anatomy.md) | 18 TB4 tasks taken apart for acceptance suites: what each verifier tests, the decisive facts with their sources, why Fable 5.1 fails, what our passing runs did differently, candidate tests that are red on the untouched workspace, and a feasibility ranking for Luna plus Microluna, with a [JSON companion](2026-09-24-task-anatomy.json). |
 | [Strategy fingerprints, Fable against Luna and Coder One](2026-09-24-strategy-fingerprints.md) | Every step of 505 trajectories on the Luna baseline subset placed in a phase, per-trajectory fingerprints, a worked Fable-against-Luna example, the candidate moves ranked with task counts, effect sizes, and run and step citations, what didn't separate winners from losers, and the Jev cost. |
-| [Executed contract checks](2026-09-25-executed-contract-checks.md) | The task's own commands, examples, output paths, and formats, extracted and compared by code on 163 retained workspaces split by task: per-kind agreement with the verifier, within-task discrimination, what went wrong, and a no-model replay. Negative: honest when it speaks, rarely speaks, never separates a task's candidates. |
+| [Executed contract checks](2026-09-25-executed-contract-checks.md) | Original 163-workspace study plus the [16-candidate completion](2026-09-25-executed-contract-supplement.md): per-kind agreement, within-task discrimination, environment failures, and replay. Narrow missing-output evidence; matched checks do not establish completion. No policy admission. |
 | [Candidate-review validation](2026-09-25-candidate-review-validation.md) | Frozen source/report unions, rejected executable checks, prospective cohort, and reproducible component records. |
 | [Truthful checks: Microluna evidence and corroboration](2026-09-25-truthful-checks-microluna.md) | Selected-candidate and read-only-review attribution, 18 Microluna trials, frozen corroboration comparison, task-cluster uncertainty, and reproducible retained responses. |
 | [Truthful checks, calibrated against graded runs](2026-09-24-truthful-checks.md) | The 317-trial label set split by task, every check signal's fail precision, failure recall, and pass rate with Wilson intervals, the combined verdict's held-out numbers against today's checks, the signals it drops, and what labeled data would close the issue. |

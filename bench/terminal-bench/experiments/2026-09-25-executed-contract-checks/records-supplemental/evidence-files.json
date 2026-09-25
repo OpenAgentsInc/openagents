@@ -1,0 +1,480 @@
+{
+  "schema": "openagents.contract-supplement-evidence.v1",
+  "files": [
+    {
+      "path": "records-supplemental/component-source-diff.patch",
+      "bytes": 6152,
+      "sha256": "1b2aeff57ce8933196599660a5e852520521ddfd541ee7797fe80d4e11e7400c"
+    },
+    {
+      "path": "records-supplemental/distributed-dedup.log",
+      "bytes": 183,
+      "sha256": "2f211ce91cdb6666c1d2ffa334cd5c099a60ccb2f8324cc4e39aa5de8345c6bf"
+    },
+    {
+      "path": "records-supplemental/distributed-dedup.process.json",
+      "bytes": 839,
+      "sha256": "8698da4e2fd05544981b2de8ba065b88f6240b295bc35a0a562a8fd21e6927a4"
+    },
+    {
+      "path": "records-supplemental/formal-crypto.log",
+      "bytes": 226,
+      "sha256": "975437572157acbc8f1a6c751c287506d69e8840d820decb0de6a84f8683f9fa"
+    },
+    {
+      "path": "records-supplemental/formal-crypto.process.json",
+      "bytes": 827,
+      "sha256": "ffaf416a238cc73920e991129c93f79b6fd4b6ad20157b89e5b4cdf53c6eaaa6"
+    },
+    {
+      "path": "records-supplemental/freecad-impeller.log",
+      "bytes": 180,
+      "sha256": "b97d2f8068bd389b2cbd3af7a37f310f23ede20f58497e0fcabfb6f2e92d2e9c"
+    },
+    {
+      "path": "records-supplemental/freecad-impeller.process.json",
+      "bytes": 836,
+      "sha256": "bddf7a0e3eddd54b92a96b096b45502ef77690bec7747179a742c5ef26be4627"
+    },
+    {
+      "path": "records-supplemental/freecad-spring-clip.log",
+      "bytes": 189,
+      "sha256": "e30e2d8c27b1be59b681bbfd8a5db5cf6c6cf61f5340ec4d5728797e647bb772"
+    },
+    {
+      "path": "records-supplemental/freecad-spring-clip.process.json",
+      "bytes": 845,
+      "sha256": "9b5b45bac0e4415060842d654b7c973630ef32d46e5c359eb362125de8c016a4"
+    },
+    {
+      "path": "records-supplemental/inputs.json",
+      "bytes": 714712,
+      "sha256": "efe1404f27c968b338a6de611917239080243a353c659ca3562d1fc9c2e18b80"
+    },
+    {
+      "path": "records-supplemental/math-eval-grader.log",
+      "bytes": 329,
+      "sha256": "170d96e7637f7ba453c89459eb78a11026367d76a5151273b94bc53f36f67437"
+    },
+    {
+      "path": "records-supplemental/math-eval-grader.process.json",
+      "bytes": 836,
+      "sha256": "d92c8cc6198dafab0e26a768a661a8746ea4d23b5f680207b02ba743f61d6d13"
+    },
+    {
+      "path": "records-supplemental/pretrain-diagnostic/pretrain-shard-corruption__DwSw56Y.json",
+      "bytes": 375,
+      "sha256": "95d2aeda37d451a27b4eb1f0271273bf35025ece1a2284fdd6afb1517dd7205a"
+    },
+    {
+      "path": "records-supplemental/pretrain-diagnostic/pretrain-shard-corruption__DwSw56Y.log",
+      "bytes": 19335,
+      "sha256": "f143410725cb987cbbb478c14b40cd8b0ef2ef66c51cf305a163dccf14d3b007"
+    },
+    {
+      "path": "records-supplemental/pretrain-diagnostic/pretrain-shard-corruption__ZeirVXN.json",
+      "bytes": 375,
+      "sha256": "79b4ae94537bb9c6bdb00a1ba971c53f81667a48b47ad74caf2b77ab401446ee"
+    },
+    {
+      "path": "records-supplemental/pretrain-diagnostic/pretrain-shard-corruption__ZeirVXN.log",
+      "bytes": 19335,
+      "sha256": "8d54bc985c2d831d6b83230fd1cb8fbb1dc4ed9019f879c90631a46aad50a26f"
+    },
+    {
+      "path": "records-supplemental/pretrain-diagnostic/untouched.json",
+      "bytes": 350,
+      "sha256": "2f1bf12ebf47abbd9cbd632209999245c95b85befba24a6b0ca22d8b53113c1b"
+    },
+    {
+      "path": "records-supplemental/pretrain-diagnostic/untouched.log",
+      "bytes": 19335,
+      "sha256": "e47b3ad4e771b8c192f565d6652062483107af9a32d6b5b3595b915829b1e5b8"
+    },
+    {
+      "path": "records-supplemental/pretrain-shard-corruption.log",
+      "bytes": 273,
+      "sha256": "71ba70c437b3ea011fc5661ba3f4001d7a11d821475acfb7b1cc9d1316513ea9"
+    },
+    {
+      "path": "records-supplemental/pretrain-shard-corruption.process.json",
+      "bytes": 863,
+      "sha256": "80c9717a14bd6a089cbd00b74067b0376695cdd4e52d77596aa9991623a48fe3"
+    },
+    {
+      "path": "records-supplemental/records/distributed-dedup/contract.json",
+      "bytes": 1479,
+      "sha256": "5ba3c9eee01ad2469b4886d4eab180ddb0f040d145b8da6c0634b949abdc8e20"
+    },
+    {
+      "path": "records-supplemental/records/distributed-dedup/labels.json",
+      "bytes": 602,
+      "sha256": "273cb98c07a8149cb1045f638653b03c3ba7fff90ab7492871ffb9a3afd53841"
+    },
+    {
+      "path": "records-supplemental/records/distributed-dedup/plan.json",
+      "bytes": 301,
+      "sha256": "fed439974876115a586d7fef4234180f0666d178799396586d10516d41998f37"
+    },
+    {
+      "path": "records-supplemental/records/formal-crypto/contract.json",
+      "bytes": 2201,
+      "sha256": "61eab364ed7708f42828dcc85352fe20db632bd7e0aa1cff63171bf1befaefa0"
+    },
+    {
+      "path": "records-supplemental/records/formal-crypto/labels.json",
+      "bytes": 582,
+      "sha256": "a6e89ac675529b404b91766ef425fcf7efc6f48f0191bed096e9b797f29147ef"
+    },
+    {
+      "path": "records-supplemental/records/formal-crypto/plan.json",
+      "bytes": 790,
+      "sha256": "0dcad016e4b4b03a079a126303a6a135ba5ead8d8ebe0bf5a5857ba8e6312780"
+    },
+    {
+      "path": "records-supplemental/records/freecad-impeller/contract.json",
+      "bytes": 1470,
+      "sha256": "c9292a5a5b1ea4aed7565ae91845878be1c7d87f0c4445d67f099eac616a19cc"
+    },
+    {
+      "path": "records-supplemental/records/freecad-impeller/labels.json",
+      "bytes": 599,
+      "sha256": "364383ffc85373b9552b0d4598656bc051eedd232f1b72e779c8408643369aea"
+    },
+    {
+      "path": "records-supplemental/records/freecad-impeller/plan.json",
+      "bytes": 300,
+      "sha256": "1d0e149a5732406fc57d3c84444d5cabdff368039ab0755a1fdb8364e643a811"
+    },
+    {
+      "path": "records-supplemental/records/freecad-spring-clip/contract.json",
+      "bytes": 1497,
+      "sha256": "3ead847f5b7c776a67efa4530e790f894ea377a409bfe5329695d398200e9128"
+    },
+    {
+      "path": "records-supplemental/records/freecad-spring-clip/labels.json",
+      "bytes": 614,
+      "sha256": "7d079c178ddfd0910d4816018f31b295a34492d89cb6df8addf3e7394454202a"
+    },
+    {
+      "path": "records-supplemental/records/freecad-spring-clip/plan.json",
+      "bytes": 303,
+      "sha256": "a18c79a5844b858121bec4265d2c67dcdac460041d896b89427b518c63fbc45c"
+    },
+    {
+      "path": "records-supplemental/records/jev-recorded.json",
+      "bytes": 464,
+      "sha256": "fa38f23699ae704262b158e3c215236107d38873c5ea45a70d741b455c8b261f"
+    },
+    {
+      "path": "records-supplemental/records/math-eval-grader/contract.json",
+      "bytes": 4157,
+      "sha256": "3821153fe8e9266203514df9341c14be8df834f2a105845b5bf888d3b8349f1f"
+    },
+    {
+      "path": "records-supplemental/records/math-eval-grader/labels.json",
+      "bytes": 597,
+      "sha256": "940c57e4f7d52daf24b6303a79b55d7b092e42821783b87bf9f4888b1475e3cd"
+    },
+    {
+      "path": "records-supplemental/records/math-eval-grader/plan.json",
+      "bytes": 1971,
+      "sha256": "974d2cbf79ed05c851ccf6cd4725a8667662efe82652682fb69a4286a3e06682"
+    },
+    {
+      "path": "records-supplemental/records/pretrain-shard-corruption/contract.json",
+      "bytes": 4208,
+      "sha256": "1ce9e5f515551f11ac3d72d915ffb986a95ebddf7b98fe356b8b8da5e1cd299e"
+    },
+    {
+      "path": "records-supplemental/records/pretrain-shard-corruption/labels.json",
+      "bytes": 642,
+      "sha256": "f3eaabeae615c5c8c06199a826e2b57836a114b791e57cdd523a14c04d7ec8ee"
+    },
+    {
+      "path": "records-supplemental/records/pretrain-shard-corruption/plan.json",
+      "bytes": 2049,
+      "sha256": "17e304d6de78a7ac78b3b3181c15414c17d2a528f7ba479733ff138654c9190a"
+    },
+    {
+      "path": "records-supplemental/records/shadow-relay/contract.json",
+      "bytes": 2213,
+      "sha256": "966ad66a8cfe3a688db4d52ee48f40f3a718339276b5924c82cdadb163b1bc20"
+    },
+    {
+      "path": "records-supplemental/records/shadow-relay/labels.json",
+      "bytes": 577,
+      "sha256": "66da0d9307517c316ab6e1b588e0e3c18a5e35418080d3dab080b3984402ae66"
+    },
+    {
+      "path": "records-supplemental/records/shadow-relay/plan.json",
+      "bytes": 709,
+      "sha256": "398e41dfc5e5056dfd02c23ad26974ceeb0be3eea9e5025658f21cd32805a6b8"
+    },
+    {
+      "path": "records-supplemental/records/vpp-loss-divergence/contract.json",
+      "bytes": 2265,
+      "sha256": "78d43808ca19d7f69c80c79b20a4476c57e2860b57c1b92990dc06a72fdb02bb"
+    },
+    {
+      "path": "records-supplemental/records/vpp-loss-divergence/labels.json",
+      "bytes": 612,
+      "sha256": "bdcaf30d35de703b1307bfcda28af7375b604d87ddc5a834a6da955089677d25"
+    },
+    {
+      "path": "records-supplemental/records/vpp-loss-divergence/plan.json",
+      "bytes": 712,
+      "sha256": "cc8e3226d56a09f355a08c13bc8b67a312a6248691f5306a4d4fdca3c24b3de4"
+    },
+    {
+      "path": "records-supplemental/runner-initial.py",
+      "bytes": 5781,
+      "sha256": "11680eb234e7f5199cb5e2d4e9c8cd7d4beb48ed771d56d4d3b8d90f1733b313"
+    },
+    {
+      "path": "records-supplemental/shadow-relay.log",
+      "bytes": 224,
+      "sha256": "d567fc0d513f6497121deb94b3a8282ddff09a48bf394f8f8d7faba17834188b"
+    },
+    {
+      "path": "records-supplemental/shadow-relay.process.json",
+      "bytes": 825,
+      "sha256": "f81074bf17ffffb169bf59c7ee370364fc89d3c1920d699519be67c556125595"
+    },
+    {
+      "path": "records-supplemental/summary.json",
+      "bytes": 62900,
+      "sha256": "a93103c9fb4611bde1aa6b5f39a265c70b339cd934c360d313768008cee54e8a"
+    },
+    {
+      "path": "records-supplemental/unit-tests.txt",
+      "bytes": 860,
+      "sha256": "51413af2c15e7478398e32c0b9d2e327ceeebdde17af0deb80b2f834467a1ff3"
+    },
+    {
+      "path": "records-supplemental/vpp-loss-divergence.log",
+      "bytes": 244,
+      "sha256": "8b1066a97e1d1520a4b5697e901a2446a4d4421724d7c517e3d9f63e947566a2"
+    },
+    {
+      "path": "records-supplemental/vpp-loss-divergence.process.json",
+      "bytes": 844,
+      "sha256": "6d96abf12ab7520cdcfdba7b8d9d2b421add569454e2f68b8f9fe5552f5b5416"
+    },
+    {
+      "path": "records-replay/distributed-dedup.log",
+      "bytes": 183,
+      "sha256": "2f211ce91cdb6666c1d2ffa334cd5c099a60ccb2f8324cc4e39aa5de8345c6bf"
+    },
+    {
+      "path": "records-replay/distributed-dedup.process.json",
+      "bytes": 852,
+      "sha256": "29fb33eaec23ccdc182ea8083797bbdb8b250513fb67096cbfa1cf6cf8b52953"
+    },
+    {
+      "path": "records-replay/formal-crypto.log",
+      "bytes": 226,
+      "sha256": "975437572157acbc8f1a6c751c287506d69e8840d820decb0de6a84f8683f9fa"
+    },
+    {
+      "path": "records-replay/formal-crypto.process.json",
+      "bytes": 840,
+      "sha256": "4ee25ae3c6aa101ad9c90eecbd6a19828f3c7b075de9d34fadb33b3ccbbb01a6"
+    },
+    {
+      "path": "records-replay/freecad-impeller.log",
+      "bytes": 180,
+      "sha256": "b97d2f8068bd389b2cbd3af7a37f310f23ede20f58497e0fcabfb6f2e92d2e9c"
+    },
+    {
+      "path": "records-replay/freecad-impeller.process.json",
+      "bytes": 849,
+      "sha256": "408543dda06faf54492f725524981891787c221b32eda9410e10ecad6fae0b6b"
+    },
+    {
+      "path": "records-replay/freecad-spring-clip.log",
+      "bytes": 189,
+      "sha256": "e30e2d8c27b1be59b681bbfd8a5db5cf6c6cf61f5340ec4d5728797e647bb772"
+    },
+    {
+      "path": "records-replay/freecad-spring-clip.process.json",
+      "bytes": 858,
+      "sha256": "ec901820e1bb3f5a1c3e19551dc55fb5026643096d29e16945d9c0baa56dfc0b"
+    },
+    {
+      "path": "records-replay/inputs.json",
+      "bytes": 714712,
+      "sha256": "24b0d0a0e29a96714d3656ccbf69253cf2938263fa541000da037113722e5136"
+    },
+    {
+      "path": "records-replay/math-eval-grader.log",
+      "bytes": 329,
+      "sha256": "170d96e7637f7ba453c89459eb78a11026367d76a5151273b94bc53f36f67437"
+    },
+    {
+      "path": "records-replay/math-eval-grader.process.json",
+      "bytes": 848,
+      "sha256": "c330d1f85217bb810434fb4c09f7392f038c89de8c75276ab94652eb09e09380"
+    },
+    {
+      "path": "records-replay/pretrain-shard-corruption.log",
+      "bytes": 273,
+      "sha256": "71ba70c437b3ea011fc5661ba3f4001d7a11d821475acfb7b1cc9d1316513ea9"
+    },
+    {
+      "path": "records-replay/pretrain-shard-corruption.process.json",
+      "bytes": 876,
+      "sha256": "6567833dfe71f15aee9d6bfa2442b96b7138dcebb8d8b674187a35b858ba8287"
+    },
+    {
+      "path": "records-replay/records/distributed-dedup/contract.json",
+      "bytes": 1479,
+      "sha256": "5ba3c9eee01ad2469b4886d4eab180ddb0f040d145b8da6c0634b949abdc8e20"
+    },
+    {
+      "path": "records-replay/records/distributed-dedup/labels.json",
+      "bytes": 602,
+      "sha256": "273cb98c07a8149cb1045f638653b03c3ba7fff90ab7492871ffb9a3afd53841"
+    },
+    {
+      "path": "records-replay/records/distributed-dedup/plan.json",
+      "bytes": 301,
+      "sha256": "fed439974876115a586d7fef4234180f0666d178799396586d10516d41998f37"
+    },
+    {
+      "path": "records-replay/records/formal-crypto/contract.json",
+      "bytes": 2201,
+      "sha256": "4c9a3ec49f0ab5c9853b65552b15ab28a10768378b711533b10a49590b6fa37c"
+    },
+    {
+      "path": "records-replay/records/formal-crypto/labels.json",
+      "bytes": 582,
+      "sha256": "a6e89ac675529b404b91766ef425fcf7efc6f48f0191bed096e9b797f29147ef"
+    },
+    {
+      "path": "records-replay/records/formal-crypto/plan.json",
+      "bytes": 790,
+      "sha256": "0dcad016e4b4b03a079a126303a6a135ba5ead8d8ebe0bf5a5857ba8e6312780"
+    },
+    {
+      "path": "records-replay/records/freecad-impeller/contract.json",
+      "bytes": 1470,
+      "sha256": "c9292a5a5b1ea4aed7565ae91845878be1c7d87f0c4445d67f099eac616a19cc"
+    },
+    {
+      "path": "records-replay/records/freecad-impeller/labels.json",
+      "bytes": 599,
+      "sha256": "364383ffc85373b9552b0d4598656bc051eedd232f1b72e779c8408643369aea"
+    },
+    {
+      "path": "records-replay/records/freecad-impeller/plan.json",
+      "bytes": 300,
+      "sha256": "1d0e149a5732406fc57d3c84444d5cabdff368039ab0755a1fdb8364e643a811"
+    },
+    {
+      "path": "records-replay/records/freecad-spring-clip/contract.json",
+      "bytes": 1497,
+      "sha256": "3ead847f5b7c776a67efa4530e790f894ea377a409bfe5329695d398200e9128"
+    },
+    {
+      "path": "records-replay/records/freecad-spring-clip/labels.json",
+      "bytes": 614,
+      "sha256": "7d079c178ddfd0910d4816018f31b295a34492d89cb6df8addf3e7394454202a"
+    },
+    {
+      "path": "records-replay/records/freecad-spring-clip/plan.json",
+      "bytes": 303,
+      "sha256": "a18c79a5844b858121bec4265d2c67dcdac460041d896b89427b518c63fbc45c"
+    },
+    {
+      "path": "records-replay/records/jev-recorded.json",
+      "bytes": 464,
+      "sha256": "fa38f23699ae704262b158e3c215236107d38873c5ea45a70d741b455c8b261f"
+    },
+    {
+      "path": "records-replay/records/math-eval-grader/contract.json",
+      "bytes": 4154,
+      "sha256": "39110091fad586f5cde6bb5f23c460517d5213c6923b5418488013b2e1a11b41"
+    },
+    {
+      "path": "records-replay/records/math-eval-grader/labels.json",
+      "bytes": 597,
+      "sha256": "940c57e4f7d52daf24b6303a79b55d7b092e42821783b87bf9f4888b1475e3cd"
+    },
+    {
+      "path": "records-replay/records/math-eval-grader/plan.json",
+      "bytes": 1971,
+      "sha256": "974d2cbf79ed05c851ccf6cd4725a8667662efe82652682fb69a4286a3e06682"
+    },
+    {
+      "path": "records-replay/records/pretrain-shard-corruption/contract.json",
+      "bytes": 4208,
+      "sha256": "8866d04428d896e8c1e637f131b1632891925940ddeac54e805f9c235d77691a"
+    },
+    {
+      "path": "records-replay/records/pretrain-shard-corruption/labels.json",
+      "bytes": 642,
+      "sha256": "f3eaabeae615c5c8c06199a826e2b57836a114b791e57cdd523a14c04d7ec8ee"
+    },
+    {
+      "path": "records-replay/records/pretrain-shard-corruption/plan.json",
+      "bytes": 2049,
+      "sha256": "17e304d6de78a7ac78b3b3181c15414c17d2a528f7ba479733ff138654c9190a"
+    },
+    {
+      "path": "records-replay/records/shadow-relay/contract.json",
+      "bytes": 2211,
+      "sha256": "0f2c3d575012cf1a6c987ce4696d11959daa6131210fdd1224c0b655033c3c89"
+    },
+    {
+      "path": "records-replay/records/shadow-relay/labels.json",
+      "bytes": 577,
+      "sha256": "66da0d9307517c316ab6e1b588e0e3c18a5e35418080d3dab080b3984402ae66"
+    },
+    {
+      "path": "records-replay/records/shadow-relay/plan.json",
+      "bytes": 709,
+      "sha256": "398e41dfc5e5056dfd02c23ad26974ceeb0be3eea9e5025658f21cd32805a6b8"
+    },
+    {
+      "path": "records-replay/records/vpp-loss-divergence/contract.json",
+      "bytes": 2265,
+      "sha256": "eb8251f58414ff7a14a8b7d80c9322083793e4f15dced9732d79688886a4b3e2"
+    },
+    {
+      "path": "records-replay/records/vpp-loss-divergence/labels.json",
+      "bytes": 612,
+      "sha256": "bdcaf30d35de703b1307bfcda28af7375b604d87ddc5a834a6da955089677d25"
+    },
+    {
+      "path": "records-replay/records/vpp-loss-divergence/plan.json",
+      "bytes": 712,
+      "sha256": "cc8e3226d56a09f355a08c13bc8b67a312a6248691f5306a4d4fdca3c24b3de4"
+    },
+    {
+      "path": "records-replay/reproduction.json",
+      "bytes": 1012,
+      "sha256": "5eb6e8def7c1939fd9d8d64bd88134f79fe58b5a706ddccb18c265ee3fe226b4"
+    },
+    {
+      "path": "records-replay/shadow-relay.log",
+      "bytes": 224,
+      "sha256": "d567fc0d513f6497121deb94b3a8282ddff09a48bf394f8f8d7faba17834188b"
+    },
+    {
+      "path": "records-replay/shadow-relay.process.json",
+      "bytes": 837,
+      "sha256": "9b507dad957069f9629ab71cb4bf80b7284c54afc480dd81d09b7aa8b6d39a75"
+    },
+    {
+      "path": "records-replay/vpp-loss-divergence.log",
+      "bytes": 244,
+      "sha256": "8b1066a97e1d1520a4b5697e901a2446a4d4421724d7c517e3d9f63e947566a2"
+    },
+    {
+      "path": "records-replay/vpp-loss-divergence.process.json",
+      "bytes": 858,
+      "sha256": "7745cf13a23ede32d9bde084e4beb0928bbaace62b69bb005cb798b00a93f6da"
+    }
+  ]
+}

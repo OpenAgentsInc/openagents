@@ -8,6 +8,12 @@ names: every command, example, path, and expected output that a task
 states, extracted by code, run by the host, and compared by code. No model
 judges a candidate.
 
+**Completion update:** the [sixteen-candidate supplement](2026-09-25-executed-contract-supplement.md)
+finishes the eight-task measurement that originally waited for #9584's labels.
+It finds two missing required outputs, two environment-caused command failures,
+and three false pass calls. All 16 outcomes reproduce. The component remains
+outside runtime policies; the original study and split below remain unchanged.
+
 ## Result
 
 **Built, measured, and not useful as a done check or a selector yet.** The

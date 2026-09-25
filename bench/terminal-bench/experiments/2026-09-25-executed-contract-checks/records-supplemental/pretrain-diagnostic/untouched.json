@@ -1,0 +1,16 @@
+{
+  "trial": "untouched",
+  "image": "sha256:60bf7052efc01ed3ac978a5567c5d7a8901273954280427b3823cccc262af3bd",
+  "command": [
+    "docker",
+    "exec",
+    "-w",
+    "/app",
+    "c39545db9eae6ac38bfd06a8f942731d2bd699d5bb80c00ab59ff68e03a4ff82",
+    "sh",
+    "-c",
+    "bash /app/run_pretrain.sh"
+  ],
+  "exit": 1,
+  "seconds": 46.20430932304589
+}

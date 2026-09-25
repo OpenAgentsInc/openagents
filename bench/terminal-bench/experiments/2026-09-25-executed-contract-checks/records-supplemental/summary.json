@@ -1,0 +1,2303 @@
+{
+  "schema": "openagents.contract-supplement-summary.v1",
+  "protocol": "supplemental-protocol.md",
+  "post_label": true,
+  "concordance_bootstrap_note": "Repeated sampled tasks retain their multiplicity. The original helper collapses repeated task names when averaging concordance; its interval is retained separately for comparison.",
+  "measurement_sha256": "0c6a03b196500a547ad9270c927455b80242fa9ccdb736cc15c12f6bdbe9c05a",
+  "inputs_sha256": "efe1404f27c968b338a6de611917239080243a353c659ca3562d1fc9c2e18b80",
+  "population": {
+    "candidates_with_reward": 16,
+    "candidates_without_reward": 0,
+    "errors": 0,
+    "tasks": 8,
+    "per_kind": {
+      "path": {
+        "fail_given_differed": {
+          "k": 2,
+          "n": 2,
+          "value": 1.0,
+          "wilson_95": [
+            0.3424,
+            1.0
+          ],
+          "task_bootstrap_95": {
+            "interval_95": [
+              1.0,
+              1.0
+            ],
+            "undefined": 998
+          }
+        },
+        "pass_given_matched": {
+          "k": 3,
+          "n": 6,
+          "value": 0.5,
+          "wilson_95": [
+            0.1876,
+            0.8124
+          ],
+          "task_bootstrap_95": {
+            "interval_95": [
+              0.2,
+              0.8
+            ],
+            "undefined": 38
+          }
+        },
+        "tasks_differed": 2,
+        "tasks_matched": 4
+      },
+      "format": {
+        "fail_given_differed": {
+          "k": 0,
+          "n": 0,
+          "value": null,
+          "wilson_95": null,
+          "task_bootstrap_95": {
+            "interval_95": null,
+            "undefined": 10000
+          }
+        },
+        "pass_given_matched": {
+          "k": 0,
+          "n": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0.0,
+            0.7935
+          ],
+          "task_bootstrap_95": {
+            "interval_95": [
+              0.0,
+              0.0
+            ],
+            "undefined": 3493
+          }
+        },
+        "tasks_differed": 0,
+        "tasks_matched": 1
+      },
+      "interface": {
+        "fail_given_differed": {
+          "k": 0,
+          "n": 0,
+          "value": null,
+          "wilson_95": null,
+          "task_bootstrap_95": {
+            "interval_95": null,
+            "undefined": 10000
+          }
+        },
+        "pass_given_matched": {
+          "k": 0,
+          "n": 0,
+          "value": null,
+          "wilson_95": null,
+          "task_bootstrap_95": {
+            "interval_95": null,
+            "undefined": 10000
+          }
+        },
+        "tasks_differed": 0,
+        "tasks_matched": 0
+      },
+      "example": {
+        "fail_given_differed": {
+          "k": 0,
+          "n": 0,
+          "value": null,
+          "wilson_95": null,
+          "task_bootstrap_95": {
+            "interval_95": null,
+            "undefined": 10000
+          }
+        },
+        "pass_given_matched": {
+          "k": 0,
+          "n": 0,
+          "value": null,
+          "wilson_95": null,
+          "task_bootstrap_95": {
+            "interval_95": null,
+            "undefined": 10000
+          }
+        },
+        "tasks_differed": 0,
+        "tasks_matched": 0
+      },
+      "exit_code": {
+        "fail_given_differed": {
+          "k": 0,
+          "n": 0,
+          "value": null,
+          "wilson_95": null,
+          "task_bootstrap_95": {
+            "interval_95": null,
+            "undefined": 10000
+          }
+        },
+        "pass_given_matched": {
+          "k": 0,
+          "n": 0,
+          "value": null,
+          "wilson_95": null,
+          "task_bootstrap_95": {
+            "interval_95": null,
+            "undefined": 10000
+          }
+        },
+        "tasks_differed": 0,
+        "tasks_matched": 0
+      },
+      "command": {
+        "fail_given_differed": {
+          "k": 2,
+          "n": 2,
+          "value": 1.0,
+          "wilson_95": [
+            0.3424,
+            1.0
+          ],
+          "task_bootstrap_95": {
+            "interval_95": [
+              1.0,
+              1.0
+            ],
+            "undefined": 3451
+          }
+        },
+        "pass_given_matched": {
+          "k": 0,
+          "n": 0,
+          "value": null,
+          "wilson_95": null,
+          "task_bootstrap_95": {
+            "interval_95": null,
+            "undefined": 10000
+          }
+        },
+        "tasks_differed": 1,
+        "tasks_matched": 0
+      }
+    },
+    "calls": {
+      "candidates": 16,
+      "failures": 12,
+      "passes": 4,
+      "no_call": 6,
+      "fail_precision": {
+        "k": 4,
+        "n": 4,
+        "value": 1.0,
+        "wilson_95": [
+          0.5101,
+          1.0
+        ],
+        "task_bootstrap_95": {
+          "interval_95": [
+            1.0,
+            1.0
+          ],
+          "undefined": 215
+        }
+      },
+      "failure_recall": {
+        "k": 4,
+        "n": 12,
+        "value": 0.3333,
+        "wilson_95": [
+          0.1381,
+          0.6094
+        ]
+      },
+      "pass_precision": {
+        "k": 3,
+        "n": 6,
+        "value": 0.5,
+        "wilson_95": [
+          0.1876,
+          0.8124
+        ],
+        "task_bootstrap_95": {
+          "interval_95": [
+            0.2,
+            0.8
+          ],
+          "undefined": 38
+        }
+      },
+      "pass_recall": {
+        "k": 3,
+        "n": 4,
+        "value": 0.75,
+        "wilson_95": [
+          0.3006,
+          0.9544
+        ]
+      }
+    },
+    "within_task": {
+      "tasks": {
+        "formal-crypto": {
+          "passes": 1,
+          "failures": 1,
+          "pairs": 1,
+          "pairs_with_undefined_score": 0,
+          "concordance": 0.5,
+          "score_varies": false
+        },
+        "freecad-spring-clip": {
+          "passes": 1,
+          "failures": 1,
+          "pairs": 1,
+          "pairs_with_undefined_score": 1,
+          "concordance": 0.5,
+          "score_varies": false
+        },
+        "shadow-relay": {
+          "passes": 1,
+          "failures": 1,
+          "pairs": 1,
+          "pairs_with_undefined_score": 0,
+          "concordance": 1.0,
+          "score_varies": true
+        },
+        "vpp-loss-divergence": {
+          "passes": 1,
+          "failures": 1,
+          "pairs": 1,
+          "pairs_with_undefined_score": 0,
+          "concordance": 0.5,
+          "score_varies": false
+        }
+      },
+      "mean_concordance": 0.625,
+      "task_bootstrap_95": {
+        "interval_95": [
+          0.5,
+          0.875
+        ],
+        "undefined": 41
+      },
+      "tasks_where_score_varies": 1,
+      "legacy_task_bootstrap_95": {
+        "interval_95": [
+          0.5,
+          0.75
+        ],
+        "undefined": 41
+      }
+    }
+  },
+  "complete_case": {
+    "candidates_with_reward": 16,
+    "candidates_without_reward": 0,
+    "errors": 0,
+    "tasks": 8,
+    "per_kind": {
+      "path": {
+        "fail_given_differed": {
+          "k": 2,
+          "n": 2,
+          "value": 1.0,
+          "wilson_95": [
+            0.3424,
+            1.0
+          ],
+          "task_bootstrap_95": {
+            "interval_95": [
+              1.0,
+              1.0
+            ],
+            "undefined": 998
+          }
+        },
+        "pass_given_matched": {
+          "k": 3,
+          "n": 6,
+          "value": 0.5,
+          "wilson_95": [
+            0.1876,
+            0.8124
+          ],
+          "task_bootstrap_95": {
+            "interval_95": [
+              0.2,
+              0.8
+            ],
+            "undefined": 38
+          }
+        },
+        "tasks_differed": 2,
+        "tasks_matched": 4
+      },
+      "format": {
+        "fail_given_differed": {
+          "k": 0,
+          "n": 0,
+          "value": null,
+          "wilson_95": null,
+          "task_bootstrap_95": {
+            "interval_95": null,
+            "undefined": 10000
+          }
+        },
+        "pass_given_matched": {
+          "k": 0,
+          "n": 1,
+          "value": 0.0,
+          "wilson_95": [
+            0.0,
+            0.7935
+          ],
+          "task_bootstrap_95": {
+            "interval_95": [
+              0.0,
+              0.0
+            ],
+            "undefined": 3493
+          }
+        },
+        "tasks_differed": 0,
+        "tasks_matched": 1
+      },
+      "interface": {
+        "fail_given_differed": {
+          "k": 0,
+          "n": 0,
+          "value": null,
+          "wilson_95": null,
+          "task_bootstrap_95": {
+            "interval_95": null,
+            "undefined": 10000
+          }
+        },
+        "pass_given_matched": {
+          "k": 0,
+          "n": 0,
+          "value": null,
+          "wilson_95": null,
+          "task_bootstrap_95": {
+            "interval_95": null,
+            "undefined": 10000
+          }
+        },
+        "tasks_differed": 0,
+        "tasks_matched": 0
+      },
+      "example": {
+        "fail_given_differed": {
+          "k": 0,
+          "n": 0,
+          "value": null,
+          "wilson_95": null,
+          "task_bootstrap_95": {
+            "interval_95": null,
+            "undefined": 10000
+          }
+        },
+        "pass_given_matched": {
+          "k": 0,
+          "n": 0,
+          "value": null,
+          "wilson_95": null,
+          "task_bootstrap_95": {
+            "interval_95": null,
+            "undefined": 10000
+          }
+        },
+        "tasks_differed": 0,
+        "tasks_matched": 0
+      },
+      "exit_code": {
+        "fail_given_differed": {
+          "k": 0,
+          "n": 0,
+          "value": null,
+          "wilson_95": null,
+          "task_bootstrap_95": {
+            "interval_95": null,
+            "undefined": 10000
+          }
+        },
+        "pass_given_matched": {
+          "k": 0,
+          "n": 0,
+          "value": null,
+          "wilson_95": null,
+          "task_bootstrap_95": {
+            "interval_95": null,
+            "undefined": 10000
+          }
+        },
+        "tasks_differed": 0,
+        "tasks_matched": 0
+      },
+      "command": {
+        "fail_given_differed": {
+          "k": 2,
+          "n": 2,
+          "value": 1.0,
+          "wilson_95": [
+            0.3424,
+            1.0
+          ],
+          "task_bootstrap_95": {
+            "interval_95": [
+              1.0,
+              1.0
+            ],
+            "undefined": 3451
+          }
+        },
+        "pass_given_matched": {
+          "k": 0,
+          "n": 0,
+          "value": null,
+          "wilson_95": null,
+          "task_bootstrap_95": {
+            "interval_95": null,
+            "undefined": 10000
+          }
+        },
+        "tasks_differed": 1,
+        "tasks_matched": 0
+      }
+    },
+    "calls": {
+      "candidates": 16,
+      "failures": 12,
+      "passes": 4,
+      "no_call": 6,
+      "fail_precision": {
+        "k": 4,
+        "n": 4,
+        "value": 1.0,
+        "wilson_95": [
+          0.5101,
+          1.0
+        ],
+        "task_bootstrap_95": {
+          "interval_95": [
+            1.0,
+            1.0
+          ],
+          "undefined": 215
+        }
+      },
+      "failure_recall": {
+        "k": 4,
+        "n": 12,
+        "value": 0.3333,
+        "wilson_95": [
+          0.1381,
+          0.6094
+        ]
+      },
+      "pass_precision": {
+        "k": 3,
+        "n": 6,
+        "value": 0.5,
+        "wilson_95": [
+          0.1876,
+          0.8124
+        ],
+        "task_bootstrap_95": {
+          "interval_95": [
+            0.2,
+            0.8
+          ],
+          "undefined": 38
+        }
+      },
+      "pass_recall": {
+        "k": 3,
+        "n": 4,
+        "value": 0.75,
+        "wilson_95": [
+          0.3006,
+          0.9544
+        ]
+      }
+    },
+    "within_task": {
+      "tasks": {
+        "formal-crypto": {
+          "passes": 1,
+          "failures": 1,
+          "pairs": 1,
+          "pairs_with_undefined_score": 0,
+          "concordance": 0.5,
+          "score_varies": false
+        },
+        "freecad-spring-clip": {
+          "passes": 1,
+          "failures": 1,
+          "pairs": 1,
+          "pairs_with_undefined_score": 1,
+          "concordance": 0.5,
+          "score_varies": false
+        },
+        "shadow-relay": {
+          "passes": 1,
+          "failures": 1,
+          "pairs": 1,
+          "pairs_with_undefined_score": 0,
+          "concordance": 1.0,
+          "score_varies": true
+        },
+        "vpp-loss-divergence": {
+          "passes": 1,
+          "failures": 1,
+          "pairs": 1,
+          "pairs_with_undefined_score": 0,
+          "concordance": 0.5,
+          "score_varies": false
+        }
+      },
+      "mean_concordance": 0.625,
+      "task_bootstrap_95": {
+        "interval_95": [
+          0.5,
+          0.75
+        ],
+        "undefined": 41
+      },
+      "tasks_where_score_varies": 1
+    }
+  },
+  "by_executor": {
+    "luna": {
+      "candidates_with_reward": 8,
+      "candidates_without_reward": 0,
+      "errors": 0,
+      "tasks": 8,
+      "per_kind": {
+        "path": {
+          "fail_given_differed": {
+            "k": 1,
+            "n": 1,
+            "value": 1.0,
+            "wilson_95": [
+              0.2065,
+              1.0
+            ],
+            "task_bootstrap_95": {
+              "interval_95": [
+                1.0,
+                1.0
+              ],
+              "undefined": 3391
+            }
+          },
+          "pass_given_matched": {
+            "k": 0,
+            "n": 3,
+            "value": 0.0,
+            "wilson_95": [
+              0.0,
+              0.5615
+            ],
+            "task_bootstrap_95": {
+              "interval_95": [
+                0.0,
+                0.0
+              ],
+              "undefined": 231
+            }
+          },
+          "tasks_differed": 1,
+          "tasks_matched": 3
+        },
+        "format": {
+          "fail_given_differed": {
+            "k": 0,
+            "n": 0,
+            "value": null,
+            "wilson_95": null,
+            "task_bootstrap_95": {
+              "interval_95": null,
+              "undefined": 10000
+            }
+          },
+          "pass_given_matched": {
+            "k": 0,
+            "n": 1,
+            "value": 0.0,
+            "wilson_95": [
+              0.0,
+              0.7935
+            ],
+            "task_bootstrap_95": {
+              "interval_95": [
+                0.0,
+                0.0
+              ],
+              "undefined": 3493
+            }
+          },
+          "tasks_differed": 0,
+          "tasks_matched": 1
+        },
+        "interface": {
+          "fail_given_differed": {
+            "k": 0,
+            "n": 0,
+            "value": null,
+            "wilson_95": null,
+            "task_bootstrap_95": {
+              "interval_95": null,
+              "undefined": 10000
+            }
+          },
+          "pass_given_matched": {
+            "k": 0,
+            "n": 0,
+            "value": null,
+            "wilson_95": null,
+            "task_bootstrap_95": {
+              "interval_95": null,
+              "undefined": 10000
+            }
+          },
+          "tasks_differed": 0,
+          "tasks_matched": 0
+        },
+        "example": {
+          "fail_given_differed": {
+            "k": 0,
+            "n": 0,
+            "value": null,
+            "wilson_95": null,
+            "task_bootstrap_95": {
+              "interval_95": null,
+              "undefined": 10000
+            }
+          },
+          "pass_given_matched": {
+            "k": 0,
+            "n": 0,
+            "value": null,
+            "wilson_95": null,
+            "task_bootstrap_95": {
+              "interval_95": null,
+              "undefined": 10000
+            }
+          },
+          "tasks_differed": 0,
+          "tasks_matched": 0
+        },
+        "exit_code": {
+          "fail_given_differed": {
+            "k": 0,
+            "n": 0,
+            "value": null,
+            "wilson_95": null,
+            "task_bootstrap_95": {
+              "interval_95": null,
+              "undefined": 10000
+            }
+          },
+          "pass_given_matched": {
+            "k": 0,
+            "n": 0,
+            "value": null,
+            "wilson_95": null,
+            "task_bootstrap_95": {
+              "interval_95": null,
+              "undefined": 10000
+            }
+          },
+          "tasks_differed": 0,
+          "tasks_matched": 0
+        },
+        "command": {
+          "fail_given_differed": {
+            "k": 1,
+            "n": 1,
+            "value": 1.0,
+            "wilson_95": [
+              0.2065,
+              1.0
+            ],
+            "task_bootstrap_95": {
+              "interval_95": [
+                1.0,
+                1.0
+              ],
+              "undefined": 3451
+            }
+          },
+          "pass_given_matched": {
+            "k": 0,
+            "n": 0,
+            "value": null,
+            "wilson_95": null,
+            "task_bootstrap_95": {
+              "interval_95": null,
+              "undefined": 10000
+            }
+          },
+          "tasks_differed": 1,
+          "tasks_matched": 0
+        }
+      },
+      "calls": {
+        "candidates": 8,
+        "failures": 8,
+        "passes": 0,
+        "no_call": 3,
+        "fail_precision": {
+          "k": 2,
+          "n": 2,
+          "value": 1.0,
+          "wilson_95": [
+            0.3424,
+            1.0
+          ],
+          "task_bootstrap_95": {
+            "interval_95": [
+              1.0,
+              1.0
+            ],
+            "undefined": 1022
+          }
+        },
+        "failure_recall": {
+          "k": 2,
+          "n": 8,
+          "value": 0.25,
+          "wilson_95": [
+            0.0715,
+            0.5907
+          ]
+        },
+        "pass_precision": {
+          "k": 0,
+          "n": 3,
+          "value": 0.0,
+          "wilson_95": [
+            0.0,
+            0.5615
+          ],
+          "task_bootstrap_95": {
+            "interval_95": [
+              0.0,
+              0.0
+            ],
+            "undefined": 231
+          }
+        },
+        "pass_recall": {
+          "k": 0,
+          "n": 0,
+          "value": null,
+          "wilson_95": null
+        }
+      },
+      "within_task": {
+        "tasks": {},
+        "mean_concordance": null,
+        "task_bootstrap_95": {
+          "interval_95": null,
+          "undefined": 10000
+        },
+        "tasks_where_score_varies": 0,
+        "legacy_task_bootstrap_95": null
+      }
+    },
+    "astra": {
+      "candidates_with_reward": 8,
+      "candidates_without_reward": 0,
+      "errors": 0,
+      "tasks": 8,
+      "per_kind": {
+        "path": {
+          "fail_given_differed": {
+            "k": 1,
+            "n": 1,
+            "value": 1.0,
+            "wilson_95": [
+              0.2065,
+              1.0
+            ],
+            "task_bootstrap_95": {
+              "interval_95": [
+                1.0,
+                1.0
+              ],
+              "undefined": 3493
+            }
+          },
+          "pass_given_matched": {
+            "k": 3,
+            "n": 3,
+            "value": 1.0,
+            "wilson_95": [
+              0.4385,
+              1.0
+            ],
+            "task_bootstrap_95": {
+              "interval_95": [
+                1.0,
+                1.0
+              ],
+              "undefined": 216
+            }
+          },
+          "tasks_differed": 1,
+          "tasks_matched": 3
+        },
+        "format": {
+          "fail_given_differed": {
+            "k": 0,
+            "n": 0,
+            "value": null,
+            "wilson_95": null,
+            "task_bootstrap_95": {
+              "interval_95": null,
+              "undefined": 10000
+            }
+          },
+          "pass_given_matched": {
+            "k": 0,
+            "n": 0,
+            "value": null,
+            "wilson_95": null,
+            "task_bootstrap_95": {
+              "interval_95": null,
+              "undefined": 10000
+            }
+          },
+          "tasks_differed": 0,
+          "tasks_matched": 0
+        },
+        "interface": {
+          "fail_given_differed": {
+            "k": 0,
+            "n": 0,
+            "value": null,
+            "wilson_95": null,
+            "task_bootstrap_95": {
+              "interval_95": null,
+              "undefined": 10000
+            }
+          },
+          "pass_given_matched": {
+            "k": 0,
+            "n": 0,
+            "value": null,
+            "wilson_95": null,
+            "task_bootstrap_95": {
+              "interval_95": null,
+              "undefined": 10000
+            }
+          },
+          "tasks_differed": 0,
+          "tasks_matched": 0
+        },
+        "example": {
+          "fail_given_differed": {
+            "k": 0,
+            "n": 0,
+            "value": null,
+            "wilson_95": null,
+            "task_bootstrap_95": {
+              "interval_95": null,
+              "undefined": 10000
+            }
+          },
+          "pass_given_matched": {
+            "k": 0,
+            "n": 0,
+            "value": null,
+            "wilson_95": null,
+            "task_bootstrap_95": {
+              "interval_95": null,
+              "undefined": 10000
+            }
+          },
+          "tasks_differed": 0,
+          "tasks_matched": 0
+        },
+        "exit_code": {
+          "fail_given_differed": {
+            "k": 0,
+            "n": 0,
+            "value": null,
+            "wilson_95": null,
+            "task_bootstrap_95": {
+              "interval_95": null,
+              "undefined": 10000
+            }
+          },
+          "pass_given_matched": {
+            "k": 0,
+            "n": 0,
+            "value": null,
+            "wilson_95": null,
+            "task_bootstrap_95": {
+              "interval_95": null,
+              "undefined": 10000
+            }
+          },
+          "tasks_differed": 0,
+          "tasks_matched": 0
+        },
+        "command": {
+          "fail_given_differed": {
+            "k": 1,
+            "n": 1,
+            "value": 1.0,
+            "wilson_95": [
+              0.2065,
+              1.0
+            ],
+            "task_bootstrap_95": {
+              "interval_95": [
+                1.0,
+                1.0
+              ],
+              "undefined": 3451
+            }
+          },
+          "pass_given_matched": {
+            "k": 0,
+            "n": 0,
+            "value": null,
+            "wilson_95": null,
+            "task_bootstrap_95": {
+              "interval_95": null,
+              "undefined": 10000
+            }
+          },
+          "tasks_differed": 1,
+          "tasks_matched": 0
+        }
+      },
+      "calls": {
+        "candidates": 8,
+        "failures": 4,
+        "passes": 4,
+        "no_call": 3,
+        "fail_precision": {
+          "k": 2,
+          "n": 2,
+          "value": 1.0,
+          "wilson_95": [
+            0.3424,
+            1.0
+          ],
+          "task_bootstrap_95": {
+            "interval_95": [
+              1.0,
+              1.0
+            ],
+            "undefined": 996
+          }
+        },
+        "failure_recall": {
+          "k": 2,
+          "n": 4,
+          "value": 0.5,
+          "wilson_95": [
+            0.15,
+            0.85
+          ]
+        },
+        "pass_precision": {
+          "k": 3,
+          "n": 3,
+          "value": 1.0,
+          "wilson_95": [
+            0.4385,
+            1.0
+          ],
+          "task_bootstrap_95": {
+            "interval_95": [
+              1.0,
+              1.0
+            ],
+            "undefined": 216
+          }
+        },
+        "pass_recall": {
+          "k": 3,
+          "n": 4,
+          "value": 0.75,
+          "wilson_95": [
+            0.3006,
+            0.9544
+          ]
+        }
+      },
+      "within_task": {
+        "tasks": {},
+        "mean_concordance": null,
+        "task_bootstrap_95": {
+          "interval_95": null,
+          "undefined": 10000
+        },
+        "tasks_where_score_varies": 0,
+        "legacy_task_bootstrap_95": null
+      }
+    }
+  },
+  "by_task": {
+    "distributed-dedup": {
+      "candidates": 2,
+      "failures": 2,
+      "passes": 0,
+      "no_call": 2,
+      "fail_precision": {
+        "k": 0,
+        "n": 0,
+        "value": null,
+        "wilson_95": null
+      },
+      "failure_recall": {
+        "k": 0,
+        "n": 2,
+        "value": 0.0,
+        "wilson_95": [
+          0.0,
+          0.6576
+        ]
+      },
+      "pass_precision": {
+        "k": 0,
+        "n": 0,
+        "value": null,
+        "wilson_95": null
+      },
+      "pass_recall": {
+        "k": 0,
+        "n": 0,
+        "value": null,
+        "wilson_95": null
+      }
+    },
+    "formal-crypto": {
+      "candidates": 2,
+      "failures": 1,
+      "passes": 1,
+      "no_call": 0,
+      "fail_precision": {
+        "k": 0,
+        "n": 0,
+        "value": null,
+        "wilson_95": null
+      },
+      "failure_recall": {
+        "k": 0,
+        "n": 1,
+        "value": 0.0,
+        "wilson_95": [
+          0.0,
+          0.7935
+        ]
+      },
+      "pass_precision": {
+        "k": 1,
+        "n": 2,
+        "value": 0.5,
+        "wilson_95": [
+          0.0945,
+          0.9055
+        ]
+      },
+      "pass_recall": {
+        "k": 1,
+        "n": 1,
+        "value": 1.0,
+        "wilson_95": [
+          0.2065,
+          1.0
+        ]
+      }
+    },
+    "freecad-impeller": {
+      "candidates": 2,
+      "failures": 2,
+      "passes": 0,
+      "no_call": 2,
+      "fail_precision": {
+        "k": 0,
+        "n": 0,
+        "value": null,
+        "wilson_95": null
+      },
+      "failure_recall": {
+        "k": 0,
+        "n": 2,
+        "value": 0.0,
+        "wilson_95": [
+          0.0,
+          0.6576
+        ]
+      },
+      "pass_precision": {
+        "k": 0,
+        "n": 0,
+        "value": null,
+        "wilson_95": null
+      },
+      "pass_recall": {
+        "k": 0,
+        "n": 0,
+        "value": null,
+        "wilson_95": null
+      }
+    },
+    "freecad-spring-clip": {
+      "candidates": 2,
+      "failures": 1,
+      "passes": 1,
+      "no_call": 2,
+      "fail_precision": {
+        "k": 0,
+        "n": 0,
+        "value": null,
+        "wilson_95": null
+      },
+      "failure_recall": {
+        "k": 0,
+        "n": 1,
+        "value": 0.0,
+        "wilson_95": [
+          0.0,
+          0.7935
+        ]
+      },
+      "pass_precision": {
+        "k": 0,
+        "n": 0,
+        "value": null,
+        "wilson_95": null
+      },
+      "pass_recall": {
+        "k": 0,
+        "n": 1,
+        "value": 0.0,
+        "wilson_95": [
+          0.0,
+          0.7935
+        ]
+      }
+    },
+    "math-eval-grader": {
+      "candidates": 2,
+      "failures": 2,
+      "passes": 0,
+      "no_call": 0,
+      "fail_precision": {
+        "k": 1,
+        "n": 1,
+        "value": 1.0,
+        "wilson_95": [
+          0.2065,
+          1.0
+        ]
+      },
+      "failure_recall": {
+        "k": 1,
+        "n": 2,
+        "value": 0.5,
+        "wilson_95": [
+          0.0945,
+          0.9055
+        ]
+      },
+      "pass_precision": {
+        "k": 0,
+        "n": 1,
+        "value": 0.0,
+        "wilson_95": [
+          0.0,
+          0.7935
+        ]
+      },
+      "pass_recall": {
+        "k": 0,
+        "n": 0,
+        "value": null,
+        "wilson_95": null
+      }
+    },
+    "pretrain-shard-corruption": {
+      "candidates": 2,
+      "failures": 2,
+      "passes": 0,
+      "no_call": 0,
+      "fail_precision": {
+        "k": 2,
+        "n": 2,
+        "value": 1.0,
+        "wilson_95": [
+          0.3424,
+          1.0
+        ]
+      },
+      "failure_recall": {
+        "k": 2,
+        "n": 2,
+        "value": 1.0,
+        "wilson_95": [
+          0.3424,
+          1.0
+        ]
+      },
+      "pass_precision": {
+        "k": 0,
+        "n": 0,
+        "value": null,
+        "wilson_95": null
+      },
+      "pass_recall": {
+        "k": 0,
+        "n": 0,
+        "value": null,
+        "wilson_95": null
+      }
+    },
+    "shadow-relay": {
+      "candidates": 2,
+      "failures": 1,
+      "passes": 1,
+      "no_call": 0,
+      "fail_precision": {
+        "k": 1,
+        "n": 1,
+        "value": 1.0,
+        "wilson_95": [
+          0.2065,
+          1.0
+        ]
+      },
+      "failure_recall": {
+        "k": 1,
+        "n": 1,
+        "value": 1.0,
+        "wilson_95": [
+          0.2065,
+          1.0
+        ]
+      },
+      "pass_precision": {
+        "k": 1,
+        "n": 1,
+        "value": 1.0,
+        "wilson_95": [
+          0.2065,
+          1.0
+        ]
+      },
+      "pass_recall": {
+        "k": 1,
+        "n": 1,
+        "value": 1.0,
+        "wilson_95": [
+          0.2065,
+          1.0
+        ]
+      }
+    },
+    "vpp-loss-divergence": {
+      "candidates": 2,
+      "failures": 1,
+      "passes": 1,
+      "no_call": 0,
+      "fail_precision": {
+        "k": 0,
+        "n": 0,
+        "value": null,
+        "wilson_95": null
+      },
+      "failure_recall": {
+        "k": 0,
+        "n": 1,
+        "value": 0.0,
+        "wilson_95": [
+          0.0,
+          0.7935
+        ]
+      },
+      "pass_precision": {
+        "k": 1,
+        "n": 2,
+        "value": 0.5,
+        "wilson_95": [
+          0.0945,
+          0.9055
+        ]
+      },
+      "pass_recall": {
+        "k": 1,
+        "n": 1,
+        "value": 1.0,
+        "wilson_95": [
+          0.2065,
+          1.0
+        ]
+      }
+    }
+  },
+  "coverage": {
+    "distributed-dedup": {
+      "split": "development",
+      "plan": "6ca56861f52cf526d44fe29bb6eb19f51ccf326f6f8a7c19a87a0057a148dbe1",
+      "items": {},
+      "untouched": {},
+      "outcomes_over_candidates": {},
+      "candidates": 2,
+      "no_call": 2
+    },
+    "formal-crypto": {
+      "split": "held_out",
+      "plan": "e27fd2aa8792632d3b8935d24629b1fe91f88009eff7e16c291e5f3f3dedf0d6",
+      "items": {
+        "path": {
+          "check": 1
+        }
+      },
+      "untouched": {
+        "path": {
+          "differed": 1
+        }
+      },
+      "outcomes_over_candidates": {
+        "path": {
+          "matched": 2
+        }
+      },
+      "candidates": 2,
+      "no_call": 0
+    },
+    "freecad-impeller": {
+      "split": "held_out",
+      "plan": "f45b406e32aa2ae3adb1681f4dbe477f33f21712b78b7cdd51c15d1137f5ceb0",
+      "items": {},
+      "untouched": {},
+      "outcomes_over_candidates": {},
+      "candidates": 2,
+      "no_call": 2
+    },
+    "freecad-spring-clip": {
+      "split": "held_out",
+      "plan": "26fb965736045d389dd0e8b65084fd8ad7a64ed85800f16bf4c625467be55f43",
+      "items": {},
+      "untouched": {},
+      "outcomes_over_candidates": {},
+      "candidates": 2,
+      "no_call": 2
+    },
+    "math-eval-grader": {
+      "split": "development",
+      "plan": "f1877523cd83afc5d369261363fff4c62282c9436c644f747d7d7fe7b8591235",
+      "items": {
+        "path": {
+          "check": 3
+        },
+        "format": {
+          "check": 1
+        }
+      },
+      "untouched": {
+        "format": {
+          "could_not_run": 1
+        },
+        "path": {
+          "differed": 3
+        }
+      },
+      "outcomes_over_candidates": {
+        "path": {
+          "matched": 5,
+          "differed": 1
+        },
+        "format": {
+          "matched": 1,
+          "could_not_run": 1
+        }
+      },
+      "candidates": 2,
+      "no_call": 0
+    },
+    "pretrain-shard-corruption": {
+      "split": "held_out",
+      "plan": "1af7020d3704313893a93bee69ba998b410ceb5ae92ab08aad8b7cf56b1c98cc",
+      "items": {
+        "command": {
+          "check": 1
+        }
+      },
+      "untouched": {
+        "command": {
+          "differed": 1
+        }
+      },
+      "outcomes_over_candidates": {
+        "command": {
+          "differed": 2
+        }
+      },
+      "candidates": 2,
+      "no_call": 0
+    },
+    "shadow-relay": {
+      "split": "held_out",
+      "plan": "401b6a11009fa01547f00bfb002ca78d22b6a78a96d751340569c2ee8f7514a0",
+      "items": {
+        "path": {
+          "check": 1
+        }
+      },
+      "untouched": {
+        "path": {
+          "differed": 1
+        }
+      },
+      "outcomes_over_candidates": {
+        "path": {
+          "differed": 1,
+          "matched": 1
+        }
+      },
+      "candidates": 2,
+      "no_call": 0
+    },
+    "vpp-loss-divergence": {
+      "split": "development",
+      "plan": "834fbc56ffaca4214cc1fad119b05c255af2ce08fbf103dd412fbc0bbc400ea5",
+      "items": {
+        "path": {
+          "check": 1
+        }
+      },
+      "untouched": {
+        "path": {
+          "differed": 1
+        }
+      },
+      "outcomes_over_candidates": {
+        "path": {
+          "matched": 2
+        }
+      },
+      "candidates": 2,
+      "no_call": 0
+    }
+  },
+  "timing": {
+    "invocation_seconds": 166.64830115588848,
+    "unfinished_invocations": 0,
+    "candidate_seconds_sum": 100,
+    "candidate_seconds_median": 0.0,
+    "candidate_times_unknown": 0
+  },
+  "usage": {
+    "jev_recorded_requests": 1,
+    "jev_live_requests": 1,
+    "jev_input_tokens": 899,
+    "jev_unknown_usage": 0,
+    "jev_list_price_per_million_input_tokens": 0.042,
+    "jev_known_list_price_usd": 3.7758e-05,
+    "candidate_generation_requests": 0
+  },
+  "rows": [
+    {
+      "task": "distributed-dedup",
+      "split": "post_label_supplement",
+      "trial": "distributed-dedup__vSURoBk",
+      "job": "tb4--coder-one-microluna-truth-confirmation--distributed-dedup--9584-r1",
+      "executor": "luna",
+      "kind": "snapshot",
+      "snapshot_graded": true,
+      "reward": 0.0,
+      "original_outcome": {
+        "job": "tb4--coder-one-microluna-truth-confirmation--distributed-dedup--9584-r1",
+        "trial": "distributed-dedup__vSURoBk",
+        "task": "terminal-bench/distributed-dedup",
+        "executor": "luna",
+        "reward": 0.0,
+        "exception_type": null,
+        "result_sha256": "853ea77bb23aefa348623c58142a063f6307934fbe6857d82f70f1b44e6fdbc4"
+      },
+      "regrade": null,
+      "error": null,
+      "raw_call": null,
+      "call": null,
+      "score": null,
+      "items": [],
+      "seconds": 0,
+      "network": "none"
+    },
+    {
+      "task": "formal-crypto",
+      "split": "post_label_supplement",
+      "trial": "formal-crypto__DjBPnEM",
+      "job": "tb4--coder-one-microluna-truth-confirmation--formal-crypto--9584-r1",
+      "executor": "luna",
+      "kind": "snapshot",
+      "snapshot_graded": true,
+      "reward": 0.0,
+      "original_outcome": {
+        "job": "tb4--coder-one-microluna-truth-confirmation--formal-crypto--9584-r1",
+        "trial": "formal-crypto__DjBPnEM",
+        "task": "terminal-bench/formal-crypto",
+        "executor": "luna",
+        "reward": 0.0,
+        "exception_type": null,
+        "result_sha256": "7f7ad4e910df3d61d18a9d2121da497ad9c67e4b51a393945572b8f3c66a49c2"
+      },
+      "regrade": null,
+      "error": null,
+      "raw_call": "pass",
+      "call": "pass",
+      "score": 1.0,
+      "items": [
+        {
+          "id": "K1",
+          "kind": "path",
+          "outcome": "matched",
+          "observed": "a file of 1249 bytes",
+          "milliseconds": 61
+        }
+      ],
+      "seconds": 0,
+      "network": "none"
+    },
+    {
+      "task": "freecad-impeller",
+      "split": "post_label_supplement",
+      "trial": "freecad-impeller__wy7yRPQ",
+      "job": "tb4--coder-one-microluna-truth-confirmation--freecad-impeller--9584-r1",
+      "executor": "luna",
+      "kind": "snapshot",
+      "snapshot_graded": true,
+      "reward": 0.0,
+      "original_outcome": {
+        "job": "tb4--coder-one-microluna-truth-confirmation--freecad-impeller--9584-r1",
+        "trial": "freecad-impeller__wy7yRPQ",
+        "task": "terminal-bench/freecad-impeller",
+        "executor": "luna",
+        "reward": null,
+        "exception_type": "RuntimeError",
+        "result_sha256": "87520b815b9820b2a3e1273ec5607818ed38bfb58db4e61965c0e8cf3b4f9189"
+      },
+      "regrade": {
+        "job": "tb4--coder-one-microluna-truth-confirmation--freecad-impeller--9584-r1",
+        "trial": "freecad-impeller__wy7yRPQ",
+        "task": "terminal-bench/freecad-impeller",
+        "executor": "luna",
+        "original_reward": null,
+        "original_result_sha256": "87520b815b9820b2a3e1273ec5607818ed38bfb58db4e61965c0e8cf3b4f9189",
+        "snapshot": {
+          "snapshot": {
+            "schema": "openagents.coder-one.snapshot.v1",
+            "stage": "post-executor",
+            "workdir": "/app",
+            "outside": [],
+            "policy": {
+              "max_mb": 128,
+              "max_files": 20000
+            },
+            "subject": "snapshot/subject.json",
+            "archive": {
+              "path": "snapshot/workspace.tar.gz",
+              "bytes": 600315,
+              "sha256": "857ba0e54cc9eefc86c4d1b740fe950065206ead34b31ea5984ebec19f2fa437",
+              "paths": [
+                "app"
+              ]
+            },
+            "taken": true,
+            "files": 6,
+            "bytes": 613737,
+            "elapsed_ms": 25
+          },
+          "composition_sha256": "b5b7d4b3c3b35f762c154bdc08b9121f017f30ce9a3fd1bcfe9bf6913ae4bda9",
+          "collected_files": {
+            "/app/answer.py": "989c582f7f6c644182ba632536ca417fbd099010faf005b94c791eded1a10fa3",
+            "/app/answer_base.FCStd": "6641eaf393d3c25b97a7f9044ce982ff8537f9649d4535cacae130b67c2cd811",
+            "/app/answer_edit.FCStd": "46c8e331c9c891ce0670cf3e31682a27eac0d52007e2af7edcac8d742eed1e80"
+          },
+          "files": {
+            "app/__pycache__/answer.cpython-311.pyc": "64406d56f11af7896dd3d4c001e2e0ebf30104931ea551af789aba73c92496fc",
+            "app/answer.py": "989c582f7f6c644182ba632536ca417fbd099010faf005b94c791eded1a10fa3",
+            "app/answer_base.20260925-025147.FCBak": "646849932936506f830497664802c3fd87f93a0cd01dffc50d8f371fbb85ac80",
+            "app/answer_base.FCStd": "6641eaf393d3c25b97a7f9044ce982ff8537f9649d4535cacae130b67c2cd811",
+            "app/answer_edit.20260925-025150.FCBak": "df007b10712b22c745640a3676298438a0640e6c981e346ea0b81730e783d0c4",
+            "app/answer_edit.FCStd": "46c8e331c9c891ce0670cf3e31682a27eac0d52007e2af7edcac8d742eed1e80"
+          }
+        },
+        "result": {
+          "reward": 0.0,
+          "rewards": {
+            "reward": 0.0
+          },
+          "exit": 0,
+          "exception": null,
+          "message": null,
+          "image_cache": "cold",
+          "trial_dir": "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/cad-regrade-v2/freecad-impeller__wy7yRPQ/verify__71dfd86",
+          "stdout_tail": null
+        },
+        "seconds": 166.2298934509745,
+        "record_sha256": "51cc7e4c3a1c1d1dea7f99401d4f0976b1f602ff2d65ebe2d81f5f16a6028990"
+      },
+      "error": null,
+      "raw_call": null,
+      "call": null,
+      "score": null,
+      "items": [],
+      "seconds": 0,
+      "network": "none"
+    },
+    {
+      "task": "freecad-spring-clip",
+      "split": "post_label_supplement",
+      "trial": "freecad-spring-clip__TSfGK3H",
+      "job": "tb4--coder-one-microluna-truth-confirmation--freecad-spring-clip--9584-r1",
+      "executor": "luna",
+      "kind": "snapshot",
+      "snapshot_graded": true,
+      "reward": 0.0,
+      "original_outcome": {
+        "job": "tb4--coder-one-microluna-truth-confirmation--freecad-spring-clip--9584-r1",
+        "trial": "freecad-spring-clip__TSfGK3H",
+        "task": "terminal-bench/freecad-spring-clip",
+        "executor": "luna",
+        "reward": null,
+        "exception_type": "RuntimeError",
+        "result_sha256": "444d533e2e23e826e061e12f798200259efbaa2c7ffd1d97cffeb8d793397c15"
+      },
+      "regrade": {
+        "job": "tb4--coder-one-microluna-truth-confirmation--freecad-spring-clip--9584-r1",
+        "trial": "freecad-spring-clip__TSfGK3H",
+        "task": "terminal-bench/freecad-spring-clip",
+        "executor": "luna",
+        "original_reward": null,
+        "original_result_sha256": "444d533e2e23e826e061e12f798200259efbaa2c7ffd1d97cffeb8d793397c15",
+        "snapshot": {
+          "snapshot": {
+            "schema": "openagents.coder-one.snapshot.v1",
+            "stage": "post-executor",
+            "workdir": "/app",
+            "outside": [],
+            "policy": {
+              "max_mb": 128,
+              "max_files": 20000
+            },
+            "subject": "snapshot/subject.json",
+            "archive": {
+              "path": "snapshot/workspace.tar.gz",
+              "bytes": 33519,
+              "sha256": "4a8603449f76ed7a0320bfa0da988bed41bb88f876671db52a80e54357041fdc",
+              "paths": [
+                "app"
+              ]
+            },
+            "taken": true,
+            "files": 8,
+            "bytes": 54079,
+            "elapsed_ms": 50
+          },
+          "composition_sha256": "0fede2687125b7055498c26acf3e79c54dec9cf844363f34444b4840cfb9bc13",
+          "collected_files": {
+            "/app/answer.py": "e07f1e542f7fbf12372b6d4f7a5a3a9e10285373a8a6060a5c8ead159677e5d6",
+            "/app/answer_base.FCStd": "1de53c26da64efdc3fc0a3d037d7e29d480287fff1ec44861e224dc14d25b092",
+            "/app/answer_edit.FCStd": "0c83c1a300df913bc870d3d49412cb59e44d6973fe3bbe0824f0745a53176823"
+          },
+          "files": {
+            "app/__pycache__/answer.cpython-311.pyc": "d5b62e45392917ae4af2b495a0d59d36ffc825e691c78f0a3103b7294a8f6f84",
+            "app/__pycache__/check.cpython-311.pyc": "c7eb3eaffdbffc4bc023e69f22db2cc582f249002e60c1147f6e556dd5c82bfd",
+            "app/__pycache__/vals.cpython-311.pyc": "591e44dca1690306eff85664dcad66f5f80375b53ee1e5be98f7a117470adf3e",
+            "app/answer.py": "e07f1e542f7fbf12372b6d4f7a5a3a9e10285373a8a6060a5c8ead159677e5d6",
+            "app/answer_base.20260925-025903.FCBak": "ddca48f6997cca80478e656c8fe4d8db63bcbf4a4acae4f6d2b7d175654c2a8e",
+            "app/answer_base.FCStd": "1de53c26da64efdc3fc0a3d037d7e29d480287fff1ec44861e224dc14d25b092",
+            "app/answer_edit.20260925-025903.FCBak": "6b95e314b88a4df6e948d5f59cda5d8431275f417109c646524b6f22f42be92c",
+            "app/answer_edit.FCStd": "0c83c1a300df913bc870d3d49412cb59e44d6973fe3bbe0824f0745a53176823"
+          }
+        },
+        "result": {
+          "reward": 0.0,
+          "rewards": {
+            "reward": 0.0
+          },
+          "exit": 0,
+          "exception": null,
+          "message": null,
+          "image_cache": "cold",
+          "trial_dir": "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/cad-regrade-v2/freecad-spring-clip__TSfGK3H/verify__e5d7133",
+          "stdout_tail": null
+        },
+        "seconds": 165.73890131898224,
+        "record_sha256": "68bbf5758c515fedf7a455a2de2e3f05653e0c989c25df101f2a5813dbf96ee2"
+      },
+      "error": null,
+      "raw_call": null,
+      "call": null,
+      "score": null,
+      "items": [],
+      "seconds": 0,
+      "network": "none"
+    },
+    {
+      "task": "math-eval-grader",
+      "split": "post_label_supplement",
+      "trial": "math-eval-grader__8VqJfiN",
+      "job": "tb4--coder-one-microluna-truth-confirmation--math-eval-grader--9584-r1",
+      "executor": "luna",
+      "kind": "snapshot",
+      "snapshot_graded": true,
+      "reward": 0.0,
+      "original_outcome": {
+        "job": "tb4--coder-one-microluna-truth-confirmation--math-eval-grader--9584-r1",
+        "trial": "math-eval-grader__8VqJfiN",
+        "task": "terminal-bench/math-eval-grader",
+        "executor": "luna",
+        "reward": 0.0,
+        "exception_type": null,
+        "result_sha256": "94e777c3021d4ff1b7e9f87f1f03c23404ee41445d760646fad5c2e7553b19d8"
+      },
+      "regrade": null,
+      "error": null,
+      "raw_call": "pass",
+      "call": "pass",
+      "score": 1.0,
+      "items": [
+        {
+          "id": "K1",
+          "kind": "path",
+          "outcome": "matched",
+          "observed": "a file of 12142 bytes",
+          "milliseconds": 100
+        },
+        {
+          "id": "K2",
+          "kind": "path",
+          "outcome": "matched",
+          "observed": "a file of 12429 bytes",
+          "milliseconds": 55
+        },
+        {
+          "id": "K3",
+          "kind": "path",
+          "outcome": "matched",
+          "observed": "a file of 67629 bytes",
+          "milliseconds": 64
+        },
+        {
+          "id": "K4",
+          "kind": "format",
+          "outcome": "matched",
+          "observed": "JSON, an object",
+          "milliseconds": 90
+        }
+      ],
+      "seconds": 1,
+      "network": "none"
+    },
+    {
+      "task": "pretrain-shard-corruption",
+      "split": "post_label_supplement",
+      "trial": "pretrain-shard-corruption__ZeirVXN",
+      "job": "tb4--coder-one-microluna-truth-confirmation--pretrain-shard-corruption--9584-r1",
+      "executor": "luna",
+      "kind": "snapshot",
+      "snapshot_graded": true,
+      "reward": 0.0,
+      "original_outcome": {
+        "job": "tb4--coder-one-microluna-truth-confirmation--pretrain-shard-corruption--9584-r1",
+        "trial": "pretrain-shard-corruption__ZeirVXN",
+        "task": "terminal-bench/pretrain-shard-corruption",
+        "executor": "luna",
+        "reward": 0.0,
+        "exception_type": null,
+        "result_sha256": "bcf10e6fc25d49dccbc182f5945b40814e594a14bc09b150390f1b6051b064fc"
+      },
+      "regrade": null,
+      "error": null,
+      "raw_call": "fail",
+      "call": "fail",
+      "score": 0.0,
+      "items": [
+        {
+          "id": "K1",
+          "kind": "command",
+          "outcome": "differed",
+          "diff": "expected exit 0, observed exit 1\n5_13:25:34\n  host      : 93458d7d3015\n  rank      : 1 (local_rank: 1)\n  exitcode  : 1 (pid: 69)\n  error_file: <N/A>\n  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html\n------------------------------------------------------------\nRoot Cause (first observed failure):\n[0]:\n  time      : 2026-09-25_13:25:34\n  host      : 93458d7d3015\n  rank      : 0 (local_rank: 0)\n  exitcode  : 1 (pid: 68)\n  error_file: <N/A>\n  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html\n============================================================",
+          "milliseconds": 51070
+        }
+      ],
+      "seconds": 51,
+      "network": "none"
+    },
+    {
+      "task": "shadow-relay",
+      "split": "post_label_supplement",
+      "trial": "shadow-relay__QWbzYAf",
+      "job": "tb4--coder-one-microluna-truth-confirmation--shadow-relay--9584-r1",
+      "executor": "luna",
+      "kind": "snapshot",
+      "snapshot_graded": true,
+      "reward": 0.0,
+      "original_outcome": {
+        "job": "tb4--coder-one-microluna-truth-confirmation--shadow-relay--9584-r1",
+        "trial": "shadow-relay__QWbzYAf",
+        "task": "terminal-bench/shadow-relay",
+        "executor": "luna",
+        "reward": 0.0,
+        "exception_type": null,
+        "result_sha256": "104a6639989efa387f7933fdbb69a0000aa33e0a04a4a0682daf352f7b7a3f2a"
+      },
+      "regrade": null,
+      "error": null,
+      "raw_call": "fail",
+      "call": "fail",
+      "score": 0.0,
+      "items": [
+        {
+          "id": "K1",
+          "kind": "path",
+          "outcome": "differed",
+          "diff": "nothing exists at /app/output/flag.txt",
+          "milliseconds": 63
+        }
+      ],
+      "seconds": 0,
+      "network": "none"
+    },
+    {
+      "task": "vpp-loss-divergence",
+      "split": "post_label_supplement",
+      "trial": "vpp-loss-divergence__j23bCmx",
+      "job": "tb4--coder-one-microluna-truth-confirmation--vpp-loss-divergence--9584-r1",
+      "executor": "luna",
+      "kind": "snapshot",
+      "snapshot_graded": true,
+      "reward": 0.0,
+      "original_outcome": {
+        "job": "tb4--coder-one-microluna-truth-confirmation--vpp-loss-divergence--9584-r1",
+        "trial": "vpp-loss-divergence__j23bCmx",
+        "task": "terminal-bench/vpp-loss-divergence",
+        "executor": "luna",
+        "reward": 0.0,
+        "exception_type": null,
+        "result_sha256": "32ba3bbd183daeebcbb82e5be028a568de8a6c256a7dbbc326593c02f623c8a2"
+      },
+      "regrade": null,
+      "error": null,
+      "raw_call": "pass",
+      "call": "pass",
+      "score": 1.0,
+      "items": [
+        {
+          "id": "K1",
+          "kind": "path",
+          "outcome": "matched",
+          "observed": "a file of 1343 bytes",
+          "milliseconds": 78
+        }
+      ],
+      "seconds": 0,
+      "network": "none"
+    },
+    {
+      "task": "distributed-dedup",
+      "split": "post_label_supplement",
+      "trial": "distributed-dedup__YT5MuTJ",
+      "job": "tb4--coder-one-astra-truth-control--distributed-dedup--9584-r1",
+      "executor": "astra",
+      "kind": "snapshot",
+      "snapshot_graded": true,
+      "reward": 0.0,
+      "original_outcome": {
+        "job": "tb4--coder-one-astra-truth-control--distributed-dedup--9584-r1",
+        "trial": "distributed-dedup__YT5MuTJ",
+        "task": "terminal-bench/distributed-dedup",
+        "executor": "astra",
+        "reward": 0.0,
+        "exception_type": null,
+        "result_sha256": "203088d75f617594da38dff63707e034fc9ffa571416e5d75892e60ebd3ac4bc"
+      },
+      "regrade": null,
+      "error": null,
+      "raw_call": null,
+      "call": null,
+      "score": null,
+      "items": [],
+      "seconds": 0,
+      "network": "none"
+    },
+    {
+      "task": "formal-crypto",
+      "split": "post_label_supplement",
+      "trial": "formal-crypto__iCSMsv3",
+      "job": "tb4--coder-one-astra-truth-control--formal-crypto--9584-r1",
+      "executor": "astra",
+      "kind": "snapshot",
+      "snapshot_graded": true,
+      "reward": 1.0,
+      "original_outcome": {
+        "job": "tb4--coder-one-astra-truth-control--formal-crypto--9584-r1",
+        "trial": "formal-crypto__iCSMsv3",
+        "task": "terminal-bench/formal-crypto",
+        "executor": "astra",
+        "reward": 1.0,
+        "exception_type": null,
+        "result_sha256": "afb38ba22f04b4561ab671d24d568196b4644c8e7ac01952e9ca21c6cb65fbd3"
+      },
+      "regrade": null,
+      "error": null,
+      "raw_call": "pass",
+      "call": "pass",
+      "score": 1.0,
+      "items": [
+        {
+          "id": "K1",
+          "kind": "path",
+          "outcome": "matched",
+          "observed": "a file of 8475 bytes",
+          "milliseconds": 61
+        }
+      ],
+      "seconds": 0,
+      "network": "none"
+    },
+    {
+      "task": "freecad-impeller",
+      "split": "post_label_supplement",
+      "trial": "freecad-impeller__XWiud7W",
+      "job": "tb4--coder-one-astra-truth-control--freecad-impeller--9584-r1",
+      "executor": "astra",
+      "kind": "snapshot",
+      "snapshot_graded": true,
+      "reward": 0.0,
+      "original_outcome": {
+        "job": "tb4--coder-one-astra-truth-control--freecad-impeller--9584-r1",
+        "trial": "freecad-impeller__XWiud7W",
+        "task": "terminal-bench/freecad-impeller",
+        "executor": "astra",
+        "reward": null,
+        "exception_type": "RuntimeError",
+        "result_sha256": "282436453d50b6b270ab899a30c5d2ccf286124dc7d3b344a783496a5fd26969"
+      },
+      "regrade": {
+        "job": "tb4--coder-one-astra-truth-control--freecad-impeller--9584-r1",
+        "trial": "freecad-impeller__XWiud7W",
+        "task": "terminal-bench/freecad-impeller",
+        "executor": "astra",
+        "original_reward": null,
+        "original_result_sha256": "282436453d50b6b270ab899a30c5d2ccf286124dc7d3b344a783496a5fd26969",
+        "snapshot": {
+          "snapshot": {
+            "schema": "openagents.coder-one.snapshot.v1",
+            "stage": "post-executor",
+            "workdir": "/app",
+            "outside": [],
+            "policy": {
+              "max_mb": 128,
+              "max_files": 20000
+            },
+            "subject": "snapshot/subject.json",
+            "archive": {
+              "path": "snapshot/workspace.tar.gz",
+              "bytes": 982814,
+              "sha256": "69b91c91a9cd613020b3acbe2ea3dc4112b67ee5211b8b173e28dad0d6d0c417",
+              "paths": [
+                "app"
+              ]
+            },
+            "taken": true,
+            "files": 5,
+            "bytes": 998538,
+            "elapsed_ms": 35
+          },
+          "composition_sha256": "e616b78e1989785047cc41de28a43e1cb4db690a0eaf49efb9622706e084f892",
+          "collected_files": {
+            "/app/answer.py": "2067a160d7b73f89bab8f1080fda64d111af80ddf89ed7d80991c5a4c1d0202a",
+            "/app/answer_base.FCStd": "2764daf162e5ac1c6a5837e41d3470a73a71caf6b96603a866c5900c162881de",
+            "/app/answer_edit.FCStd": "afe6f1f6b5c78eb0e49094423aeb622a01222a64155569d238730159734b0ff3"
+          },
+          "files": {
+            "app/answer.py": "2067a160d7b73f89bab8f1080fda64d111af80ddf89ed7d80991c5a4c1d0202a",
+            "app/answer_base.20260925-045242.FCBak": "379825dd21e2115d90d0eb3011cce453acc3231d5a5bc3b2d1c58b73ca116f5b",
+            "app/answer_base.FCStd": "2764daf162e5ac1c6a5837e41d3470a73a71caf6b96603a866c5900c162881de",
+            "app/answer_edit.20260925-045242.FCBak": "29c866553368b32498eac385c0c5bf91f5f72a5abf2ec10ed80c9cb41774a687",
+            "app/answer_edit.FCStd": "afe6f1f6b5c78eb0e49094423aeb622a01222a64155569d238730159734b0ff3"
+          }
+        },
+        "result": {
+          "reward": 0.0,
+          "rewards": {
+            "reward": 0.0
+          },
+          "exit": 0,
+          "exception": null,
+          "message": null,
+          "image_cache": "warm",
+          "trial_dir": "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/cad-regrade-v2/freecad-impeller__XWiud7W/verify__45ac9e5",
+          "stdout_tail": null
+        },
+        "seconds": 17.69430153403664,
+        "record_sha256": "b3aa8f2c08c745d12fd31abfe202cf024b29b960725cf60dce0c23793302aa98"
+      },
+      "error": null,
+      "raw_call": null,
+      "call": null,
+      "score": null,
+      "items": [],
+      "seconds": 0,
+      "network": "none"
+    },
+    {
+      "task": "freecad-spring-clip",
+      "split": "post_label_supplement",
+      "trial": "freecad-spring-clip__YHtXhkG",
+      "job": "tb4--coder-one-astra-truth-control--freecad-spring-clip--9584-r1",
+      "executor": "astra",
+      "kind": "snapshot",
+      "snapshot_graded": true,
+      "reward": 1.0,
+      "original_outcome": {
+        "job": "tb4--coder-one-astra-truth-control--freecad-spring-clip--9584-r1",
+        "trial": "freecad-spring-clip__YHtXhkG",
+        "task": "terminal-bench/freecad-spring-clip",
+        "executor": "astra",
+        "reward": null,
+        "exception_type": "RuntimeError",
+        "result_sha256": "06795caebdb4f930f8410c2e9781544817f4d9d9a3cf6c7de9d5415365b75e46"
+      },
+      "regrade": {
+        "job": "tb4--coder-one-astra-truth-control--freecad-spring-clip--9584-r1",
+        "trial": "freecad-spring-clip__YHtXhkG",
+        "task": "terminal-bench/freecad-spring-clip",
+        "executor": "astra",
+        "original_reward": null,
+        "original_result_sha256": "06795caebdb4f930f8410c2e9781544817f4d9d9a3cf6c7de9d5415365b75e46",
+        "snapshot": {
+          "snapshot": {
+            "schema": "openagents.coder-one.snapshot.v1",
+            "stage": "post-executor",
+            "workdir": "/app",
+            "outside": [],
+            "policy": {
+              "max_mb": 128,
+              "max_files": 20000
+            },
+            "subject": "snapshot/subject.json",
+            "archive": {
+              "path": "snapshot/workspace.tar.gz",
+              "bytes": 79054,
+              "sha256": "d263ceb19d38c902b4134a3edf873d5dedd18b4223379fbaf46b09627093551f",
+              "paths": [
+                "app"
+              ]
+            },
+            "taken": true,
+            "files": 5,
+            "bytes": 88718,
+            "elapsed_ms": 14
+          },
+          "composition_sha256": "1ac4ae119bb793233f8fe7ecb616a3da28f7bb04c483a328f1f1fea5f2345dd3",
+          "collected_files": {
+            "/app/answer.py": "2bda3ae70432e5780f06740f086f9119b9704b57e78a6c7a6a463499bbb298f9",
+            "/app/answer_base.FCStd": "e7f5036379ccc15915f8d6af0a55e65f266d9171396732fdc9416f59c4e49cd6",
+            "/app/answer_edit.FCStd": "ede88e0089e9888c4b2fb3dc7c601edf709b360d1100bbc36b59efcaffc41014"
+          },
+          "files": {
+            "app/answer.py": "2bda3ae70432e5780f06740f086f9119b9704b57e78a6c7a6a463499bbb298f9",
+            "app/answer_base.20260925-045822.FCBak": "9688592353d8babdd9a36b8557fb0ea96fe49441aa9635a5de0c5874826c9c2e",
+            "app/answer_base.FCStd": "e7f5036379ccc15915f8d6af0a55e65f266d9171396732fdc9416f59c4e49cd6",
+            "app/answer_edit.20260925-045822.FCBak": "266bf28a4e15869e5031de27497a1839477e7231c3b7e55bd91bd060ff7e4bd3",
+            "app/answer_edit.FCStd": "ede88e0089e9888c4b2fb3dc7c601edf709b360d1100bbc36b59efcaffc41014"
+          }
+        },
+        "result": {
+          "reward": 1.0,
+          "rewards": {
+            "reward": 1.0
+          },
+          "exit": 0,
+          "exception": null,
+          "message": null,
+          "image_cache": "warm",
+          "trial_dir": "/home/christopherdavid/.openagents/terminal-bench/experiments/truth-review-9584/cad-regrade-v2/freecad-spring-clip__YHtXhkG/verify__f162bd0",
+          "stdout_tail": null
+        },
+        "seconds": 16.75122974999249,
+        "record_sha256": "05df0d94ed237d3b484e9955350460f87b37fe69dc66ad9c91dedcd36c475de1"
+      },
+      "error": null,
+      "raw_call": null,
+      "call": null,
+      "score": null,
+      "items": [],
+      "seconds": 0,
+      "network": "none"
+    },
+    {
+      "task": "math-eval-grader",
+      "split": "post_label_supplement",
+      "trial": "math-eval-grader__G6edYMz",
+      "job": "tb4--coder-one-astra-truth-control--math-eval-grader--9584-r1",
+      "executor": "astra",
+      "kind": "snapshot",
+      "snapshot_graded": true,
+      "reward": 0.0,
+      "original_outcome": {
+        "job": "tb4--coder-one-astra-truth-control--math-eval-grader--9584-r1",
+        "trial": "math-eval-grader__G6edYMz",
+        "task": "terminal-bench/math-eval-grader",
+        "executor": "astra",
+        "reward": 0.0,
+        "exception_type": null,
+        "result_sha256": "d0b700cf4349835bc0dfc043deb02a642a408dd064d0012c4907a67ba4940851"
+      },
+      "regrade": null,
+      "error": null,
+      "raw_call": "fail",
+      "call": "fail",
+      "score": 0.6666666666666666,
+      "items": [
+        {
+          "id": "K1",
+          "kind": "path",
+          "outcome": "matched",
+          "observed": "a file of 12142 bytes",
+          "milliseconds": 83
+        },
+        {
+          "id": "K2",
+          "kind": "path",
+          "outcome": "matched",
+          "observed": "a file of 19024 bytes",
+          "milliseconds": 73
+        },
+        {
+          "id": "K3",
+          "kind": "path",
+          "outcome": "differed",
+          "diff": "nothing exists at /app/results.json",
+          "milliseconds": 113
+        },
+        {
+          "id": "K4",
+          "kind": "format",
+          "outcome": "could_not_run",
+          "why": "no file at /app/results.json to read",
+          "milliseconds": 99
+        }
+      ],
+      "seconds": 1,
+      "network": "none"
+    },
+    {
+      "task": "pretrain-shard-corruption",
+      "split": "post_label_supplement",
+      "trial": "pretrain-shard-corruption__DwSw56Y",
+      "job": "tb4--coder-one-astra-truth-control--pretrain-shard-corruption--9584-r1",
+      "executor": "astra",
+      "kind": "snapshot",
+      "snapshot_graded": true,
+      "reward": 0.0,
+      "original_outcome": {
+        "job": "tb4--coder-one-astra-truth-control--pretrain-shard-corruption--9584-r1",
+        "trial": "pretrain-shard-corruption__DwSw56Y",
+        "task": "terminal-bench/pretrain-shard-corruption",
+        "executor": "astra",
+        "reward": 0.0,
+        "exception_type": null,
+        "result_sha256": "b0c615eb10689d743c65f032428733c3e1cd1253b784770455b4cc94ec3cdff6"
+      },
+      "regrade": null,
+      "error": null,
+      "raw_call": "fail",
+      "call": "fail",
+      "score": 0.0,
+      "items": [
+        {
+          "id": "K1",
+          "kind": "command",
+          "outcome": "differed",
+          "diff": "expected exit 0, observed exit 1\n5_13:24:42\n  host      : c084f5e83539\n  rank      : 1 (local_rank: 1)\n  exitcode  : 1 (pid: 69)\n  error_file: <N/A>\n  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html\n------------------------------------------------------------\nRoot Cause (first observed failure):\n[0]:\n  time      : 2026-09-25_13:24:42\n  host      : c084f5e83539\n  rank      : 0 (local_rank: 0)\n  exitcode  : 1 (pid: 68)\n  error_file: <N/A>\n  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html\n============================================================",
+          "milliseconds": 46205
+        }
+      ],
+      "seconds": 47,
+      "network": "none"
+    },
+    {
+      "task": "shadow-relay",
+      "split": "post_label_supplement",
+      "trial": "shadow-relay__vjf9cyb",
+      "job": "tb4--coder-one-astra-truth-control--shadow-relay--9584-r1",
+      "executor": "astra",
+      "kind": "snapshot",
+      "snapshot_graded": true,
+      "reward": 1.0,
+      "original_outcome": {
+        "job": "tb4--coder-one-astra-truth-control--shadow-relay--9584-r1",
+        "trial": "shadow-relay__vjf9cyb",
+        "task": "terminal-bench/shadow-relay",
+        "executor": "astra",
+        "reward": 1.0,
+        "exception_type": null,
+        "result_sha256": "2b6f9b88d0b82b7bb2191865aa7219cfd78a7f4ba172ce6f3cd1784eeba9f903"
+      },
+      "regrade": null,
+      "error": null,
+      "raw_call": "pass",
+      "call": "pass",
+      "score": 1.0,
+      "items": [
+        {
+          "id": "K1",
+          "kind": "path",
+          "outcome": "matched",
+          "observed": "a file of 29 bytes",
+          "milliseconds": 120
+        }
+      ],
+      "seconds": 0,
+      "network": "none"
+    },
+    {
+      "task": "vpp-loss-divergence",
+      "split": "post_label_supplement",
+      "trial": "vpp-loss-divergence__T9Z3LzN",
+      "job": "tb4--coder-one-astra-truth-control--vpp-loss-divergence--9584-r2",
+      "executor": "astra",
+      "kind": "snapshot",
+      "snapshot_graded": true,
+      "reward": 1.0,
+      "original_outcome": {
+        "job": "tb4--coder-one-astra-truth-control--vpp-loss-divergence--9584-r2",
+        "trial": "vpp-loss-divergence__T9Z3LzN",
+        "task": "terminal-bench/vpp-loss-divergence",
+        "executor": "astra",
+        "reward": 1.0,
+        "exception_type": null,
+        "result_sha256": "bc4a8f653b9479835d0c06c7840c9ffe38fa9c491a9e042fab1f31acc306cf0a"
+      },
+      "regrade": null,
+      "error": null,
+      "raw_call": "pass",
+      "call": "pass",
+      "score": 1.0,
+      "items": [
+        {
+          "id": "K1",
+          "kind": "path",
+          "outcome": "matched",
+          "observed": "a file of 1343 bytes",
+          "milliseconds": 75
+        }
+      ],
+      "seconds": 0,
+      "network": "none"
+    }
+  ]
+}

@@ -202,6 +202,12 @@ noninteractive view. The plain `gym-terminal` command without
 
 ## Coder One benchmark evidence
 
+The [executed-contract measurement](docs/terminal-bench/2026-09-25-executed-contract-supplement.md)
+now includes all 16 candidates from the previously excluded eight-task cohort.
+It detects two missing required outputs, but environment failures also produce
+failure calls and three of six pass calls are wrong. The component remains
+outside runtime policies; both replays and the negative result are retained.
+
 The [72-candidate archive confirmation](docs/terminal-bench/2026-09-25-archive-check-confirmation.md)
 is complete: Luna passes 26/36 and Astra 35/36 on 12 unused archived task groups.
 Executed checks detect 6/11 official failures with 6/9 precision, versus 1/11

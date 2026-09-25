@@ -1,0 +1,16 @@
+{
+  "schema": "openagents.contract-supplement-verification.v1",
+  "checked_utc": "2026-09-25T13:37:49.304139+00:00",
+  "python": "3.9.6",
+  "tests_passed": 8,
+  "replayed_candidates": 16,
+  "replay_differences": 0,
+  "published_source_files_verified": 2220,
+  "retained_evidence_files": 95,
+  "summary_recomputed_byte_identically": true,
+  "broken_local_links": 0,
+  "credential_pattern_matches": 0,
+  "left_running_contract_containers": 0,
+  "rust_product_changes": false,
+  "rust_gate": "Not applicable: retained Python measurement tooling and documentation only; no Rust behavior changed."
+}

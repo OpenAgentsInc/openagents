@@ -1,0 +1,13 @@
+test_a_duplicate_trial_cannot_inflate_the_denominator (test_supplemental.SupplementalTests) ... ok
+test_a_report_cannot_be_reassigned_to_another_candidate (test_supplemental.SupplementalTests) ... ok
+test_all_sixteen_keep_the_published_cad_regrades (test_supplemental.SupplementalTests) ... ok
+test_an_unlisted_trial_cannot_enter_the_measurement (test_supplemental.SupplementalTests) ... ok
+test_bootstrap_keeps_repeated_tasks_in_the_average (test_supplemental.SupplementalTests) ... ok
+test_changed_label_is_rejected (test_supplemental.SupplementalTests) ... ok
+test_missing_result_is_retained_as_an_unknown_failure (test_supplemental.SupplementalTests) ... ok
+test_ungraded_snapshot_does_not_borrow_its_final_grade (test_supplemental.SupplementalTests) ... ok
+
+----------------------------------------------------------------------
+Ran 8 tests in 0.056s
+
+OK
