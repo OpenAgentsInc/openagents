@@ -54,7 +54,7 @@ formulas, and a boilerplate sentence decides most of its false positives.
      files and programs the instruction names. A digit that continues a
      word, a path, or a version isn't a number.
   2. One Jev request per task asks four questions per number
-     (`questions/metric-target.json`): a Noul, whether it's the threshold
+     (`crates/coder-one/questions/metric-target.json`; it was under `questions/` when this was measured): a Noul, whether it's the threshold
      of a goal the finished work must meet when measured; a Choice of
      direction (`at_least`, `at_most`, `neither`); a Choice of quantity
      (speedup, runtime, latency, throughput, cost, memory, size, error,

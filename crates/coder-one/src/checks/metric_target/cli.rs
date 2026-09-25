@@ -21,7 +21,7 @@ pub const USAGE: &str = "usage: coder-one checks metric-target extract --instruc
                                             [--repeats N] [--run-sec N] [--budget-sec N]
 
 extract finds the numbers in the instruction at --instruction, has Jev judge
-each one (questions/metric-target.json), and prints the targets it states;
+each one (crates/coder-one/questions/metric-target.json), and prints the targets it states;
 with --workspace it also asks which provided script measures them. offline
 does the same for every task in a labels file (its instruction_path and
 instruction_sha256 must still match), writes <out>/extracted.json and

@@ -12,7 +12,7 @@
 //!    ([`references`]). One Jev request asks, per number, whether it's the
 //!    threshold of a measured goal, which way the bound points, what
 //!    quantity it bounds, and what the measurement is relative to
-//!    (`questions/metric-target.json`). Code parses the threshold and its
+//!    (`crates/coder-one/questions/metric-target.json`). Code parses the threshold and its
 //!    unit from the number ([`parse_number`]); Jev never writes a value.
 //! 2. **Harness.** A provided script that measures the goal, which Jev
 //!    picks from the workspace's scripts or none, or a harness a Luna
@@ -49,7 +49,7 @@ use crate::component::jev::{self as jev_component, JevMode};
 use crate::record::Recorder;
 
 /// The Jev question set, embedded so its digest is the file's.
-pub const QUESTION_SET: &str = include_str!("../../../../../questions/metric-target.json");
+pub const QUESTION_SET: &str = include_str!("../../../questions/metric-target.json");
 
 /// The most numbers one request asks about.
 pub const MAX_CANDIDATES: usize = 20;

@@ -700,6 +700,7 @@ mod tests {
                 "openagents.expectation-support.v1",
                 "openagents.independence.v1",
                 "openagents.independence.v2",
+                "openagents.method-conformance.v1",
                 "openagents.program.v1",
                 "openagents.review-finding.v1",
             ]
@@ -714,7 +715,8 @@ mod tests {
         // bindings — kept so the digests historical runs recorded stay
         // resolvable — and the three departure sets and the
         // expectation-support set are asked by Coder One's
-        // `evidence.departures` and `accept.grade`, which compile them in.
+        // `evidence.departures` and `accept.grade`, which compile them in,
+        // as is the method-conformance set by `verify.method_conformance`.
         // The inventory says so rather than letting a run find out at
         // admission.
         let unbound = |set: &str| Problem::UnboundSet {
@@ -728,6 +730,7 @@ mod tests {
                 unbound("openagents.departure-standard-method.v1"),
                 unbound("openagents.expectation-support.v1"),
                 unbound("openagents.independence.v1"),
+                unbound("openagents.method-conformance.v1"),
             ]
         );
     }

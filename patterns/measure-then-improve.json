@@ -5,7 +5,7 @@
   "summary": "When a task states a numeric goal for its finished work, such as a speedup, a latency, a cost, or a distance to a reference, measure it with a fixed harness and repeated runs, and never finish while it is unmet or unmeasured. Once the acceptance check passes, try one improvement at a time, and keep one only when the acceptance check still passes and the metric improves beyond the measured spread; otherwise restore the last passing workspace.",
   "trigger": {
     "kind": "semantic",
-    "detail": "Code finds every number in the instruction with its sentence; one Jev request per task judges, per number, whether it is a measured goal's threshold, its direction, its quantity, and what it is measured against (questions/metric-target.json). No phrase list picks a number."
+    "detail": "Code finds every number in the instruction with its sentence; one Jev request per task judges, per number, whether it is a measured goal's threshold, its direction, its quantity, and what it is measured against (crates/coder-one/questions/metric-target.json). No phrase list picks a number."
   },
   "output": {
     "kind": "check",
@@ -17,7 +17,7 @@
     {"path": "crates/coder-one/src/checks/metric_target/mod.rs", "item": "refusal"},
     {"path": "crates/coder-one/src/micro/optimize.rs", "item": "MetricTargetRule"},
     {"path": "crates/coder-one/src/micro/optimize.rs", "item": "OptimizeRule"},
-    {"path": "questions/metric-target.json", "item": "per_number"}
+    {"path": "crates/coder-one/questions/metric-target.json", "item": "per_number"}
   ],
   "source_tasks": [
     {"task": "mp-checkpoint-consolidation", "how": "Fable 5.1's passing runs measured the distance to reference logits and kept only option sets that reduced it.", "commits": ["c1d524f782"]},
