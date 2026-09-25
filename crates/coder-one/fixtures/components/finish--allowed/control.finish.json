@@ -1,0 +1,50 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "control.finish",
+  "source": {
+    "kind": "synthetic",
+    "issue": 9638,
+    "case": "A finish after the score and a baseline command ran is allowed."
+  },
+  "input": {
+    "rule": {
+      "score": [
+        "score.sh"
+      ],
+      "baseline": [
+        "python3 -m monitor --input data.csv"
+      ],
+      "max_refusals": 3
+    },
+    "marks": [
+      {
+        "ran": {
+          "command": "sh score.sh",
+          "changed": []
+        }
+      },
+      {
+        "edit": {
+          "path": "monitor.py"
+        }
+      },
+      {
+        "ran": {
+          "command": "sh .microluna-eval/score.sh | tail -3",
+          "changed": []
+        }
+      },
+      {
+        "ran": {
+          "command": "python3 -m monitor --input data.csv",
+          "changed": []
+        }
+      }
+    ],
+    "status": "done",
+    "refusals": 0
+  },
+  "retained": {
+    "verdict": "allowed"
+  }
+}

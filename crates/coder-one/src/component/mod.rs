@@ -21,6 +21,7 @@ pub mod checks;
 pub mod cli;
 pub mod evidence;
 pub mod extract;
+pub mod finish;
 pub mod jev;
 pub mod monitor;
 pub mod pack;
@@ -143,6 +144,7 @@ pub fn registry() -> Vec<Box<dyn Component>> {
         Box::new(monitor::MonitorComponent),
         Box::new(stall::StallComponent),
         Box::new(stall::NextComponent),
+        Box::new(finish::FinishComponent),
         Box::new(HandoffComponent),
         Box::new(SystemSelect),
         Box::new(checks::Checks),

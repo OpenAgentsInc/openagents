@@ -1,0 +1,36 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "control.finish",
+  "source": {
+    "kind": "synthetic",
+    "issue": 9638,
+    "case": "With no baseline command available, only the score is required."
+  },
+  "input": {
+    "rule": {
+      "score": [
+        "score.sh"
+      ],
+      "baseline": [],
+      "max_refusals": 3
+    },
+    "marks": [
+      {
+        "edit": {
+          "path": "monitor.py"
+        }
+      },
+      {
+        "ran": {
+          "command": "sh score.sh",
+          "changed": []
+        }
+      }
+    ],
+    "status": "done",
+    "refusals": 0
+  },
+  "retained": {
+    "verdict": "allowed"
+  }
+}

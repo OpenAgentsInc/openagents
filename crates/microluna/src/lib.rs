@@ -14,6 +14,8 @@
 //! - [`patch`] is the apply-patch format the model is trained on.
 //! - [`session`] builds the input with the stable prefix first, runs the
 //!   tool loop, and records every step as ATIF with usage and cost.
+//! - [`finish`] holds a `done` finish until the score and a baseline
+//!   command ran after the last edit.
 //! - [`price`] turns usage into dollars at Luna's list prices.
 //!
 //! `docs/coder/design/microluna.md` records why Microluna calls the
@@ -22,6 +24,7 @@
 
 pub mod codex;
 pub mod fake;
+pub mod finish;
 pub mod patch;
 pub mod price;
 pub mod seal;
@@ -29,6 +32,7 @@ pub mod session;
 pub mod tools;
 pub mod transport;
 
+pub use finish::FinishRule;
 pub use seal::Seal;
 pub use session::{
     Brief, Config, Ending, Evidence, Intervention, NoWatch, Persist, Recorder, Report, Watch, run,

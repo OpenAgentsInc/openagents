@@ -183,6 +183,46 @@ pub struct Lean {
     /// manifest before it, the loop runs as it did.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub detect: Option<crate::stall::Detect>,
+    /// Hold a work session's `done` finish until the score and a baseline
+    /// command ran after its last edit ([`microluna::finish`], issue
+    /// #9638). Needs `keep_best`, whose `score.sh` is the score. Absent, as
+    /// in every manifest before it, every finish stands.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub finish_rule: Option<LeanFinishRule>,
+}
+
+/// `executor.microluna.lean.finish_rule`: how a `done` finish is held to
+/// the score and the baseline commands.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LeanFinishRule {
+    /// Refusals before a `done` finish is accepted as unverified.
+    #[serde(default = "max_refusals")]
+    pub max_refusals: u32,
+}
+
+fn max_refusals() -> u32 {
+    microluna::finish::MAX_REFUSALS
+}
+
+/// What a command names to count as a score run: the evaluation script,
+/// wherever its copy lives.
+pub const SCORE_NAME: &str = "score.sh";
+
+/// The task's baseline commands, which the finish rule also requires after
+/// the last edit. None are found yet, so the rule requires the score
+/// alone; `evidence.baseline` (issue #9633) supplies them.
+fn baseline_commands() -> Vec<String> {
+    Vec::new()
+}
+
+/// The finish rule for a lean session, when the manifest turns it on.
+fn finish_rule(lean: &Lean, baseline: &[String]) -> Option<microluna::FinishRule> {
+    lean.finish_rule.as_ref().map(|rule| microluna::FinishRule {
+        score: vec![SCORE_NAME.to_string()],
+        baseline: baseline.to_vec(),
+        max_refusals: rule.max_refusals,
+    })
 }
 
 /// Added with `structure`. Written after reading the two search tasks'
@@ -346,6 +386,9 @@ impl Lean {
         }
         if self.protect_candidates && !self.keep_best {
             problems.push("protect_candidates requires keep_best".to_string());
+        }
+        if self.finish_rule.is_some() && !self.keep_best {
+            problems.push("finish_rule requires keep_best".to_string());
         }
         problems
     }
@@ -855,6 +898,7 @@ impl Micro {
                         .filter(|m| *m != numbers[k])
                         .collect(),
                     persist,
+                    finish_rule: finish_rule(lean, &baseline_commands()),
                     deadline,
                     spend_usd: lean.session_spend.then_some(share),
                     command_max: (lean.command_sec > 0)
@@ -1642,6 +1686,7 @@ impl Micro {
                     Place {
                         observe_only: checking && lean.observe_review,
                         persist: persist(lean, checking, have_score, &eval, &frozen),
+                        finish_rule: finish_rule(lean, &baseline_commands()),
                         deadline: wall_left(),
                         command_max: (lean.command_sec > 0)
                             .then(|| Duration::from_secs(lean.command_sec)),

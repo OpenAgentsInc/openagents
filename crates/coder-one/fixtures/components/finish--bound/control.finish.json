@@ -1,0 +1,31 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "control.finish",
+  "source": {
+    "kind": "synthetic",
+    "issue": 9638,
+    "case": "After three refusals, the next done finish is accepted and recorded as unverified."
+  },
+  "input": {
+    "rule": {
+      "score": [
+        "score.sh"
+      ],
+      "baseline": [],
+      "max_refusals": 3
+    },
+    "marks": [
+      {
+        "edit": {
+          "path": "monitor.py"
+        }
+      }
+    ],
+    "status": "done",
+    "refusals": 3
+  },
+  "retained": {
+    "verdict": "unverified",
+    "names": "monitor.py"
+  }
+}

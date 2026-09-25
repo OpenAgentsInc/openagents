@@ -328,6 +328,8 @@ fn a_contradicting_check_keeps_the_loop_on_its_group() {
         ended_at_ms: 0,
         place: Place::default(),
         read_turns: 0,
+        refusals: 0,
+        unverified: false,
     };
     let at = |contradicted, verdict_fail, last, attempts| Signals {
         contradicted,
@@ -1444,6 +1446,7 @@ fn lean_shape() -> lean::Lean {
         failures: false,
         structure: false,
         detect: None,
+        finish_rule: None,
     }
 }
 
@@ -1537,6 +1540,71 @@ async fn the_lean_loop_finishes_on_the_best_scoring_workspace() {
         "hello\n"
     );
     assert!(!eval.exists(), "the eval directory is removed");
+}
+
+#[tokio::test]
+async fn the_lean_loop_holds_a_done_finish_until_the_score_ran_after_the_last_edit() {
+    let dir = tempfile::tempdir().unwrap();
+    let work = dir.path().join("work");
+    let eval = lean::eval_dir(&work, Isolation::TaskContainer);
+    let _ = std::fs::remove_dir_all(&eval);
+    let script = format!(
+        "mkdir -p {e} && printf '%s\\n' 'if grep -q hello hello.txt; then echo SCORE 1 1; else echo SCORE 0 1; fi' > {e}/score.sh",
+        e = eval.display()
+    );
+    let mut executor = micro(
+        dir.path(),
+        vec![
+            call(
+                "a1",
+                "run_command",
+                &json!({ "command": script, "timeout_seconds": null }),
+                usage(1_000, 0, 30),
+            ),
+            call(
+                "a2",
+                "write_file",
+                &json!({ "path": "hello.txt", "contents": "hello\n" }),
+                usage(1_000, 0, 30),
+            ),
+            finish("a3", "done", "Wrote hello.txt."),
+            call(
+                "a4",
+                "run_command",
+                &json!({ "command": format!("sh {}/score.sh", eval.display()), "timeout_seconds": null }),
+                usage(1_000, 0, 30),
+            ),
+            finish("a5", "done", "Wrote hello.txt; the score is full."),
+        ],
+        lean_policy(lean::Lean {
+            sessions: 1,
+            self_check: false,
+            keep_best: true,
+            finish_rule: Some(lean::LeanFinishRule { max_refusals: 3 }),
+            ..lean_shape()
+        }),
+    );
+    executor.prepared = Some(prepared());
+    executor.execute(&briefing(TASK)).await;
+    let record = executor.last.clone().unwrap();
+    let session = &record["sessions"][0];
+    assert_eq!(session["status"], "done", "{record:#}");
+    assert_eq!(session["finish_refusals"], 1, "{record:#}");
+    assert_eq!(session["unverified"], false);
+    assert_eq!(session["turns"], 5);
+}
+
+#[test]
+fn the_finish_rule_needs_keep_best() {
+    let lean = lean::Lean {
+        finish_rule: Some(lean::LeanFinishRule { max_refusals: 3 }),
+        ..lean_shape()
+    };
+    assert!(
+        lean.validate()
+            .iter()
+            .any(|p| p == "finish_rule requires keep_best")
+    );
 }
 
 #[test]

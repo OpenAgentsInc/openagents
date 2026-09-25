@@ -1117,6 +1117,10 @@ struct Ran {
     place: Place,
     /// Model requests whose every call only read.
     read_turns: usize,
+    /// `done` finishes the finish rule refused.
+    refusals: u32,
+    /// The finish stood after the refusals ran out, unverified.
+    unverified: bool,
 }
 
 /// Where a session works and what it runs beside.
@@ -1135,6 +1139,8 @@ struct Place {
     alongside: Option<String>,
     /// When the host turns the session's finish back.
     persist: Option<microluna::Persist>,
+    /// The rule a `done` finish is held to.
+    finish_rule: Option<microluna::FinishRule>,
     /// A tighter wall-time bound than the policy's `session_sec`.
     deadline: Option<Duration>,
     /// The session's spend bound in dollars.
@@ -1216,6 +1222,8 @@ impl Ran {
             "milliseconds": self.milliseconds,
             "session_id": self.session_id,
             "trace": self.trace,
+            "finish_refusals": self.refusals,
+            "unverified": self.unverified,
             "commands": self.commands.iter().map(|(c, e)| json!({ "command": c, "exit": e })).collect::<Vec<_>>(),
             "changed": self.changed,
             "edited": self.edited,
@@ -1691,7 +1699,7 @@ fn millis(since: Instant) -> u64 {
 }
 
 /// The normalized events one Microluna step becomes.
-fn events_of(step: &Step) -> Vec<EventKind> {
+pub(crate) fn events_of(step: &Step) -> Vec<EventKind> {
     if let Some(call) = &step.call {
         let arguments = &call.arguments;
         let arg = |key: &str| arguments.get(key).and_then(Value::as_str).unwrap_or("");
@@ -2020,6 +2028,7 @@ impl Micro {
             parallel_tools: self.policy.parallel_tools,
             persist: place.persist.clone(),
             spend_usd: place.spend_usd,
+            finish_rule: place.finish_rule.clone(),
         };
         let workspace = microluna::Workspace::new(&workdir).map(|workspace| {
             let workspace = workspace.isolated_by(self.isolation);
@@ -2051,6 +2060,8 @@ impl Micro {
                 usage: TokenUsage::default(),
                 cost_usd: Some(0.0),
                 milliseconds: 0,
+                refusals: 0,
+                unverified: false,
             },
             (_, Err(error)) => microluna::Report {
                 ending: Ending::Transport(format!(
@@ -2063,6 +2074,8 @@ impl Micro {
                 usage: TokenUsage::default(),
                 cost_usd: Some(0.0),
                 milliseconds: 0,
+                refusals: 0,
+                unverified: false,
             },
         };
         recorder.close(match report.ending {
@@ -2093,6 +2106,8 @@ impl Micro {
             ended_at_ms: atif::now_ms(),
             place,
             read_turns: read_turns.get() + usize::from(turn_reads.get() == Some(true)),
+            refusals: report.refusals,
+            unverified: report.unverified,
         };
         // The dispatch's exec.session carries the sessions' cost, as it
         // does for a CLI; each session states its own share in its summary,
@@ -2119,6 +2134,10 @@ impl Micro {
                 "cause": ran.finish.as_ref().map(|f| f.cause.word()),
                 "group": ran.place.group,
                 "parallel_with": ran.place.parallel_with,
+                "finish_rule": ran.place.finish_rule.as_ref().map(|_| json!({
+                    "refusals": ran.refusals,
+                    "verified": !ran.unverified,
+                })),
             })),
         );
         crate::say::line(&format!(
@@ -2590,6 +2609,7 @@ impl Micro {
                 parallel_tools: self.policy.parallel_tools,
                 persist: None,
                 spend_usd: None,
+                finish_rule: None,
             },
             isolation: self.isolation,
             seal: self.seal.clone(),
@@ -4411,6 +4431,7 @@ impl Micro {
                 parallel_with,
                 alongside: None,
                 persist: None,
+                finish_rule: None,
                 deadline: None,
                 spend_usd: None,
                 command_max: None,

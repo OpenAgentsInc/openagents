@@ -21,6 +21,7 @@ pub const USAGE: &str = "usage: coder-one component list [--json]
                                   --out DIR [--partition calibration|evaluation|all]...
                                   [--jev recorded|live|off] [--recorded FILE] [--save-jev]
                                   [--live-limit N]
+       coder-one component replay control.finish [--traces DIR]... --out DIR
 
 --jev defaults to recorded: answers replay from each fixture's jev-recorded.json,
 and a changed state or question set misses. live calls Jev with TYPESAFE_API_KEY;
@@ -43,7 +44,12 @@ and one labels-<partition>.jsonl per partition to --out; the --split file names
 the calibration and evaluation tasks. It then asks Jev at the checkpoints of each
 --partition (calibration by default), recorded answers first from --recorded, live
 for misses with --jev live up to --live-limit, and writes rows.jsonl, which holds
-answers and calls but no label. --inputs replays a retained inputs file instead.";
+answers and calls but no label. --inputs replays a retained inputs file instead.
+
+replay control.finish judges every done finish in the retained Microluna session
+logs and Luna Codex streams under each --traces directory (bench/terminal-bench/traces
+by default) against the finish rule (issue #9638), and writes rows.jsonl and
+summary.json to --out. It asks no model.";
 
 /// A live Jev client from `TYPESAFE_API_KEY` or `~/.openagents/jev.json`.
 ///
@@ -287,6 +293,9 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
         "replay" if flags.positional.first().map(String::as_str) == Some("control.stall") => {
             replay_stall(&flags).await
         }
+        "replay" if flags.positional.first().map(String::as_str) == Some("control.finish") => {
+            replay_finish(&flags)
+        }
         "replay" => {
             if flags.positional.first().map(String::as_str) != Some("evidence.pack") {
                 return Err(format!(
@@ -392,6 +401,34 @@ async fn replay_monitor(flags: &Flags) -> Result<i32, String> {
             println!("written to {}", path.display());
         }
     }
+    Ok(0)
+}
+
+fn replay_finish(flags: &Flags) -> Result<i32, String> {
+    let out = flags
+        .out
+        .clone()
+        .ok_or("replay control.finish needs --out DIR")?;
+    let roots = if flags.traces_all.is_empty() {
+        vec![
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../bench/terminal-bench/traces"),
+        ]
+    } else {
+        flags.traces_all.clone()
+    };
+    let (rows, sources) = super::finish::replay(&roots);
+    std::fs::create_dir_all(&out).map_err(|error| error.to_string())?;
+    let mut lines = String::new();
+    for row in &rows {
+        lines.push_str(&serde_json::to_string(row).map_err(|error| error.to_string())?);
+        lines.push('\n');
+    }
+    crate::record::write_atomic(&out.join("rows.jsonl"), lines.as_bytes())?;
+    let summary = super::finish::summary(&rows, &sources);
+    let text = serde_json::to_string_pretty(&summary).map_err(|error| error.to_string())?;
+    crate::record::write_atomic(&out.join("summary.json"), format!("{text}\n").as_bytes())?;
+    print_json(&summary)?;
     Ok(0)
 }
 
