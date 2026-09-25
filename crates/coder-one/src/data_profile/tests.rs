@@ -354,3 +354,66 @@ fn numbers_read_as_a_person_writes_them() {
     assert_eq!(num(1e-7), "1.000e-7");
     assert_eq!(num(f64::NAN), "NaN");
 }
+
+#[test]
+fn shared_values_across_tables_are_found_after_normalizing() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut a = String::from("id,ssn,city\n");
+    let mut b = String::from("key,social,tier\n");
+    for i in 0..120 {
+        a.push_str(&format!(
+            "A{i},{:03}-{:02}-{:04},Springfield\n",
+            100 + i,
+            i % 90,
+            1000 + i
+        ));
+        // Half of b's identifiers match a's, written without dashes.
+        let n = if i % 2 == 0 { i } else { 500 + i };
+        b.push_str(&format!(
+            "B{i},{:03}{:02}{:04},gold\n",
+            100 + n,
+            n % 90,
+            1000 + n
+        ));
+    }
+    std::fs::write(dir.path().join("a.csv"), a).unwrap();
+    std::fs::write(dir.path().join("b.csv"), b).unwrap();
+    let profile = super::profile(dir.path(), &super::Params::default());
+    let shared = profile.shared.clone().expect("the pass reports the pair");
+    assert!(
+        shared.contains("a.csv `ssn` and b.csv `social`: 60 values in common"),
+        "{shared}"
+    );
+    // The low-cardinality columns and the unrelated record ids aren't pairs.
+    assert!(
+        !shared.contains("city") && !shared.contains("tier") && !shared.contains("`id`"),
+        "{shared}"
+    );
+    let items = profile.items(&super::Params::default());
+    assert!(items.iter().any(|(label, _)| label == super::shared::LABEL));
+}
+
+#[test]
+fn one_table_has_no_shared_values_item() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut a = String::from("id,ssn\n");
+    for i in 0..100 {
+        a.push_str(&format!("A{i},{:09}\n", 100_000_000 + i));
+    }
+    std::fs::write(dir.path().join("a.csv"), a).unwrap();
+    assert!(
+        super::profile(dir.path(), &super::Params::default())
+            .shared
+            .is_none()
+    );
+}
+
+/// Profiles the folder `DATA_PROFILE_DIR` names and prints the shared-values
+/// item: `DATA_PROFILE_DIR=… cargo test -p coder-one shared_values_on_a_folder -- --ignored --nocapture`.
+#[test]
+#[ignore = "reads a folder named by DATA_PROFILE_DIR"]
+fn shared_values_on_a_folder() {
+    let dir = std::env::var("DATA_PROFILE_DIR").expect("DATA_PROFILE_DIR");
+    let profile = super::profile(std::path::Path::new(&dir), &super::Params::default());
+    println!("{} ms\n{}", profile.ms, profile.shared.unwrap_or_default());
+}

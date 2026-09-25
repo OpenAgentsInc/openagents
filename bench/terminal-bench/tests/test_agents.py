@@ -62,6 +62,7 @@ def test_known_arms(agents):
         "coder-one-microluna-v19",
         "coder-one-microluna-v19-fire",
         "coder-one-microluna-v19-fire-oracle",
+        "coder-one-microluna-v19-fire-profile",
         "coder-one-microluna-oracle-live-on",
         "coder-one-microluna-oracle-live-off",
         "coder-one-microluna-v17",

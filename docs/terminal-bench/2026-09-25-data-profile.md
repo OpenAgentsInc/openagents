@@ -241,3 +241,18 @@ python3 bench/terminal-bench/experiments/2026-09-25-data-profile/measure.py
 `dp9654-*`, and removes them. With `--keep` it keeps only the source and
 anatomy workspaces, for labeling. `measure.py` writes `records/measure.json`
 from the results and `records/labels.json`.
+
+## Values shared across files (2026-09-25, later)
+
+The profile describes each table on its own, so it couldn't show that
+records in different files describe the same things. A second pass,
+`data_profile::shared`, now reads each table the profile read, keeps
+columns with at least 50 distinct values and at least one distinct value
+per five filled rows, normalizes values to lowercase letters and digits,
+and reports up to 12 pairs of columns in different files with at least 20
+values in common, as one more evidence item. On
+`telecom-entity-resolution`'s four tables (about 93,000 rows) it took
+2.9 s and listed the identifier, email, phone, and name columns the
+tables share, with the counts in common. The switch is still off in every
+admitted manifest; the fire loop arm `microluna-v19-fire-profile` turns
+it on as an in-sample development run.

@@ -36,6 +36,7 @@
 //! (`crate::pack`, [`crate::pack::Source::Profile`]).
 
 pub mod npy;
+pub mod shared;
 #[cfg(test)]
 mod tests;
 
@@ -208,6 +209,10 @@ pub struct Profile {
     pub files: Vec<FileProfile>,
     /// Data files named and not profiled, with why.
     pub skipped: Vec<(String, String)>,
+    /// Columns in different tables whose values overlap
+    /// ([`shared::text`]), when any do.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shared: Option<String>,
     pub ms: u64,
 }
 
@@ -231,6 +236,11 @@ impl Profile {
                 };
                 (format!("{LABEL} {}", file.path), text)
             })
+            .chain(
+                self.shared
+                    .iter()
+                    .map(|text| (shared::LABEL.to_string(), text.clone())),
+            )
             .collect()
     }
 
@@ -247,6 +257,7 @@ impl Profile {
                 "ms": f.ms,
             })).collect::<Vec<_>>(),
             "skipped": self.skipped,
+            "shared": self.shared,
             "ms": self.ms,
         })
     }
@@ -1519,6 +1530,9 @@ pub fn profile(root: &Path, params: &Params) -> Profile {
             Some(Ok(file)) => out.files.push(file),
             Some(Err(why)) => out.skipped.push((path, why)),
         }
+    }
+    if out.files.len() > 1 && started.elapsed() < deadline {
+        out.shared = shared::text(&shared::pairs(root, &out.files, params));
     }
     out.ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
     out
