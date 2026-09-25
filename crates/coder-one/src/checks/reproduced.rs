@@ -124,6 +124,11 @@ fn allowed_container(value: &Value, identity: &str) -> bool {
         && h["CapDrop"]
             .as_array()
             .is_some_and(|v| v.iter().any(|x| x == "ALL"))
+        && h["PidsLimit"].as_u64().is_some_and(|n| n > 0 && n <= 128)
+        && h["SecurityOpt"].as_array().is_some_and(|v| {
+            v.iter()
+                .any(|s| s == "no-new-privileges" || s == "no-new-privileges:true")
+        })
         && c["Mounts"].as_array().is_some_and(|mounts| {
             mounts.len() == 1
                 && mounts[0]["Type"] == "bind"
@@ -207,6 +212,11 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
     let mode = JevMode::Live(crate::credentials::jev_client(&key.secret)?);
     let mut request = request(&input);
     let started = Instant::now();
+    let deadline = crate::deadline::Deadline::starting(
+        started,
+        Some(Duration::from_secs(300)),
+        Duration::ZERO,
+    );
     let mut observations = BTreeMap::new();
     let mut replies = Vec::new();
     let mut review = None;
@@ -269,7 +279,13 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
             error = Some("Invalid or excess inspection call".into());
             break;
         }
-        let arguments: Value = serde_json::from_str(&call.arguments).map_err(|e| e.to_string())?;
+        let arguments: Value = match serde_json::from_str(&call.arguments) {
+            Ok(value) => value,
+            Err(_) => {
+                error = Some("Invalid command arguments".into());
+                break;
+            }
+        };
         let Some(command) = arguments["command"]
             .as_str()
             .filter(|s| !s.is_empty() && s.len() <= 16000)
@@ -318,7 +334,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
                         state: state.clone(),
                         questions: questions(),
                         parent: None,
-                        deadline: None,
+                        deadline: Some(deadline.clone()),
                     },
                 )
                 .await;
@@ -382,7 +398,7 @@ mod tests {
     }
     #[test]
     fn container_validation_rejects_network_and_writable_mounts() {
-        let mut c = json!([{"Config":{"Labels":{"openagents.candidate-review":"1","openagents.candidate-identity":"id"}},"HostConfig":{"ReadonlyRootfs":true,"Privileged":false,"NetworkMode":"none","Memory":2147483648u64,"CapDrop":["ALL"]},"Mounts":[{"Type":"bind","Destination":"/app","RW":false}]}]);
+        let mut c = json!([{"Config":{"Labels":{"openagents.candidate-review":"1","openagents.candidate-identity":"id"}},"HostConfig":{"ReadonlyRootfs":true,"Privileged":false,"NetworkMode":"none","Memory":2147483648u64,"CapDrop":["ALL"],"PidsLimit":128,"SecurityOpt":["no-new-privileges"]},"Mounts":[{"Type":"bind","Destination":"/app","RW":false}]}]);
         assert!(allowed_container(&c, "id"));
         assert!(!allowed_container(&c, "another"));
         c[0]["HostConfig"]["NetworkMode"] = json!("host");
