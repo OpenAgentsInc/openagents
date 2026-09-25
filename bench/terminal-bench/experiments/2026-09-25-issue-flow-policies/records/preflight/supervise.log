@@ -1,0 +1,39 @@
+   Compiling unicode-ident v1.0.26
+   Compiling parking_lot_core v0.9.12
+   Compiling smallvec v1.16.1
+   Compiling rustix v1.1.5
+   Compiling once_cell v1.21.4
+   Compiling lock_api v0.4.14
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling syn v3.0.6
+   Compiling parking_lot v0.12.5
+   Compiling tempfile v3.27.0
+   Compiling tokio-macros v2.7.2
+   Compiling tokio v1.53.1
+   Compiling supervise v0.1.0 (/Users/christopherdavid/.codex/worktrees/issue-flow-default/openagents/crates/supervise)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.43s
+     Running unittests src/lib.rs (/Users/christopherdavid/.codex/worktrees/issue-flow-default/target/debug/deps/supervise-b9d7f4a7d2f66462)
+
+running 18 tests
+test tests::a_sink_counts_everything_and_keeps_its_cap ... ok
+test tests::invalid_bytes_inside_the_kept_text_are_replaced ... ok
+test tests::a_cap_inside_a_character_drops_the_partial_one ... ok
+test memory::tests::byte_counts_read_with_and_without_a_suffix ... ok
+test memory::tests::a_refused_data_limit_names_the_cap_and_the_way_past_it ... ok
+test live::tests::pending_output_past_its_cap_becomes_one_gap_at_its_offset ... ok
+test tests::a_stream_under_its_cap_is_whole ... ok
+test memory::tests::none_off_and_zero_mean_no_cap ... ok
+test memory::tests::the_innermost_slice_under_a_user_manager_is_found ... ok
+test memory::tests::a_count_that_is_not_one_is_refused ... ok
+test memory::tests::a_group_the_watch_cannot_list_is_killed_and_the_lapse_recorded ... ok
+test tests::a_live_process_and_a_dead_one_probe_differently ... ok
+test memory::tests::a_spawn_that_fails_leaves_no_helper_waiting ... ok
+test memory::tests::on_macos_the_job_is_watched_and_its_data_limit_left_alone ... ok
+test memory::tests::a_watched_group_under_its_cap_runs_and_the_cap_held ... ok
+test memory::tests::an_empty_group_ends_the_watch_without_a_lapse ... ok
+test memory::tests::a_footprint_counts_every_process_in_the_group ... ok
+test memory::tests::a_watched_group_past_its_cap_is_killed_and_reported ... ok
+
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.80s
+

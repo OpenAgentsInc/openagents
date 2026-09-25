@@ -1,0 +1,26 @@
+{
+  "schema": "openagents.issue-flow-policy-study.v1",
+  "build_commit": "cd5c1d32fbdc8e1885b36143491a37d7b3875bdf",
+  "binary_sha256": "87b3ea0d1ea69f4b5d5708535f10fc43b8ffe7d19cacf594077a1007f8006578",
+  "host": {
+    "os": "macOS-26.4-arm64-arm-64bit",
+    "arch": "arm64",
+    "logical_cpus": 18,
+    "memory_bytes": 137438953472
+  },
+  "environment": {
+    "CARGO_BUILD_JOBS": "6",
+    "CARGO_PROFILE_DEV_DEBUG": "0",
+    "CARGO_PROFILE_TEST_DEBUG": "0"
+  },
+  "set_digest": "b85ff8426d91c44f5f3382d396ffaeca3d9d408ea84ed2194772ba381203a104",
+  "policy_files": {
+    "issue-flow-lean.json": "c593246d858ba17eba907954c82d2690a79e9bcc42b5d20b6d60af7f51bf8edf",
+    "issue-flow.json": "de038ac0976d3aee7f441a7d68a7fd4fb4cbde9919a031366ed21e1d5bb0d82b"
+  },
+  "policy_digests": {
+    "lean": "fc8934ddf33c64d09be4829874673f6d83db7e5317d7fd58cb582ed21e57d2f9",
+    "requirements": "738c69582ca35af817b957857999893fe46df8d9239bfed42ac2a32b39eecb02"
+  },
+  "live_attempts_started": false
+}

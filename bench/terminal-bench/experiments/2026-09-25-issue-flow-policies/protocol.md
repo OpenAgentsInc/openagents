@@ -120,3 +120,35 @@ noise, and the report calls it that.
 `verification/grade.json`, named by run number, and `runs.jsonl`, one line
 per run in the order they ran. The report is
 `docs/coder/measurements/2026-09-25-issue-flow-policies.md`.
+
+## Execution host and preflight, before live attempts
+
+The comparison runs on the operator's macOS 26.4 arm64 machine, with
+128 GiB of memory and 18 logical CPUs. Coderos is running separately owned
+fire-loop experiments. No other benchmark cohort runs on this Mac during
+the comparison. This selects the host; it changes no task, arm, order,
+budget rule, grader, or decision rule above.
+
+[`pins.json`](pins.json) records the source commit, executable digest,
+policy file and canonical digests, set digest, and build environment.
+Both arms use six Cargo build workers and no development or test debug
+information. The grader uses a dedicated target directory outside each
+candidate. The issue flow retains its existing target-directory behavior.
+The executable stays fixed throughout the study, even if main advances.
+
+The first grader preflight failed because the Mac lacked GNU `timeout`.
+After installing Coreutils 9.12, all four graders discriminate: the base
+fails and the known fix passes. Both preflights are retained in
+[`records/preflight/`](records/preflight/). The 31 issue-flow tests pass,
+including the scripted full flow, lean turn, and enforced offline gate;
+18 subprocess tests pass on macOS. These are environment and integration
+checks, not live model outcomes.
+
+[`run.py`](run.py) runs the registered order under an exclusive lock,
+records a launch before each attempt, and retains every final manifest
+and both output streams. An interrupted attempt or missing manifest stops
+the driver for inspection; it never silently replaces that attempt.
+Recorded costs follow the budget rule above. A missing total remains a
+lower bound and cannot establish a cheaper-policy claim. Full native and
+ATIF transcripts and candidate diffs are retained beside each run; the
+report links the published evidence.

@@ -1,0 +1,45 @@
+   Compiling coder-one v0.1.0 (/Users/christopherdavid/.codex/worktrees/issue-flow-default/openagents/crates/coder-one)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 34.50s
+     Running unittests src/lib.rs (/Users/christopherdavid/.codex/worktrees/issue-flow-default/target/debug/deps/coder_one-5a397fa83c387622)
+
+running 31 tests
+test issue_turn::confined::tests::credentials_and_github_variables_are_withheld ... ok
+test issue_eval::grade::tests::test_counts_sum_every_result_line ... ok
+test issue_eval::grade::tests::a_snippet_goes_inside_the_tests_module_or_in_one_of_its_own ... ok
+test issue_turn::tests::figures_are_amounts_and_decimals ... ok
+test issue_turn::tests::defined_names_read_functions_constants_and_statics ... ok
+test issue_turn::tests::review_outcomes_reach_the_publication_decision ... ok
+test issue_turn::tests::fixed_offsets_are_found_and_plain_arithmetic_is_not ... ok
+test issue_turn::tests::edited_lines_read_hunk_ranges ... ok
+test issue_turn::tests::a_pull_request_url_is_not_an_issue ... ok
+test issue_turn::tests::parts_cut_a_requirement_into_its_clauses ... ok
+test issue_turn::tests::references_read_urls_and_hash_numbers_in_order ... ok
+test issue_turn::tests::slashes_between_words_and_units_without_spaces_are_flagged ... ok
+test issue_turn::tests::style_problems_find_per_slashes_and_tildes ... ok
+test issue_turn::tests::text_with_no_reference_finds_none ... ok
+test issue_turn::tests::the_word_issue_before_a_number_names_one ... ok
+test issue_turn::tests::broken_links_find_missing_files_and_headings ... ok
+test issue_turn::tests::style_problems_find_slashes_broken_hyphens_and_long_strings ... ok
+test issue_eval::tests::a_changed_file_breaks_the_seal ... ok
+issue ▸ the tests did not run: this host can't build a write boundary (this test has no supported way to limit which files a command can write), and an evaluation run never runs them without one
+issue ▸ the tests run in a write boundary, credentials withheld, network off
+issue ▸ running the probe tests
+test requirements::tests::checkbox_issues_still_yield_their_items ... ok
+test proposal::tests::a_code_proposal_becomes_a_drafted_issue ... ok
+test issue_eval::sealed::tests::commands_that_reach_out_are_named ... ok
+test issue_eval::tests::the_set_in_this_repository_loads_with_its_digests_and_split ... ok
+test terminal::tests::the_lean_issue_manifest_carries_the_lean_loops_protections ... ok
+issue ▸ warning: this host can't build a write boundary (this test has no supported way to limit which files a command can write), so the tests run without one, credentials still withheld
+issue ▸ running the probe tests
+test issue_eval::sealed::tests::a_scan_records_attempts_and_marks_what_got_past_the_seal ... ok
+issue ▸ 1 file changed, 1 insertion(+)
+test issue_turn::tests::a_failed_review_leaves_changes_staged_without_committing_or_publishing ... ok
+test issue_turn::tests::the_review_finds_a_changed_function_and_its_callers ... ok
+test terminal::tests::an_issue_turn_runs_the_lean_loop_its_manifest_names ... ok
+test issue_eval::grade::tests::checks_read_the_candidate_against_the_base_and_undo_what_they_place ... ok
+test issue_turn::confined::tests::a_confined_test_reaches_no_network_no_credential_and_no_outside_file ... ok
+test issue_turn::confined::tests::an_evaluation_run_refuses_to_run_tests_unconfined ... ok
+test issue_eval::run::tests::a_scripted_run_works_an_entry_without_publishing_and_grades_it ... ok
+
+test result: ok. 31 passed; 0 failed; 0 ignored; 0 measured; 893 filtered out; finished in 1.90s
+
