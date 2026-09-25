@@ -166,6 +166,9 @@ pub struct Gesture {
     /// Positions the gesture is directed at.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub at: Vec<[f32; 3]>,
+    /// The entity the gesture is for: `[pubkey, entity id]`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub to: Option<[String; 2]>,
 }
 
 /// A received NIP-MV event, validated.
@@ -278,7 +281,10 @@ pub fn gesture_event(
     pos: Vec3,
     now: u64,
 ) -> Event {
-    let tags = vec![tag(&["w", world]), tag(&["c", &cell(pos)])];
+    let mut tags = vec![tag(&["w", world]), tag(&["c", &cell(pos)])];
+    if let Some([pubkey, _]) = &gesture.to {
+        tags.push(tag(&["p", pubkey]));
+    }
     let content = serde_json::to_string(gesture).expect("a gesture serializes");
     signer.sign(now, GESTURE_KIND, tags, content)
 }
@@ -351,6 +357,16 @@ pub fn decode(event: &Event, world: &str) -> Result<Received, String> {
                     .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-');
             if !name_ok || gesture.at.len() > 8 {
                 return Err("malformed gesture".into());
+            }
+            if let Some([pubkey, id]) = &gesture.to {
+                let hex = pubkey.len() == 64
+                    && pubkey
+                        .bytes()
+                        .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
+                if !hex {
+                    return Err("a gesture's `to` names a malformed pubkey".into());
+                }
+                check_id(id)?;
             }
             Ok(Received::Gesture { pubkey, gesture })
         }
@@ -475,8 +491,10 @@ mod tests {
             t: 9,
             d: Some(2.4),
             at: vec![[1.0, 2.0, 3.0]],
+            to: Some(["ab".repeat(32), "agent".into()]),
         };
         let event = gesture_event(&signer(), WORLD, &gesture, Vec3::ZERO, 1);
+        assert!(event.tag_values("p").any(|p| p == "ab".repeat(32)));
         assert!(matches!(
             decode(&event, WORLD),
             Ok(Received::Gesture { gesture: got, .. }) if got == gesture

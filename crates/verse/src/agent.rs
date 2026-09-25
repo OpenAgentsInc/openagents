@@ -12,7 +12,8 @@
 //! is nearby ([`Agent::look_around`]), and the agent looks toward it, left
 //! and then right. While it idles
 //! beside a still player, it now and then spins, looks up and down, or
-//! does a barrel roll.
+//! does a barrel roll. When it meets another player's agent, it greets it
+//! ([`Agent::greet`]).
 
 use coder_terminal::Intensity;
 use glam::{Mat4, Quat, Vec2, Vec3};
@@ -52,6 +53,9 @@ pub enum Emote {
     LookUpDown,
     /// One full roll around the facing axis, with a small lift.
     BarrelRoll,
+    /// Turn to face another agent, bow twice, and hop. Played when two
+    /// agents meet.
+    Greet,
 }
 
 impl Emote {
@@ -66,6 +70,7 @@ impl Emote {
             Emote::Spin => 1.2,
             Emote::LookUpDown => 1.8,
             Emote::BarrelRoll => 1.1,
+            Emote::Greet => 2.2,
         }
     }
 
@@ -114,6 +119,34 @@ impl Emote {
             Emote::BarrelRoll => Pose {
                 roll: TAU * ease(u),
                 lift: 0.25 * (u * std::f32::consts::PI).sin(),
+                ..Pose::REST
+            },
+            // The turn toward the other agent is added in `Agent::pose`,
+            // which knows where it is.
+            Emote::Greet => Pose {
+                pitch: 0.5
+                    * keys(
+                        u,
+                        &[
+                            (0.0, 0.0),
+                            (0.25, 0.0),
+                            (0.35, 1.0),
+                            (0.45, 0.0),
+                            (0.55, 1.0),
+                            (0.67, 0.0),
+                            (1.0, 0.0),
+                        ],
+                    ),
+                lift: keys(
+                    u,
+                    &[
+                        (0.0, 0.0),
+                        (0.12, 0.2),
+                        (0.24, 0.04),
+                        (0.75, 0.04),
+                        (1.0, 0.0),
+                    ],
+                ),
                 ..Pose::REST
             },
         }
@@ -166,6 +199,16 @@ struct Playing {
     elapsed: f32,
     /// Look-around glance angles, left then right, in radians.
     glance: [f32; 2],
+    /// What a greeting faces.
+    toward: Option<Vec3>,
+}
+
+/// How much of the turn toward a greeted agent applies at `u`.
+fn greet_turn(u: f32) -> f32 {
+    keys(
+        u.clamp(0.0, 1.0),
+        &[(0.0, 0.0), (0.15, 1.0), (0.85, 1.0), (1.0, 0.0)],
+    )
 }
 
 /// The look-around glances when nothing nearby is known.
@@ -239,12 +282,37 @@ impl Agent {
     pub fn pose(&self) -> Pose {
         self.playing.map_or(Pose::REST, |p| {
             let u = p.elapsed / p.emote.duration();
-            if p.emote == Emote::LookAround {
-                look_pose(u, p.glance)
-            } else {
-                p.emote.pose(u)
+            match (p.emote, p.toward) {
+                (Emote::LookAround, _) => look_pose(u, p.glance),
+                (Emote::Greet, Some(toward)) => {
+                    let d = toward - self.pos;
+                    let face = crate::controller::wrap(d.x.atan2(d.z) - self.yaw);
+                    Pose {
+                        yaw: face * greet_turn(u),
+                        ..Emote::Greet.pose(u)
+                    }
+                }
+                (emote, _) => emote.pose(u),
             }
         })
+    }
+
+    /// Greets the agent at `toward`: turns to face it, bows twice, and
+    /// hops. Returns false, doing nothing, while the agent is scanning,
+    /// looking around, or already greeting; idle emotes give way.
+    pub fn greet(&mut self, toward: Vec3) -> bool {
+        let busy =
+            self.scanning || matches!(self.emote(), Some(Emote::LookAround) | Some(Emote::Greet));
+        if busy {
+            return false;
+        }
+        self.playing = Some(Playing {
+            emote: Emote::Greet,
+            elapsed: 0.0,
+            glance: DEFAULT_GLANCE,
+            toward: Some(toward),
+        });
+        true
     }
 
     /// True once when the agent has caught up after a chase and wants to
@@ -284,6 +352,7 @@ impl Agent {
             emote: Emote::LookAround,
             elapsed: 0.0,
             glance,
+            toward: None,
         });
     }
 
@@ -346,6 +415,7 @@ impl Agent {
             emote,
             elapsed: 0.0,
             glance: DEFAULT_GLANCE,
+            toward: None,
         });
     }
 
@@ -577,6 +647,7 @@ mod tests {
             Emote::Spin,
             Emote::LookUpDown,
             Emote::BarrelRoll,
+            Emote::Greet,
         ] {
             for u in [0.0, 1.0] {
                 let p = e.pose(u);
@@ -585,6 +656,35 @@ mod tests {
                 assert!(p.lift.abs() < 1e-4, "{e:?} at {u}");
             }
         }
+    }
+
+    #[test]
+    fn a_greeting_faces_the_other_agent_and_bows() {
+        let pc = PlayerController::new(Vec3::ZERO, 0.0);
+        let mut agent = Agent::new(&pc);
+        // Heading +Z: a friend due +X is a quarter turn to the left.
+        let friend = agent.pos + Vec3::new(5.0, 0.0, 0.0);
+        assert!(agent.greet(friend));
+        for _ in 0..30 {
+            agent.update(&pc, 1.0 / 60.0);
+        }
+        let pose = agent.pose();
+        assert!(
+            (pose.yaw - std::f32::consts::FRAC_PI_2).abs() < 0.15,
+            "yaw {}",
+            pose.yaw
+        );
+        let bow = Emote::Greet.pose(0.35).pitch;
+        assert!(bow > 0.4, "bows forward");
+        assert!(!agent.greet(friend), "one greeting at a time");
+    }
+
+    #[test]
+    fn a_scanning_agent_does_not_greet() {
+        let pc = PlayerController::new(Vec3::ZERO, 0.0);
+        let mut agent = Agent::new(&pc);
+        agent.scanning = true;
+        assert!(!agent.greet(Vec3::X));
     }
 
     #[test]

@@ -299,6 +299,12 @@ impl App {
             if let Some(found) = session.scan_result(now, &self.agent) {
                 self.agent.look_around(&found);
             }
+            // Two agents that meet greet each other.
+            if let Some((pubkey, at)) = session.greeting(now, &self.agent)
+                && self.agent.greet(at)
+            {
+                session.greeted(&pubkey, at, &self.agent, now);
+            }
             dynamic.extend(&session.crowd.mesh(now, dt));
         }
         if self.frames.is_multiple_of(30) {

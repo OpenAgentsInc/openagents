@@ -12,6 +12,7 @@
 //! - **Scans.** When the agent looks around, the session queries entity
 //!   states in the surrounding cells and reports what is near.
 
+use std::collections::HashMap;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use glam::{Quat, Vec3};
@@ -36,6 +37,12 @@ const LIVE_SUB: &str = "mv-live";
 const STATE_SUB: &str = "mv-state";
 const ME_SUB: &str = "mv-me";
 const SCAN_WAIT: Duration = Duration::from_millis(1200);
+/// Agents closer than this greet each other, in meters.
+pub const GREET_RADIUS: f32 = 7.0;
+/// An agent greets the same player's agent at most this often.
+pub const GREET_COOLDOWN: Duration = Duration::from_secs(45);
+/// How long a received greeting waits to be returned.
+const INVITE_TTL: Duration = Duration::from_secs(10);
 
 /// Connection status for the window title.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -71,6 +78,11 @@ pub struct Session {
     scan: Option<Scan>,
     scans: u64,
     last_player: Option<Vec3>,
+    /// When this agent last greeted each pubkey's agent.
+    greeted: HashMap<String, Instant>,
+    /// Pubkeys whose agents greeted this one, and when.
+    invited: Vec<(String, Instant)>,
+    greets_received: u64,
 }
 
 /// Starting place for the local player.
@@ -133,6 +145,9 @@ impl Session {
             scan: None,
             scans: 0,
             last_player: None,
+            greeted: HashMap::new(),
+            invited: Vec::new(),
+            greets_received: 0,
         })
     }
 
@@ -301,6 +316,7 @@ impl Session {
             t: unix_millis(),
             d: Some(crate::agent::Emote::LookAround.duration()),
             at: found.iter().map(|p| p.to_array()).collect(),
+            to: None,
         };
         self.publish_now(mv::gesture_event(
             &self.id.signer,
@@ -310,6 +326,52 @@ impl Session {
             unix_now(),
         ));
         Some(found)
+    }
+
+    /// Another player's agent this agent should greet now, if any: one that
+    /// greeted it first, or the nearest one within [`GREET_RADIUS`], skipping
+    /// any greeted in the last [`GREET_COOLDOWN`].
+    pub fn greeting(&mut self, now: Instant, agent: &Agent) -> Option<(String, Vec3)> {
+        self.invited
+            .retain(|(_, at)| now.saturating_duration_since(*at) < INVITE_TTL);
+        let agents: Vec<(String, Vec3)> = self
+            .crowd
+            .shown(now)
+            .into_iter()
+            .filter(|e| e.role == "agent" && e.online)
+            .map(|e| (e.pubkey, e.pos))
+            .collect();
+        let invited: Vec<String> = self.invited.iter().map(|(p, _)| p.clone()).collect();
+        pick_greeting(agent.pos, &agents, &invited, &self.greeted, now)
+    }
+
+    /// Records that this agent greeted `pubkey`'s agent at `at`, and tells
+    /// that player with a `greet` gesture addressed to their agent.
+    pub fn greeted(&mut self, pubkey: &str, at: Vec3, agent: &Agent, now: Instant) {
+        self.greeted.insert(pubkey.to_owned(), now);
+        self.invited.retain(|(p, _)| p != pubkey);
+        let gesture = Gesture {
+            v: 1,
+            id: "agent".into(),
+            g: "greet".into(),
+            t: unix_millis(),
+            d: Some(crate::agent::Emote::Greet.duration()),
+            at: vec![at.to_array()],
+            to: Some([pubkey.to_owned(), "agent".into()]),
+        };
+        self.publish_now(mv::gesture_event(
+            &self.id.signer,
+            WORLD,
+            &gesture,
+            agent.pos,
+            unix_now(),
+        ));
+    }
+
+    /// How many greetings addressed to this agent have arrived.
+    #[must_use]
+    pub fn greets_received(&self) -> u64 {
+        self.greets_received
     }
 
     /// Records the player and agent as offline where they stand.
@@ -348,6 +410,17 @@ impl Session {
             In::Disconnected(_) => self.status = Status::Offline,
             In::Event { event, .. } => {
                 if let Ok(received) = mv::decode(&event, WORLD) {
+                    if let Received::Gesture { pubkey, gesture } = &received
+                        && gesture.g == "greet"
+                        && gesture
+                            .to
+                            .as_ref()
+                            .is_some_and(|[to, id]| to == self.pubkey() && id == "agent")
+                    {
+                        self.greets_received += 1;
+                        self.invited.retain(|(p, _)| p != pubkey);
+                        self.invited.push((pubkey.clone(), now));
+                    }
                     self.crowd.apply(received, now);
                 }
             }
@@ -394,6 +467,35 @@ pub fn poses(player: &PlayerController, agent: &Agent) -> Vec<EntityPose> {
     let mut spade = EntityPose::new("agent", "agent", pos, rot);
     spade.follows = Some("avatar".into());
     vec![avatar, spade]
+}
+
+/// Chooses whom to greet: a returned greeting first (from up to twice the
+/// greeting radius), then the nearest agent inside the radius, never one
+/// greeted within the cooldown.
+#[must_use]
+pub fn pick_greeting(
+    from: Vec3,
+    agents: &[(String, Vec3)],
+    invited: &[String],
+    greeted: &HashMap<String, Instant>,
+    now: Instant,
+) -> Option<(String, Vec3)> {
+    let cool = |p: &str| {
+        greeted
+            .get(p)
+            .is_none_or(|at| now.saturating_duration_since(*at) >= GREET_COOLDOWN)
+    };
+    let returned = agents.iter().find(|(p, pos)| {
+        invited.contains(p) && cool(p) && pos.distance(from) <= GREET_RADIUS * 2.0
+    });
+    if let Some(found) = returned {
+        return Some(found.clone());
+    }
+    agents
+        .iter()
+        .filter(|(p, pos)| cool(p) && pos.distance(from) <= GREET_RADIUS)
+        .min_by(|a, b| a.1.distance(from).total_cmp(&b.1.distance(from)))
+        .cloned()
 }
 
 fn is_clear(pos: Vec3, blockers: &[Footprint]) -> bool {
@@ -443,6 +545,36 @@ mod tests {
             assert!(Vec3::new(p.x, 0.0, p.z).length() <= SPAWN_RADIUS + 1e-3);
             assert!(is_clear(p, &world.blockers));
         }
+    }
+
+    #[test]
+    fn greetings_go_to_the_nearest_agent_in_range_once_per_cooldown() {
+        let now = Instant::now();
+        let agents = vec![
+            ("far".to_owned(), Vec3::new(20.0, 2.0, 0.0)),
+            ("near".to_owned(), Vec3::new(3.0, 2.0, 0.0)),
+            ("close".to_owned(), Vec3::new(5.0, 2.0, 0.0)),
+        ];
+        let mut greeted = HashMap::new();
+        let pick = pick_greeting(Vec3::ZERO, &agents, &[], &greeted, now);
+        assert_eq!(pick.map(|p| p.0).as_deref(), Some("near"));
+        greeted.insert("near".to_owned(), now);
+        let pick = pick_greeting(Vec3::ZERO, &agents, &[], &greeted, now);
+        assert_eq!(pick.map(|p| p.0).as_deref(), Some("close"));
+        greeted.insert("close".to_owned(), now);
+        assert!(pick_greeting(Vec3::ZERO, &agents, &[], &greeted, now).is_none());
+        let later = now + GREET_COOLDOWN;
+        assert!(pick_greeting(Vec3::ZERO, &agents, &[], &greeted, later).is_some());
+    }
+
+    #[test]
+    fn a_greeting_is_returned_from_a_little_farther() {
+        let now = Instant::now();
+        let agents = vec![("friend".to_owned(), Vec3::new(12.0, 2.0, 0.0))];
+        let greeted = HashMap::new();
+        assert!(pick_greeting(Vec3::ZERO, &agents, &[], &greeted, now).is_none());
+        let pick = pick_greeting(Vec3::ZERO, &agents, &["friend".to_owned()], &greeted, now);
+        assert_eq!(pick.map(|p| p.0).as_deref(), Some("friend"));
     }
 
     #[test]

@@ -53,7 +53,7 @@ each other.
 | --- | --- | --- | --- |
 | Pose frame | `23300` | No (ephemeral) | 10 per second while moving, 4 while still. Carries the avatar's and the agent's position and quaternion. |
 | Entity state | `33301` | Yes (addressable) | On join, every 3 s of movement, and on quit with `online: false`. |
-| Gesture | `23301` | No (ephemeral) | When the agent looks around, with the positions it looked at. |
+| Gesture | `23301` | No (ephemeral) | `look-around` when the agent looks around, with the positions it looked at; `greet` when it greets another agent, addressed to that agent. |
 | Profile | `0` | Yes | Once, when a profile is created. |
 
 **Drawing others.** Remote avatars and agents are drawn 150 ms in the past,
@@ -78,8 +78,9 @@ a per-second lane for these kinds, as NIP-MV recommends.
 **Testing.** `cargo test -p verse` covers the protocol, interpolation, and
 identity without a network. With a relay running,
 `VERSE_TEST_RELAY=ws://127.0.0.1:7447 cargo test -p verse --test relay`
-signs up two players, checks each sees the other's avatar and agent, and
-checks a returning player resumes. It leaves two resting test players in
+signs up two players, checks each sees the other's avatar and agent,
+checks a returning player resumes, and checks two agents that meet greet
+each other. It leaves two resting test players in
 the relay's world.
 
 ## The agent
@@ -105,6 +106,7 @@ It also plays emotes over that motion:
 | Spin | At random while idle beside you, every 5 to 12 s. | One full turn with a small lift. |
 | Look up and down | At random while idle. | Tips back to look up, then forward to look down. |
 | Barrel roll | At random while idle. | One full roll around its facing axis, rising a little. |
+| Greet | Its agent comes within 7 m of another player's online agent, or that agent greets it first. | Turns to face the other agent, bows twice, and hops. Sends a `greet` gesture addressed to the other agent, whose player greets back. Each pair greets at most once every 45 s. |
 
 The agent has no behavior yet beyond following and emoting. Its game design is in
 [`gdd.md`](gdd.md).

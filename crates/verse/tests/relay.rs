@@ -76,3 +76,43 @@ fn two_players_see_each_other() {
     assert!(back.resumed, "alice did not resume");
     assert!(back.pos.distance(Vec3::new(pa.pos.x, 0.0, pa.pos.z)) < 0.6);
 }
+
+#[test]
+fn two_agents_that_meet_greet_each_other() {
+    let Ok(relay) = std::env::var("VERSE_TEST_RELAY") else {
+        eprintln!("skipped: set VERSE_TEST_RELAY to run against a relay");
+        return;
+    };
+    let dir = std::env::temp_dir().join(format!("verse-greet-test-{}", std::process::id()));
+    let mut a = Session::start_in(&dir, "greeter-a", &relay).expect("signs up");
+    let mut b = Session::start_in(&dir, "greeter-b", &relay).expect("signs up");
+    // Stand the two players a few meters apart on the plaza.
+    let pa = PlayerController::new(Vec3::new(-2.0, 0.0, -6.0), 0.0);
+    let pb = PlayerController::new(Vec3::new(2.0, 0.0, -6.0), 0.0);
+    let mut ga = Agent::new(&pa);
+    let mut gb = Agent::new(&pb);
+    let start = Instant::now();
+    while start.elapsed() < Duration::from_secs(8)
+        && (a.greets_received() == 0 || b.greets_received() == 0)
+    {
+        let dt = 1.0 / 60.0;
+        ga.update(&pa, dt);
+        gb.update(&pb, dt);
+        let now = Instant::now();
+        for (session, agent, player) in [(&mut a, &mut ga, &pa), (&mut b, &mut gb, &pb)] {
+            session.tick(now, player, agent);
+            if let Some((pubkey, at)) = session.greeting(now, agent)
+                && agent.greet(at)
+            {
+                session.greeted(&pubkey, at, agent, now);
+            }
+        }
+        std::thread::sleep(Duration::from_millis(16));
+    }
+    let (got_a, got_b) = (a.greets_received(), b.greets_received());
+    a.leave(&pa, &ga);
+    b.leave(&pb, &gb);
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(got_a >= 1, "the first agent was never greeted");
+    assert!(got_b >= 1, "the second agent was never greeted");
+}

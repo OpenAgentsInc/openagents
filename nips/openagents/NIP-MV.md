@@ -217,9 +217,18 @@ show it by name rather than infer it from poses.
 | `t` | Publisher time in milliseconds. |
 | `d` | Optional duration in seconds. |
 | `at` | Optional world positions the gesture is directed at. |
+| `to` | Optional entity the gesture is for, as `[<pubkey>, <entity id>]`. |
+
+A gesture with `to` SHOULD carry a `p` tag naming that pubkey, so the
+recipient can subscribe to gestures addressed to it with `#p`.
 
 Gesture names are application-defined. Clients MUST ignore gestures they do
-not recognize.
+not recognize. Two names are suggested for common interactions:
+
+| Name | Meaning |
+| --- | --- |
+| `look-around` | The entity surveyed its surroundings; `at` lists what it looked at. |
+| `greet` | The entity greeted another; `to` names it. A recipient MAY greet back once, and SHOULD NOT greet the same entity again for a cooldown, so two clients do not greet each other in a loop. |
 
 ## Subscriptions
 

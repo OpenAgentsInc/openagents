@@ -166,6 +166,7 @@ implement this shared context system.
 | Pose frame | Implemented | A `23300` event carrying the current position and quaternion of one publisher's entities. Relays forward it and do not store it. Receivers order frames by session and sequence and draw them slightly in the past. |
 | Entity state | Implemented | A `33301` event recording where one entity was last and whether its publisher is online. Relays keep the latest per entity, which is how a player resumes and how resting players stay visible. |
 | Scan | Implemented | The agent's look-around after a chase: a one-shot query for entity states in the cells around it, answered by glancing at the nearest players or agents found. |
+| Greeting | Implemented | Two agents within 7 m of each other turn, bow, and hop, and each sends a NIP-MV `greet` gesture addressed to the other. A received greeting is returned once; a pair greets at most once every 45 s. |
 
 ## Capabilities and programs
 
