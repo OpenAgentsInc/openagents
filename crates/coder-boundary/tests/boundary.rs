@@ -485,6 +485,42 @@ mod enforced {
         );
     }
 
+    /// An offline boundary leaves the command no network interface but
+    /// loopback: its own network namespace on Linux, a profile that denies
+    /// outbound connections on macOS.
+    #[test]
+    fn an_offline_boundary_has_no_network_but_loopback() {
+        if !backend() {
+            eprintln!("skipped: no enforced boundary on this host");
+            return;
+        }
+        let dir = TempDir::new().unwrap();
+        let boundary = Boundary::readonly().offline().build().unwrap();
+        assert!(boundary.offline());
+        if cfg!(target_os = "macos") {
+            assert!(
+                boundary
+                    .profile()
+                    .contains("(deny network-outbound (remote ip))"),
+                "{}",
+                boundary.profile()
+            );
+            return;
+        }
+        // `/proc` is mounted fresh inside the boundary, so `/proc/net/dev`
+        // lists the interfaces of the command's own network namespace.
+        let (ending, stderr) = run(
+            &boundary,
+            "awk 'NR > 2 { print $1 }' /proc/net/dev > /dev/null || exit 20; \
+             if awk 'NR > 2 { print $1 }' /proc/net/dev | grep -qv '^lo:$'; then exit 21; fi",
+            &[],
+            dir.path(),
+        );
+        assert_eq!(ending, Ending::Exited(Some(0)), "stderr: {stderr}");
+        let open = Boundary::readonly().build().unwrap();
+        assert!(!open.offline());
+    }
+
     #[test]
     fn a_relative_program_is_refused() {
         if !backend() {

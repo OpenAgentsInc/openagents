@@ -305,6 +305,7 @@ pub async fn task(name: &str, jev: &JevMode, options: &TaskOptions) -> Result<Va
                 ))
             },
             isolation: Isolation::Boundary,
+            seal: None,
             traces: Some(out.clone()),
             echo: options.echo,
         };

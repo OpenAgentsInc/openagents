@@ -321,6 +321,8 @@ pub struct Workspace {
     observe_only: bool,
     /// The longest a command may run, below [`COMMAND_WALL_MAX`].
     command_max: Duration,
+    /// What an evaluation run cuts commands off from, when it does.
+    seal: Option<crate::Seal>,
 }
 
 impl Workspace {
@@ -336,7 +338,25 @@ impl Workspace {
             read_only: false,
             observe_only: false,
             command_max: COMMAND_WALL_MAX,
+            seal: None,
         })
+    }
+
+    /// The same workspace, with every command sealed off from GitHub and,
+    /// when the seal is offline, from the network; see [`crate::seal`]. An
+    /// offline seal needs an enforced boundary: under
+    /// [`Isolation::TaskContainer`] a command is refused rather than run
+    /// with the network open.
+    #[must_use]
+    pub fn sealed_by(mut self, seal: crate::Seal) -> Self {
+        self.seal = Some(seal);
+        self
+    }
+
+    /// The seal commands run under, when there is one.
+    #[must_use]
+    pub fn seal(&self) -> Option<&crate::Seal> {
+        self.seal.as_ref()
     }
 
     /// The same workspace, with every command bounded by `max` (at most
@@ -497,6 +517,11 @@ impl Workspace {
                 } else {
                     coder_boundary::Boundary::writing(&self.root)
                 };
+                let spec = if self.seal.as_ref().is_some_and(crate::Seal::offline) {
+                    spec.offline()
+                } else {
+                    spec
+                };
                 let boundary = match spec.owned_scratch_under(std::env::temp_dir()).build() {
                     Ok(boundary) => boundary,
                     Err(error) => {
@@ -517,16 +542,29 @@ impl Workspace {
                     command.env("TMPDIR", scratch);
                 }
                 withhold_credentials(&mut command);
+                if let Some(seal) = &self.seal {
+                    seal.apply(&mut command);
+                }
                 supervise::Job::from_command(command)
                     .bounded(supervise::Limits::within(wall).keeping(COMMAND_KEEP))
                     .run_holding(boundary.hold())
                     .await
             }
             Isolation::TaskContainer => {
+                if self.seal.as_ref().is_some_and(crate::Seal::offline) {
+                    return Outcome::refused(
+                        "The command did not run: this session is sealed offline, and a task \
+                         container can't take the network away."
+                            .to_string(),
+                    );
+                }
                 let mut command = std::process::Command::new("/bin/sh");
                 command.args(["-c", args.command.as_str()]);
                 command.current_dir(&self.root);
                 withhold_credentials(&mut command);
+                if let Some(seal) = &self.seal {
+                    seal.apply(&mut command);
+                }
                 supervise::Job::from_command(command)
                     .bounded(supervise::Limits::within(wall).keeping(COMMAND_KEEP))
                     .run()
@@ -568,6 +606,14 @@ impl Workspace {
         .noting("bytes", json!(ended.bytes()))
         .noting("truncated", json!(ended.truncated()))
         .noting("boundary", json!(self.isolation.word()))
+        .noting(
+            "sealed",
+            json!(self.seal.as_ref().map(|seal| if seal.offline() {
+                "github-and-network"
+            } else {
+                "github"
+            })),
+        )
     }
 
     fn read_file(&self, args: &ReadFile) -> Outcome {
@@ -923,6 +969,47 @@ mod tests {
             .await;
         assert_eq!(denied.status, atif::Outcome::Failed, "{}", denied.output);
         assert!(!target.exists());
+    }
+
+    /// A sealed session's `gh` refuses, Git still works on the checkout,
+    /// and an offline seal leaves the command only loopback.
+    #[tokio::test]
+    async fn a_sealed_command_has_no_github_and_no_network() {
+        let (_dir, workspace) = workspace();
+        if let Err(error) = coder_boundary::Boundary::writing(workspace.root())
+            .offline()
+            .build()
+        {
+            eprintln!("skipped: no enforced boundary on this host ({error})");
+            return;
+        }
+        let seal_dir = tempfile::tempdir().unwrap();
+        let workspace = workspace.sealed_by(crate::Seal::create(seal_dir.path(), true).unwrap());
+        let gh = workspace
+            .call(
+                "run_command",
+                r#"{"command":"gh issue view 9450","timeout_seconds":10}"#,
+            )
+            .await;
+        assert_eq!(gh.status, atif::Outcome::Failed, "{}", gh.output);
+        assert!(gh.output.contains(crate::seal::GH_REFUSAL), "{}", gh.output);
+        let git = workspace
+            .call(
+                "run_command",
+                r#"{"command":"git init -q . && git -c user.name=t -c user.email=t@t commit -q --allow-empty -m m && git log --oneline | wc -l","timeout_seconds":20}"#,
+            )
+            .await;
+        assert_eq!(git.status, atif::Outcome::Completed, "{}", git.output);
+        if cfg!(target_os = "linux") {
+            let net = workspace
+                .call(
+                    "run_command",
+                    r#"{"command":"awk 'NR > 2 { print $1 }' /proc/net/dev","timeout_seconds":10}"#,
+                )
+                .await;
+            assert_eq!(net.status, atif::Outcome::Completed, "{}", net.output);
+            assert_eq!(net.output.lines().skip(1).collect::<Vec<_>>(), ["lo:"]);
+        }
     }
 
     #[tokio::test]

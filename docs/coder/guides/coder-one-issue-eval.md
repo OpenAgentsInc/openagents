@@ -110,13 +110,16 @@ The run does the following:
 1. Makes a scratch clone at the entry's base commit, fetched one commit
    deep, so the clone holds no later history and `git log` can't show the
    fix.
-2. Works the issue through `issue_turn::work`, the same loop, review
+2. Seals the run, as [Seal a run](#seal-a-run) describes: the sessions'
+   commands get no GitHub access and, by default, no network.
+3. Works the issue through `issue_turn::work`, the same loop, review
    session, and pre-pull-request gate a real issue gets. The request is the
    issue's title and body without its URL, so the loop isn't pointed at the
    closed issue.
-3. Publishes nothing: the changes stay staged in the clone, with no commit,
+4. Publishes nothing: the changes stay staged in the clone, with no commit,
    push, or pull request.
-4. Grades the clone and records the run.
+5. Grades the clone, reads every session's commands for attempts to reach
+   GitHub or the network, and records the run.
 
 Jev is live unless you pass `--jev off`. `--model` names Luna's model.
 `--policy` names the Microluna manifest the flow runs under, a reference
@@ -128,8 +131,59 @@ match.
 for a run that costs nothing; the file is a JSON array whose items are
 `{"call": TOOL, "arguments": {…}}` or `{"say": TEXT}`.
 
-The loop can still run `gh` and reach GitHub, where the issue is closed and
-links its fix. Read a run's session streams before you trust a pass.
+`--network on` runs the sessions with the network open; GitHub stays
+withheld.
+
+## Seal a run
+
+Every entry is a closed issue whose fix is merged, so a session that reads
+the issue on GitHub, or fetches the repository, can copy the answer. The
+clone has no remote, but without a seal a model's command could still run
+`gh` on the operator's login, or `curl` and `git clone` over an open
+network. A run seals every Microluna session it starts, including the
+review session and the fix rounds, in two ways.
+
+**GitHub withheld.** Every command a session runs gets the following:
+
+- No `GH_*` or `GITHUB_*` variable, such as `GH_TOKEN`, `GITHUB_TOKEN`,
+  or `GH_ENTERPRISE_TOKEN`, and no `SSH_AUTH_SOCK`. Every `*_TOKEN`,
+  `*_API_KEY`, and `*_SECRET` is withheld from every session already.
+- `GH_CONFIG_DIR` set to an empty directory the run owns, so `gh` can't
+  find the operator's login.
+- A stub `gh` first on `PATH` that prints `gh: GitHub access is off during
+  an evaluation run.` and exits 1.
+- An empty `credential.helper`, which clears the helpers the operator's
+  Git configuration names, such as `gh auth git-credential`.
+
+Git keeps working on the local clone.
+
+**Network off.** Every command runs inside the `coder-boundary` write
+boundary with the network taken away: on Linux, `bwrap --unshare-net`
+gives the command a network namespace that holds only loopback; on macOS,
+the boundary's profile denies outbound connections to any address but
+`localhost`. The macOS half isn't tested. A host that can't take the
+network away refuses the run and says to pass `--network on`.
+
+With the network off, Cargo can't reach its registry. Before the flow
+starts, the host runs `cargo fetch --locked` in the clone with the network
+open, and the sessions run with `CARGO_NET_OFFLINE=true`, so `cargo build`
+and `cargo test` use crates already on disk. On 2026-09-24, a
+`cargo check` of this workspace ran to completion inside an offline `bwrap`
+boundary from a warm registry. No entry needs the network for anything
+else: every entry is this repository, the CLI entries' tests stub `cargo`,
+and the docs entries build nothing. The run records what the fetch did,
+and a failed fetch leaves the network off, so a session that needs a crate
+the registry lacks fails to build rather than reaching out.
+
+What the seal doesn't cover:
+
+- The pre-pull-request gate runs the clone's tests and checks on the host,
+  outside any session, with the network open. A test the model wrote runs
+  there too, and its output reaches the fix round.
+- The grader runs on the host after the flow, with the network open. The
+  flow never sees what it does.
+- `--network on` leaves `curl`, `wget`, and `git clone` of a public URL
+  open.
 
 ## Read the results
 
@@ -138,10 +192,11 @@ Each run is recorded under `~/.openagents/coder-one/issue-evals/`, or
 
 ```text
 issue-eval-<entry>-<executor>-<ms>/
-  manifest.json             kind "issue-eval": entry, part, outcome, grade, time, cost
+  manifest.json             kind "issue-eval": entry, part, seal, outcome, grade, time, cost
   episode.atif.jsonl        every step the issue flow recorded
   repo/                     the scratch clone, changes staged
   artifacts/                briefings, session streams, reply.md, candidate.diff
+  seal/                     the stub gh and the empty gh configuration
   verification/grade.json   every check's result
 ```
 
@@ -151,12 +206,31 @@ The manifest's `schema` is `openagents.coder-one.minitask-run.v1` and its
 - `task`: the entry, its part and category, the issue number, the base and
   fix commits, and the entry's and the set's digests.
 - `policy`: the Microluna manifest the flow ran under, with its digest.
+- `sealed`: `github_withheld`, `network_off`, and `prefetch`, what the
+  Cargo fetch did (`fetched`, `no Cargo.lock`, `skipped`, or why it
+  failed).
+- `contamination`: every command a session ran that looked like it reached
+  for GitHub or the network, with the trace it's in, whether the seal
+  blocked it, and the start of its output; `blocked`, the count the seal
+  stopped; and `traces_read`.
+- `contaminated`: true when an attempt got past the seal, or might have.
+  Don't count a contaminated pass.
 - `outcome`: `finished`, `unfinished`, or `stuck`.
 - `grade`: the verdict, each check's result, the `fix_tests` and
   `deliverables` tallies, and the changed paths.
 - `milliseconds`, `flow_milliseconds`, and `grading_milliseconds`.
 - `cost`: `luna_usd`, `jev_usd`, `total_usd`, and `lower_bound_usd`, from
   the steps the flow recorded. A null cost is unknown, not zero.
+
+The scan reads every session trace under the run's directory, except the
+clone, for `run_command` calls that name `gh`, `curl`, or `wget`, run a Git
+`fetch`, `pull`, `clone`, `ls-remote`, or `push` against a URL, or name a
+GitHub address. A `gh` attempt is blocked when GitHub was withheld or the
+stub answered, and a network attempt is blocked when the network was off.
+A blocked attempt is recorded and doesn't contaminate the run: the model
+asked, and got nothing. The scan matches command text, so it can flag a
+command that only prints a GitHub link; read the attempt before you
+discard a run for it.
 
 The Gym's mini-task view reads the runs:
 

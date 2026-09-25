@@ -15,7 +15,8 @@ pub const USAGE: &str = "usage: coder-one issue-eval list [--json]
        coder-one issue-eval grade ID (--dir PATH | --commit REV | --base | --fix) [--json]
        coder-one issue-eval verify [ID...] [--part development|held-out] [--json]
        coder-one issue-eval run ID [--held-out] [--jev live|off] [--model MODEL]
-                               [--policy MANIFEST] [--script NAME=FILE] [--out DIR] [--json]
+                               [--policy MANIFEST] [--script NAME=FILE] [--network off|on]
+                               [--out DIR] [--json]
        coder-one issue-eval seal
    every command takes [--set DIR] [--source DIR] [--target-dir DIR]
 
@@ -39,6 +40,11 @@ Microluna manifest the flow runs under, a reference file name or a path;
 without it, the flow takes its own, as CODER_ISSUE_POLICY picks it. --script
 plays scripted Luna replies instead of the Codex login: a JSON array whose
 items are {\"call\": TOOL, \"arguments\": {...}} or {\"say\": TEXT}.
+A run is sealed: every session's commands run without GitHub credentials
+and with a gh that refuses, and, unless --network on, with no network,
+after the host fetches the clone's crates. The run records how it was
+sealed and every command that tried to reach GitHub or the network, and
+marks the run contaminated when one got past the seal.
 seal rewrites the manifest's digests after an entry is changed on purpose.
 
 --set defaults to crates/coder-one/issues-eval, --source to the git checkout
@@ -57,6 +63,7 @@ struct Args {
     model: Option<String>,
     script: Option<String>,
     policy: Option<String>,
+    network_off: bool,
     part: Option<Part>,
     what: Option<What>,
 }
@@ -82,6 +89,7 @@ fn parse(args: &[String]) -> Result<Args, String> {
         model: None,
         script: None,
         policy: None,
+        network_off: true,
         part: None,
         what: None,
     };
@@ -108,6 +116,13 @@ fn parse(args: &[String]) -> Result<Args, String> {
             "--model" => parsed.model = Some(value()?),
             "--script" => parsed.script = Some(value()?),
             "--policy" => parsed.policy = Some(value()?),
+            "--network" => {
+                parsed.network_off = match value()?.as_str() {
+                    "off" => true,
+                    "on" => false,
+                    _ => return Err("--network takes off or on".to_string()),
+                };
+            }
             "--jev" => {
                 parsed.jev = value()?;
                 if !["live", "off"].contains(&parsed.jev.as_str()) {
@@ -268,6 +283,8 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
                     None => None,
                 },
                 quiet: args.json,
+                network_off: args.network_off,
+                prefetch: true,
             })
             .await?;
             if args.json {
@@ -283,6 +300,28 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
                     usd(&cost["jev_usd"]),
                     ran.dir.display()
                 );
+                let contamination = &ran.manifest["contamination"];
+                println!(
+                    "sealed: GitHub {}, network {} · {} attempt(s) to reach GitHub or the network, {} blocked",
+                    if ran.manifest["sealed"]["github_withheld"] == true {
+                        "withheld"
+                    } else {
+                        "reachable"
+                    },
+                    if ran.manifest["sealed"]["network_off"] == true {
+                        "off"
+                    } else {
+                        "on"
+                    },
+                    contamination["attempts"].as_array().map_or(0, Vec::len),
+                    contamination["blocked"].as_u64().unwrap_or_default()
+                );
+                if ran.manifest["contaminated"] == true {
+                    println!(
+                        "contaminated: a command may have reached GitHub or the network; read \
+                         the attempts in the manifest before you count this run"
+                    );
+                }
             }
             Ok(i32::from(ran.grade.verdict != "passed"))
         }

@@ -462,6 +462,7 @@ pub async fn define_accept(
         } else {
             microluna::Isolation::Boundary
         },
+        seal: None,
         traces: Some(job.dir.clone()),
         echo: false,
     };

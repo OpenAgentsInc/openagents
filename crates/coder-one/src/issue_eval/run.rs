@@ -8,13 +8,16 @@
 //!   episode.atif.jsonl        every step the issue flow recorded
 //!   repo/                     the scratch clone at the base commit, changes staged
 //!   artifacts/                briefings, session streams, the reply, and the diff
+//!   seal/                     the stub `gh` and the empty `gh` configuration
 //!   verification/grade.json   every check's result
 //! ```
 //!
 //! The flow runs as [`crate::issue_turn::work`] runs it for a real issue,
 //! loop, review, and pre-pull-request gate included, except that it
-//! publishes nothing: no commit, push, or pull request. The grader runs
-//! after the flow ends and is never shown to it.
+//! publishes nothing: no commit, push, or pull request, and that every
+//! session's commands are sealed off from GitHub and, by default, the
+//! network (see [`super::sealed`]). The grader runs after the flow ends and
+//! is never shown to it.
 
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -55,6 +58,11 @@ pub struct Options {
     pub policy: Option<crate::terminal::Selected>,
     /// Whether progress lines go to standard error.
     pub quiet: bool,
+    /// Whether the sessions' commands run with the network off. GitHub is
+    /// withheld either way.
+    pub network_off: bool,
+    /// Whether the host fetches the clone's crates before an offline run.
+    pub prefetch: bool,
 }
 
 /// What a run left.
@@ -97,6 +105,19 @@ pub async fn run(options: Options) -> Result<Ran, String> {
             .map_err(|error| format!("cannot create {}: {error}", sub.display()))?;
     }
     checkout(&options.source, &entry.base, None, &repo)?;
+    let (seal, sealing) = super::sealed::prepare(
+        &dir.join("seal"),
+        &repo,
+        options.network_off,
+        options.prefetch,
+    )?;
+    if !options.quiet {
+        eprintln!(
+            "issue-eval ▸ sealed: {} (Cargo prefetch: {})",
+            sealing.describe(),
+            sealing.prefetch
+        );
+    }
 
     let id = format!("issue-eval-{}-{at}", entry.id);
     let mut session = atif::Session::opening(
@@ -134,6 +155,7 @@ pub async fn run(options: Options) -> Result<Ran, String> {
             .policy
             .as_ref()
             .map(|chosen| chosen.manifest.clone()),
+        seal: Some(seal),
     };
     let prepared = Prepared {
         inner,
@@ -181,12 +203,25 @@ pub async fn run(options: Options) -> Result<Ran, String> {
         crate::record::write_atomic(&artifacts.join(name), text.as_bytes())?;
     }
 
+    let scan = super::sealed::scan(&dir, Some(&sealing));
     let graded_at = Instant::now();
     let grade = grade(&options.set, &entry, &repo, &options.target_dir);
     let grading_ms = millis(graded_at);
     recorder.push(Step::said(
         Source::System,
-        &format!("issue-eval grade: {} · {}", grade.verdict, grade.detail),
+        &format!(
+            "issue-eval grade: {} · {} · sealed: {} · {} attempt{} to reach GitHub or the network{}",
+            grade.verdict,
+            grade.detail,
+            sealing.describe(),
+            scan.attempts.len(),
+            if scan.attempts.len() == 1 { "" } else { "s" },
+            if scan.contaminated {
+                ", one or more not blocked: contaminated"
+            } else {
+                ""
+            }
+        ),
     ));
     recorder.finish(atif::log::ENDED);
 
@@ -218,6 +253,8 @@ pub async fn run(options: Options) -> Result<Ran, String> {
         label: &label,
         scripted: options.script.is_some(),
         policy: &policy,
+        sealing: &sealing,
+        scan: &scan,
         outcome,
         grade: &grade,
         usage: &usage,
@@ -248,6 +285,8 @@ struct Manifested<'a> {
     label: &'a str,
     scripted: bool,
     policy: &'a crate::terminal::Selected,
+    sealing: &'a super::sealed::Sealing,
+    scan: &'a super::sealed::Scan,
     outcome: &'a str,
     grade: &'a Grade,
     usage: &'a Value,
@@ -286,6 +325,9 @@ fn manifest(m: &Manifested) -> Value {
             "name": m.policy.name(),
             "digest": m.policy.digest,
         },
+        "sealed": m.sealing,
+        "contamination": m.scan.record(),
+        "contaminated": m.scan.contaminated,
         "outcome": m.outcome,
         "grade": {
             "verdict": m.grade.verdict,
@@ -386,7 +428,23 @@ mod tests {
             eprintln!("skipped: {why}");
             return;
         }
+        // The network half needs a boundary that can take the network
+        // away; without one the run still withholds GitHub.
+        let network_off = coder_boundary::Boundary::readonly()
+            .offline()
+            .build()
+            .is_ok();
+        if !network_off {
+            eprintln!("the network stays on: this host can't take it away from a command");
+        }
+        // The model reaches for the closed issue first; the seal refuses.
         let replies = vec![
+            call(
+                "c0",
+                "run_command",
+                &json!({ "command": "gh issue view 9450 --comments", "timeout_seconds": 10 }),
+                usage(),
+            ),
             call(
                 "c1",
                 "write_file",
@@ -412,6 +470,8 @@ mod tests {
             script: Some(("fix".to_string(), replies)),
             policy: None,
             quiet: true,
+            network_off,
+            prefetch: false,
         };
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
@@ -423,6 +483,24 @@ mod tests {
         assert_eq!(ran.manifest["kind"], "issue-eval");
         assert_eq!(ran.manifest["task"]["part"], "development");
         assert!(ran.manifest["cost"]["jev_usd"].is_number());
+        // The run was sealed, the attempt to read the issue was refused
+        // and recorded, and the run isn't contaminated by it.
+        assert_eq!(ran.manifest["sealed"]["github_withheld"], true);
+        assert_eq!(ran.manifest["sealed"]["network_off"], network_off);
+        let attempts = ran.manifest["contamination"]["attempts"]
+            .as_array()
+            .unwrap();
+        assert_eq!(attempts.len(), 1, "{attempts:#?}");
+        assert_eq!(attempts[0]["reach"], "github");
+        assert_eq!(attempts[0]["blocked"], true);
+        assert!(
+            attempts[0]["output"]
+                .as_str()
+                .unwrap()
+                .contains(microluna::seal::GH_REFUSAL),
+            "{attempts:#?}"
+        );
+        assert_eq!(ran.manifest["contaminated"], false);
         // Nothing was committed, pushed, or opened: the checkout still
         // sits on the base commit with the change staged.
         let repo = ran.dir.join("repo");

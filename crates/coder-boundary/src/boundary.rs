@@ -15,8 +15,9 @@
 //! evaluates rules in order, so a deny followed by an allow beneath it is
 //! an exception; a mount namespace stacks binds in order, so a read-only
 //! root followed by a writable bind beneath it is the same exception. Both
-//! cover the whole process tree, and neither confines reads, network, or
-//! time — see the crate root.
+//! cover the whole process tree, and neither confines reads or time — see
+//! the crate root. Network is open unless the caller asks for
+//! [`Spec::offline`].
 //!
 //! # The two policies
 //!
@@ -198,6 +199,7 @@ pub struct Spec {
     protected: Vec<PathBuf>,
     sealed: Vec<PathBuf>,
     scratch_under: Option<PathBuf>,
+    offline: bool,
     backend: PathBuf,
 }
 
@@ -209,6 +211,7 @@ impl Spec {
             protected: Vec::new(),
             sealed: Vec::new(),
             scratch_under: None,
+            offline: false,
             backend: PathBuf::from(backend_path()),
         }
     }
@@ -252,6 +255,17 @@ impl Spec {
     #[must_use]
     pub fn owned_scratch_under(mut self, parent: impl Into<PathBuf>) -> Self {
         self.scratch_under = Some(parent.into());
+        self
+    }
+
+    /// The command gets no network beyond the loopback interface. On
+    /// Linux, `bwrap --unshare-net` gives it a network namespace of its
+    /// own that holds only `lo`; on macOS, the profile denies outbound
+    /// connections to any address but `localhost`. A command that tries to
+    /// reach another host fails to connect.
+    #[must_use]
+    pub fn offline(mut self) -> Self {
+        self.offline = true;
         self
     }
 
@@ -327,6 +341,12 @@ impl Spec {
             profile.push_str(&allow(path)?);
         }
         profile.push_str("(allow file-write* (literal \"/dev/null\"))\n");
+        if self.offline {
+            profile.push_str(
+                "(deny network-outbound (remote ip))\n\
+                 (allow network-outbound (remote ip \"localhost:*\"))\n",
+            );
+        }
 
         // Validation first, refusal second: on a platform with no
         // backend, every answer above still describes the spec that was
@@ -358,6 +378,7 @@ impl Spec {
             writable,
             protected,
             sealed,
+            offline: self.offline,
         })
     }
 }
@@ -380,6 +401,7 @@ pub struct Boundary {
     writable: Vec<PathBuf>,
     protected: Vec<PathBuf>,
     sealed: Vec<PathBuf>,
+    offline: bool,
 }
 
 impl Boundary {
@@ -453,6 +475,9 @@ impl Boundary {
                 args.push(path.into());
                 args.push(path.into());
             }
+            if self.offline {
+                args.push("--unshare-net".into());
+            }
             args.push("--".into());
             args
         } else {
@@ -502,6 +527,13 @@ impl Boundary {
     #[must_use]
     pub fn sealed(&self) -> &[PathBuf] {
         &self.sealed
+    }
+
+    /// Whether the command runs with no network beyond loopback; see
+    /// [`Spec::offline`].
+    #[must_use]
+    pub fn offline(&self) -> bool {
+        self.offline
     }
 
     /// The isolated checkout of a writing boundary.

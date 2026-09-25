@@ -23,6 +23,7 @@
 pub mod cli;
 pub mod grade;
 pub mod run;
+pub mod sealed;
 
 use std::path::{Path, PathBuf};
 use std::process::Command;

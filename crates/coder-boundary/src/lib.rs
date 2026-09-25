@@ -16,9 +16,10 @@
 //!   changes to files that were already dirty — without asking the
 //!   version-control tool the observation is meant to check.
 //!
-//! This is filesystem write enforcement only. It confines neither reads
-//! nor network, and it bounds neither time nor output nor memory; those
-//! belong to the supervisor the caller already runs, `crates/supervise`.
+//! This is filesystem write enforcement, plus network denial when the
+//! caller asks for it with [`Spec::offline`]. It never confines reads, and
+//! it bounds neither time nor output nor memory; those belong to the
+//! supervisor the caller already runs, `crates/supervise`.
 
 pub mod boundary;
 pub mod snapshot;
