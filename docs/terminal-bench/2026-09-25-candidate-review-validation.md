@@ -158,3 +158,26 @@ Clippy, and default and feature tests for `coder-one`. This is a partial gate,
 not a full-workspace result. The V1 component replay matches all 317 historical
 calls and scores with no model calls. Verification and prediction records are
 in the experiment's `records/` directory.
+
+The standalone completion assessor failed calibration: at 0.5 it made 29 calls,
+17 correct; at 0.95 it made six calls, five correct. No declared cutoff reached
+90% precision with at least five calls. Known native cost was $22.33042, with
+additional unknown cost for timeouts. In particular, several passing ATRX outputs
+received confident failure predictions based on a conflict between local reference
+coordinates and the named transcript. More reasoning did not remove uncertainty
+about what the benchmark accepts.
+
+A subsequent [agreement protocol](../../bench/terminal-bench/experiments/2026-09-25-candidate-review/agreement-protocol.md)
+requires source concern and completion assessment to agree, or the concrete-report
+audit to establish failure. Joint calibration selects source 0.8 and completion
+0.5, with audit 0.5: 14/15 correct calls and 14/62 failure recall. These are fitting
+results. The fixed expression needs completion inference for only 28 of the 185
+comparison candidates. All 185 remain in the denominator. No standalone completion
+performance is inferred from that gated subset.
+
+Before opening fresh grades, a second prospective cohort adds one Astra high
+executor trial per fresh task, with a $3 soft model budget and otherwise the same
+retained v13 loop. These [stronger-model controls](../../bench/terminal-bench/experiments/2026-09-25-candidate-review/strong-controls-protocol.md)
+can reveal false alarms on successful candidates if they produce any. Both executor
+and assessor use Astra, which limits independence. Their outcomes are not used to
+fit the frozen rule. No passing outcome or identical-cost comparison is assumed.
