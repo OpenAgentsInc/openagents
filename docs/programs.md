@@ -538,7 +538,7 @@ refusals, and each one stops the rest.
 | `check` | Runs the admission test the `refuse_on` bound names. |
 | `delegate` | Hands the work to the executor the capability probe resolved, at the width, isolation, and wall bound the step states. A step with nothing to hand over refuses rather than reporting that none of nothing answered. |
 | `program` | Runs the child program the step's address resolves to, nested inside the parent's run. Admission checks the whole composition first: cycles, depth, step and call totals, and bounds that would widen. |
-| `module` | Runs the Wasm guest the step carries inline through `plugin::invoke`, under the `pure` or `snapshot-read` profile and the step's `fuel` and `memory_bytes` bounds. A step without guest bytes refuses at admission. See [Wasm plugins](extensions/plugins.md#what-is-built). |
+| `module` | Runs the Wasm guest the step carries inline through `plugin::invoke`, under the `pure` or `snapshot-read` profile. The step's `fuel`, `memory_bytes`, `output_bytes`, `read_bytes`, and `module_bytes` bounds narrow the host's ceilings, and admission refuses a wider one. A `snapshot-read` guest reads only the workspace files its `read` scope names, and nothing when the step names no scope. The run's deadline stops a running guest. A step without guest bytes refuses at admission. See [Wasm plugins](extensions/plugins.md#what-is-built). |
 
 ### Admission has three answers, not two
 
@@ -667,8 +667,8 @@ cannot see is in [`coderbench.md`](coderbench.md).
   [interoperability suite](coder/verification/2026-09-22-relay-interoperability.md)
   fetches a program and a guest over a relay in a test, but no product path
   does. No program in `programs/` uses a `module` step yet.
-- **Grant a snapshot to a guest.** A `snapshot-read` module step runs with
-  an empty snapshot, so it has nothing to read.
+- **Grant a guest anything but workspace files.** A `snapshot-read`
+  module step's `read` scope names workspace paths only.
 
 ## What to build first
 

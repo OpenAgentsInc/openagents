@@ -9,7 +9,7 @@ mod memory;
 mod snapshot;
 
 pub use engine::{
-    BuildReceipt, Call, GuestValue, HostError, Limits, Profile, build_receipt, invoke,
+    BuildReceipt, Call, GuestValue, HostError, Limits, Profile, build_receipt, digest, invoke,
     representation,
 };
 pub use snapshot::{Entry, Snapshot, decode_base64, derivative, encode_base64};

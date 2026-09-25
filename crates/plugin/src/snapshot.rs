@@ -1,7 +1,10 @@
 //! Virtual snapshot entries a snapshot-read guest may list and read.
 //!
-//! Names are logical labels. A symlink, a parent segment, or a handle from
-//! another invocation is not a path the guest may follow.
+//! Names are logical labels. A label may have `/`-separated segments, such
+//! as a workspace-relative path, but no segment is empty, `.`, or `..`, so
+//! a label never names anything outside the snapshot. A symlink, a parent
+//! segment, or a handle from another invocation isn't a path the guest may
+//! follow.
 
 use std::collections::BTreeMap;
 
@@ -42,7 +45,8 @@ impl Snapshot {
     ///
     /// # Errors
     ///
-    /// Returns a reason `name` is not a single logical label.
+    /// Returns a reason `name` isn't a logical label: empty, absolute, or
+    /// with an empty, `.`, or `..` segment, a backslash, or a NUL byte.
     pub fn insert(&mut self, name: &str, entry: Entry) -> Result<(), &'static str> {
         if !logical_name(name) {
             return Err("snapshot name");
@@ -104,13 +108,15 @@ impl Snapshot {
         let entries: Vec<Value> = children[start..end]
             .iter()
             .map(|child| {
-                let handle = format!("{name}/{child}");
-                let kind = match self.entries.get(child.as_str()) {
-                    Some(Entry::Directory { .. }) => "directory",
-                    Some(Entry::Symlink { .. }) => "symlink",
-                    _ => "file",
+                let (kind, version) = match self.entries.get(child.as_str()) {
+                    Some(Entry::Directory { .. }) => ("directory", "dir"),
+                    Some(Entry::Symlink { .. }) => ("symlink", ""),
+                    Some(Entry::File { version, .. }) => ("file", version.as_str()),
+                    None => ("file", ""),
                 };
-                json!({"handle": handle, "name": child, "type": kind, "version": "1"})
+                // The host replaces `handle` with a token scoped to the
+                // invocation before the guest sees it.
+                json!({"handle": child, "name": child, "type": kind, "version": version})
             })
             .collect();
         let next = if end < children.len() {
@@ -228,12 +234,11 @@ pub fn decode_base64(text: &str) -> Result<Vec<u8>, &'static str> {
 }
 
 fn logical_name(name: &str) -> bool {
-    !name.is_empty()
-        && !name.contains('/')
-        && !name.contains('\\')
-        && name != ".."
-        && name != "."
+    !name.contains('\\')
         && !name.contains('\0')
+        && name
+            .split('/')
+            .all(|segment| !segment.is_empty() && segment != "." && segment != "..")
 }
 
 /// Encode `bytes` as base64.
@@ -290,6 +295,23 @@ mod tests {
                 )
                 .is_err()
         );
+        for refused in [
+            "",
+            "/etc/passwd",
+            "src/../secret",
+            "src//lib.rs",
+            "./note",
+            "a\\b",
+        ] {
+            let entry = Entry::Directory {
+                children: Vec::new(),
+            };
+            assert!(snapshot.insert(refused, entry).is_err(), "{refused:?}");
+        }
+        let nested = Entry::Directory {
+            children: Vec::new(),
+        };
+        assert!(snapshot.insert("src/lib.rs", nested).is_ok());
         snapshot
             .insert(
                 "note",

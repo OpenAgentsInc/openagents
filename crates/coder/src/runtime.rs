@@ -23,8 +23,8 @@
 //! **A step kind the host does not run refuses the whole program.** An
 //! unrecognized kind is refused when the file is read, by
 //! [`crate::program::Program::load`]. A kind this version recognizes and
-//! does not run — `module`, which is WebAssembly — is refused here, at
-//! admission. Neither is ever skipped: a program whose unknown steps are
+//! does not run — `invoke`, which names a host operation this host has not
+//! admitted — is refused here, at admission. Neither is ever skipped: a program whose unknown steps are
 //! skipped is a different program, and it is the one a host would run by
 //! accident.
 //!
@@ -38,8 +38,8 @@
 //! receipt can name where inside the composition work happened, and end
 //! the way the step's stated propagation table says: a child that
 //! completed or was refused lands on the parent step exactly as the
-//! document mapped it. A `module` step stays refused until a dedicated
-//! Wasm implementation exists.
+//! document mapped it. A `module` step inside a child runs the same way
+//! as one in the parent.
 //!
 //! **A `decide` step names a question, never its wording.** The wording
 //! lives in [`crate::questions`], addressed by identifier and digested as
@@ -55,10 +55,14 @@
 //!
 //! # What runs, and what does not
 //!
-//! Five step kinds: `query`, `decide`, `check`, `delegate`, and `program`,
-//! which nests a resolved child under narrowed bounds. `module` and
-//! fetching stay specified and unbuilt. A runtime that runs one program
-//! correctly is worth more than one that describes five.
+//! Six step kinds: `query`, `decide`, `check`, `delegate`, `program`,
+//! which nests a resolved child under narrowed bounds, and `module`, which
+//! runs a Wasm guest the step carries inline through [`plugin::invoke`].
+//! A `module` step's bounds narrow the host's ceilings and never widen
+//! them, a `snapshot-read` guest sees only the workspace files the step's
+//! `read` scope names, and the run's deadline or a dropped run stops a
+//! running guest. `invoke` and fetching a program or a module from a relay
+//! stay specified and unbuilt.
 //!
 //! A `check` step gated on `gate_not_met` runs the operator-installed
 //! verification plan rather than anything the program carries. Its
@@ -128,6 +132,33 @@ const BRIEFING: &str = "briefing";
 /// What a check refuses on beyond the condition the bound names: a bound
 /// nobody has claimed either way.
 const UNKNOWN: &str = "enforcement_unknown";
+
+/// The fuel a `module` step gets when the operator sets no ceiling. The
+/// host's own default is lower than a compiled Rust guest needs to parse
+/// its packet.
+const MODULE_FUEL: u64 = 50_000_000;
+
+/// The most workspace entries one `snapshot-read` grant may hold.
+const SNAPSHOT_ENTRIES: usize = 1_024;
+
+/// The most bytes one `snapshot-read` grant may capture, summed over its
+/// files. Each file also captures no more than the step's `read_bytes`,
+/// since the guest can't read more than that.
+const SNAPSHOT_BYTES: usize = 16 * 1024 * 1024;
+
+/// The snapshot entry, and the handle's logical name, of the granted
+/// workspace. Every granted file is named under it.
+const SNAPSHOT_ROOT: &str = "workspace";
+
+/// Sets a guest's cancel flag when dropped, so a run the caller drops
+/// stops the guest it was running.
+struct CancelOnDrop(std::sync::Arc<std::sync::atomic::AtomicBool>);
+
+impl Drop for CancelOnDrop {
+    fn drop(&mut self) {
+        self.0.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+}
 
 /// The code a run stopped by its own budget records. The caller's bound
 /// ended the run rather than the work, so the run settles `cancelled` —
@@ -272,8 +303,15 @@ pub fn enforced(kind: Kind) -> &'static [&'static str] {
         // narrowing of what the composition has left: `spend` is the
         // child's ceiling in USD micros and `minutes` its own deadline.
         Kind::Program => &["depth", "steps", "calls", "spend", "minutes", "tokens"],
-        // Fuel, memory, and the read and output ceilings the packet host enforces.
-        Kind::Module => &["fuel", "memory_bytes", "output_bytes", "read_bytes"],
+        // The packet host's limits. Each narrows the host's ceiling in
+        // `Runtime::module_ceiling`, and admission refuses a wider one.
+        Kind::Module => &[
+            "fuel",
+            "memory_bytes",
+            "output_bytes",
+            "read_bytes",
+            "module_bytes",
+        ],
         // An invoke names a host operation. It carries no command, and
         // this host admits none until one is configured.
         Kind::Invoke => &[],
@@ -782,6 +820,17 @@ pub struct Runtime {
     review: Option<crate::review::Context>,
     runstate: Option<PathBuf>,
     budget: Option<Budget>,
+    module_ceiling: plugin::Limits,
+}
+
+/// The ceilings a `module` step runs under when the operator sets none:
+/// the packet host's defaults, with fuel enough for a compiled guest.
+#[must_use]
+pub fn module_ceiling() -> plugin::Limits {
+    plugin::Limits {
+        fuel: MODULE_FUEL,
+        ..plugin::Limits::default()
+    }
 }
 
 impl Runtime {
@@ -818,6 +867,7 @@ impl Runtime {
             review: None,
             runstate: None,
             budget: None,
+            module_ceiling: module_ceiling(),
             repository: repository.map(Path::to_path_buf),
             host: match repository {
                 Some(_) => Host::with_repository(),
@@ -845,6 +895,7 @@ impl Runtime {
             review: None,
             runstate: None,
             budget: None,
+            module_ceiling: module_ceiling(),
             host,
         }
     }
@@ -900,6 +951,15 @@ impl Runtime {
     #[must_use]
     pub fn with_budget(mut self, budget: Budget) -> Self {
         self.budget = Some(budget);
+        self
+    }
+
+    /// Sets the ceilings every `module` step runs under. A step's own
+    /// bounds narrow these, and admission refuses a step that asks for
+    /// more. Unset, the ceilings are [`module_ceiling`].
+    #[must_use]
+    pub fn with_module_ceiling(mut self, ceiling: plugin::Limits) -> Self {
+        self.module_ceiling = ceiling;
         self
     }
 
@@ -1075,6 +1135,9 @@ impl Runtime {
     }
 
     /// A module step needs guest bytes and a profile this host can run.
+    /// A `snapshot-read` step may name a `read` scope of workspace-relative
+    /// paths; a `pure` step reads nothing, so one that names a scope is
+    /// refused rather than granted something it can't use.
     fn admit_module(&self, step: &Step) -> Result<(), Refused> {
         let Some(module) = step.module.as_ref().and_then(Value::as_object) else {
             return Err(Refused::at(
@@ -1090,12 +1153,20 @@ impl Runtime {
                 "module step names no guest bytes",
             ));
         }
-        match module
+        let profile = module
             .get("profile")
             .and_then(Value::as_str)
-            .unwrap_or("pure")
-        {
-            "pure" | "snapshot-read" => Ok(()),
+            .unwrap_or("pure");
+        match (profile, module.get("read")) {
+            ("pure", None) => Ok(()),
+            ("pure", Some(_)) => Err(Refused::at(
+                &step.name,
+                "scope_invalid",
+                "a pure module step reads nothing, and this step names a read scope",
+            )),
+            ("snapshot-read", scope) => read_scope(scope)
+                .map(|_| ())
+                .map_err(|reason| Refused::at(&step.name, "scope_invalid", reason)),
             _ => Err(Refused::at(
                 &step.name,
                 "unsupported_feature",
@@ -1106,30 +1177,34 @@ impl Runtime {
 
     /// Run one packet guest. The terminal and the headless path both reach
     /// this through [`Runtime::run`].
-    fn run_module(&self, step: &Step) -> Result<String, Refused> {
+    ///
+    /// The guest runs on a blocking thread under a cancel flag. The run's
+    /// deadline sets the flag and waits for the guest to stop before the
+    /// step reports, and a run the caller drops sets it on the way out.
+    async fn run_module(
+        &self,
+        step: &Step,
+        name: &str,
+        remaining: Option<Duration>,
+    ) -> Result<String, Refused> {
+        let unavailable = || {
+            Refused::at(
+                name,
+                "content_unavailable",
+                "module step names no guest bytes",
+            )
+        };
         let module = step
             .module
             .as_ref()
             .and_then(Value::as_object)
-            .ok_or_else(|| {
-                Refused::at(
-                    &step.name,
-                    "content_unavailable",
-                    "module step names no guest bytes",
-                )
-            })?;
+            .ok_or_else(unavailable)?;
         let encoded = module
             .get("bytes_base64")
             .and_then(Value::as_str)
-            .ok_or_else(|| {
-                Refused::at(
-                    &step.name,
-                    "content_unavailable",
-                    "module step names no guest bytes",
-                )
-            })?;
+            .ok_or_else(unavailable)?;
         let wasm = plugin::decode_base64(encoded)
-            .map_err(|_| Refused::at(&step.name, "malformed", "module bytes are not base64"))?;
+            .map_err(|_| Refused::at(name, "malformed", "module bytes are not base64"))?;
         let profile = match module
             .get("profile")
             .and_then(Value::as_str)
@@ -1141,53 +1216,167 @@ impl Runtime {
         let operation = module
             .get("operation")
             .and_then(Value::as_str)
-            .unwrap_or("echo");
+            .unwrap_or("echo")
+            .to_string();
         let input = module.get("input").cloned().unwrap_or(Value::Null);
-        let defaults = plugin::Limits::default();
-        let limits = plugin::Limits {
-            fuel: step
-                .bounds
-                .get("fuel")
-                .and_then(Value::as_u64)
-                .unwrap_or(50_000_000),
-            memory_bytes: step
-                .bounds
-                .get("memory_bytes")
-                .and_then(Value::as_u64)
-                .and_then(|bytes| usize::try_from(bytes).ok())
-                .unwrap_or(defaults.memory_bytes),
-            ..defaults
+        let limits = self.module_limits(step);
+        // A pure guest gets no snapshot and no handles at all.
+        let (snapshot, handles) = match profile {
+            plugin::Profile::Pure => (plugin::Snapshot::default(), BTreeMap::new()),
+            plugin::Profile::SnapshotRead => {
+                let scope = read_scope(module.get("read"))
+                    .map_err(|reason| Refused::at(name, "scope_invalid", reason))?;
+                self.grant_snapshot(name, &scope, limits.read_bytes)?
+            }
         };
-        let handles = std::collections::BTreeMap::new();
-        match plugin::invoke(plugin::Call {
-            wasm: &wasm,
-            profile,
-            invocation: &step.name,
-            operation,
-            input: &input,
-            snapshot: &plugin::Snapshot::default(),
-            handles: &handles,
-            limits,
-            cancelled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
-            required: true,
-        }) {
+        let cancelled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let _dropped = CancelOnDrop(std::sync::Arc::clone(&cancelled));
+        let flag = std::sync::Arc::clone(&cancelled);
+        let invocation = name.to_string();
+        let mut guest = tokio::task::spawn_blocking(move || {
+            plugin::invoke(plugin::Call {
+                wasm: &wasm,
+                profile,
+                invocation: &invocation,
+                operation: &operation,
+                input: &input,
+                snapshot: &snapshot,
+                handles: &handles,
+                limits,
+                cancelled: flag,
+                required: true,
+            })
+        });
+        let joined = match remaining {
+            None => (&mut guest).await,
+            Some(left) => match tokio::time::timeout(left, &mut guest).await {
+                Ok(joined) => joined,
+                Err(_) => {
+                    // Stop the guest and wait for it, so the step never
+                    // reports while its guest still runs.
+                    cancelled.store(true, std::sync::atomic::Ordering::SeqCst);
+                    let _ = guest.await;
+                    return Err(Refused::at(
+                        name,
+                        BUDGET_EXCEEDED,
+                        "the run's deadline passed while the step was dispatched".to_string(),
+                    ));
+                }
+            },
+        };
+        let outcome = joined.map_err(|error| {
+            Refused::at(
+                name,
+                "host_failed",
+                format!("the guest's thread ended without an answer: {error}"),
+            )
+        })?;
+        match outcome {
             Ok(value) => Ok(json!({
                 "status": value.status,
                 "value": value.value,
                 "verification": value.verification
             })
             .to_string()),
-            Err(plugin::HostError::Refused(status)) => {
-                Err(Refused::at(&step.name, "refused", status))
-            }
+            Err(plugin::HostError::Refused(status)) => Err(Refused::at(name, "refused", status)),
             Err(plugin::HostError::Limit(detail)) => {
-                Err(Refused::at(&step.name, "limit_exceeded", detail))
+                Err(Refused::at(name, "limit_exceeded", detail))
             }
-            Err(plugin::HostError::Cancelled) => {
-                Err(Refused::at(&step.name, "cancelled", "cancelled"))
-            }
-            Err(error) => Err(Refused::at(&step.name, "malformed", error.to_string())),
+            Err(plugin::HostError::Cancelled) => Err(Refused::at(name, "cancelled", "cancelled")),
+            Err(plugin::HostError::Denied(detail)) => Err(Refused::at(name, "denied", detail)),
+            Err(error) => Err(Refused::at(name, "malformed", error.to_string())),
         }
+    }
+
+    /// The limits one `module` step runs under: each bound the step
+    /// declares, held to the host's ceiling. Admission already refused a
+    /// wider bound, so the `min` here never changes an admitted value.
+    fn module_limits(&self, step: &Step) -> plugin::Limits {
+        let ceiling = self.module_ceiling;
+        let declared = |bound: &str, ceiling: usize| {
+            step.bounds
+                .get(bound)
+                .and_then(Value::as_u64)
+                .and_then(|count| usize::try_from(count).ok())
+                .map_or(ceiling, |count| count.min(ceiling))
+        };
+        plugin::Limits {
+            fuel: step
+                .bounds
+                .get("fuel")
+                .and_then(Value::as_u64)
+                .map_or(ceiling.fuel, |fuel| fuel.min(ceiling.fuel)),
+            memory_bytes: declared("memory_bytes", ceiling.memory_bytes),
+            output_bytes: declared("output_bytes", ceiling.output_bytes),
+            read_bytes: declared("read_bytes", ceiling.read_bytes),
+            module_bytes: declared("module_bytes", ceiling.module_bytes),
+        }
+    }
+
+    /// The host's ceiling for one `module` bound.
+    fn module_bound_ceiling(&self, bound: &str) -> u64 {
+        let ceiling = self.module_ceiling;
+        let bytes = match bound {
+            "fuel" => return ceiling.fuel,
+            "memory_bytes" => ceiling.memory_bytes,
+            "output_bytes" => ceiling.output_bytes,
+            "read_bytes" => ceiling.read_bytes,
+            _ => ceiling.module_bytes,
+        };
+        u64::try_from(bytes).unwrap_or(u64::MAX)
+    }
+
+    /// The snapshot a `snapshot-read` step is granted: every file its
+    /// scope names under the run's workspace, read once, before the guest
+    /// starts.
+    ///
+    /// The snapshot has one directory, [`SNAPSHOT_ROOT`], and one handle to
+    /// it. It lists each granted file as `workspace/<relative path>`, and
+    /// the guest reads a file through the handle its listing mints. A
+    /// file keeps at most `read_bytes` bytes and says when it kept fewer
+    /// than it has. A path outside the workspace, a symlink whose target
+    /// is outside it, and a grant past [`SNAPSHOT_ENTRIES`] or
+    /// [`SNAPSHOT_BYTES`] refuse the step. A symlink inside the workspace
+    /// is listed as a symlink and never followed.
+    fn grant_snapshot(
+        &self,
+        name: &str,
+        scope: &[String],
+        read_bytes: usize,
+    ) -> Result<(plugin::Snapshot, BTreeMap<String, String>), Refused> {
+        let root = self.survey.workspace.canonicalize().map_err(|error| {
+            Refused::at(
+                name,
+                "scope_unavailable",
+                format!(
+                    "the workspace {} can't be read: {error}",
+                    self.survey.workspace.display()
+                ),
+            )
+        })?;
+        let mut grant = Capture::new(name, &root, read_bytes);
+        for path in scope {
+            let joined = if path == "." {
+                root.clone()
+            } else {
+                root.join(path)
+            };
+            grant.walk(&joined)?;
+        }
+        let mut snapshot = plugin::Snapshot::default();
+        let mut children = Vec::with_capacity(grant.entries.len());
+        for (relative, entry) in grant.entries {
+            let label = format!("{SNAPSHOT_ROOT}/{relative}");
+            snapshot
+                .insert(&label, entry)
+                .map_err(|reason| Refused::at(name, "scope_invalid", reason))?;
+            children.push(label);
+        }
+        snapshot
+            .insert(SNAPSHOT_ROOT, plugin::Entry::Directory { children })
+            .map_err(|reason| Refused::at(name, "scope_invalid", reason))?;
+        let handles = BTreeMap::from([(SNAPSHOT_ROOT.to_string(), "root".to_string())]);
+        Ok((snapshot, handles))
     }
 
     /// The source a `query` step names, or why this host cannot read it.
@@ -1289,12 +1478,18 @@ impl Runtime {
                     "{bound} is a count above zero, and this step names {value}"
                 )),
             },
-            "fuel" | "memory_bytes" | "output_bytes" | "read_bytes" => match value.as_u64() {
-                Some(count) if count > 0 && usize::try_from(count).is_ok() => Ok(()),
-                _ => refuse(format!(
-                    "{bound} is a count above zero that this host can represent, and this step names {value}"
-                )),
-            },
+            "fuel" | "memory_bytes" | "output_bytes" | "read_bytes" | "module_bytes" => {
+                let ceiling = self.module_bound_ceiling(bound);
+                match value.as_u64() {
+                    Some(count) if count > ceiling => refuse(format!(
+                        "{bound} {count} is wider than this host's ceiling of {ceiling}; a module step's bounds narrow the host's and never widen them"
+                    )),
+                    Some(count) if count > 0 && usize::try_from(count).is_ok() => Ok(()),
+                    _ => refuse(format!(
+                        "{bound} is a count above zero that this host can represent, and this step names {value}"
+                    )),
+                }
+            }
             "refuse_below" => match value.as_f64() {
                 Some(floor) if (0.0..=1.0).contains(&floor) => Ok(()),
                 _ => refuse(format!(
@@ -2254,7 +2449,7 @@ impl Runtime {
                     "not_admitted",
                     "invoke names a host operation and this host has not admitted one",
                 )),
-                Kind::Module => self.run_module(step),
+                Kind::Module => self.run_module(step, &name, remaining).await,
             };
             // The deadline reaches inside the step, not only to its
             // boundary: an expiry while the step dispatched ends it.
@@ -4237,6 +4432,212 @@ impl Runtime {
 /// the millisecond it started, and the process it runs in. The id is
 /// also the record file's name, so anything outside its charset —
 /// letters, digits, `-`, `_`, `.` — becomes a `-`.
+/// The workspace-relative paths a `snapshot-read` step's `read` field
+/// names. No `read` field grants nothing: a guest sees only what the
+/// program asked for, so a program that forgets to scope its guest shows
+/// an empty listing rather than the whole checkout. `.` names the whole
+/// workspace.
+fn read_scope(value: Option<&Value>) -> Result<Vec<String>, String> {
+    let Some(value) = value else {
+        return Ok(Vec::new());
+    };
+    let items = value
+        .as_array()
+        .ok_or_else(|| "a read scope is a list of workspace-relative paths".to_string())?;
+    items
+        .iter()
+        .map(|item| {
+            let path = item
+                .as_str()
+                .ok_or_else(|| format!("a read scope names paths, and this one names {item}"))?;
+            let relative = path == "."
+                || (!path.contains('\\')
+                    && !path.contains('\0')
+                    && path
+                        .split('/')
+                        .all(|segment| !segment.is_empty() && segment != "." && segment != ".."));
+            if relative {
+                Ok(path.to_string())
+            } else {
+                Err(format!(
+                    "read scope path {path:?} isn't a plain path inside the workspace"
+                ))
+            }
+        })
+        .collect()
+}
+
+/// The files one `snapshot-read` grant captures, as it walks the scope.
+struct Capture<'a> {
+    step: &'a str,
+    root: &'a Path,
+    read_bytes: usize,
+    captured: usize,
+    entries: BTreeMap<String, plugin::Entry>,
+}
+
+impl<'a> Capture<'a> {
+    fn new(step: &'a str, root: &'a Path, read_bytes: usize) -> Self {
+        Capture {
+            step,
+            root,
+            read_bytes,
+            captured: 0,
+            entries: BTreeMap::new(),
+        }
+    }
+
+    fn refuse(&self, code: &str, reason: String) -> Refused {
+        Refused::at(self.step, code, reason)
+    }
+
+    /// The path's name relative to the workspace, `/`-separated.
+    fn relative(&self, path: &Path) -> Result<String, Refused> {
+        let relative = path.strip_prefix(self.root).map_err(|_| {
+            self.refuse(
+                "scope_escapes",
+                format!("{} is outside the workspace", path.display()),
+            )
+        })?;
+        let mut parts = Vec::new();
+        for part in relative.components() {
+            match part {
+                std::path::Component::Normal(part) => {
+                    parts.push(part.to_str().ok_or_else(|| {
+                        self.refuse(
+                            "scope_invalid",
+                            format!("{} isn't a UTF-8 path", path.display()),
+                        )
+                    })?)
+                }
+                _ => {
+                    return Err(self.refuse(
+                        "scope_escapes",
+                        format!("{} isn't a plain path inside the workspace", path.display()),
+                    ));
+                }
+            }
+        }
+        Ok(parts.join("/"))
+    }
+
+    /// Whether `path`, with every symlink on the way resolved, is still
+    /// inside the workspace.
+    fn inside(&self, path: &Path) -> Result<PathBuf, Refused> {
+        let resolved = path.canonicalize().map_err(|error| {
+            self.refuse(
+                "scope_unavailable",
+                format!("{} can't be read: {error}", path.display()),
+            )
+        })?;
+        if resolved.starts_with(self.root) {
+            Ok(resolved)
+        } else {
+            Err(self.refuse(
+                "scope_escapes",
+                format!(
+                    "{} resolves to {}, which is outside the workspace",
+                    path.display(),
+                    resolved.display()
+                ),
+            ))
+        }
+    }
+
+    fn add(&mut self, relative: String, entry: plugin::Entry) -> Result<(), Refused> {
+        if relative.is_empty() || self.entries.contains_key(&relative) {
+            return Ok(());
+        }
+        if self.entries.len() >= SNAPSHOT_ENTRIES {
+            return Err(self.refuse(
+                "limit_exceeded",
+                format!("the read scope names more than {SNAPSHOT_ENTRIES} entries"),
+            ));
+        }
+        self.entries.insert(relative, entry);
+        Ok(())
+    }
+
+    /// Captures `path` and, for a directory, everything under it.
+    fn walk(&mut self, path: &Path) -> Result<(), Refused> {
+        // Resolving first refuses a path that leaves the workspace through
+        // a symlink anywhere on the way, not only at its last part.
+        self.inside(path)?;
+        let relative = self.relative(path)?;
+        let meta = std::fs::symlink_metadata(path).map_err(|error| {
+            self.refuse(
+                "scope_unavailable",
+                format!("{} can't be read: {error}", path.display()),
+            )
+        })?;
+        if meta.file_type().is_symlink() {
+            let target = self.inside(path)?;
+            let target = self.relative(&target)?;
+            return self.add(relative, plugin::Entry::Symlink { target });
+        }
+        if meta.is_dir() {
+            let mut children = std::fs::read_dir(path)
+                .and_then(|entries| {
+                    entries
+                        .map(|entry| entry.map(|entry| entry.path()))
+                        .collect::<Result<Vec<_>, _>>()
+                })
+                .map_err(|error| {
+                    self.refuse(
+                        "scope_unavailable",
+                        format!("{} can't be listed: {error}", path.display()),
+                    )
+                })?;
+            children.sort();
+            for child in children {
+                self.walk(&child)?;
+            }
+            return Ok(());
+        }
+        if !meta.is_file() {
+            return Ok(());
+        }
+        let size = usize::try_from(meta.len()).unwrap_or(usize::MAX);
+        let keep = size.min(self.read_bytes);
+        if self.captured.saturating_add(keep) > SNAPSHOT_BYTES {
+            return Err(self.refuse(
+                "limit_exceeded",
+                format!("the read scope captures more than {SNAPSHOT_BYTES} bytes"),
+            ));
+        }
+        let mut bytes = Vec::with_capacity(keep);
+        std::io::Read::read_to_end(
+            &mut std::io::Read::take(
+                std::fs::File::open(path).map_err(|error| {
+                    self.refuse(
+                        "scope_unavailable",
+                        format!("{} can't be read: {error}", path.display()),
+                    )
+                })?,
+                keep as u64,
+            ),
+            &mut bytes,
+        )
+        .map_err(|error| {
+            self.refuse(
+                "scope_unavailable",
+                format!("{} can't be read: {error}", path.display()),
+            )
+        })?;
+        self.captured += bytes.len();
+        let complete = bytes.len() == size;
+        let version = plugin::digest(&bytes);
+        self.add(
+            relative,
+            plugin::Entry::File {
+                bytes,
+                version,
+                complete,
+            },
+        )
+    }
+}
+
 fn run_id(slug: &str) -> String {
     let millis = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -4734,6 +5135,7 @@ mod tests {
             review: None,
             runstate: None,
             budget: None,
+            module_ceiling: module_ceiling(),
             repository: None,
             host: Host::without_repository(),
         }
@@ -6441,6 +6843,7 @@ mod tests {
             review: None,
             runstate: Some(runstate.to_path_buf()),
             budget: None,
+            module_ceiling: module_ceiling(),
             repository: Some(repo.to_path_buf()),
             host: Host::with_repository(),
         }
@@ -7200,9 +7603,9 @@ mod tests {
         assert!(stopped.reason.contains("propagation"), "{stopped}");
     }
 
-    /// A step kind the host does not run refuses the whole composition
-    /// at admission — a `module` step inside a child is the parent's
-    /// refusal before the first step, not the child's mid-run.
+    /// A step this host can't run refuses the whole composition at
+    /// admission — a `module` step without guest bytes inside a child is
+    /// the parent's refusal before the first step, not the child's mid-run.
     #[tokio::test]
     async fn a_module_step_inside_a_child_refuses_the_composition() {
         let programs = tempfile::tempdir().unwrap();
@@ -7259,6 +7662,357 @@ mod tests {
         let output: Value = serde_json::from_str(&run.steps[0].output).unwrap();
         assert_eq!(output["value"]["topic"], json!("notes"));
         assert_eq!(output["verification"], json!("not_run"));
+    }
+
+    fn fixture(name: &str) -> Vec<u8> {
+        std::fs::read(format!(
+            "{}/../plugin/fixtures/{name}",
+            env!("CARGO_MANIFEST_DIR")
+        ))
+        .expect("guest fixture")
+    }
+
+    fn module_program(module: Value, bounds: Value) -> Program {
+        serde_json::from_value(json!({
+            "v": 1,
+            "slug": "guest",
+            "steps": [{"name": "guest", "kind": "module", "module": module, "bounds": bounds}]
+        }))
+        .unwrap()
+    }
+
+    fn workspace_runtime(workspace: &Path) -> Runtime {
+        let mut runtime = empty_runtime();
+        runtime.survey.workspace = workspace.to_path_buf();
+        runtime
+    }
+
+    /// A step's `output_bytes` reaches the host: a guest that writes more
+    /// than the narrowed bound fails with the host's typed limit, though
+    /// the host's own ceiling would have held the output.
+    #[tokio::test]
+    async fn a_narrowed_output_bound_reaches_the_host() {
+        let module = json!({
+            "profile": "pure",
+            "operation": "echo",
+            "input": {"topic": "n".repeat(200)},
+            "bytes_base64": plugin::encode_base64(&fixture("pure.wasm"))
+        });
+        let runtime = empty_runtime();
+        let inputs = Inputs::read("echo", "stub-local");
+
+        let wide = module_program(module.clone(), json!({}));
+        let run = runtime.run(&wide, &inputs, &Grant::all(), None).await;
+        assert!(run.finished(), "{:?}", run.stopped);
+
+        let narrow = module_program(module, json!({"output_bytes": 64}));
+        runtime
+            .admit(&narrow)
+            .expect("a narrower bound is admitted");
+        let run = runtime.run(&narrow, &inputs, &Grant::all(), None).await;
+        let stopped = run.stopped.as_ref().expect("the guest wrote too much");
+        assert_eq!(stopped.code, "limit_exceeded");
+        assert_eq!(stopped.reason, "output bytes");
+    }
+
+    /// A module bound wider than the host's ceiling is refused at
+    /// admission, never clamped: every bound only narrows.
+    #[test]
+    fn a_widening_module_bound_is_refused_at_admission() {
+        let module = json!({
+            "profile": "pure",
+            "bytes_base64": plugin::encode_base64(&fixture("pure.wasm"))
+        });
+        let runtime = empty_runtime();
+        let ceiling = module_ceiling();
+        for (bound, value) in [
+            ("fuel", ceiling.fuel + 1),
+            ("memory_bytes", ceiling.memory_bytes as u64 + 1),
+            ("output_bytes", ceiling.output_bytes as u64 + 1),
+            ("read_bytes", ceiling.read_bytes as u64 + 1),
+            ("module_bytes", ceiling.module_bytes as u64 + 1),
+        ] {
+            let program = module_program(module.clone(), json!({ bound: value }));
+            let refused = runtime.admit(&program).expect_err("a widening is refused");
+            assert_eq!(refused.code, "bound_unenforceable", "{bound}");
+            assert!(refused.reason.contains("never widen"), "{refused}");
+            let exact = module_program(module.clone(), json!({ bound: value - 1 }));
+            runtime
+                .admit(&exact)
+                .expect("the ceiling itself is admitted");
+        }
+        // An operator's lower ceiling makes the same bound a widening.
+        let lowered = empty_runtime().with_module_ceiling(plugin::Limits {
+            output_bytes: 32,
+            ..module_ceiling()
+        });
+        let program = module_program(module, json!({"output_bytes": 64}));
+        assert_eq!(
+            lowered.admit(&program).unwrap_err().code,
+            "bound_unenforceable"
+        );
+    }
+
+    /// A `snapshot-read` guest lists the files its read scope names and
+    /// nothing else in the workspace.
+    #[tokio::test]
+    async fn a_snapshot_read_guest_lists_only_its_granted_files() {
+        let workspace = tempfile::tempdir().unwrap();
+        let root = workspace.path();
+        std::fs::create_dir_all(root.join("docs/deep")).unwrap();
+        std::fs::write(root.join("docs/a.md"), "alpha").unwrap();
+        std::fs::write(root.join("docs/deep/b.md"), "beta").unwrap();
+        std::fs::write(root.join("notes.txt"), "granted").unwrap();
+        std::fs::write(root.join("secret.txt"), "not granted").unwrap();
+        let runtime = workspace_runtime(root);
+        let outline = plugin::encode_base64(&fixture("outline.wasm"));
+        let program = module_program(
+            json!({
+                "profile": "snapshot-read",
+                "operation": "outline",
+                "read": ["docs", "notes.txt"],
+                "bytes_base64": outline
+            }),
+            json!({}),
+        );
+        runtime
+            .admit(&program)
+            .expect("a scoped reader is admitted");
+        let run = runtime
+            .run(
+                &program,
+                &Inputs::read("outline", "stub-local"),
+                &Grant::all(),
+                None,
+            )
+            .await;
+        assert!(run.finished(), "{:?}", run.stopped);
+        let output: Value = serde_json::from_str(&run.steps[0].output).unwrap();
+        assert_eq!(
+            output["value"]["entries"],
+            json!([
+                "workspace/docs/a.md",
+                "workspace/docs/deep/b.md",
+                "workspace/notes.txt"
+            ])
+        );
+
+        // Without a declared scope the guest is granted nothing.
+        let unscoped = module_program(
+            json!({"profile": "snapshot-read", "operation": "outline", "bytes_base64": outline}),
+            json!({}),
+        );
+        let run = runtime
+            .run(
+                &unscoped,
+                &Inputs::read("outline", "stub-local"),
+                &Grant::all(),
+                None,
+            )
+            .await;
+        assert!(run.finished(), "{:?}", run.stopped);
+        let output: Value = serde_json::from_str(&run.steps[0].output).unwrap();
+        assert_eq!(output["value"]["entries"], json!([]));
+
+        // A scope that climbs out of the workspace is refused at admission.
+        for path in ["../elsewhere", "/etc", "docs/../../x", ""] {
+            let climbing = module_program(
+                json!({"profile": "snapshot-read", "read": [path], "bytes_base64": outline}),
+                json!({}),
+            );
+            assert_eq!(
+                runtime.admit(&climbing).unwrap_err().code,
+                "scope_invalid",
+                "{path:?}"
+            );
+        }
+    }
+
+    /// A symlink in the granted scope whose target is outside the
+    /// workspace refuses the step before the guest starts, whether the
+    /// scope names it or walks into it. One whose target stays inside is
+    /// listed and not followed.
+    #[tokio::test]
+    async fn an_escaping_symlink_refuses_the_grant() {
+        let outside = tempfile::tempdir().unwrap();
+        std::fs::write(outside.path().join("secret.txt"), "outside").unwrap();
+        let workspace = tempfile::tempdir().unwrap();
+        let root = workspace.path();
+        std::fs::create_dir_all(root.join("docs")).unwrap();
+        std::fs::write(root.join("docs/a.md"), "alpha").unwrap();
+        std::os::unix::fs::symlink(root.join("docs/a.md"), root.join("docs/inside")).unwrap();
+        let runtime = workspace_runtime(root);
+        let outline = plugin::encode_base64(&fixture("outline.wasm"));
+        let inputs = Inputs::read("outline", "stub-local");
+        let scoped = |read: Value| {
+            module_program(
+                json!({
+                    "profile": "snapshot-read",
+                    "operation": "outline",
+                    "read": read,
+                    "bytes_base64": outline
+                }),
+                json!({}),
+            )
+        };
+
+        let run = runtime
+            .run(&scoped(json!(["docs"])), &inputs, &Grant::all(), None)
+            .await;
+        assert!(run.finished(), "{:?}", run.stopped);
+        let output: Value = serde_json::from_str(&run.steps[0].output).unwrap();
+        assert_eq!(
+            output["value"]["entries"],
+            json!(["workspace/docs/a.md", "workspace/docs/inside"])
+        );
+
+        std::os::unix::fs::symlink(outside.path(), root.join("docs/escape")).unwrap();
+        for read in [
+            json!(["docs"]),
+            json!(["docs/escape"]),
+            json!(["docs/escape/secret.txt"]),
+        ] {
+            let run = runtime
+                .run(&scoped(read.clone()), &inputs, &Grant::all(), None)
+                .await;
+            let stopped = run.stopped.as_ref().expect("the escape is refused");
+            assert_eq!(stopped.code, "scope_escapes", "{read}: {stopped}");
+        }
+    }
+
+    /// A `pure` guest still gets no snapshot: a read scope on a pure step
+    /// is refused at admission, and a guest that imports the host call
+    /// is denied under the pure profile.
+    #[tokio::test]
+    async fn a_pure_guest_gets_no_snapshot() {
+        let workspace = tempfile::tempdir().unwrap();
+        std::fs::write(workspace.path().join("notes.txt"), "text").unwrap();
+        let runtime = workspace_runtime(workspace.path());
+        let outline = plugin::encode_base64(&fixture("outline.wasm"));
+        let scoped = module_program(
+            json!({"profile": "pure", "read": ["notes.txt"], "bytes_base64": outline}),
+            json!({}),
+        );
+        assert_eq!(runtime.admit(&scoped).unwrap_err().code, "scope_invalid");
+
+        let importing = module_program(
+            json!({"profile": "pure", "operation": "outline", "bytes_base64": outline}),
+            json!({}),
+        );
+        runtime
+            .admit(&importing)
+            .expect("the step itself is well formed");
+        let run = runtime
+            .run(
+                &importing,
+                &Inputs::read("outline", "stub-local"),
+                &Grant::all(),
+                None,
+            )
+            .await;
+        let stopped = run.stopped.as_ref().expect("no host call is linked");
+        assert_eq!(stopped.code, "denied", "{stopped}");
+    }
+
+    /// The run's deadline stops a guest that would otherwise run for
+    /// hours: the step marks cancelled well before its fuel is spent.
+    #[tokio::test]
+    async fn the_runs_deadline_stops_a_long_guest() {
+        let spin = wat::parse_str(
+            r#"
+            (module
+              (memory (export "memory") 1)
+              (func (export "oa_alloc") (param i32) (result i32) (i32.const 100))
+              (func (export "oa_free") (param i32 i32))
+              (func (export "oa_handle") (param i32 i32) (result i64)
+                (loop $again (br $again))
+                (i64.const 0)))
+            "#,
+        )
+        .unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let runtime = empty_runtime()
+            .with_runstate(dir.path())
+            .with_module_ceiling(plugin::Limits {
+                fuel: u64::MAX / 2,
+                ..module_ceiling()
+            })
+            .with_budget(Budget {
+                deadline: Some(Duration::from_millis(300)),
+                max_steps: None,
+                spend: None,
+                tokens: None,
+            });
+        let program = module_program(
+            json!({"profile": "pure", "bytes_base64": plugin::encode_base64(&spin)}),
+            json!({}),
+        );
+        let started = Instant::now();
+        let run = runtime
+            .run(
+                &program,
+                &Inputs::read("spin", "stub-local"),
+                &Grant::all(),
+                None,
+            )
+            .await;
+        assert!(
+            started.elapsed() < Duration::from_secs(20),
+            "{:?}",
+            started.elapsed()
+        );
+        assert_eq!(
+            run.stopped.as_ref().map(|refused| refused.code.as_str()),
+            Some(BUDGET_EXCEEDED)
+        );
+        let ids = claimed(dir.path());
+        let record = Store::open(dir.path())
+            .unwrap()
+            .get(&ids[0])
+            .unwrap()
+            .unwrap();
+        assert_eq!(record.outcome, Some(runstate::Outcome::Cancelled));
+    }
+
+    /// A run the caller drops sets the guest's cancel flag on the way
+    /// out, so the guest thread stops rather than running on unobserved.
+    #[tokio::test]
+    async fn dropping_a_module_run_cancels_the_guest() {
+        let flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        drop(CancelOnDrop(std::sync::Arc::clone(&flag)));
+        assert!(flag.load(std::sync::atomic::Ordering::SeqCst));
+
+        let spin = wat::parse_str(
+            r#"
+            (module
+              (memory (export "memory") 1)
+              (func (export "oa_alloc") (param i32) (result i32) (i32.const 100))
+              (func (export "oa_free") (param i32 i32))
+              (func (export "oa_handle") (param i32 i32) (result i64)
+                (loop $again (br $again))
+                (i64.const 0)))
+            "#,
+        )
+        .unwrap();
+        let runtime = empty_runtime().with_module_ceiling(plugin::Limits {
+            fuel: u64::MAX / 2,
+            ..module_ceiling()
+        });
+        let step: Step = serde_json::from_value(json!({
+            "name": "spin", "kind": "module",
+            "module": {"profile": "pure", "bytes_base64": plugin::encode_base64(&spin)},
+            "bounds": {}
+        }))
+        .unwrap();
+        // The caller gives up on the step; the dropped future cancels it.
+        // The test runtime waits for its blocking threads when it shuts
+        // down, so a guest the drop didn't stop would hang this test.
+        let outcome = tokio::time::timeout(
+            Duration::from_millis(200),
+            runtime.run_module(&step, "spin", None),
+        )
+        .await;
+        assert!(outcome.is_err(), "the guest was still running");
     }
 
     /// The caller's budget spends across the composition: a step count
