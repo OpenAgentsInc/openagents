@@ -112,3 +112,21 @@ least 2 mixed tasks: passes kept green with the interval's low end at 0.8
 or more, failures called red with its low end at 0.2 or more. Meeting it
 makes the component a candidate for matched mini-task runs; it doesn't
 admit it. `checks::oracle::ADMITTED` stays `false` either way.
+
+## Amendment 1, before any label was joined
+
+While the run was on its third task, a read of the second writer's trace
+(`cad-model`) showed it ran `find / -name schematic.png -o -name out.step`
+on the host. The writing boundary confines writes, not reads, so the
+command listed the paths of retained candidates' `out.step` files. The
+writer read none of them and wrote an oracle that returns
+`could_not_run` for any well-formed file.
+
+Rule added now, before any result was joined with a reward:
+`audit_writers.py` lists every writer's tool calls and flags any that
+names a path outside the writer's own directory, a temporary directory,
+or the task's working directory. Each flagged call is reviewed and
+recorded in `records/audit.json`. A writer with any call that searched or
+read the host outside those places is **not blind**; its oracle is left
+out of the primary analysis and reported apart. The run continues
+unchanged, so every writer has the same confinement.
