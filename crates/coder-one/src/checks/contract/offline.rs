@@ -267,6 +267,11 @@ pub async fn task(
     });
     let text = serde_json::to_string_pretty(&value).map_err(|e| e.to_string())?;
     crate::record::write_atomic(&out.join("contract.json"), format!("{text}\n").as_bytes())?;
+    write_labels(name, &found, &out)?;
+    Ok(value)
+}
+
+fn write_labels(name: &str, found: &[Trial], out: &Path) -> Result<(), String> {
     let labels = json!({
         "schema": LABELS_SCHEMA,
         "task": name,
@@ -280,6 +285,221 @@ pub async fn task(
         })).collect::<Vec<_>>(),
     });
     let text = serde_json::to_string_pretty(&labels).map_err(|e| e.to_string())?;
-    crate::record::write_atomic(&out.join("labels.json"), format!("{text}\n").as_bytes())?;
+    crate::record::write_atomic(&out.join("labels.json"), format!("{text}\n").as_bytes())
+}
+
+/// The schema of one task's `verify.executed` results.
+pub const EXECUTED_SCHEMA: &str = "openagents.coder-one.executed-offline.v1";
+
+/// The files under the container's working directory, relative to it, for
+/// [`executed::compile`]: at most three levels, with the directories the
+/// evidence file list skips left out.
+async fn container_files(host: &Container) -> Vec<String> {
+    let ran = super::host::Host::run(
+        host,
+        "find . -maxdepth 3 \\( -name .git -o -name node_modules -o -name .venv -o -name venv \
+         -o -name target -o -name __pycache__ \\) -prune -o -type f -print",
+        std::time::Duration::from_secs(60),
+    )
+    .await;
+    ran.stdout
+        .lines()
+        .filter_map(|l| l.strip_prefix("./"))
+        .map(str::to_string)
+        .collect()
+}
+
+/// `verify.executed` on retained workspaces (issue #9636). In a fresh
+/// container of the task's image, the untouched workspace, it plans the
+/// commands with no model (`evidence.baseline`'s entry points, found on a
+/// copy of the image's working directory, the commands the instruction
+/// names, and a compile or import of the package) and runs each once. It then restores
+/// every retained workspace that `accept offline` reads into its own
+/// container, runs the same commands, and judges each against its
+/// untouched outcome by [`executed::verdict`]. Writes
+/// `out/<name>/executed.json` and `labels.json`.
+///
+/// # Errors
+///
+/// A message when the task, its image, or its workspaces are missing.
+pub async fn executed_task(
+    name: &str,
+    options: &Options,
+    wall: std::time::Duration,
+    budget: std::time::Duration,
+) -> Result<Value, String> {
+    use super::executed::{self, At, Stage};
+    let found = workspaces(name, options)?;
+    let instruction = std::fs::read_to_string(options.tasks_dir.join(name).join("instruction.md"))
+        .map_err(|e| format!("cannot read {name}'s instruction: {e}"))?;
+    let image = options
+        .image
+        .clone()
+        .or_else(|| accept_offline::image(name))
+        .ok_or_else(|| format!("no image for {name}; pass --image"))?;
+    let workdir = found
+        .first()
+        .map_or_else(|| "/app".to_string(), |t| t.workdir.clone());
+    let out = options.out.join(name);
+    std::fs::create_dir_all(&out).map_err(|e| e.to_string())?;
+    let untouched_at = At {
+        stage: Some(Stage::Baseline),
+        session: None,
+        candidate: None,
+        cwd: workdir.clone(),
+    };
+    // `evidence.baseline`'s entry points, found by code on a copy of the
+    // image's working directory that the instruction calls `workdir`.
+    let entries = {
+        let local = out.join("untouched-workdir");
+        let _ = std::fs::remove_dir_all(&local);
+        std::fs::create_dir_all(&local).map_err(|e| e.to_string())?;
+        let id = docker(&["create", "--entrypoint", "sleep", &image, "infinity"])?;
+        let copied = docker(&[
+            "cp",
+            &format!("{id}:{workdir}/."),
+            &local.display().to_string(),
+        ]);
+        let _ = docker(&["rm", "-f", &id]);
+        copied?;
+        let found = super::entry::find(&instruction, &local, &workdir).await;
+        let _ = std::fs::remove_dir_all(&local);
+        found
+    };
+    let (commands, untouched_runs) = {
+        let runner = Docker {
+            image: image.clone(),
+            workdir: workdir.clone(),
+            candidate: None,
+            test_sec: 0,
+            dev: None,
+            setup: None,
+        };
+        let instruction = instruction.clone();
+        let workdir = workdir.clone();
+        let entries: Vec<executed::Planned> = entries
+            .iter()
+            .filter(|e| e.refused.is_none())
+            .map(|e| executed::Planned {
+                kind: e.kind.word().to_string(),
+                command: e.command.clone(),
+                requirements: Vec::new(),
+            })
+            .collect();
+        with_container(
+            runner,
+            &container_name(name, "untouched"),
+            &out.join("scratch-untouched"),
+            |host| async move {
+                let pristine = extract::gather(&host, &instruction, &workdir).await;
+                let files = container_files(&host).await;
+                let named = executed::named(&instruction, &workdir, &pristine);
+                let commands = executed::commands(
+                    &[],
+                    &[],
+                    entries.into_iter().chain(named).collect(),
+                    executed::compile(&files),
+                );
+                let runs =
+                    executed::run_each(&host, &commands, wall, budget, &|c| c.to_string()).await;
+                (commands, runs)
+            },
+        )
+        .await?
+    };
+    let untouched: Vec<executed::Record> = untouched_runs
+        .iter()
+        .map(|run| executed::record(&untouched_at, run, None))
+        .collect();
+    let outcomes = executed::untouched(&untouched);
+    crate::say::line(&format!(
+        "executed ▸ {name}: {} commands; {} exited 0 on the untouched workspace",
+        commands.len(),
+        outcomes.values().filter(|o| o.passed()).count()
+    ));
+    let one = |(i, trial): (usize, &Trial)| {
+        let (commands, outcomes, image, out, workdir) =
+            (&commands, &outcomes, &image, &out, &workdir);
+        let trial = trial.clone();
+        async move {
+            let started = now();
+            let workspace = out.join(format!("ws-{i}"));
+            if let Err(error) = accept_offline::materialize(&trial, image, &workspace) {
+                let _ = std::fs::remove_dir_all(&workspace);
+                crate::say::line(&format!("executed ▸ {}: {error}", trial.trial));
+                return json!({ "trial": trial.trial, "error": error });
+            }
+            let requirements = workspace
+                .join(trial.workdir.trim_start_matches('/'))
+                .join("requirements.txt");
+            let runner = Docker {
+                image: image.clone(),
+                workdir: trial.workdir.clone(),
+                candidate: Some(workspace.clone()),
+                test_sec: 0,
+                dev: None,
+                setup: requirements
+                    .is_file()
+                    .then(|| crate::accept::offline::SETUP.to_string()),
+            };
+            let network = if runner.setup.is_some() {
+                "bridge"
+            } else {
+                "none"
+            };
+            let ran = with_container(
+                runner,
+                &container_name(name, &i.to_string()),
+                &out.join(format!("scratch-{i}")),
+                |host| async move {
+                    executed::run_each(&host, commands, wall, budget, &|c| c.to_string()).await
+                },
+            )
+            .await;
+            let _ = std::fs::remove_dir_all(&workspace);
+            match ran {
+                Ok(runs) => {
+                    let at = At {
+                        stage: Some(Stage::AfterSession),
+                        session: None,
+                        candidate: Some(trial.trial.clone()),
+                        cwd: workdir.clone(),
+                    };
+                    let records = executed::judge(&at, &runs, outcomes);
+                    let rejected = executed::rejects(&records);
+                    crate::say::line(&format!(
+                        "executed ▸ {}: {}",
+                        trial.trial,
+                        if rejected { "rejected" } else { "not rejected" }
+                    ));
+                    json!({
+                        "trial": trial.trial,
+                        "job": trial.job,
+                        "kind": trial.kind,
+                        "network": network,
+                        "rejected": rejected,
+                        "records": records,
+                        "seconds": (now() - started) / 1000,
+                    })
+                }
+                Err(error) => json!({ "trial": trial.trial, "error": error }),
+            }
+        }
+    };
+    let results: Vec<Value> = futures_util::stream::iter(found.iter().enumerate().map(one))
+        .buffered(options.workers.max(1))
+        .collect()
+        .await;
+    let value = json!({
+        "schema": EXECUTED_SCHEMA,
+        "task": name,
+        "image": image,
+        "commands": commands,
+        "untouched": untouched,
+        "trials": results,
+    });
+    let text = serde_json::to_string_pretty(&value).map_err(|e| e.to_string())?;
+    crate::record::write_atomic(&out.join("executed.json"), format!("{text}\n").as_bytes())?;
+    write_labels(name, &found, &out)?;
     Ok(value)
 }

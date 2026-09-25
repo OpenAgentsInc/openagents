@@ -1494,6 +1494,7 @@ fn lean_shape() -> lean::Lean {
         detect: None,
         finish_rule: None,
         baseline: false,
+        executed: None,
     }
 }
 
@@ -1731,6 +1732,159 @@ fn the_baseline_switch_is_off_and_absent_by_default() {
         serde_json::from_value(json!({ "sessions": 1, "source_chars": 0, "baseline": true }))
             .unwrap();
     assert!(on.baseline);
+}
+
+/// Issue #9636: a candidate on which a baseline command that ran on the
+/// untouched workspace fails now is rejected, whatever it scores, and the
+/// earlier kept candidate is the one submitted.
+#[tokio::test]
+async fn the_lean_loop_rejects_a_candidate_that_regresses_a_baseline_command() {
+    let dir = tempfile::tempdir().unwrap();
+    let work = dir.path().join("work");
+    std::fs::create_dir_all(&work).unwrap();
+    std::fs::write(
+        work.join("check.sh"),
+        "if grep -qs broken state.txt; then echo broken >&2; exit 1; fi\necho fine\n",
+    )
+    .unwrap();
+    let eval = lean::eval_dir(&work, Isolation::TaskContainer);
+    let _ = std::fs::remove_dir_all(&eval);
+    let script = format!(
+        "mkdir -p {e} && printf '%s\\n' 'if grep -q hello hello.txt; then echo SCORE 1 1; else echo SCORE 0 1; fi' > {e}/score.sh",
+        e = eval.display()
+    );
+    let task = "Write hello.txt containing the word hello. `sh check.sh` must succeed.";
+    let mut executor = micro(
+        dir.path(),
+        vec![
+            call(
+                "a1",
+                "run_command",
+                &json!({ "command": script, "timeout_seconds": null }),
+                usage(1_000, 0, 30),
+            ),
+            call(
+                "a2",
+                "write_file",
+                &json!({ "path": "hello.txt", "contents": "hello\n" }),
+                usage(1_000, 0, 30),
+            ),
+            finish("a3", "blocked", "Wrote hello.txt."),
+            call(
+                "b1",
+                "write_file",
+                &json!({ "path": "state.txt", "contents": "broken\n" }),
+                usage(1_000, 0, 30),
+            ),
+            finish("b2", "blocked", "Wrote state.txt."),
+        ],
+        lean_policy(lean::Lean {
+            sessions: 2,
+            self_check: false,
+            keep_best: true,
+            baseline: true,
+            executed: Some(lean::LeanExecuted {
+                command_sec: 20,
+                budget_sec: 60,
+            }),
+            ..lean_shape()
+        }),
+    );
+    let mut prepared = prepared();
+    prepared.instruction = task.to_string();
+    executor.prepared = Some(prepared);
+    executor.execute(&briefing(task)).await;
+    let record = executor.last.clone().unwrap();
+    let moves = record["moves"].as_array().unwrap();
+    let find = |kind: &str| {
+        moves
+            .iter()
+            .find(|m| m["kind"] == kind)
+            .unwrap_or_else(|| panic!("no {kind} in {record:#}"))
+    };
+    // evidence.baseline ran the command; verify.executed reused its record.
+    assert_eq!(find("lean.baseline")["commands"][0], "sh check.sh");
+    let planned = find("lean.executed_baseline");
+    assert_eq!(planned["commands"][0]["command"], "sh check.sh");
+    assert_eq!(planned["commands"][0]["kind"], "named");
+    assert_eq!(planned["from_records"], 1);
+    assert_eq!(planned["ran"], 0);
+    let after: Vec<&Value> = moves.iter().filter(|m| m["kind"] == "lean").collect();
+    assert_eq!(after[0]["kept"], true, "{record:#}");
+    assert_eq!(after[0]["executed"]["rejected"], false);
+    assert_eq!(after[0]["executed"]["ok"], 1);
+    assert_eq!(
+        after[1]["score"]["passed"], 1,
+        "the score alone would keep it"
+    );
+    assert_eq!(after[1]["executed"]["rejected"], true, "{record:#}");
+    assert_eq!(
+        after[1]["executed"]["regressed"][0]["command"],
+        "sh check.sh"
+    );
+    assert_eq!(after[1]["kept"], false);
+    assert_eq!(moves.last().unwrap()["kind"], "lean.restore");
+    assert_eq!(moves.last().unwrap()["session"], 1);
+    assert!(
+        !work.join("state.txt").exists(),
+        "session 1's workspace is back"
+    );
+    let file = std::fs::read_dir(dir.path().join("artifacts"))
+        .unwrap()
+        .flatten()
+        .map(|e| e.path().join("executed-commands.jsonl"))
+        .find(|p| p.is_file())
+        .expect("the records");
+    let stages: Vec<String> = crate::checks::contract::executed::read(&file)
+        .iter()
+        .map(|r| {
+            format!(
+                "{} {:?} {:?} {}",
+                serde_json::to_value(r.stage).unwrap().as_str().unwrap(),
+                r.session,
+                r.exit,
+                r.verdict.map_or("none", |v| v.word()),
+            )
+        })
+        .collect();
+    assert_eq!(
+        stages,
+        [
+            "baseline None Some(0) none",
+            "after_session Some(1) Some(0) ok",
+            "after_session Some(2) Some(1) regressed",
+        ]
+    );
+}
+
+#[test]
+fn the_executed_rule_needs_keep_best() {
+    let lean = lean::Lean {
+        executed: Some(lean::LeanExecuted {
+            command_sec: 60,
+            budget_sec: 300,
+        }),
+        ..lean_shape()
+    };
+    assert!(
+        lean.validate()
+            .iter()
+            .any(|p| p == "executed requires keep_best")
+    );
+    let parsed: lean::Lean = serde_json::from_value(json!({
+        "sessions": 1, "source_chars": 1000, "keep_best": true, "executed": {}
+    }))
+    .unwrap();
+    assert_eq!(
+        parsed.executed,
+        Some(lean::LeanExecuted {
+            command_sec: 60,
+            budget_sec: 300,
+        })
+    );
+    let off: lean::Lean =
+        serde_json::from_value(json!({"sessions": 1, "source_chars": 1000})).unwrap();
+    assert_eq!(off.executed, None, "off by default");
 }
 
 #[test]

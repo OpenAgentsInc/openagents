@@ -7,6 +7,8 @@
 //! task's container. [`Container`] runs them with `docker exec` in a
 //! running container with no network, for offline replay of retained
 //! workspaces; the `docker` client itself runs under `supervise`.
+//! [`Contained`] runs them unconfined inside the task's own container,
+//! which is the boundary there.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -92,23 +94,11 @@ impl Host for Local {
     }
 
     async fn stat(&self, path: &str) -> Result<Stat, String> {
-        match std::fs::metadata(path) {
-            Ok(meta) if meta.is_dir() => Ok(Stat::Dir),
-            Ok(meta) => Ok(Stat::File(meta.len())),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Stat::Missing),
-            Err(error) => Err(format!("{path}: {error}")),
-        }
+        stat_here(path)
     }
 
     async fn read(&self, path: &str, max: usize) -> Result<Option<Vec<u8>>, String> {
-        match self.stat(path).await? {
-            Stat::File(_) => {
-                let mut bytes = std::fs::read(path).map_err(|e| format!("{path}: {e}"))?;
-                bytes.truncate(max);
-                Ok(Some(bytes))
-            }
-            _ => Ok(None),
-        }
+        read_here(path, max)
     }
 
     async fn run(&self, command: &str, wall: Duration) -> Ran {
@@ -135,6 +125,58 @@ impl Host for Local {
         let ended = supervise::Job::from_command(built)
             .bounded(supervise::Limits::within(wall).keeping(STDOUT_MAX))
             .run_holding(boundary.hold())
+            .await;
+        ended_to_ran(&ended, started)
+    }
+}
+
+fn stat_here(path: &str) -> Result<Stat, String> {
+    match std::fs::metadata(path) {
+        Ok(meta) if meta.is_dir() => Ok(Stat::Dir),
+        Ok(meta) => Ok(Stat::File(meta.len())),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Stat::Missing),
+        Err(error) => Err(format!("{path}: {error}")),
+    }
+}
+
+fn read_here(path: &str, max: usize) -> Result<Option<Vec<u8>>, String> {
+    match stat_here(path)? {
+        Stat::File(_) => read_bounded(Path::new(path), max).map(Some),
+        _ => Ok(None),
+    }
+}
+
+/// A workspace inside the task's own container, where the container is
+/// the boundary. Commands run from `workdir` under `supervise` with the
+/// session's credentials withheld, as the lean loop's frozen score runs
+/// there. No writing boundary is built, because a task container usually
+/// can't enforce one.
+#[derive(Clone, Debug)]
+pub struct Contained {
+    pub workdir: PathBuf,
+}
+
+impl Host for Contained {
+    fn describe(&self) -> Value {
+        json!({ "host": "contained", "workdir": self.workdir, "confine": "container" })
+    }
+
+    async fn stat(&self, path: &str) -> Result<Stat, String> {
+        stat_here(path)
+    }
+
+    async fn read(&self, path: &str, max: usize) -> Result<Option<Vec<u8>>, String> {
+        read_here(path, max)
+    }
+
+    async fn run(&self, command: &str, wall: Duration) -> Ran {
+        let started = Instant::now();
+        let mut built = Command::new("/bin/sh");
+        built.args(["-c", command]).current_dir(&self.workdir);
+        microluna::tools::withhold_credentials(&mut built);
+        let ended = supervise::Job::from_command(built)
+            .bounded(supervise::Limits::within(wall).keeping(STDOUT_MAX))
+            .run()
             .await;
         ended_to_ran(&ended, started)
     }

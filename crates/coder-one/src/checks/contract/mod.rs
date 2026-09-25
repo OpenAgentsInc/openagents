@@ -25,6 +25,7 @@
 
 pub mod cli;
 pub mod entry;
+pub mod executed;
 pub mod extract;
 pub mod host;
 pub mod offline;
@@ -710,7 +711,7 @@ fn millis(since: Instant) -> u64 {
 
 /// Runs a command, retrying once with `python3` when the task wrote
 /// `python` and the host has no such program.
-async fn run_command(host: &impl Host, command: &str, wall: Duration) -> Ran {
+pub(crate) async fn run_command(host: &impl Host, command: &str, wall: Duration) -> Ran {
     let ran = host.run(command, wall).await;
     if ran.exit == Some(127)
         && let Some(rest) = command.strip_prefix("python ")

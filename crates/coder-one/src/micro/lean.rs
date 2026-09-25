@@ -30,6 +30,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::*;
+use crate::checks::contract::executed;
 
 /// File-content identity for candidate evidence. Match the merge inventory's
 /// exclusions, but refuse incomplete reads instead of comparing partial trees.
@@ -204,6 +205,37 @@ pub struct Lean {
     /// before it, nothing runs before the session.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub baseline: bool,
+    /// `verify.executed` (issue #9636): after every session, rerun the
+    /// baseline commands, the commands the instruction names, and a
+    /// compile or import of the package on a scratch copy of the
+    /// candidate ([`crate::checks::contract::executed`]), and reject a
+    /// candidate on which a command that exited 0 on the untouched
+    /// workspace now fails. A rejected candidate isn't kept, and the next
+    /// session is told why. Needs `keep_best`. Absent, as in every
+    /// manifest before it, no command runs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub executed: Option<LeanExecuted>,
+}
+
+/// `executor.microluna.lean.executed`: the bounds of the commands the host
+/// reruns after every session.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LeanExecuted {
+    /// Each command's wall-time bound, in seconds.
+    #[serde(default = "executed_command_sec")]
+    pub command_sec: u64,
+    /// All of one run's commands together, in seconds.
+    #[serde(default = "executed_budget_sec")]
+    pub budget_sec: u64,
+}
+
+fn executed_command_sec() -> u64 {
+    crate::checks::contract::executed::COMMAND_SEC
+}
+
+fn executed_budget_sec() -> u64 {
+    300
 }
 
 /// `executor.microluna.lean.finish_rule`: how a `done` finish is held to
@@ -400,6 +432,16 @@ impl Lean {
         }
         if self.finish_rule.is_some() && !self.keep_best {
             problems.push("finish_rule requires keep_best".to_string());
+        }
+        if let Some(executed) = &self.executed {
+            if !self.keep_best {
+                problems.push("executed requires keep_best".to_string());
+            }
+            if executed.command_sec == 0 || executed.budget_sec == 0 {
+                problems.push(
+                    "executor.microluna.lean.executed bounds must be at least 1 second".to_string(),
+                );
+            }
         }
         for source in &self.departures {
             if !crate::departures::ADMITTED.contains(source) {
@@ -1539,6 +1581,55 @@ impl Micro {
         if !baseline_record.is_null() {
             moves.push(baseline_record);
         }
+        // `verify.executed` (issue #9636): the commands to rerun after every
+        // session, each with its outcome on the untouched workspace. The
+        // records go beside `evidence.baseline`'s, whose finished commands
+        // (`baseline`) come first.
+        let executed_file = self
+            .artifacts
+            .join(format!("lean-{}", self.dispatch()))
+            .join(crate::baseline::EXECUTED_FILE);
+        let executed_place = |rule: &LeanExecuted, left: Duration| executed::Place {
+            workdir: self.workdir.clone(),
+            contained: self.isolation == Isolation::TaskContainer,
+            wall: Duration::from_secs(rule.command_sec),
+            budget: Duration::from_secs(rule.budget_sec).min(left),
+        };
+        let mut executed_plan: Option<executed::Baseline> = None;
+        if let Some(rule) = lean.executed.as_ref().filter(|_| lean.keep_best) {
+            match &base {
+                Some(untouched) => {
+                    let known = executed::read(&executed_file);
+                    let from_records = known
+                        .iter()
+                        .filter(|r| r.stage == executed::Stage::Baseline)
+                        .count();
+                    let place = executed_place(rule, time_left());
+                    let (plan, records) = executed::prepare(
+                        &prepared.instruction,
+                        untouched,
+                        &place,
+                        &baseline,
+                        &known,
+                    )
+                    .await;
+                    let error = executed::append(&executed_file, &records).err();
+                    moves.push(json!({
+                        "kind": "lean.executed_baseline",
+                        "commands": plan.commands,
+                        "from_records": from_records,
+                        "ran": records.len(),
+                        "error": error,
+                    }));
+                    executed_plan = Some(plan);
+                }
+                None => moves.push(json!({
+                    "kind": "lean.executed_refused",
+                    "error": "the workspace couldn't be copied, so no command runs after a session",
+                })),
+            }
+        }
+        let mut reject_note: Option<String> = None;
         let mut history: Vec<String> = Vec::new();
         let mut flag_note: Option<String> = None;
         let mut last_tail: Option<String> = None;
@@ -1755,6 +1846,9 @@ impl Micro {
                 if let Some(note) = &flag_note {
                     state.push(note.clone());
                 }
+                if let Some(note) = &reject_note {
+                    state.push(note.clone());
+                }
                 if let Some(tail) = &last_tail {
                     state.push(tail.clone());
                 }
@@ -1911,6 +2005,48 @@ impl Micro {
                         )
                 )
             });
+            // `verify.executed`: rerun the commands on a scratch copy of the
+            // candidate. Any that exited 0 on the untouched workspace and
+            // fails now rejects it, whatever it scores.
+            let (rejected, executed_record, executed_records) =
+                match (lean.executed.as_ref(), executed_plan.as_ref()) {
+                    (Some(rule), Some(plan)) => {
+                        let place = executed_place(
+                            rule,
+                            time_left().min(wall_left().unwrap_or(Duration::MAX)),
+                        );
+                        let candidate_dir = keep_evidence
+                            .then(|| format!("lean-{}/session-{number}", self.dispatch()));
+                        match executed::after_session(plan, &place, number, candidate_dir).await {
+                            Ok(records) => {
+                                let rejected = executed::rejects(&records);
+                                let error = executed::append(&executed_file, &records).err();
+                                let count = |v: executed::Verdict| {
+                                    records.iter().filter(|r| r.verdict == Some(v)).count()
+                                };
+                                let record = json!({
+                                    "rejected": rejected,
+                                    "regressed": records
+                                        .iter()
+                                        .filter(|r| r.verdict == Some(executed::Verdict::Regressed))
+                                        .map(|r| json!({"command": r.command, "rule": r.rule}))
+                                        .collect::<Vec<_>>(),
+                                    "ok": count(executed::Verdict::Ok),
+                                    "not_a_regression": count(executed::Verdict::NotARegression),
+                                    "unknown": count(executed::Verdict::Unknown),
+                                    "error": error,
+                                });
+                                (rejected, record, records)
+                            }
+                            Err(error) => (
+                                false,
+                                json!({"rejected": false, "error": error}),
+                                Vec::new(),
+                            ),
+                        }
+                    }
+                    _ => (false, Value::Null, Vec::new()),
+                };
             if lean.failures && have_score {
                 last_tail = Some(format!(
                     "The host's evaluation output after session {number}, its tail:\n{}",
@@ -1922,6 +2058,8 @@ impl Micro {
                     "After session {number} the host's score was {p} of {t}{}.",
                     if flagged {
                         ", but the workspace was flagged"
+                    } else if rejected {
+                        ", but the host rejected the workspace: a command regressed"
                     } else {
                         ""
                     }
@@ -1956,7 +2094,11 @@ impl Micro {
             // scalar score cannot establish that a later edit is better.
             let mut kept = false;
             let mut keep_error = None;
-            if lean.keep_best && !flagged && (!lean.protect_candidates || snapshot.is_ok()) {
+            if lean.keep_best
+                && !flagged
+                && !rejected
+                && (!lean.protect_candidates || snapshot.is_ok())
+            {
                 let better = best.as_ref().is_none_or(|b| {
                     if lean.protect_candidates {
                         fraction(score) > fraction(b.score)
@@ -2015,11 +2157,16 @@ impl Micro {
                 },
                 if kept {
                     "; kept as the best so far"
+                } else if rejected {
+                    "; rejected: a command that ran on the untouched workspace fails now"
                 } else {
                     ""
                 },
                 not_kept
             ));
+            reject_note = rejected.then(|| {
+                executed::note(number, &executed_records, best.as_ref().map(|b| b.session))
+            });
             moves.push(json!({
                 "kind": "lean",
                 "after_session": number,
@@ -2039,6 +2186,9 @@ impl Micro {
             }));
             if let (Some(record), Some(last)) = (in_session, moves.last_mut()) {
                 last["in_session"] = record;
+            }
+            if let (false, Some(last)) = (executed_record.is_null(), moves.last_mut()) {
+                last["executed"] = executed_record;
             }
             if keep_evidence {
                 let evidence = serde_json::to_vec_pretty(&moves).unwrap_or_default();
@@ -2060,7 +2210,7 @@ impl Micro {
                 break;
             }
             let full = score.is_some_and(|(p, t)| p >= t);
-            let settled = status == "done" && !flagged && (!lean.keep_best || full);
+            let settled = status == "done" && !flagged && !rejected && (!lean.keep_best || full);
             if settled {
                 stopped = format!("session {number} ended done");
                 if !lean.self_check {
@@ -2095,7 +2245,9 @@ impl Micro {
         // flagged.
         if let Some(b) = &best {
             let last = moves.last();
-            let last_flagged = last.is_some_and(|m| m["hardcoded"]["flagged"] == true);
+            let last_flagged = last.is_some_and(|m| {
+                m["hardcoded"]["flagged"] == true || m["executed"]["rejected"] == true
+            });
             let last_score = last.and_then(|m| {
                 Some((
                     m["score"]["passed"].as_u64()?,
