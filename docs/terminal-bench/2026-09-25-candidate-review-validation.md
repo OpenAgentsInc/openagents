@@ -628,3 +628,13 @@ The numeric and circuit checks illustrate independent recomputation from an
 explicit public rule. The runtime and access gaps suggest future review-environment
 work, but installing tools, changing capabilities, or rerunning reviews here
 would produce a different experimental arm. The original calls remain unchanged.
+
+A follow-up fixes a reader edge case without changing any measurements: floating
+point can put the Wilson upper endpoint at `0.9999999999999999` for a perfect
+rate, or its lower endpoint just above zero for zero hits. The reader now tolerates
+that rounding. The scoped Gym gate passes again at `eec5d3b026`, including a
+regression using the actual retained formula's edge cases. The
+[final verification bundle](../../bench/terminal-bench/experiments/2026-09-25-candidate-review/records/truth9584-gym-final.tar.gz)
+retains both gate runs and two clean contamination checks on the later merged
+source tree. The [manifest](../../bench/terminal-bench/experiments/2026-09-25-candidate-review/records/truth9584-gym-final-files.json)
+verifies every restored file. The candidate-generating checkout stayed unchanged.
