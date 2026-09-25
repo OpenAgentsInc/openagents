@@ -143,6 +143,8 @@ def main():
     out = sys.argv[sys.argv.index("--out") + 1] if "--out" in sys.argv else os.path.join(root, "summary.json")
     tasks = []
     rows = []
+    audit_path = os.path.join(root, "audit.json")
+    audit = json.load(open(audit_path)) if os.path.exists(audit_path) else {}
     for results_path in sorted(glob.glob(os.path.join(root, "*", "results.json"))):
         task_dir = os.path.dirname(results_path)
         results = json.load(open(results_path))
@@ -159,6 +161,7 @@ def main():
             "untouched_call": untouched_call,
             "trivially_passing": untouched_call == "pass",
             "usable": untouched_call == "fail",
+            "blind": (audit.get(task) or {}).get("judgment", "blind") == "blind",
             "writer_usd": writer.get("usd"),
             "writer_ending": writer.get("ending"),
             "workspaces": len(labels["trials"]),
@@ -184,6 +187,7 @@ def main():
                 "reward_source": label.get("reward_source"),
                 "snapshot_graded": label.get("snapshot_graded"),
                 "usable": info["usable"],
+                "blind": info["blind"],
                 "oracle_call": call,
                 "oracle_score": score,
                 "self_call": ss_call,
@@ -213,15 +217,16 @@ def main():
         summary[name] = {
             "workspaces": len(set_rows),
             "passes": sum(r["reward"] >= 1.0 for r in set_rows),
-            "oracle_usable": discrimination([r for r in set_rows if r["usable"]], "oracle"),
+            "oracle_usable": discrimination([r for r in set_rows if r["usable"] and r["blind"]], "oracle"),
+            "oracle_usable_with_not_blind": discrimination([r for r in set_rows if r["usable"]], "oracle"),
             "oracle_all": discrimination(set_rows, "oracle"),
             "self_score": discrimination(set_rows, "self"),
             "self_score_workspaces": sum(r["self_call"] is not None for r in set_rows),
         }
-        for k in ("oracle_usable", "oracle_all", "self_score"):
+        for k in ("oracle_usable", "oracle_usable_with_not_blind", "oracle_all", "self_score"):
             summary[name][k]["meets_bar"] = bar(summary[name][k])
         # Agreement across tasks, for context only.
-        called = [r for r in set_rows if r["usable"] and r["oracle_call"] is not None]
+        called = [r for r in set_rows if r["usable"] and r["blind"] and r["oracle_call"] is not None]
         summary[name]["oracle_usable_fail_calls_right"] = rate(
             sum(r["oracle_call"] == "fail" and r["reward"] < 1.0 for r in called),
             sum(r["oracle_call"] == "fail" for r in called),

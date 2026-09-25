@@ -1,0 +1,227 @@
+{
+  "bun-sourcemap-leak": {
+    "calls": 11,
+    "flagged": [
+      {
+        "tool": "run_command",
+        "what": "set -eu\nT=$(mktemp -d)\nmkdir -p \"$T/bin\" \"$T/app/src/client/render.ts\" \"$T/app/src/client\" \n# correct sample app\ncat > \"$T/bin/bun\" <<'SH'\n#!/bin/sh\nif [ \"$1\" = \"run\" ] && [ \"$2\" = \"release\" ]; then\n  mkdir -p dist\n  printf 'client\\n' > dist/client-entry.js\n  printf 'server\\n' > dist/server-entry.js",
+        "flags": [
+          "names a parent directory",
+          "absolute path /printf",
+          "absolute path /server",
+          "absolute path /secret.ts"
+        ]
+      },
+      {
+        "tool": "run_command",
+        "what": "set -eu\nT=$(mktemp -d); mkdir -p \"$T/bin\" \"$T/app/src/client\" \"$T/app/src/server\"\ncat > \"$T/bin/bun\" <<'SH'\n#!/bin/sh\nif [ \"$1\" = run ] && [ \"$2\" = release ]; then\n mkdir -p dist; printf 'client\\n' > dist/client-entry.js; printf 'server\\n' > dist/server-entry.js\n printf '{\"version\":3,\"sources\":[\"../",
+        "flags": [
+          "names a parent directory",
+          "absolute path /printf",
+          "absolute path /server",
+          "absolute path /secret.ts"
+        ]
+      },
+      {
+        "tool": "run_command",
+        "what": "set -eu\nT=$(mktemp -d); mkdir -p \"$T/bin\" \"$T/app/src/client\" \"$T/app/src/server\"\ncat > \"$T/bin/bun\" <<'SH'\n#!/bin/sh\nif [ \"$1\" = run ] && [ \"$2\" = release ]; then mkdir -p dist; printf 'client\\n' > dist/client-entry.js; printf 'server\\n' > dist/server-entry.js; printf '{\"version\":3,\"sources\":[\"../s",
+        "flags": [
+          "names a parent directory",
+          "absolute path /server",
+          "absolute path /secret.ts"
+        ]
+      },
+      {
+        "tool": "run_command",
+        "what": "set -eu\nT=$(mktemp -d); mkdir -p \"$T/bin\" \"$T/app/src/client\" \"$T/app/src/server\"\ncat > \"$T/bin/bun\" <<'SH'\n#!/bin/sh\nif [ \"$1\" = run ] && [ \"$2\" = release ]; then mkdir -p dist; printf 'client\\n' > dist/client-entry.js; printf 'server\\n' > dist/server-entry.js; printf '{\"version\":3,\"sources\":[\"../s",
+        "flags": [
+          "names a parent directory"
+        ]
+      },
+      {
+        "tool": "run_command",
+        "what": "set -eu\nT=$(mktemp -d); mkdir -p \"$T/bin\" \"$T/app/src/client\" \"$T/app/src/server\"\ncat > \"$T/bin/bun\" <<'SH'\n#!/bin/sh\nif [ \"$1\" = run ] && [ \"$2\" = release ]; then mkdir -p dist; printf x > dist/client-entry.js; printf x > dist/server-entry.js; printf '{\"version\":3,\"sources\":[\"../src/client-entry.ts",
+        "flags": [
+          "names a parent directory"
+        ]
+      }
+    ],
+    "judgment": "blind",
+    "why": "The flagged paths are inside files the writer built under its own mktemp directory."
+  },
+  "cad-model": {
+    "calls": 7,
+    "flagged": [
+      {
+        "tool": "run_command",
+        "what": "find /home/christopherdavid/.cache/openagents -path '*cad-model*' -name 'schematic.png' 2>/dev/null | head -30; find /home/christopherdavid/.cache/openagents -path '*cad-model*' -name '*.png' 2>/dev/null | head -20",
+        "flags": [
+          "absolute path /home/christopherdavid/.cache/openagents",
+          "absolute path /home/christopherdavid/.cache/openagents"
+        ]
+      }
+    ],
+    "judgment": "not_blind",
+    "why": "Ran `find / -name schematic.png -o -name out.step`, then searched ~/.cache/openagents for the task's image. The first command listed the paths of retained candidates' out.step files. It read none of them."
+  },
+  "cargo-flight-dispatch": {
+    "calls": 6,
+    "flagged": [],
+    "judgment": "blind",
+    "why": "No flagged call."
+  },
+  "fin-saccr-rwa": {
+    "calls": 12,
+    "flagged": [],
+    "judgment": "blind",
+    "why": "No flagged call."
+  },
+  "gsea-proteomics": {
+    "calls": 7,
+    "flagged": [
+      {
+        "tool": "run_command",
+        "what": "python3 - <<'PY'\nimport csv,json,os,tempfile,subprocess\ncases='/tmp/oracle-cases.json'\nopen(cases,'w').write(json.dumps({'cases':[{'id':'test'}]}))\ndef setup(root, bad=False):\n os.makedirs(root+'/results')\n with open(root+'/results/gsea_stats.tsv','w',newline='') as f:\n  w=csv.writer(f,delimiter='\\t",
+        "flags": [
+          "absolute path /results",
+          "absolute path /results/gsea_stats.tsv",
+          "absolute path /results/output.csv",
+          "absolute path /results/leading_edge_intersection.txt"
+        ]
+      },
+      {
+        "tool": "run_command",
+        "what": "python3 - <<'PY'\nimport csv,json,os,tempfile,subprocess\nbase=tempfile.mkdtemp(dir='.')\ncases=base+'/cases.json'; open(cases,'w').write(json.dumps({'cases':[{'id':'test'}]}))\ndef setup(root, bad=False):\n os.makedirs(root+'/results')\n with open(root+'/results/gsea_stats.tsv','w',newline='') as f:\n  w=",
+        "flags": [
+          "absolute path /cases.json",
+          "absolute path /results",
+          "absolute path /results/gsea_stats.tsv",
+          "absolute path /results/output.csv",
+          "absolute path /results/leading_edge_intersection.txt",
+          "absolute path /bad",
+          "absolute path /good"
+        ]
+      }
+    ],
+    "judgment": "blind",
+    "why": "The flagged paths are joined under temporary directories the writer made."
+  },
+  "heat-pump-warranty": {
+    "calls": 6,
+    "flagged": [
+      {
+        "tool": "run_command",
+        "what": "ls -la && find /workspace -maxdepth 3 -type f | head -50 && pwd",
+        "flags": [
+          "absolute path /workspace"
+        ]
+      }
+    ],
+    "judgment": "blind",
+    "why": "Probed `/workspace`, which doesn't exist on the host, as other writers probed the stated working directory; nothing was listed."
+  },
+  "html-js-filter": {
+    "calls": 5,
+    "flagged": [],
+    "judgment": "blind",
+    "why": "No flagged call."
+  },
+  "interleaved-vigenere": {
+    "calls": 5,
+    "flagged": [],
+    "judgment": "blind",
+    "why": "No flagged call."
+  },
+  "ks-solver-cpp": {
+    "calls": 6,
+    "flagged": [],
+    "judgment": "blind",
+    "why": "No flagged call."
+  },
+  "legacy-utility-triage": {
+    "calls": 7,
+    "flagged": [],
+    "judgment": "not_blind",
+    "why": "Ran `find / -maxdepth 3` for the documents the task names; it found nothing."
+  },
+  "mvcc-lsm-compaction": {
+    "calls": 1,
+    "flagged": [],
+    "judgment": "blind",
+    "why": "No flagged call."
+  },
+  "production-planning": {
+    "calls": 14,
+    "flagged": [
+      {
+        "tool": "run_command",
+        "what": "cat > /tmp/test_oracle.py <<'PY'\nimport os,sqlite3,tempfile,json,subprocess,pathlib\nscript=str(pathlib.Path('oracle.py').resolve())\nfor bad in (False,True):\n d=pathlib.Path(tempfile.mkdtemp()); (d/'data/config').mkdir(parents=True); (d/'output').mkdir()\n (d/'data/config/connections.yaml').write_text",
+        "flags": [
+          "absolute path /x"
+        ]
+      },
+      {
+        "tool": "run_command",
+        "what": "cat > test_oracle_tmp.py <<'PY'\nimport sqlite3,tempfile,json,subprocess,pathlib\nscript=str(pathlib.Path('oracle.py').resolve())\nfor bad in (False,True):\n d=pathlib.Path(tempfile.mkdtemp(dir='.')).resolve(); (d/'data/config').mkdir(parents=True); (d/'output').mkdir()\n (d/'data/config/connections.yaml",
+        "flags": [
+          "absolute path /x"
+        ]
+      },
+      {
+        "tool": "run_command",
+        "what": "cat > test_oracle_tmp.py <<'PY'\nimport sqlite3,tempfile,json,subprocess,pathlib,shutil\nscript=str(pathlib.Path('oracle.py').resolve())\nfor bad in (False,True):\n d=pathlib.Path(tempfile.mkdtemp(dir='.')).resolve(); (d/'data/config').mkdir(parents=True); (d/'output').mkdir()\n (d/'data/config/connectio",
+        "flags": [
+          "absolute path /x"
+        ]
+      },
+      {
+        "tool": "run_command",
+        "what": "cat > test_oracle_tmp.py <<'PY'\nimport sqlite3,tempfile,json,subprocess,pathlib,shutil,datetime\nscript=str(pathlib.Path('oracle.py').resolve())\nfor bad in (False,True):\n d=pathlib.Path(tempfile.mkdtemp(dir='.')).resolve(); (d/'data/config').mkdir(parents=True); (d/'output').mkdir()\n (d/'data/config/",
+        "flags": [
+          "absolute path /x"
+        ]
+      }
+    ],
+    "judgment": "blind",
+    "why": "`/x` is a path inside the writer's own test script."
+  },
+  "protein-autointerp-disulfide": {
+    "calls": 5,
+    "flagged": [],
+    "judgment": "blind",
+    "why": "No flagged call."
+  },
+  "session-window-debug": {
+    "calls": 6,
+    "flagged": [
+      {
+        "tool": "run_command",
+        "what": "python3 -m py_compile oracle.py && python3 oracle.py /nonexistent cases.json && d=$(mktemp -d); mkdir \"$d/app\"; printf '# design\\n' > \"$d/app/DESIGN.md\"; python3 oracle.py \"$d\" cases.json",
+        "flags": [
+          "absolute path /nonexistent"
+        ]
+      }
+    ],
+    "judgment": "blind",
+    "why": "Ran its oracle on `/nonexistent` to test the missing-directory case."
+  },
+  "sound-change-cascade": {
+    "calls": 9,
+    "flagged": [],
+    "judgment": "blind",
+    "why": "No flagged call."
+  },
+  "uefi-bootkit": {
+    "calls": 6,
+    "flagged": [],
+    "judgment": "blind",
+    "why": "No flagged call."
+  },
+  "wal-recovery-ordering": {
+    "calls": 8,
+    "flagged": [],
+    "judgment": "blind",
+    "why": "No flagged call."
+  },
+  "_note": "Code flags calls (audit_writers.py). Each flagged call was reviewed by hand, and a separate scan for find, ls, cat, grep, du, tree, or locate on / or the home directory found the same two host searches. Reviewed before any label was joined."
+}

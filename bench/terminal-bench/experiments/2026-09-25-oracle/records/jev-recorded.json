@@ -1,0 +1,2873 @@
+{
+  "schema": "openagents.coder-one.jev-recorded.v1",
+  "entries": {
+    "07e8c7611ba704d4a66caec14dd0e45cb40e00cfd1c198e47cc4473da2a18972": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "defines_0": {
+          "type": "noul",
+          "noul": 0.44
+        },
+        "boundary_0": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "defines_1": {
+          "type": "noul",
+          "noul": 0.36
+        },
+        "boundary_1": {
+          "type": "noul",
+          "noul": 0.36
+        },
+        "defines_2": {
+          "type": "noul",
+          "noul": 0.19
+        },
+        "boundary_2": {
+          "type": "noul",
+          "noul": 0.25
+        },
+        "defines_3": {
+          "type": "noul",
+          "noul": 0.06
+        },
+        "boundary_3": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "defines_4": {
+          "type": "noul",
+          "noul": 0.09
+        },
+        "boundary_4": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "defines_5": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "boundary_5": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "defines_6": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "boundary_6": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "defines_7": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "boundary_7": {
+          "type": "noul",
+          "noul": 0.05
+        }
+      },
+      "input_tokens": 3422,
+      "output_tokens": 292,
+      "milliseconds": 155,
+      "source": "checks oracle: ks-solver-cpp"
+    },
+    "100bbc8e70a186619676d5ba35d4afb762844caccb74705740d90c5d0298af77": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "parameter_0": {
+          "type": "noul",
+          "noul": 0.23
+        },
+        "parameter_1": {
+          "type": "noul",
+          "noul": 0.06
+        }
+      },
+      "input_tokens": 1055,
+      "output_tokens": 40,
+      "milliseconds": 147,
+      "source": "checks oracle: sound-change-cascade"
+    },
+    "22ea831033e86418487325c9ad5900810d79b01baf0cf42697a4cd382a41e4bc": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "parameter_0": {
+          "type": "noul",
+          "noul": 0.06
+        }
+      },
+      "input_tokens": 624,
+      "output_tokens": 22,
+      "milliseconds": 138,
+      "source": "checks oracle: mvcc-lsm-compaction"
+    },
+    "240f02d1fe00a442af99ad4aab28bbc42e81f60b3fd8e4239e895c5a9cbf8d38": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "defines_0": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "boundary_0": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "defines_1": {
+          "type": "noul",
+          "noul": 0.41
+        },
+        "boundary_1": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "defines_2": {
+          "type": "noul",
+          "noul": 0.06
+        },
+        "boundary_2": {
+          "type": "noul",
+          "noul": 0.62
+        },
+        "defines_3": {
+          "type": "noul",
+          "noul": 0.09
+        },
+        "boundary_3": {
+          "type": "noul",
+          "noul": 0.55
+        },
+        "defines_4": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "boundary_4": {
+          "type": "noul",
+          "noul": 0.33
+        },
+        "defines_5": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "boundary_5": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "defines_6": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "boundary_6": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "defines_7": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "boundary_7": {
+          "type": "noul",
+          "noul": 0.04
+        }
+      },
+      "input_tokens": 2603,
+      "output_tokens": 292,
+      "milliseconds": 394,
+      "source": "checks oracle: session-window-debug"
+    },
+    "24e4cb9e7371acbd9154e9ed8443d39c3660c1d63d6cca20a02bcd547577fbf9": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "defines_0": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "boundary_0": {
+          "type": "noul",
+          "noul": 0.02
+        }
+      },
+      "input_tokens": 1304,
+      "output_tokens": 40,
+      "milliseconds": 130,
+      "source": "checks oracle: wal-recovery-ordering"
+    },
+    "24ed336086ad740f9bb882f7648092c6d2592dc47bee2fa7b82cbc951cdc1a5f": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "defines_0": {
+          "type": "noul",
+          "noul": 0.56
+        },
+        "boundary_0": {
+          "type": "noul",
+          "noul": 0.12
+        },
+        "defines_1": {
+          "type": "noul",
+          "noul": 0.12
+        },
+        "boundary_1": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "defines_2": {
+          "type": "noul",
+          "noul": 0.06
+        },
+        "boundary_2": {
+          "type": "noul",
+          "noul": 0.06
+        },
+        "defines_3": {
+          "type": "noul",
+          "noul": 0.11
+        },
+        "boundary_3": {
+          "type": "noul",
+          "noul": 0.12
+        },
+        "defines_4": {
+          "type": "noul",
+          "noul": 0.87
+        },
+        "boundary_4": {
+          "type": "noul",
+          "noul": 0.27
+        },
+        "defines_5": {
+          "type": "noul",
+          "noul": 0.09
+        },
+        "boundary_5": {
+          "type": "noul",
+          "noul": 0.16
+        },
+        "defines_6": {
+          "type": "noul",
+          "noul": 0.33
+        },
+        "boundary_6": {
+          "type": "noul",
+          "noul": 0.98
+        },
+        "defines_7": {
+          "type": "noul",
+          "noul": 0.94
+        },
+        "boundary_7": {
+          "type": "noul",
+          "noul": 0.25
+        }
+      },
+      "input_tokens": 2978,
+      "output_tokens": 292,
+      "milliseconds": 538,
+      "source": "checks oracle: interleaved-vigenere"
+    },
+    "294f657bc94028ba418b3535220bf0a6f3bf7b4b5d4dd27d8b46ad7fb0a989ba": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "defines_0": {
+          "type": "noul",
+          "noul": 0.1
+        },
+        "boundary_0": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "defines_1": {
+          "type": "noul",
+          "noul": 0.18
+        },
+        "boundary_1": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "defines_2": {
+          "type": "noul",
+          "noul": 0.71
+        },
+        "boundary_2": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "defines_3": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "boundary_3": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "defines_4": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "boundary_4": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "defines_5": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "boundary_5": {
+          "type": "noul",
+          "noul": 0.04
+        }
+      },
+      "input_tokens": 1979,
+      "output_tokens": 220,
+      "milliseconds": 525,
+      "source": "checks oracle: heat-pump-warranty"
+    },
+    "2aae90c5add0c3d22af4130bb6ec12fd30173383ea237b718f638d5b6b0dc446": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "defines_0": {
+          "type": "noul",
+          "noul": 0.06
+        },
+        "boundary_0": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "defines_1": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "boundary_1": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "defines_2": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "boundary_2": {
+          "type": "noul",
+          "noul": 0.03
+        }
+      },
+      "input_tokens": 1242,
+      "output_tokens": 112,
+      "milliseconds": 141,
+      "source": "checks oracle: html-js-filter"
+    },
+    "2ba8ff8b23067c2b1a02c8a0b9a0a014873035d2441d264ef1645e27e268613d": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "parameter_0": {
+          "type": "noul",
+          "noul": 0.07
+        }
+      },
+      "input_tokens": 564,
+      "output_tokens": 22,
+      "milliseconds": 137,
+      "source": "checks oracle: heat-pump-warranty"
+    },
+    "2c39d8f42006d46cfc6a80f10930fcf7af120b960a3d9ca491689f371f61ad85": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "defines_0": {
+          "type": "noul",
+          "noul": 0.26
+        },
+        "boundary_0": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "defines_1": {
+          "type": "noul",
+          "noul": 0.93
+        },
+        "boundary_1": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "defines_2": {
+          "type": "noul",
+          "noul": 0.18
+        },
+        "boundary_2": {
+          "type": "noul",
+          "noul": 0.06
+        },
+        "defines_3": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "boundary_3": {
+          "type": "noul",
+          "noul": 0.06
+        },
+        "defines_4": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "boundary_4": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "defines_5": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "boundary_5": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "defines_6": {
+          "type": "noul",
+          "noul": 0.11
+        },
+        "boundary_6": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "defines_7": {
+          "type": "noul",
+          "noul": 0.32
+        },
+        "boundary_7": {
+          "type": "noul",
+          "noul": 0.04
+        }
+      },
+      "input_tokens": 3380,
+      "output_tokens": 292,
+      "milliseconds": 517,
+      "source": "checks oracle: ks-solver-cpp"
+    },
+    "2d4b517d1e857f9d2606a7bef296e16b7303d173808bd6d12a9f8de7b3ae25cd": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "parameter_0": {
+          "type": "noul",
+          "noul": 0.05
+        }
+      },
+      "input_tokens": 633,
+      "output_tokens": 22,
+      "milliseconds": 144,
+      "source": "checks oracle: html-js-filter"
+    },
+    "2e4995dd6b4ed465ae1ed6714b026a32059e482410a473a88278570314cef6b5": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "parameter_0": {
+          "type": "noul",
+          "noul": 0.41
+        },
+        "parameter_1": {
+          "type": "noul",
+          "noul": 0.43
+        },
+        "parameter_2": {
+          "type": "noul",
+          "noul": 0.42
+        },
+        "parameter_3": {
+          "type": "noul",
+          "noul": 0.34
+        },
+        "parameter_4": {
+          "type": "noul",
+          "noul": 0.37
+        },
+        "parameter_5": {
+          "type": "noul",
+          "noul": 0.4
+        },
+        "parameter_6": {
+          "type": "noul",
+          "noul": 0.43
+        },
+        "parameter_7": {
+          "type": "noul",
+          "noul": 0.42
+        }
+      },
+      "input_tokens": 2732,
+      "output_tokens": 148,
+      "milliseconds": 178,
+      "source": "checks oracle: ks-solver-cpp"
+    },
+    "3038d59053adf2ce69c70187fc1d23adc1614d760547cf1df76043c7ae51bb15": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "defines_0": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "boundary_0": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "defines_1": {
+          "type": "noul",
+          "noul": 0.41
+        },
+        "boundary_1": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "defines_2": {
+          "type": "noul",
+          "noul": 0.84
+        },
+        "boundary_2": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "defines_3": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "boundary_3": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "defines_4": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "boundary_4": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "defines_5": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "boundary_5": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "defines_6": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "boundary_6": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "defines_7": {
+          "type": "noul",
+          "noul": 0.17
+        },
+        "boundary_7": {
+          "type": "noul",
+          "noul": 0.15
+        }
+      },
+      "input_tokens": 2663,
+      "output_tokens": 292,
+      "milliseconds": 470,
+      "source": "checks oracle: uefi-bootkit"
+    },
+    "457c3d1617a0bbfdf6644feb60ff15ccf08eaa3f503abf869b1688eb9b79bf19": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "defines_0": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "boundary_0": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "defines_1": {
+          "type": "noul",
+          "noul": 0.25
+        },
+        "boundary_1": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "defines_2": {
+          "type": "noul",
+          "noul": 0.16
+        },
+        "boundary_2": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "defines_3": {
+          "type": "noul",
+          "noul": 0.67
+        },
+        "boundary_3": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "defines_4": {
+          "type": "noul",
+          "noul": 0.91
+        },
+        "boundary_4": {
+          "type": "noul",
+          "noul": 0.06
+        },
+        "defines_5": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "boundary_5": {
+          "type": "noul",
+          "noul": 0.06
+        },
+        "defines_6": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "boundary_6": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "defines_7": {
+          "type": "noul",
+          "noul": 0.06
+        },
+        "boundary_7": {
+          "type": "noul",
+          "noul": 0.03
+        }
+      },
+      "input_tokens": 3370,
+      "output_tokens": 292,
+      "milliseconds": 156,
+      "source": "checks oracle: ks-solver-cpp"
+    },
+    "4bfe403100f7ccbb5ac122dd508e87947c5060ed2620b515e18a5687e2b04d2d": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "defines_0": {
+          "type": "noul",
+          "noul": 0.57
+        },
+        "boundary_0": {
+          "type": "noul",
+          "noul": 0.2
+        },
+        "defines_1": {
+          "type": "noul",
+          "noul": 0.87
+        },
+        "boundary_1": {
+          "type": "noul",
+          "noul": 0.1
+        },
+        "defines_2": {
+          "type": "noul",
+          "noul": 0.26
+        },
+        "boundary_2": {
+          "type": "noul",
+          "noul": 0.08
+        },
+        "defines_3": {
+          "type": "noul",
+          "noul": 0.9
+        },
+        "boundary_3": {
+          "type": "noul",
+          "noul": 0.08
+        },
+        "defines_4": {
+          "type": "noul",
+          "noul": 0.17
+        },
+        "boundary_4": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "defines_5": {
+          "type": "noul",
+          "noul": 0.84
+        },
+        "boundary_5": {
+          "type": "noul",
+          "noul": 0.08
+        },
+        "defines_6": {
+          "type": "noul",
+          "noul": 0.84
+        },
+        "boundary_6": {
+          "type": "noul",
+          "noul": 0.08
+        },
+        "defines_7": {
+          "type": "noul",
+          "noul": 0.89
+        },
+        "boundary_7": {
+          "type": "noul",
+          "noul": 0.14
+        }
+      },
+      "input_tokens": 3030,
+      "output_tokens": 292,
+      "milliseconds": 501,
+      "source": "checks oracle: bun-sourcemap-leak"
+    },
+    "53778487afa088e80d810e88a397e204f0e57e4363a9f7ab052ac8a75c1fd2d6": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "parameter_0": {
+          "type": "noul",
+          "noul": 0.09
+        },
+        "parameter_1": {
+          "type": "noul",
+          "noul": 0.07
+        }
+      },
+      "input_tokens": 1600,
+      "output_tokens": 40,
+      "milliseconds": 154,
+      "source": "checks oracle: ks-solver-cpp"
+    },
+    "5b45a2a3a4ae246c579d9c2718620f00596b7ecedfc17344880bc2d8c323c457": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "defines_0": {
+          "type": "noul",
+          "noul": 0.78
+        },
+        "boundary_0": {
+          "type": "noul",
+          "noul": 0.94
+        },
+        "defines_1": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "boundary_1": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "defines_2": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "boundary_2": {
+          "type": "noul",
+          "noul": 0.06
+        }
+      },
+      "input_tokens": 1268,
+      "output_tokens": 112,
+      "milliseconds": 174,
+      "source": "checks oracle: protein-autointerp-disulfide"
+    },
+    "641609e59a67d30d42be18ac0dac6eb59cc2d4491291178c3bc52b9baec2f45c": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "defines_0": {
+          "type": "noul",
+          "noul": 0.54
+        },
+        "boundary_0": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "defines_1": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "boundary_1": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "defines_2": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "boundary_2": {
+          "type": "noul",
+          "noul": 0.03
+        }
+      },
+      "input_tokens": 1138,
+      "output_tokens": 112,
+      "milliseconds": 429,
+      "source": "checks oracle: cad-model"
+    },
+    "64b93efaf654b1c7f15cbcb01b9bbae4420e16980e7899bbad7d6f7b4e499928": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "defines_0": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "boundary_0": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "defines_1": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "boundary_1": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "defines_2": {
+          "type": "noul",
+          "noul": 0.19
+        },
+        "boundary_2": {
+          "type": "noul",
+          "noul": 0.06
+        },
+        "defines_3": {
+          "type": "noul",
+          "noul": 0.73
+        },
+        "boundary_3": {
+          "type": "noul",
+          "noul": 0.15
+        },
+        "defines_4": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "boundary_4": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "defines_5": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "boundary_5": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "defines_6": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "boundary_6": {
+          "type": "noul",
+          "noul": 0.03
+        }
+      },
+      "input_tokens": 2359,
+      "output_tokens": 256,
+      "milliseconds": 419,
+      "source": "checks oracle: mvcc-lsm-compaction"
+    },
+    "64c120548d15f9036cfeaba3b46943692f5e8763037ee46f1d758c04ace65f66": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "defines_0": {
+          "type": "noul",
+          "noul": 0.06
+        },
+        "boundary_0": {
+          "type": "noul",
+          "noul": 0.22
+        },
+        "defines_1": {
+          "type": "noul",
+          "noul": 0.92
+        },
+        "boundary_1": {
+          "type": "noul",
+          "noul": 0.35
+        },
+        "defines_2": {
+          "type": "noul",
+          "noul": 0.09
+        },
+        "boundary_2": {
+          "type": "noul",
+          "noul": 0.11
+        },
+        "defines_3": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "boundary_3": {
+          "type": "noul",
+          "noul": 0.06
+        },
+        "defines_4": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "boundary_4": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "defines_5": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "boundary_5": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "defines_6": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "boundary_6": {
+          "type": "noul",
+          "noul": 0.08
+        },
+        "defines_7": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "boundary_7": {
+          "type": "noul",
+          "noul": 0.05
+        }
+      },
+      "input_tokens": 2874,
+      "output_tokens": 292,
+      "milliseconds": 137,
+      "source": "checks oracle: interleaved-vigenere"
+    },
+    "65c48a2f0ef98d32f615145729148fa8c2f499f6a4c6a219e859fd09d8f7f069": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "defines_0": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "boundary_0": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "defines_1": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "boundary_1": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "defines_2": {
+          "type": "noul",
+          "noul": 0.08
+        },
+        "boundary_2": {
+          "type": "noul",
+          "noul": 0.06
+        },
+        "defines_3": {
+          "type": "noul",
+          "noul": 0.15
+        },
+        "boundary_3": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "defines_4": {
+          "type": "noul",
+          "noul": 0.81
+        },
+        "boundary_4": {
+          "type": "noul",
+          "noul": 0.09
+        },
+        "defines_5": {
+          "type": "noul",
+          "noul": 0.71
+        },
+        "boundary_5": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "defines_6": {
+          "type": "noul",
+          "noul": 0.95
+        },
+        "boundary_6": {
+          "type": "noul",
+          "noul": 0.13
+        },
+        "defines_7": {
+          "type": "noul",
+          "noul": 0.96
+        },
+        "boundary_7": {
+          "type": "noul",
+          "noul": 0.64
+        }
+      },
+      "input_tokens": 3324,
+      "output_tokens": 292,
+      "milliseconds": 566,
+      "source": "checks oracle: wal-recovery-ordering"
+    },
+    "671e13c578cd350d7c29916f7e2d907013400282831d5475cfa94dac5ec57d34": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "parameter_0": {
+          "type": "noul",
+          "noul": 0.15
+        },
+        "parameter_1": {
+          "type": "noul",
+          "noul": 0.04
+        }
+      },
+      "input_tokens": 840,
+      "output_tokens": 40,
+      "milliseconds": 218,
+      "source": "checks oracle: protein-autointerp-disulfide"
+    },
+    "6e36b6de03ed779f873ad6934df05c0dfec200edee02dbc44c93a8ae1e0de1d1": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "defines_0": {
+          "type": "noul",
+          "noul": 0.76
+        },
+        "boundary_0": {
+          "type": "noul",
+          "noul": 0.75
+        },
+        "defines_1": {
+          "type": "noul",
+          "noul": 0.71
+        },
+        "boundary_1": {
+          "type": "noul",
+          "noul": 0.74
+        },
+        "defines_2": {
+          "type": "noul",
+          "noul": 0.72
+        },
+        "boundary_2": {
+          "type": "noul",
+          "noul": 0.84
+        },
+        "defines_3": {
+          "type": "noul",
+          "noul": 0.83
+        },
+        "boundary_3": {
+          "type": "noul",
+          "noul": 0.46
+        },
+        "defines_4": {
+          "type": "noul",
+          "noul": 0.13
+        },
+        "boundary_4": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "defines_5": {
+          "type": "noul",
+          "noul": 0.54
+        },
+        "boundary_5": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "defines_6": {
+          "type": "noul",
+          "noul": 0.23
+        },
+        "boundary_6": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "defines_7": {
+          "type": "noul",
+          "noul": 0.6
+        },
+        "boundary_7": {
+          "type": "noul",
+          "noul": 0.19
+        }
+      },
+      "input_tokens": 2849,
+      "output_tokens": 292,
+      "milliseconds": 175,
+      "source": "checks oracle: sound-change-cascade"
+    },
+    "733da7407f444c9c8b08233d5b47dfe880ae2e1b3e5e5aa0a22e9ee3e2e0b2e1": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "defines_0": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "boundary_0": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "defines_1": {
+          "type": "noul",
+          "noul": 0.27
+        },
+        "boundary_1": {
+          "type": "noul",
+          "noul": 0.1
+        },
+        "defines_2": {
+          "type": "noul",
+          "noul": 0.19
+        },
+        "boundary_2": {
+          "type": "noul",
+          "noul": 0.06
+        },
+        "defines_3": {
+          "type": "noul",
+          "noul": 0.24
+        },
+        "boundary_3": {
+          "type": "noul",
+          "noul": 0.88
+        },
+        "defines_4": {
+          "type": "noul",
+          "noul": 0.4
+        },
+        "boundary_4": {
+          "type": "noul",
+          "noul": 0.13
+        },
+        "defines_5": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "boundary_5": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "defines_6": {
+          "type": "noul",
+          "noul": 0.36
+        },
+        "boundary_6": {
+          "type": "noul",
+          "noul": 0.2
+        },
+        "defines_7": {
+          "type": "noul",
+          "noul": 0.43
+        },
+        "boundary_7": {
+          "type": "noul",
+          "noul": 0.29
+        }
+      },
+      "input_tokens": 2626,
+      "output_tokens": 292,
+      "milliseconds": 698,
+      "source": "checks oracle: protein-autointerp-disulfide"
+    },
+    "7b707aa0d05b7a5b12458e5d8723a67471dfcc4b3a994c300deffaea4645d30d": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "defines_0": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "boundary_0": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "defines_1": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "boundary_1": {
+          "type": "noul",
+          "noul": 0.02
+        }
+      },
+      "input_tokens": 992,
+      "output_tokens": 76,
+      "milliseconds": 190,
+      "source": "checks oracle: session-window-debug"
+    },
+    "7c7b3421e2e4a7560fe1e5d1da0bff5d3ac4f79b365943ffc0333666a6ed03fc": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "defines_0": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "boundary_0": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "defines_1": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "boundary_1": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "defines_2": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "boundary_2": {
+          "type": "noul",
+          "noul": 0.13
+        },
+        "defines_3": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "boundary_3": {
+          "type": "noul",
+          "noul": 0.08
+        },
+        "defines_4": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "boundary_4": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "defines_5": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "boundary_5": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "defines_6": {
+          "type": "noul",
+          "noul": 0.12
+        },
+        "boundary_6": {
+          "type": "noul",
+          "noul": 0.29
+        },
+        "defines_7": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "boundary_7": {
+          "type": "noul",
+          "noul": 0.04
+        }
+      },
+      "input_tokens": 3384,
+      "output_tokens": 292,
+      "milliseconds": 174,
+      "source": "checks oracle: fin-saccr-rwa"
+    },
+    "7d307f966b646057396363a743649e456578c00717bdfa0f263759f44e97cdd5": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "parameter_0": {
+          "type": "noul",
+          "noul": 0.1
+        }
+      },
+      "input_tokens": 724,
+      "output_tokens": 22,
+      "milliseconds": 160,
+      "source": "checks oracle: uefi-bootkit"
+    },
+    "866740d9fd17101ccc88cdfbaf9366c1f9f58adb8a7ead719c866e2a21e7c701": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "defines_0": {
+          "type": "noul",
+          "noul": 0.89
+        },
+        "boundary_0": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "defines_1": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "boundary_1": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "defines_2": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "boundary_2": {
+          "type": "noul",
+          "noul": 0.03
+        }
+      },
+      "input_tokens": 1495,
+      "output_tokens": 112,
+      "milliseconds": 225,
+      "source": "checks oracle: sound-change-cascade"
+    },
+    "8b42e0b1358b1cb578fa1c704b9da1ebcc1615908c4ba91d97e98a7fb3759f79": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "defines_0": {
+          "type": "noul",
+          "noul": 0.9
+        },
+        "boundary_0": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "defines_1": {
+          "type": "noul",
+          "noul": 0.17
+        },
+        "boundary_1": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "defines_2": {
+          "type": "noul",
+          "noul": 0.9
+        },
+        "boundary_2": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "defines_3": {
+          "type": "noul",
+          "noul": 0.48
+        },
+        "boundary_3": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "defines_4": {
+          "type": "noul",
+          "noul": 0.91
+        },
+        "boundary_4": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "defines_5": {
+          "type": "noul",
+          "noul": 0.27
+        },
+        "boundary_5": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "defines_6": {
+          "type": "noul",
+          "noul": 0.61
+        },
+        "boundary_6": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "defines_7": {
+          "type": "noul",
+          "noul": 0.15
+        },
+        "boundary_7": {
+          "type": "noul",
+          "noul": 0.04
+        }
+      },
+      "input_tokens": 3466,
+      "output_tokens": 292,
+      "milliseconds": 189,
+      "source": "checks oracle: ks-solver-cpp"
+    },
+    "8e9607be6862aa4a8343ef109dea1818bbc31b4f64cbd9bc5df1ae97495ea8a7": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "defines_0": {
+          "type": "noul",
+          "noul": 0.32
+        },
+        "boundary_0": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "defines_1": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "boundary_1": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "defines_2": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "boundary_2": {
+          "type": "noul",
+          "noul": 0.03
+        }
+      },
+      "input_tokens": 1612,
+      "output_tokens": 112,
+      "milliseconds": 130,
+      "source": "checks oracle: bun-sourcemap-leak"
+    },
+    "8ea49121b8c9b242a33222a5546eee2f2ddd5144be10368f75270d3fe45f4014": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "defines_0": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "boundary_0": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "defines_1": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "boundary_1": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "defines_2": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "boundary_2": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "defines_3": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "boundary_3": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "defines_4": {
+          "type": "noul",
+          "noul": 0.11
+        },
+        "boundary_4": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "defines_5": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "boundary_5": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "defines_6": {
+          "type": "noul",
+          "noul": 0.06
+        },
+        "boundary_6": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "defines_7": {
+          "type": "noul",
+          "noul": 0.92
+        },
+        "boundary_7": {
+          "type": "noul",
+          "noul": 0.17
+        }
+      },
+      "input_tokens": 2918,
+      "output_tokens": 292,
+      "milliseconds": 150,
+      "source": "checks oracle: cargo-flight-dispatch"
+    },
+    "92eeb7cc0170d14138f13831aef9e544867171bf08234e9002133b95059f7f6f": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "defines_0": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "boundary_0": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "defines_1": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "boundary_1": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "defines_2": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "boundary_2": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "defines_3": {
+          "type": "noul",
+          "noul": 0.24
+        },
+        "boundary_3": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "defines_4": {
+          "type": "noul",
+          "noul": 0.5
+        },
+        "boundary_4": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "defines_5": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "boundary_5": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "defines_6": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "boundary_6": {
+          "type": "noul",
+          "noul": 0.03
+        }
+      },
+      "input_tokens": 2243,
+      "output_tokens": 256,
+      "milliseconds": 417,
+      "source": "checks oracle: legacy-utility-triage"
+    },
+    "95940ac084b32c040babc3a7051b863558b87d0039e0cce2afc26cde5606ffd1": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "defines_0": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "boundary_0": {
+          "type": "noul",
+          "noul": 0.03
+        }
+      },
+      "input_tokens": 813,
+      "output_tokens": 40,
+      "milliseconds": 137,
+      "source": "checks oracle: uefi-bootkit"
+    },
+    "9a88a44ef51afbbd62a3b90faa181b4fbfad860cd26adbc020dcce21007ab8e4": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "defines_0": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "boundary_0": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "defines_1": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "boundary_1": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "defines_2": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "boundary_2": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "defines_3": {
+          "type": "noul",
+          "noul": 0.29
+        },
+        "boundary_3": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "defines_4": {
+          "type": "noul",
+          "noul": 0.54
+        },
+        "boundary_4": {
+          "type": "noul",
+          "noul": 0.06
+        },
+        "defines_5": {
+          "type": "noul",
+          "noul": 0.39
+        },
+        "boundary_5": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "defines_6": {
+          "type": "noul",
+          "noul": 0.95
+        },
+        "boundary_6": {
+          "type": "noul",
+          "noul": 0.18
+        },
+        "defines_7": {
+          "type": "noul",
+          "noul": 0.47
+        },
+        "boundary_7": {
+          "type": "noul",
+          "noul": 0.08
+        }
+      },
+      "input_tokens": 3130,
+      "output_tokens": 292,
+      "milliseconds": 505,
+      "source": "checks oracle: gsea-proteomics"
+    },
+    "a02d472ef81abd059a5f354e6308a0788e82736f67df5f0835e713e8965b3403": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "parameter_0": {
+          "type": "noul",
+          "noul": 0.66
+        },
+        "parameter_1": {
+          "type": "noul",
+          "noul": 0.98
+        },
+        "parameter_2": {
+          "type": "noul",
+          "noul": 0.98
+        },
+        "parameter_3": {
+          "type": "noul",
+          "noul": 0.88
+        },
+        "parameter_4": {
+          "type": "noul",
+          "noul": 0.89
+        },
+        "parameter_5": {
+          "type": "noul",
+          "noul": 0.98
+        },
+        "parameter_6": {
+          "type": "noul",
+          "noul": 0.98
+        },
+        "parameter_7": {
+          "type": "noul",
+          "noul": 0.1
+        }
+      },
+      "input_tokens": 2412,
+      "output_tokens": 148,
+      "milliseconds": 184,
+      "source": "checks oracle: gsea-proteomics"
+    },
+    "a547b1cd4432c75819a0dbcc948b312c9cbb96a7c2e46ae49ab97bd87184aa20": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "defines_0": {
+          "type": "noul",
+          "noul": 0.95
+        },
+        "boundary_0": {
+          "type": "noul",
+          "noul": 0.32
+        },
+        "defines_1": {
+          "type": "noul",
+          "noul": 0.55
+        },
+        "boundary_1": {
+          "type": "noul",
+          "noul": 0.12
+        },
+        "defines_2": {
+          "type": "noul",
+          "noul": 0.91
+        },
+        "boundary_2": {
+          "type": "noul",
+          "noul": 0.41
+        },
+        "defines_3": {
+          "type": "noul",
+          "noul": 0.95
+        },
+        "boundary_3": {
+          "type": "noul",
+          "noul": 0.86
+        },
+        "defines_4": {
+          "type": "noul",
+          "noul": 0.96
+        },
+        "boundary_4": {
+          "type": "noul",
+          "noul": 0.68
+        },
+        "defines_5": {
+          "type": "noul",
+          "noul": 0.95
+        },
+        "boundary_5": {
+          "type": "noul",
+          "noul": 0.23
+        },
+        "defines_6": {
+          "type": "noul",
+          "noul": 0.91
+        },
+        "boundary_6": {
+          "type": "noul",
+          "noul": 0.09
+        },
+        "defines_7": {
+          "type": "noul",
+          "noul": 0.93
+        },
+        "boundary_7": {
+          "type": "noul",
+          "noul": 0.11
+        }
+      },
+      "input_tokens": 3038,
+      "output_tokens": 292,
+      "milliseconds": 150,
+      "source": "checks oracle: bun-sourcemap-leak"
+    },
+    "acc4e61ca7aa95d49f43cec607fd1837108c93ea2135feaec122032b7fb0bbb0": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "defines_0": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "boundary_0": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "defines_1": {
+          "type": "noul",
+          "noul": 0.14
+        },
+        "boundary_1": {
+          "type": "noul",
+          "noul": 0.11
+        },
+        "defines_2": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "boundary_2": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "defines_3": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "boundary_3": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "defines_4": {
+          "type": "noul",
+          "noul": 0.19
+        },
+        "boundary_4": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "defines_5": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "boundary_5": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "defines_6": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "boundary_6": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "defines_7": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "boundary_7": {
+          "type": "noul",
+          "noul": 0.05
+        }
+      },
+      "input_tokens": 2921,
+      "output_tokens": 292,
+      "milliseconds": 486,
+      "source": "checks oracle: cargo-flight-dispatch"
+    },
+    "aea6b7a9e187e09e604948aa93d72299338d157e77de4ed7f74949fafab83c11": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "parameter_0": {
+          "type": "noul",
+          "noul": 0.06
+        }
+      },
+      "input_tokens": 507,
+      "output_tokens": 22,
+      "milliseconds": 156,
+      "source": "checks oracle: cad-model"
+    },
+    "b15153add56df51cb8f4ce4a8098b146ce2b247be94c4ee24ae7818ca4000282": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "defines_0": {
+          "type": "noul",
+          "noul": 0.08
+        },
+        "boundary_0": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "defines_1": {
+          "type": "noul",
+          "noul": 0.92
+        },
+        "boundary_1": {
+          "type": "noul",
+          "noul": 0.06
+        },
+        "defines_2": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "boundary_2": {
+          "type": "noul",
+          "noul": 0.1
+        },
+        "defines_3": {
+          "type": "noul",
+          "noul": 0.1
+        },
+        "boundary_3": {
+          "type": "noul",
+          "noul": 0.2
+        },
+        "defines_4": {
+          "type": "noul",
+          "noul": 0.12
+        },
+        "boundary_4": {
+          "type": "noul",
+          "noul": 0.26
+        },
+        "defines_5": {
+          "type": "noul",
+          "noul": 0.25
+        },
+        "boundary_5": {
+          "type": "noul",
+          "noul": 0.28
+        },
+        "defines_6": {
+          "type": "noul",
+          "noul": 0.14
+        },
+        "boundary_6": {
+          "type": "noul",
+          "noul": 0.13
+        },
+        "defines_7": {
+          "type": "noul",
+          "noul": 0.08
+        },
+        "boundary_7": {
+          "type": "noul",
+          "noul": 0.54
+        }
+      },
+      "input_tokens": 3529,
+      "output_tokens": 292,
+      "milliseconds": 599,
+      "source": "checks oracle: fin-saccr-rwa"
+    },
+    "b33a00b6d57e75b1c3a513137bb6d6e5c461f26d4c1da4cfeb4e722babd21be2": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "defines_0": {
+          "type": "noul",
+          "noul": 0.96
+        },
+        "boundary_0": {
+          "type": "noul",
+          "noul": 0.95
+        },
+        "defines_1": {
+          "type": "noul",
+          "noul": 0.98
+        },
+        "boundary_1": {
+          "type": "noul",
+          "noul": 0.95
+        },
+        "defines_2": {
+          "type": "noul",
+          "noul": 0.92
+        },
+        "boundary_2": {
+          "type": "noul",
+          "noul": 0.48
+        },
+        "defines_3": {
+          "type": "noul",
+          "noul": 0.83
+        },
+        "boundary_3": {
+          "type": "noul",
+          "noul": 0.29
+        },
+        "defines_4": {
+          "type": "noul",
+          "noul": 0.87
+        },
+        "boundary_4": {
+          "type": "noul",
+          "noul": 0.25
+        },
+        "defines_5": {
+          "type": "noul",
+          "noul": 0.28
+        },
+        "boundary_5": {
+          "type": "noul",
+          "noul": 0.06
+        },
+        "defines_6": {
+          "type": "noul",
+          "noul": 0.95
+        },
+        "boundary_6": {
+          "type": "noul",
+          "noul": 0.4
+        },
+        "defines_7": {
+          "type": "noul",
+          "noul": 0.95
+        },
+        "boundary_7": {
+          "type": "noul",
+          "noul": 0.63
+        }
+      },
+      "input_tokens": 3269,
+      "output_tokens": 292,
+      "milliseconds": 141,
+      "source": "checks oracle: wal-recovery-ordering"
+    },
+    "b4183f0fd280c5682c2c3adefe9f1a764b977450c64d9a6fe046affa3db33f8a": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "parameter_0": {
+          "type": "noul",
+          "noul": 0.08
+        }
+      },
+      "input_tokens": 990,
+      "output_tokens": 22,
+      "milliseconds": 142,
+      "source": "checks oracle: bun-sourcemap-leak"
+    },
+    "b6eae163a7ef17e56327ab248310a3d94e5e7111edbf3003d2b193d6ce6c927a": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "defines_0": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "boundary_0": {
+          "type": "noul",
+          "noul": 0.06
+        },
+        "defines_1": {
+          "type": "noul",
+          "noul": 0.21
+        },
+        "boundary_1": {
+          "type": "noul",
+          "noul": 0.12
+        },
+        "defines_2": {
+          "type": "noul",
+          "noul": 0.37
+        },
+        "boundary_2": {
+          "type": "noul",
+          "noul": 0.08
+        },
+        "defines_3": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "boundary_3": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "defines_4": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "boundary_4": {
+          "type": "noul",
+          "noul": 0.06
+        },
+        "defines_5": {
+          "type": "noul",
+          "noul": 0.08
+        },
+        "boundary_5": {
+          "type": "noul",
+          "noul": 0.22
+        },
+        "defines_6": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "boundary_6": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "defines_7": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "boundary_7": {
+          "type": "noul",
+          "noul": 0.04
+        }
+      },
+      "input_tokens": 2646,
+      "output_tokens": 292,
+      "milliseconds": 133,
+      "source": "checks oracle: uefi-bootkit"
+    },
+    "b819f6e9d176db0576b3a18608a57b614844d93b6c590807add0ae20c5610d71": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "parameter_0": {
+          "type": "noul",
+          "noul": 0.13
+        }
+      },
+      "input_tokens": 566,
+      "output_tokens": 22,
+      "milliseconds": 147,
+      "source": "checks oracle: legacy-utility-triage"
+    },
+    "babcfa09245be2cdcb6cfcfa9949ef1e254eb49aa84eb42f12eda0aed6d7a052": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "defines_0": {
+          "type": "noul",
+          "noul": 0.21
+        },
+        "boundary_0": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "defines_1": {
+          "type": "noul",
+          "noul": 0.74
+        },
+        "boundary_1": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "defines_2": {
+          "type": "noul",
+          "noul": 0.08
+        },
+        "boundary_2": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "defines_3": {
+          "type": "noul",
+          "noul": 0.06
+        },
+        "boundary_3": {
+          "type": "noul",
+          "noul": 0.06
+        },
+        "defines_4": {
+          "type": "noul",
+          "noul": 0.08
+        },
+        "boundary_4": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "defines_5": {
+          "type": "noul",
+          "noul": 0.54
+        },
+        "boundary_5": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "defines_6": {
+          "type": "noul",
+          "noul": 0.83
+        },
+        "boundary_6": {
+          "type": "noul",
+          "noul": 0.19
+        },
+        "defines_7": {
+          "type": "noul",
+          "noul": 0.71
+        },
+        "boundary_7": {
+          "type": "noul",
+          "noul": 0.32
+        }
+      },
+      "input_tokens": 2840,
+      "output_tokens": 292,
+      "milliseconds": 506,
+      "source": "checks oracle: sound-change-cascade"
+    },
+    "c5b33a86963dab7d41e6704c71ec346123a56a1dcb425dce57e47b27ac9ad123": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "parameter_0": {
+          "type": "noul",
+          "noul": 0.11
+        },
+        "parameter_1": {
+          "type": "noul",
+          "noul": 0.09
+        }
+      },
+      "input_tokens": 1063,
+      "output_tokens": 40,
+      "milliseconds": 136,
+      "source": "checks oracle: interleaved-vigenere"
+    },
+    "c6664b18a2d40c35f567adb6c375031351f680accd3be45331d054d9ad74b2c2": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "parameter_0": {
+          "type": "noul",
+          "noul": 0.06
+        }
+      },
+      "input_tokens": 938,
+      "output_tokens": 22,
+      "milliseconds": 136,
+      "source": "checks oracle: cargo-flight-dispatch"
+    },
+    "cbd6638e7716ecfb1b38176a9e035c0b9fef3dc1551cd4d7d34e0d3501e09b1d": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "parameter_0": {
+          "type": "noul",
+          "noul": 0.05
+        }
+      },
+      "input_tokens": 642,
+      "output_tokens": 22,
+      "milliseconds": 168,
+      "source": "checks oracle: session-window-debug"
+    },
+    "ccea24f07b6ad2b8c0f0a66b60d015d4fb793274908ab4391804971ecbe6860b": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "defines_0": {
+          "type": "noul",
+          "noul": 0.67
+        },
+        "boundary_0": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "defines_1": {
+          "type": "noul",
+          "noul": 0.8
+        },
+        "boundary_1": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "defines_2": {
+          "type": "noul",
+          "noul": 0.09
+        },
+        "boundary_2": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "defines_3": {
+          "type": "noul",
+          "noul": 0.14
+        },
+        "boundary_3": {
+          "type": "noul",
+          "noul": 0.06
+        },
+        "defines_4": {
+          "type": "noul",
+          "noul": 0.83
+        },
+        "boundary_4": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "defines_5": {
+          "type": "noul",
+          "noul": 0.83
+        },
+        "boundary_5": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "defines_6": {
+          "type": "noul",
+          "noul": 0.85
+        },
+        "boundary_6": {
+          "type": "noul",
+          "noul": 0.1
+        },
+        "defines_7": {
+          "type": "noul",
+          "noul": 0.91
+        },
+        "boundary_7": {
+          "type": "noul",
+          "noul": 0.06
+        }
+      },
+      "input_tokens": 2579,
+      "output_tokens": 292,
+      "milliseconds": 523,
+      "source": "checks oracle: html-js-filter"
+    },
+    "cd2cdddc3f9681555d423d0af3684d99b4d8e3199b14366833463e0cc5a9619e": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "parameter_0": {
+          "type": "noul",
+          "noul": 0.84
+        },
+        "parameter_1": {
+          "type": "noul",
+          "noul": 0.8
+        },
+        "parameter_2": {
+          "type": "noul",
+          "noul": 0.89
+        },
+        "parameter_3": {
+          "type": "noul",
+          "noul": 0.97
+        },
+        "parameter_4": {
+          "type": "noul",
+          "noul": 0.96
+        },
+        "parameter_5": {
+          "type": "noul",
+          "noul": 0.78
+        },
+        "parameter_6": {
+          "type": "noul",
+          "noul": 0.85
+        },
+        "parameter_7": {
+          "type": "noul",
+          "noul": 0.1
+        }
+      },
+      "input_tokens": 2610,
+      "output_tokens": 148,
+      "milliseconds": 152,
+      "source": "checks oracle: production-planning"
+    },
+    "ce4ddd56398becf72694f8e5b15e7d494b2da02ff95bdeb70b4e95f1fa328ac6": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "defines_0": {
+          "type": "noul",
+          "noul": 0.96
+        },
+        "boundary_0": {
+          "type": "noul",
+          "noul": 0.55
+        },
+        "defines_1": {
+          "type": "noul",
+          "noul": 0.96
+        },
+        "boundary_1": {
+          "type": "noul",
+          "noul": 0.54
+        },
+        "defines_2": {
+          "type": "noul",
+          "noul": 0.97
+        },
+        "boundary_2": {
+          "type": "noul",
+          "noul": 0.85
+        },
+        "defines_3": {
+          "type": "noul",
+          "noul": 0.96
+        },
+        "boundary_3": {
+          "type": "noul",
+          "noul": 0.36
+        },
+        "defines_4": {
+          "type": "noul",
+          "noul": 0.96
+        },
+        "boundary_4": {
+          "type": "noul",
+          "noul": 0.45
+        },
+        "defines_5": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "boundary_5": {
+          "type": "noul",
+          "noul": 0.06
+        },
+        "defines_6": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "boundary_6": {
+          "type": "noul",
+          "noul": 0.05
+        }
+      },
+      "input_tokens": 2944,
+      "output_tokens": 256,
+      "milliseconds": 199,
+      "source": "checks oracle: production-planning"
+    },
+    "d8fb82e4a0086f24760b98d75eccd5132a90f4c790bf49581fb220942d6d1a2e": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "parameter_0": {
+          "type": "noul",
+          "noul": 0.98
+        },
+        "parameter_1": {
+          "type": "noul",
+          "noul": 0.78
+        },
+        "parameter_2": {
+          "type": "noul",
+          "noul": 0.31
+        },
+        "parameter_3": {
+          "type": "noul",
+          "noul": 0.07
+        }
+      },
+      "input_tokens": 1988,
+      "output_tokens": 76,
+      "milliseconds": 137,
+      "source": "checks oracle: fin-saccr-rwa"
+    },
+    "dd3e78e7ed5bea547284468e5c50e6554b1d3fd1b04f5ee6d15b13fbfb2c3916": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "defines_0": {
+          "type": "noul",
+          "noul": 0.11
+        },
+        "boundary_0": {
+          "type": "noul",
+          "noul": 0.06
+        },
+        "defines_1": {
+          "type": "noul",
+          "noul": 0.83
+        },
+        "boundary_1": {
+          "type": "noul",
+          "noul": 0.08
+        },
+        "defines_2": {
+          "type": "noul",
+          "noul": 0.79
+        },
+        "boundary_2": {
+          "type": "noul",
+          "noul": 0.06
+        },
+        "defines_3": {
+          "type": "noul",
+          "noul": 0.71
+        },
+        "boundary_3": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "defines_4": {
+          "type": "noul",
+          "noul": 0.95
+        },
+        "boundary_4": {
+          "type": "noul",
+          "noul": 0.29
+        },
+        "defines_5": {
+          "type": "noul",
+          "noul": 0.64
+        },
+        "boundary_5": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "defines_6": {
+          "type": "noul",
+          "noul": 0.1
+        },
+        "boundary_6": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "defines_7": {
+          "type": "noul",
+          "noul": 0.83
+        },
+        "boundary_7": {
+          "type": "noul",
+          "noul": 0.33
+        }
+      },
+      "input_tokens": 3258,
+      "output_tokens": 292,
+      "milliseconds": 625,
+      "source": "checks oracle: production-planning"
+    },
+    "e4587452688c475f6e9c7afe96957b35fe1a51234d07ef091a1a26d4908632d1": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "defines_0": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "boundary_0": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "defines_1": {
+          "type": "noul",
+          "noul": 0.81
+        },
+        "boundary_1": {
+          "type": "noul",
+          "noul": 0.18
+        },
+        "defines_2": {
+          "type": "noul",
+          "noul": 0.9
+        },
+        "boundary_2": {
+          "type": "noul",
+          "noul": 0.16
+        },
+        "defines_3": {
+          "type": "noul",
+          "noul": 0.56
+        },
+        "boundary_3": {
+          "type": "noul",
+          "noul": 0.15
+        },
+        "defines_4": {
+          "type": "noul",
+          "noul": 0.76
+        },
+        "boundary_4": {
+          "type": "noul",
+          "noul": 0.71
+        },
+        "defines_5": {
+          "type": "noul",
+          "noul": 0.19
+        },
+        "boundary_5": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "defines_6": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "boundary_6": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "defines_7": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "boundary_7": {
+          "type": "noul",
+          "noul": 0.03
+        }
+      },
+      "input_tokens": 3547,
+      "output_tokens": 292,
+      "milliseconds": 208,
+      "source": "checks oracle: fin-saccr-rwa"
+    },
+    "e77e519f7caa648cf20f173843bff0e13266fb1cda24bee9405949eb757a6490": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "defines_0": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "boundary_0": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "defines_1": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "boundary_1": {
+          "type": "noul",
+          "noul": 0.3
+        },
+        "defines_2": {
+          "type": "noul",
+          "noul": 0.17
+        },
+        "boundary_2": {
+          "type": "noul",
+          "noul": 0.5
+        },
+        "defines_3": {
+          "type": "noul",
+          "noul": 0.59
+        },
+        "boundary_3": {
+          "type": "noul",
+          "noul": 0.13
+        },
+        "defines_4": {
+          "type": "noul",
+          "noul": 0.06
+        },
+        "boundary_4": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "defines_5": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "boundary_5": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "defines_6": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "boundary_6": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "defines_7": {
+          "type": "noul",
+          "noul": 0.12
+        },
+        "boundary_7": {
+          "type": "noul",
+          "noul": 0.05
+        }
+      },
+      "input_tokens": 2867,
+      "output_tokens": 292,
+      "milliseconds": 186,
+      "source": "checks oracle: cargo-flight-dispatch"
+    },
+    "ee9dbb8607783475877e14edff0d91f1fcbf10264c812673e38203c9f02558f3": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "defines_0": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "boundary_0": {
+          "type": "noul",
+          "noul": 0.03
+        }
+      },
+      "input_tokens": 1136,
+      "output_tokens": 40,
+      "milliseconds": 193,
+      "source": "checks oracle: gsea-proteomics"
+    },
+    "ef0d4cd05232944db18c57cfa086b282bd0f101f87f859724205f3764245db02": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "parameter_0": {
+          "type": "noul",
+          "noul": 0.05
+        }
+      },
+      "input_tokens": 1215,
+      "output_tokens": 22,
+      "milliseconds": 135,
+      "source": "checks oracle: wal-recovery-ordering"
+    },
+    "f1d7d65d2fe8793499136f6ee12b448611c561ab793d179b71655e6061ca0757": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "defines_0": {
+          "type": "noul",
+          "noul": 0.36
+        },
+        "boundary_0": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "defines_1": {
+          "type": "noul",
+          "noul": 0.24
+        },
+        "boundary_1": {
+          "type": "noul",
+          "noul": 0.06
+        },
+        "defines_2": {
+          "type": "noul",
+          "noul": 0.96
+        },
+        "boundary_2": {
+          "type": "noul",
+          "noul": 0.26
+        },
+        "defines_3": {
+          "type": "noul",
+          "noul": 0.69
+        },
+        "boundary_3": {
+          "type": "noul",
+          "noul": 0.09
+        },
+        "defines_4": {
+          "type": "noul",
+          "noul": 0.89
+        },
+        "boundary_4": {
+          "type": "noul",
+          "noul": 0.17
+        },
+        "defines_5": {
+          "type": "noul",
+          "noul": 0.38
+        },
+        "boundary_5": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "defines_6": {
+          "type": "noul",
+          "noul": 0.45
+        },
+        "boundary_6": {
+          "type": "noul",
+          "noul": 0.06
+        },
+        "defines_7": {
+          "type": "noul",
+          "noul": 0.08
+        },
+        "boundary_7": {
+          "type": "noul",
+          "noul": 0.05
+        }
+      },
+      "input_tokens": 3157,
+      "output_tokens": 292,
+      "milliseconds": 227,
+      "source": "checks oracle: gsea-proteomics"
+    },
+    "f6c5553aa8cf6c9c0cbe200869a52dae907550ec89a8f9ef699197e4c661ea5c": {
+      "name": "jev_oracle_define",
+      "model": "jev-1.13.0",
+      "answers": {
+        "defines_0": {
+          "type": "noul",
+          "noul": 0.97
+        },
+        "boundary_0": {
+          "type": "noul",
+          "noul": 0.17
+        },
+        "defines_1": {
+          "type": "noul",
+          "noul": 0.94
+        },
+        "boundary_1": {
+          "type": "noul",
+          "noul": 0.32
+        },
+        "defines_2": {
+          "type": "noul",
+          "noul": 0.94
+        },
+        "boundary_2": {
+          "type": "noul",
+          "noul": 0.2
+        },
+        "defines_3": {
+          "type": "noul",
+          "noul": 0.93
+        },
+        "boundary_3": {
+          "type": "noul",
+          "noul": 0.17
+        },
+        "defines_4": {
+          "type": "noul",
+          "noul": 0.26
+        },
+        "boundary_4": {
+          "type": "noul",
+          "noul": 0.13
+        },
+        "defines_5": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "boundary_5": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "defines_6": {
+          "type": "noul",
+          "noul": 0.38
+        },
+        "boundary_6": {
+          "type": "noul",
+          "noul": 0.11
+        },
+        "defines_7": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "boundary_7": {
+          "type": "noul",
+          "noul": 0.04
+        }
+      },
+      "input_tokens": 3215,
+      "output_tokens": 292,
+      "milliseconds": 137,
+      "source": "checks oracle: wal-recovery-ordering"
+    }
+  }
+}

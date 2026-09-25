@@ -1,0 +1,19 @@
+{
+  "bun-sourcemap-leak": 0.0062463,
+  "cad-model": 0.0028147000000000003,
+  "cargo-flight-dispatch": 0.00424734,
+  "fin-saccr-rwa": 0.00809144,
+  "gsea-proteomics": 0.00358748,
+  "heat-pump-warranty": 0.00331796,
+  "html-js-filter": 0.0029860200000000003,
+  "interleaved-vigenere": 0.0027816000000000004,
+  "ks-solver-cpp": 0.00167854,
+  "legacy-utility-triage": 0.003011,
+  "mvcc-lsm-compaction": 0.004091100000000001,
+  "production-planning": 0.00718772,
+  "protein-autointerp-disulfide": 0.0035719,
+  "session-window-debug": 0.0024343600000000004,
+  "sound-change-cascade": 0.00425008,
+  "wal-recovery-ordering": 0.00480788,
+  "uefi-bootkit": 0.0027349600000000007
+}
