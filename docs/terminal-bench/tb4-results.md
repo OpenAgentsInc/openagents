@@ -250,6 +250,12 @@ Every graded fire loop run so far, by arm and task
 | `microluna-v19` | `risk-scorer-replay` | 1 | 0 | 9:37 | $0.0350 |
 | `microluna-v19` | `telecom-entity-resolution` | 1 | 0 | 7:18 | $0.0182 |
 | `microluna-v19-fire` | `embedding-drift-monitor` | 5 | 5 | 5:26 | $0.0153 |
+| `microluna-v19-fire-oracle` | `risk-scorer-replay` | 3 | 0 | 10:46 | $0.0264 |
+| `microluna-v19-fire-oracle` | `telecom-entity-resolution` | 2 | 0 | 10:15 | $0.0165 |
+| `microluna-v19-fire-profile` | `telecom-entity-resolution` | 1 | 0 | 4:33 | $0.0135 |
+| `microluna-v20` | `interleaved-vigenere` | 1 | 0 | 19:58 | $0.0448 |
+| `microluna-v20` | `risk-scorer-replay` | 1 | 0 | 10:47 | $0.0353 |
+| `microluna-v20` | `telecom-entity-resolution` | 1 | 0 | 5:53 | $0.0143 |
 
 ## Refresh the snapshot
 

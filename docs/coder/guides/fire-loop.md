@@ -295,3 +295,32 @@ Six more live runs, all failing:
   5 min 34 s, `shadow-relay` at 14 min 22 s, `sound-change-cascade` at
   15 min 41 s, and `photonic-waveguide-routing` at 15 min 46 s, each still
   before the run's own end at 17 to 22 minutes.
+
+## Round 4: fresh inputs and reference programs
+
+The three tasks Luna fails most (`interleaved-vigenere`,
+`risk-scorer-replay`, `telecom-entity-resolution`) share one difference
+from Fable's winners: Luna scores its work only on the provided sample,
+and the winners first build cases the sample doesn't cover. All five
+vigenere winners wrote an encryption generator; the risk winners compared
+random inputs against the provided diagnostic program; the telecom
+winners held back an identifier field as labels.
+
+- `microluna-v20` asks the evaluation script to score such fresh cases
+  when the task is judged on inputs it doesn't provide. In all three live
+  runs Luna ignored it: each script scored only the sample. Vigenere
+  recovered 0.00 of fresh ciphertexts, telecom reached recall 0.57, and
+  risk passed 2 of 5 tests. An instruction alone doesn't change what
+  Luna checks.
+- The oracle's search now takes a command an instruction calls a
+  reference, a specification, or a black box. On `risk-scorer-replay` it
+  found `legacy-score`, and the writer's oracle compares the solution's
+  outputs with it. The run still passed 2 of 5 tests after 20 minutes,
+  with Jev naming the runtime-dependence pitfall.
+- With the writer given the heads of files in named directories, the
+  telecom oracle saw the four tables but still reported that the ground
+  truth can't be recomputed; recall reached 0.68, the best so far on the
+  task and still below the bar.
+
+Every task other than `embedding-drift-monitor` remains unsolved by Luna
+in the fire loop.
