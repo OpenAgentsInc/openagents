@@ -681,7 +681,10 @@ outcomes joined. Until then, no confirmation result is available. Add
 retain the versioned view. Do not combine this mode with the historical
 `--dir`, `--set`, `--family`, or `--within` options.
 
-The view reads `openagents.archive-confirmation-measurement.v1`. It shows each
+The view reads `openagents.archive-confirmation-measurement.v1` and
+`openagents.literal-confirmation-measurement.v1`. The latter also requires its
+protocol digest and the literal artifact and combined detector signals. It does
+not accept development replay reports as confirmation. It shows each
 signal's failure precision and recall with Wilson intervals, missing official
 grades, unknown calls, whole-task bootstrap differences, undefined bootstrap
 resamples, and within-task failure ranking. Missing evidence stays in failure

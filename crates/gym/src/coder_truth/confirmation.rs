@@ -5,6 +5,7 @@ use std::{io::Read, path::Path};
 use serde_json::{Value, json};
 
 const SCHEMA: &str = "openagents.archive-confirmation-measurement.v1";
+const LITERAL_SCHEMA: &str = "openagents.literal-confirmation-measurement.v1";
 const MAX_BYTES: u64 = 16 * 1024 * 1024;
 
 fn count(value: &Value, key: &str) -> Result<u64, String> {
@@ -50,7 +51,7 @@ fn interval(value: &Value, min: f64, max: f64) -> Result<(f64, f64), String> {
     }
 }
 
-fn group_lines(group: &Value) -> Result<Vec<String>, String> {
+fn group_lines(group: &Value, required_signals: &[&str]) -> Result<Vec<String>, String> {
     let (trials, graded, passes, failures, tasks) = (
         count(group, "trials")?,
         count(group, "graded")?,
@@ -74,13 +75,8 @@ fn group_lines(group: &Value) -> Result<Vec<String>, String> {
     let signals = group["signals"]
         .as_object()
         .ok_or("confirmation measurement has no signals")?;
-    for required in [
-        "checks.final",
-        "verdict.combined",
-        "checks.public-files",
-        "verdict.executed",
-    ] {
-        if !signals.contains_key(required) {
+    for required in required_signals {
+        if !signals.contains_key(*required) {
             return Err(format!("confirmation measurement is missing {required}"));
         }
     }
@@ -106,16 +102,42 @@ fn group_lines(group: &Value) -> Result<Vec<String>, String> {
 }
 
 fn lines(report: &Value, executor: Option<&str>) -> Result<Vec<String>, String> {
-    if report["schema"] != SCHEMA {
-        return Err(format!("expected a {SCHEMA} measurement"));
-    }
+    let (title, required_signals, digests): (&str, &[&str], &[&str]) =
+        match report["schema"].as_str() {
+            Some(SCHEMA) => (
+                "Retained archive confirmation measurement",
+                &[
+                    "checks.final",
+                    "verdict.combined",
+                    "checks.public-files",
+                    "verdict.executed",
+                ],
+                &["prediction_sha256", "labels_sha256"],
+            ),
+            Some(LITERAL_SCHEMA) => (
+                "Retained literal artifact confirmation measurement",
+                &[
+                    "checks.final",
+                    "verdict.combined",
+                    "checks.public-files",
+                    "checks.literal-artifacts",
+                    "verdict.literal-executed",
+                ],
+                &["protocol_sha256", "prediction_sha256", "labels_sha256"],
+            ),
+            _ => {
+                return Err(format!(
+                    "expected a {SCHEMA} or {LITERAL_SCHEMA} measurement"
+                ));
+            }
+        };
     if executor.is_some_and(|e| !matches!(e, "luna" | "astra")) {
         return Err("--executor must be luna or astra".to_string());
     }
     // Validate the complete cohort even when displaying just one executor.
-    let all = group_lines(&report["all"])?;
+    let all = group_lines(&report["all"], required_signals)?;
     for e in ["luna", "astra"] {
-        group_lines(&report["by_executor"][e])?;
+        group_lines(&report["by_executor"][e], required_signals)?;
     }
     for key in ["trials", "graded", "passes", "failures"] {
         let luna = count(&report["by_executor"]["luna"], key)?;
@@ -126,9 +148,9 @@ fn lines(report: &Value, executor: Option<&str>) -> Result<Vec<String>, String> 
             ));
         }
     }
-    let mut output = vec!["Retained archive confirmation measurement".to_string()];
-    for key in ["prediction_sha256", "labels_sha256"] {
-        let digest = report[key]
+    let mut output = vec![title.to_string()];
+    for key in digests {
+        let digest = report[*key]
             .as_str()
             .filter(|d| d.len() == 64 && d.bytes().all(|b| b.is_ascii_hexdigit()))
             .ok_or_else(|| format!("confirmation measurement has no valid {key}"))?;
@@ -136,7 +158,7 @@ fn lines(report: &Value, executor: Option<&str>) -> Result<Vec<String>, String> 
     }
     let group = if let Some(e) = executor {
         output.push(format!("  Executor: {e}"));
-        output.extend(group_lines(&report["by_executor"][e])?);
+        output.extend(group_lines(&report["by_executor"][e], required_signals)?);
         &report["by_executor"][e]
     } else {
         output.extend(all);
@@ -284,6 +306,64 @@ mod tests {
         assert!(text.contains("10000/10000 undefined resamples"));
         assert!(text.contains("50.0% across 1 dependent pairs"));
         assert!(text.contains("does not verify its source files or promote"));
+    }
+
+    fn literal_fixture() -> Value {
+        let mut report = fixture();
+        report["schema"] = json!(LITERAL_SCHEMA);
+        report["protocol_sha256"] = json!("c".repeat(64));
+        for pointer in ["/all", "/by_executor/luna", "/by_executor/astra"] {
+            let group = report.pointer_mut(pointer).unwrap();
+            let signals = group["signals"].as_object_mut().unwrap();
+            let executed = signals.remove("verdict.executed").unwrap();
+            signals.insert("checks.literal-artifacts".to_string(), executed.clone());
+            signals.insert("verdict.literal-executed".to_string(), executed);
+            let comparisons = group["paired_task_bootstrap"].as_object_mut().unwrap();
+            let executed = comparisons.remove("verdict.executed").unwrap();
+            comparisons.insert("verdict.literal-executed".to_string(), executed);
+        }
+        for pointer in [
+            "/within_task",
+            "/within_task_by_executor/luna",
+            "/within_task_by_executor/astra",
+        ] {
+            let comparisons = report
+                .pointer_mut(pointer)
+                .unwrap()
+                .as_object_mut()
+                .unwrap();
+            let executed = comparisons.remove("verdict.executed").unwrap();
+            comparisons.insert("verdict.literal-executed".to_string(), executed);
+        }
+        report
+    }
+
+    #[test]
+    fn literal_confirmation_requires_its_protocol_and_component_signals() {
+        for executor in [None, Some("luna"), Some("astra")] {
+            let text = lines(&literal_fixture(), executor).unwrap().join("\n");
+            assert!(text.contains("Retained literal artifact confirmation"));
+            assert!(text.contains(&format!("protocol_sha256: {}", "c".repeat(64))));
+            assert!(text.contains("checks.literal-artifacts: fail precision 0/0 undefined"));
+            assert!(text.contains("verdict.literal-executed vs checks.final"));
+            assert!(text.contains("missing grades"));
+        }
+        let mut report = literal_fixture();
+        report["protocol_sha256"] = Value::Null;
+        assert!(lines(&report, None).is_err());
+        for pointer in ["/all", "/by_executor/luna", "/by_executor/astra"] {
+            for signal in ["checks.literal-artifacts", "verdict.literal-executed"] {
+                let mut report = literal_fixture();
+                report.pointer_mut(pointer).unwrap()["signals"]
+                    .as_object_mut()
+                    .unwrap()
+                    .remove(signal);
+                assert!(lines(&report, Some("luna")).is_err());
+            }
+        }
+        let mut report = literal_fixture();
+        report["schema"] = json!("openagents.literal-artifact-development-measurement.v1");
+        assert!(lines(&report, None).is_err());
     }
 
     #[test]
