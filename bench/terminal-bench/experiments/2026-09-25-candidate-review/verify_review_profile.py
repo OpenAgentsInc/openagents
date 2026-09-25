@@ -27,7 +27,7 @@ def main():
     a.out.mkdir(parents=True, exist_ok=False)
     image = json.loads(subprocess.check_output(['docker', 'image', 'inspect', a.image], text=True))[0]
     write(a.out / 'image.json', {k: image.get(k) for k in ('Id', 'RepoDigests', 'Architecture', 'Os')})
-    if image['Config'].get('User') not in ('', 'root', '0', '0:0'):
+    if image['Config'].get('User') not in (None, '', 'root', '0', '0:0'):
         raise ValueError('The negative control requires a root-default public image')
     with tempfile.TemporaryDirectory(prefix='truth9644-fixture-') as temp:
         app = Path(temp) / 'app'
