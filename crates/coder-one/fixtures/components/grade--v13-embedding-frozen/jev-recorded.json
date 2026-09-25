@@ -1,0 +1,179 @@
+{
+  "schema": "openagents.coder-one.jev-recorded.v1",
+  "entries": {
+    "0ecafffcb039f284c796f97d4ac85d68e4bb19efc66c257da077ad5fcda53571": {
+      "name": "jev_check_grade_authority",
+      "model": "jev-1.13.0",
+      "answers": {
+        "separate_route": {
+          "type": "noul",
+          "noul": 0.37
+        },
+        "expected_correct": {
+          "type": "noul",
+          "noul": 0.85
+        }
+      },
+      "input_tokens": 736,
+      "output_tokens": 40,
+      "milliseconds": 179,
+      "source": "live component run of accept.grade#grade-authority-6"
+    },
+    "2e9038e08b4a9213d418d8992e01308e72dd8a975507e65de7f638832a4e969c": {
+      "name": "jev_check_grade_authority",
+      "model": "jev-1.13.0",
+      "answers": {
+        "separate_route": {
+          "type": "noul",
+          "noul": 0.43
+        },
+        "expected_correct": {
+          "type": "noul",
+          "noul": 0.9
+        }
+      },
+      "input_tokens": 728,
+      "output_tokens": 40,
+      "milliseconds": 126,
+      "source": "live component run of accept.grade#grade-authority-5"
+    },
+    "62bbf7c9954b09a664ca156daa4daf7bbe49e1116e5ee2d40b6df52959281679": {
+      "name": "jev_check_grade",
+      "model": "jev-1.13.0",
+      "answers": {
+        "task_0": {
+          "type": "noul",
+          "noul": 0.71
+        },
+        "standard_0": {
+          "type": "noul",
+          "noul": 0.64
+        },
+        "task_1": {
+          "type": "noul",
+          "noul": 0.65
+        },
+        "standard_1": {
+          "type": "noul",
+          "noul": 0.57
+        },
+        "task_2": {
+          "type": "noul",
+          "noul": 0.36
+        },
+        "standard_2": {
+          "type": "noul",
+          "noul": 0.66
+        },
+        "task_3": {
+          "type": "noul",
+          "noul": 0.23
+        },
+        "standard_3": {
+          "type": "noul",
+          "noul": 0.51
+        },
+        "task_4": {
+          "type": "noul",
+          "noul": 0.24
+        },
+        "standard_4": {
+          "type": "noul",
+          "noul": 0.63
+        },
+        "task_5": {
+          "type": "noul",
+          "noul": 0.22
+        },
+        "standard_5": {
+          "type": "noul",
+          "noul": 0.86
+        }
+      },
+      "input_tokens": 2446,
+      "output_tokens": 220,
+      "milliseconds": 352,
+      "source": "live component run of accept.grade#grade-0"
+    },
+    "96e6e5f52d1db5d5d3587825eece97261866b166a1ced966a78dad9feb25b679": {
+      "name": "jev_check_grade",
+      "model": "jev-1.13.0",
+      "answers": {
+        "task_0": {
+          "type": "noul",
+          "noul": 0.18
+        },
+        "standard_0": {
+          "type": "noul",
+          "noul": 0.87
+        },
+        "task_1": {
+          "type": "noul",
+          "noul": 0.3
+        },
+        "standard_1": {
+          "type": "noul",
+          "noul": 0.71
+        }
+      },
+      "input_tokens": 1099,
+      "output_tokens": 76,
+      "milliseconds": 130,
+      "source": "live component run of accept.grade#grade-1"
+    },
+    "aac0a483037a57eaa47b57f6923198cca8b2a3224d7022fa32ce07967a795817": {
+      "name": "jev_check_grade_authority",
+      "model": "jev-1.13.0",
+      "answers": {
+        "separate_route": {
+          "type": "noul",
+          "noul": 0.31
+        },
+        "expected_correct": {
+          "type": "noul",
+          "noul": 0.72
+        }
+      },
+      "input_tokens": 704,
+      "output_tokens": 40,
+      "milliseconds": 181,
+      "source": "live component run of accept.grade#grade-authority-2"
+    },
+    "af367eda8a254de22cf3c83ab30241bf274391a7bd67cb05153e7452cbddabe6": {
+      "name": "jev_check_grade_authority",
+      "model": "jev-1.13.0",
+      "answers": {
+        "separate_route": {
+          "type": "noul",
+          "noul": 0.16
+        },
+        "expected_correct": {
+          "type": "noul",
+          "noul": 0.87
+        }
+      },
+      "input_tokens": 727,
+      "output_tokens": 40,
+      "milliseconds": 168,
+      "source": "live component run of accept.grade#grade-authority-4"
+    },
+    "fa93a5164668bf3e3b6472ee1ce4b91c856caea70761523d8c5836020e3861d1": {
+      "name": "jev_check_grade_authority",
+      "model": "jev-1.13.0",
+      "answers": {
+        "separate_route": {
+          "type": "noul",
+          "noul": 0.37
+        },
+        "expected_correct": {
+          "type": "noul",
+          "noul": 0.71
+        }
+      },
+      "input_tokens": 737,
+      "output_tokens": 40,
+      "milliseconds": 141,
+      "source": "live component run of accept.grade#grade-authority-3"
+    }
+  }
+}

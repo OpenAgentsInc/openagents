@@ -697,6 +697,7 @@ mod tests {
                 "openagents.departure-rationale.v1",
                 "openagents.departure-standard-method.v1",
                 "openagents.evidence-relevance.v1",
+                "openagents.expectation-support.v1",
                 "openagents.independence.v1",
                 "openagents.independence.v2",
                 "openagents.program.v1",
@@ -711,9 +712,10 @@ mod tests {
         // set, so the only reports are the sets no Coder site binds:
         // `openagents.independence.v1` stays on disk after v2 took both
         // bindings — kept so the digests historical runs recorded stay
-        // resolvable — and the three departure sets are asked by Coder
-        // One's `evidence.departures`, which compiles them in. The
-        // inventory says so rather than letting a run find out at
+        // resolvable — and the three departure sets and the
+        // expectation-support set are asked by Coder One's
+        // `evidence.departures` and `accept.grade`, which compile them in.
+        // The inventory says so rather than letting a run find out at
         // admission.
         let unbound = |set: &str| Problem::UnboundSet {
             set: set.to_string(),
@@ -724,6 +726,7 @@ mod tests {
                 unbound("openagents.departure-docstring.v1"),
                 unbound("openagents.departure-rationale.v1"),
                 unbound("openagents.departure-standard-method.v1"),
+                unbound("openagents.expectation-support.v1"),
                 unbound("openagents.independence.v1"),
             ]
         );

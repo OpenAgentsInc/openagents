@@ -1614,6 +1614,10 @@ pub const REFERENCE: &[(&str, &str)] = &[
         include_str!("../policies/microluna-v15-stall.json"),
     ),
     (
+        "microluna-v18.json",
+        include_str!("../policies/microluna-v18.json"),
+    ),
+    (
         "luna-best-of-1.json",
         include_str!("../policies/luna-best-of-1.json"),
     ),
@@ -1827,6 +1831,57 @@ mod tests {
             let on_disk = std::fs::read_to_string(reference_dir().join(file)).unwrap();
             assert_eq!(&on_disk, text);
         }
+    }
+
+    /// Issue #9640: v18 is v13-retained with exactly the admitted pieces
+    /// on, and every piece that wasn't admitted off.
+    #[test]
+    fn microluna_v18_turns_on_exactly_the_admitted_pieces() {
+        let text = |name: &str| {
+            REFERENCE
+                .iter()
+                .find(|(file, _)| *file == name)
+                .map(|(_, text)| *text)
+                .unwrap()
+        };
+        let v13 = Manifest::parse(text("microluna-v13-retained.json")).unwrap();
+        let v18 = Manifest::parse(text("microluna-v18.json")).unwrap();
+        v18.validate().unwrap();
+        assert_eq!(
+            v18.policy.evidence.environment,
+            Some(crate::environment::Params::default())
+        );
+        let lean = v18.policy.executor.microluna.clone().unwrap().lean.unwrap();
+        assert!(lean.baseline);
+        assert_eq!(
+            lean.finish_rule,
+            Some(crate::micro::lean::LeanFinishRule {
+                max_refusals: 3,
+                baseline: false,
+            })
+        );
+        assert!(lean.executed.is_none());
+        assert!(lean.review_rule.is_none());
+        assert!(!lean.grade);
+        assert!(lean.departures.is_empty());
+        assert!(lean.tiered.is_none());
+        assert_eq!(lean.lanes, 0);
+
+        // Everything else is v13-retained's.
+        let mut back = v18.clone();
+        back.name = v13.name.clone();
+        back.note = v13.note.clone();
+        back.policy.evidence.environment = None;
+        let back_lean = back
+            .policy
+            .executor
+            .microluna
+            .as_mut()
+            .and_then(|m| m.lean.as_mut())
+            .unwrap();
+        back_lean.baseline = false;
+        back_lean.finish_rule = None;
+        assert_eq!(back.policy, v13.policy);
     }
 
     #[test]

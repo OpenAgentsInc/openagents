@@ -10,25 +10,29 @@ change 5 of the [v18 design](../coder/design/microluna-v18.md).
 **Built and wired behind a switch, off by default. On every retained
 workspace this machine can still restore, the rule never fired.**
 
-- 46 workspaces on 3 tasks ran the rule; 44 have an official reward (34
+- 69 workspaces on 10 tasks ran the rule; 59 have an official reward (49
   failures, 10 passes).
 - The rule rejected **0** of them. Precision is undefined (no rejection).
-  Recall of "a baseline command regressed" as a fail signal is **0 of 34
-  (95% Wilson interval 0–10%)**.
+  Recall of "a baseline command regressed" as a fail signal is **0 of 49
+  (95% Wilson interval 0–7%)** pooled: 0 of 31 (0–11%) on the
+  `accept offline` set and 0 of 18 (0–18%) on the fresh #9584 trials.
 - It rejected no passing workspace either: 0 of 10 passes.
-- **Keep-best decisions changed: 0 of 13** retained lean loops.
-- The measurement covers far less than the issue asked for. Of the three
-  sets, only 43 workspaces of the `accept offline` set (2 of its 23 tasks,
-  including all 12 retained v13 lean-loop candidates) and 1 of the 8 fresh
-  #9584 trials could run. [What wasn't measured](#what-wasnt-measured) says
-  why.
+- **Keep-best decisions changed: 0 of 20** retained lean loops.
+- All 8 fresh #9584 trials are now measured (26 workspaces). The
+  `accept offline` set still covers only 43 workspaces on 2 of its 23
+  tasks, including all 12 retained v13 lean-loop candidates.
+  [What wasn't measured](#what-wasnt-measured) says why.
 
 The expected result was high precision and low recall. The low recall
 holds; precision couldn't be measured, because nothing regressed. The cost
-is small: a median of 2.5 s per candidate on `embedding-drift-monitor` and
-0.5 s on `session-window-debug`, against 7 to 19 s for the frozen score.
-The rule is cheap and, on this data, harmless, but no measurement here
-shows that it improves an outcome.
+is small where the rule has something to run: a median of 2.5 s per
+candidate on `embedding-drift-monitor`, 0.5 s on `session-window-debug`,
+and 7 s on `vpp-loss-divergence`, against 7 to 19 s for the frozen score.
+The exception is `pretrain-shard-corruption`, at 47 to 48 s, spent almost
+entirely waiting out one command's 45 s network timeout. On 5 of the 8
+fresh tasks the rule had nothing to run at all. The rule is cheap and, on
+this data, harmless, but no measurement here shows that it improves an
+outcome.
 
 This made no Luna session, no Jev request, and no Terminal-Bench trial.
 
@@ -116,19 +120,43 @@ with `summary.json`.
 | | `python3 -c 'import drift_monitor'` (compile) | exit 0 |
 | `session-window-debug` | `python3 -m compileall -q 'app'` (compile) | exit 0 |
 | | `python3 -c 'import app'` (compile) | exit 0 |
-| `shadow-relay` | none: no entry point, no named command, no package | — |
+| `pretrain-shard-corruption` | `bash /app/run_pretrain.sh` (named) | exit 1 after 45 s: `torch.distributed` rendezvous times out resolving the container's own host name |
+| | `python3 train_pretrain.py` (script) | exit 1: `RANK` isn't set outside `torchrun` |
+| | `python3 -m compileall -q 'train_pretrain.py' 'validate_data.py'` (compile) | exit 0 |
+| `vpp-loss-divergence` | `python3 pretrain.py` (script) | exit 0, 8 s |
+| | `python3 -m compileall -q 'config.py' 'pretrain.py'` (compile) | exit 0 |
+| `shadow-relay`, `distributed-dedup`, `formal-crypto`, `math-eval-grader`, `freecad-impeller`, `freecad-spring-clip` | none: no entry point that `evidence.baseline` finds, no named command, and no Python, Cargo, or Go package in the working directory | — |
+
+`distributed-dedup` is an sbt project, which the compile step doesn't
+cover.
 
 ### By task
 
-| Set | Task | Graded | Failures | Passes | Rejected | Recall, 95% Wilson |
-| --- | --- | ---: | ---: | ---: | ---: | --- |
-| `accept offline` | `embedding-drift-monitor` | 21 | 11 | 10 | 0 | 0 of 11 (0–26%) |
-| `accept offline` | `session-window-debug` | 20 | 20 | 0 | 0 | 0 of 20 (0–16%) |
-| #9584 fresh | `shadow-relay` | 3 | 3 | 0 | 0 | 0 of 3 (0–56%) |
-| Pooled | | 44 | 34 | 10 | 0 | 0 of 34 (0–10%) |
+| Set | Task | Workspaces | Graded | Failures | Passes | Rejected | Recall, 95% Wilson |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | --- |
+| `accept offline` | `embedding-drift-monitor` | 22 | 21 | 11 | 10 | 0 | 0 of 11 (0–26%) |
+| `accept offline` | `session-window-debug` | 21 | 20 | 20 | 0 | 0 | 0 of 20 (0–16%) |
+| `accept offline` | all | 43 | 41 | 31 | 10 | 0 | 0 of 31 (0–11%) |
+| #9584 fresh | `distributed-dedup` | 3 | 3 | 3 | 0 | 0 | 0 of 3 (0–56%) |
+| #9584 fresh | `formal-crypto` | 4 | 4 | 4 | 0 | 0 | 0 of 4 (0–49%) |
+| #9584 fresh | `freecad-impeller` | 3 | 0 | — | — | 0 | no official reward |
+| #9584 fresh | `freecad-spring-clip` | 4 | 0 | — | — | 0 | no official reward |
+| #9584 fresh | `math-eval-grader` | 3 | 2 | 2 | 0 | 0 | 0 of 2 (0–66%) |
+| #9584 fresh | `pretrain-shard-corruption` | 3 | 3 | 3 | 0 | 0 | 0 of 3 (0–56%) |
+| #9584 fresh | `shadow-relay` | 3 | 3 | 3 | 0 | 0 | 0 of 3 (0–56%) |
+| #9584 fresh | `vpp-loss-divergence` | 3 | 3 | 3 | 0 | 0 | 0 of 3 (0–56%) |
+| #9584 fresh | all | 26 | 18 | 18 | 0 | 0 | 0 of 18 (0–18%) |
+| Pooled | | 69 | 59 | 49 | 10 | 0 | 0 of 49 (0–7%) |
 
-Two more workspaces ran without an official reward. Verdicts over all 108
-runs: 107 `ok`, 1 `not_a_regression`, 0 `regressed`, 0 `unknown`.
+A fresh workspace is graded when it's the final workspace or its files
+are the submitted workspace's, since #9584's retained traces carry the
+official label only for the submission. Both FreeCAD trials ended in a
+`RuntimeError` and have no official reward. Every official fresh label is
+0, so no fresh pass exists to check for a false rejection. Verdicts over
+all 123 runs: 116 `ok`, 7 `not_a_regression`, 0 `regressed`, 0 `unknown`.
+The six new `not_a_regression` verdicts are the two
+`pretrain-shard-corruption` commands that failed on the untouched
+workspace, on each of its three workspaces.
 
 The 12 retained v13 lean-loop candidates are 12 of the
 `accept offline` workspaces (6 per task); 10 have a reward, all
@@ -138,13 +166,13 @@ tasks and the v12 reconstruction.
 
 ### Keep-best decisions
 
-13 retained lean loops (6 v13, 6 `candidate-evidence-9607`, and the fresh
-`shadow-relay` trial) were replayed through the keep and restore rules.
-Without the rule, the replay reproduces the recorded selection in 12 of
-13; the 13th, `shadow-relay`, records session 2 where the replay picks
-session 1, because both sessions' files are identical and the retained
-record names the later match. With the rule, **no decision changed**,
-since no candidate was rejected.
+20 retained lean loops (6 v13, 6 `candidate-evidence-9607`, and the 8
+fresh trials) were replayed through the keep and restore rules. Without
+the rule, the replay reproduces the recorded selection in 18 of 20. The
+other two, `shadow-relay` and `vpp-loss-divergence`, record session 2
+where the replay picks session 1; in both, the two sessions' files are
+identical and the retained record names the later match. With the rule,
+**no decision changed**, since no candidate was rejected.
 
 ### Why it never fired
 
@@ -152,12 +180,19 @@ since no candidate was rejected.
   workspace.** On `embedding-drift-monitor`, the task's program exits 1
   before any change, so a candidate that crashes it can only be
   `not_a_regression`. This is the task where Luna reran the CLI in every
-  session.
-- **Serious candidates compile.** Every graded candidate on both tasks
-  compiles and imports; their failures are wrong numbers, not crashes.
-- **Most tasks give it nothing to run.** `session-window-debug` and
-  `shadow-relay` have no entry point that `evidence.baseline` finds and
-  name no command.
+  session. On `pretrain-shard-corruption`, the training launcher fails on
+  the untouched workspace too, but for a reason the offline harness
+  causes: the workspace runs in a networkless container, where
+  `torch.distributed` can't resolve the container's host name. Whether
+  the launcher exits 0 on the untouched workspace in a task container
+  with a network, where the lean loop would run it, wasn't measured.
+- **Serious candidates compile and run.** Every graded candidate on the
+  tasks with commands compiles and imports, and on `vpp-loss-divergence`
+  every candidate's `pretrain.py` still exits 0; the failures are wrong
+  results, not crashes.
+- **Most tasks give it nothing to run.** 6 of the 10 tasks have no entry
+  point that `evidence.baseline` finds, name no command, and have no
+  package the compile step covers.
 
 ## What wasn't measured
 
@@ -168,21 +203,22 @@ since no candidate was rejected.
   remains restorable is the retained traces under
   `bench/terminal-bench/traces/` for `embedding-drift-monitor` and
   `session-window-debug`.
-- **Seven of the eight fresh #9584 trials.** Their workspaces are
-  retained, but every task image had been removed, and rebuilding them
-  needs PyTorch (CPU and CUDA), SageMath, sbt, and FreeCAD layers. During
-  this run the shared host's disk fell below 3 GiB free, so building them
-  was stopped to avoid breaking other work. `shadow-relay` ran because
-  its image was small; it has no command to run.
+- **Official rewards for 8 of the 26 fresh workspaces.** Both FreeCAD
+  trials have no official reward, and one `math-eval-grader` session's
+  files differ from the submission's. The rule ran on all eight
+  workspaces and rejected none.
 - **Mini-tasks against `microluna-v15`.** Not run. With no rejection on
   any retained workspace, a matched run could measure only the rule's
   cost, which the offline records already give.
 
-To finish the measurement on a host with room: build each task's image as
-`accept-env/<task>:latest` from its public `environment/`, and run
-`coder-one checks contract executed TASK --out DIR` with `--jobs` pointing
-at a tree where each fresh trial's episode lists its lean-loop sessions
-(the post-executor snapshot hidden), then `measure.py`.
+Every fresh #9584 trial is measured. Each task's image was built as
+`accept-env/<task>:latest` from its public `environment/`, one at a time,
+measured with `coder-one checks contract executed TASK --out DIR --jobs
+DIR --image IMAGE` over a tree where each trial's episode lists its
+lean-loop sessions (the post-executor snapshot hidden), and removed with
+its build cache before the next build. The two FreeCAD tasks share one
+image, since their environments are identical. `measure.py` then joined
+all ten tasks' records.
 
 ## Supervise on this host
 

@@ -1,0 +1,888 @@
+{
+  "schema": "openagents.coder-one.check-grades-offline.v1",
+  "threshold": 0.5,
+  "question_set": "openagents.expectation-support.v1",
+  "question_digest": "3851de08e8979bd62969c41d464501f1b39c057ea58cbf371117b6a6e398a1b6",
+  "baseline": false,
+  "jev": "recorded",
+  "jev_usd": 0.0013596660000000003,
+  "trials": 18,
+  "scripts": 12,
+  "one_unit": 0,
+  "runs": 120,
+  "workspaces": 18,
+  "without_script": [
+    {
+      "trial": "tb4--coder-one-microluna-v12--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__uU3ZNb9",
+      "task": "embedding-drift-monitor",
+      "reward": 1.0
+    },
+    {
+      "trial": "tb4--coder-one-microluna-v12--embedding-drift-monitor--candidate-evidence-9607-r2/embedding-drift-monitor__REGuz3v",
+      "task": "embedding-drift-monitor",
+      "reward": 0.0
+    },
+    {
+      "trial": "tb4--coder-one-microluna-v12--embedding-drift-monitor--candidate-evidence-9607-r3/embedding-drift-monitor__NG9vQg5",
+      "task": "embedding-drift-monitor",
+      "reward": 1.0
+    },
+    {
+      "trial": "tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1/session-window-debug__FDQKEwD",
+      "task": "session-window-debug",
+      "reward": 0.0
+    },
+    {
+      "trial": "tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r2/session-window-debug__mAK56Nn",
+      "task": "session-window-debug",
+      "reward": 0.0
+    },
+    {
+      "trial": "tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r3/session-window-debug__az9j93b",
+      "task": "session-window-debug",
+      "reward": 0.0
+    }
+  ],
+  "tasks": {
+    "embedding-drift-monitor": {
+      "workspaces": 9,
+      "passes": 5,
+      "fails": 4,
+      "scripts": [
+        {
+          "workspaces": 9,
+          "passes": 5,
+          "fails": 4,
+          "full_on_fails": 4,
+          "full_on_passes": 5,
+          "supported_full_on_fails": 4,
+          "supported_full_on_passes": 5,
+          "raw_auc": 0.5,
+          "graded_auc": 0.5,
+          "raw_separates": false,
+          "graded_separates": false,
+          "graded_separates_where_raw_did_not": false,
+          "script": "tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__UfYFodd",
+          "split": "lines",
+          "lines": 5,
+          "follows": 5,
+          "advisory": 0,
+          "unknown": 0,
+          "reproduced": "2 of 2"
+        },
+        {
+          "workspaces": 9,
+          "passes": 5,
+          "fails": 4,
+          "full_on_fails": 1,
+          "full_on_passes": 0,
+          "supported_full_on_fails": 1,
+          "supported_full_on_passes": 0,
+          "raw_auc": 0.625,
+          "graded_auc": 0.625,
+          "raw_separates": false,
+          "graded_separates": false,
+          "graded_separates_where_raw_did_not": false,
+          "script": "tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r2/embedding-drift-monitor__mVNMcMn",
+          "split": "lines",
+          "lines": 11,
+          "follows": 11,
+          "advisory": 0,
+          "unknown": 0,
+          "reproduced": "2 of 2"
+        },
+        {
+          "workspaces": 9,
+          "passes": 5,
+          "fails": 4,
+          "full_on_fails": 2,
+          "full_on_passes": 4,
+          "supported_full_on_fails": 2,
+          "supported_full_on_passes": 5,
+          "raw_auc": 0.65,
+          "graded_auc": 0.7,
+          "raw_separates": false,
+          "graded_separates": false,
+          "graded_separates_where_raw_did_not": false,
+          "script": "tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r3/embedding-drift-monitor__KDeY8Bf",
+          "split": "lines",
+          "lines": 13,
+          "follows": 9,
+          "advisory": 4,
+          "unknown": 0,
+          "reproduced": "2 of 2"
+        },
+        {
+          "workspaces": 9,
+          "passes": 5,
+          "fails": 4,
+          "full_on_fails": 2,
+          "full_on_passes": 5,
+          "supported_full_on_fails": 2,
+          "supported_full_on_passes": 5,
+          "raw_auc": 0.75,
+          "graded_auc": 0.75,
+          "raw_separates": false,
+          "graded_separates": false,
+          "graded_separates_where_raw_did_not": false,
+          "script": "tb4--coder-one-microluna-v13-retained--embedding-drift-monitor/embedding-drift-monitor__6zRjd9n",
+          "split": "lines",
+          "lines": 8,
+          "follows": 8,
+          "advisory": 0,
+          "unknown": 0,
+          "reproduced": "2 of 2"
+        },
+        {
+          "workspaces": 9,
+          "passes": 5,
+          "fails": 4,
+          "full_on_fails": 0,
+          "full_on_passes": 5,
+          "supported_full_on_fails": 0,
+          "supported_full_on_passes": 5,
+          "raw_auc": 1.0,
+          "graded_auc": 1.0,
+          "raw_separates": true,
+          "graded_separates": true,
+          "graded_separates_where_raw_did_not": false,
+          "script": "tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-2/embedding-drift-monitor__y2bahob",
+          "split": "lines",
+          "lines": 10,
+          "follows": 9,
+          "advisory": 1,
+          "unknown": 0,
+          "reproduced": "2 of 2"
+        },
+        {
+          "workspaces": 9,
+          "passes": 5,
+          "fails": 4,
+          "full_on_fails": 4,
+          "full_on_passes": 5,
+          "supported_full_on_fails": 4,
+          "supported_full_on_passes": 5,
+          "raw_auc": 0.5,
+          "graded_auc": 0.5,
+          "raw_separates": false,
+          "graded_separates": false,
+          "graded_separates_where_raw_did_not": false,
+          "script": "tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-3/embedding-drift-monitor__QAHE7De",
+          "split": "lines",
+          "lines": 6,
+          "follows": 5,
+          "advisory": 1,
+          "unknown": 0,
+          "reproduced": "2 of 2"
+        }
+      ],
+      "scripts_with_both_outcomes": 6,
+      "scripts_where_graded_separates_and_raw_did_not": 0,
+      "keep_best": [
+        {
+          "trial": "tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__UfYFodd",
+          "task": "embedding-drift-monitor",
+          "ties": false,
+          "decisions": [
+            {
+              "session": 1,
+              "score": [
+                5,
+                5
+              ],
+              "supported": [
+                5,
+                5
+              ],
+              "raw_keeps": true,
+              "graded_keeps": true
+            },
+            {
+              "session": 2,
+              "score": [
+                5,
+                5
+              ],
+              "supported": [
+                5,
+                5
+              ],
+              "raw_keeps": false,
+              "graded_keeps": false
+            }
+          ],
+          "recorded": [
+            {
+              "session": 1,
+              "kept": true
+            },
+            {
+              "session": 2,
+              "kept": false
+            }
+          ],
+          "raw_final": 1,
+          "graded_final": 1,
+          "changed": false,
+          "any_decision_changed": false
+        },
+        {
+          "trial": "tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r2/embedding-drift-monitor__mVNMcMn",
+          "task": "embedding-drift-monitor",
+          "ties": false,
+          "decisions": [
+            {
+              "session": 1,
+              "score": [
+                11,
+                11
+              ],
+              "supported": [
+                11,
+                11
+              ],
+              "raw_keeps": true,
+              "graded_keeps": true
+            },
+            {
+              "session": 2,
+              "score": [
+                11,
+                11
+              ],
+              "supported": [
+                11,
+                11
+              ],
+              "raw_keeps": false,
+              "graded_keeps": false
+            }
+          ],
+          "recorded": [
+            {
+              "session": 1,
+              "kept": true
+            },
+            {
+              "session": 2,
+              "kept": false
+            }
+          ],
+          "raw_final": 1,
+          "graded_final": 1,
+          "changed": false,
+          "any_decision_changed": false
+        },
+        {
+          "trial": "tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r3/embedding-drift-monitor__KDeY8Bf",
+          "task": "embedding-drift-monitor",
+          "ties": false,
+          "decisions": [
+            {
+              "session": 1,
+              "score": [
+                13,
+                13
+              ],
+              "supported": [
+                9,
+                9
+              ],
+              "raw_keeps": true,
+              "graded_keeps": true
+            },
+            {
+              "session": 2,
+              "score": [
+                13,
+                13
+              ],
+              "supported": [
+                9,
+                9
+              ],
+              "raw_keeps": false,
+              "graded_keeps": false
+            }
+          ],
+          "recorded": [
+            {
+              "session": 1,
+              "kept": true
+            },
+            {
+              "session": 2,
+              "kept": false
+            }
+          ],
+          "raw_final": 1,
+          "graded_final": 1,
+          "changed": false,
+          "any_decision_changed": false
+        },
+        {
+          "trial": "tb4--coder-one-microluna-v13-retained--embedding-drift-monitor/embedding-drift-monitor__6zRjd9n",
+          "task": "embedding-drift-monitor",
+          "ties": true,
+          "decisions": [
+            {
+              "session": 1,
+              "score": [
+                8,
+                8
+              ],
+              "supported": [
+                8,
+                8
+              ],
+              "raw_keeps": true,
+              "graded_keeps": true
+            },
+            {
+              "session": 2,
+              "score": [
+                8,
+                8
+              ],
+              "supported": [
+                8,
+                8
+              ],
+              "raw_keeps": true,
+              "graded_keeps": true
+            }
+          ],
+          "recorded": [
+            {
+              "session": 1,
+              "kept": true
+            },
+            {
+              "session": 2,
+              "kept": true
+            }
+          ],
+          "raw_final": 2,
+          "graded_final": 2,
+          "changed": false,
+          "any_decision_changed": false
+        },
+        {
+          "trial": "tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-2/embedding-drift-monitor__y2bahob",
+          "task": "embedding-drift-monitor",
+          "ties": true,
+          "decisions": [
+            {
+              "session": 1,
+              "score": [
+                10,
+                10
+              ],
+              "supported": [
+                9,
+                9
+              ],
+              "raw_keeps": true,
+              "graded_keeps": true
+            },
+            {
+              "session": 2,
+              "score": [
+                10,
+                10
+              ],
+              "supported": [
+                9,
+                9
+              ],
+              "raw_keeps": true,
+              "graded_keeps": true
+            }
+          ],
+          "recorded": [
+            {
+              "session": 1,
+              "kept": true
+            },
+            {
+              "session": 2,
+              "kept": true
+            }
+          ],
+          "raw_final": 2,
+          "graded_final": 2,
+          "changed": false,
+          "any_decision_changed": false
+        },
+        {
+          "trial": "tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-3/embedding-drift-monitor__QAHE7De",
+          "task": "embedding-drift-monitor",
+          "ties": true,
+          "decisions": [
+            {
+              "session": 1,
+              "score": [
+                6,
+                6
+              ],
+              "supported": [
+                5,
+                5
+              ],
+              "raw_keeps": true,
+              "graded_keeps": true
+            },
+            {
+              "session": 2,
+              "score": [
+                6,
+                6
+              ],
+              "supported": [
+                5,
+                5
+              ],
+              "raw_keeps": true,
+              "graded_keeps": true
+            }
+          ],
+          "recorded": [
+            {
+              "session": 1,
+              "kept": true
+            },
+            {
+              "session": 2,
+              "kept": true
+            }
+          ],
+          "raw_final": 2,
+          "graded_final": 2,
+          "changed": false,
+          "any_decision_changed": false
+        }
+      ],
+      "keep_best_changed": 0
+    },
+    "session-window-debug": {
+      "workspaces": 9,
+      "passes": 0,
+      "fails": 9,
+      "scripts": [
+        {
+          "workspaces": 9,
+          "passes": 0,
+          "fails": 9,
+          "full_on_fails": 9,
+          "full_on_passes": 0,
+          "supported_full_on_fails": 9,
+          "supported_full_on_passes": 0,
+          "raw_auc": null,
+          "graded_auc": null,
+          "raw_separates": false,
+          "graded_separates": false,
+          "graded_separates_where_raw_did_not": false,
+          "script": "tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r1/session-window-debug__arofNZN",
+          "split": "lines",
+          "lines": 3,
+          "follows": 3,
+          "advisory": 0,
+          "unknown": 0,
+          "reproduced": "2 of 2"
+        },
+        {
+          "workspaces": 9,
+          "passes": 0,
+          "fails": 9,
+          "full_on_fails": 9,
+          "full_on_passes": 0,
+          "supported_full_on_fails": 9,
+          "supported_full_on_passes": 0,
+          "raw_auc": null,
+          "graded_auc": null,
+          "raw_separates": false,
+          "graded_separates": false,
+          "graded_separates_where_raw_did_not": false,
+          "script": "tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r2/session-window-debug__vbWCjBZ",
+          "split": "lines",
+          "lines": 5,
+          "follows": 5,
+          "advisory": 0,
+          "unknown": 0,
+          "reproduced": "2 of 2"
+        },
+        {
+          "workspaces": 9,
+          "passes": 0,
+          "fails": 9,
+          "full_on_fails": 9,
+          "full_on_passes": 0,
+          "supported_full_on_fails": 9,
+          "supported_full_on_passes": 0,
+          "raw_auc": null,
+          "graded_auc": null,
+          "raw_separates": false,
+          "graded_separates": false,
+          "graded_separates_where_raw_did_not": false,
+          "script": "tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r3/session-window-debug__a7stmvT",
+          "split": "lines",
+          "lines": 3,
+          "follows": 3,
+          "advisory": 0,
+          "unknown": 0,
+          "reproduced": "2 of 2"
+        },
+        {
+          "workspaces": 9,
+          "passes": 0,
+          "fails": 9,
+          "full_on_fails": 9,
+          "full_on_passes": 0,
+          "supported_full_on_fails": 9,
+          "supported_full_on_passes": 0,
+          "raw_auc": null,
+          "graded_auc": null,
+          "raw_separates": false,
+          "graded_separates": false,
+          "graded_separates_where_raw_did_not": false,
+          "script": "tb4--coder-one-microluna-v13-retained--session-window-debug/session-window-debug__PacT86C",
+          "split": "lines",
+          "lines": 3,
+          "follows": 3,
+          "advisory": 0,
+          "unknown": 0,
+          "reproduced": "2 of 2"
+        },
+        {
+          "workspaces": 9,
+          "passes": 0,
+          "fails": 9,
+          "full_on_fails": 9,
+          "full_on_passes": 0,
+          "supported_full_on_fails": 9,
+          "supported_full_on_passes": 0,
+          "raw_auc": null,
+          "graded_auc": null,
+          "raw_separates": false,
+          "graded_separates": false,
+          "graded_separates_where_raw_did_not": false,
+          "script": "tb4--coder-one-microluna-v13-retained--session-window-debug-2/session-window-debug__3v9FKP5",
+          "split": "lines",
+          "lines": 3,
+          "follows": 2,
+          "advisory": 1,
+          "unknown": 0,
+          "reproduced": "2 of 2"
+        },
+        {
+          "workspaces": 9,
+          "passes": 0,
+          "fails": 9,
+          "full_on_fails": 9,
+          "full_on_passes": 0,
+          "supported_full_on_fails": 9,
+          "supported_full_on_passes": 0,
+          "raw_auc": null,
+          "graded_auc": null,
+          "raw_separates": false,
+          "graded_separates": false,
+          "graded_separates_where_raw_did_not": false,
+          "script": "tb4--coder-one-microluna-v13-retained--session-window-debug-3/session-window-debug__3KVqBUz",
+          "split": "lines",
+          "lines": 4,
+          "follows": 1,
+          "advisory": 3,
+          "unknown": 0,
+          "reproduced": "2 of 2"
+        }
+      ],
+      "scripts_with_both_outcomes": 0,
+      "scripts_where_graded_separates_and_raw_did_not": 0,
+      "keep_best": [
+        {
+          "trial": "tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r1/session-window-debug__arofNZN",
+          "task": "session-window-debug",
+          "ties": false,
+          "decisions": [
+            {
+              "session": 1,
+              "score": [
+                3,
+                3
+              ],
+              "supported": [
+                3,
+                3
+              ],
+              "raw_keeps": true,
+              "graded_keeps": true
+            },
+            {
+              "session": 2,
+              "score": [
+                3,
+                3
+              ],
+              "supported": [
+                3,
+                3
+              ],
+              "raw_keeps": false,
+              "graded_keeps": false
+            }
+          ],
+          "recorded": [
+            {
+              "session": 1,
+              "kept": true
+            },
+            {
+              "session": 2,
+              "kept": false
+            }
+          ],
+          "raw_final": 1,
+          "graded_final": 1,
+          "changed": false,
+          "any_decision_changed": false
+        },
+        {
+          "trial": "tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r2/session-window-debug__vbWCjBZ",
+          "task": "session-window-debug",
+          "ties": false,
+          "decisions": [
+            {
+              "session": 1,
+              "score": [
+                5,
+                5
+              ],
+              "supported": [
+                5,
+                5
+              ],
+              "raw_keeps": true,
+              "graded_keeps": true
+            },
+            {
+              "session": 2,
+              "score": [
+                5,
+                5
+              ],
+              "supported": [
+                5,
+                5
+              ],
+              "raw_keeps": false,
+              "graded_keeps": false
+            }
+          ],
+          "recorded": [
+            {
+              "session": 1,
+              "kept": true
+            },
+            {
+              "session": 2,
+              "kept": false
+            }
+          ],
+          "raw_final": 1,
+          "graded_final": 1,
+          "changed": false,
+          "any_decision_changed": false
+        },
+        {
+          "trial": "tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r3/session-window-debug__a7stmvT",
+          "task": "session-window-debug",
+          "ties": false,
+          "decisions": [
+            {
+              "session": 1,
+              "score": [
+                3,
+                3
+              ],
+              "supported": [
+                3,
+                3
+              ],
+              "raw_keeps": true,
+              "graded_keeps": true
+            },
+            {
+              "session": 2,
+              "score": [
+                3,
+                3
+              ],
+              "supported": [
+                3,
+                3
+              ],
+              "raw_keeps": false,
+              "graded_keeps": false
+            }
+          ],
+          "recorded": [
+            {
+              "session": 1,
+              "kept": true
+            },
+            {
+              "session": 2,
+              "kept": false
+            }
+          ],
+          "raw_final": 1,
+          "graded_final": 1,
+          "changed": false,
+          "any_decision_changed": false
+        },
+        {
+          "trial": "tb4--coder-one-microluna-v13-retained--session-window-debug/session-window-debug__PacT86C",
+          "task": "session-window-debug",
+          "ties": true,
+          "decisions": [
+            {
+              "session": 1,
+              "score": [
+                3,
+                3
+              ],
+              "supported": [
+                3,
+                3
+              ],
+              "raw_keeps": true,
+              "graded_keeps": true
+            },
+            {
+              "session": 2,
+              "score": [
+                3,
+                3
+              ],
+              "supported": [
+                3,
+                3
+              ],
+              "raw_keeps": true,
+              "graded_keeps": true
+            }
+          ],
+          "recorded": [
+            {
+              "session": 1,
+              "kept": true
+            },
+            {
+              "session": 2,
+              "kept": true
+            }
+          ],
+          "raw_final": 2,
+          "graded_final": 2,
+          "changed": false,
+          "any_decision_changed": false
+        },
+        {
+          "trial": "tb4--coder-one-microluna-v13-retained--session-window-debug-2/session-window-debug__3v9FKP5",
+          "task": "session-window-debug",
+          "ties": true,
+          "decisions": [
+            {
+              "session": 1,
+              "score": [
+                3,
+                3
+              ],
+              "supported": [
+                2,
+                2
+              ],
+              "raw_keeps": true,
+              "graded_keeps": true
+            },
+            {
+              "session": 2,
+              "score": [
+                3,
+                3
+              ],
+              "supported": [
+                2,
+                2
+              ],
+              "raw_keeps": true,
+              "graded_keeps": true
+            }
+          ],
+          "recorded": [
+            {
+              "session": 1,
+              "kept": true
+            },
+            {
+              "session": 2,
+              "kept": true
+            }
+          ],
+          "raw_final": 2,
+          "graded_final": 2,
+          "changed": false,
+          "any_decision_changed": false
+        },
+        {
+          "trial": "tb4--coder-one-microluna-v13-retained--session-window-debug-3/session-window-debug__3KVqBUz",
+          "task": "session-window-debug",
+          "ties": true,
+          "decisions": [
+            {
+              "session": 1,
+              "score": [
+                4,
+                4
+              ],
+              "supported": [
+                1,
+                1
+              ],
+              "raw_keeps": true,
+              "graded_keeps": true
+            },
+            {
+              "session": 2,
+              "score": [
+                4,
+                4
+              ],
+              "supported": [
+                1,
+                1
+              ],
+              "raw_keeps": true,
+              "graded_keeps": true
+            }
+          ],
+          "recorded": [
+            {
+              "session": 1,
+              "kept": true
+            },
+            {
+              "session": 2,
+              "kept": true
+            }
+          ],
+          "raw_final": 2,
+          "graded_final": 2,
+          "changed": false,
+          "any_decision_changed": false
+        }
+      ],
+      "keep_best_changed": 0
+    }
+  }
+}

@@ -227,6 +227,17 @@ pub struct Lean {
     /// before it, the self-check always runs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub review_rule: Option<crate::review_rule::Params>,
+    /// `accept.grade` (issue #9635): at the freeze, grade each line of the
+    /// score script by whether its expectation follows from the task's
+    /// words, the baseline behavior, or a standard definition
+    /// ([`crate::grade`]), write `check-grades.json`, and rank keep-best on
+    /// the lines graded `follows` first and the full score second. No
+    /// line can stop the loop or reverse an edit. Needs `keep_best` and one
+    /// first session, and excludes `tiered`. Accepted only once the offline
+    /// measurement admits it ([`crate::grade::ADMITTED`]); absent, as in
+    /// every manifest before it, keep-best ranks on the full score.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub grade: bool,
 }
 
 /// `executor.microluna.lean.executed`: the bounds of the commands the host
@@ -258,10 +269,27 @@ pub struct LeanFinishRule {
     /// Refusals before a `done` finish is accepted as unverified.
     #[serde(default = "max_refusals")]
     pub max_refusals: u32,
+    /// Whether a `done` finish also waits for a baseline command
+    /// (`evidence.baseline`) after the last edit. `false` holds it to the
+    /// score alone even when the baseline ran: the offline count that
+    /// admitted the rule measured the score half only, and with baselines
+    /// the rule refused 6 of 10 retained finishes on passing trials
+    /// (`docs/terminal-bench/2026-09-25-finish-rule-offline.md`). Absent,
+    /// as in every manifest before it, the rule requires both.
+    #[serde(default = "require_baseline", skip_serializing_if = "is_true")]
+    pub baseline: bool,
 }
 
 fn max_refusals() -> u32 {
     microluna::finish::MAX_REFUSALS
+}
+
+fn require_baseline() -> bool {
+    true
+}
+
+fn is_true(value: &bool) -> bool {
+    *value
 }
 
 /// What a command names to count as a score run: the evaluation script,
@@ -271,11 +299,16 @@ pub const SCORE_NAME: &str = "score.sh";
 /// The finish rule for a lean session, when the manifest turns it on.
 /// `baseline` is the task's baseline commands (`evidence.baseline`, issue
 /// #9633), empty when the manifest doesn't run it, so the rule then
-/// requires the score alone.
-fn finish_rule(lean: &Lean, baseline: &[String]) -> Option<microluna::FinishRule> {
+/// requires the score alone. It does too when the rule's own `baseline`
+/// is `false`.
+pub(crate) fn finish_rule(lean: &Lean, baseline: &[String]) -> Option<microluna::FinishRule> {
     lean.finish_rule.as_ref().map(|rule| microluna::FinishRule {
         score: vec![SCORE_NAME.to_string()],
-        baseline: baseline.to_vec(),
+        baseline: if rule.baseline {
+            baseline.to_vec()
+        } else {
+            Vec::new()
+        },
         max_refusals: rule.max_refusals,
     })
 }
@@ -543,6 +576,27 @@ impl Lean {
         }
         if let Some(tiered) = &self.tiered {
             problems.extend(tiered.validate(self));
+        }
+        if self.grade && !crate::grade::ADMITTED {
+            problems.push(
+                "executor.microluna.lean.grade isn't admitted: the offline measurement didn't \
+                 admit accept.grade (docs/terminal-bench/2026-09-25-check-grades-offline.md)"
+                    .to_string(),
+            );
+        }
+        if self.grade && !self.keep_best {
+            problems.push("executor.microluna.lean.grade requires keep_best".to_string());
+        }
+        if self.grade && self.lanes > 1 {
+            problems.push(
+                "executor.microluna.lean.grade ranks sequential sessions only, not lanes"
+                    .to_string(),
+            );
+        }
+        if self.grade && self.tiered.is_some() {
+            problems.push(
+                "executor.microluna.lean.grade and tiered each rank keep-best; set one".to_string(),
+            );
         }
         problems
     }
@@ -1416,11 +1470,38 @@ fn review_record(decision: &crate::review_rule::Decision) -> Value {
 struct Best {
     session: u32,
     score: Option<(u64, u64)>,
+    /// Its result on the check lines graded `follows`, under `grade`.
+    supported: Option<(u64, u64)>,
     dir: PathBuf,
     /// The tiered suite's holding tests red, and the share of its ranking
     /// tests green, when a tiered suite ran on this candidate.
     held: usize,
     rank: f64,
+}
+
+/// The frozen score script, graded at the freeze (`grade`, #9635): the
+/// record, the split, where the record goes, and the instrumented copy
+/// that reports each line's result, when one could be made.
+struct Graded {
+    grades: crate::grade::Grades,
+    parsed: crate::grade::Parsed,
+    path: PathBuf,
+    instrumented: Option<PathBuf>,
+}
+
+impl Drop for Graded {
+    fn drop(&mut self) {
+        if let Some(dir) = &self.instrumented {
+            let _ = std::fs::remove_dir_all(dir);
+        }
+    }
+}
+
+impl Graded {
+    fn save(&self) -> Result<(), String> {
+        let text = serde_json::to_string_pretty(&self.grades).map_err(|e| e.to_string())?;
+        crate::record::write_atomic(&self.path, format!("{text}\n").as_bytes())
+    }
 }
 
 /// The tiered suite beside the lean loop, and how it runs.
@@ -1636,15 +1717,54 @@ impl Micro {
         dir: &Path,
         remaining: Duration,
     ) -> (Option<(u64, u64)>, String) {
+        let (score, tail, _) = self.lean_score_full(frozen, lean, dir, remaining).await;
+        (score, tail)
+    }
+
+    /// Runs the graded check's instrumented copy against the workspace, and
+    /// the frozen script itself when the copy yields no score. Returns the
+    /// score, its tail, and each check line's result (empty when unknown).
+    async fn lean_score_graded(
+        &self,
+        frozen: &Path,
+        graded: &Graded,
+        lean: &Lean,
+        remaining: Duration,
+    ) -> (Option<(u64, u64)>, String, BTreeMap<String, bool>) {
+        let started = Instant::now();
+        if let Some(copy) = &graded.instrumented {
+            let (score, tail, output) = self
+                .lean_score_full(copy, lean, &self.workdir, remaining)
+                .await;
+            if score.is_some() {
+                let lines = crate::grade::results(&output, &graded.parsed);
+                return (score, tail, lines);
+            }
+        }
+        let (score, tail) = self
+            .lean_score(frozen, lean, remaining.saturating_sub(started.elapsed()))
+            .await;
+        (score, tail, BTreeMap::new())
+    }
+
+    /// [`Self::lean_score_in`], with the run's whole output beside the tail.
+    async fn lean_score_full(
+        &self,
+        frozen: &Path,
+        lean: &Lean,
+        dir: &Path,
+        remaining: Duration,
+    ) -> (Option<(u64, u64)>, String, String) {
         let script = frozen.join("score.sh");
         if !script.is_file() {
-            return (None, "no score script".to_string());
+            return (None, "no score script".to_string(), String::new());
         }
         let wall = Duration::from_secs(lean.score_sec).min(remaining);
         if wall.is_zero() {
             return (
                 None,
                 "No time remains to evaluate the workspace.".to_string(),
+                String::new(),
             );
         }
         let ended = match self.isolation {
@@ -1665,11 +1785,17 @@ impl Micro {
                 };
                 let boundary = match spec.owned_scratch_under(std::env::temp_dir()).build() {
                     Ok(boundary) => boundary,
-                    Err(error) => return (None, format!("no enforced boundary: {error}")),
+                    Err(error) => {
+                        return (
+                            None,
+                            format!("no enforced boundary: {error}"),
+                            String::new(),
+                        );
+                    }
                 };
                 let mut command = match boundary.command("/bin/sh", [script.as_os_str()]) {
                     Ok(command) => command,
-                    Err(error) => return (None, error.to_string()),
+                    Err(error) => return (None, error.to_string(), String::new()),
                 };
                 command.current_dir(dir);
                 microluna::tools::withhold_credentials(&mut command);
@@ -1681,8 +1807,14 @@ impl Micro {
         };
         let stdout = ended.stdout.marked();
         let stderr = ended.stderr.marked();
+        // An instrumented copy's line reports stay out of the tail a
+        // session reads.
         let tail = crate::judge::clip(
-            &format!("{}\n{}", stdout.trim_end(), stderr.trim_end()),
+            &format!(
+                "{}\n{}",
+                crate::grade::without_marks(&stdout).trim_end(),
+                crate::grade::without_marks(&stderr).trim_end()
+            ),
             1_200,
         );
         let score = (ended.ending.success() && !ended.stdout.truncated)
@@ -1691,7 +1823,126 @@ impl Micro {
         (
             score,
             format!("exit {:?}; {:?}\n{tail}", ended.ending.code(), ended.ending),
+            format!("{stdout}\n{stderr}"),
         )
+    }
+
+    /// Grades the frozen score script (`grade`, #9635), writes the record
+    /// beside the retained candidates, and makes the instrumented copy.
+    /// `baseline` is the task's baseline behavior as the brief carries it
+    /// (`evidence.baseline`, #9633); without it a line is graded on the
+    /// task's words and the standard definition only. Returns the grading,
+    /// its move record, and what Jev cost.
+    #[allow(clippy::too_many_arguments)]
+    async fn grade_frozen(
+        &self,
+        prepared: &Prepared,
+        lean: &Lean,
+        frozen: &Path,
+        retained: &Path,
+        session: u32,
+        keep_evidence: bool,
+        baseline: Option<&str>,
+        base: Option<&Path>,
+        remaining: Duration,
+    ) -> (Option<Graded>, Value, f64) {
+        let script = match std::fs::read_to_string(frozen.join("score.sh")) {
+            Ok(script) => script,
+            Err(error) => {
+                return (
+                    None,
+                    json!({"kind": "lean.grade", "error": error.to_string()}),
+                    0.0,
+                );
+            }
+        };
+        let check = if keep_evidence {
+            format!("lean-{}/evaluator/score.sh", self.dispatch())
+        } else {
+            frozen.join("score.sh").display().to_string()
+        };
+        // Each line's result on a scratch copy of the untouched workspace,
+        // with the script's paths rebased to it, sets its authority class
+        // (#9629): a line green there is a guard.
+        let started = Instant::now();
+        let text = crate::grade::instrument(&script, &crate::grade::split(&script));
+        let start = match (&text, base) {
+            (Some(text), Some(base)) => {
+                let copy = scratch("lean-grade-start");
+                let scorer = scratch("lean-grade-scorer");
+                let workdir = self.workdir.display().to_string();
+                let ran = if crate::handoff::copy_tree(base, &copy).is_ok()
+                    && crate::handoff::copy_tree(frozen, &scorer).is_ok()
+                    && std::fs::write(
+                        scorer.join("score.sh"),
+                        rebase_text(text, &workdir, &copy.display().to_string()),
+                    )
+                    .is_ok()
+                {
+                    let (score, _, output) =
+                        self.lean_score_full(&scorer, lean, &copy, remaining).await;
+                    score.map(|_| output)
+                } else {
+                    None
+                };
+                let _ = std::fs::remove_dir_all(&copy);
+                let _ = std::fs::remove_dir_all(&scorer);
+                ran.map(|output| crate::grade::results(&output, &crate::grade::split(&script)))
+            }
+            _ => None,
+        };
+        let start_ms = started.elapsed().as_millis();
+        let (grades, parsed, calls) = crate::grade::grade(
+            &prepared.jev,
+            &self.recorder,
+            &crate::grade::support::Context {
+                component: "microluna.lean",
+                name: crate::grade::DECISION,
+                id: format!("jev-grade-{}", self.dispatch()),
+                deadline: prepared.deadline.clone(),
+            },
+            &crate::grade::Freeze {
+                check,
+                script: &script,
+                frozen_after_session: session,
+                task: &prepared.instruction,
+                baseline,
+                start: start.as_ref(),
+            },
+        )
+        .await;
+        let instrumented = text.and_then(|text| {
+            let dir = scratch("microluna-eval-graded");
+            crate::handoff::copy_tree(frozen, &dir).ok()?;
+            std::fs::write(dir.join("score.sh"), text).ok()?;
+            Some(dir)
+        });
+        let usd = grades.jev_usd;
+        let _ = std::fs::create_dir_all(retained);
+        let graded = Graded {
+            path: retained.join(crate::grade::FILE),
+            grades,
+            parsed,
+            instrumented,
+        };
+        let saved = graded.save().err();
+        let record = json!({
+            "kind": "lean.grade",
+            "implementation": crate::grade::implementation(),
+            "split": graded.grades.split,
+            "reason": graded.grades.reason,
+            "lines": graded.grades.lines.len(),
+            "follows": graded.grades.supported_ids().len(),
+            "baseline": graded.grades.baseline,
+            "untouched": start.as_ref().map(|s| s.len()),
+            "untouched_ms": start_ms,
+            "instrumented": graded.instrumented.is_some(),
+            "record": graded.path.display().to_string(),
+            "save_error": saved,
+            "jev": calls,
+            "jev_usd": usd,
+        });
+        (Some(graded), record, usd)
     }
 
     /// Whether the workspace hard-codes the examples: the literal scan, and
@@ -1833,9 +2084,11 @@ impl Micro {
         }
         let mut baseline: Vec<String> = Vec::new();
         let mut baseline_record = Value::Null;
+        let mut baseline_text: Option<String> = None;
         if lean.baseline {
             let (evidence, record, commands) = self.run_baseline(prepared, time_left()).await;
             if let Some(evidence) = evidence {
+                baseline_text = Some(evidence.text.clone());
                 // After the suspects, when there are any.
                 samples.insert(usize::from(suspects_listed), evidence);
             }
@@ -1875,6 +2128,8 @@ impl Micro {
             let _ = std::fs::create_dir_all(&eval);
         }
         let mut have_score = false;
+        let mut graded: Option<Graded> = None;
+        let mut grade_tried = false;
         let mut evaluator_digest = None;
         let mut score_total = None;
         let mut best: Option<Best> = None;
@@ -2073,6 +2328,7 @@ impl Micro {
                         // v14 keeps naming the last lane's.
                         session: if keep_evidence { kept.session } else { offset },
                         score: kept.score,
+                        supported: None,
                         dir: kept.dir,
                         held: 0,
                         rank: 0.0,
@@ -2308,16 +2564,41 @@ impl Micro {
                     evaluator_digest = evidence_tree(&frozen).ok();
                 }
             }
+            // Grade the frozen script once, at the freeze (#9635).
+            if lean.grade && have_score && !grade_tried {
+                grade_tried = true;
+                let (grading, record, usd) = self
+                    .grade_frozen(
+                        prepared,
+                        lean,
+                        &frozen,
+                        &retained,
+                        number,
+                        keep_evidence,
+                        baseline_text.as_deref(),
+                        base.as_deref(),
+                        time_left().min(wall_left().unwrap_or(Duration::MAX)),
+                    )
+                    .await;
+                spent += usd;
+                graded = grading;
+                moves.push(record);
+            }
             let intact = evaluator_digest
                 .as_ref()
                 .is_some_and(|d| evidence_tree(&frozen).as_ref() == Ok(d));
+            let mut lines = BTreeMap::new();
             let (mut score, mut score_tail) = if have_score && intact {
-                self.lean_score(
-                    &frozen,
-                    lean,
-                    time_left().min(wall_left().unwrap_or(Duration::MAX)),
-                )
-                .await
+                let remaining = time_left().min(wall_left().unwrap_or(Duration::MAX));
+                if let Some(grading) = &graded {
+                    let (score, tail, found) = self
+                        .lean_score_graded(&frozen, grading, lean, remaining)
+                        .await;
+                    lines = found;
+                    (score, tail)
+                } else {
+                    self.lean_score(&frozen, lean, remaining).await
+                }
             } else {
                 (
                     None,
@@ -2339,6 +2620,18 @@ impl Micro {
                         .push_str("\nThe score total changed; candidates are not comparable.");
                 } else {
                     score_total = Some(total);
+                }
+            }
+            if score.is_none() {
+                lines.clear();
+            }
+            let supported = graded
+                .as_ref()
+                .and_then(|grading| grading.grades.supported(&lines));
+            if let Some(grading) = &mut graded {
+                grading.grades.record(number, &lines);
+                if let Err(error) = grading.save() {
+                    moves.push(json!({"kind": "lean.grade_error", "error": error}));
                 }
             }
             let (flagged, flag_record, jev_usd) = if lean.hardcode_check {
@@ -2433,7 +2726,13 @@ impl Micro {
             }
             if let Some((p, t)) = score {
                 history.push(format!(
-                    "After session {number} the host's score was {p} of {t}{}.",
+                    "After session {number} the host's score was {p} of {t}{}{}.",
+                    supported
+                        .filter(|(_, n)| *n > 0)
+                        .map_or(String::new(), |(a, n)| format!(
+                            " ({a} of the {n} checks whose expectation follows from the task \
+                             or a standard definition)"
+                        )),
                     if flagged {
                         ", but the workspace was flagged"
                     } else if rejected {
@@ -2472,6 +2771,13 @@ impl Micro {
             // scalar score cannot establish that a later edit is better.
             let mut kept = false;
             let mut keep_error = None;
+            let raw_better = best.as_ref().is_none_or(|b| {
+                if lean.protect_candidates {
+                    fraction(score) > fraction(b.score)
+                } else {
+                    fraction(score) >= fraction(b.score)
+                }
+            });
             if lean.keep_best
                 && !flagged
                 && !rejected
@@ -2484,10 +2790,16 @@ impl Micro {
                             (b.held, fraction(b.score), b.rank),
                             lean.protect_candidates,
                         )
-                    } else if lean.protect_candidates {
-                        fraction(score) > fraction(b.score)
+                    } else if graded.is_some() {
+                        // The lines graded `follows` rank first and the
+                        // full score second (#9635).
+                        crate::grade::ahead(
+                            crate::grade::key(supported, score),
+                            crate::grade::key(b.supported, b.score),
+                            !lean.protect_candidates,
+                        )
                     } else {
-                        fraction(score) >= fraction(b.score)
+                        raw_better
                     }
                 });
                 if better {
@@ -2511,6 +2823,7 @@ impl Micro {
                             best = Some(Best {
                                 session: number,
                                 score,
+                                supported,
                                 dir,
                                 held,
                                 rank,
@@ -2566,6 +2879,10 @@ impl Micro {
                 "candidate": keep_evidence.then(|| candidate.display().to_string()),
                 "snapshot_error": snapshot.err(),
                 "keep_error": keep_error,
+                "supported": graded.is_some().then(|| {
+                    supported.map(|(p, t)| json!({"passed": p, "total": t}))
+                }),
+                "raw_would_keep": graded.is_some().then_some(raw_better),
                 "snapshot_ms": keep_evidence.then_some(snapshot_ms),
                 "workspace_files": keep_evidence.then(|| scope.identity(&self.workdir).ok()),
                 "evaluator_files": evaluator_digest,

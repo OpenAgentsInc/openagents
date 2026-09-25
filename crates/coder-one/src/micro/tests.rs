@@ -1497,6 +1497,7 @@ fn lean_shape() -> lean::Lean {
         executed: None,
         tiered: None,
         review_rule: None,
+        grade: false,
     }
 }
 
@@ -1757,7 +1758,10 @@ async fn the_lean_loop_holds_a_done_finish_until_the_score_ran_after_the_last_ed
             sessions: 1,
             self_check: false,
             keep_best: true,
-            finish_rule: Some(lean::LeanFinishRule { max_refusals: 3 }),
+            finish_rule: Some(lean::LeanFinishRule {
+                max_refusals: 3,
+                baseline: true,
+            }),
             ..lean_shape()
         }),
     );
@@ -1824,7 +1828,10 @@ async fn the_baseline_runs_before_session_one_and_the_finish_rule_requires_it() 
             sessions: 1,
             self_check: false,
             keep_best: true,
-            finish_rule: Some(lean::LeanFinishRule { max_refusals: 3 }),
+            finish_rule: Some(lean::LeanFinishRule {
+                max_refusals: 3,
+                baseline: true,
+            }),
             baseline: true,
             ..lean_shape()
         }),
@@ -1861,6 +1868,48 @@ fn the_baseline_switch_is_off_and_absent_by_default() {
         serde_json::from_value(json!({ "sessions": 1, "source_chars": 0, "baseline": true }))
             .unwrap();
     assert!(on.baseline);
+}
+
+/// Issue #9640: `finish_rule.baseline: false` holds a finish to the score
+/// alone even when `evidence.baseline` found commands, and the default
+/// still requires both and stays out of the serialized manifest.
+#[test]
+fn the_finish_rule_can_hold_a_finish_to_the_score_alone() {
+    let commands = vec!["make test".to_string()];
+    let both = lean::Lean {
+        keep_best: true,
+        baseline: true,
+        finish_rule: Some(lean::LeanFinishRule {
+            max_refusals: 3,
+            baseline: true,
+        }),
+        ..lean_shape()
+    };
+    let rule = lean::finish_rule(&both, &commands).unwrap();
+    assert_eq!(rule.baseline, commands);
+    assert_eq!(rule.score, vec![lean::SCORE_NAME.to_string()]);
+    assert_eq!(
+        serde_json::to_value(&both).unwrap()["finish_rule"],
+        json!({ "max_refusals": 3 })
+    );
+
+    let score_only: lean::Lean = serde_json::from_value(json!({
+        "sessions": 1,
+        "source_chars": 0,
+        "keep_best": true,
+        "baseline": true,
+        "finish_rule": { "max_refusals": 3, "baseline": false },
+    }))
+    .unwrap();
+    let rule = lean::finish_rule(&score_only, &commands).unwrap();
+    assert!(rule.baseline.is_empty());
+    assert_eq!(rule.max_refusals, 3);
+    assert_eq!(
+        serde_json::to_value(&score_only).unwrap()["finish_rule"],
+        json!({ "max_refusals": 3, "baseline": false })
+    );
+    let absent: lean::LeanFinishRule = serde_json::from_value(json!({})).unwrap();
+    assert!(absent.baseline);
 }
 
 /// Issue #9636: a candidate on which a baseline command that ran on the
@@ -2118,7 +2167,10 @@ fn the_executed_rule_needs_keep_best() {
 #[test]
 fn the_finish_rule_needs_keep_best() {
     let lean = lean::Lean {
-        finish_rule: Some(lean::LeanFinishRule { max_refusals: 3 }),
+        finish_rule: Some(lean::LeanFinishRule {
+            max_refusals: 3,
+            baseline: true,
+        }),
         ..lean_shape()
     };
     assert!(
@@ -3048,4 +3100,141 @@ async fn a_tiered_lean_loop_names_a_red_guard_as_a_suspect_and_still_stops() {
     let stopped = record["stopped"].as_str().unwrap();
     assert!(stopped.contains("session 1 ended done"), "{stopped}");
     assert!(!work.join("keep.txt").exists());
+}
+
+#[test]
+fn grade_is_refused_until_admitted_and_needs_keep_best() {
+    let shape = lean::Lean {
+        grade: true,
+        ..lean_shape()
+    };
+    let problems = shape.validate();
+    assert_eq!(
+        problems.iter().any(|p| p.contains("isn't admitted")),
+        !crate::grade::ADMITTED,
+        "{problems:?}"
+    );
+    assert!(
+        problems
+            .iter()
+            .any(|p| p.contains("grade requires keep_best"))
+    );
+    let lanes = lean::Lean {
+        grade: true,
+        keep_best: true,
+        lanes: 3,
+        ..lean_shape()
+    };
+    assert!(lanes.validate().iter().any(|p| p.contains("not lanes")));
+    // Off, the default, reads and writes as before.
+    let value = serde_json::to_value(lean_shape()).unwrap();
+    assert!(value.get("grade").is_none());
+}
+
+#[tokio::test]
+async fn the_frozen_check_is_graded_and_each_line_recorded_per_session() {
+    let python = std::process::Command::new("python3")
+        .arg("--version")
+        .output()
+        .is_ok_and(|o| o.status.success());
+    if !python {
+        eprintln!("python3 isn't installed; skipping");
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let work = dir.path().join("work");
+    let eval = lean::eval_dir(&work, Isolation::TaskContainer);
+    let script = format!(
+        "mkdir -p {e} && cat > {e}/score.sh <<'SH'\n\
+         python3 - <<'PY'\n\
+         import os\n\
+         checks = []\n\
+         def check(x): checks.append(bool(x))\n\
+         check(os.path.exists('hello.txt'))\n\
+         check(os.path.exists('world.txt'))\n\
+         print('SCORE', sum(checks), len(checks))\n\
+         PY\n\
+         SH",
+        e = eval.display()
+    );
+    let mut executor = micro(
+        dir.path(),
+        vec![
+            call(
+                "a1",
+                "run_command",
+                &json!({"command": script}),
+                usage(100, 0, 10),
+            ),
+            call(
+                "a2",
+                "write_file",
+                &json!({"path":"hello.txt","contents":"hello\n"}),
+                usage(100, 0, 10),
+            ),
+            finish("a3", "done", "hello.txt is written."),
+            call(
+                "b1",
+                "write_file",
+                &json!({"path":"world.txt","contents":"world\n"}),
+                usage(100, 0, 10),
+            ),
+            finish("b2", "done", "world.txt was missing."),
+        ],
+        lean_policy(lean::Lean {
+            keep_best: true,
+            retain_candidates: true,
+            grade: true,
+            ..lean_shape()
+        }),
+    );
+    executor.prepared = Some(prepared());
+    executor.execute(&briefing(TASK)).await;
+    let record = executor.last.as_ref().unwrap();
+    let moves = record["moves"].as_array().unwrap();
+    let grading = moves.iter().find(|m| m["kind"] == "lean.grade").unwrap();
+    assert_eq!(grading["split"], "lines");
+    assert_eq!(grading["lines"], 2);
+    assert_eq!(grading["instrumented"], true);
+    let attempts: Vec<_> = moves.iter().filter(|m| m["kind"] == "lean").collect();
+    assert_eq!(attempts.len(), 2);
+    assert_eq!(attempts[0]["score"], json!({"passed": 1, "total": 2}));
+    assert_eq!(attempts[1]["score"], json!({"passed": 2, "total": 2}));
+    // Jev is off in the test, so no line is graded `follows`: the graded
+    // key ties and the full score decides, as the raw rule would.
+    assert_eq!(attempts[0]["supported"], json!({"passed": 0, "total": 0}));
+    assert_eq!(attempts[1]["raw_would_keep"], true);
+    assert_eq!(attempts[1]["kept"], true);
+    for attempt in &attempts {
+        assert!(!attempt["score_tail"].as_str().unwrap().contains("OA-CHECK"));
+    }
+    // The record sits where the run card reads it, in its shape.
+    let path = dir.path().join("artifacts/lean-1/check-grades.json");
+    let grades: Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+    assert_eq!(grades["schema"], "openagents.coder-one.check-grades.v1");
+    assert_eq!(grades["check"], "lean-1/evaluator/score.sh");
+    assert_eq!(grades["frozen_after_session"], 1);
+    assert_eq!(grades["split"], "lines");
+    assert_eq!(grades["baseline"], false);
+    let lines = grades["lines"].as_array().unwrap();
+    assert_eq!(lines[0]["text"], "check(os.path.exists('hello.txt'))");
+    assert_eq!(lines[0]["grade"], "unknown");
+    assert_eq!(lines[0]["jev"]["how"], "off");
+    // Both lines ran red on a copy of the untouched workspace, so neither
+    // is a guard; with no support answer, #9629's class is unsupported.
+    assert_eq!(grading["untouched"], 2);
+    assert_eq!(lines[0]["authority"]["evidence"]["green_at_start"], false);
+    assert_eq!(lines[0]["authority"]["class"], "unsupported");
+    assert_eq!(
+        lines[1]["results"],
+        json!([{"session": 1, "passed": false}, {"session": 2, "passed": true}])
+    );
+    assert_eq!(
+        crate::accept::sha256(
+            std::fs::read_to_string(dir.path().join("artifacts/lean-1/evaluator/score.sh"))
+                .unwrap()
+                .as_bytes()
+        ),
+        grades["check_digest"].as_str().unwrap()
+    );
 }

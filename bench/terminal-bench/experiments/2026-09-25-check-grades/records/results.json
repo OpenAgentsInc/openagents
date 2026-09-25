@@ -1,0 +1,680 @@
+{
+  "threshold": 0.5,
+  "scripts": [
+    {
+      "script": "tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__UfYFodd",
+      "task": "embedding-drift-monitor",
+      "split": "lines",
+      "lines": 5,
+      "follows": 5,
+      "advisory": 0,
+      "basis": {
+        "task": 3,
+        "baseline": 0,
+        "standard": 2
+      },
+      "passes": 5,
+      "fails": 4,
+      "raw_full_on_fails": 4,
+      "raw_full_on_passes": 5,
+      "graded_full_on_fails": 4,
+      "graded_full_on_passes": 5,
+      "raw_auc": 0.5,
+      "graded_auc": 0.5,
+      "advisory_failing_passes": [],
+      "follows_failing_passes": [],
+      "reproduced": [
+        true,
+        true
+      ]
+    },
+    {
+      "script": "tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r2/embedding-drift-monitor__mVNMcMn",
+      "task": "embedding-drift-monitor",
+      "split": "lines",
+      "lines": 11,
+      "follows": 11,
+      "advisory": 0,
+      "basis": {
+        "task": 2,
+        "baseline": 0,
+        "standard": 9
+      },
+      "passes": 5,
+      "fails": 4,
+      "raw_full_on_fails": 1,
+      "raw_full_on_passes": 0,
+      "graded_full_on_fails": 1,
+      "graded_full_on_passes": 0,
+      "raw_auc": 0.625,
+      "graded_auc": 0.625,
+      "advisory_failing_passes": [],
+      "follows_failing_passes": [
+        "c6"
+      ],
+      "reproduced": [
+        true,
+        true
+      ]
+    },
+    {
+      "script": "tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r3/embedding-drift-monitor__KDeY8Bf",
+      "task": "embedding-drift-monitor",
+      "split": "lines",
+      "lines": 13,
+      "follows": 9,
+      "advisory": 4,
+      "basis": {
+        "task": 1,
+        "baseline": 0,
+        "standard": 8
+      },
+      "passes": 5,
+      "fails": 4,
+      "raw_full_on_fails": 2,
+      "raw_full_on_passes": 4,
+      "graded_full_on_fails": 2,
+      "graded_full_on_passes": 5,
+      "raw_auc": 0.65,
+      "graded_auc": 0.7,
+      "advisory_failing_passes": [
+        "c8"
+      ],
+      "follows_failing_passes": [],
+      "reproduced": [
+        true,
+        true
+      ]
+    },
+    {
+      "script": "tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r1/session-window-debug__arofNZN",
+      "task": "session-window-debug",
+      "split": "lines",
+      "lines": 3,
+      "follows": 3,
+      "advisory": 0,
+      "basis": {
+        "task": 0,
+        "baseline": 0,
+        "standard": 3
+      },
+      "passes": 0,
+      "fails": 9,
+      "raw_full_on_fails": 9,
+      "raw_full_on_passes": 0,
+      "graded_full_on_fails": 9,
+      "graded_full_on_passes": 0,
+      "raw_auc": null,
+      "graded_auc": null,
+      "advisory_failing_passes": [],
+      "follows_failing_passes": [],
+      "reproduced": [
+        true,
+        true
+      ]
+    },
+    {
+      "script": "tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r2/session-window-debug__vbWCjBZ",
+      "task": "session-window-debug",
+      "split": "lines",
+      "lines": 5,
+      "follows": 5,
+      "advisory": 0,
+      "basis": {
+        "task": 0,
+        "baseline": 0,
+        "standard": 5
+      },
+      "passes": 0,
+      "fails": 9,
+      "raw_full_on_fails": 9,
+      "raw_full_on_passes": 0,
+      "graded_full_on_fails": 9,
+      "graded_full_on_passes": 0,
+      "raw_auc": null,
+      "graded_auc": null,
+      "advisory_failing_passes": [],
+      "follows_failing_passes": [],
+      "reproduced": [
+        true,
+        true
+      ]
+    },
+    {
+      "script": "tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r3/session-window-debug__a7stmvT",
+      "task": "session-window-debug",
+      "split": "lines",
+      "lines": 3,
+      "follows": 3,
+      "advisory": 0,
+      "basis": {
+        "task": 0,
+        "baseline": 0,
+        "standard": 3
+      },
+      "passes": 0,
+      "fails": 9,
+      "raw_full_on_fails": 9,
+      "raw_full_on_passes": 0,
+      "graded_full_on_fails": 9,
+      "graded_full_on_passes": 0,
+      "raw_auc": null,
+      "graded_auc": null,
+      "advisory_failing_passes": [],
+      "follows_failing_passes": [],
+      "reproduced": [
+        true,
+        true
+      ]
+    },
+    {
+      "script": "tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-2/embedding-drift-monitor__y2bahob",
+      "task": "embedding-drift-monitor",
+      "split": "lines",
+      "lines": 10,
+      "follows": 9,
+      "advisory": 1,
+      "basis": {
+        "task": 1,
+        "baseline": 0,
+        "standard": 8
+      },
+      "passes": 5,
+      "fails": 4,
+      "raw_full_on_fails": 0,
+      "raw_full_on_passes": 5,
+      "graded_full_on_fails": 0,
+      "graded_full_on_passes": 5,
+      "raw_auc": 1.0,
+      "graded_auc": 1.0,
+      "advisory_failing_passes": [],
+      "follows_failing_passes": [],
+      "reproduced": [
+        true,
+        true
+      ]
+    },
+    {
+      "script": "tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-3/embedding-drift-monitor__QAHE7De",
+      "task": "embedding-drift-monitor",
+      "split": "lines",
+      "lines": 6,
+      "follows": 5,
+      "advisory": 1,
+      "basis": {
+        "task": 1,
+        "baseline": 0,
+        "standard": 4
+      },
+      "passes": 5,
+      "fails": 4,
+      "raw_full_on_fails": 4,
+      "raw_full_on_passes": 5,
+      "graded_full_on_fails": 4,
+      "graded_full_on_passes": 5,
+      "raw_auc": 0.5,
+      "graded_auc": 0.5,
+      "advisory_failing_passes": [],
+      "follows_failing_passes": [],
+      "reproduced": [
+        true,
+        true
+      ]
+    },
+    {
+      "script": "tb4--coder-one-microluna-v13-retained--embedding-drift-monitor/embedding-drift-monitor__6zRjd9n",
+      "task": "embedding-drift-monitor",
+      "split": "lines",
+      "lines": 8,
+      "follows": 8,
+      "advisory": 0,
+      "basis": {
+        "task": 2,
+        "baseline": 0,
+        "standard": 6
+      },
+      "passes": 5,
+      "fails": 4,
+      "raw_full_on_fails": 2,
+      "raw_full_on_passes": 5,
+      "graded_full_on_fails": 2,
+      "graded_full_on_passes": 5,
+      "raw_auc": 0.75,
+      "graded_auc": 0.75,
+      "advisory_failing_passes": [],
+      "follows_failing_passes": [],
+      "reproduced": [
+        true,
+        true
+      ]
+    },
+    {
+      "script": "tb4--coder-one-microluna-v13-retained--session-window-debug-2/session-window-debug__3v9FKP5",
+      "task": "session-window-debug",
+      "split": "lines",
+      "lines": 3,
+      "follows": 2,
+      "advisory": 1,
+      "basis": {
+        "task": 0,
+        "baseline": 0,
+        "standard": 2
+      },
+      "passes": 0,
+      "fails": 9,
+      "raw_full_on_fails": 9,
+      "raw_full_on_passes": 0,
+      "graded_full_on_fails": 9,
+      "graded_full_on_passes": 0,
+      "raw_auc": null,
+      "graded_auc": null,
+      "advisory_failing_passes": [],
+      "follows_failing_passes": [],
+      "reproduced": [
+        true,
+        true
+      ]
+    },
+    {
+      "script": "tb4--coder-one-microluna-v13-retained--session-window-debug-3/session-window-debug__3KVqBUz",
+      "task": "session-window-debug",
+      "split": "lines",
+      "lines": 4,
+      "follows": 1,
+      "advisory": 3,
+      "basis": {
+        "task": 0,
+        "baseline": 0,
+        "standard": 1
+      },
+      "passes": 0,
+      "fails": 9,
+      "raw_full_on_fails": 9,
+      "raw_full_on_passes": 0,
+      "graded_full_on_fails": 9,
+      "graded_full_on_passes": 0,
+      "raw_auc": null,
+      "graded_auc": null,
+      "advisory_failing_passes": [],
+      "follows_failing_passes": [],
+      "reproduced": [
+        true,
+        true
+      ]
+    },
+    {
+      "script": "tb4--coder-one-microluna-v13-retained--session-window-debug/session-window-debug__PacT86C",
+      "task": "session-window-debug",
+      "split": "lines",
+      "lines": 3,
+      "follows": 3,
+      "advisory": 0,
+      "basis": {
+        "task": 0,
+        "baseline": 0,
+        "standard": 3
+      },
+      "passes": 0,
+      "fails": 9,
+      "raw_full_on_fails": 9,
+      "raw_full_on_passes": 0,
+      "graded_full_on_fails": 9,
+      "graded_full_on_passes": 0,
+      "raw_auc": null,
+      "graded_auc": null,
+      "advisory_failing_passes": [],
+      "follows_failing_passes": [],
+      "reproduced": [
+        true,
+        true
+      ]
+    }
+  ],
+  "sweep": {
+    "0.3": [
+      {
+        "script": "tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__UfYFodd",
+        "follows": 5,
+        "graded_auc": 0.5
+      },
+      {
+        "script": "tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r2/embedding-drift-monitor__mVNMcMn",
+        "follows": 11,
+        "graded_auc": 0.625
+      },
+      {
+        "script": "tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r3/embedding-drift-monitor__KDeY8Bf",
+        "follows": 13,
+        "graded_auc": 0.65
+      },
+      {
+        "script": "tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r1/session-window-debug__arofNZN",
+        "follows": 3,
+        "graded_auc": null
+      },
+      {
+        "script": "tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r2/session-window-debug__vbWCjBZ",
+        "follows": 5,
+        "graded_auc": null
+      },
+      {
+        "script": "tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r3/session-window-debug__a7stmvT",
+        "follows": 3,
+        "graded_auc": null
+      },
+      {
+        "script": "tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-2/embedding-drift-monitor__y2bahob",
+        "follows": 10,
+        "graded_auc": 1.0
+      },
+      {
+        "script": "tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-3/embedding-drift-monitor__QAHE7De",
+        "follows": 6,
+        "graded_auc": 0.5
+      },
+      {
+        "script": "tb4--coder-one-microluna-v13-retained--embedding-drift-monitor/embedding-drift-monitor__6zRjd9n",
+        "follows": 8,
+        "graded_auc": 0.75
+      },
+      {
+        "script": "tb4--coder-one-microluna-v13-retained--session-window-debug-2/session-window-debug__3v9FKP5",
+        "follows": 3,
+        "graded_auc": null
+      },
+      {
+        "script": "tb4--coder-one-microluna-v13-retained--session-window-debug-3/session-window-debug__3KVqBUz",
+        "follows": 4,
+        "graded_auc": null
+      },
+      {
+        "script": "tb4--coder-one-microluna-v13-retained--session-window-debug/session-window-debug__PacT86C",
+        "follows": 3,
+        "graded_auc": null
+      }
+    ],
+    "0.4": [
+      {
+        "script": "tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__UfYFodd",
+        "follows": 5,
+        "graded_auc": 0.5
+      },
+      {
+        "script": "tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r2/embedding-drift-monitor__mVNMcMn",
+        "follows": 11,
+        "graded_auc": 0.625
+      },
+      {
+        "script": "tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r3/embedding-drift-monitor__KDeY8Bf",
+        "follows": 12,
+        "graded_auc": 0.65
+      },
+      {
+        "script": "tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r1/session-window-debug__arofNZN",
+        "follows": 3,
+        "graded_auc": null
+      },
+      {
+        "script": "tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r2/session-window-debug__vbWCjBZ",
+        "follows": 5,
+        "graded_auc": null
+      },
+      {
+        "script": "tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r3/session-window-debug__a7stmvT",
+        "follows": 3,
+        "graded_auc": null
+      },
+      {
+        "script": "tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-2/embedding-drift-monitor__y2bahob",
+        "follows": 9,
+        "graded_auc": 1.0
+      },
+      {
+        "script": "tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-3/embedding-drift-monitor__QAHE7De",
+        "follows": 6,
+        "graded_auc": 0.5
+      },
+      {
+        "script": "tb4--coder-one-microluna-v13-retained--embedding-drift-monitor/embedding-drift-monitor__6zRjd9n",
+        "follows": 8,
+        "graded_auc": 0.75
+      },
+      {
+        "script": "tb4--coder-one-microluna-v13-retained--session-window-debug-2/session-window-debug__3v9FKP5",
+        "follows": 2,
+        "graded_auc": null
+      },
+      {
+        "script": "tb4--coder-one-microluna-v13-retained--session-window-debug-3/session-window-debug__3KVqBUz",
+        "follows": 4,
+        "graded_auc": null
+      },
+      {
+        "script": "tb4--coder-one-microluna-v13-retained--session-window-debug/session-window-debug__PacT86C",
+        "follows": 3,
+        "graded_auc": null
+      }
+    ],
+    "0.5": [
+      {
+        "script": "tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__UfYFodd",
+        "follows": 5,
+        "graded_auc": 0.5
+      },
+      {
+        "script": "tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r2/embedding-drift-monitor__mVNMcMn",
+        "follows": 11,
+        "graded_auc": 0.625
+      },
+      {
+        "script": "tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r3/embedding-drift-monitor__KDeY8Bf",
+        "follows": 9,
+        "graded_auc": 0.7
+      },
+      {
+        "script": "tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r1/session-window-debug__arofNZN",
+        "follows": 3,
+        "graded_auc": null
+      },
+      {
+        "script": "tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r2/session-window-debug__vbWCjBZ",
+        "follows": 5,
+        "graded_auc": null
+      },
+      {
+        "script": "tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r3/session-window-debug__a7stmvT",
+        "follows": 3,
+        "graded_auc": null
+      },
+      {
+        "script": "tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-2/embedding-drift-monitor__y2bahob",
+        "follows": 9,
+        "graded_auc": 1.0
+      },
+      {
+        "script": "tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-3/embedding-drift-monitor__QAHE7De",
+        "follows": 5,
+        "graded_auc": 0.5
+      },
+      {
+        "script": "tb4--coder-one-microluna-v13-retained--embedding-drift-monitor/embedding-drift-monitor__6zRjd9n",
+        "follows": 8,
+        "graded_auc": 0.75
+      },
+      {
+        "script": "tb4--coder-one-microluna-v13-retained--session-window-debug-2/session-window-debug__3v9FKP5",
+        "follows": 2,
+        "graded_auc": null
+      },
+      {
+        "script": "tb4--coder-one-microluna-v13-retained--session-window-debug-3/session-window-debug__3KVqBUz",
+        "follows": 1,
+        "graded_auc": null
+      },
+      {
+        "script": "tb4--coder-one-microluna-v13-retained--session-window-debug/session-window-debug__PacT86C",
+        "follows": 3,
+        "graded_auc": null
+      }
+    ],
+    "0.6": [
+      {
+        "script": "tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__UfYFodd",
+        "follows": 2,
+        "graded_auc": 0.5
+      },
+      {
+        "script": "tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r2/embedding-drift-monitor__mVNMcMn",
+        "follows": 10,
+        "graded_auc": 0.625
+      },
+      {
+        "script": "tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r3/embedding-drift-monitor__KDeY8Bf",
+        "follows": 8,
+        "graded_auc": 0.7
+      },
+      {
+        "script": "tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r1/session-window-debug__arofNZN",
+        "follows": 1,
+        "graded_auc": null
+      },
+      {
+        "script": "tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r2/session-window-debug__vbWCjBZ",
+        "follows": 2,
+        "graded_auc": null
+      },
+      {
+        "script": "tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r3/session-window-debug__a7stmvT",
+        "follows": 1,
+        "graded_auc": null
+      },
+      {
+        "script": "tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-2/embedding-drift-monitor__y2bahob",
+        "follows": 7,
+        "graded_auc": 1.0
+      },
+      {
+        "script": "tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-3/embedding-drift-monitor__QAHE7De",
+        "follows": 4,
+        "graded_auc": 0.5
+      },
+      {
+        "script": "tb4--coder-one-microluna-v13-retained--embedding-drift-monitor/embedding-drift-monitor__6zRjd9n",
+        "follows": 7,
+        "graded_auc": 0.75
+      },
+      {
+        "script": "tb4--coder-one-microluna-v13-retained--session-window-debug-2/session-window-debug__3v9FKP5",
+        "follows": 1,
+        "graded_auc": null
+      },
+      {
+        "script": "tb4--coder-one-microluna-v13-retained--session-window-debug-3/session-window-debug__3KVqBUz",
+        "follows": 1,
+        "graded_auc": null
+      },
+      {
+        "script": "tb4--coder-one-microluna-v13-retained--session-window-debug/session-window-debug__PacT86C",
+        "follows": 1,
+        "graded_auc": null
+      }
+    ],
+    "0.7": [
+      {
+        "script": "tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__UfYFodd",
+        "follows": 1,
+        "graded_auc": 0.5
+      },
+      {
+        "script": "tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r2/embedding-drift-monitor__mVNMcMn",
+        "follows": 9,
+        "graded_auc": 0.625
+      },
+      {
+        "script": "tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r3/embedding-drift-monitor__KDeY8Bf",
+        "follows": 6,
+        "graded_auc": 0.65
+      },
+      {
+        "script": "tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r1/session-window-debug__arofNZN",
+        "follows": 1,
+        "graded_auc": null
+      },
+      {
+        "script": "tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r2/session-window-debug__vbWCjBZ",
+        "follows": 2,
+        "graded_auc": null
+      },
+      {
+        "script": "tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r3/session-window-debug__a7stmvT",
+        "follows": 0,
+        "graded_auc": null
+      },
+      {
+        "script": "tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-2/embedding-drift-monitor__y2bahob",
+        "follows": 5,
+        "graded_auc": 1.0
+      },
+      {
+        "script": "tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-3/embedding-drift-monitor__QAHE7De",
+        "follows": 3,
+        "graded_auc": 0.5
+      },
+      {
+        "script": "tb4--coder-one-microluna-v13-retained--embedding-drift-monitor/embedding-drift-monitor__6zRjd9n",
+        "follows": 2,
+        "graded_auc": 0.75
+      },
+      {
+        "script": "tb4--coder-one-microluna-v13-retained--session-window-debug-2/session-window-debug__3v9FKP5",
+        "follows": 1,
+        "graded_auc": null
+      },
+      {
+        "script": "tb4--coder-one-microluna-v13-retained--session-window-debug-3/session-window-debug__3KVqBUz",
+        "follows": 1,
+        "graded_auc": null
+      },
+      {
+        "script": "tb4--coder-one-microluna-v13-retained--session-window-debug/session-window-debug__PacT86C",
+        "follows": 1,
+        "graded_auc": null
+      }
+    ]
+  },
+  "tasks": {
+    "embedding-drift-monitor": {
+      "scripts": 6,
+      "scripts_with_both_outcomes": 6,
+      "raw_separates": 1,
+      "graded_separates": 1,
+      "graded_separates_where_raw_did_not": 0,
+      "auc_raised": 1,
+      "auc_lowered": 0,
+      "admitted_here": false
+    },
+    "session-window-debug": {
+      "scripts": 6,
+      "scripts_with_both_outcomes": 0,
+      "raw_separates": 0,
+      "graded_separates": 0,
+      "graded_separates_where_raw_did_not": 0,
+      "auc_raised": 0,
+      "auc_lowered": 0,
+      "admitted_here": null
+    }
+  },
+  "lines": {
+    "total": 74,
+    "follows": 64,
+    "advisory": 10,
+    "follows_share": 0.865,
+    "follows_interval": [
+      0.769,
+      0.925
+    ]
+  },
+  "classes": {},
+  "green_at_start": 0,
+  "admitted": false
+}

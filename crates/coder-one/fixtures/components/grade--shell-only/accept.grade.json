@@ -1,0 +1,13 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "accept.grade",
+  "source": {
+    "kind": "synthetic",
+    "about": "A score script in shell alone, with no Python heredoc: one advisory unit."
+  },
+  "input": {
+    "task": "Write out.csv with a total row.",
+    "script_path": "crates/coder-one/fixtures/grade/shell-only.sh"
+  },
+  "retained": null
+}

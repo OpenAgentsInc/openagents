@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "id": "openagents.expectation-support.v1",
+  "name": "Whether a check's expected result is supported",
+  "summary": "Asks, once per check line or test, whether the result it expects follows from the task's words, from what the task's own program printed on the untouched workspace, or from the standard definition of a method it names. accept.grade asks it of each line of a session-written score script at the freeze (#9635), and the answer stands in for the faithfulness judgment when accept.define's authority classes (#9629) class the line. The instructions name `{item}`, which code replaces with the item's state path.",
+  "questions": {
+    "task": {
+      "type": "noul",
+      "instructions": "The result that the check in `{item}.text` expects follows from the task's own words in `task`: the task states that result, or a rule, example, or requirement the task states implies it. `{item}.context` holds the lines before the check that set up its inputs. A result the check's author chose that the task never states or implies, such as an exact value, a tolerance, a count of steps, or a behavior on an input the task doesn't describe, doesn't follow."
+    },
+    "baseline": {
+      "type": "noul",
+      "instructions": "The result that the check in `{item}.text` expects follows from `baseline`, the output the task's own commands printed when the host ran them on the untouched workspace: the check expects a name, a format, a field, or a result shown there that the task doesn't describe as wrong. `{item}.context` holds the lines before the check that set up its inputs. A result that `baseline` doesn't show, or that the task describes as wrong, doesn't follow."
+    },
+    "standard": {
+      "type": "noul",
+      "instructions": "The result that the check in `{item}.text` expects follows from the standard definition of a well-known method the check or the task names, such as a statistic, a distance, an estimator, an algorithm, a protocol, or a file format: every correct implementation of that method gives the expected result on the check's inputs. `{item}.context` holds the lines before the check that set up its inputs. A result that holds for only one variant of the method, such as the biased form of an estimator when the task names no variant, doesn't follow, and neither does a result no named method determines."
+    }
+  },
+  "policy": {
+    "v": 1,
+    "evidence": [
+      "docs/terminal-bench/2026-09-25-check-grades-offline.md"
+    ]
+  }
+}
