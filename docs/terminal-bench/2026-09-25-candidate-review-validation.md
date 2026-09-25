@@ -181,3 +181,60 @@ retained v13 loop. These [stronger-model controls](../../bench/terminal-bench/ex
 can reveal false alarms on successful candidates if they produce any. Both executor
 and assessor use Astra, which limits independence. Their outcomes are not used to
 fit the frozen rule. No passing outcome or identical-cost comparison is assumed.
+
+## Whole-task assessments and agreement
+
+A separate Astra assessment read the task, final text files, and selected writer
+report. It assigned requirement statuses and a failure score. It did not execute
+checks. All 132 calibration trials were attempted; native timeouts remain unknown.
+At the supported cutoffs, its best qualifying-size precision was 5/6 at 0.95,
+below the declared 90% target. Known calibration model cost was $22.33042, with
+unknown usage for timed-out calls. No standalone comparison claim follows.
+
+The next preregistered rule required agreement between source review and the
+whole-task assessment, or a concrete report admission. Calibration selected source
+at 0.8, assessment at 0.5, and report at 0.5: 14/15 correct calls and 14/62 recall.
+The exact Boolean expression allowed short-circuiting: only 28 of 185 comparison
+candidates needed a new assessment. Missing and bypassed candidates remained in
+all denominators; this subset cannot measure a standalone assessment rule.
+
+Historical comparison gave **9/12 failure precision, 75% (47–91%), and 9/60
+failure recall, 15% (8–26%)**. Against the original scenario checks, the paired
+task-bootstrap precision difference was −24 to +67 percentage points and the
+recall difference was −11 to +19 points. Both include zero. This is an improved
+point estimate, not an established improvement. Both reasoning calls used Astra,
+so their agreement is not independent replication. The rule remains frozen for
+prospective evaluation and is not promoted.
+
+## Attribution defects found through execution observations
+
+A lower-cost arm asked Jev about the last 12 retained tool observations from the
+selected executor session: whether a mandatory failure was observed and remained
+unresolved. It distinguishes unsuccessful searches, optional diagnostics, earlier
+fixed errors, and unsupported self-written expectations from actual task failures.
+The original reader gave 15/18 correct calibration calls at 0.5 and no qualifying
+cutoff. Inspecting those calibration false alarms exposed two software defects:
+
+- `second.kept = first` selected the initial executor even if escalation and repair
+  had already changed that candidate, or persistence had changed it afterward.
+  The corrected reader follows host decisions in order and matches session IDs.
+  Resumed native streams use numerical resume order. Discarded persistence rounds
+  cannot replace selected evidence; failed restorations remain unknown.
+- Repair did not advance the composition's dispatch counter. A later executor
+  could overwrite its native stream. The counter now reserves that dispatch.
+  A regression test checks that repair and second-executor identities survive in
+  distinct files. Historical overwritten streams remain unavailable.
+
+A missing selected stream cannot fall back to the initial failing report. A
+retained repair-report excerpt is labeled as partial and can only supply report
+evidence. Unsupported best-of-N attribution remains unknown. Existing frozen
+source/readiness records keep their original inputs; they are not silently
+rewritten to use the corrected reader.
+
+With unchanged execution questions and corrected attribution, calibration gave
+14/14 correct calls at 0.5. The preregistered union added the corrected report audit
+at 0.7, yielding 15/15 correct calls and 15/62 recall. These are fitting results.
+The [frozen rule](../../bench/terminal-bench/experiments/2026-09-25-candidate-review/frozen-observed-rule.json)
+was committed before generating execution comparison answers. Its comparison is
+still reused validation, following several negative arms. Prospective grades
+remain unopened while this evaluation runs.
