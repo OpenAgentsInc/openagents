@@ -32,6 +32,7 @@
 //! derived. Protected verifier test names, counts, and fixture timings
 //! never enter one.
 
+pub mod acceptance;
 pub mod behavior;
 pub mod cancel;
 pub mod cli;
