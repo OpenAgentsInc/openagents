@@ -138,6 +138,12 @@ like GPT-6 Luna run through [Microluna](microluna.md).
 7. **Measure matched, and kill losers early.** Compare one change at a
    time against a matched baseline, and stop an arm as soon as it can't
    win.
+8. **Tune on patterns, not wording.** What a winning run does is modeled
+   as components that recur across tasks: a profile of the data, a run of
+   the task's own program, a check against a well-known method's
+   definition. A phrase list or a sentence fitted from one task's own text
+   makes that task in-sample; a pattern earns its place on tasks it wasn't
+   learned from. See [patterns as components](pattern-components.md).
 
 ## Where the thesis could be wrong
 

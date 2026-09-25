@@ -678,6 +678,12 @@ fitting and serving a trained routing model are later integrations.
 - Keep the security policy, the verifier, the budget, and the acceptance
   rule outside every candidate's writable set.
 - Record every candidate, including losers and their spend.
+- Tune on patterns, not wording. A reflective edit, a phrase list, or a
+  guidance sentence drawn from a task's own text counts that task as
+  in-sample, and carries its provenance. A recurring pattern becomes a
+  component with a structural or semantic trigger and an output that is
+  evidence or an executed check, admitted only on tasks it wasn't learned
+  from. See [patterns as components](../coder/design/pattern-components.md).
 
 ## Is DSPy the tool?
 
