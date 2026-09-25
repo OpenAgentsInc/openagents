@@ -17,6 +17,10 @@ pub const USAGE: &str = "usage: coder-one component list [--json]
        coder-one component replay control.monitor [--traces DIR] [--jev recorded|live|off]
                                   [--recorded FILE] [--save-jev] [--live-limit N] [--sample TEXT]
                                   [--out FILE] [--json]
+       coder-one component replay control.stall (--traces DIR... | --inputs FILE) --split FILE
+                                  --out DIR [--partition calibration|evaluation|all]...
+                                  [--jev recorded|live|off] [--recorded FILE] [--save-jev]
+                                  [--live-limit N]
 
 --jev defaults to recorded: answers replay from each fixture's jev-recorded.json,
 and a changed state or question set misses. live calls Jev with TYPESAFE_API_KEY;
@@ -31,7 +35,15 @@ one event at a time and labels each judgment by hindsight. Its Jev answers
 replay from --recorded (bench/terminal-bench/monitor/jev-recorded.json); with
 --jev live, the first trial of each task under the traces --sample names (the
 v3 Luna, v2 Opus, and v2 Luna arms by default) is asked live, at most
---live-limit requests (40), and --save-jev adds the answers to that file.";
+--live-limit requests (40), and --save-jev adds the answers to that file.
+
+replay control.stall takes every checkpoint of the retained Microluna dispatches
+under each --traces directory (issue #9627) and writes inputs.jsonl, sources.json,
+and one labels-<partition>.jsonl per partition to --out; the --split file names
+the calibration and evaluation tasks. It then asks Jev at the checkpoints of each
+--partition (calibration by default), recorded answers first from --recorded, live
+for misses with --jev live up to --live-limit, and writes rows.jsonl, which holds
+answers and calls but no label. --inputs replays a retained inputs file instead.";
 
 /// A live Jev client from `TYPESAFE_API_KEY` or `~/.openagents/jev.json`.
 ///
@@ -66,6 +78,10 @@ struct Flags {
     recorded: Option<PathBuf>,
     live_limit: usize,
     sample: Vec<String>,
+    traces_all: Vec<PathBuf>,
+    split: Option<PathBuf>,
+    inputs: Option<PathBuf>,
+    partitions: Vec<String>,
 }
 
 impl Flags {
@@ -85,6 +101,10 @@ impl Flags {
             recorded: None,
             live_limit: 40,
             sample: Vec::new(),
+            traces_all: Vec::new(),
+            split: None,
+            inputs: None,
+            partitions: Vec::new(),
         };
         let mut args = args.iter();
         while let Some(arg) = args.next() {
@@ -96,7 +116,14 @@ impl Flags {
             match arg.as_str() {
                 "--fixture" => flags.fixture = Some(value("--fixture")?.into()),
                 "--fixtures" => flags.fixtures = Some(value("--fixtures")?.into()),
-                "--traces" => flags.traces = Some(value("--traces")?.into()),
+                "--traces" => {
+                    let dir: PathBuf = value("--traces")?.into();
+                    flags.traces_all.push(dir.clone());
+                    flags.traces = Some(dir);
+                }
+                "--split" => flags.split = Some(value("--split")?.into()),
+                "--inputs" => flags.inputs = Some(value("--inputs")?.into()),
+                "--partition" => flags.partitions.push(value("--partition")?),
                 "--arm" => flags.arm = Some(value("--arm")?),
                 "--out" => flags.out = Some(value("--out")?.into()),
                 "--export" => flags.export = Some(value("--export")?.into()),
@@ -257,6 +284,9 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
         "replay" if flags.positional.first().map(String::as_str) == Some("control.monitor") => {
             replay_monitor(&flags).await
         }
+        "replay" if flags.positional.first().map(String::as_str) == Some("control.stall") => {
+            replay_stall(&flags).await
+        }
         "replay" => {
             if flags.positional.first().map(String::as_str) != Some("evidence.pack") {
                 return Err(format!(
@@ -362,6 +392,68 @@ async fn replay_monitor(flags: &Flags) -> Result<i32, String> {
             println!("written to {}", path.display());
         }
     }
+    Ok(0)
+}
+
+async fn replay_stall(flags: &Flags) -> Result<i32, String> {
+    let split = super::stall::Split::load(
+        flags
+            .split
+            .as_deref()
+            .ok_or("replay control.stall needs --split FILE")?,
+    )?;
+    let out = flags
+        .out
+        .clone()
+        .ok_or("replay control.stall needs --out DIR")?;
+    let inputs = match &flags.inputs {
+        Some(path) => super::stall::load_inputs(path)?,
+        None if !flags.traces_all.is_empty() => {
+            super::stall::extract_to(&flags.traces_all, &split, &out)?
+        }
+        None => return Err("replay control.stall needs --traces DIR or --inputs FILE".to_string()),
+    };
+    let recorded_path = flags
+        .recorded
+        .clone()
+        .unwrap_or_else(|| out.join("jev-recorded.json"));
+    let recorded = super::jev::Recorded::load(&recorded_path)?;
+    let live = match flags.jev.as_str() {
+        "live" => match flags.choice()? {
+            JevChoice::Live(client) => Some(client),
+            _ => None,
+        },
+        "recorded" | "off" => None,
+        other => return Err(format!("--jev takes live, recorded, or off, not {other}")),
+    };
+    let jev = super::stall::ReplayJev {
+        recorded: recorded.clone(),
+        live,
+        live_limit: flags.live_limit,
+        on: flags.jev != "off",
+    };
+    let partitions = if flags.partitions.is_empty() {
+        vec!["calibration".to_string()]
+    } else {
+        flags.partitions.clone()
+    };
+    let (replayed, recorder) = super::stall::score(&inputs, &partitions, &jev, &out).await?;
+    if flags.save_jev && flags.jev == "live" {
+        let mut recorded = recorded;
+        let added = super::jev::record_answers(
+            &recorder.steps(),
+            "live control.stall replay",
+            &mut recorded,
+        );
+        if added > 0 {
+            recorded.save(&recorded_path)?;
+        }
+        eprintln!("recorded {added} answers in {}", recorded_path.display());
+    }
+    let value = serde_json::to_value(&replayed).map_err(|error| error.to_string())?;
+    let text = serde_json::to_string_pretty(&value).map_err(|error| error.to_string())?;
+    crate::record::write_atomic(&out.join("replayed.json"), format!("{text}\n").as_bytes())?;
+    print_json(&value)?;
     Ok(0)
 }
 

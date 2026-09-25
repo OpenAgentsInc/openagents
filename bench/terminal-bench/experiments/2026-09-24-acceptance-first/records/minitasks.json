@@ -1,0 +1,264 @@
+{
+ "schema": "openagents.acceptance-first.minitasks.v1",
+ "source": "coder-one accept minitask runs of 2026-09-24, local time UTC-5",
+ "summary": {
+  "completed": 13,
+  "stopped_early": 4,
+  "green": 8,
+  "green_and_passed": 3,
+  "red": 5,
+  "red_and_passed": 2,
+  "spend_usd": 0.103316
+ },
+ "runs": [
+  {
+   "task": "cancel-cleanup",
+   "round": 2,
+   "finished_local": "2026-09-24T04:05",
+   "completed": true,
+   "suite": "an accepted acceptance suite: 2 tests over 3 requirements, 0 rejected, 0 gaps, digest 241b49a2889e",
+   "stopped": "the bound of 4 sessions",
+   "green": false,
+   "grader": "failed",
+   "grader_detail": "two tasks never started: Traceback (most recent call last):\n  File \"<string>\", line 19, in main\n    await run_tasks([job(i) for i in range(3)], 2)\n  File \"/tmp/claude-1000/-home-christopherdavid-opena",
+   "spend_usd": {
+    "writer": 0.00118052,
+    "jev": 0.000197862,
+    "sessions": 0.0039056200000000003,
+    "total": 0.005284002
+   }
+  },
+  {
+   "task": "cancel-cleanup",
+   "round": 3,
+   "finished_local": "2026-09-24T04:07",
+   "completed": true,
+   "suite": "an accepted acceptance suite: 2 tests over 3 requirements, 0 rejected, 0 gaps, digest 6d5e0b75e668",
+   "stopped": "the suite is green",
+   "green": true,
+   "grader": "failed",
+   "grader_detail": "0 of 2 started tasks cleaned up before run_tasks returned; the process did not exit",
+   "spend_usd": {
+    "writer": 0.0017788200000000002,
+    "jev": 0.000181482,
+    "sessions": 0.0011743200000000002,
+    "total": 0.003134622
+   }
+  },
+  {
+   "task": "cancel-cleanup",
+   "round": 4,
+   "finished_local": "2026-09-24T04:42",
+   "completed": true,
+   "suite": "an accepted acceptance suite: 4 tests over 3 requirements, 0 rejected, 0 gaps, digest b5f49f5f1b87",
+   "stopped": "the suite is green",
+   "green": true,
+   "grader": "failed",
+   "grader_detail": "0 of 2 started tasks cleaned up before run_tasks returned; the process did not exit",
+   "spend_usd": {
+    "writer": 0.0034425000000000002,
+    "jev": 0.0005641859999999999,
+    "sessions": 0.0015519999999999998,
+    "total": 0.005558686
+   }
+  },
+  {
+   "task": "cancel-cleanup",
+   "round": 5,
+   "finished_local": "2026-09-24T07:44",
+   "completed": true,
+   "suite": "an accepted acceptance suite: 3 tests over 3 requirements, 0 rejected, 0 gaps, digest 4fc47220ec71",
+   "stopped": "the suite is green",
+   "green": true,
+   "grader": "failed",
+   "grader_detail": "0 of 2 started tasks cleaned up before run_tasks returned; the process did not exit",
+   "spend_usd": {
+    "writer": 0.0017625400000000002,
+    "jev": 0.000249774,
+    "sessions": 0.00115602,
+    "total": 0.003168334
+   }
+  },
+  {
+   "task": "git-recovery",
+   "round": 2,
+   "finished_local": "2026-09-24T04:05",
+   "completed": false,
+   "note": "the run was stopped before it wrote a result"
+  },
+  {
+   "task": "git-recovery",
+   "round": 3,
+   "finished_local": "2026-09-24T04:07",
+   "completed": true,
+   "suite": "an accepted acceptance suite: 1 tests over 1 requirements, 0 rejected, 0 gaps, digest 9923b8c2824e",
+   "stopped": "the suite is green",
+   "green": true,
+   "grader": "passed",
+   "grader_detail": "master holds feature.txt and the tree is clean",
+   "spend_usd": {
+    "writer": 0.00234688,
+    "jev": 0.00012037199999999999,
+    "sessions": 0.0009018,
+    "total": 0.003369052
+   }
+  },
+  {
+   "task": "git-recovery",
+   "round": 4,
+   "finished_local": "2026-09-24T04:41",
+   "completed": true,
+   "suite": "an accepted acceptance suite: 4 tests over 1 requirements, 0 rejected, 0 gaps, digest bf4ab58a5b91",
+   "stopped": "the suite is green",
+   "green": true,
+   "grader": "passed",
+   "grader_detail": "master holds feature.txt and the tree is clean",
+   "spend_usd": {
+    "writer": 0.0042549400000000005,
+    "jev": 0.00038316600000000005,
+    "sessions": 0.0009658400000000001,
+    "total": 0.005603946
+   }
+  },
+  {
+   "task": "git-recovery",
+   "round": 5,
+   "finished_local": "2026-09-24T07:44",
+   "completed": true,
+   "suite": "an accepted acceptance suite: 1 tests over 1 requirements, 0 rejected, 0 gaps, digest 8ea3f80600d7",
+   "stopped": "the suite is green",
+   "green": true,
+   "grader": "passed",
+   "grader_detail": "master holds feature.txt and the tree is clean",
+   "spend_usd": {
+    "writer": 0.00338382,
+    "jev": 0.000130788,
+    "sessions": 0.0011697,
+    "total": 0.004684308
+   }
+  },
+  {
+   "task": "interactive-terminal",
+   "round": 2,
+   "finished_local": "2026-09-24T04:04",
+   "completed": false,
+   "note": "the run was stopped before it wrote a result"
+  },
+  {
+   "task": "interactive-terminal",
+   "round": 3,
+   "finished_local": "2026-09-24T04:11",
+   "completed": true,
+   "suite": "a partial acceptance suite: 3 tests over 7 requirements, 1 rejected, 3 gaps (R1, R3, R7), digest 08f15a2463fc",
+   "stopped": "the bound of 4 sessions",
+   "green": false,
+   "grader": "passed",
+   "grader_detail": "an interactive program read the typed line",
+   "spend_usd": {
+    "writer": 0.005771600000000001,
+    "jev": 0.001018458,
+    "sessions": 0.009623,
+    "total": 0.016413058
+   }
+  },
+  {
+   "task": "interactive-terminal",
+   "round": 4,
+   "finished_local": "2026-09-24T04:49",
+   "completed": true,
+   "suite": "an accepted acceptance suite: 5 tests over 7 requirements, 0 rejected, 0 gaps, digest 48c3f3cde620",
+   "stopped": "the bound of 4 sessions",
+   "green": false,
+   "grader": "failed",
+   "grader_detail": "the interactive program's file holds \"hello from the grader\\n\\u{4}\"; the grader said \"responsive\"",
+   "spend_usd": {
+    "writer": 0.00625862,
+    "jev": 0.0013919640000000003,
+    "sessions": 0.01033744,
+    "total": 0.017988024
+   }
+  },
+  {
+   "task": "interactive-terminal",
+   "round": 5,
+   "finished_local": "2026-09-24T07:50",
+   "completed": false,
+   "note": "the run was stopped before it wrote a result"
+  },
+  {
+   "task": "log-severity",
+   "round": 1,
+   "finished_local": "2026-09-24T04:01",
+   "completed": true,
+   "suite": "a partial acceptance suite: 1 tests over 10 requirements, 2 rejected, 5 gaps (R1, R2, R3, R4, R5), digest 128bbfd2056a",
+   "stopped": "the bound of 4 sessions",
+   "green": false,
+   "grader": "passed",
+   "grader_detail": "summary.csv matches the counts by severity field",
+   "spend_usd": {
+    "writer": 0.005474980000000001,
+    "jev": 0.0006417180000000001,
+    "sessions": 0.00477436,
+    "total": 0.010891058000000002
+   }
+  },
+  {
+   "task": "log-severity",
+   "round": 2,
+   "finished_local": "2026-09-24T04:05",
+   "completed": false,
+   "note": "the run was stopped before it wrote a result"
+  },
+  {
+   "task": "log-severity",
+   "round": 3,
+   "finished_local": "2026-09-24T04:08",
+   "completed": true,
+   "suite": "a partial acceptance suite: 1 tests over 10 requirements, 1 rejected, 2 gaps (R6, R7), digest 42b4957ad1ab",
+   "stopped": "the suite is green",
+   "green": true,
+   "grader": "failed",
+   "grader_detail": "summary.csv is missing",
+   "spend_usd": {
+    "writer": 0.005364860000000001,
+    "jev": 0.001189104,
+    "sessions": 0.0015402800000000002,
+    "total": 0.008094244
+   }
+  },
+  {
+   "task": "log-severity",
+   "round": 4,
+   "finished_local": "2026-09-24T04:41",
+   "completed": true,
+   "suite": "an accepted acceptance suite: 9 tests over 10 requirements, 0 rejected, 0 gaps, digest dcb6de8ede53",
+   "stopped": "the suite is green",
+   "green": true,
+   "grader": "failed",
+   "grader_detail": "summary.csv is missing",
+   "spend_usd": {
+    "writer": 0.0038831399999999993,
+    "jev": 0.0008527259999999999,
+    "sessions": 0.0015702200000000002,
+    "total": 0.006306085999999999
+   }
+  },
+  {
+   "task": "log-severity",
+   "round": 5,
+   "finished_local": "2026-09-24T07:47",
+   "completed": true,
+   "suite": "an accepted acceptance suite: 3 tests over 10 requirements, 0 rejected, 0 gaps, digest 39259777f63d",
+   "stopped": "the bound of 4 sessions",
+   "green": false,
+   "grader": "failed",
+   "grader_detail": "summary.csv is missing",
+   "spend_usd": {
+    "writer": 0.00484316,
+    "jev": 0.0010148880000000002,
+    "sessions": 0.00696286,
+    "total": 0.012820908
+   }
+  }
+ ]
+}

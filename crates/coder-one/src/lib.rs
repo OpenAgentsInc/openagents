@@ -58,6 +58,7 @@ pub mod scripted;
 pub mod session;
 pub mod shell;
 pub mod snapshot;
+pub mod stall;
 pub mod state;
 pub mod stream;
 pub mod study;

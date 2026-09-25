@@ -1445,6 +1445,7 @@ fn lean_shape() -> lean::Lean {
         lane_sec: 0,
         failures: false,
         structure: false,
+        detect: None,
     }
 }
 

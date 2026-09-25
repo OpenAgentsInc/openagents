@@ -105,28 +105,31 @@ fn report() -> (Vec<String>, bool) {
         }
     });
     if microluna {
-        let bounds = coder_one::terminal::microluna_policy(false);
+        let terminal = coder_one::terminal::selected(false);
+        let bounds = terminal.bounds();
         lines.push(format!(
-            "{:<10} microluna runs {model} in this process · {} mode · up to {} sessions, {} per group of requirements · up to ${:.2} a turn · runs checks between sessions when a turn changes files · stops after {}s · repository checks from policy {}",
-            "executor",
-            bounds.mode.word(),
-            bounds.max_sessions,
-            bounds.max_attempts,
-            bounds.spend_usd,
-            delegate_door::deadline().as_secs(),
-            policy.name.as_deref().unwrap_or("unnamed"),
+            "{:<10} microluna runs {model} in this process · up to ${:.2} a turn · stops after {}s",
+            "executor", bounds.spend_usd, terminal.manifest.policy.executor.deadline_sec,
         ));
+        lines.push(policy_line("policy", &terminal));
+        lines.push(policy_line("issues", &coder_one::terminal::selected(true)));
     } else {
         lines.push(format!(
-        "{:<10} {} runs {model} · effort {} · tools {} · prompt cache {} · stops after {}s · policy {}",
-        "executor",
-        executor.agent.agent().word(),
-        executor.effort.as_deref().unwrap_or("default"),
-        executor.tools.as_deref().unwrap_or("default"),
-        executor.prompt_cache_ttl.as_deref().unwrap_or("default"),
-        delegate_door::deadline().as_secs(),
-        policy.name.as_deref().unwrap_or("unnamed"),
-    ));
+            "{:<10} {} runs {model} · effort {} · tools {} · prompt cache {} · stops after {}s",
+            "executor",
+            executor.agent.agent().word(),
+            executor.effort.as_deref().unwrap_or("default"),
+            executor.tools.as_deref().unwrap_or("default"),
+            executor.prompt_cache_ttl.as_deref().unwrap_or("default"),
+            delegate_door::deadline().as_secs(),
+        ));
+        lines.push(format!(
+            "{:<10} {} ({}), sha256 {}",
+            "policy",
+            coder_one::terminal::POLICY_FILE,
+            policy.name.as_deref().unwrap_or("unnamed"),
+            policy.digest(),
+        ));
     }
 
     let (jev, source) = delegate_door::jev_from(&delegate_door::env_value);
@@ -163,6 +166,38 @@ fn report() -> (Vec<String>, bool) {
         lines.push("note       delegation is off, so every turn uses the fallback".to_string());
     }
     (lines, starts)
+}
+
+/// The loop a Microluna manifest runs, in words.
+fn loop_words(bounds: &coder_one::micro::Policy) -> String {
+    match &bounds.lean {
+        Some(lean) if bounds.mode == coder_one::micro::Mode::Requirements => format!(
+            "lean loop · up to {} work sessions{}",
+            lean.sessions,
+            if lean.self_check { " and a review" } else { "" }
+        ),
+        _ => format!(
+            "{} mode · up to {} sessions, {} per group of requirements",
+            bounds.mode.word(),
+            bounds.max_sessions,
+            bounds.max_attempts
+        ),
+    }
+}
+
+/// One line naming a Microluna manifest, its digest, and its loop, and
+/// why the operator's choice was set aside, when it was.
+fn policy_line(label: &str, selected: &coder_one::terminal::Selected) -> String {
+    let mut line = format!(
+        "{label:<10} {} · {}",
+        selected.line(),
+        loop_words(&selected.bounds())
+    );
+    if let Some(why) = &selected.refused {
+        line.push_str(" · ");
+        line.push_str(why);
+    }
+    line
 }
 
 /// Where Microluna's Codex login stands: its path and the hours its

@@ -1,0 +1,64 @@
+{
+  "schema": "openagents.coder-one.policy.v1",
+  "name": "coder-issue-flow",
+  "note": "The issue flow's loop on Microluna: the terminal's requirements loop with more groups, sessions, time, and spend, and a Jev check of each part of the focus after each edit session. The issue flow's review session and its gate run after the loop, before a pull request opens. The default until the issue-flow evaluation set measures issue-flow-lean.json against it.",
+  "policy": {
+    "jev": {
+      "mode": "deep",
+      "model": "jev-1.13.0",
+      "question_sets": "builtin-v1"
+    },
+    "evidence": {
+      "probes": "v2",
+      "survey_files": 40
+    },
+    "control": {
+      "delegate": "always",
+      "explore_steps": 0,
+      "max_steps": 50,
+      "command_timeout_sec": 300,
+      "lane": "free",
+      "error_streak": 3,
+      "unchanged_steps": 6
+    },
+    "brief": {
+      "cap": 12000,
+      "directions": "batch"
+    },
+    "executor": {
+      "agent": "microluna",
+      "version": null,
+      "model": "gpt-6-luna",
+      "effort": null,
+      "tools": null,
+      "prompt_cache_ttl": null,
+      "deadline_sec": 2400,
+      "microluna": {
+        "mode": "requirements",
+        "max_sessions": 10,
+        "max_attempts": 3,
+        "max_groups": 5,
+        "session_turns": 24,
+        "session_sec": 480,
+        "spend_usd": 1.0,
+        "evidence_chars": 14000,
+        "checks": true,
+        "require_evidence": false,
+        "read_first": false,
+        "accept": false,
+        "parts_check": true
+      }
+    }
+  },
+  "protected": {
+    "isolation": "task-container",
+    "effect_policy": "executor-bypasses-its-own-sandbox",
+    "acceptance": "task-verifier",
+    "ceilings": {
+      "episode_deadline_sec": null,
+      "reserve_sec": 30,
+      "spend_soft_usd": null,
+      "spend_hard_usd": null
+    }
+  }
+}

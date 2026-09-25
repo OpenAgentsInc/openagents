@@ -1,0 +1,17 @@
+{
+  "schema": "openagents.coder-one.stall-split.v1",
+  "calibration": [
+    "embedding-drift-monitor",
+    "sound-change-cascade",
+    "interleaved-vigenere"
+  ],
+  "evaluation": [
+    "session-window-debug",
+    "fin-saccr-rwa",
+    "gsea-proteomics",
+    "shadow-relay",
+    "coq-block-bound",
+    "uefi-bootkit",
+    "html-js-filter"
+  ]
+}

@@ -176,6 +176,11 @@ pub struct Lean {
     /// Add the structure practice ([`STRUCTURE`]).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub structure: bool,
+    /// Stall detection and a typed next-step choice between work
+    /// sessions ([`crate::stall`], issue #9627). Absent, as in every
+    /// manifest before it, the loop runs as it did.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detect: Option<crate::stall::Detect>,
 }
 
 /// Added with `structure`. Written after reading the two search tasks'
@@ -1190,6 +1195,10 @@ impl Micro {
         let mut history: Vec<String> = Vec::new();
         let mut flag_note: Option<String> = None;
         let mut last_tail: Option<String> = None;
+        // The stall detector's notes for the next session, and whether it
+        // re-briefed after the last one (issue #9627).
+        let mut detect_notes: Vec<String> = Vec::new();
+        let mut rebriefed = false;
         let mut stopped = String::new();
         let lanes = if lean.keep_best && lean.lanes > 1 && parallel::copyable(&self.workdir) {
             lean.lanes as usize
@@ -1361,6 +1370,9 @@ impl Micro {
                 }
                 if let Some(tail) = &last_tail {
                     state.push(tail.clone());
+                }
+                if !checking {
+                    state.extend(detect_notes.iter().cloned());
                 }
                 let changes = match &base {
                     Some(base) => crate::delegate::changes_since(base, &self.workdir),
@@ -1631,6 +1643,28 @@ impl Micro {
                     break;
                 }
                 checking = true;
+            }
+            if let Some(detect) = lean.detect.as_ref()
+                && !checking
+                && number < offset + lean.sessions
+            {
+                let detected = self
+                    .detect_after(prepared, detect, &sessions, number, rebriefed)
+                    .await;
+                spent += detected.usd;
+                if let Some(last) = moves.last_mut() {
+                    last["detect"] = detected.record;
+                }
+                rebriefed = detected.action == crate::stall::Action::Rebrief;
+                detect_notes = detected.rebrief.into_iter().chain(detected.next).collect();
+                if detected.action == crate::stall::Action::Stop {
+                    stopped =
+                        format!("the stall check stopped the work sessions after session {number}");
+                    if !lean.self_check {
+                        break;
+                    }
+                    checking = true;
+                }
             }
         }
         // Finish on the best workspace when the last one scores lower or is

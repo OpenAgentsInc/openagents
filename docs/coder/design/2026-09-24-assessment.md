@@ -35,9 +35,11 @@ truthful-checks iteration of 2026-09-25
   decoding a network session, and proving the main theorem. The suspects
   mechanism had nothing to act on: these tasks have no comments that
   justify a defect.
-- **Luna hasn't passed anything harder.** 0 of 29 trials on
-  `sound-change-cascade` and `interleaved-vigenere`, and 0 of 9 on
-  `session-window-debug`, the task Fable fails 0 of 25. The thesis's
+- **Luna hasn't passed anything harder.** 0 of 19 trials on
+  `sound-change-cascade` and `interleaved-vigenere` (29 trials counted all
+  three dev tasks), and 0 of 9 on `session-window-debug`, the task Fable
+  fails 0 of 25. These tasks and the four held-out failures are in the
+  [capability-gap log](../../terminal-bench/capability-gaps.md). The thesis's
   "cheap model plus structure beats frontier model" has no win yet where the
   frontier model fails, and no cheap win on a task we didn't tune on.
 - **The thesis's own mechanism isn't what runs.** The acceptance contract
@@ -77,7 +79,7 @@ truthful-checks iteration of 2026-09-25
 | v7's pass showed the thesis working | Withdrawn. The first session was right; the loop undid it, and an unrelated repair put it back | [two targets](../../terminal-bench/2026-09-24-microluna-two-targets.md), [v6 to v8 report](../../terminal-bench/2026-09-24-microluna-v6-v8-report.md) |
 | The Jev-ranked "suspects" (v13) caused the embedding passes | Unproven. v12 passed 2 of 3 without it | [candidate evidence](../../terminal-bench/2026-09-24-microluna-candidate-evidence.md) |
 | Keep-best on the self-score protects passes | Unproven. The self-score was full on all 10 failing attempts, so a tie can't tell a repair from a regression | [candidate evidence](../../terminal-bench/2026-09-24-microluna-candidate-evidence.md) |
-| Luna can pass a task Fable fails | No evidence. `session-window-debug` 0 of 9, missing the same three cases each time | [candidate evidence](../../terminal-bench/2026-09-24-microluna-candidate-evidence.md) |
+| Luna can pass a task Fable fails | No evidence. `session-window-debug` 0 of 9: every attempt missed the same two cases, and seven of nine a third | [candidate evidence](../../terminal-bench/2026-09-24-microluna-candidate-evidence.md) |
 | Selecting among Luna candidates would help today | No. On the target tasks, no retained candidate passed (0 of 12), so there was nothing to select | [candidate evidence](../../terminal-bench/2026-09-24-microluna-candidate-evidence.md) |
 
 How to state results from now on, which both agents' records now agree on:
@@ -122,7 +124,7 @@ on is in-sample, and says so.
 
 | Prediction | Status |
 | --- | --- |
-| 1. A green suite predicts a pass | Invalidated for Luna-written suites (v6 to v8) and for the Luna-written self-score (green on every failure). No offline validity number has been published for `accept.define` (#9588). |
+| 1. A green suite predicts a pass | Invalidated for Luna-written suites (v6 to v8) and for the Luna-written self-score (green on every failure). The offline result for `accept.define` is published and negative: on Microluna's graded work, its suites were green twice, both on failures, and red on all 12 passes ([acceptance first](../../terminal-bench/2026-09-24-acceptance-first.md), #9588). |
 | 2. Luna's pass rate rises with the contract | Not shown. The passes that exist come from a correct first session, not from looping to green. |
 | 3. Cost per pass drops by an order of magnitude | True on the one task that passes: about 54 times cheaper than Fable low. |
 | 4. Failures become honest | Partly. The host now refuses early finishes and malformed scores, and the issue flow lists unresolved problems in the pull request. But the self-score still reports full marks on failing work. |
@@ -130,7 +132,7 @@ on is in-sample, and says so.
 The two failure modes the thesis names both showed up. The first factor,
 a faithful contract, is the ceiling today: Luna can't write a contract
 faithful enough to steer by. The second factor is a capability ceiling on
-the search tasks: 29 trials, and Luna never found the cipher's structure
+the search tasks: 19 trials, and Luna never found the cipher's structure
 or got the rule cascade exact.
 
 ## How much of the component design runs
@@ -166,7 +168,7 @@ The biggest gaps:
 | --- | --- |
 | #9607 Microluna: repeatable wins on Fable failures and cheaper Fable successes | Keep; do next. The test-set run is its next step for the cheaper lane. |
 | #9584 Truthful checks, calibrated against graded runs | Keep; do next. The Codex agent's 2026-09-25 iteration recovered the read-only reviews (6 of 13 failures caught, 6 of 6 correct, development only) and keeps the issue open: the improvement on untouched task groups isn't established. It's still the bottleneck for everything below. |
-| #9588 `accept.define` | Publish its offline validity number, even though it's negative, then fold the rest into #9584 and close. |
+| #9588 `accept.define` | Done: the [offline validity result](../../terminal-bench/2026-09-24-acceptance-first.md) is published, not validated and not a default; the rest moved to #9584, and the issue is closed. |
 | #9587 Best-of-N Luna | Publish the partial `suite-9587` result now; rerun only after #9584 gives a selection signal. |
 | #9585 Microluna, a minimal Luna executor | Close as done: its "done when" is met. Iteration work lives in #9607. |
 | #9558 Coder One on the full TB4 suite | Close as won't do in this form: it depends on Opus, Astra, and escalation tiers, which the pivot sets aside. Reopen as a Microluna full-suite issue once the targeted gate passes. |
@@ -179,7 +181,8 @@ Work with no issue yet:
 - An evaluation set for the issue flow: a handful of past issues graded
   like mini-tasks, so issue-flow changes stop being fitted to one issue.
 - A capability-gap log: the two search tasks and `session-window-debug`
-  are its first entries.
+  are its first entries. Done: [capability-gap log](../../terminal-bench/capability-gaps.md)
+  (#9626).
 - Pivot algorithms 4 and 5 in the lean loop.
 
 ## The path to definitive wins
@@ -233,15 +236,17 @@ In order:
    running, and measure the cheaper-work lane across them. That's the
    claim a customer would care about: "this kind of task, this reliable,
    this much cheaper."
-5. **Treat the search tasks as capability gaps, logged.** Don't tune the
-   loop on them further. Revisit when a new Luna, a new algorithm, or the
-   signal from step 2 changes what's possible.
+5. **Treat the search tasks as capability gaps, logged** in the
+   [capability-gap log](../../terminal-bench/capability-gaps.md). Don't
+   tune the loop on them further. Revisit when a new Luna, a new
+   algorithm, or the signal from step 2 changes what's possible.
 6. **Ship what wins.** Port the lean loop and its manifest into Coder
    Terminal and the issue flow, and give the issue flow its own evaluation
    set, so product changes are measured the same way.
 
 The pass-where-Fable-fails lane (`session-window-debug`) comes after the
-signal exists: all nine attempts missed the same three cases, and a check
+signal exists: all nine attempts missed the same two cases, seven of
+nine a third, and a check
 that catches those cases is the only lever that doesn't rely on Luna seeing
 them unprompted.
 

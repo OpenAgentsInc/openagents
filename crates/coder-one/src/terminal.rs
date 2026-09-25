@@ -16,10 +16,13 @@
 //! chooses per turn.
 //!
 //! With [`Agent::Microluna`] the delegate step runs in this process
-//! instead: [`crate::micro::Micro`]'s mini-handoff loop, bounded by
-//! [`microluna_policy`], with each session's start, commands, finish, and
-//! cost, and each move between sessions, reported to `on` as the loop
-//! records them. A Microluna turn never resumes a session; a follow-up
+//! instead: [`crate::micro::Micro`]'s loop, shaped and bounded by a
+//! manifest in `policies/` the way an episode's is. A change turn runs
+//! [`MICROLUNA_POLICY_FILE`] and the issue flow's turn
+//! [`ISSUE_POLICY_FILE`], unless the operator names another with
+//! [`TERMINAL_POLICY_VAR`] or [`ISSUE_POLICY_VAR`] ([`selected`]). Each
+//! session's start, commands, finish, and cost, and each move between
+//! sessions, reach `on` as the loop records them. A Microluna turn never resumes a session; a follow-up
 //! starts from a context rebuilt from the conversation and fresh probes.
 //!
 //! What the executor may do is the caller's: [`Request::read_only`] puts
@@ -187,6 +190,169 @@ pub fn policy() -> Manifest {
     Manifest::parse(text).expect("the terminal policy parses")
 }
 
+/// The manifest a Coder Terminal change turn on Microluna runs: the
+/// requirements loop over at most three groups, six sessions, and a
+/// quarter of a dollar, with the judge and the briefing of
+/// [`POLICY_FILE`].
+pub const MICROLUNA_POLICY_FILE: &str = "terminal-microluna.json";
+
+/// The manifest the issue flow's turn runs: the requirements loop with
+/// more groups, sessions, time, and spend. It stays the default until the
+/// issue-flow evaluation set measures [`ISSUE_LEAN_POLICY_FILE`] against
+/// it.
+pub const ISSUE_POLICY_FILE: &str = "issue-flow.json";
+
+/// The issue flow on the lean loop, for an operator or an evaluation to
+/// select.
+pub const ISSUE_LEAN_POLICY_FILE: &str = "issue-flow-lean.json";
+
+/// The variable that names another manifest for a terminal change turn:
+/// a reference manifest's file name, such as `issue-flow-lean.json`, or
+/// the path of a manifest file.
+pub const TERMINAL_POLICY_VAR: &str = "CODER_TERMINAL_POLICY";
+
+/// The variable that names another manifest for the issue flow's turn,
+/// read the way [`TERMINAL_POLICY_VAR`] is.
+pub const ISSUE_POLICY_VAR: &str = "CODER_ISSUE_POLICY";
+
+/// The Microluna manifest a turn runs, and where it came from.
+#[derive(Clone, Debug)]
+pub struct Selected {
+    /// The reference manifest's file name, or the path it was read from.
+    pub source: String,
+    /// The manifest, valid and with an `executor.microluna` section.
+    pub manifest: Manifest,
+    /// [`Manifest::digest`] of it.
+    pub digest: String,
+    /// Why the operator's choice was set aside for the default, when it
+    /// was.
+    pub refused: Option<String>,
+}
+
+impl Selected {
+    fn of(source: &str, manifest: Manifest) -> Self {
+        Selected {
+            source: source.to_string(),
+            digest: manifest.digest(),
+            manifest,
+            refused: None,
+        }
+    }
+
+    /// The manifest's name, or `unnamed`.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        self.manifest.name.as_deref().unwrap_or("unnamed")
+    }
+
+    /// The loop's bounds: the manifest's `executor.microluna`.
+    #[must_use]
+    pub fn bounds(&self) -> crate::micro::Policy {
+        self.manifest
+            .policy
+            .executor
+            .microluna
+            .clone()
+            .unwrap_or_default()
+    }
+
+    /// One line naming the manifest and its digest, for a progress line,
+    /// a trace, and `coder doctor`.
+    #[must_use]
+    pub fn line(&self) -> String {
+        format!("{} ({}), sha256 {}", self.source, self.name(), self.digest)
+    }
+}
+
+/// A manifest a Microluna turn can run: a reference manifest's file name
+/// or a manifest file's path, valid as written, with the `microluna` agent
+/// and an `executor.microluna` section.
+///
+/// # Errors
+///
+/// Returns why the manifest can't be read or run.
+pub fn load(named: &str) -> Result<Selected, String> {
+    let named = named.trim();
+    let (source, text) = match REFERENCE.iter().find(|(file, _)| *file == named) {
+        Some((file, text)) => ((*file).to_string(), (*text).to_string()),
+        None => (
+            named.to_string(),
+            std::fs::read_to_string(named)
+                .map_err(|error| format!("cannot read {named}: {error}"))?,
+        ),
+    };
+    let manifest = Manifest::parse(&text)?;
+    manifest.validate()?;
+    if manifest.policy.executor.agent != crate::policy::AgentName::Microluna
+        || manifest.policy.executor.microluna.is_none()
+    {
+        return Err(format!(
+            "{source} needs the microluna agent and an executor.microluna section"
+        ));
+    }
+    Ok(Selected::of(&source, manifest))
+}
+
+/// The manifest a Microluna change turn runs: the issue flow's for an
+/// issue turn, the terminal's otherwise, or the one the operator's
+/// variable names. A variable naming a manifest that can't run leaves the
+/// default in place, with the reason in [`Selected::refused`].
+///
+/// # Panics
+///
+/// Never in a build whose tests pass: the defaults are compiled in, and a
+/// test loads them.
+#[must_use]
+pub fn select(issue: bool, env: impl Fn(&str) -> Option<String>) -> Selected {
+    let (var, default) = if issue {
+        (ISSUE_POLICY_VAR, ISSUE_POLICY_FILE)
+    } else {
+        (TERMINAL_POLICY_VAR, MICROLUNA_POLICY_FILE)
+    };
+    let fallback = || load(default).expect("the default Microluna manifest runs");
+    match env(var).filter(|value| !value.trim().is_empty()) {
+        None => fallback(),
+        Some(named) => load(&named).unwrap_or_else(|why| Selected {
+            refused: Some(format!("{var}={named} was set aside: {why}")),
+            ..fallback()
+        }),
+    }
+}
+
+/// [`select`] from this process's environment.
+#[must_use]
+pub fn selected(issue: bool) -> Selected {
+    select(issue, |name| std::env::var(name).ok())
+}
+
+/// The Microluna manifest `request` runs: the caller's when it named one
+/// that can run, and [`selected`]'s otherwise.
+fn chosen(request: &Request) -> Selected {
+    let Some(manifest) = &request.policy else {
+        return selected(request.issue);
+    };
+    let source = format!(
+        "the caller's manifest {}",
+        manifest.name.as_deref().unwrap_or("unnamed")
+    );
+    let runs = manifest.validate().and_then(|()| {
+        if manifest.policy.executor.agent == crate::policy::AgentName::Microluna
+            && manifest.policy.executor.microluna.is_some()
+        {
+            Ok(())
+        } else {
+            Err("it needs the microluna agent and an executor.microluna section".to_string())
+        }
+    });
+    match runs {
+        Ok(()) => Selected::of(&source, manifest.clone()),
+        Err(why) => Selected {
+            refused: Some(format!("{source} was set aside: {why}")),
+            ..selected(request.issue)
+        },
+    }
+}
+
 /// One turn to answer.
 #[derive(Clone, Debug)]
 pub struct Request {
@@ -226,12 +392,20 @@ pub struct Request {
     /// draft pull request. The host sets it from the operator's permit.
     pub issues: bool,
     /// Whether this turn is the issue flow's own, working an issue in its
-    /// clone: it runs under [`ISSUE_DIRECTIONS`] and [`issue_policy`].
+    /// clone: it runs under [`ISSUE_DIRECTIONS`] and the issue flow's
+    /// manifest.
     pub issue: bool,
     /// Whether this turn reviews the issue flow's change before it lands:
     /// one session over the diff and the code that uses what changed, which
     /// the request carries, with no survey.
     pub review: bool,
+    /// The Microluna manifest a change turn runs under, when the caller
+    /// chose one, such as an evaluation's arm or a test. `None` takes
+    /// [`selected`]'s. The issue flow hands it to its own turn, so a caller
+    /// that sets it on a request that starts the issue flow sets the issue
+    /// flow's. A question and a review keep the terminal's single-session
+    /// bounds whatever it says.
+    pub policy: Option<Manifest>,
 }
 
 /// What the turn reports while it runs.
@@ -437,7 +611,19 @@ pub async fn answer(request: &Request, on: Rc<dyn Fn(Progress)>) -> Answer {
         );
         return crate::issue_turn::run(request, reference, on, &recorder).await;
     }
-    let policy = policy();
+    let chosen = (request.agent == Agent::Microluna).then(|| chosen(request));
+    if let Some(chosen) = &chosen {
+        if let Some(why) = &chosen.refused {
+            crate::say::say!("policy ▸ {why}");
+        }
+        recorder.push(Step::said(
+            Source::System,
+            &format!("Microluna policy: {}.", chosen.line()),
+        ));
+    }
+    let policy = chosen
+        .as_ref()
+        .map_or_else(policy, |chosen| chosen.manifest.clone());
     let words = instruction(&request.request, &request.earlier);
 
     let first_line = request
@@ -523,12 +709,13 @@ pub async fn answer(request: &Request, on: Rc<dyn Fn(Progress)>) -> Answer {
     .to_string();
 
     let _ = std::fs::create_dir_all(&request.artifacts);
-    if request.agent == Agent::Microluna {
+    if let Some(chosen) = &chosen {
         return microluna_turn(Turn {
             request,
             on,
             hushed,
             recorder,
+            chosen,
             policy: &policy,
             judge: &judge,
             state: &state,
@@ -707,48 +894,35 @@ fn session_of(record: &Value) -> Option<String> {
         .map(str::to_string)
 }
 
-/// Microluna's bounds for one terminal turn: the mini-handoff loop over
-/// at most three requirement groups, six sessions, and a quarter of a
-/// dollar. A read-only turn runs no checks between sessions, because the
-/// generic checks may rerun a test command, and a test command writes.
-/// No turn requires an edit it then tested before a group ends: many
-/// terminal requests are questions, whose answer is a reading. Every other
-/// setting is the loop's default.
+/// The bounds a Microluna turn's loop runs under. A change turn takes
+/// the manifest's `executor.microluna` as written, lean loop and all. A
+/// question, and the issue flow's review, run one session under the
+/// terminal's default bounds whatever manifest the turn chose, so a
+/// changed manifest doesn't move the fast path. A read-only turn runs no
+/// checks between sessions, because the generic checks may rerun a test
+/// command, and a test command writes.
 #[must_use]
-pub fn microluna_policy(read_only: bool) -> crate::micro::Policy {
-    crate::micro::Policy {
-        mode: crate::micro::Mode::Requirements,
-        max_sessions: 6,
-        max_attempts: 2,
-        max_groups: 3,
-        session_turns: 24,
-        session_sec: 240,
-        spend_usd: 0.25,
-        evidence_chars: 14_000,
-        checks: !read_only,
-        require_evidence: false,
-        ..crate::micro::Policy::default()
+pub fn bounds(chosen: &Selected, read_only: bool, question: bool) -> crate::micro::Policy {
+    let mut bounds = if question {
+        crate::micro::Policy {
+            mode: crate::micro::Mode::Single,
+            lean: None,
+            ..selected_default().bounds()
+        }
+    } else {
+        chosen.bounds()
+    };
+    if read_only {
+        bounds.checks = false;
     }
+    bounds
 }
 
-/// Microluna's bounds for the issue flow's turn: an issue is a larger
-/// change than a terminal request, so it gets more groups, sessions, time,
-/// and spend.
-#[must_use]
-pub fn issue_policy() -> crate::micro::Policy {
-    crate::micro::Policy {
-        max_sessions: 10,
-        max_groups: 5,
-        session_sec: 480,
-        spend_usd: 1.0,
-        max_attempts: 3,
-        parts_check: true,
-        ..microluna_policy(false)
-    }
+/// The terminal's default Microluna manifest, whatever the environment
+/// names.
+fn selected_default() -> Selected {
+    select(false, |_| None)
 }
-
-/// The issue flow's deadline for the whole loop, in seconds.
-const ISSUE_DEADLINE_SEC: u64 = 2_400;
 
 /// What a Microluna turn's task adds to the directions. The loop's session
 /// guidance is written for tasks that change files, and asks for an edit
@@ -768,6 +942,8 @@ struct Turn<'a> {
     on: Rc<dyn Fn(Progress)>,
     hushed: Rc<Cell<bool>>,
     recorder: Recorder,
+    /// The Microluna manifest the turn chose.
+    chosen: &'a Selected,
     policy: &'a Manifest,
     judge: &'a crate::judge::JevJudge,
     state: &'a State,
@@ -789,6 +965,7 @@ async fn microluna_turn(turn: Turn<'_>) -> Answer {
         on,
         hushed,
         recorder,
+        chosen,
         policy,
         judge,
         state,
@@ -806,7 +983,7 @@ async fn microluna_turn(turn: Turn<'_>) -> Answer {
     let model = request
         .model
         .clone()
-        .unwrap_or_else(|| Agent::Microluna.default_model().to_string());
+        .unwrap_or_else(|| policy.policy.executor.model.clone());
     let briefing = Briefing::build_under(HEAD, inputs, policy.policy.brief.cap);
     let requirements = judge.requirements.clone();
     let items = crate::pack::items(inputs);
@@ -844,26 +1021,13 @@ async fn microluna_turn(turn: Turn<'_>) -> Answer {
     let _ = std::fs::create_dir_all(&artifacts);
     let mut micro = crate::micro::Micro::new(
         &model,
-        None,
-        std::time::Duration::from_secs(if request.issue {
-            ISSUE_DEADLINE_SEC
-        } else {
-            policy.policy.executor.deadline_sec
-        }),
+        policy.policy.executor.effort.clone(),
+        std::time::Duration::from_secs(policy.policy.executor.deadline_sec),
         &request.workdir,
         &artifacts,
         recorder.clone(),
         0,
-        if question {
-            crate::micro::Policy {
-                mode: crate::micro::Mode::Single,
-                ..microluna_policy(read_only)
-            }
-        } else if request.issue {
-            issue_policy()
-        } else {
-            microluna_policy(read_only)
-        },
+        bounds(chosen, read_only, question),
         isolation,
     );
     if let Some(script) = &request.script {
@@ -873,11 +1037,23 @@ async fn microluna_turn(turn: Turn<'_>) -> Answer {
     }
     micro.take_evidence(&prepared);
     recorder.watch(watcher(on.clone(), hushed, texts));
+    let shape = match &micro.policy.lean {
+        Some(lean) if micro.policy.mode == crate::micro::Mode::Requirements => format!(
+            "the lean loop, up to {} work sessions{}",
+            lean.sessions,
+            match (lean.self_check, lean.observe_review) {
+                (true, true) => " and a read-only review",
+                (true, false) => " and a self-check",
+                _ => "",
+            }
+        ),
+        _ => format!("up to {} sessions", micro.policy.max_sessions),
+    };
     on(Progress::Line(format!(
-        "delegate ▸ Microluna ({model}) takes over with {} findings, up to {} sessions, and ${:.2}; it {}",
+        "delegate ▸ Microluna ({model}) takes over with {} findings, {shape}, and ${:.2} under {}; it {}",
         prepared.items.len(),
-        micro.policy.max_sessions,
         micro.policy.spend_usd,
+        chosen.source,
         if read_only {
             "can only read files"
         } else {
@@ -1237,6 +1413,262 @@ mod tests {
         assert_eq!(executor.prompt_cache_ttl.as_deref(), Some("5m"));
     }
 
+    /// The bounds `terminal.rs` hardcoded before the manifests, which the
+    /// default manifests reproduce exactly.
+    fn former_terminal_bounds() -> crate::micro::Policy {
+        crate::micro::Policy {
+            mode: crate::micro::Mode::Requirements,
+            max_sessions: 6,
+            max_attempts: 2,
+            max_groups: 3,
+            session_turns: 24,
+            session_sec: 240,
+            spend_usd: 0.25,
+            evidence_chars: 14_000,
+            checks: true,
+            require_evidence: false,
+            ..crate::micro::Policy::default()
+        }
+    }
+
+    #[test]
+    fn the_default_microluna_manifests_keep_the_former_bounds() {
+        let terminal = select(false, |_| None);
+        assert_eq!(terminal.source, MICROLUNA_POLICY_FILE);
+        assert_eq!(terminal.refused, None);
+        assert_eq!(terminal.bounds(), former_terminal_bounds());
+        assert_eq!(terminal.digest.len(), 64);
+        let issue = select(true, |_| None);
+        assert_eq!(issue.source, ISSUE_POLICY_FILE);
+        assert_eq!(
+            issue.bounds(),
+            crate::micro::Policy {
+                max_sessions: 10,
+                max_groups: 5,
+                session_sec: 480,
+                spend_usd: 1.0,
+                max_attempts: 3,
+                parts_check: true,
+                ..former_terminal_bounds()
+            }
+        );
+        // The deadlines: the terminal's reference policy's, and the issue
+        // flow's 40 minutes.
+        assert_eq!(
+            terminal.manifest.policy.executor.deadline_sec,
+            policy().policy.executor.deadline_sec
+        );
+        assert_eq!(issue.manifest.policy.executor.deadline_sec, 2_400);
+        // The judge and the briefing are the terminal's reference policy's.
+        for chosen in [&terminal, &issue] {
+            let (mine, reference) = (&chosen.manifest.policy, &policy().policy);
+            assert_eq!(mine.jev, reference.jev);
+            assert_eq!(mine.evidence, reference.evidence);
+            assert_eq!(mine.brief, reference.brief);
+            assert_eq!(mine.executor.model, Agent::Microluna.default_model());
+            assert_eq!(mine.executor.effort, None);
+        }
+    }
+
+    #[test]
+    fn a_question_keeps_one_session_and_a_read_only_turn_runs_no_checks() {
+        let lean = load(ISSUE_LEAN_POLICY_FILE).unwrap();
+        let question = bounds(&lean, false, true);
+        assert_eq!(
+            question,
+            crate::micro::Policy {
+                mode: crate::micro::Mode::Single,
+                ..former_terminal_bounds()
+            }
+        );
+        let read_only = bounds(&select(false, |_| None), true, false);
+        assert!(!read_only.checks);
+        assert_eq!(
+            read_only,
+            crate::micro::Policy {
+                checks: false,
+                ..former_terminal_bounds()
+            }
+        );
+        assert_eq!(bounds(&lean, false, false), lean.bounds());
+    }
+
+    #[test]
+    fn the_lean_issue_manifest_carries_the_lean_loops_protections() {
+        let lean = load(ISSUE_LEAN_POLICY_FILE).unwrap();
+        let bounds = lean.bounds();
+        assert_eq!(bounds.mode, crate::micro::Mode::Requirements);
+        let shape = bounds.lean.expect("the lean loop");
+        assert!(shape.keep_best);
+        assert!(shape.persist.is_some(), "early finishes go back");
+        assert!(shape.session_spend);
+        assert!(shape.command_sec > 0);
+        assert!(shape.retain_candidates);
+        assert!(shape.self_check && shape.observe_review);
+        assert!(shape.wall_sec < lean.manifest.policy.executor.deadline_sec);
+        // Terminal-Bench's example-data guidance doesn't fit an issue.
+        assert!(!shape.holdout && !shape.hardcode_check && shape.sample_chars == 0);
+    }
+
+    #[test]
+    fn a_variable_names_a_manifest_and_one_that_cannot_run_is_set_aside() {
+        let named = select(true, |var| {
+            (var == ISSUE_POLICY_VAR).then(|| ISSUE_LEAN_POLICY_FILE.to_string())
+        });
+        assert_eq!(named.source, ISSUE_LEAN_POLICY_FILE);
+        assert_eq!(named.refused, None);
+        assert!(named.bounds().lean.is_some());
+        // The terminal reads its own variable, not the issue flow's.
+        let terminal = select(false, |var| {
+            (var == ISSUE_POLICY_VAR).then(|| ISSUE_LEAN_POLICY_FILE.to_string())
+        });
+        assert_eq!(terminal.source, MICROLUNA_POLICY_FILE);
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("mine.json");
+        let text = REFERENCE
+            .iter()
+            .find(|(file, _)| *file == ISSUE_LEAN_POLICY_FILE)
+            .unwrap()
+            .1
+            .replace("\"sessions\": 4", "\"sessions\": 2");
+        std::fs::write(&path, text).unwrap();
+        let from_file = select(false, |var| {
+            (var == TERMINAL_POLICY_VAR).then(|| path.display().to_string())
+        });
+        assert_eq!(from_file.source, path.display().to_string());
+        assert_eq!(from_file.bounds().lean.unwrap().sessions, 2);
+        assert_ne!(from_file.digest, named.digest);
+
+        // A Claude Code manifest has no Microluna loop to run.
+        let refused = select(false, |var| {
+            (var == TERMINAL_POLICY_VAR).then(|| POLICY_FILE.to_string())
+        });
+        assert_eq!(refused.source, MICROLUNA_POLICY_FILE);
+        assert!(
+            refused
+                .refused
+                .as_deref()
+                .is_some_and(|why| why.contains("executor.microluna")),
+            "{:?}",
+            refused.refused
+        );
+        let missing = select(true, |_| Some("/nowhere/policy.json".to_string()));
+        assert_eq!(missing.source, ISSUE_POLICY_FILE);
+        assert!(missing.refused.is_some());
+    }
+
+    /// The issue flow's turn on the lean manifest, with scripted replies:
+    /// the first session writes the evaluation script and the change, the
+    /// host scores it full, and a read-only review ends the loop.
+    #[test]
+    fn an_issue_turn_runs_the_lean_loop_its_manifest_names() {
+        use microluna::fake::call;
+        let dir = tempfile::tempdir().unwrap();
+        let Some(mut request) = stand_in(
+            dir.path(),
+            Agent::ClaudeCode,
+            crate::adapter::standin::CLAUDE,
+            None,
+        ) else {
+            return;
+        };
+        let usage = microluna::TokenUsage {
+            input: 1_000,
+            cached: 0,
+            output: 20,
+            reasoning: 0,
+        };
+        request.agent = Agent::Microluna;
+        request.binary = None;
+        request.credential = Credential::CodexAuthFile;
+        request.read_only = false;
+        request.issue = true;
+        request.request = "# Issue #1: greet\n\nWrite hello.txt containing the word hello.".into();
+        request.policy = Some(load(ISSUE_LEAN_POLICY_FILE).unwrap().manifest);
+        let score = "mkdir -p .microluna-eval && printf '%s\\n' \
+                     'if grep -q hello hello.txt; then echo SCORE 1 1; else echo SCORE 0 1; fi' \
+                     > .microluna-eval/score.sh";
+        request.script = Some(vec![
+            call(
+                "a1",
+                "run_command",
+                &json!({ "command": score, "timeout_seconds": 10 }),
+                usage,
+            ),
+            call(
+                "a2",
+                "write_file",
+                &json!({ "path": "hello.txt", "contents": "hello\n" }),
+                usage,
+            ),
+            call(
+                "a3",
+                "finish",
+                &json!({ "status": "done", "summary": "Wrote hello.txt; the score is 1 of 1.", "answer": "" }),
+                usage,
+            ),
+            call(
+                "b1",
+                "finish",
+                &json!({ "status": "done", "summary": "hello.txt holds hello, as the issue asks.", "answer": "" }),
+                usage,
+            ),
+        ]);
+        let (answer, heard) = run(&request);
+        assert_eq!(answer.boundary, "workspace-writable");
+        assert_eq!(
+            answer.report.summary.subtype.as_deref(),
+            Some("microluna-lean"),
+            "{:?}",
+            answer.report.summary.result
+        );
+        assert_eq!(
+            std::fs::read_to_string(request.workdir.join("hello.txt")).unwrap(),
+            "hello\n"
+        );
+        assert!(
+            !request.workdir.join(".microluna-eval").exists(),
+            "the evaluation script leaves the checkout before a commit"
+        );
+        let record: Value = serde_json::from_str(
+            &std::fs::read_to_string(request.artifacts.join("artifacts/microluna-1.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(record["mode"], "lean");
+        let sessions = record["sessions"].as_array().unwrap();
+        assert_eq!(sessions.len(), 2, "{record:#}");
+        let moves = record["moves"].as_array().unwrap();
+        assert_eq!(moves[0]["score"]["passed"], 1);
+        assert_eq!(moves[1]["self_check"], true);
+        assert!(
+            moves[0]["candidate"]
+                .as_str()
+                .is_some_and(|dir| Path::new(dir).join("hello.txt").is_file()),
+            "the candidate is retained: {moves:#?}"
+        );
+        assert!(
+            answer.steps.iter().any(|step| step
+                .message
+                .starts_with("Microluna policy: the caller's manifest coder-issue-flow-lean")),
+            "the trace names the manifest"
+        );
+        let lines: Vec<&str> = heard
+            .iter()
+            .filter_map(|progress| match progress {
+                Progress::Line(line) => Some(line.as_str()),
+                Progress::Event(_) => None,
+            })
+            .collect();
+        assert!(
+            lines
+                .iter()
+                .any(|line| line
+                    .contains("the lean loop, up to 4 work sessions and a read-only review")),
+            "{lines:?}"
+        );
+    }
+
     #[test]
     fn a_read_only_turn_is_told_so_and_a_clarifying_turn_asks_one_question() {
         assert!(directions(true, false).contains("read-only"));
@@ -1281,6 +1713,7 @@ mod tests {
             issues: false,
             issue: false,
             review: false,
+            policy: None,
         })
     }
 

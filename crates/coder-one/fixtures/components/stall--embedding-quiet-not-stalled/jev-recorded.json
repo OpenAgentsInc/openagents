@@ -1,0 +1,135 @@
+{
+  "entries": {
+    "8bcc346af6222c60d897e9785f0f26d8fad6cb16962d7d5924bb297e8ffb8b62": {
+      "answers": {
+        "done": {
+          "noul": 0.33,
+          "type": "noul"
+        },
+        "next": {
+          "choice": "continue",
+          "confidence": 0.8,
+          "probabilities": {
+            "continue": 0.87,
+            "edit": 0.1,
+            "read_region": 0.03
+          },
+          "type": "choice"
+        },
+        "progress": {
+          "noul": 0.54,
+          "type": "noul"
+        },
+        "repeating": {
+          "noul": 0.19,
+          "type": "noul"
+        }
+      },
+      "input_tokens": 3326,
+      "milliseconds": 214,
+      "model": "jev-1.13.0",
+      "name": "jev_stall",
+      "output_tokens": 89,
+      "source": "live control.stall replay#jev-stall-2-16"
+    },
+    "9308a44fa6ebb55592eeca73184e8ed7713eba459c1bb60a167b7fe5f70d4c58": {
+      "answers": {
+        "done": {
+          "noul": 0.02,
+          "type": "noul"
+        },
+        "next": {
+          "choice": "run_tests",
+          "confidence": 0.42,
+          "probabilities": {
+            "continue": 0.29,
+            "run_tests": 0.71
+          },
+          "type": "choice"
+        },
+        "progress": {
+          "noul": 0.48,
+          "type": "noul"
+        },
+        "repeating": {
+          "noul": 0.26,
+          "type": "noul"
+        }
+      },
+      "input_tokens": 5505,
+      "milliseconds": 182,
+      "model": "jev-1.13.0",
+      "name": "jev_stall",
+      "output_tokens": 83,
+      "source": "live control.stall replay#jev-stall-1-16"
+    },
+    "b7c0b9679addeed3c813b302544e2bc7f0b2deffa430f4ed44e7e9447f3980f1": {
+      "answers": {
+        "done": {
+          "noul": 0.03,
+          "type": "noul"
+        },
+        "next": {
+          "choice": "run_tests",
+          "confidence": 0.32,
+          "probabilities": {
+            "continue": 0.18,
+            "edit": 0.12,
+            "read_region": 0.06,
+            "run_example": 0.2,
+            "run_tests": 0.44
+          },
+          "type": "choice"
+        },
+        "progress": {
+          "noul": 0.49,
+          "type": "noul"
+        },
+        "repeating": {
+          "noul": 0.51,
+          "type": "noul"
+        }
+      },
+      "input_tokens": 5594,
+      "milliseconds": 162,
+      "model": "jev-1.13.0",
+      "name": "jev_stall",
+      "output_tokens": 106,
+      "source": "live control.stall replay#jev-stall-1-24"
+    },
+    "ee252455f94bd98cc132e8cc34dfe785dd12093537645a4bc2d05cfd0dde183b": {
+      "answers": {
+        "done": {
+          "noul": 0.48,
+          "type": "noul"
+        },
+        "next": {
+          "choice": "continue",
+          "confidence": 0.57,
+          "probabilities": {
+            "continue": 0.68,
+            "edit": 0.04,
+            "read_region": 0.02,
+            "run_tests": 0.26
+          },
+          "type": "choice"
+        },
+        "progress": {
+          "noul": 0.95,
+          "type": "noul"
+        },
+        "repeating": {
+          "noul": 0.17,
+          "type": "noul"
+        }
+      },
+      "input_tokens": 3189,
+      "milliseconds": 163,
+      "model": "jev-1.13.0",
+      "name": "jev_stall",
+      "output_tokens": 97,
+      "source": "live control.stall replay#jev-stall-1-8"
+    }
+  },
+  "schema": "openagents.coder-one.jev-recorded.v1"
+}

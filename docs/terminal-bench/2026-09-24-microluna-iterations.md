@@ -377,7 +377,9 @@ answered in half a second afterwards, and the relaunches ran.
 **The protocol's gate was never met, so the test set was not run.** No
 version passed 2 of the 3 dev tasks. Every version from v13 on passes
 `embedding-drift-monitor`, and none passed `sound-change-cascade` or
-`interleaved-vigenere` in 29 trials.
+`interleaved-vigenere`: 0 of 19 trials on those two tasks, of the 29
+trials in all. Both tasks are now in the
+[capability-gap log](capability-gaps.md), which stops loop tuning on them.
 
 ### Dev results against Fable 5.1
 
@@ -409,8 +411,8 @@ beats Fable's all-effort mean time, but not its low-effort mean.
 
 ### Recommendation
 
-The two dev search tasks look like the thesis's "capability limits": 29
-trials, five loop designs, three efforts, and three kinds of in-sample
+The two dev search tasks look like the thesis's "capability limits": 19
+trials on them, five loop designs, three efforts, and three kinds of in-sample
 practice didn't find the structure a Fable pass finds in 11 to 20
 commands. As long as they are two of the three dev tasks, the gate stays
 closed for any Luna-only loop. Two ways forward, each the operator's call:
@@ -501,3 +503,8 @@ score as proof. On the two tasks it couldn't finish, it lacked the domain
 step: decoding a binary protocol, and constructing a proof. The
 `embedding-drift-monitor` pass was a fix to that one task's kind of
 defect, not a general gain.
+
+All four test-set tasks are provisional entries in the
+[capability-gap log](capability-gaps.md): `shadow-relay` and
+`coq-block-bound` as capability gaps, and `fin-saccr-rwa` and
+`gsea-proteomics` as signal gaps first.
