@@ -8,8 +8,8 @@
 //!   on, a ROOM reaches a NIP-29 group, and a PM reaches one player.
 //! - **Methods.** There are no tabs. A method selector left of the input
 //!   picks the channel (`Tab` cycles it), and a `/` shortcut overrides it
-//!   for one line: `/a`, `/$`, `/z`, `/n`, `/h`, `/r room`, or `/name text`
-//!   for a private message.
+//!   for one line: `/a`, `/$`, `/z`, `/n`, `/h`, `/r room`, `/ai` for your
+//!   own agent, or `/name text` for a private message.
 //! - **Two windows.** The left window carries world-wide lines (ALL, ADS,
 //!   ZONE, system notices); the right window carries personal ones (NEAR,
 //!   HERE, rooms, PMs, and your agent's gestures).
@@ -58,6 +58,9 @@ pub enum Channel {
     Room(String),
     /// A private message to a pubkey.
     Pm(String),
+    /// A private conversation with your own agent. Never leaves this
+    /// machine except to the model that answers for the agent.
+    Agent,
 }
 
 impl Channel {
@@ -70,7 +73,7 @@ impl Channel {
             Channel::Zone => Some("zone"),
             Channel::Near => Some("near"),
             Channel::Here => Some("here"),
-            Channel::Room(_) | Channel::Pm(_) => None,
+            Channel::Room(_) | Channel::Pm(_) | Channel::Agent => None,
         }
     }
 
@@ -214,6 +217,7 @@ pub fn parse(input: &str, method: &Channel) -> Command {
         "z" | "zone" | "i" | "isle" => Some(Channel::Zone),
         "n" | "near" => Some(Channel::Near),
         "h" | "here" => Some(Channel::Here),
+        "ai" | "agent" => Some(Channel::Agent),
         "r" | "room" => {
             let (room, text) = text.split_once(' ').unwrap_or((text.as_str(), ""));
             return if room.is_empty() {
@@ -394,7 +398,7 @@ pub fn reaches(
 ) -> bool {
     let flat = |v: Vec3| Vec3::new(v.x, 0.0, v.z);
     match channel {
-        Channel::All | Channel::Ads | Channel::Room(_) | Channel::Pm(_) => true,
+        Channel::All | Channel::Ads | Channel::Room(_) | Channel::Pm(_) | Channel::Agent => true,
         Channel::Zone => speaker_zone == listener_zone,
         Channel::Near => flat(from).distance(flat(to)) <= NEAR_RADIUS,
         Channel::Here => flat(from).distance(flat(to)) <= HERE_RADIUS,
@@ -415,6 +419,7 @@ pub fn methods(rooms: &[String], pm: Option<&str>) -> Vec<Channel> {
     if let Some(pm) = pm {
         out.push(Channel::Pm(pm.to_owned()));
     }
+    out.push(Channel::Agent);
     out
 }
 
@@ -446,6 +451,7 @@ pub fn mute_key(channel: &Channel) -> &'static str {
         Channel::Here => "here",
         Channel::Room(_) => "rooms",
         Channel::Pm(_) => "pm",
+        Channel::Agent => "agent",
     }
 }
 

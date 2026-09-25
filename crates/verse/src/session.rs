@@ -702,6 +702,7 @@ impl Session {
                 let to = to.clone();
                 return self.pm(&to, text);
             }
+            Channel::Agent => return Err("Talk to your agent with T or /ai.".into()),
             other => mv::world_chat_event(
                 &self.id.signer,
                 WORLD,
@@ -917,7 +918,7 @@ fn profile_name(content: &str) -> Option<String> {
 
 fn clean_name(name: &str) -> String {
     name.chars()
-        .filter(|c| !c.is_control())
+        .filter(|c| crate::ui::drawable(*c))
         .take(24)
         .collect::<String>()
         .trim()

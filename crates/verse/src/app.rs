@@ -1,8 +1,9 @@
 //! The desktop window: winit events in, a frame out.
 
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
+use glam::Vec3;
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::{
@@ -14,9 +15,11 @@ use winit::window::{CursorGrabMode, Window, WindowId};
 
 use crate::agent::Agent;
 use crate::avatar::{self, Gait};
+use crate::brain::{self, Brain};
 use crate::camera::FollowCamera;
 use crate::chat::{self, Channel};
 use crate::controller::{InputState, PlayerController};
+use crate::feed::Feed;
 use crate::hud;
 use crate::render::{self, Renderer, View};
 use crate::session::{self, Session, Status};
@@ -74,7 +77,7 @@ pub fn capture(
     let mut dynamic = avatar::mesh(&player, &Gait::default());
     dynamic.extend(&Agent::new(&player).mesh());
     let atlas = Atlas::new(14.0);
-    let ui = hud::build(
+    let (ui, _) = hud::build(
         &atlas,
         &sample_hud(&view, [width as f32, height as f32], &player),
     );
@@ -136,18 +139,64 @@ fn sample_hud<'a>(view: &View, size: [f32; 2], player: &PlayerController) -> hud
         text: "want to build together?".into(),
         note: None,
     });
-    let overheads: &'a [hud::Overhead] = Box::leak(Box::new([hud::Overhead {
-        feet: player.pos,
-        name: None,
-        bubble: Some("gm verse".into()),
-    }]));
+    log.push(Line {
+        channel: Some(Channel::Agent),
+        from: "you".into(),
+        to: None,
+        text: "what's that tall thing?".into(),
+        note: None,
+    });
+    log.push(Line {
+        channel: Some(Channel::Agent),
+        from: "agent".into(),
+        to: None,
+        text: "That's the pylon at the heart of the Plaza.".into(),
+        note: None,
+    });
+    let agent = Agent::new(player);
+    let overheads: &'a [hud::Overhead] = Box::leak(Box::new([
+        hud::Overhead {
+            feet: player.pos,
+            lift: 2.2,
+            name: Some("you".into()),
+            name_step: coder_terminal::Intensity::ThreeQuarters,
+            bubble: Some("gm verse".into()),
+        },
+        hud::Overhead {
+            feet: agent.pos,
+            lift: 0.5,
+            name: None,
+            name_step: coder_terminal::Intensity::Half,
+            bubble: Some("That's the pylon at the heart of the Plaza.".into()),
+        },
+    ]));
+    let pills = session::ROOMS.iter().fold(
+        vec![
+            ("ALL".to_owned(), true),
+            ("ADS".to_owned(), false),
+            ("ZONE".to_owned(), false),
+            ("NEAR".to_owned(), false),
+            ("HERE".to_owned(), false),
+        ],
+        |mut v, r| {
+            v.push((format!("#{r}"), false));
+            v
+        },
+    );
+    let mut pills = pills;
+    pills.push(("AGENT".into(), false));
     hud::Frame {
         size,
         scale: 1.0,
         view_proj: view.view_proj,
         log: Box::leak(Box::new(log)),
+        nostr: Box::leak(Box::new(std::collections::VecDeque::new())),
+        nostr_title: "live public notes · damus · primal".into(),
+        left_tab: hud::LeftTab::World,
         input: Box::leak(Box::new(hud::Input::default())),
-        method: "ALL".into(),
+        pills,
+        hint: format!("everyone in {}", session::WORLD),
+        limit: Some(chat::MAX_BROADCAST),
         world_title: hud::world_title(session::WORLD, player.pos),
         overheads,
         time: 0.0,
@@ -160,6 +209,9 @@ fn view(camera: &FollowCamera, player: &PlayerController, aspect: f32) -> View {
         eye: camera.eye(player.pos, player.yaw),
     }
 }
+
+/// Resolves a pubkey to a display name.
+type NameOf<'a> = Box<dyn Fn(&str) -> String + 'a>;
 
 /// Raw key and button state, resolved into [`InputState`] once per frame.
 #[derive(Default)]
@@ -211,6 +263,12 @@ struct App {
     scale: f32,
     chat: hud::Input,
     method: Channel,
+    brain: Brain,
+    agent_says: Option<(String, Option<Instant>)>,
+    feed: Option<Feed>,
+    left_tab: hud::LeftTab,
+    cursor: [f32; 2],
+    layout: hud::Layout,
     pm_target: Option<String>,
     offline_log: chat::Log,
     started: Instant,
@@ -269,6 +327,12 @@ impl App {
             scale: 1.0,
             chat: hud::Input::default(),
             method: Channel::All,
+            brain: Brain::start(&options.profile),
+            agent_says: None,
+            feed: options.relay.as_ref().map(|_| Feed::start()),
+            left_tab: hud::LeftTab::World,
+            cursor: [0.0, 0.0],
+            layout: hud::Layout::default(),
             pm_target: None,
             offline_log: {
                 let mut log = chat::Log::default();
@@ -380,6 +444,10 @@ impl App {
     fn submit(&mut self, text: &str) {
         let now = Instant::now();
         let command = chat::parse(text, &self.method);
+        if let chat::Command::Send(Channel::Agent, text) = &command {
+            self.ask_agent(text);
+            return;
+        }
         let Some(session) = &mut self.session else {
             self.offline_log
                 .push(chat::Line::system("You are offline. Chat needs a relay."));
@@ -410,8 +478,185 @@ impl App {
         }
     }
 
+    /// Sends a line to the player's own agent: logged privately, answered
+    /// by the model, and spoken in a bubble over the spade.
+    fn ask_agent(&mut self, text: &str) {
+        let me = self
+            .session
+            .as_ref()
+            .map_or_else(|| "you".to_owned(), |s| s.profile().to_owned());
+        let line = chat::Line {
+            channel: Some(Channel::Agent),
+            from: me,
+            to: None,
+            text: text.to_owned(),
+            note: None,
+        };
+        match &mut self.session {
+            Some(s) => s.log.push(line),
+            None => self.offline_log.push(line),
+        }
+        let surroundings = self.surroundings();
+        self.brain.ask(brain::Ask {
+            text: text.to_owned(),
+            surroundings,
+        });
+        self.agent_says = Some(("…".to_owned(), None));
+        let head = self.player.pos + Vec3::Y * 1.7;
+        self.agent.greet(head);
+    }
+
+    /// What the agent can see, in plain sentences.
+    fn surroundings(&self) -> String {
+        let pos = self.player.pos;
+        let mut out = vec![
+            format!(
+                "- You and your player are in the {} of world {}, at x {:.0}, z {:.0}.",
+                chat::zone_name(chat::zone_of(pos)),
+                session::WORLD,
+                pos.x,
+                pos.z
+            ),
+            format!(
+                "- The tall amber pylon is {:.0} m away. Wireframe towers ring the plaza.",
+                pos.distance(world::PYLON)
+            ),
+        ];
+        if let Some(s) = &self.session {
+            let now = Instant::now();
+            let mut near: Vec<(f32, String)> = s
+                .crowd
+                .shown(now)
+                .into_iter()
+                .filter(|e| e.role == "avatar")
+                .map(|e| {
+                    let d = e.pos.distance(pos);
+                    let state = if e.online {
+                        "online"
+                    } else {
+                        "resting, offline"
+                    };
+                    (
+                        d,
+                        format!("{} ({state}, {d:.0} m away)", s.name_of(&e.pubkey)),
+                    )
+                })
+                .collect();
+            near.sort_by(|a, b| a.0.total_cmp(&b.0));
+            if near.is_empty() {
+                out.push("- No other players are around.".into());
+            } else {
+                let names: Vec<String> = near.into_iter().take(6).map(|(_, n)| n).collect();
+                out.push(format!("- Players you can see: {}.", names.join("; ")));
+            }
+            let recent: Vec<String> = s
+                .log
+                .world
+                .iter()
+                .chain(&s.log.personal)
+                .filter(|l| !matches!(l.channel, Some(Channel::Agent) | Some(Channel::Pm(_))))
+                .rev()
+                .take(5)
+                .map(|l| {
+                    if l.from.is_empty() {
+                        l.text.clone()
+                    } else {
+                        format!("{}: {}", l.from, l.text)
+                    }
+                })
+                .collect();
+            if !recent.is_empty() {
+                out.push(format!("- Recent public chat: {}", recent.join(" | ")));
+            }
+        }
+        if let Some(feed) = &self.feed {
+            let notes = feed.recent(3);
+            if !notes.is_empty() {
+                out.push(format!(
+                    "- Stand-ins for people posting on Nostr gather around the pylon. Latest: {}",
+                    notes.join(" | ")
+                ));
+            }
+        }
+        out.join("\n")
+    }
+
+    /// Streams the agent's reply into its bubble and the personal window.
+    fn hear_agent(&mut self, now: Instant) {
+        for reply in self.brain.drain() {
+            let (text, done) = match reply {
+                brain::Reply::Piece(piece) => {
+                    let so_far = match &self.agent_says {
+                        Some((t, None)) if t != "…" => format!("{t}{piece}"),
+                        _ => piece,
+                    };
+                    (so_far, false)
+                }
+                brain::Reply::Done(text) | brain::Reply::Failed(text) => (text, true),
+            };
+            if done {
+                let line = chat::Line {
+                    channel: Some(Channel::Agent),
+                    from: "agent".into(),
+                    to: None,
+                    text: text.clone(),
+                    note: None,
+                };
+                match &mut self.session {
+                    Some(s) => s.log.push(line),
+                    None => self.offline_log.push(line),
+                }
+                let hold = Duration::from_secs(6) + Duration::from_millis(60 * text.len() as u64);
+                self.agent_says = Some((text, Some(now + hold.min(Duration::from_secs(20)))));
+            } else {
+                self.agent_says = Some((text, None));
+            }
+        }
+        if self
+            .agent_says
+            .as_ref()
+            .is_some_and(|(_, until)| until.is_some_and(|u| u <= now))
+        {
+            self.agent_says = None;
+        }
+    }
+
+    /// A left click at the cursor, if it lands on the HUD. Returns true
+    /// when the HUD took it.
+    fn click(&mut self) -> bool {
+        let [x, y] = self.cursor;
+        if !self.layout.owns(x, y) {
+            return false;
+        }
+        if let Some(i) = self.layout.pills.iter().position(|r| r.contains(x, y)) {
+            if let Some(method) = self.methods().get(i).cloned() {
+                self.method = method;
+                self.open_chat("");
+            }
+        } else if let Some(i) = self.layout.tabs.iter().position(|r| r.contains(x, y)) {
+            self.left_tab = if i == 0 {
+                hud::LeftTab::World
+            } else {
+                hud::LeftTab::Nostr
+            };
+        } else if self.layout.bar.contains(x, y) {
+            self.open_chat("");
+        }
+        true
+    }
+
     fn key(&mut self, code: KeyCode, pressed: bool, event_loop: &ActiveEventLoop) {
         match code {
+            KeyCode::KeyT if pressed => {
+                self.method = Channel::Agent;
+                self.open_chat("");
+            }
+            KeyCode::KeyN if pressed => {
+                self.left_tab = match self.left_tab {
+                    hud::LeftTab::World => hud::LeftTab::Nostr,
+                    hud::LeftTab::Nostr => hud::LeftTab::World,
+                };
+            }
             KeyCode::Enter | KeyCode::NumpadEnter if pressed => self.open_chat(""),
             KeyCode::Slash if pressed => self.open_chat("/"),
             KeyCode::Tab if pressed => self.cycle_method(),
@@ -430,6 +675,7 @@ impl App {
 
     fn button(&mut self, button: MouseButton, pressed: bool) {
         match button {
+            MouseButton::Left if pressed && !self.keys.left_button && self.click() => return,
             MouseButton::Left => self.keys.left_button = pressed,
             MouseButton::Right => {
                 self.keys.right_button = pressed;
@@ -513,30 +759,75 @@ impl App {
         };
         let view = view(&self.camera, &self.player, renderer.aspect());
         let size = renderer.size();
+        if let Some(feed) = &mut self.feed {
+            feed.tick(now);
+            for v in &feed.visitors {
+                let rot = glam::Quat::from_rotation_y(v.yaw);
+                dynamic.extend(&avatar::figure(
+                    v.pos,
+                    rot,
+                    &Gait::default(),
+                    coder_terminal::Intensity::Half,
+                ));
+            }
+        }
+        self.hear_agent(now);
         let overheads = self.overheads(now);
         let ui = match &self.atlas {
             Some(atlas) => {
-                let (log, method) = match &self.session {
-                    Some(s) => (&s.log, hud::method_label(&self.method, |p| s.name_of(p))),
-                    None => (
-                        &self.offline_log,
-                        hud::method_label(&self.method, str::to_owned),
-                    ),
+                let (log, name_of): (&chat::Log, NameOf<'_>) = match &self.session
+                {
+                    Some(s) => (&s.log, Box::new(|p: &str| s.name_of(p))),
+                    None => (&self.offline_log, Box::new(str::to_owned)),
                 };
-                hud::build(
+                let pills = self
+                    .methods()
+                    .iter()
+                    .map(|m| (hud::method_label(m, &name_of), *m == self.method))
+                    .collect();
+                let (near, here) = self.session.as_ref().map_or((0, 0), |s| {
+                    let shown = s.crowd.shown(now);
+                    let avatars = shown.iter().filter(|e| e.role == "avatar" && e.online);
+                    let flat = |v: Vec3| Vec3::new(v.x, 0.0, v.z);
+                    let d = |e: &&crate::crowd::Shown| flat(e.pos).distance(flat(self.player.pos));
+                    (
+                        avatars
+                            .clone()
+                            .filter(|e| d(e) <= chat::NEAR_RADIUS)
+                            .count(),
+                        avatars.filter(|e| d(e) <= chat::HERE_RADIUS).count(),
+                    )
+                });
+                let zone = chat::zone_of(self.player.pos);
+                let hint = hud::audience(&self.method, session::WORLD, zone, near, here, &name_of);
+                let limit = matches!(self.method, Channel::All | Channel::Ads)
+                    .then_some(chat::MAX_BROADCAST);
+                let empty = std::collections::VecDeque::new();
+                let (nostr, nostr_title) = match &self.feed {
+                    Some(feed) => (&feed.lines, feed.title()),
+                    None => (&empty, "offline: start Verse with a relay".to_owned()),
+                };
+                let (ui, layout) = hud::build(
                     atlas,
                     &hud::Frame {
                         size,
                         scale: self.scale,
                         view_proj: view.view_proj,
                         log,
+                        nostr,
+                        nostr_title,
+                        left_tab: self.left_tab,
                         input: &self.chat,
-                        method,
+                        pills,
+                        hint,
+                        limit,
                         world_title: hud::world_title(session::WORLD, self.player.pos),
                         overheads: &overheads,
                         time: (now - self.started).as_secs_f32(),
                     },
-                )
+                );
+                self.layout = layout;
+                ui
             }
             None => crate::ui::UiBatch::default(),
         };
@@ -545,35 +836,72 @@ impl App {
         }
     }
 
-    /// Name tags over nearby players and speech bubbles over speakers.
+    /// Name tags and speech bubbles: over you, your agent, nearby players,
+    /// and Nostr stand-ins.
     fn overheads(&self, now: Instant) -> Vec<hud::Overhead> {
-        let Some(session) = &self.session else {
-            return Vec::new();
+        use coder_terminal::Intensity;
+        let mut out = Vec::new();
+        let (my_name, my_bubble) = match &self.session {
+            Some(s) => (
+                s.profile().to_owned(),
+                s.bubbles
+                    .iter()
+                    .find(|b| b.pubkey == s.pubkey())
+                    .map(|b| b.text.clone()),
+            ),
+            None => ("you".to_owned(), None),
         };
-        let bubble_for = |pubkey: &str| {
-            session
-                .bubbles
-                .iter()
-                .find(|b| b.pubkey == pubkey)
-                .map(|b| b.text.clone())
-        };
-        let mut out: Vec<hud::Overhead> = session
-            .crowd
-            .shown(now)
-            .into_iter()
-            .filter(|e| e.role == "avatar" && e.pos.distance(self.player.pos) < 60.0)
-            .map(|e| hud::Overhead {
-                feet: e.pos,
-                name: Some(session.name_of(&e.pubkey)),
-                bubble: bubble_for(&e.pubkey),
-            })
-            .collect();
-        if let Some(text) = bubble_for(session.pubkey()) {
+        out.push(hud::Overhead {
+            feet: self.player.pos,
+            lift: 2.2,
+            name: Some(my_name),
+            name_step: Intensity::ThreeQuarters,
+            bubble: my_bubble,
+        });
+        if let Some((text, _)) = &self.agent_says {
             out.push(hud::Overhead {
-                feet: self.player.pos,
+                feet: self.agent.pos,
+                lift: 0.5,
                 name: None,
-                bubble: Some(text),
+                name_step: Intensity::Half,
+                bubble: Some(text.clone()),
             });
+        }
+        if let Some(s) = &self.session {
+            for e in s.crowd.shown(now) {
+                if e.role != "avatar" || e.pos.distance(self.player.pos) > 60.0 {
+                    continue;
+                }
+                out.push(hud::Overhead {
+                    feet: e.pos,
+                    lift: 2.2,
+                    name: Some(s.name_of(&e.pubkey)),
+                    name_step: if e.online {
+                        Intensity::Half
+                    } else {
+                        Intensity::Quarter
+                    },
+                    bubble: s
+                        .bubbles
+                        .iter()
+                        .find(|b| b.pubkey == e.pubkey)
+                        .map(|b| b.text.clone()),
+                });
+            }
+        }
+        if let Some(feed) = &self.feed {
+            for v in &feed.visitors {
+                if v.pos.distance(self.player.pos) > 60.0 {
+                    continue;
+                }
+                out.push(hud::Overhead {
+                    feet: v.pos,
+                    lift: 2.2,
+                    name: Some(format!("{} · nostr", feed.name_of(&v.pubkey))),
+                    name_step: Intensity::Quarter,
+                    bubble: v.bubble.as_ref().map(|(t, _)| t.clone()),
+                });
+            }
         }
         out
     }
@@ -629,6 +957,9 @@ impl ApplicationHandler for App {
                 {
                     self.key(code, event.state == ElementState::Pressed, event_loop);
                 }
+            }
+            WindowEvent::CursorMoved { position, .. } => {
+                self.cursor = [position.x as f32, position.y as f32];
             }
             WindowEvent::MouseInput { state, button, .. } => {
                 self.button(button, state == ElementState::Pressed);

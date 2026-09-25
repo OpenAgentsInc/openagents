@@ -6085,6 +6085,7 @@ dependencies = [
  "rustls-pki-types",
  "sha1",
  "thiserror 2.0.20",
+ "webpki-roots 0.26.11",
 ]
 
 [[package]]
@@ -6282,6 +6283,8 @@ name = "verse"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "coder",
+ "coder-one",
  "coder-terminal",
  "glam",
  "nostr",
@@ -6291,6 +6294,7 @@ dependencies = [
  "serde",
  "serde_json",
  "swash",
+ "tokio",
  "tungstenite",
  "wgpu",
  "winit",

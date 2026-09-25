@@ -1,11 +1,16 @@
-//! The heads-up display: chat windows, the chat input, name tags, and
-//! speech bubbles over avatars, all in the amber ladder.
+//! The heads-up display: chat windows, channel pills, the chat input,
+//! name tags, and speech bubbles, all in the amber ladder.
 //!
 //! Layout follows Horse Isle 1: two chat windows along the bottom, world
 //! chat on the left and personal chat on the right, with one input line
-//! beneath them and a method selector at its left edge. Speech bubbles are
-//! the RuneScape touch Horse Isle never had: public lines float over the
-//! speaker's head for a few seconds.
+//! beneath them. Horse Isle's channel dropdown becomes a row of clickable
+//! channel pills, so the choice is always visible. The input line says who
+//! will hear a message before it is sent, typing `/` lists the shortcuts,
+//! and ALL and ADS show a character count. The left window has two tabs:
+//! this world's chat, and live public notes from popular Nostr relays.
+//! Speech bubbles are the RuneScape touch Horse Isle never had.
+
+use std::collections::VecDeque;
 
 use coder_terminal::Intensity;
 use glam::{Mat4, Vec3, Vec4};
@@ -20,21 +25,79 @@ pub struct Input {
     pub open: bool,
     /// The line being typed.
     pub text: String,
-    /// Index into the method list.
-    pub method: usize,
     /// The last line sent, for recall with the up arrow.
     pub last: String,
+}
+
+/// Which tab the left window shows.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum LeftTab {
+    /// This world's ALL, ADS, and ZONE chat.
+    #[default]
+    World,
+    /// Live public notes from popular Nostr relays.
+    Nostr,
 }
 
 /// Something to draw over the world at a 3D point.
 #[derive(Clone, Debug)]
 pub struct Overhead {
-    /// World position of the speaker's feet.
+    /// World position the tag and bubble sit above.
     pub feet: Vec3,
+    /// Height above `feet` to place them, in meters.
+    pub lift: f32,
     /// Name tag, if any.
     pub name: Option<String>,
+    /// How bright the name tag is.
+    pub name_step: Intensity,
     /// Speech bubble text, if any.
     pub bubble: Option<String>,
+}
+
+/// A screen rectangle in pixels.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Rect {
+    /// Left.
+    pub x: f32,
+    /// Top.
+    pub y: f32,
+    /// Width.
+    pub w: f32,
+    /// Height.
+    pub h: f32,
+}
+
+impl Rect {
+    /// True when `(px, py)` lies inside.
+    #[must_use]
+    pub fn contains(&self, px: f32, py: f32) -> bool {
+        px >= self.x && px <= self.x + self.w && py >= self.y && py <= self.y + self.h
+    }
+}
+
+/// Where the clickable parts landed this frame.
+#[derive(Clone, Debug, Default)]
+pub struct Layout {
+    /// One rectangle per channel pill, in pill order.
+    pub pills: Vec<Rect>,
+    /// The left window's WORLD and NOSTR tabs.
+    pub tabs: [Rect; 2],
+    /// The input line.
+    pub bar: Rect,
+    /// The chat windows and pill row: clicks here are for the UI, not the
+    /// camera.
+    pub panels: Vec<Rect>,
+}
+
+impl Layout {
+    /// True when a click at `(x, y)` belongs to the HUD.
+    #[must_use]
+    pub fn owns(&self, x: f32, y: f32) -> bool {
+        self.bar.contains(x, y)
+            || self.pills.iter().any(|r| r.contains(x, y))
+            || self.tabs.iter().any(|r| r.contains(x, y))
+            || self.panels.iter().any(|r| r.contains(x, y))
+    }
 }
 
 /// Everything the HUD needs for one frame.
@@ -47,11 +110,21 @@ pub struct Frame<'a> {
     pub view_proj: Mat4,
     /// Chat history.
     pub log: &'a Log,
+    /// Public notes for the NOSTR tab.
+    pub nostr: &'a VecDeque<Line>,
+    /// The NOSTR tab's heading after its name.
+    pub nostr_title: String,
+    /// Which left tab shows.
+    pub left_tab: LeftTab,
     /// Chat input.
     pub input: &'a Input,
-    /// The selected method's label.
-    pub method: String,
-    /// Left window heading.
+    /// Channel pills: label and whether selected.
+    pub pills: Vec<(String, bool)>,
+    /// Who hears the selected channel, in words.
+    pub hint: String,
+    /// Character limit for the selected channel, if it has a tight one.
+    pub limit: Option<usize>,
+    /// The WORLD tab's heading after its name.
     pub world_title: String,
     /// Things over heads.
     pub overheads: &'a [Overhead],
@@ -59,10 +132,24 @@ pub struct Frame<'a> {
     pub time: f32,
 }
 
-/// Builds the HUD.
+/// The `/` shortcuts, with what each does, for the suggestion list.
+pub const SHORTCUTS: [(&str, &str); 9] = [
+    ("/a", "ALL: everyone in the world"),
+    ("/$", "ADS: buy, sell, announce (once a minute)"),
+    ("/z", "ZONE: everyone in your district"),
+    ("/n", "NEAR: players within 40 m"),
+    ("/h", "HERE: players on your spot"),
+    ("/r", "/r <room> <text>: a chat room"),
+    ("/ai", "AGENT: talk to your agent, privately"),
+    ("/<name>", "/<name> <text>: private message"),
+    ("!mute", "!mute <channel>, !unmute <channel>"),
+];
+
+/// Builds the HUD and reports where its clickable parts are.
 #[must_use]
-pub fn build(atlas: &Atlas, f: &Frame<'_>) -> UiBatch {
+pub fn build(atlas: &Atlas, f: &Frame<'_>) -> (UiBatch, Layout) {
     let mut ui = UiBatch::default();
+    let mut layout = Layout::default();
     let s = f.scale;
     let [w, h] = f.size;
     for o in f.overheads {
@@ -71,105 +158,328 @@ pub fn build(atlas: &Atlas, f: &Frame<'_>) -> UiBatch {
 
     let m = 12.0 * s;
     let pad = 8.0 * s;
-    let bar = atlas.line + 12.0 * s;
+    let bar = atlas.line + 14.0 * s;
     let bar_y = h - m - bar;
-    let panel_h = (h * 0.28).clamp(atlas.line * 6.0, atlas.line * 16.0);
-    let panel_y = bar_y - 6.0 * s - panel_h;
+    let pill_h = atlas.line + 8.0 * s;
+    let pill_y = bar_y - 6.0 * s - pill_h;
+    let panel_h = (h * 0.26).clamp(atlas.line * 6.0, atlas.line * 15.0);
+    let panel_y = pill_y - 6.0 * s - panel_h;
     let panel_w = (w - 3.0 * m) / 2.0;
 
-    window(
-        &mut ui,
-        atlas,
-        m,
-        panel_y,
-        panel_w,
-        panel_h,
-        pad,
-        &f.world_title,
-        &f.log.world,
-    );
-    window(
-        &mut ui,
-        atlas,
-        2.0 * m + panel_w,
-        panel_y,
-        panel_w,
-        panel_h,
-        pad,
-        "PERSONAL · near · here · rooms · private",
-        &f.log.personal,
-    );
-
-    // The input line.
-    let edge = if f.input.open {
-        Intensity::ThreeQuarters
-    } else {
-        Intensity::Quarter
+    // Left window, with its two tabs as the heading.
+    let left = Rect {
+        x: m,
+        y: panel_y,
+        w: panel_w,
+        h: panel_h,
     };
-    let bar_w = w - 2.0 * m;
-    ui.rect(atlas, m, bar_y, bar_w, bar, field(0.88));
-    ui.frame(atlas, m, bar_y, bar_w, bar, s.max(1.0), amber(edge, 1.0));
-    let text_y = bar_y + (bar - atlas.line) / 2.0;
-    let label = format!("[{}]", f.method);
-    let mut x = m + pad;
-    x += ui.text(atlas, x, text_y, &label, amber(Intensity::Full, 1.0));
-    x += atlas.advance;
-    if f.input.open {
-        let room = ((bar_w - (x - m) - pad) / atlas.advance) as usize;
-        let shown: String = {
-            let chars: Vec<char> = f.input.text.chars().collect();
-            let start = chars.len().saturating_sub(room.saturating_sub(1));
-            chars[start..].iter().collect()
+    let (lines, empty, rest) = match f.left_tab {
+        LeftTab::World => (
+            &f.log.world,
+            "No world chat yet. Press Enter and say hi to everyone.",
+            f.world_title.as_str(),
+        ),
+        LeftTab::Nostr => (
+            f.nostr,
+            "Listening for public notes on relay.damus.io and relay.primal.net…",
+            f.nostr_title.as_str(),
+        ),
+    };
+    frame_window(&mut ui, atlas, left);
+    let mut tx = left.x + pad;
+    for (i, (label, tab)) in [("WORLD", LeftTab::World), ("NOSTR", LeftTab::Nostr)]
+        .into_iter()
+        .enumerate()
+    {
+        let tw = atlas.measure(label) + 12.0 * s;
+        let r = Rect {
+            x: tx,
+            y: left.y + 3.0 * s,
+            w: tw,
+            h: atlas.line + 4.0 * s,
         };
-        x += ui.text(atlas, x, text_y, &shown, amber(Intensity::Full, 1.0));
-        if (f.time * 2.0).fract() < 0.6 {
-            ui.text(atlas, x, text_y, "_", amber(Intensity::Full, 1.0));
+        let on = f.left_tab == tab;
+        if on {
+            ui.rect(atlas, r.x, r.y, r.w, r.h, amber(Intensity::Quarter, 0.55));
+            ui.frame(atlas, r.x, r.y, r.w, r.h, 1.0, amber(Intensity::Full, 1.0));
+        } else {
+            ui.frame(
+                atlas,
+                r.x,
+                r.y,
+                r.w,
+                r.h,
+                1.0,
+                amber(Intensity::Quarter, 1.0),
+            );
         }
-    } else {
+        let step = if on { Intensity::Full } else { Intensity::Half };
+        ui.text(atlas, r.x + 6.0 * s, r.y + 2.0 * s, label, amber(step, 1.0));
+        layout.tabs[i] = r;
+        tx += tw + 5.0 * s;
+    }
+    ui.text(
+        atlas,
+        tx + 4.0 * s,
+        left.y + 5.0 * s,
+        rest,
+        amber(Intensity::Quarter, 1.0),
+    );
+    let top = left.y + atlas.line + 9.0 * s;
+    fill_window(&mut ui, atlas, left, top, pad, lines, empty);
+
+    // Right window.
+    let right = Rect {
+        x: 2.0 * m + panel_w,
+        y: panel_y,
+        w: panel_w,
+        h: panel_h,
+    };
+    frame_window(&mut ui, atlas, right);
+    ui.text(
+        atlas,
+        right.x + pad,
+        right.y + 5.0 * s,
+        "PERSONAL · near · here · rooms · private · your agent",
+        amber(Intensity::Half, 1.0),
+    );
+    let top = right.y + atlas.line + 9.0 * s;
+    fill_window(
+        &mut ui,
+        atlas,
+        right,
+        top,
+        pad,
+        &f.log.personal,
+        "Nearby talk, rooms, private messages, and your agent show up here. Press T to talk to your agent.",
+    );
+    layout.panels.push(left);
+    layout.panels.push(right);
+
+    // Channel pills.
+    let mut x = m;
+    ui.text(
+        atlas,
+        x,
+        pill_y + 4.0 * s,
+        "Send to:",
+        amber(Intensity::Half, 1.0),
+    );
+    x += atlas.measure("Send to: ");
+    for (label, selected) in &f.pills {
+        let pw = atlas.measure(label) + 14.0 * s;
+        let r = Rect {
+            x,
+            y: pill_y,
+            w: pw,
+            h: pill_h,
+        };
+        if *selected {
+            ui.rect(atlas, r.x, r.y, r.w, r.h, amber(Intensity::Quarter, 0.55));
+            ui.frame(
+                atlas,
+                r.x,
+                r.y,
+                r.w,
+                r.h,
+                s.max(1.0),
+                amber(Intensity::Full, 1.0),
+            );
+        } else {
+            ui.rect(atlas, r.x, r.y, r.w, r.h, field(0.8));
+            ui.frame(
+                atlas,
+                r.x,
+                r.y,
+                r.w,
+                r.h,
+                1.0,
+                amber(Intensity::Quarter, 1.0),
+            );
+        }
+        let step = if *selected {
+            Intensity::Full
+        } else {
+            Intensity::Half
+        };
+        ui.text(atlas, r.x + 7.0 * s, r.y + 4.0 * s, label, amber(step, 1.0));
+        layout.pills.push(r);
+        x += pw + 5.0 * s;
+    }
+    let tip = "Tab or click to switch";
+    let tip_x = w - m - atlas.measure(tip);
+    if tip_x > x + atlas.advance {
         ui.text(
             atlas,
-            x,
-            text_y,
-            "Enter to chat · Tab: channel · /a all /$ ads /z zone /n near /h here /r room · /name to whisper",
+            tip_x,
+            pill_y + 4.0 * s,
+            tip,
             amber(Intensity::Quarter, 1.0),
         );
     }
-    ui
-}
+    layout.panels.push(Rect {
+        x: m,
+        y: pill_y,
+        w: w - 2.0 * m,
+        h: pill_h,
+    });
 
-#[allow(clippy::too_many_arguments)]
-fn window(
-    ui: &mut UiBatch,
-    atlas: &Atlas,
-    x: f32,
-    y: f32,
-    w: f32,
-    h: f32,
-    pad: f32,
-    title: &str,
-    lines: &std::collections::VecDeque<Line>,
-) {
-    ui.rect(atlas, x, y, w, h, field(0.78));
-    ui.frame(atlas, x, y, w, h, 1.0, amber(Intensity::Quarter, 1.0));
+    // The input line.
+    let bar_w = w - 2.0 * m;
+    layout.bar = Rect {
+        x: m,
+        y: bar_y,
+        w: bar_w,
+        h: bar,
+    };
+    let edge = if f.input.open {
+        Intensity::Full
+    } else {
+        Intensity::Half
+    };
+    ui.rect(atlas, m, bar_y, bar_w, bar, field(0.9));
+    ui.frame(atlas, m, bar_y, bar_w, bar, s.max(1.0), amber(edge, 1.0));
+    let text_y = bar_y + (bar - atlas.line) / 2.0;
+    let mut x = m + pad;
+    x += ui.text(atlas, x, text_y, "> ", amber(Intensity::Full, 1.0));
+
+    // Right side: who hears it, and the count when it matters.
+    let count = f.input.text.chars().count();
+    let right_text = match f.limit {
+        Some(limit) if f.input.open => format!("to {} · {count}/{limit}", f.hint),
+        _ => format!("to {}", f.hint),
+    };
+    let over = f.limit.is_some_and(|l| count > l);
+    let right_x = m + bar_w - pad - atlas.measure(&right_text);
     ui.text(
         atlas,
-        x + pad,
-        y + pad * 0.5,
-        title,
-        amber(Intensity::Half, 1.0),
+        right_x,
+        text_y,
+        &right_text,
+        amber(
+            if over {
+                Intensity::Full
+            } else {
+                Intensity::Quarter
+            },
+            1.0,
+        ),
     );
-    let top = y + pad * 0.5 + atlas.line + 2.0;
-    ui.rect(
+
+    let room = (((right_x - atlas.advance * 2.0) - x) / atlas.advance).max(4.0) as usize;
+    if f.input.open && !f.input.text.is_empty() {
+        let chars: Vec<char> = f.input.text.chars().collect();
+        let start = chars.len().saturating_sub(room.saturating_sub(1));
+        let shown: String = chars[start..].iter().collect();
+        x += ui.text(atlas, x, text_y, &shown, amber(Intensity::Full, 1.0));
+    } else {
+        let placeholder = if f.input.open {
+            "Type your message · Enter sends · Esc cancels · / for shortcuts"
+        } else {
+            "Press Enter (or click here) to chat · T to talk to your agent · N for Nostr"
+        };
+        let clipped: String = placeholder.chars().take(room).collect();
+        ui.text(
+            atlas,
+            x + atlas.advance,
+            text_y,
+            &clipped,
+            amber(Intensity::Quarter, 1.0),
+        );
+    }
+    if f.input.open && (f.time * 2.0).fract() < 0.6 {
+        ui.text(atlas, x, text_y, "_", amber(Intensity::Full, 1.0));
+    }
+
+    // Shortcut suggestions while typing a slash command.
+    if f.input.open && f.input.text.starts_with(['/', '!']) && !f.input.text.contains(' ') {
+        let typed = f.input.text.to_lowercase();
+        let matches: Vec<&(&str, &str)> = SHORTCUTS
+            .iter()
+            .filter(|(cmd, _)| cmd.starts_with(&typed) || typed.len() == 1)
+            .collect();
+        if !matches.is_empty() {
+            let lw = SHORTCUTS
+                .iter()
+                .map(|(c, _)| atlas.measure(c))
+                .fold(0.0, f32::max);
+            let bw = matches
+                .iter()
+                .map(|(_, d)| lw + atlas.advance * 2.0 + atlas.measure(d))
+                .fold(0.0, f32::max)
+                + 2.0 * pad;
+            let bh = matches.len() as f32 * atlas.line + 2.0 * pad;
+            let by = pill_y - 4.0 * s - bh;
+            ui.rect(atlas, m, by, bw, bh, field(0.95));
+            ui.frame(
+                atlas,
+                m,
+                by,
+                bw,
+                bh,
+                s.max(1.0),
+                amber(Intensity::ThreeQuarters, 1.0),
+            );
+            for (i, (cmd, desc)) in matches.iter().enumerate() {
+                let ly = by + pad + i as f32 * atlas.line;
+                ui.text(atlas, m + pad, ly, cmd, amber(Intensity::Full, 1.0));
+                ui.text(
+                    atlas,
+                    m + pad + lw + atlas.advance * 2.0,
+                    ly,
+                    desc,
+                    amber(Intensity::Half, 1.0),
+                );
+            }
+        }
+    }
+    (ui, layout)
+}
+
+fn frame_window(ui: &mut UiBatch, atlas: &Atlas, r: Rect) {
+    ui.rect(atlas, r.x, r.y, r.w, r.h, field(0.78));
+    ui.frame(
         atlas,
-        x + pad,
-        top,
-        w - 2.0 * pad,
+        r.x,
+        r.y,
+        r.w,
+        r.h,
         1.0,
         amber(Intensity::Quarter, 1.0),
     );
+}
 
-    let inner = w - 2.0 * pad;
-    let mut cursor = y + h - pad * 0.5;
+fn fill_window(
+    ui: &mut UiBatch,
+    atlas: &Atlas,
+    r: Rect,
+    top: f32,
+    pad: f32,
+    lines: &VecDeque<Line>,
+    empty: &str,
+) {
+    ui.rect(
+        atlas,
+        r.x + pad,
+        top,
+        r.w - 2.0 * pad,
+        1.0,
+        amber(Intensity::Quarter, 1.0),
+    );
+    let inner = r.w - 2.0 * pad;
+    if lines.is_empty() {
+        for (i, row) in atlas.wrap(empty, inner).iter().enumerate() {
+            ui.text(
+                atlas,
+                r.x + pad,
+                top + 6.0 + i as f32 * atlas.line,
+                row,
+                amber(Intensity::Quarter, 1.0),
+            );
+        }
+        return;
+    }
+    let mut cursor = r.y + r.h - pad * 0.5;
     for line in lines.iter().rev() {
         let spans = spans(line);
         let rows = layout(atlas, &spans, inner);
@@ -178,7 +488,7 @@ fn window(
             if cursor < top + 2.0 {
                 return;
             }
-            let mut px = x + pad;
+            let mut px = r.x + pad;
             for (text, step) in row {
                 px += ui.text(atlas, px, cursor, text, amber(*step, 1.0));
             }
@@ -189,7 +499,18 @@ fn window(
 /// A line as styled spans: channel tag, speaker, text, and note.
 fn spans(line: &Line) -> Vec<(String, Intensity)> {
     let Some(channel) = &line.channel else {
-        return vec![(line.text.clone(), Intensity::Half)];
+        if line.from.is_empty() {
+            return vec![(line.text.clone(), Intensity::Half)];
+        }
+        // A public Nostr note: speaker and text, the relay as the note.
+        let mut out = vec![
+            (format!("{}: ", line.from), Intensity::Full),
+            (line.text.clone(), Intensity::ThreeQuarters),
+        ];
+        if let Some(note) = &line.note {
+            out.push((format!(" {note}"), Intensity::Quarter));
+        }
+        return out;
     };
     let tag = match channel {
         Channel::All => "all ".to_owned(),
@@ -199,6 +520,7 @@ fn spans(line: &Line) -> Vec<(String, Intensity)> {
         Channel::Here => "here ".to_owned(),
         Channel::Room(room) => format!("#{room} "),
         Channel::Pm(_) => "pm ".to_owned(),
+        Channel::Agent => "ai ".to_owned(),
     };
     let mut out = vec![(tag, Intensity::Quarter)];
     if line.from.is_empty() {
@@ -210,7 +532,7 @@ fn spans(line: &Line) -> Vec<(String, Intensity)> {
         None => format!("{}: ", line.from),
     };
     out.push((speaker, Intensity::Full));
-    let body = if matches!(channel, Channel::Ads | Channel::Pm(_)) {
+    let body = if matches!(channel, Channel::Ads | Channel::Pm(_) | Channel::Agent) {
         Intensity::Full
     } else {
         Intensity::ThreeQuarters
@@ -275,32 +597,27 @@ pub fn project(view_proj: Mat4, size: [f32; 2], p: Vec3) -> Option<[f32; 2]> {
 
 fn overhead(ui: &mut UiBatch, atlas: &Atlas, f: &Frame<'_>, o: &Overhead) {
     let s = f.scale;
-    let mut y_base = None;
-    if let Some(name) = &o.name
-        && let Some([x, y]) = project(f.view_proj, f.size, o.feet + Vec3::Y * 2.2)
-    {
+    let Some([x, y]) = project(f.view_proj, f.size, o.feet + Vec3::Y * o.lift) else {
+        return;
+    };
+    let mut y = y;
+    if let Some(name) = &o.name {
         let tw = atlas.measure(name);
         ui.text(
             atlas,
             x - tw / 2.0,
             y - atlas.line,
             name,
-            amber(Intensity::Half, 1.0),
+            amber(o.name_step, 1.0),
         );
-        y_base = Some(y - atlas.line - 4.0 * s);
+        y -= atlas.line + 4.0 * s;
     }
     let Some(text) = &o.bubble else { return };
-    let Some([x, y]) = y_base
-        .map(|yb| project(f.view_proj, f.size, o.feet + Vec3::Y * 2.2).map(|[x, _]| [x, yb]))
-        .unwrap_or_else(|| project(f.view_proj, f.size, o.feet + Vec3::Y * 2.4))
-    else {
-        return;
-    };
-    let mut rows = atlas.wrap(text, atlas.advance * 28.0);
-    if rows.len() > 3 {
-        rows.truncate(3);
+    let mut rows = atlas.wrap(text, atlas.advance * 30.0);
+    if rows.len() > 4 {
+        rows.truncate(4);
         if let Some(last) = rows.last_mut() {
-            let keep: String = last.chars().take(26).collect();
+            let keep: String = last.chars().take(28).collect();
             *last = format!("{keep}…");
         }
     }
@@ -338,7 +655,7 @@ fn overhead(ui: &mut UiBatch, atlas: &Atlas, f: &Frame<'_>, o: &Overhead) {
     }
 }
 
-/// The method selector's label for a channel.
+/// A channel pill's label.
 #[must_use]
 pub fn method_label(channel: &Channel, name_of: impl Fn(&str) -> String) -> String {
     match channel {
@@ -349,14 +666,37 @@ pub fn method_label(channel: &Channel, name_of: impl Fn(&str) -> String) -> Stri
         Channel::Here => "HERE".into(),
         Channel::Room(room) => format!("#{room}"),
         Channel::Pm(pubkey) => format!("PM {}", name_of(pubkey)),
+        Channel::Agent => "AGENT".into(),
     }
 }
 
-/// The left window's heading: world and zone.
+/// Who hears a channel, in words, for the input line.
+#[must_use]
+pub fn audience(
+    channel: &Channel,
+    world: &str,
+    zone: &str,
+    near: usize,
+    here: usize,
+    name_of: impl Fn(&str) -> String,
+) -> String {
+    match channel {
+        Channel::All => format!("everyone in {world}"),
+        Channel::Ads => "everyone, as an ad".into(),
+        Channel::Zone => format!("everyone in the {}", chat::zone_name(zone)),
+        Channel::Near => format!("{near} players within 40 m"),
+        Channel::Here => format!("{here} players on this spot"),
+        Channel::Room(room) => format!("the #{room} room"),
+        Channel::Pm(pubkey) => format!("only {}", name_of(pubkey)),
+        Channel::Agent => "only your agent (private)".into(),
+    }
+}
+
+/// The WORLD tab's heading after its name.
 #[must_use]
 pub fn world_title(world: &str, pos: Vec3) -> String {
     format!(
-        "WORLD {world} · {} · all · ads · zone",
+        "{world} · {} · all · ads · zone",
         chat::zone_name(chat::zone_of(pos))
     )
 }
@@ -364,6 +704,25 @@ pub fn world_title(world: &str, pos: Vec3) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn frame<'a>(log: &'a Log, nostr: &'a VecDeque<Line>, input: &'a Input) -> Frame<'a> {
+        Frame {
+            size: [1440.0, 900.0],
+            scale: 1.0,
+            view_proj: Mat4::IDENTITY,
+            log,
+            nostr,
+            nostr_title: "damus · primal".into(),
+            left_tab: LeftTab::World,
+            input,
+            pills: vec![("ALL".into(), true), ("AGENT".into(), false)],
+            hint: "everyone".into(),
+            limit: Some(150),
+            world_title: world_title("verse-plaza", Vec3::ZERO),
+            overheads: &[],
+            time: 0.0,
+        }
+    }
 
     #[test]
     fn a_point_ahead_projects_to_the_screen_center() {
@@ -393,21 +752,35 @@ mod tests {
     }
 
     #[test]
-    fn the_hud_draws_something_at_rest() {
+    fn pills_tabs_and_the_bar_are_clickable() {
         let atlas = Atlas::new(14.0);
-        let mut log = Log::default();
-        log.push(Line::system("Player north has logged in"));
-        let frame = Frame {
-            size: [1440.0, 900.0],
-            scale: 1.0,
-            view_proj: Mat4::IDENTITY,
-            log: &log,
-            input: &Input::default(),
-            method: "ALL".into(),
-            world_title: world_title("verse-plaza", Vec3::ZERO),
-            overheads: &[],
-            time: 0.0,
+        let log = Log::default();
+        let nostr = VecDeque::new();
+        let input = Input::default();
+        let (ui, layout) = build(&atlas, &frame(&log, &nostr, &input));
+        assert!(!ui.vertices.is_empty());
+        assert_eq!(layout.pills.len(), 2);
+        let p = layout.pills[1];
+        assert!(layout.owns(p.x + 1.0, p.y + 1.0));
+        let t = layout.tabs[1];
+        assert!(t.w > 0.0 && layout.owns(t.x + 1.0, t.y + 1.0));
+        assert!(layout.bar.contains(layout.bar.x + 5.0, layout.bar.y + 5.0));
+        assert!(!layout.owns(700.0, 100.0), "the sky is not UI");
+    }
+
+    #[test]
+    fn a_slash_lists_the_shortcuts() {
+        let atlas = Atlas::new(14.0);
+        let log = Log::default();
+        let nostr = VecDeque::new();
+        let closed = Input::default();
+        let typing = Input {
+            open: true,
+            text: "/".into(),
+            last: String::new(),
         };
-        assert!(!build(&atlas, &frame).vertices.is_empty());
+        let (plain, _) = build(&atlas, &frame(&log, &nostr, &closed));
+        let (listed, _) = build(&atlas, &frame(&log, &nostr, &typing));
+        assert!(listed.vertices.len() > plain.vertices.len() + 200);
     }
 }
