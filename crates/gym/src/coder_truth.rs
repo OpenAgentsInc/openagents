@@ -319,7 +319,7 @@ mod tests {
         // A signal that never spoke is left out.
         assert!(!text.contains("scenario.generic.parse"));
         assert!(
-            text.contains("The verdict states its held-out precision: fail 22/37, pass 11/13.")
+            text.contains("Historical reference (185 mostly Opus trials, reused validation): fail 22/37, pass 11/13.")
         );
         let only = lines(&summary(), "held-out", Some("verdict"), false).join("\n");
         assert!(!only.contains("checks.final  "));
