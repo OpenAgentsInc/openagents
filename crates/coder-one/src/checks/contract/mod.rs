@@ -19,9 +19,13 @@
 //! ([`extract::questions`]). Jev never sees a candidate or its output, and
 //! never judges one.
 //!
-//! The component isn't wired into any policy. Its measurement on retained,
-//! graded candidates is in
-//! `docs/terminal-bench/2026-09-25-executed-contract-checks.md`.
+//! The contract check isn't wired into any policy. Its measurement on
+//! retained, graded candidates is in
+//! `docs/terminal-bench/2026-09-25-executed-contract-checks.md`. Two pieces
+//! reuse its extractor and runner: [`entry`], the entry points
+//! `evidence.baseline` runs before session 1, and [`executed`], the
+//! post-session rule `verify.executed` (issue #9636), measured in
+//! `docs/terminal-bench/2026-09-25-verify-executed-offline.md`.
 
 pub mod cli;
 pub mod entry;

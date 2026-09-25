@@ -1,0 +1,406 @@
+{
+  "schema": "openagents.coder-one.verify-executed-summary.v1",
+  "pooled": {
+    "graded": 44,
+    "failures": 34,
+    "passes": 10,
+    "rejected": 0,
+    "precision": {
+      "k": 0,
+      "n": 0,
+      "value": null,
+      "wilson_95": null
+    },
+    "recall": {
+      "k": 0,
+      "n": 34,
+      "value": 0.0,
+      "wilson_95": [
+        0.0,
+        0.1015
+      ]
+    },
+    "ungraded": 2,
+    "errors": 0
+  },
+  "by_set": {
+    "accept": {
+      "graded": 41,
+      "failures": 31,
+      "passes": 10,
+      "rejected": 0,
+      "precision": {
+        "k": 0,
+        "n": 0,
+        "value": null,
+        "wilson_95": null
+      },
+      "recall": {
+        "k": 0,
+        "n": 31,
+        "value": 0.0,
+        "wilson_95": [
+          0.0,
+          0.1103
+        ]
+      },
+      "ungraded": 2,
+      "errors": 0
+    },
+    "fresh": {
+      "graded": 3,
+      "failures": 3,
+      "passes": 0,
+      "rejected": 0,
+      "precision": {
+        "k": 0,
+        "n": 0,
+        "value": null,
+        "wilson_95": null
+      },
+      "recall": {
+        "k": 0,
+        "n": 3,
+        "value": 0.0,
+        "wilson_95": [
+          0.0,
+          0.5615
+        ]
+      },
+      "ungraded": 0,
+      "errors": 0
+    }
+  },
+  "by_task": {
+    "accept/embedding-drift-monitor": {
+      "graded": 21,
+      "failures": 11,
+      "passes": 10,
+      "rejected": 0,
+      "precision": {
+        "k": 0,
+        "n": 0,
+        "value": null,
+        "wilson_95": null
+      },
+      "recall": {
+        "k": 0,
+        "n": 11,
+        "value": 0.0,
+        "wilson_95": [
+          0.0,
+          0.2588
+        ]
+      },
+      "ungraded": 1,
+      "errors": 0
+    },
+    "accept/session-window-debug": {
+      "graded": 20,
+      "failures": 20,
+      "passes": 0,
+      "rejected": 0,
+      "precision": {
+        "k": 0,
+        "n": 0,
+        "value": null,
+        "wilson_95": null
+      },
+      "recall": {
+        "k": 0,
+        "n": 20,
+        "value": 0.0,
+        "wilson_95": [
+          0.0,
+          0.1611
+        ]
+      },
+      "ungraded": 1,
+      "errors": 0
+    },
+    "fresh/shadow-relay": {
+      "graded": 3,
+      "failures": 3,
+      "passes": 0,
+      "rejected": 0,
+      "precision": {
+        "k": 0,
+        "n": 0,
+        "value": null,
+        "wilson_95": null
+      },
+      "recall": {
+        "k": 0,
+        "n": 3,
+        "value": 0.0,
+        "wilson_95": [
+          0.0,
+          0.5615
+        ]
+      },
+      "ungraded": 0,
+      "errors": 0
+    }
+  },
+  "verdicts": {
+    "ok": 107,
+    "regressed": 0,
+    "not_a_regression": 1,
+    "unknown": 0
+  },
+  "rejected": [],
+  "keep_best": {
+    "loops": 13,
+    "replays_matching_record": 12,
+    "changed": 0,
+    "decisions": [
+      {
+        "task": "embedding-drift-monitor",
+        "trial": "embedding-drift-monitor__6zRjd9n",
+        "lean": "lean-1",
+        "recorded": 2,
+        "replayed_without_rule": 2,
+        "replay_matches_record": true,
+        "with_rule": 2,
+        "changed": false,
+        "rejected_sessions": [],
+        "sessions_measured": [
+          1,
+          2
+        ],
+        "rewards": {
+          "1": 1.0,
+          "2": 1.0
+        }
+      },
+      {
+        "task": "embedding-drift-monitor",
+        "trial": "embedding-drift-monitor__KDeY8Bf",
+        "lean": "lean-1",
+        "recorded": 1,
+        "replayed_without_rule": 1,
+        "replay_matches_record": true,
+        "with_rule": 1,
+        "changed": false,
+        "rejected_sessions": [],
+        "sessions_measured": [
+          1,
+          2
+        ],
+        "rewards": {
+          "1": 0.0,
+          "2": 0.0
+        }
+      },
+      {
+        "task": "embedding-drift-monitor",
+        "trial": "embedding-drift-monitor__QAHE7De",
+        "lean": "lean-1",
+        "recorded": 2,
+        "replayed_without_rule": 2,
+        "replay_matches_record": true,
+        "with_rule": 2,
+        "changed": false,
+        "rejected_sessions": [],
+        "sessions_measured": [
+          1,
+          2
+        ],
+        "rewards": {
+          "1": null,
+          "2": 1.0
+        }
+      },
+      {
+        "task": "embedding-drift-monitor",
+        "trial": "embedding-drift-monitor__UfYFodd",
+        "lean": "lean-1",
+        "recorded": 1,
+        "replayed_without_rule": 1,
+        "replay_matches_record": true,
+        "with_rule": 1,
+        "changed": false,
+        "rejected_sessions": [],
+        "sessions_measured": [
+          1,
+          2
+        ],
+        "rewards": {
+          "1": 0.0,
+          "2": 0.0
+        }
+      },
+      {
+        "task": "embedding-drift-monitor",
+        "trial": "embedding-drift-monitor__mVNMcMn",
+        "lean": "lean-1",
+        "recorded": 1,
+        "replayed_without_rule": 1,
+        "replay_matches_record": true,
+        "with_rule": 1,
+        "changed": false,
+        "rejected_sessions": [],
+        "sessions_measured": [
+          1,
+          2
+        ],
+        "rewards": {
+          "1": 0.0,
+          "2": 0.0
+        }
+      },
+      {
+        "task": "embedding-drift-monitor",
+        "trial": "embedding-drift-monitor__y2bahob",
+        "lean": "lean-1",
+        "recorded": 2,
+        "replayed_without_rule": 2,
+        "replay_matches_record": true,
+        "with_rule": 2,
+        "changed": false,
+        "rejected_sessions": [],
+        "sessions_measured": [
+          1,
+          2
+        ],
+        "rewards": {
+          "1": 1.0,
+          "2": 1.0
+        }
+      },
+      {
+        "task": "session-window-debug",
+        "trial": "session-window-debug__3KVqBUz",
+        "lean": "lean-1",
+        "recorded": 2,
+        "replayed_without_rule": 2,
+        "replay_matches_record": true,
+        "with_rule": 2,
+        "changed": false,
+        "rejected_sessions": [],
+        "sessions_measured": [
+          1,
+          2
+        ],
+        "rewards": {
+          "1": null,
+          "2": 0.0
+        }
+      },
+      {
+        "task": "session-window-debug",
+        "trial": "session-window-debug__3v9FKP5",
+        "lean": "lean-1",
+        "recorded": 2,
+        "replayed_without_rule": 2,
+        "replay_matches_record": true,
+        "with_rule": 2,
+        "changed": false,
+        "rejected_sessions": [],
+        "sessions_measured": [
+          1,
+          2
+        ],
+        "rewards": {
+          "1": 0.0,
+          "2": 0.0
+        }
+      },
+      {
+        "task": "session-window-debug",
+        "trial": "session-window-debug__PacT86C",
+        "lean": "lean-1",
+        "recorded": 2,
+        "replayed_without_rule": 2,
+        "replay_matches_record": true,
+        "with_rule": 2,
+        "changed": false,
+        "rejected_sessions": [],
+        "sessions_measured": [
+          1,
+          2
+        ],
+        "rewards": {
+          "1": 0.0,
+          "2": 0.0
+        }
+      },
+      {
+        "task": "session-window-debug",
+        "trial": "session-window-debug__a7stmvT",
+        "lean": "lean-1",
+        "recorded": 1,
+        "replayed_without_rule": 1,
+        "replay_matches_record": true,
+        "with_rule": 1,
+        "changed": false,
+        "rejected_sessions": [],
+        "sessions_measured": [
+          1,
+          2
+        ],
+        "rewards": {
+          "1": 0.0,
+          "2": 0.0
+        }
+      },
+      {
+        "task": "session-window-debug",
+        "trial": "session-window-debug__arofNZN",
+        "lean": "lean-1",
+        "recorded": 1,
+        "replayed_without_rule": 1,
+        "replay_matches_record": true,
+        "with_rule": 1,
+        "changed": false,
+        "rejected_sessions": [],
+        "sessions_measured": [
+          1,
+          2
+        ],
+        "rewards": {
+          "1": 0.0,
+          "2": 0.0
+        }
+      },
+      {
+        "task": "session-window-debug",
+        "trial": "session-window-debug__vbWCjBZ",
+        "lean": "lean-1",
+        "recorded": 1,
+        "replayed_without_rule": 1,
+        "replay_matches_record": true,
+        "with_rule": 1,
+        "changed": false,
+        "rejected_sessions": [],
+        "sessions_measured": [
+          1,
+          2
+        ],
+        "rewards": {
+          "1": 0.0,
+          "2": 0.0
+        }
+      },
+      {
+        "task": "shadow-relay",
+        "trial": "shadow-relay__QWbzYAf",
+        "lean": "lean-1",
+        "recorded": 2,
+        "replayed_without_rule": 1,
+        "replay_matches_record": false,
+        "with_rule": 1,
+        "changed": false,
+        "rejected_sessions": [],
+        "sessions_measured": [
+          1,
+          2
+        ],
+        "rewards": {
+          "1": 0.0,
+          "2": 0.0
+        }
+      }
+    ]
+  }
+}
