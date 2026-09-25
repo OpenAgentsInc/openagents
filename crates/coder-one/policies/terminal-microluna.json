@@ -1,0 +1,63 @@
+{
+  "schema": "openagents.coder-one.policy.v1",
+  "name": "coder-terminal-microluna",
+  "note": "A Coder Terminal change turn on Microluna: the requirements loop over at most three requirement groups, six sessions, and a quarter of a dollar, with the checks between sessions and no evidence requirement, since many terminal requests are questions. The judge and the briefing match the terminal's Claude Code policy. The terminal runs the executor in its own filesystem boundary, so the protected section applies only to a benchmark episode. A read-only turn runs no checks, and a question runs one session, whatever this manifest says.",
+  "policy": {
+    "jev": {
+      "mode": "deep",
+      "model": "jev-1.13.0",
+      "question_sets": "builtin-v1"
+    },
+    "evidence": {
+      "probes": "v2",
+      "survey_files": 40
+    },
+    "control": {
+      "delegate": "always",
+      "explore_steps": 0,
+      "max_steps": 50,
+      "command_timeout_sec": 300,
+      "lane": "free",
+      "error_streak": 3,
+      "unchanged_steps": 6
+    },
+    "brief": {
+      "cap": 12000,
+      "directions": "batch"
+    },
+    "executor": {
+      "agent": "microluna",
+      "version": null,
+      "model": "gpt-6-luna",
+      "effort": null,
+      "tools": null,
+      "prompt_cache_ttl": null,
+      "deadline_sec": 600,
+      "microluna": {
+        "mode": "requirements",
+        "max_sessions": 6,
+        "max_attempts": 2,
+        "max_groups": 3,
+        "session_turns": 24,
+        "session_sec": 240,
+        "spend_usd": 0.25,
+        "evidence_chars": 14000,
+        "checks": true,
+        "require_evidence": false,
+        "read_first": false,
+        "accept": false
+      }
+    }
+  },
+  "protected": {
+    "isolation": "task-container",
+    "effect_policy": "executor-bypasses-its-own-sandbox",
+    "acceptance": "task-verifier",
+    "ceilings": {
+      "episode_deadline_sec": null,
+      "reserve_sec": 30,
+      "spend_soft_usd": null,
+      "spend_hard_usd": null
+    }
+  }
+}

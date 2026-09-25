@@ -636,6 +636,8 @@ impl DelegateDoor {
             issues: crate::permit::Permit::operator().executes(),
             issue: false,
             review: false,
+            // The manifest comes from the operator's environment.
+            policy: None,
         };
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<FromThread>();
         // Coder One's judge and recorder are not `Send`, so the turn runs

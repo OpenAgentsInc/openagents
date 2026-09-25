@@ -1418,6 +1418,18 @@ pub const REFERENCE: &[(&str, &str)] = &[
         "jevprobe2-opus-lean-low-5m.json",
         include_str!("../policies/jevprobe2-opus-lean-low-5m.json"),
     ),
+    (
+        "terminal-microluna.json",
+        include_str!("../policies/terminal-microluna.json"),
+    ),
+    (
+        "issue-flow.json",
+        include_str!("../policies/issue-flow.json"),
+    ),
+    (
+        "issue-flow-lean.json",
+        include_str!("../policies/issue-flow-lean.json"),
+    ),
     ("pack-luna.json", include_str!("../policies/pack-luna.json")),
     (
         "handoff-escalate.json",
