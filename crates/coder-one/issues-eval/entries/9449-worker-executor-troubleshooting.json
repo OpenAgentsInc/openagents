@@ -1,0 +1,73 @@
+{
+  "schema": "openagents.coder-one.issue-eval-entry.v1",
+  "id": "9449-worker-executor-troubleshooting",
+  "category": "docs",
+  "issue": {
+    "repository": "OpenAgentsInc/openagents",
+    "number": 9449,
+    "title": "worker-executor.md: name the two trust stores and the Git rewrite that made the fan-out refuse",
+    "body": "Two refusals cost time on the first Linux fan-out through the approved \\`devin-local\\` capability and neither is in \\`docs/coder/worker-executor.md\\`:\n\n1. **Two Devin trust databases.** The worker runs with \\`XDG_DATA_HOME=\\$HOME/worker-jobs/xdg\\`, so the Devin CLI's workspace trust lives there. A \\`coder -p\\` or \\`coderbench run\\` started from a shell without that variable consults the default store, where the checkout is untrusted, and the workspace probe answers \\`present_unavailable\\` (\\`Refusing to run in an untrusted workspace\\`). The fix is to run the terminal with the same \\`XDG_DATA_HOME\\` the worker uses, or to trust the checkout in both stores.\n2. **A host-wide Git URL rewrite.** A global \\`url.<x>.insteadOf\\` makes CoderBench preflight see a rewritten origin and refuse the checkout (tracked separately as the preflight bug). Until that lands, \\`GIT_CONFIG_GLOBAL=/dev/null\\` on the CoderBench invocation is the workaround.\n\n## What to do\n\nAdd a short troubleshooting section to \\`docs/coder/worker-executor.md\\` that names both refusals as they appear, says why each happens, and gives the fix, in the Google developer documentation style the repository uses (\\`.agents/skills/google-developer-style/SKILL.md\\`). Link the preflight issue for the second one rather than describing the fix to CoderBench itself.\n\n## Acceptance\n\n- The page tells an operator who sees either refusal what to do, without reading code.\n- No secrets, home-directory paths beyond \\`\\$HOME\\`-relative examples, or process environments in the page.",
+    "created_at": "2026-09-20T13:58:38Z",
+    "frozen": "Title and body from GitHub on 2026-09-24: the issue has no recorded body edits (userContentEdits is empty) and no title renames, so the text is as it was when the issue was opened, before the fix."
+  },
+  "base": "08b4d68b8b16cb84cd4bb14e5cbc7f166b39fdef",
+  "fix": {
+    "commits": [
+      "0737a2a23acbc6d2a756070e141d81761e4f96d1"
+    ],
+    "head": "0737a2a23acbc6d2a756070e141d81761e4f96d1"
+  },
+  "checks": [
+    {
+      "id": "only-worker-executor-md",
+      "group": "deliverables",
+      "kind": "only_changed",
+      "note": "The issue asks for a section in docs/coder/worker-executor.md.",
+      "patterns": [
+        "^docs/coder/worker-executor\\.md$"
+      ]
+    },
+    {
+      "id": "names-untrusted-refusal",
+      "group": "deliverables",
+      "kind": "contains",
+      "note": "The page names the untrusted-workspace refusal as it appears.",
+      "path": "docs/coder/worker-executor.md",
+      "pattern": "Refusing to run in an untrusted workspace"
+    },
+    {
+      "id": "names-insteadof",
+      "group": "deliverables",
+      "kind": "contains",
+      "note": "The page names the host-wide `insteadOf` rewrite.",
+      "path": "docs/coder/worker-executor.md",
+      "pattern": "insteadOf"
+    },
+    {
+      "id": "links-preflight-issue",
+      "group": "deliverables",
+      "kind": "contains",
+      "note": "The page links the preflight issue, #9448.",
+      "path": "docs/coder/worker-executor.md",
+      "pattern": "9448"
+    },
+    {
+      "id": "no-home-paths",
+      "group": "deliverables",
+      "kind": "lacks",
+      "note": "No absolute home-directory paths.",
+      "path": "docs/coder/worker-executor.md",
+      "pattern": "/home/|/Users/"
+    },
+    {
+      "id": "links-resolve",
+      "group": "deliverables",
+      "kind": "links",
+      "note": "Every relative link in the page resolves.",
+      "path": "docs/coder/worker-executor.md"
+    }
+  ],
+  "notes": [
+    "Docs only: the real fix added no tests, so every check is a deliverable."
+  ]
+}

@@ -1,0 +1,105 @@
+{
+  "schema": "openagents.coder-one.issue-eval-entry.v1",
+  "id": "9597-minitask-explanation",
+  "category": "docs+gym-view",
+  "issue": {
+    "repository": "OpenAgentsInc/openagents",
+    "number": 9597,
+    "title": "Docs: explain mini-tasks and how they relate to TB4",
+    "body": "## Goal\nA short explanation, in the docs and in the Gym's mini-task view, of what Coder One mini-tasks are, how they're graded, how long they take, what they cost, and how they relate to Terminal-Bench 4.0 tasks: a fast local screen, not a benchmark result.\n\nSource: episode 288 (`docs/transcripts/288.md`).\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n",
+    "created_at": "2026-09-24T16:12:11Z",
+    "frozen": "Title and body from GitHub on 2026-09-24: the issue has no recorded body edits (userContentEdits is empty) and no title renames, so the text is as it was when the issue was opened, before the fix."
+  },
+  "base": "7c5b53f41401e1da5ddfc3b04b9fcb9631d42c93",
+  "fix": {
+    "commits": [
+      "ab1af819d58538e5df2c53a12c8a32b03fd42d11"
+    ],
+    "head": "ab1af819d58538e5df2c53a12c8a32b03fd42d11"
+  },
+  "checks": [
+    {
+      "id": "gym-minitask-tests",
+      "group": "fix_tests",
+      "kind": "command",
+      "run": "cargo test -q -p gym --lib coder_minitasks",
+      "timeout_secs": 1800,
+      "tests": true,
+      "note": "The Gym mini-task view's tests, which the fix extended, pass."
+    },
+    {
+      "id": "view-names-tb4",
+      "group": "deliverables",
+      "kind": "command",
+      "run": "cargo run -q -p gym --bin gym -- coder minitasks --runs-dir \"$ISSUE_EVAL_TMP\"",
+      "timeout_secs": 1800,
+      "tests": false,
+      "note": "The Gym's mini-task view says how mini-tasks relate to Terminal-Bench 4.0.",
+      "expect": [
+        "Terminal-Bench 4\\.0|TB4"
+      ]
+    },
+    {
+      "id": "view-gives-cost",
+      "group": "deliverables",
+      "kind": "command",
+      "run": "cargo run -q -p gym --bin gym -- coder minitasks --runs-dir \"$ISSUE_EVAL_TMP\"",
+      "timeout_secs": 1800,
+      "tests": false,
+      "note": "The Gym's mini-task view says what a mini-task run costs.",
+      "expect": [
+        "\\$\\d"
+      ]
+    },
+    {
+      "id": "view-gives-time",
+      "group": "deliverables",
+      "kind": "command",
+      "run": "cargo run -q -p gym --bin gym -- coder minitasks --runs-dir \"$ISSUE_EVAL_TMP\"",
+      "timeout_secs": 1800,
+      "tests": false,
+      "note": "The Gym's mini-task view says how long a mini-task run takes.",
+      "expect": [
+        "(?i)\\bseconds?\\b"
+      ]
+    },
+    {
+      "id": "view-says-how-graded",
+      "group": "deliverables",
+      "kind": "command",
+      "run": "cargo run -q -p gym --bin gym -- coder minitasks --runs-dir \"$ISSUE_EVAL_TMP\"",
+      "timeout_secs": 1800,
+      "tests": false,
+      "note": "The Gym's mini-task view says how a mini-task is graded.",
+      "expect": [
+        "(?i)grader (checks|runs|compares)|graded (by|against|on)"
+      ]
+    },
+    {
+      "id": "guide-names-tb4",
+      "group": "deliverables",
+      "kind": "contains",
+      "note": "The mini-task guide says how mini-tasks relate to Terminal-Bench 4.0.",
+      "path": "docs/coder/guides/coder-one-minitasks.md",
+      "pattern": "Terminal-Bench 4\\.0|TB4"
+    },
+    {
+      "id": "guide-changed",
+      "group": "deliverables",
+      "kind": "changed",
+      "note": "The explanation is in the docs: the mini-task guide changed.",
+      "pattern": "^docs/coder/guides/coder-one-minitasks\\.md$"
+    },
+    {
+      "id": "guide-links",
+      "group": "deliverables",
+      "kind": "links",
+      "note": "Every relative link in the guide resolves.",
+      "path": "docs/coder/guides/coder-one-minitasks.md"
+    }
+  ],
+  "notes": [
+    "Development history, not evidence: the issue flow was tuned on this issue for 14 attempts (pull requests #9600 to #9623) before this set existed, so a result here is in-sample.",
+    "The fix is pull request #9623, squash-merged as ab1af819d5."
+  ]
+}

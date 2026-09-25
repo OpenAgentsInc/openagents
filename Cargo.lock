@@ -571,6 +571,7 @@ dependencies = [
  "indexmap",
  "jev",
  "microluna",
+ "regex",
  "reqwest",
  "serde",
  "serde_json",

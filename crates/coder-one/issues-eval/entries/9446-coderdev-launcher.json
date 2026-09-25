@@ -1,0 +1,52 @@
+{
+  "schema": "openagents.coder-one.issue-eval-entry.v1",
+  "id": "9446-coderdev-launcher",
+  "category": "cli",
+  "issue": {
+    "repository": "OpenAgentsInc/openagents",
+    "number": 9446,
+    "title": "[P2] Provide a reproducible coderdev launcher that builds the local source before execution",
+    "body": "## Problem\n\nThe local `coderdev` entry was changed from a build wrapper to a direct launch of `~/work/openagents/target/debug/coder`. That executable already existed and had a modification time older than the recent source commits. A direct launch does not check whether it reflects current source. The exact binary revision was not established, so the observed incident cannot honestly be attributed to the latest main binary.\n\nThis regression was introduced by the supervising agent's shell edit, not by a committed repository launcher. The repository needs a documented development entry point so local aliases do not become an unreviewed build/deployment mechanism.\n\nThe first alias edit also removed credential loading and produced the stub backend. That local regression has already been corrected: the current function loads the existing environment files in a subshell before executing the same binary. Do not file credential loading as still broken.\n\n## Current evidence\n\n- Main source at review: `22e2ebc7fc1ff92eff7d06cef58ce8e93be38423`.\n- Existing local debug binary was timestamped September 19; recent main commits were September 20. Timestamp alone does not establish its exact commit.\n- The current local function does not invoke Cargo.\n- [Documented launch examples](https://github.com/OpenAgentsInc/openagents/blob/22e2ebc7fc1ff92eff7d06cef58ce8e93be38423/README.md#L100) use Cargo, while the shell alias bypasses it.\n- [Verification/toolchain contract](https://github.com/OpenAgentsInc/openagents/blob/22e2ebc7fc1ff92eff7d06cef58ce8e93be38423/docs/verification.md) pins the compiler and requires separate target directories per worktree.\n\n## Acceptance\n\n- [ ] Provide one documented repo-owned dev launch command that builds the intended `coder` binary with the pinned toolchain before running it; use Cargo's incremental freshness checks rather than only a commit-SHA cache.\n- [ ] Dirty source edits must be included. A failed build must stop the launch instead of silently running the old executable.\n- [ ] Explicitly select package/binary and handle `CARGO_TARGET_DIR` consistently. `coder-terminal` is the UI library; `coder` is the executable.\n- [ ] Preserve the user's invocation working directory and forward arguments exactly. Building in the source tree must not silently change the project Coder operates on.\n- [ ] Keep the current credential-loading behavior available without printing secrets or embedding machine-local keys/paths in tracked code. Credentials must not leak into the parent shell.\n- [ ] Do not fetch, checkout, overwrite, or stash user edits as a side effect of routine development launch.\n- [ ] Give enough build identity or startup information to distinguish source revision, dirty build, and executable location when diagnosing a report. Do not claim a timestamp proves provenance.\n- [ ] Test unchanged-source reuse, changed-source rebuild, deliberate compile failure, argument forwarding, an unrelated launch directory, and target-directory override using local fixtures/stubs.\n- [ ] Update the local alias/function to use that entry point and document reload behavior; check shell syntax.\n\n## Scope\n\nCoordinate with #9429's pinned toolchain policy. This is a dev-launcher fix, not a new release system, GitHub automation, or authorization for model calls. Preserve user shell customizations outside the entry being changed.\n",
+    "created_at": "2026-09-20T11:02:59Z",
+    "frozen": "Title and body from GitHub on 2026-09-24: the issue has no recorded body edits (userContentEdits is empty) and no title renames, so the text is as it was when the issue was opened, before the fix."
+  },
+  "base": "9972a2929e906626bfbe4c41ab6d26e7f89ec521",
+  "fix": {
+    "commits": [
+      "ef463521cc435bb0bf4deecbc9b0604b13ecf9b8"
+    ],
+    "head": "ef463521cc435bb0bf4deecbc9b0604b13ecf9b8"
+  },
+  "checks": [
+    {
+      "id": "fix-test-script",
+      "group": "fix_tests",
+      "kind": "command",
+      "run": "bash scripts/test-coderdev.sh",
+      "timeout_secs": 300,
+      "tests": false,
+      "note": "The fix's test script: reuse, rebuild, a failed build, argument forwarding, an unrelated launch directory, and a target-directory override.",
+      "files": {
+        "scripts/test-coderdev.sh": "9446-test-coderdev.sh"
+      }
+    },
+    {
+      "id": "launcher-added",
+      "group": "deliverables",
+      "kind": "changed",
+      "note": "A repository-owned launcher script exists.",
+      "pattern": "^scripts/.*coderdev"
+    },
+    {
+      "id": "launcher-documented",
+      "group": "deliverables",
+      "kind": "contains",
+      "note": "The README documents the launcher.",
+      "path": "README.md",
+      "pattern": "coderdev"
+    }
+  ],
+  "notes": [
+    "The fix's test script drives `scripts/coderdev` through `CODERDEV_CARGO` and `CODERDEV_ENV_FILE`, names the fix chose; the issue names neither."
+  ]
+}

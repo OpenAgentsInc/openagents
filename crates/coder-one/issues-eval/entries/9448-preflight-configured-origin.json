@@ -1,0 +1,55 @@
+{
+  "schema": "openagents.coder-one.issue-eval-entry.v1",
+  "id": "9448-preflight-configured-origin",
+  "category": "rust-behavior",
+  "issue": {
+    "repository": "OpenAgentsInc/openagents",
+    "number": 9448,
+    "title": "CoderBench preflight reads the rewritten remote, so a host-wide insteadOf refuses a matching checkout",
+    "body": "Found while running \\`coderbench run devin-fan-out-six\\` on a host whose global Git config carries a \\`url.<proxy>.insteadOf https://github.com/\\` rewrite.\n\n## What happens\n\n\\`same_repository\\` in \\`crates/coderbench/src/preflight.rs\\` asks \\`git remote get-url origin\\`, which applies \\`insteadOf\\` rewrites. The checkout's \\`.git/config\\` names \\`https://github.com/OpenAgentsInc/openagents.git\\`, the task names the same repository, and preflight still refuses:\n\n\\`\\`\\`\norigin is https://git-manager.devin.ai/proxy/github.com/OpenAgentsInc/openagents.git\n\\`\\`\\`\n\nThe only workaround was \\`GIT_CONFIG_GLOBAL=/dev/null\\` for the run, which hides every other global setting too.\n\n## What to do\n\n- Read the configured URL, not the rewritten one: \\`git config --get remote.origin.url\\`, or \\`git remote get-url --no-rewrite\\`? Check what Git offers and pick the one that reports what the checkout's own config says.\n- Keep \\`bare()\\` so SSH and HTTPS forms still compare equal.\n- Add a test with a temporary repository whose global config (\\`GIT_CONFIG_GLOBAL\\` pointing at a file in the temp dir) carries an \\`insteadOf\\` rewrite: the check must pass against the configured URL.\n- Note the change in \\`docs/coderbench/\\` where preflight is described, if a page describes the repository check.\n\n## Acceptance\n\n- A checkout whose configured origin matches the task passes preflight under an \\`insteadOf\\` rewrite.\n- A checkout whose configured origin is a different repository still refuses.\n- \\`cargo test -p coderbench\\` and strict Clippy pass.",
+    "created_at": "2026-09-20T13:58:37Z",
+    "frozen": "Title and body from GitHub on 2026-09-24: the issue has no recorded body edits (userContentEdits is empty) and no title renames, so the text is as it was when the issue was opened, before the fix."
+  },
+  "base": "2da4b96606583e296896e9990932f08e820ba89c",
+  "fix": {
+    "commits": [
+      "08b4d68b8b16cb84cd4bb14e5cbc7f166b39fdef"
+    ],
+    "head": "08b4d68b8b16cb84cd4bb14e5cbc7f166b39fdef"
+  },
+  "checks": [
+    {
+      "id": "fix-test-rewritten-origin",
+      "group": "fix_tests",
+      "kind": "command",
+      "run": "cargo test -q -p coderbench --lib issue_eval_",
+      "timeout_secs": 1800,
+      "tests": true,
+      "note": "The fix's test: under an `insteadOf` rewrite a matching checkout passes and a different one refuses.",
+      "inject": {
+        "path": "crates/coderbench/src/preflight.rs",
+        "snippet": "9448-preflight.rs",
+        "after": "mod tests {"
+      }
+    },
+    {
+      "id": "coderbench-tests",
+      "group": "fix_tests",
+      "kind": "command",
+      "run": "cargo test -q -p coderbench",
+      "timeout_secs": 1800,
+      "tests": true,
+      "note": "`cargo test -p coderbench` passes, as the issue asks."
+    },
+    {
+      "id": "coderbench-clippy",
+      "group": "deliverables",
+      "kind": "command",
+      "run": "cargo clippy -q -p coderbench --all-targets -- -D warnings",
+      "timeout_secs": 1800,
+      "tests": false,
+      "note": "Strict Clippy passes on coderbench, as the issue asks."
+    }
+  ],
+  "notes": []
+}
