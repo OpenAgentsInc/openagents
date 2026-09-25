@@ -12,6 +12,9 @@ use crate::record::Recorder;
 pub const USAGE: &str = "usage: coder-one checks contract plan --instruction FILE [--task NAME]
                                        [--workdir DIR] [--jev off|recorded|live]
                                        [--recorded FILE] [--out FILE]
+       coder-one checks contract literal-plan --instruction FILE [--task NAME]
+                                       [--workdir DIR] [--out FILE]
+       coder-one checks contract literal-run --plan FILE [--out FILE]
        coder-one checks contract run --plan FILE [--out FILE]
        coder-one checks contract offline TASK... --out DIR [--jobs DIR] [--tasks DIR]
                                        [--image IMAGE] [--grades DIR]... [--reconstruction DIR]...
@@ -36,7 +39,11 @@ leaves those items not executable. executed is verify.executed on the same
 workspaces, with no model: in the untouched container it runs the commands
 the instruction names and a compile or import of the package, then runs
 them on every retained workspace and judges each against its untouched
-outcome; it writes <out>/<task>/executed.json and labels.json.";
+outcome; it writes <out>/<task>/executed.json and labels.json.
+literal-plan extracts explicit required output paths and byte limits without a
+model. literal-run checks their sealed plan through file metadata only. These
+separate versioned artifacts call fail or abstain, never task completion; they
+do not change the ordinary plan command or a runtime policy.";
 
 fn jev_modes(word: &str, recorded: &Recorded) -> Result<(JevMode, Option<JevMode>), String> {
     let replay = JevMode::Recorded(recorded.clone());
@@ -151,6 +158,45 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
     }
     let jev = one("--jev").unwrap_or_else(|| "recorded".to_string());
     match verb.as_str() {
+        "literal-plan" | "literal-run" => {
+            if !positional.is_empty()
+                || reuse_plan
+                || flags.iter().any(|(name, _)| {
+                    !["--instruction", "--task", "--workdir", "--out", "--plan"]
+                        .contains(&name.as_str())
+                })
+            {
+                return Err("literal artifact commands accept only their documented file options; they never ask Jev".into());
+            }
+            let value = if verb == "literal-plan" {
+                let path = one("--instruction").ok_or("literal-plan needs --instruction")?;
+                let instruction =
+                    std::fs::read_to_string(&path).map_err(|e| format!("{path}: {e}"))?;
+                let workdir = one("--workdir").unwrap_or_else(|| "/app".to_string());
+                let task = one("--task").unwrap_or_else(|| "task".to_string());
+                let plan = super::literals::plan(&task, &instruction, &workdir);
+                plan.verify()?;
+                serde_json::to_value(plan).map_err(|e| e.to_string())?
+            } else {
+                let path = one("--plan").ok_or("literal-run needs --plan")?;
+                let plan: super::literals::Plan = serde_json::from_str(
+                    &std::fs::read_to_string(&path).map_err(|e| format!("{path}: {e}"))?,
+                )
+                .map_err(|e| format!("{path} is not a literal artifact plan: {e}"))?;
+                let host = Local {
+                    workdir: PathBuf::from(&plan.workdir),
+                };
+                super::literals::run(&plan, &plan.workdir, &host).await?
+            };
+            match one("--out") {
+                Some(out) => write_json(Path::new(&out), &value)?,
+                None => println!(
+                    "{}",
+                    serde_json::to_string_pretty(&value).map_err(|e| e.to_string())?
+                ),
+            }
+            Ok(0)
+        }
         "plan" => {
             let path = one("--instruction").ok_or("plan needs --instruction")?;
             let instruction = std::fs::read_to_string(&path).map_err(|e| format!("{path}: {e}"))?;

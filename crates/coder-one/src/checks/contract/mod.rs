@@ -32,6 +32,7 @@ pub mod entry;
 pub mod executed;
 pub mod extract;
 pub mod host;
+pub mod literals;
 pub mod offline;
 #[cfg(test)]
 mod tests;
