@@ -1,0 +1,359 @@
+{
+  "schema": "openagents.retained-files.v1",
+  "archive": "public-file-development.tar.gz",
+  "archive_sha256": "119cbcd51a61e4fae94e6abf6c4f5fcf069e4f64262fd5a1c5b1eec1e5d5f66f",
+  "exclusions": [],
+  "credential_scan": "exact local values, zero matches",
+  "files": [
+    {
+      "path": "math-eval-grader__8VqJfiN/reproduced-public-files/input.json",
+      "bytes": 104037,
+      "sha256": "881f7bd4b89118603a07ec35d33c98d1293470c593c325f5b1d539523785af94"
+    },
+    {
+      "path": "math-eval-grader__8VqJfiN/reproduced-public-files/process.json",
+      "bytes": 188,
+      "sha256": "51e801c9e3a684dd5e8fec689af2451be21634550990080a05b67e9d605cf5f5"
+    },
+    {
+      "path": "math-eval-grader__8VqJfiN/reproduced-public-files/snapshot.json",
+      "bytes": 2384,
+      "sha256": "9f1014100530b441c4b1656b3ffa0e143ed021c17618e0d61b6813a9c90c597c"
+    },
+    {
+      "path": "math-eval-grader__8VqJfiN/reproduced-public-files-v2/command-1.json",
+      "bytes": 2069,
+      "sha256": "ddd895d2b7aac626a10951907f9f4f1c824f2d13da1863248ae19bf10abc8abb"
+    },
+    {
+      "path": "math-eval-grader__8VqJfiN/reproduced-public-files-v2/command-2.json",
+      "bytes": 1810,
+      "sha256": "240763d176759bba67eeb24d23a9040f76e75fc0ab6bfc1360a8eddf4142caa3"
+    },
+    {
+      "path": "math-eval-grader__8VqJfiN/reproduced-public-files-v2/command-3.json",
+      "bytes": 9380,
+      "sha256": "aef9d1e6dfd9338854a233b82ca8e0f6e704f27af4e9bff71e08f7a5109730a5"
+    },
+    {
+      "path": "math-eval-grader__8VqJfiN/reproduced-public-files-v2/command-4.json",
+      "bytes": 8854,
+      "sha256": "cbccf962b68c1b6aeb53c7109042d7e24d32c1222672d1cd7ffba29f81cdf6d7"
+    },
+    {
+      "path": "math-eval-grader__8VqJfiN/reproduced-public-files-v2/command-5.json",
+      "bytes": 1481,
+      "sha256": "d77e8505b7bb7fa5e9b26f160043f3107142f1972b55e83c1d1cfed33d9d2672"
+    },
+    {
+      "path": "math-eval-grader__8VqJfiN/reproduced-public-files-v2/container.json",
+      "bytes": 8272,
+      "sha256": "3282b80e3005911cc385c7ffd7771dcb55a64475842574f3dd9e54562139cd22"
+    },
+    {
+      "path": "math-eval-grader__8VqJfiN/reproduced-public-files-v2/input.json",
+      "bytes": 103621,
+      "sha256": "8ad60db45c56385dae841c7cf196ffc708d223a73cd531fb2e0b040a0a63e854"
+    },
+    {
+      "path": "math-eval-grader__8VqJfiN/reproduced-public-files-v2/process.json",
+      "bytes": 455,
+      "sha256": "423969bed29e759805cd0d58b01f79f6d2cfd58a387718c3a036f67df30b04a7"
+    },
+    {
+      "path": "math-eval-grader__8VqJfiN/reproduced-public-files-v2/process.log",
+      "bytes": 170,
+      "sha256": "77512a1f96bef2409982b3f3929ad1e54036069cb92ec95fc235e245b6cc1038"
+    },
+    {
+      "path": "math-eval-grader__8VqJfiN/reproduced-public-files-v2/public-files.json",
+      "bytes": 556,
+      "sha256": "11a10252c49d3c7052ffdcb97cadd6809542b850fdfcbaad33e51440e31da58c"
+    },
+    {
+      "path": "math-eval-grader__8VqJfiN/reproduced-public-files-v2/reply-1.json",
+      "bytes": 582,
+      "sha256": "d1ec4771719e44265c35974c6053a5eb1e6514508f755d6e918c221abb02e4fc"
+    },
+    {
+      "path": "math-eval-grader__8VqJfiN/reproduced-public-files-v2/reply-2.json",
+      "bytes": 1745,
+      "sha256": "4ce0db53c91f9d22149c9d31cab5f1e63e8f0c25f386b07b18312cb866767a93"
+    },
+    {
+      "path": "math-eval-grader__8VqJfiN/reproduced-public-files-v2/reply-3.json",
+      "bytes": 564,
+      "sha256": "41a3ac0bc241863b131f5f9c395e0b04d4117013683cfdecfa693b00792bbf0a"
+    },
+    {
+      "path": "math-eval-grader__8VqJfiN/reproduced-public-files-v2/reply-4.json",
+      "bytes": 4296,
+      "sha256": "5e5ba47d82698769a08e37cbb4a6664166e3dcfa141b23f898fc34630cedd2bf"
+    },
+    {
+      "path": "math-eval-grader__8VqJfiN/reproduced-public-files-v2/reply-5.json",
+      "bytes": 3508,
+      "sha256": "d56126864073f87efa620ed83522630f09d15fc8140048c766c9d776acbb2a7c"
+    },
+    {
+      "path": "math-eval-grader__8VqJfiN/reproduced-public-files-v2/reply-6.json",
+      "bytes": 5509,
+      "sha256": "1288f17672847b05863bf1d795dda5d68f9d0b9849656552a2f16bf2e90b8307"
+    },
+    {
+      "path": "math-eval-grader__8VqJfiN/reproduced-public-files-v2/request-1.json",
+      "bytes": 124678,
+      "sha256": "2bfc780eb5fba625c5ade4cd87f036bc9e0f3ce57c0fda79aeba97fc83085fd6"
+    },
+    {
+      "path": "math-eval-grader__8VqJfiN/reproduced-public-files-v2/request-2.json",
+      "bytes": 127408,
+      "sha256": "333687e47d4f9672c210c32fb20751f94f0280d8716942b21faab7010ed154ed"
+    },
+    {
+      "path": "math-eval-grader__8VqJfiN/reproduced-public-files-v2/request-3.json",
+      "bytes": 130841,
+      "sha256": "9d16295ab0d26f1e5ecc70ab4a274ab030fe4b3654f8ec44592cd9f8f6eefe25"
+    },
+    {
+      "path": "math-eval-grader__8VqJfiN/reproduced-public-files-v2/request-4.json",
+      "bytes": 142479,
+      "sha256": "676a5dabc3e4e35cbd07e931f531af889f44c303238664099075fd1c5c6fa94a"
+    },
+    {
+      "path": "math-eval-grader__8VqJfiN/reproduced-public-files-v2/request-5.json",
+      "bytes": 157637,
+      "sha256": "7800c946941e2a1e725e6bfc61eb4e0fb70daf40bd7137992a723ea2f336b4a6"
+    },
+    {
+      "path": "math-eval-grader__8VqJfiN/reproduced-public-files-v2/request-6.json",
+      "bytes": 162577,
+      "sha256": "84a34520d3d17fa850b04daf03b4f24146683362b931e056aeacf813f4e4780a"
+    },
+    {
+      "path": "math-eval-grader__8VqJfiN/reproduced-public-files-v2/review.json",
+      "bytes": 68457,
+      "sha256": "1902758fa695c54cbe051712d8d7fddb71799e086792fc267da4b39e1397d624"
+    },
+    {
+      "path": "math-eval-grader__8VqJfiN/reproduced-public-files-v2/snapshot.json",
+      "bytes": 2384,
+      "sha256": "9f1014100530b441c4b1656b3ffa0e143ed021c17618e0d61b6813a9c90c597c"
+    },
+    {
+      "path": "math-eval-grader__G6edYMz/reproduced-public-files/input.json",
+      "bytes": 35360,
+      "sha256": "c7602e2b942a87414b47913228ae5e543d226ab7fa484d2042d94c52e18f6cf1"
+    },
+    {
+      "path": "math-eval-grader__G6edYMz/reproduced-public-files/process.json",
+      "bytes": 188,
+      "sha256": "28bb62dfdfde0b8bfc7322722f78a2fe39d22ab4a664336017e2fb86956b8fba"
+    },
+    {
+      "path": "math-eval-grader__G6edYMz/reproduced-public-files/snapshot.json",
+      "bytes": 4383,
+      "sha256": "a3cfc1f26a046d45847b684bfd3f2b54f8223f9bd5958a01cfcfd4656816dedb"
+    },
+    {
+      "path": "math-eval-grader__G6edYMz/reproduced-public-files-v2/command-1.json",
+      "bytes": 4614,
+      "sha256": "9c7a2e6aca75b8c2f11ca84da4c435d6dc09a8685cbc08685ae9feb59332aa95"
+    },
+    {
+      "path": "math-eval-grader__G6edYMz/reproduced-public-files-v2/command-2.json",
+      "bytes": 9790,
+      "sha256": "2f0fbd5edb0357c99e007db862e060f81376ac9b39516c64aa6885c492eae093"
+    },
+    {
+      "path": "math-eval-grader__G6edYMz/reproduced-public-files-v2/command-3.json",
+      "bytes": 6867,
+      "sha256": "9ab58de5678cd558fb159e675200472eb29e12c6c087a9964af3e08d87ae5019"
+    },
+    {
+      "path": "math-eval-grader__G6edYMz/reproduced-public-files-v2/command-4.json",
+      "bytes": 8717,
+      "sha256": "4f0857a4f01f0c7f35855fb1996ad2331e96a9d5a1dd9df2b62ba87efaed4211"
+    },
+    {
+      "path": "math-eval-grader__G6edYMz/reproduced-public-files-v2/command-5.json",
+      "bytes": 1489,
+      "sha256": "d926cef55be32926e50678dfbf9c55a93314aa95efbb11a593a6e4280d6b886f"
+    },
+    {
+      "path": "math-eval-grader__G6edYMz/reproduced-public-files-v2/command-6.json",
+      "bytes": 1560,
+      "sha256": "d07fd84e8c9029ac4ff180ffcea9b098f651531b08897135bb7366180cd4227c"
+    },
+    {
+      "path": "math-eval-grader__G6edYMz/reproduced-public-files-v2/container.json",
+      "bytes": 8268,
+      "sha256": "d0ba06281a321d8a751663bde6f42db1fc3edc36785e36ab2e1058f576a43cc0"
+    },
+    {
+      "path": "math-eval-grader__G6edYMz/reproduced-public-files-v2/input.json",
+      "bytes": 34934,
+      "sha256": "7aef9e0e9e370993e8d5fe702a0465cb2349605477fc021790eb491a6dc2677b"
+    },
+    {
+      "path": "math-eval-grader__G6edYMz/reproduced-public-files-v2/process.json",
+      "bytes": 455,
+      "sha256": "d9cd3f25cbea15f78b5f3729140ee48ceb119a4599eaeb436f56eafab189599a"
+    },
+    {
+      "path": "math-eval-grader__G6edYMz/reproduced-public-files-v2/process.log",
+      "bytes": 170,
+      "sha256": "08c35bffb07bcf3573b490779b7619a318f807ccbff25d8ee6ba9638b4277b13"
+    },
+    {
+      "path": "math-eval-grader__G6edYMz/reproduced-public-files-v2/public-files.json",
+      "bytes": 556,
+      "sha256": "87e8cc8cbb25031d082e1df5c56af1acfc0faffec4e1d6de0df4afd6a7573238"
+    },
+    {
+      "path": "math-eval-grader__G6edYMz/reproduced-public-files-v2/reply-1.json",
+      "bytes": 584,
+      "sha256": "738fb85fd754fe0e4b7bab310e1d5dd7b651998d695170e75460f4cdf972fab4"
+    },
+    {
+      "path": "math-eval-grader__G6edYMz/reproduced-public-files-v2/reply-2.json",
+      "bytes": 2921,
+      "sha256": "31cc01441c05c0d99eebc10c63ecf8d76d9a2ea2dda50df226352f396bf2ee4d"
+    },
+    {
+      "path": "math-eval-grader__G6edYMz/reproduced-public-files-v2/reply-3.json",
+      "bytes": 3071,
+      "sha256": "be62b51bbefd034b0c6fdf7fc8843b5dfe58d9e075281a81e26700afa4ef4453"
+    },
+    {
+      "path": "math-eval-grader__G6edYMz/reproduced-public-files-v2/reply-4.json",
+      "bytes": 5030,
+      "sha256": "61503d3ca1b1006c2a1db84a0ede62eb45342201ba120c5f6a7fa4cd6d1eac9e"
+    },
+    {
+      "path": "math-eval-grader__G6edYMz/reproduced-public-files-v2/reply-5.json",
+      "bytes": 6030,
+      "sha256": "1ead03f4a81ab8d0485f40e4b7710281dd95af8a1521892d6808819f4103bcfa"
+    },
+    {
+      "path": "math-eval-grader__G6edYMz/reproduced-public-files-v2/reply-6.json",
+      "bytes": 2782,
+      "sha256": "ad4b2be207cf2c6b184fd0b40560295e9d13c55b8ea7fa28d4be79e4e2b86f10"
+    },
+    {
+      "path": "math-eval-grader__G6edYMz/reproduced-public-files-v2/reply-7.json",
+      "bytes": 5989,
+      "sha256": "246a1e92fc31d173afd82a978abe668c00135ad259f0adcd94ed849cd8050f2a"
+    },
+    {
+      "path": "math-eval-grader__G6edYMz/reproduced-public-files-v2/request-1.json",
+      "bytes": 40649,
+      "sha256": "aa2f1bdc8e607f2828ee450df85a5cce503d94f35e084bb051a150edfffeefe7"
+    },
+    {
+      "path": "math-eval-grader__G6edYMz/reproduced-public-files-v2/request-2.json",
+      "bytes": 46068,
+      "sha256": "c914e3c6eb26428fb3f9c685a992daeb36de8de898c6cb86beaa3233429ee7bc"
+    },
+    {
+      "path": "math-eval-grader__G6edYMz/reproduced-public-files-v2/request-3.json",
+      "bytes": 60371,
+      "sha256": "bcf81f86b2af867a18099fd51c883a46a879cdee5451f685522b4cdf38546551"
+    },
+    {
+      "path": "math-eval-grader__G6edYMz/reproduced-public-files-v2/request-4.json",
+      "bytes": 71568,
+      "sha256": "de7157298e52ebe8e06ba0cc37c1fbf86ce9f2d02b63a16006d53754a847f9ac"
+    },
+    {
+      "path": "math-eval-grader__G6edYMz/reproduced-public-files-v2/request-5.json",
+      "bytes": 86643,
+      "sha256": "253177af51d6fe28cd16ffe42c7aaba3364aa4d350f67b513dac8bd63f3a3b5b"
+    },
+    {
+      "path": "math-eval-grader__G6edYMz/reproduced-public-files-v2/request-6.json",
+      "bytes": 94051,
+      "sha256": "0fd003a7eb555321e09d3ea68e3547eefe2871d593a928d8ac003400176f62e7"
+    },
+    {
+      "path": "math-eval-grader__G6edYMz/reproduced-public-files-v2/request-7.json",
+      "bytes": 98440,
+      "sha256": "79ff3a12e01be2fdbd5b30d585cf598d8bc5a028c593a9e50fb14fe5b0045f64"
+    },
+    {
+      "path": "math-eval-grader__G6edYMz/reproduced-public-files-v2/review.json",
+      "bytes": 84109,
+      "sha256": "f475c4b695502c018c2aef600d1a3cda03ea36d90252fa869fb3cea55f36da3d"
+    },
+    {
+      "path": "math-eval-grader__G6edYMz/reproduced-public-files-v2/snapshot.json",
+      "bytes": 4383,
+      "sha256": "a3cfc1f26a046d45847b684bfd3f2b54f8223f9bd5958a01cfcfd4656816dedb"
+    },
+    {
+      "path": "public-files-development-manifest.json",
+      "bytes": 1870,
+      "sha256": "4e4c9409fa77b54e7158463cc149e03d340a543b69641316f3dab9e9ee394771"
+    },
+    {
+      "path": "reproduced-images/math-eval-grader.json",
+      "bytes": 3730,
+      "sha256": "5fe2111c85f47efdee24cbbe03a7992e182b590e88f9b1330263e735757605a2"
+    },
+    {
+      "path": "verification-public-files/20260925T061215Z-9d562f/clippy-features.log",
+      "bytes": 130,
+      "sha256": "a9ebd10fbc67797b4a18ab4bad5bc229962ba17794ffa1432c4ab16c2c5bff13"
+    },
+    {
+      "path": "verification-public-files/20260925T061215Z-9d562f/clippy.log",
+      "bytes": 259,
+      "sha256": "0fbc3336a27cbc0ac1a4f0ae458a8a886f3d3f8c34db7625c692f9023de4bd25"
+    },
+    {
+      "path": "verification-public-files/20260925T061215Z-9d562f/fmt.log",
+      "bytes": 54,
+      "sha256": "d35ed3f25955cfbc4fc52e1dc3d26533beec91d47c3df2e5a121a69a20f81862"
+    },
+    {
+      "path": "verification-public-files/20260925T061215Z-9d562f/run.json",
+      "bytes": 3868,
+      "sha256": "7e1bdbac91d2d93ff2360c2a814d9079475cf33cc4a26b649b89c16b5be526e8"
+    },
+    {
+      "path": "verification-public-files/20260925T061215Z-9d562f/tests-features.log",
+      "bytes": 164279,
+      "sha256": "c6085817fb1f815561a4e8464958813934f5da47c57e3cbdeda22b52805f441d"
+    },
+    {
+      "path": "verification-public-files/20260925T061215Z-9d562f/tests.log",
+      "bytes": 164386,
+      "sha256": "0e96c445d0c930647472ea66675cfea65c3d02eea6f6b195dda8dd9db254ca02"
+    },
+    {
+      "path": "verification-sealed-outcomes/20260925T060905Z-50d754/clippy-features.log",
+      "bytes": 130,
+      "sha256": "59e327e8f30843fc748307cb13c554f38332975eb75f1a4b43470a51782ffda9"
+    },
+    {
+      "path": "verification-sealed-outcomes/20260925T060905Z-50d754/clippy.log",
+      "bytes": 261,
+      "sha256": "c5d4c45b08bb1613a1f84655f795132af1755860b8b74fbabe1693b101f4c8f5"
+    },
+    {
+      "path": "verification-sealed-outcomes/20260925T060905Z-50d754/fmt.log",
+      "bytes": 54,
+      "sha256": "413ab00d67c0830e62b73d33d8b2b6c639fa75768de1f86e7a748dabe509293e"
+    },
+    {
+      "path": "verification-sealed-outcomes/20260925T060905Z-50d754/run.json",
+      "bytes": 3026,
+      "sha256": "3a5ff73feed820165f07627b9500ce0b9a9f375c2b799c1a6e8edaf4817aa408"
+    },
+    {
+      "path": "verification-sealed-outcomes/20260925T060905Z-50d754/tests.log",
+      "bytes": 167471,
+      "sha256": "4a2e875308c6ac2bd42696012d59d10898e0af1178edd18205be6d7abbd75679"
+    }
+  ]
+}

@@ -402,13 +402,47 @@ open until the required improvement is demonstrated.
 
 ## Verification
 
-The scoped manual gate at `a8ae150e6d` passed formatting, default and feature
-Clippy, and default and feature tests for `coder-one` (608 unit tests and two
+The scoped manual gate at `a3063e7134` passed formatting, default and feature
+Clippy, and default and feature tests for `coder-one` (610 unit tests and two
 integration tests per configuration). Its recorded tree is marked dirty because
 `scripts/__pycache__/` was untracked; the tracked diff is empty. This is a scoped
-partial gate, not a full-workspace result. Six Python regressions cover safe
+partial gate, not a full-workspace result. Nine Python regressions cover safe
 snapshot restoration and exact inference bounds. Earlier V1 Rust replay matches
 all 317 historical calls and scores without new inference.
+
+The preceding gate failed a test that required overall session time divided by
+total wall time to exceed one. The same record proved two sessions overlapped,
+but setup and merge overhead made the overall ratio 0.99. The test now keeps the
+actual overlap, interval, peak, merge, and final-output assertions without imposing
+that unrelated timing ratio. Both the failed and passing gate records are retained.
+
+## Development after opening the fresh outcomes
+
+The [public-file recovery protocol](../../bench/terminal-bench/experiments/2026-09-25-candidate-review/public-file-recovery-protocol.md)
+adds a narrow restoration mode: an outside file already declared in the retained
+snapshot is usable only if its hash matches the same path inside the pinned,
+immutable public task image. Nothing outside `/app` is mounted or replaced. This
+recovers the two math-grader candidates; changed installed source and separately
+collected patches remain unsupported.
+
+Both recovered reviews detect an actual output failure with the original strict
+citation rule. Luna declares 48 problems but supplies only 33 predictions and
+computes accuracy over that incomplete set; its score is 0.85. Astra retains 48
+generations but has no required `/app/results.json`; its score is 0.84. Both
+official candidates fail. These are two development detections after labels were
+opened, not additions to the sealed confirmation table. Native review cost is
+$1.345298, apart from Jev, which reinforces the case for a cheaper host check of
+task-stated output requirements. A preflight cache-path mistake made two unknown
+records without inference; those records remain preserved too.
+
+The [development bundle](../../bench/terminal-bench/experiments/2026-09-25-candidate-review/records/public-file-development.tar.gz)
+contains 70 files, including the outside-file comparisons, both complete reviews,
+and both manual gate logs. Its
+[file manifest](../../bench/terminal-bench/experiments/2026-09-25-candidate-review/records/public-file-development-manifest.json)
+records SHA-256 `119cbcd51a61e4fae94e6abf6c4f5fcf069e4f64262fd5a1c5b1eec1e5d5f66f`.
+The next [mini-task protocol](../../bench/terminal-bench/experiments/2026-09-25-candidate-review/mini-review-protocol.md)
+uses all four existing good/bad mini-task pairs as development controls before
+another live benchmark cohort.
 
 ## Plan update after the 2026-09-25 design assessment
 
