@@ -24,6 +24,7 @@ def main():
     p.add_argument('--out', type=Path, required=True)
     p.add_argument('--binary', type=Path, required=True)
     p.add_argument('--prompt', choices=['v1', 'literal-v2'], default='v1')
+    p.add_argument('--tasks', nargs='+', choices=TASKS, default=TASKS)
     a = p.parse_args()
     if shutil.disk_usage(a.out.parent).free < 10 * 1024**3:
         raise ValueError('Mini-task preflight needs 10 GiB free before building')
@@ -42,7 +43,7 @@ def main():
     env['TYPESAFE_API_KEY'] = json.loads((Path.home() / '.openagents/jev.json').read_text())['api_key']
     env['CODEX_AUTH_JSON_PATH'] = str(Path.home() / '.codex/auth.json')
     instructions = {}
-    for task in TASKS:
+    for task in a.tasks:
         dest = a.out / 'public' / task
         if not dest.exists():
             subprocess.run([str(a.binary), 'minitask', 'setup', task, str(dest)], check=True, capture_output=True)
@@ -110,7 +111,7 @@ def main():
             if container:
                 subprocess.run(['docker', 'rm', '-f', container], capture_output=True, timeout=30)
 
-    pairs = [(t, v) for t in TASKS for v in ['good', 'bad']]
+    pairs = [(t, v) for t in a.tasks for v in ['good', 'bad']]
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
         for result in pool.map(run, pairs):
             print(json.dumps(result), flush=True)

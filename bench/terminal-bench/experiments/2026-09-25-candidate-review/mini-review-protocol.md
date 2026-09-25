@@ -40,3 +40,18 @@ Run all eight mini controls again with the new prompt and the corrected fixture
 and grader. Keep this second pass in a new directory with its exact binary and
 request identities. It is another development exercise. It is not an independent
 confirmation sample, a TB4 pass, or grounds to close #9584.
+
+## Cancellation follow-up
+
+The second pass detects all four deliberately bad fixtures and flags the
+shield-only cancellation fixture at 0.81. Its retained grader says pass, so report
+4/5 precision against those unchanged labels. The reviewer reproduces another
+real double cancellation when the event loop shuts down a background runner.
+
+Extend #9641 to avoid cancelling a worker whose cancellation has already started,
+and retrieve the original gather's exception. Strengthen the mini-grader with a
+single-interrupt background shutdown that starts worker cleanup before cancelling
+the runner. Keep both preceding passing labels unchanged. After the deterministic
+regression, repeat only the cancellation good/bad pair in a third directory with
+the same literal-v2 prompt, questions, and 0.8 cutoff. Do not rerun the unchanged
+six controls or pool the third pass as independent confirmation.
