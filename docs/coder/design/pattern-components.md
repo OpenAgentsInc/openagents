@@ -139,7 +139,11 @@ and its admission record.
    retained workspaces from tasks other than `embedding-drift-monitor`:
    how often it ranks a known defect site in the top few, against the
    keyword gate. Keep the keyword lists only as a labeled, in-sample
-   comparison arm.
+   comparison arm. Built as `executor.microluna.lean.suspects:
+   lexicon-free`, off by default; the
+   [offline measurement](../../terminal-bench/2026-09-25-lexicon-free-suspects.md)
+   found more hits at 8 but more false positives than its frozen rule
+   allowed, so it isn't proposed as the default.
 2. **Turn the three guidance sentences into components.**
    `verify.method_conformance` replaces "use the standard form";
    `evidence.data_profile`, `evidence.baseline` with package entry points,

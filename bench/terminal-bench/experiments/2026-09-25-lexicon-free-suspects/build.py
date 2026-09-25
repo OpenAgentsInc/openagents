@@ -181,30 +181,61 @@ NOT_FUNCTIONS = {"if", "for", "while", "switch", "catch", "return", "else", "do"
                  "function", "with", "match"}
 
 
+def logical(lines, i):
+    """Line i joined with the lines that close its parentheses, at most 8."""
+    depth = 0
+    parts = []
+    for k in range(i, min(len(lines), i + 8)):
+        parts.append(lines[k].strip() if k > i else lines[k])
+        depth += lines[k].count("(") - lines[k].count(")")
+        if depth <= 0:
+            break
+    return " ".join(parts)
+
+
 def brace_spans(text):
     lines = text.split("\n")
     out = []
     for i, line in enumerate(lines):
         t = line.lstrip()
-        if t.startswith("//") or t.startswith("*"):
+        if t.startswith("//") or t.startswith("*") or t.startswith("#"):
             continue
         name = None
         is_class = False
+        joined = logical(lines, i)
         for n, p in enumerate(BRACE_DEF):
-            m = p.match(line)
+            m = p.match(joined)
             if m and m.group(1) not in NOT_FUNCTIONS:
                 name, is_class = m.group(1), n in (2, 6)
                 break
         if not name:
             continue
-        opened = next((k for k in range(i, min(len(lines), i + 8)) if "{" in lines[k]), None)
-        if opened is None or any(l.rstrip().endswith(";") for l in lines[i:opened]):
-            continue
+        # The body opens at the first brace outside parentheses.
         depth = 0
-        end = opened
-        for k in range(opened, min(len(lines), opened + 2000)):
+        brace = None
+        paren = 0
+        for k in range(i, min(len(lines), i + 8)):
+            for c in lines[k]:
+                if c == "(":
+                    paren += 1
+                elif c == ")":
+                    paren -= 1
+                elif c == ";" and paren == 0:
+                    break
+                elif c == "{" and paren == 0:
+                    brace = k
+                    break
+            else:
+                continue
+            break
+        if brace is None:
+            continue
+        end = brace
+        started = False
+        for k in range(brace, min(len(lines), brace + 2000)):
             quote = None
             prev = " "
+            paren_k = 0
             for c in lines[k]:
                 if quote:
                     if c == quote and prev != "\\":
@@ -213,11 +244,12 @@ def brace_spans(text):
                     quote = c
                 elif c == "{":
                     depth += 1
+                    started = True
                 elif c == "}":
                     depth -= 1
                 prev = c
             end = k
-            if depth <= 0:
+            if started and depth <= 0:
                 break
         out.append((i + 1, end + 1, name, is_class))
     return out
@@ -231,7 +263,27 @@ def spans_of(path, text):
     return brace_spans(text)
 
 
-def trivial(line, path):
+def docstring_lines(text):
+    """1-based lines of every Python docstring: module, class, function."""
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return set()
+    out = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            body = node.body
+            if body and isinstance(body[0], ast.Expr) and isinstance(
+                    getattr(body[0], "value", None), ast.Constant) and isinstance(
+                    body[0].value.value, str):
+                out.update(range(body[0].lineno, body[0].end_lineno + 1))
+    return out
+
+
+def trivial(line, path, number=None, docs=frozenset()):
+    """A blank line, a comment line, or a line of a Python docstring."""
+    if number is not None and number in docs:
+        return True
     t = line.strip()
     if not t:
         return True
@@ -249,39 +301,51 @@ def sites_of(path, before, after):
     a = before.split("\n")
     b = after.split("\n")
     spans = spans_of(path, before)
+    docs_a = docstring_lines(before) if path.endswith(".py") else set()
+    docs_b = docstring_lines(after) if path.endswith(".py") else set()
     touched = set()
     inserts = []
     for op, i1, i2, j1, j2 in difflib.SequenceMatcher(None, a, b, autojunk=False).get_opcodes():
         if op == "equal":
             continue
-        old = a[i1:i2]
-        new = b[j1:j2]
-        if all(trivial(l, path) for l in old) and all(trivial(l, path) for l in new):
+        old_code = [k for k in range(i1, i2) if not trivial(a[k], path, k + 1, docs_a)]
+        new_code = [k for k in range(j1, j2) if not trivial(b[k], path, k + 1, docs_b)]
+        if not old_code and not new_code:
             continue
-        if op == "insert":
-            inserts.append(i1)  # between old lines i1 and i1 + 1, 1-based
+        if old_code:
+            touched.update(k + 1 for k in old_code)
         else:
-            touched.update(k + 1 for k in range(i1, i2) if not trivial(a[k], path))
-            if not any(not trivial(a[k], path) for k in range(i1, i2)):
-                inserts.append(i1)
+            inserts.append(i1)  # between old lines i1 and i1 + 1, 1-based
     sites = {}
+    module = []
     for line in sorted(touched):
         s = innermost(spans, line)
-        key = f"{path}:{s[2]}@{s[0]}" if s else f"{path}:module@{line}"
-        sites.setdefault(key, {"file": path, "start": s[0] if s else line,
-                               "end": s[1] if s else line,
-                               "name": s[2] if s else None, "lines": []})["lines"].append(line)
+        if not s:
+            module.append(line)
+            continue
+        key = f"{path}:{s[2]}@{s[0]}"
+        sites.setdefault(key, {"file": path, "start": s[0], "end": s[1], "name": s[2],
+                               "lines": []})["lines"].append(line)
     for point in inserts:
         inside = [s for s in spans if s[0] <= point < s[1]]
         if not inside:
-            key = f"{path}:module@{point + 1}"
-            sites.setdefault(key, {"file": path, "start": point + 1, "end": point + 1,
-                                   "name": None, "lines": []})["lines"].append(point + 1)
+            module.append(point + 1)
             continue
         s = max(inside, key=lambda s: s[0])
         key = f"{path}:{s[2]}@{s[0]}"
         sites.setdefault(key, {"file": path, "start": s[0], "end": s[1], "name": s[2],
                                "lines": []})["lines"].append(point + 1)
+    # Contiguous changed lines outside every function are one statement
+    # group, one module-level site.
+    group = []
+    for line in sorted(set(module)) + [None]:
+        if group and (line is None or line != group[-1] + 1):
+            key = f"{path}:module@{group[0]}"
+            sites[key] = {"file": path, "start": group[0], "end": group[-1], "name": None,
+                          "lines": group}
+            group = []
+        if line is not None:
+            group.append(line)
     return sites, spans
 
 
@@ -342,7 +406,16 @@ def main():
             functions += sum(1 for s in file_spans if not s[3])
             changed_functions.update(k for k, v in found.items() if v["name"])
         scored = bool(sites) and len(changed_functions) <= functions / 2
+        docs = {}
+        for path in files:
+            if path.endswith(".py"):
+                with open(os.path.join(ws, path), errors="replace") as f:
+                    lines = sorted(docstring_lines(f.read()))
+                module = [l for l in lines if l <= min(
+                    [s[0] for s in spans.get(path, [])] or [10 ** 9])]
+                docs[path] = module
         labels["tasks"][task] = {
+            "module_docstrings": docs,
             "in_sample": task in IN_SAMPLE,
             "scanned_files": len(files),
             "functions": functions,
