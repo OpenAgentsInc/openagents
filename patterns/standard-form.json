@@ -27,12 +27,16 @@
   ],
   "admission": {
     "status": "candidate",
-    "record": "Not admitted. A general principle learned from one task and stated as an instruction, which breaks principle 4 of the tunable-system document. The lexical check finds no verbatim match of its sentences in any tuned task's text, so the risk is the principle's source, not its wording. Admission needs verify.method_conformance measured on tasks other than those listed as not evidence.",
-    "measured_on": [],
+    "record": "Not admitted. A general principle learned from one task and stated as an instruction, which breaks principle 4 of the tunable-system document. The lexical check finds no verbatim match of its sentences in any tuned task's text, so the risk is the principle's source, not its wording. verify.method_conformance was measured offline on every retained workspace of 60 other tasks: Jev tied 3 functions to a registry entry, none failed a check, and the component's admission rule wasn't met.",
+    "measured_on": [
+      {"task": "photonic-waveguide-routing", "result": "verify.method_conformance: a segment-length function passed every Euclidean-distance property on 10 workspaces; the 6 graded ones all failed the verifier (pass agreement 0 of 6).", "evidence": "docs/terminal-bench/2026-09-25-method-conformance.md"},
+      {"task": "mp-checkpoint-consolidation", "result": "verify.method_conformance: Jev tied RMSNorm.forward to L2 normalization, a wrong pick; it couldn't be called on any of 4 workspaces.", "evidence": "docs/terminal-bench/2026-09-25-method-conformance.md"}
+    ],
     "issues": ["#9653", "#9655"],
     "evidence": [
       "docs/coder/design/pattern-components.md",
-      "docs/terminal-bench/2026-09-24-microluna-iterations.md"
+      "docs/terminal-bench/2026-09-24-microluna-iterations.md",
+      "docs/terminal-bench/2026-09-25-method-conformance.md"
     ]
   }
 }
