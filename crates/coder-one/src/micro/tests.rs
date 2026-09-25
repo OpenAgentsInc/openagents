@@ -1758,7 +1758,10 @@ async fn the_lean_loop_holds_a_done_finish_until_the_score_ran_after_the_last_ed
             sessions: 1,
             self_check: false,
             keep_best: true,
-            finish_rule: Some(lean::LeanFinishRule { max_refusals: 3 }),
+            finish_rule: Some(lean::LeanFinishRule {
+                max_refusals: 3,
+                baseline: true,
+            }),
             ..lean_shape()
         }),
     );
@@ -1825,7 +1828,10 @@ async fn the_baseline_runs_before_session_one_and_the_finish_rule_requires_it() 
             sessions: 1,
             self_check: false,
             keep_best: true,
-            finish_rule: Some(lean::LeanFinishRule { max_refusals: 3 }),
+            finish_rule: Some(lean::LeanFinishRule {
+                max_refusals: 3,
+                baseline: true,
+            }),
             baseline: true,
             ..lean_shape()
         }),
@@ -1862,6 +1868,48 @@ fn the_baseline_switch_is_off_and_absent_by_default() {
         serde_json::from_value(json!({ "sessions": 1, "source_chars": 0, "baseline": true }))
             .unwrap();
     assert!(on.baseline);
+}
+
+/// Issue #9640: `finish_rule.baseline: false` holds a finish to the score
+/// alone even when `evidence.baseline` found commands, and the default
+/// still requires both and stays out of the serialized manifest.
+#[test]
+fn the_finish_rule_can_hold_a_finish_to_the_score_alone() {
+    let commands = vec!["make test".to_string()];
+    let both = lean::Lean {
+        keep_best: true,
+        baseline: true,
+        finish_rule: Some(lean::LeanFinishRule {
+            max_refusals: 3,
+            baseline: true,
+        }),
+        ..lean_shape()
+    };
+    let rule = lean::finish_rule(&both, &commands).unwrap();
+    assert_eq!(rule.baseline, commands);
+    assert_eq!(rule.score, vec![lean::SCORE_NAME.to_string()]);
+    assert_eq!(
+        serde_json::to_value(&both).unwrap()["finish_rule"],
+        json!({ "max_refusals": 3 })
+    );
+
+    let score_only: lean::Lean = serde_json::from_value(json!({
+        "sessions": 1,
+        "source_chars": 0,
+        "keep_best": true,
+        "baseline": true,
+        "finish_rule": { "max_refusals": 3, "baseline": false },
+    }))
+    .unwrap();
+    let rule = lean::finish_rule(&score_only, &commands).unwrap();
+    assert!(rule.baseline.is_empty());
+    assert_eq!(rule.max_refusals, 3);
+    assert_eq!(
+        serde_json::to_value(&score_only).unwrap()["finish_rule"],
+        json!({ "max_refusals": 3, "baseline": false })
+    );
+    let absent: lean::LeanFinishRule = serde_json::from_value(json!({})).unwrap();
+    assert!(absent.baseline);
 }
 
 /// Issue #9636: a candidate on which a baseline command that ran on the
@@ -2119,7 +2167,10 @@ fn the_executed_rule_needs_keep_best() {
 #[test]
 fn the_finish_rule_needs_keep_best() {
     let lean = lean::Lean {
-        finish_rule: Some(lean::LeanFinishRule { max_refusals: 3 }),
+        finish_rule: Some(lean::LeanFinishRule {
+            max_refusals: 3,
+            baseline: true,
+        }),
         ..lean_shape()
     };
     assert!(

@@ -269,10 +269,27 @@ pub struct LeanFinishRule {
     /// Refusals before a `done` finish is accepted as unverified.
     #[serde(default = "max_refusals")]
     pub max_refusals: u32,
+    /// Whether a `done` finish also waits for a baseline command
+    /// (`evidence.baseline`) after the last edit. `false` holds it to the
+    /// score alone even when the baseline ran: the offline count that
+    /// admitted the rule measured the score half only, and with baselines
+    /// the rule refused 6 of 10 retained finishes on passing trials
+    /// (`docs/terminal-bench/2026-09-25-finish-rule-offline.md`). Absent,
+    /// as in every manifest before it, the rule requires both.
+    #[serde(default = "require_baseline", skip_serializing_if = "is_true")]
+    pub baseline: bool,
 }
 
 fn max_refusals() -> u32 {
     microluna::finish::MAX_REFUSALS
+}
+
+fn require_baseline() -> bool {
+    true
+}
+
+fn is_true(value: &bool) -> bool {
+    *value
 }
 
 /// What a command names to count as a score run: the evaluation script,
@@ -282,11 +299,16 @@ pub const SCORE_NAME: &str = "score.sh";
 /// The finish rule for a lean session, when the manifest turns it on.
 /// `baseline` is the task's baseline commands (`evidence.baseline`, issue
 /// #9633), empty when the manifest doesn't run it, so the rule then
-/// requires the score alone.
-fn finish_rule(lean: &Lean, baseline: &[String]) -> Option<microluna::FinishRule> {
+/// requires the score alone. It does too when the rule's own `baseline`
+/// is `false`.
+pub(crate) fn finish_rule(lean: &Lean, baseline: &[String]) -> Option<microluna::FinishRule> {
     lean.finish_rule.as_ref().map(|rule| microluna::FinishRule {
         score: vec![SCORE_NAME.to_string()],
-        baseline: baseline.to_vec(),
+        baseline: if rule.baseline {
+            baseline.to_vec()
+        } else {
+            Vec::new()
+        },
         max_refusals: rule.max_refusals,
     })
 }
