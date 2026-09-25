@@ -2197,9 +2197,26 @@ fn report_verdict_does_not_require_scenario_checks() {
     let verify = super::VerifyPolicy {
         verdict: true,
         checks: false,
-        ..Default::default()
+        ..super::VerifyPolicy::checks_only()
     };
     assert!(verify.validate().is_empty(), "{:?}", verify.validate());
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn report_verdict_records_unknown_without_scenario_checks_or_a_live_model() {
+    let mut manifest = manifest("microluna-v13-retained.json");
+    manifest.policy.verify.as_mut().unwrap().verdict = true;
+    let ran = compose(
+        "report-only",
+        &manifest,
+        vec![script("microluna", 6, 0)],
+        None,
+        Duration::from_secs(900),
+    )
+    .await;
+    assert!(ran.record["checks"].as_array().unwrap().is_empty());
+    assert_eq!(ran.record["verdict"]["first"]["call"], "unknown");
+    assert_eq!(ran.record["verdict"]["final"]["call"], "unknown");
 }
 
 #[test]

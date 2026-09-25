@@ -16,7 +16,7 @@ pub const USAGE: &str = "usage: coder-one checks synthetic [NAME] [--json]
                                [--write-fixtures DIR] [--json]
        coder-one checks recall [ARM...] [TASK...] [--jobs DIR] [--match TEXT]
                                [--out DIR] [--json]
-       coder-one checks truth [--jobs DIR] [--traces DIR] [--rows FILE]
+       coder-one checks truth [--jobs DIR|none] [--traces DIR] [--match TEXT] [--rows FILE]
                               [--jev live|recorded|off] [--set all|calibration|held_out]
                               [--out DIR] [--json]
 

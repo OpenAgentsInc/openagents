@@ -1764,7 +1764,11 @@ async fn protected_candidates_keep_the_first_tie_and_an_observer_cannot_edit_it(
         }),
     );
     executor.prepared = Some(prepared());
-    executor.execute(&briefing(TASK)).await;
+    let report = executor.execute(&briefing(TASK)).await;
+    let output = report.output();
+    assert!(output.contains("Another requirement is unknown."));
+    assert!(output.contains("The self-test does not cover the task."));
+    assert!(!output.contains("The weak score still passes."));
     assert_eq!(
         std::fs::read_to_string(work.join("hello.txt")).unwrap(),
         "correct\n"
