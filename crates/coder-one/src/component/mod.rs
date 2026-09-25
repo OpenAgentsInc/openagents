@@ -17,6 +17,7 @@
 //! coder-one component suite evidence.probes [--fixtures DIR] [--jev recorded]
 //! ```
 
+pub mod baseline;
 pub mod checks;
 pub mod cli;
 pub mod departures;
@@ -143,6 +144,7 @@ pub fn registry() -> Vec<Box<dyn Component>> {
         Box::new(Select),
         Box::new(Pack),
         Box::new(departures::Departures),
+        Box::new(baseline::BaselineComponent),
         Box::new(scripted::ScriptedAdapter),
         Box::new(monitor::MonitorComponent),
         Box::new(stall::StallComponent),

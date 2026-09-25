@@ -1,0 +1,29 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "evidence.baseline",
+  "source": {
+    "kind": "synthetic",
+    "issue": 9633,
+    "case": "Named commands that need the network are refused before they run."
+  },
+  "input": {
+    "task": "Install the client with `pip install requests`, then fetch the data with `python3 fetch.py https://example.com/data.json`.\n",
+    "files": {
+      "fetch.py": "import sys\nprint(sys.argv[1])\n"
+    }
+  },
+  "retained": {
+    "none": true,
+    "runs": [],
+    "refused": [
+      {
+        "kind": "named",
+        "why": "network"
+      },
+      {
+        "kind": "named",
+        "why": "network"
+      }
+    ]
+  }
+}

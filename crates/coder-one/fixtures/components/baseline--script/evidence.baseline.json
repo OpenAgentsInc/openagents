@@ -1,0 +1,27 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "evidence.baseline",
+  "source": {
+    "kind": "synthetic",
+    "issue": 9633,
+    "case": "A script the instruction names by path, given the one data file the instruction names because its argparse states one positional."
+  },
+  "input": {
+    "task": "`/app/tools/report.py` summarizes `/app/data/sales.csv`, but the total is wrong. Write the corrected total to `/app/output/total.txt`.\n",
+    "files": {
+      "tools/report.py": "import argparse\n\n\ndef main():\n    parser = argparse.ArgumentParser(description=\"Summarize sales.\")\n    parser.add_argument(\"input\", help=\"the sales CSV\")\n    parser.add_argument(\"--top\", type=int, default=3)\n    args = parser.parse_args()\n    with open(args.input) as handle:\n        rows = handle.read().splitlines()[1:]\n    print(\"rows:\", len(rows))\n    print(\"total:\", sum(float(r.split(\",\")[1]) for r in rows))\n\n\nif __name__ == \"__main__\":\n    main()\n",
+      "data/sales.csv": "item,amount\na,1.5\nb,2.5\n"
+    }
+  },
+  "retained": {
+    "runs": [
+      {
+        "kind": "script",
+        "exit": 0,
+        "command": "python3 tools/report.py data/sales.csv",
+        "stdout": "total: 4.0"
+      }
+    ],
+    "refused": []
+  }
+}

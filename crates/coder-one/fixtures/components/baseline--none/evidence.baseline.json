@@ -1,0 +1,20 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "evidence.baseline",
+  "source": {
+    "kind": "synthetic",
+    "issue": 9633,
+    "case": "No entry point: no named command or script, no package with __main__.py, no Makefile."
+  },
+  "input": {
+    "task": "Read the notes in `/app/notes.md` and write the answer to `/app/output/answer.txt`.\n",
+    "files": {
+      "notes.md": "# Notes\n\nThe answer is 42.\n"
+    }
+  },
+  "retained": {
+    "none": true,
+    "runs": [],
+    "refused": []
+  }
+}

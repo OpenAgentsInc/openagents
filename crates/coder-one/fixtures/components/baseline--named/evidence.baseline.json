@@ -1,0 +1,27 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "evidence.baseline",
+  "source": {
+    "kind": "synthetic",
+    "issue": 9633,
+    "case": "A command the instruction names in backticks, stated with `python`: it runs, with `python3` where the host has no `python`."
+  },
+  "input": {
+    "task": "The word counter is off by one. Check it with `python count.py /app/data/words.txt`, which should print 3.\n",
+    "files": {
+      "count.py": "import sys\nwith open(sys.argv[1]) as f:\n    print(len(f.read().split()) + 1)\n",
+      "data/words.txt": "one two three\n"
+    }
+  },
+  "retained": {
+    "runs": [
+      {
+        "kind": "named",
+        "exit": 0,
+        "command": "count.py /app/data/words.txt",
+        "stdout": "4"
+      }
+    ],
+    "refused": []
+  }
+}
