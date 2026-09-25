@@ -27,6 +27,7 @@ pub mod pack;
 pub mod repair;
 pub mod replay;
 pub mod scripted;
+pub mod stall;
 pub mod support;
 
 use std::path::{Path, PathBuf};
@@ -140,6 +141,8 @@ pub fn registry() -> Vec<Box<dyn Component>> {
         Box::new(Pack),
         Box::new(scripted::ScriptedAdapter),
         Box::new(monitor::MonitorComponent),
+        Box::new(stall::StallComponent),
+        Box::new(stall::NextComponent),
         Box::new(HandoffComponent),
         Box::new(SystemSelect),
         Box::new(checks::Checks),

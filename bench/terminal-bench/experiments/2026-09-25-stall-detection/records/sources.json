@@ -1,0 +1,2645 @@
+{
+  "schema": "openagents.coder-one.stall-row.v1",
+  "trials": [
+    {
+      "trial": "cad-model__y7qrKEe",
+      "task": "cad-model",
+      "partition": "excluded",
+      "passed": false,
+      "sessions": 1,
+      "turns": 14,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo1--cad-model--best-of-9587-r1/cad-model__y7qrKEe/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "0849011682aaaad106e13e24caf68efa243823e8977233bfc83cc0f667a5d749"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo1--cad-model--best-of-9587-r1/cad-model__y7qrKEe/agent/episode/artifacts/microluna-1.json",
+          "sha256": "6be176dd3333e21550b43e4f4825a91e2463de9f37fdd47ba45e64305cefd5af"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo1--cad-model--best-of-9587-r1/cad-model__y7qrKEe/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "coq-block-bound__3uq9QCe",
+      "task": "coq-block-bound",
+      "partition": "evaluation",
+      "passed": false,
+      "sessions": 2,
+      "turns": 62,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v15--coq-block-bound--manual-20260924T202701/coq-block-bound__3uq9QCe/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "6fb2e5df1dc114ce1f90c8799c468738adceb60eea1c163ee3c2c51dc3692e58"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v15--coq-block-bound--manual-20260924T202701/coq-block-bound__3uq9QCe/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "0ee7d98518117fba94b3178781cd1e1ff098e5df4c161c9e22fc8047ac75338e"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v15--coq-block-bound--manual-20260924T202701/coq-block-bound__3uq9QCe/agent/episode/artifacts/microluna-1.json",
+          "sha256": "95ae806c9eee45d608ec7af721210d6402def982e4b2eae82f451915ba235699"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v15--coq-block-bound--manual-20260924T202701/coq-block-bound__3uq9QCe/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "coq-block-bound__3wJAvgQ",
+      "task": "coq-block-bound",
+      "partition": "evaluation",
+      "passed": false,
+      "sessions": 6,
+      "turns": 14,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--microluna-v1--coq-block-bound--9585-r1/coq-block-bound__3wJAvgQ/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "004175b33eae078fbebf4d6c2b0adc6b241ca16ed03fca8c42f06a6e5c73e53e"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--microluna-v1--coq-block-bound--9585-r1/coq-block-bound__3wJAvgQ/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "07d39ff6f9baf2f989431088b3650166183a600017bd52fbe061fc868777bd46"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--microluna-v1--coq-block-bound--9585-r1/coq-block-bound__3wJAvgQ/agent/episode/artifacts/microluna-1-3.atif.jsonl",
+          "sha256": "0b1ddee3065cbc86245e4d39796720c18250beba922912814ced3ebc0b8923b6"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--microluna-v1--coq-block-bound--9585-r1/coq-block-bound__3wJAvgQ/agent/episode/artifacts/microluna-1-4.atif.jsonl",
+          "sha256": "fd96f1d560a1207b49747058a36e158328423183b43c3a1ecfb858602209a563"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--microluna-v1--coq-block-bound--9585-r1/coq-block-bound__3wJAvgQ/agent/episode/artifacts/microluna-1-5.atif.jsonl",
+          "sha256": "74fb0df2402e57a51edaebaa8ca6189d249a68dbbd4fab7cae4d24aa96d8ede0"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--microluna-v1--coq-block-bound--9585-r1/coq-block-bound__3wJAvgQ/agent/episode/artifacts/microluna-1-6.atif.jsonl",
+          "sha256": "3a6f69efe761b21a832a26c95e9839a558684961fc690ba36f84d7fdc9467099"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--microluna-v1--coq-block-bound--9585-r1/coq-block-bound__3wJAvgQ/agent/episode/artifacts/microluna-1.json",
+          "sha256": "670ded3ed9cf57f332f6cb334cf280ca7f3f4300eab4e80a012aecd10c3ff4b0"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--microluna-v1--coq-block-bound--9585-r1/coq-block-bound__3wJAvgQ/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "embedding-drift-monitor__26QyeXD",
+      "task": "embedding-drift-monitor",
+      "partition": "calibration",
+      "passed": false,
+      "sessions": 5,
+      "turns": 47,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v8--embedding-drift-monitor--manual-20260924T122714/embedding-drift-monitor__26QyeXD/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "d9752f2fe8adfa60b0cb6b74e4986a764d6723d2be6c0da38a4cb42ca903ec7b"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v8--embedding-drift-monitor--manual-20260924T122714/embedding-drift-monitor__26QyeXD/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "4a8dff6c8d05e61f779d91100fb540ee993a541bdb6a7e71d84551dedeb52da2"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v8--embedding-drift-monitor--manual-20260924T122714/embedding-drift-monitor__26QyeXD/agent/episode/artifacts/microluna-1-3.atif.jsonl",
+          "sha256": "1587e7166b2041ff728708eaa39dc6fc164546fbbf6878ddaaab66c054313ae9"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v8--embedding-drift-monitor--manual-20260924T122714/embedding-drift-monitor__26QyeXD/agent/episode/artifacts/microluna-1-4.atif.jsonl",
+          "sha256": "61bb3c1d1fcfa530b871b90d3f2292672864f096d9cce7951738baa0529929bd"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v8--embedding-drift-monitor--manual-20260924T122714/embedding-drift-monitor__26QyeXD/agent/episode/artifacts/microluna-1-5.atif.jsonl",
+          "sha256": "965b72be61114e4efb2d984b5da7cb0270a2311cc92c95d706b15dc6274e0572"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v8--embedding-drift-monitor--manual-20260924T122714/embedding-drift-monitor__26QyeXD/agent/episode/artifacts/microluna-1.json",
+          "sha256": "dadb5a9ce5b04e1195ab9b8cf36dc43bba8522d5076c4f80538eb4d5264e8920"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v8--embedding-drift-monitor--manual-20260924T122714/embedding-drift-monitor__26QyeXD/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "embedding-drift-monitor__2y5CheP",
+      "task": "embedding-drift-monitor",
+      "partition": "calibration",
+      "passed": false,
+      "sessions": 2,
+      "turns": 29,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v10--embedding-drift-monitor--manual-20260924T145804/embedding-drift-monitor__2y5CheP/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "0679cea437a6cc98a8af1292516f78b1ef31c0911a71596cb899c628d6b0bfbe"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v10--embedding-drift-monitor--manual-20260924T145804/embedding-drift-monitor__2y5CheP/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "bf2f6a11a0ba2b49b4683cb41dbb344aedf8214de1b496d5b84f8ccb7a828dcf"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v10--embedding-drift-monitor--manual-20260924T145804/embedding-drift-monitor__2y5CheP/agent/episode/artifacts/microluna-1.json",
+          "sha256": "7899cc11d1888f8b9ed47522f430ce0a33b1ae2f02479c93be948dae0e8887ac"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v10--embedding-drift-monitor--manual-20260924T145804/embedding-drift-monitor__2y5CheP/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "embedding-drift-monitor__6zRjd9n",
+      "task": "embedding-drift-monitor",
+      "partition": "calibration",
+      "passed": true,
+      "sessions": 2,
+      "turns": 20,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--embedding-drift-monitor/embedding-drift-monitor__6zRjd9n/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "9491a88b7949d947a171942621da8ead2da5ed876f122a9237b3543d49443ed1"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--embedding-drift-monitor/embedding-drift-monitor__6zRjd9n/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "8d6d8134d8fd35bd038bf86664150c7c4185ad5ba2b3fe5807c2ef45ff2610a4"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--embedding-drift-monitor/embedding-drift-monitor__6zRjd9n/agent/episode/artifacts/microluna-1.json",
+          "sha256": "cd14dac47d83343c925b668bf516f1b9817ac1d4a30e576aa8d3c90308a66f1b"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--embedding-drift-monitor/embedding-drift-monitor__6zRjd9n/verifier/reward.txt",
+          "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+        }
+      ]
+    },
+    {
+      "trial": "embedding-drift-monitor__9ZYbzjT",
+      "task": "embedding-drift-monitor",
+      "partition": "calibration",
+      "passed": true,
+      "sessions": 2,
+      "turns": 27,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v15--embedding-drift-monitor--manual-20260924T165834/embedding-drift-monitor__9ZYbzjT/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "25f4d6351b0d86058086c960c3e5be42580730153a4eb0f70ae2c73cfe1c735e"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v15--embedding-drift-monitor--manual-20260924T165834/embedding-drift-monitor__9ZYbzjT/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "7f434fbd715d80b762c6a4998b0ac4bc896c8a6df6d4c67916ce9eca1c644d7a"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v15--embedding-drift-monitor--manual-20260924T165834/embedding-drift-monitor__9ZYbzjT/agent/episode/artifacts/microluna-1.json",
+          "sha256": "bfc5e9cbda73186b5653d5a7dbeb127e5f60485c1a865bf55079ca6afd2326d1"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v15--embedding-drift-monitor--manual-20260924T165834/embedding-drift-monitor__9ZYbzjT/verifier/reward.txt",
+          "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+        }
+      ]
+    },
+    {
+      "trial": "embedding-drift-monitor__KDeY8Bf",
+      "task": "embedding-drift-monitor",
+      "partition": "calibration",
+      "passed": false,
+      "sessions": 2,
+      "turns": 21,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r3/embedding-drift-monitor__KDeY8Bf/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "1ebe64cbb5391e81c710194c386e067e10bb5185bac332eb4084a3a4b5d8c9b6"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r3/embedding-drift-monitor__KDeY8Bf/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "979aa70d71c68b053ee14c08598ef6aaab87b51b15cb82008a15982a08cbba28"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r3/embedding-drift-monitor__KDeY8Bf/agent/episode/artifacts/microluna-1.json",
+          "sha256": "f7d22d6f7069a50d5609ba670ce3a1f7ad6104d82dd8a6aa512f25094e15e8db"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r3/embedding-drift-monitor__KDeY8Bf/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "embedding-drift-monitor__MZYSp6A",
+      "task": "embedding-drift-monitor",
+      "partition": "calibration",
+      "passed": false,
+      "sessions": 2,
+      "turns": 19,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-solo--embedding-drift-monitor--manual-20260924T135147/embedding-drift-monitor__MZYSp6A/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "6509750831955bf3c7e62b346c1b48b2af7c1920d0bea0936503d73b14f3672b"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-solo--embedding-drift-monitor--manual-20260924T135147/embedding-drift-monitor__MZYSp6A/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "52e0bdc2c13058c0af5ad1e15cdc89ba6d9a14a1430575b0fa737bc7d4cd2395"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-solo--embedding-drift-monitor--manual-20260924T135147/embedding-drift-monitor__MZYSp6A/agent/episode/artifacts/microluna-1.json",
+          "sha256": "4a5e37363d5a2b4714e4df5c1762fab834c2714141d3ea804993114e93d85136"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-solo--embedding-drift-monitor--manual-20260924T135147/embedding-drift-monitor__MZYSp6A/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "embedding-drift-monitor__NG9vQg5",
+      "task": "embedding-drift-monitor",
+      "partition": "calibration",
+      "passed": true,
+      "sessions": 2,
+      "turns": 26,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v12--embedding-drift-monitor--candidate-evidence-9607-r3/embedding-drift-monitor__NG9vQg5/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "13c50db77694837a49874bba4d72a411dbd2b324024896d90d40d36c7d29e1c5"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v12--embedding-drift-monitor--candidate-evidence-9607-r3/embedding-drift-monitor__NG9vQg5/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "6d0a40cc6b719a0676ebd0666c88d326e19f8c9de178b2e4e3ded800d40b4645"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v12--embedding-drift-monitor--candidate-evidence-9607-r3/embedding-drift-monitor__NG9vQg5/agent/episode/artifacts/microluna-1.json",
+          "sha256": "bd3c62e419b4002ab245e7c5b19e37239045e615827ac4166925697a0179ab64"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v12--embedding-drift-monitor--candidate-evidence-9607-r3/embedding-drift-monitor__NG9vQg5/verifier/reward.txt",
+          "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+        }
+      ]
+    },
+    {
+      "trial": "embedding-drift-monitor__PTsawB6",
+      "task": "embedding-drift-monitor",
+      "partition": "calibration",
+      "passed": false,
+      "sessions": 15,
+      "turns": 182,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--embedding-drift-monitor--suite-9587-r1/embedding-drift-monitor__PTsawB6/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "290d0899849535871dbe690ec4496cd6beaaf6a7fc108abeffd28ff1ca0d523c"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--embedding-drift-monitor--suite-9587-r1/embedding-drift-monitor__PTsawB6/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "097cb615eeaf7726f17fc9a8b6e9a11994b275b5bdb32e81985afeaff61fdd8d"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--embedding-drift-monitor--suite-9587-r1/embedding-drift-monitor__PTsawB6/agent/episode/artifacts/microluna-1-3.atif.jsonl",
+          "sha256": "83ff024bc6a1a04b871c722b47bbdf2f1a872f153c91c2351f4f3217b5bdb041"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--embedding-drift-monitor--suite-9587-r1/embedding-drift-monitor__PTsawB6/agent/episode/artifacts/microluna-1-4.atif.jsonl",
+          "sha256": "b6ce7afca94231dd62a193128e240ed13a37331a868bb146d58a506d5c275fca"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--embedding-drift-monitor--suite-9587-r1/embedding-drift-monitor__PTsawB6/agent/episode/artifacts/microluna-1-5.atif.jsonl",
+          "sha256": "a366467d8c85822cfee9dc4d87f3507b6abb71033db76d5de51dc1a088b8d775"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--embedding-drift-monitor--suite-9587-r1/embedding-drift-monitor__PTsawB6/agent/episode/artifacts/microluna-1.json",
+          "sha256": "76b82a2419bf7c87075b2b9aeec9fa9c1a99eb01bbbb2c289d4f58d712042f2c"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--embedding-drift-monitor--suite-9587-r1/embedding-drift-monitor__PTsawB6/agent/episode/artifacts/microluna-2-1.atif.jsonl",
+          "sha256": "1ab7644a78d23910c1c7592585318765661c95eac1d3136e86b0470e2b9c58d5"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--embedding-drift-monitor--suite-9587-r1/embedding-drift-monitor__PTsawB6/agent/episode/artifacts/microluna-2-2.atif.jsonl",
+          "sha256": "5aba747af707b7b9ea9cbfe5bb8dd6e69dc691ddd63e88907cb20c64618e9da1"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--embedding-drift-monitor--suite-9587-r1/embedding-drift-monitor__PTsawB6/agent/episode/artifacts/microluna-2-3.atif.jsonl",
+          "sha256": "5232f50f75e2773417ee99fb98d34f7f1547b6f692b1afa0bc35df93713ee28f"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--embedding-drift-monitor--suite-9587-r1/embedding-drift-monitor__PTsawB6/agent/episode/artifacts/microluna-2-4.atif.jsonl",
+          "sha256": "5d5da7e9443a3c689c27f79c2b0ffb9c0d680c9cf9a83f7c532431e2398f3c66"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--embedding-drift-monitor--suite-9587-r1/embedding-drift-monitor__PTsawB6/agent/episode/artifacts/microluna-2-5.atif.jsonl",
+          "sha256": "abacc514e59150368df9c9d63c3fc6719d9451833fec3f7540121d4725a64490"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--embedding-drift-monitor--suite-9587-r1/embedding-drift-monitor__PTsawB6/agent/episode/artifacts/microluna-2.json",
+          "sha256": "053cf2ea2cff33a022e3123d0c6d8f64e4455a4e7fe3d3090f732fc1224643c0"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--embedding-drift-monitor--suite-9587-r1/embedding-drift-monitor__PTsawB6/agent/episode/artifacts/microluna-3-1.atif.jsonl",
+          "sha256": "287a1cf717de607b38f94d76c95e5ac774dd9c3e00ddfbe8ec94e1fe512b967a"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--embedding-drift-monitor--suite-9587-r1/embedding-drift-monitor__PTsawB6/agent/episode/artifacts/microluna-3-2.atif.jsonl",
+          "sha256": "2efea0dc033226404654384d424b01e0f386dd7e4bb8468272cf865cc991f98b"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--embedding-drift-monitor--suite-9587-r1/embedding-drift-monitor__PTsawB6/agent/episode/artifacts/microluna-3-3.atif.jsonl",
+          "sha256": "acad4d450a40c37247c6666f2e2bc32fcb9ada7ab94113e47026cde85d2e7a69"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--embedding-drift-monitor--suite-9587-r1/embedding-drift-monitor__PTsawB6/agent/episode/artifacts/microluna-3-4.atif.jsonl",
+          "sha256": "a14cd3cc0ed0ddee3685bd3f1c345bb62c5ba27c68f2d1ca8707fb8b80bf7a65"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--embedding-drift-monitor--suite-9587-r1/embedding-drift-monitor__PTsawB6/agent/episode/artifacts/microluna-3-5.atif.jsonl",
+          "sha256": "f343d998ea189abda03d3f1d17aa2149c2ce9f218591d7c046da1e01c81250a1"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--embedding-drift-monitor--suite-9587-r1/embedding-drift-monitor__PTsawB6/agent/episode/artifacts/microluna-3.json",
+          "sha256": "39d91af13862fc6a2a2360f17e8e11a28d8805d5aa680e66ad5630d5c37af32a"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--embedding-drift-monitor--suite-9587-r1/embedding-drift-monitor__PTsawB6/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "embedding-drift-monitor__PemYnyR",
+      "task": "embedding-drift-monitor",
+      "partition": "calibration",
+      "passed": true,
+      "sessions": 2,
+      "turns": 34,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v16--embedding-drift-monitor--manual-20260924T172613/embedding-drift-monitor__PemYnyR/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "85d30268bcb3237a4053eb51e1d4d65b18e7d09d0bac0dff15ada782a85ca0f6"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v16--embedding-drift-monitor--manual-20260924T172613/embedding-drift-monitor__PemYnyR/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "0f5ec64b48f204530c285e7e28c2b4b4c0268aef08e0a1d397ab0d4c8ff3be66"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v16--embedding-drift-monitor--manual-20260924T172613/embedding-drift-monitor__PemYnyR/agent/episode/artifacts/microluna-1.json",
+          "sha256": "1a24099da5a7090f6c775441f3b982d41a1c793c05a645d0c89f68d6e82f770c"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v16--embedding-drift-monitor--manual-20260924T172613/embedding-drift-monitor__PemYnyR/verifier/reward.txt",
+          "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+        }
+      ]
+    },
+    {
+      "trial": "embedding-drift-monitor__QAHE7De",
+      "task": "embedding-drift-monitor",
+      "partition": "calibration",
+      "passed": true,
+      "sessions": 2,
+      "turns": 24,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-3/embedding-drift-monitor__QAHE7De/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "d57e96f52c3241b263513c69f0f78f2c8687d107298aff2c42797f88d414ad95"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-3/embedding-drift-monitor__QAHE7De/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "c00f0a6c1910fa5c35246a9a660b12ce07629aefb458717e9ae216e2142ebad7"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-3/embedding-drift-monitor__QAHE7De/agent/episode/artifacts/microluna-1.json",
+          "sha256": "85329c3292ec077b15f669e8f7bdce35a56fdad1a735a22c723da4a7d7cbc521"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-3/embedding-drift-monitor__QAHE7De/verifier/reward.txt",
+          "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+        }
+      ]
+    },
+    {
+      "trial": "embedding-drift-monitor__R7mX9UJ",
+      "task": "embedding-drift-monitor",
+      "partition": "calibration",
+      "passed": false,
+      "sessions": 8,
+      "turns": 99,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v3--embedding-drift-monitor--microluna-overnight-9585-r1/embedding-drift-monitor__R7mX9UJ/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "28521190496298666b0596e84da4d3620a922d000de90230b75fef5c86c6162a"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v3--embedding-drift-monitor--microluna-overnight-9585-r1/embedding-drift-monitor__R7mX9UJ/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "550487d3a065dab6cef1fe0946a3065a914b71b1c9dca3384607f661d2d7e6fc"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v3--embedding-drift-monitor--microluna-overnight-9585-r1/embedding-drift-monitor__R7mX9UJ/agent/episode/artifacts/microluna-1-3.atif.jsonl",
+          "sha256": "b88a3043cf991497d9b44afebc4ca32c1f8e87b66715678e7115f24bccaac9c7"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v3--embedding-drift-monitor--microluna-overnight-9585-r1/embedding-drift-monitor__R7mX9UJ/agent/episode/artifacts/microluna-1-4.atif.jsonl",
+          "sha256": "26f704726af9a5c27720ddae428220043553173515c5cc9beca1ba429f18bdb9"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v3--embedding-drift-monitor--microluna-overnight-9585-r1/embedding-drift-monitor__R7mX9UJ/agent/episode/artifacts/microluna-1-5.atif.jsonl",
+          "sha256": "6b84ba190452cb34aec89978d52f6d3a1b32e596450eb4519d795c9f025e0a52"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v3--embedding-drift-monitor--microluna-overnight-9585-r1/embedding-drift-monitor__R7mX9UJ/agent/episode/artifacts/microluna-1-6.atif.jsonl",
+          "sha256": "f65c045a2f88e99bd5dd31c1567ab7973fbf58964841fe0141fdb01928d7eb61"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v3--embedding-drift-monitor--microluna-overnight-9585-r1/embedding-drift-monitor__R7mX9UJ/agent/episode/artifacts/microluna-1-7.atif.jsonl",
+          "sha256": "b3213c3397a57b544a84964946117658de9416d6c5df79501c126b609298b7d7"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v3--embedding-drift-monitor--microluna-overnight-9585-r1/embedding-drift-monitor__R7mX9UJ/agent/episode/artifacts/microluna-1-8.atif.jsonl",
+          "sha256": "56202fb260ae26fed01142096857428c8a30499bf31c3c22cd75cbae1c46a99e"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v3--embedding-drift-monitor--microluna-overnight-9585-r1/embedding-drift-monitor__R7mX9UJ/agent/episode/artifacts/microluna-1.json",
+          "sha256": "fdfc3924d9172941bcf6e1b5f591c8bd051286347054e13f8f0f2dd556eb36eb"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v3--embedding-drift-monitor--microluna-overnight-9585-r1/embedding-drift-monitor__R7mX9UJ/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "embedding-drift-monitor__REGuz3v",
+      "task": "embedding-drift-monitor",
+      "partition": "calibration",
+      "passed": false,
+      "sessions": 2,
+      "turns": 27,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v12--embedding-drift-monitor--candidate-evidence-9607-r2/embedding-drift-monitor__REGuz3v/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "de76fe1cc28e806b9d465c1d469129024d5292ff07096895859e56a14624ae7e"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v12--embedding-drift-monitor--candidate-evidence-9607-r2/embedding-drift-monitor__REGuz3v/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "902226010ccbd923fb4dcbada2ed935396004fee18ad79cf70b62c2c6258fef9"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v12--embedding-drift-monitor--candidate-evidence-9607-r2/embedding-drift-monitor__REGuz3v/agent/episode/artifacts/microluna-1.json",
+          "sha256": "cf782c155a736490bb316919b5dffa0b4b48ff173d3f936855935e3226e7318e"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v12--embedding-drift-monitor--candidate-evidence-9607-r2/embedding-drift-monitor__REGuz3v/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "embedding-drift-monitor__Uf8HNF3",
+      "task": "embedding-drift-monitor",
+      "partition": "calibration",
+      "passed": false,
+      "sessions": 11,
+      "turns": 108,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v4--embedding-drift-monitor--microluna-budget-9585-r1/embedding-drift-monitor__Uf8HNF3/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "b95cd7f43672f858c5c3283299934d8a894a7f066cb17241a2e0fd32b13b153e"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v4--embedding-drift-monitor--microluna-budget-9585-r1/embedding-drift-monitor__Uf8HNF3/agent/episode/artifacts/microluna-1-10.atif.jsonl",
+          "sha256": "c03fc4e8ee63e4b8993d052775f783d64bdac325fcc185c6db9b447ba6145867"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v4--embedding-drift-monitor--microluna-budget-9585-r1/embedding-drift-monitor__Uf8HNF3/agent/episode/artifacts/microluna-1-11.atif.jsonl",
+          "sha256": "ee60d6b747f9ed7b663bfd29215554f5a709bd91f83058675f02cca6b5b73300"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v4--embedding-drift-monitor--microluna-budget-9585-r1/embedding-drift-monitor__Uf8HNF3/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "a354494d52fe6fd89d3de435b0f46244a5755636fbd1a7efd7b525966543c9e6"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v4--embedding-drift-monitor--microluna-budget-9585-r1/embedding-drift-monitor__Uf8HNF3/agent/episode/artifacts/microluna-1-3.atif.jsonl",
+          "sha256": "e7b6a1ff40cf863f34de06d0fad64f14dc4bd228f546a4ecdeab403a5e047585"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v4--embedding-drift-monitor--microluna-budget-9585-r1/embedding-drift-monitor__Uf8HNF3/agent/episode/artifacts/microluna-1-4.atif.jsonl",
+          "sha256": "04723e6de6ca8da0e2dc4715e7310a05e14307ed5c7f34de2f454fb302f21ba6"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v4--embedding-drift-monitor--microluna-budget-9585-r1/embedding-drift-monitor__Uf8HNF3/agent/episode/artifacts/microluna-1-5.atif.jsonl",
+          "sha256": "7aab59953b0e0c7cae1467862c31dddb918d6d5a26216d25ee4158fee6db936b"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v4--embedding-drift-monitor--microluna-budget-9585-r1/embedding-drift-monitor__Uf8HNF3/agent/episode/artifacts/microluna-1-6.atif.jsonl",
+          "sha256": "c66884f5a18783e555364d13c36b0ccff8cebfe11a73a1e516991f1c7c901d24"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v4--embedding-drift-monitor--microluna-budget-9585-r1/embedding-drift-monitor__Uf8HNF3/agent/episode/artifacts/microluna-1-7.atif.jsonl",
+          "sha256": "d28d7363e5ace13ffc07e05446b2eb1ce0135c54d8eb0bc67b8effad44b4782c"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v4--embedding-drift-monitor--microluna-budget-9585-r1/embedding-drift-monitor__Uf8HNF3/agent/episode/artifacts/microluna-1-8.atif.jsonl",
+          "sha256": "503590f727e55b3807ffdabdb1868d1d3d19856551d86c85cdc07501393e9683"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v4--embedding-drift-monitor--microluna-budget-9585-r1/embedding-drift-monitor__Uf8HNF3/agent/episode/artifacts/microluna-1-9.atif.jsonl",
+          "sha256": "a911b0b0897b7bd9cbbc57d64dcc2bf0ddda843abcca130123c2a15c15e95555"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v4--embedding-drift-monitor--microluna-budget-9585-r1/embedding-drift-monitor__Uf8HNF3/agent/episode/artifacts/microluna-1.json",
+          "sha256": "a25e9949f9cc7e29f898bb66a58573c59c40064287745d34f363dc218a779f39"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v4--embedding-drift-monitor--microluna-budget-9585-r1/embedding-drift-monitor__Uf8HNF3/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "embedding-drift-monitor__UfYFodd",
+      "task": "embedding-drift-monitor",
+      "partition": "calibration",
+      "passed": false,
+      "sessions": 2,
+      "turns": 16,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__UfYFodd/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "272b34f24002c28a1bd6be7d9937a5b9b6d47a31722cb95c16aabe12d236b2d4"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__UfYFodd/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "d1e673a209f0f5c6f92e9848a09bcf7052c200d9c19c028ee35a6f873fc46fa4"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__UfYFodd/agent/episode/artifacts/microluna-1.json",
+          "sha256": "a118d5a3353078ed3534f9664ba378f33da741db3e702c56a3e521b07d7590f3"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__UfYFodd/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "embedding-drift-monitor__UtNMMsq",
+      "task": "embedding-drift-monitor",
+      "partition": "calibration",
+      "passed": true,
+      "sessions": 2,
+      "turns": 25,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13--embedding-drift-monitor--manual-20260924T160541/embedding-drift-monitor__UtNMMsq/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "ddbcc98224a5a1cad09cbc0e538030a00d186c6ef8401f8de04a091733b22bae"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13--embedding-drift-monitor--manual-20260924T160541/embedding-drift-monitor__UtNMMsq/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "0f510e12ea32ceefb25e6166c1b116e15dcfd89ad4fa29e5529c7f4103a3dab1"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13--embedding-drift-monitor--manual-20260924T160541/embedding-drift-monitor__UtNMMsq/agent/episode/artifacts/microluna-1.json",
+          "sha256": "7db368eb5875d6bba40302147c309d6f981cedc6b289498b4f40692c5b1eca45"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13--embedding-drift-monitor--manual-20260924T160541/embedding-drift-monitor__UtNMMsq/verifier/reward.txt",
+          "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+        }
+      ]
+    },
+    {
+      "trial": "embedding-drift-monitor__ZfDzwcs",
+      "task": "embedding-drift-monitor",
+      "partition": "calibration",
+      "passed": false,
+      "sessions": 2,
+      "turns": 38,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v12--embedding-drift-monitor--manual-20260924T153948/embedding-drift-monitor__ZfDzwcs/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "77275315b81d4fde3cdb5fa989a74432e990c8027b73e8acc39c0246bd40f4c7"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v12--embedding-drift-monitor--manual-20260924T153948/embedding-drift-monitor__ZfDzwcs/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "d6e18418b6e6c4d667fb6b8c5be43c21eb28ef15cb53bd749b92eb665d9b4e35"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v12--embedding-drift-monitor--manual-20260924T153948/embedding-drift-monitor__ZfDzwcs/agent/episode/artifacts/microluna-1.json",
+          "sha256": "0f18daddb7be2b29d55ddcde65fd339fc70854978a7cce6292361e2a119a6b4e"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v12--embedding-drift-monitor--manual-20260924T153948/embedding-drift-monitor__ZfDzwcs/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "embedding-drift-monitor__cPwtk4c",
+      "task": "embedding-drift-monitor",
+      "partition": "calibration",
+      "passed": true,
+      "sessions": 2,
+      "turns": 27,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v17--embedding-drift-monitor--manual-20260924T180856/embedding-drift-monitor__cPwtk4c/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "6f3b3093ca79a99e242a8aad39e3f735cdebeee06732ef32d693e4d7800e3833"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v17--embedding-drift-monitor--manual-20260924T180856/embedding-drift-monitor__cPwtk4c/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "521c9e0c142606eba34a3521e7335b4484895d902a2f638faa83f2c398790432"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v17--embedding-drift-monitor--manual-20260924T180856/embedding-drift-monitor__cPwtk4c/agent/episode/artifacts/microluna-1.json",
+          "sha256": "eda44963c9f143789af1f11186ec4eed7b21870fc8dd179997610b60fc1bd81e"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v17--embedding-drift-monitor--manual-20260924T180856/embedding-drift-monitor__cPwtk4c/verifier/reward.txt",
+          "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+        }
+      ]
+    },
+    {
+      "trial": "embedding-drift-monitor__es2dWha",
+      "task": "embedding-drift-monitor",
+      "partition": "calibration",
+      "passed": false,
+      "sessions": 4,
+      "turns": 34,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v7--embedding-drift-monitor--manual-20260924T124146/embedding-drift-monitor__es2dWha/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "744eb630b56d482050ab1ae9205602936839aa68458907adee95cee11784ff5e"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v7--embedding-drift-monitor--manual-20260924T124146/embedding-drift-monitor__es2dWha/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "9c8a99e5ee977690e7d16a7bd12a1c5849657e2d816d1237f2de3e1cabd5c14f"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v7--embedding-drift-monitor--manual-20260924T124146/embedding-drift-monitor__es2dWha/agent/episode/artifacts/microluna-1-3.atif.jsonl",
+          "sha256": "0c35d1dcc4af79160467b97fd5b452b837f6420f2f6bcfeffa1c8ae4df5a701d"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v7--embedding-drift-monitor--manual-20260924T124146/embedding-drift-monitor__es2dWha/agent/episode/artifacts/microluna-1.json",
+          "sha256": "88b63247301eee7f014117282fe0952a40e7e589fe8244b886772be0fe097ab3"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v7--embedding-drift-monitor--manual-20260924T124146/embedding-drift-monitor__es2dWha/agent/episode/artifacts/microluna-2-1.atif.jsonl",
+          "sha256": "9fdf1ab7d0719a10107ffaabd19bcb0a0b05625bb66caf278ea08f586c82284f"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v7--embedding-drift-monitor--manual-20260924T124146/embedding-drift-monitor__es2dWha/agent/episode/artifacts/microluna-2.json",
+          "sha256": "7041f11216cdaf6b21d2a2b0e7ebba38773187ca84de2bf6b27b1372002841b5"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v7--embedding-drift-monitor--manual-20260924T124146/embedding-drift-monitor__es2dWha/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "embedding-drift-monitor__fF4Yb3V",
+      "task": "embedding-drift-monitor",
+      "partition": "calibration",
+      "passed": true,
+      "sessions": 6,
+      "turns": 70,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v14--embedding-drift-monitor--manual-20260924T163424/embedding-drift-monitor__fF4Yb3V/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "8fab634bbdd552dbcbbb7e7349633d21614fe55a96de03282324a7fff2967949"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v14--embedding-drift-monitor--manual-20260924T163424/embedding-drift-monitor__fF4Yb3V/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "9be1ae5c99be60a4493c20307c8040f6a8d00c0bf80ae3ee94e7767deb6f9202"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v14--embedding-drift-monitor--manual-20260924T163424/embedding-drift-monitor__fF4Yb3V/agent/episode/artifacts/microluna-1-3.atif.jsonl",
+          "sha256": "67359f095a09732eab479f3070f88783a443398e0ba51c015ef7be60edd37faa"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v14--embedding-drift-monitor--manual-20260924T163424/embedding-drift-monitor__fF4Yb3V/agent/episode/artifacts/microluna-1-4.atif.jsonl",
+          "sha256": "b18e0d2b882132ccc4cf1f45ce816cbbfa5af52d1c603ef71534fd94132c7257"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v14--embedding-drift-monitor--manual-20260924T163424/embedding-drift-monitor__fF4Yb3V/agent/episode/artifacts/microluna-1-5.atif.jsonl",
+          "sha256": "dee10e8fa892b535e87dcf6654201c70fbed45f85d5a70ff03bd0cc9e50ce828"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v14--embedding-drift-monitor--manual-20260924T163424/embedding-drift-monitor__fF4Yb3V/agent/episode/artifacts/microluna-1-6.atif.jsonl",
+          "sha256": "d71280174136878bb4266ee7d5bf8181ba9f0d0cde5d45e26eb7288112736170"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v14--embedding-drift-monitor--manual-20260924T163424/embedding-drift-monitor__fF4Yb3V/agent/episode/artifacts/microluna-1.json",
+          "sha256": "f64c267a00f0146a705204de6f116afdcdd3c622c75226ebfe5e91c35c0fa808"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v14--embedding-drift-monitor--manual-20260924T163424/embedding-drift-monitor__fF4Yb3V/verifier/reward.txt",
+          "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+        }
+      ]
+    },
+    {
+      "trial": "embedding-drift-monitor__gQoArdr",
+      "task": "embedding-drift-monitor",
+      "partition": "calibration",
+      "passed": null,
+      "sessions": 8,
+      "turns": 125,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v3--embedding-drift-monitor--microluna-budget-9585-r1/embedding-drift-monitor__gQoArdr/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "ce9edbd255e82c13e42c34840dac60b711121d15c4abee1d5e7baa42d357db9b"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v3--embedding-drift-monitor--microluna-budget-9585-r1/embedding-drift-monitor__gQoArdr/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "c4d22085554766db01c014ee1a87804d40722148595507694159f3590044599b"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v3--embedding-drift-monitor--microluna-budget-9585-r1/embedding-drift-monitor__gQoArdr/agent/episode/artifacts/microluna-1-3.atif.jsonl",
+          "sha256": "c4d28ad5d26d71d9218bd557c15970dbfabd760c134d815136e78533890cd03e"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v3--embedding-drift-monitor--microluna-budget-9585-r1/embedding-drift-monitor__gQoArdr/agent/episode/artifacts/microluna-1-4.atif.jsonl",
+          "sha256": "f4ac70b42ef953700c5e66a05474029ccf9f00b62cf92bc7b4b3bc8a6bbc26e4"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v3--embedding-drift-monitor--microluna-budget-9585-r1/embedding-drift-monitor__gQoArdr/agent/episode/artifacts/microluna-1-5.atif.jsonl",
+          "sha256": "6e6704a38b170ee01ef858136eacddfd1bd0c728e1ba8df9b22fa86ea8f80e3a"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v3--embedding-drift-monitor--microluna-budget-9585-r1/embedding-drift-monitor__gQoArdr/agent/episode/artifacts/microluna-1-6.atif.jsonl",
+          "sha256": "8aa20b491f5124e6d959a7146632b416e2adddb8678f4aa62a21610464c67dfe"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v3--embedding-drift-monitor--microluna-budget-9585-r1/embedding-drift-monitor__gQoArdr/agent/episode/artifacts/microluna-1-7.atif.jsonl",
+          "sha256": "338f88d34dca53ecbcdc7e35923e82c8318e302f9aec591386addddaac71aedb"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v3--embedding-drift-monitor--microluna-budget-9585-r1/embedding-drift-monitor__gQoArdr/agent/episode/artifacts/microluna-1-8.atif.jsonl",
+          "sha256": "c4dea93247c5e2f6d4a4e10f894c003fa40bcc40ae21844819d39c4c50dd5bda"
+        }
+      ]
+    },
+    {
+      "trial": "embedding-drift-monitor__mVNMcMn",
+      "task": "embedding-drift-monitor",
+      "partition": "calibration",
+      "passed": false,
+      "sessions": 2,
+      "turns": 25,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r2/embedding-drift-monitor__mVNMcMn/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "6773a34a80f2aa634d505f29b4026e556e5ebf0d194c3d7c6a2a0997fbbf1627"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r2/embedding-drift-monitor__mVNMcMn/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "eebbf6bd7a90b5a7653d55626dac4cc59be4773bad720c3127f06e7b58e14cf1"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r2/embedding-drift-monitor__mVNMcMn/agent/episode/artifacts/microluna-1.json",
+          "sha256": "9da9243bfae9aed0bd5dee5f1eff9ee3d56cbacece927379b40ad3bc07af6eac"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-evidence-v1--embedding-drift-monitor--candidate-evidence-9607-r2/embedding-drift-monitor__mVNMcMn/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "embedding-drift-monitor__qTyzkkg",
+      "task": "embedding-drift-monitor",
+      "partition": "calibration",
+      "passed": true,
+      "sessions": 2,
+      "turns": 24,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13--embedding-drift-monitor--manual-20260924T162542/embedding-drift-monitor__qTyzkkg/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "76d1ed95948a77e6b833a0893c7a605f87d41fef84c705045169b60d64f68a89"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13--embedding-drift-monitor--manual-20260924T162542/embedding-drift-monitor__qTyzkkg/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "dfcf52fd2a3455ee164c658bef5674a4cf0255687238f7ff643579df7b053e5a"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13--embedding-drift-monitor--manual-20260924T162542/embedding-drift-monitor__qTyzkkg/agent/episode/artifacts/microluna-1.json",
+          "sha256": "f990e494c19a5fffeda3b0cbe31d4bb6f1d7387502da47cb99bdc2e621b9cfdd"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13--embedding-drift-monitor--manual-20260924T162542/embedding-drift-monitor__qTyzkkg/verifier/reward.txt",
+          "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+        }
+      ]
+    },
+    {
+      "trial": "embedding-drift-monitor__qyc6VQw",
+      "task": "embedding-drift-monitor",
+      "partition": "calibration",
+      "passed": false,
+      "sessions": 1,
+      "turns": 18,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v6--embedding-drift-monitor--manual-20260924T102404/embedding-drift-monitor__qyc6VQw/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "02c8daa14c88162aededf52bcc451b6f0cf2e382be1984ee77030f14295e2acb"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v6--embedding-drift-monitor--manual-20260924T102404/embedding-drift-monitor__qyc6VQw/agent/episode/artifacts/microluna-1.json",
+          "sha256": "37fccfeb8c9de04a63ca6b6b57e8b9d8048daf4bbc12cf682b5b41fb5dbfd3b8"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v6--embedding-drift-monitor--manual-20260924T102404/embedding-drift-monitor__qyc6VQw/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "embedding-drift-monitor__uU3ZNb9",
+      "task": "embedding-drift-monitor",
+      "partition": "calibration",
+      "passed": true,
+      "sessions": 2,
+      "turns": 28,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v12--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__uU3ZNb9/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "ece8efb3cc0ca9f7263d3d47340af2d7cea31342216e0c96700f026798b3216b"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v12--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__uU3ZNb9/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "1a6917a4a8fd3edddc3e69e648129f17173a03781f77778e92eaba9ce2f1562a"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v12--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__uU3ZNb9/agent/episode/artifacts/microluna-1.json",
+          "sha256": "00d3de49ad3e66794ba5e26402180a8c960a29be0fdc245d9f4a9f423c5c6300"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v12--embedding-drift-monitor--candidate-evidence-9607-r1/embedding-drift-monitor__uU3ZNb9/verifier/reward.txt",
+          "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+        }
+      ]
+    },
+    {
+      "trial": "embedding-drift-monitor__w2pYcZk",
+      "task": "embedding-drift-monitor",
+      "partition": "calibration",
+      "passed": false,
+      "sessions": 2,
+      "turns": 28,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v9--embedding-drift-monitor--manual-20260924T140538/embedding-drift-monitor__w2pYcZk/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "b21fc656db27fb95502a1b17f4eb005295ac23837cd33635136160b194095a4b"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v9--embedding-drift-monitor--manual-20260924T140538/embedding-drift-monitor__w2pYcZk/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "607262dcc63d9f470a11532fa840c7d2241f42a4e6e190986d00348ec102c0e3"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v9--embedding-drift-monitor--manual-20260924T140538/embedding-drift-monitor__w2pYcZk/agent/episode/artifacts/microluna-1.json",
+          "sha256": "a48342e93703f34bae9f3f97016f2e885b7de66a5984b142a86fb68d23459c38"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v9--embedding-drift-monitor--manual-20260924T140538/embedding-drift-monitor__w2pYcZk/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "embedding-drift-monitor__w8ebMvJ",
+      "task": "embedding-drift-monitor",
+      "partition": "calibration",
+      "passed": false,
+      "sessions": 6,
+      "turns": 54,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo1--embedding-drift-monitor--suite-9587-r1/embedding-drift-monitor__w8ebMvJ/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "c06c3f71a8aded14f15e17d7c5145ace534234b8b4537ff489a09aea1d5a7f59"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo1--embedding-drift-monitor--suite-9587-r1/embedding-drift-monitor__w8ebMvJ/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "496ac702a8c4d746ccf263174382344b0cd963e651575432891b7c6a0892f959"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo1--embedding-drift-monitor--suite-9587-r1/embedding-drift-monitor__w8ebMvJ/agent/episode/artifacts/microluna-1-3.atif.jsonl",
+          "sha256": "de6c581b439df7ac04caaf0730696e0bd6d9873c7440e692319582a3efffd6b8"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo1--embedding-drift-monitor--suite-9587-r1/embedding-drift-monitor__w8ebMvJ/agent/episode/artifacts/microluna-1-4.atif.jsonl",
+          "sha256": "25401625f057426d819e8377ea9ea93dca1d7bad653dff8ee3f6ee49069b515e"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo1--embedding-drift-monitor--suite-9587-r1/embedding-drift-monitor__w8ebMvJ/agent/episode/artifacts/microluna-1-5.atif.jsonl",
+          "sha256": "3d01ff1be2e13821636b50a55de26e07550306350c207e36390fa978d095baf9"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo1--embedding-drift-monitor--suite-9587-r1/embedding-drift-monitor__w8ebMvJ/agent/episode/artifacts/microluna-1-6.atif.jsonl",
+          "sha256": "2fd47ede881d1187c91ed704ac076723ac09283f9748c4984645cee5c9e09bb9"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo1--embedding-drift-monitor--suite-9587-r1/embedding-drift-monitor__w8ebMvJ/agent/episode/artifacts/microluna-1.json",
+          "sha256": "7d8e68229e3a68b157cf1d59ba60de826a585d2cc37b0068e01f1af1a12833f1"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo1--embedding-drift-monitor--suite-9587-r1/embedding-drift-monitor__w8ebMvJ/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "embedding-drift-monitor__y2bahob",
+      "task": "embedding-drift-monitor",
+      "partition": "calibration",
+      "passed": true,
+      "sessions": 2,
+      "turns": 28,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-2/embedding-drift-monitor__y2bahob/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "55ae337e4c20ece03f902db50af7d58630d1f6c685b59c246d6bf85c02ec97bf"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-2/embedding-drift-monitor__y2bahob/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "71257339ebc6f7934caa6899e6b791b4b2c3c234799c8d02ea3d8aaf040a5586"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-2/embedding-drift-monitor__y2bahob/agent/episode/artifacts/microluna-1.json",
+          "sha256": "6b9c6fc5f98e772aa4a014b148b3af92901b64c537a4d35560af397c8eecdc28"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--embedding-drift-monitor-2/embedding-drift-monitor__y2bahob/verifier/reward.txt",
+          "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+        }
+      ]
+    },
+    {
+      "trial": "embedding-drift-monitor__zzXmfSE",
+      "task": "embedding-drift-monitor",
+      "partition": "calibration",
+      "passed": true,
+      "sessions": 4,
+      "turns": 35,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v7--embedding-drift-monitor--manual-20260924T113920/embedding-drift-monitor__zzXmfSE/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "bbedc1bb5e1191d3b5230bbbaca156e22ecf23a52d0b5373e3bcfdbefc723861"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v7--embedding-drift-monitor--manual-20260924T113920/embedding-drift-monitor__zzXmfSE/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "c2a7e473555712a25bee3bdb7eccbe04e36d791d7b8c8567ec6a25d8764aca46"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v7--embedding-drift-monitor--manual-20260924T113920/embedding-drift-monitor__zzXmfSE/agent/episode/artifacts/microluna-1-3.atif.jsonl",
+          "sha256": "4ce3650a38ae69afac40b2477cfd7b16bdc0754f6f5edaa455d2588a602c28ad"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v7--embedding-drift-monitor--manual-20260924T113920/embedding-drift-monitor__zzXmfSE/agent/episode/artifacts/microluna-1.json",
+          "sha256": "1da2dbe743118d64709eab06f2e35c01972ae52e2babb95603eccb042d6ee709"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v7--embedding-drift-monitor--manual-20260924T113920/embedding-drift-monitor__zzXmfSE/agent/episode/artifacts/microluna-2-1.atif.jsonl",
+          "sha256": "e0155099fd7e1cab8e33bec9fb0ff19965c55a47eb19f268461819633cefc56e"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v7--embedding-drift-monitor--manual-20260924T113920/embedding-drift-monitor__zzXmfSE/agent/episode/artifacts/microluna-2.json",
+          "sha256": "f031f35d7b5a81554cf62559e6014187537dec4c4ef0036ac618b1f852987b1a"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v7--embedding-drift-monitor--manual-20260924T113920/embedding-drift-monitor__zzXmfSE/verifier/reward.txt",
+          "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+        }
+      ]
+    },
+    {
+      "trial": "fin-saccr-rwa__uMNL3HS",
+      "task": "fin-saccr-rwa",
+      "partition": "evaluation",
+      "passed": false,
+      "sessions": 2,
+      "turns": 25,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v15--fin-saccr-rwa--manual-20260924T201919/fin-saccr-rwa__uMNL3HS/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "e6558d056c7b23d872b1d2d1a76b2fc5813c45f958ca7508257d83f7efe6d08a"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v15--fin-saccr-rwa--manual-20260924T201919/fin-saccr-rwa__uMNL3HS/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "09fa26a3c43e3c85e6e7523d6ef98404dcc2c389f03e14733f590ce935ee13eb"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v15--fin-saccr-rwa--manual-20260924T201919/fin-saccr-rwa__uMNL3HS/agent/episode/artifacts/microluna-1.json",
+          "sha256": "efd24c0e301c0bb8fdfce34d2d4b621e7c922cf5f4f5ec828301e5ed89ddf22e"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v15--fin-saccr-rwa--manual-20260924T201919/fin-saccr-rwa__uMNL3HS/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "gsea-proteomics__5GhJGC7",
+      "task": "gsea-proteomics",
+      "partition": "evaluation",
+      "passed": false,
+      "sessions": 6,
+      "turns": 66,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v1--gsea-proteomics--microluna-overnight-9585-r1/gsea-proteomics__5GhJGC7/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "853767a6b05de355daef5a7e86fd012ff7a875e70b078416c26c73e185036b41"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v1--gsea-proteomics--microluna-overnight-9585-r1/gsea-proteomics__5GhJGC7/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "02368a97e81122c47fc89294138d428fe8af2bd7eaa316b920457de7aaacd7c2"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v1--gsea-proteomics--microluna-overnight-9585-r1/gsea-proteomics__5GhJGC7/agent/episode/artifacts/microluna-1-3.atif.jsonl",
+          "sha256": "40da3748f0235146da9686ac44a8cce6a02ae2973e115b08e8a2cb79355def10"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v1--gsea-proteomics--microluna-overnight-9585-r1/gsea-proteomics__5GhJGC7/agent/episode/artifacts/microluna-1-4.atif.jsonl",
+          "sha256": "c3429b39dd8205c4608f7f3e5721b1e9ed3f2bf44d92ea7b01770e44f46e9dce"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v1--gsea-proteomics--microluna-overnight-9585-r1/gsea-proteomics__5GhJGC7/agent/episode/artifacts/microluna-1-5.atif.jsonl",
+          "sha256": "8f37cb85a0ae6b0853128bf1a5ac1f3b7f85c03da5e57ed8aa5aca06ca8280d6"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v1--gsea-proteomics--microluna-overnight-9585-r1/gsea-proteomics__5GhJGC7/agent/episode/artifacts/microluna-1-6.atif.jsonl",
+          "sha256": "17b65b93f855fe6eccc5d9cd12705d7888119be88a353a0d9a7a2f545c266cde"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v1--gsea-proteomics--microluna-overnight-9585-r1/gsea-proteomics__5GhJGC7/agent/episode/artifacts/microluna-1.json",
+          "sha256": "84b426d62c331407d279d4fe406ffc9ff67edb05d8632d8c11c34b527b5164d7"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v1--gsea-proteomics--microluna-overnight-9585-r1/gsea-proteomics__5GhJGC7/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "gsea-proteomics__KUpc2Ct",
+      "task": "gsea-proteomics",
+      "partition": "evaluation",
+      "passed": false,
+      "sessions": 2,
+      "turns": 31,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v15--gsea-proteomics--manual-20260924T201921/gsea-proteomics__KUpc2Ct/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "5e25b66fa7777bd9fa6cb66ef1c2ed1fd35a743d54f86084262584bf98f9c87a"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v15--gsea-proteomics--manual-20260924T201921/gsea-proteomics__KUpc2Ct/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "0c6a42fcd358e522518289066ae1add5aff1bf943d66f29a3516476053c9bcc6"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v15--gsea-proteomics--manual-20260924T201921/gsea-proteomics__KUpc2Ct/agent/episode/artifacts/microluna-1.json",
+          "sha256": "50459d3696e1cbe6e5928d5923c85f6a98a9fef690bd6653e01dd3087b358778"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v15--gsea-proteomics--manual-20260924T201921/gsea-proteomics__KUpc2Ct/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "gsea-proteomics__hVjDELK",
+      "task": "gsea-proteomics",
+      "partition": "evaluation",
+      "passed": null,
+      "sessions": 5,
+      "turns": 45,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v3--gsea-proteomics--microluna-overnight-9585-r1/gsea-proteomics__hVjDELK/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "cae880d6c2b1e0057aeea068cf6a374d537f31963f980c64911d041c50c0013c"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v3--gsea-proteomics--microluna-overnight-9585-r1/gsea-proteomics__hVjDELK/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "72d7c975838af5568824f979219d00736a30c57f42b4dcae177ba5ef6c9cc0d8"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v3--gsea-proteomics--microluna-overnight-9585-r1/gsea-proteomics__hVjDELK/agent/episode/artifacts/microluna-1-3.atif.jsonl",
+          "sha256": "18e848899dca19b38ab1adc3ab3d215ad67e1ed99d5fdb7fb6d85ebc18d8f510"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v3--gsea-proteomics--microluna-overnight-9585-r1/gsea-proteomics__hVjDELK/agent/episode/artifacts/microluna-1-4.atif.jsonl",
+          "sha256": "79366bb9b669e779376c62f0df4a586e0ea06d808295b196f3b3dfbf63b886ce"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v3--gsea-proteomics--microluna-overnight-9585-r1/gsea-proteomics__hVjDELK/agent/episode/artifacts/microluna-1-5.atif.jsonl",
+          "sha256": "c90c6d97e5e99955f9303b5ce6a0743b34c932b395cb6680986319bc3aa35f8a"
+        }
+      ]
+    },
+    {
+      "trial": "html-js-filter__EaX8vh7",
+      "task": "html-js-filter",
+      "partition": "evaluation",
+      "passed": null,
+      "sessions": 10,
+      "turns": 49,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v4--html-js-filter--microluna-budget-9585-r1/html-js-filter__EaX8vh7/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "870dd8f7029249653067276a0ea20b9421cf0b58ba17f9a85276cca0105ae7a6"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v4--html-js-filter--microluna-budget-9585-r1/html-js-filter__EaX8vh7/agent/episode/artifacts/microluna-1-10.atif.jsonl",
+          "sha256": "e928a35e53336e85b7627931ec825b0b1343fd5526e5b45a3d665d0342b76eab"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v4--html-js-filter--microluna-budget-9585-r1/html-js-filter__EaX8vh7/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "53ecf61d2cc562adc473d4bc572d62fcd8181537e1d5f1b17a840e05e2306aef"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v4--html-js-filter--microluna-budget-9585-r1/html-js-filter__EaX8vh7/agent/episode/artifacts/microluna-1-3.atif.jsonl",
+          "sha256": "c274be79dcd7e6f0465d24431511c651fdaf7501bb68fd647f0b4b6d06610c8a"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v4--html-js-filter--microluna-budget-9585-r1/html-js-filter__EaX8vh7/agent/episode/artifacts/microluna-1-4.atif.jsonl",
+          "sha256": "3dafbe94be4c13ee19b905c98ab58ed305eb2ace84dd15bcab287df96866b2fe"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v4--html-js-filter--microluna-budget-9585-r1/html-js-filter__EaX8vh7/agent/episode/artifacts/microluna-1-5.atif.jsonl",
+          "sha256": "3d210264c514335ea4fd96ff1af4f6bdba4a9f29855f5e2a367f95d195a07c4e"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v4--html-js-filter--microluna-budget-9585-r1/html-js-filter__EaX8vh7/agent/episode/artifacts/microluna-1-6.atif.jsonl",
+          "sha256": "975e189a26117238e253b01b3360919035baf293ec4d49cd5516c9fe227d1c33"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v4--html-js-filter--microluna-budget-9585-r1/html-js-filter__EaX8vh7/agent/episode/artifacts/microluna-1-7.atif.jsonl",
+          "sha256": "e3d315b1ccd1d9caac3f03b3b262c4c8e03303936cf8c98bb845449b8adb758a"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v4--html-js-filter--microluna-budget-9585-r1/html-js-filter__EaX8vh7/agent/episode/artifacts/microluna-1-8.atif.jsonl",
+          "sha256": "8ba3b47ea25b63653bf29ddf225bdd19af36cd4360a964aab3359e925f9257b1"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v4--html-js-filter--microluna-budget-9585-r1/html-js-filter__EaX8vh7/agent/episode/artifacts/microluna-1-9.atif.jsonl",
+          "sha256": "f2a89dcab30efc6ab638d6603a9e09e6e537ae9c96fb9e7f1efa0d315b20f17f"
+        }
+      ]
+    },
+    {
+      "trial": "interleaved-vigenere__KoqMppM",
+      "task": "interleaved-vigenere",
+      "partition": "calibration",
+      "passed": false,
+      "sessions": 2,
+      "turns": 50,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v16--interleaved-vigenere--manual-20260924T172612/interleaved-vigenere__KoqMppM/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "6be6953400e71aa7202752a5c9580607aa4a2a2e2f2a5832f4018d134f539b76"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v16--interleaved-vigenere--manual-20260924T172612/interleaved-vigenere__KoqMppM/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "783753e134f52bdcb9460e964caa2259edc270a6473d9fb2e856152cc25af608"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v16--interleaved-vigenere--manual-20260924T172612/interleaved-vigenere__KoqMppM/agent/episode/artifacts/microluna-1.json",
+          "sha256": "0751ca76a9bd4fd55498e15a02b4bff57fc1e6be83549241724a4f9dd91d87ab"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v16--interleaved-vigenere--manual-20260924T172612/interleaved-vigenere__KoqMppM/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "interleaved-vigenere__LpxW5dB",
+      "task": "interleaved-vigenere",
+      "partition": "calibration",
+      "passed": false,
+      "sessions": 2,
+      "turns": 25,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-solo--interleaved-vigenere--manual-20260924T135150/interleaved-vigenere__LpxW5dB/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "7ab1dab6000cc59d39f21344ff4356a0990c78ae162818e256702c7d94d8ff57"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-solo--interleaved-vigenere--manual-20260924T135150/interleaved-vigenere__LpxW5dB/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "ba5480478b7db3cf7044c94e6ec8e2550bbfefb6796e6debf461cf0eb1d11881"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-solo--interleaved-vigenere--manual-20260924T135150/interleaved-vigenere__LpxW5dB/agent/episode/artifacts/microluna-1.json",
+          "sha256": "1f8a8ddd1b20923496f133134f4d42bdbe4cd089118b4a14a31153f7a45eb3b6"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-solo--interleaved-vigenere--manual-20260924T135150/interleaved-vigenere__LpxW5dB/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "interleaved-vigenere__MoPZqbY",
+      "task": "interleaved-vigenere",
+      "partition": "calibration",
+      "passed": false,
+      "sessions": 4,
+      "turns": 35,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v8--interleaved-vigenere--manual-20260924T123904/interleaved-vigenere__MoPZqbY/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "783897217be13fcaea6bc017de043937a3e7b49cd8ab0108eb8552a037b662ef"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v8--interleaved-vigenere--manual-20260924T123904/interleaved-vigenere__MoPZqbY/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "eac34f3a86938aeed081e446d6bf9d5711b35f4e7c528f691081a8dd00e54cab"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v8--interleaved-vigenere--manual-20260924T123904/interleaved-vigenere__MoPZqbY/agent/episode/artifacts/microluna-1-3.atif.jsonl",
+          "sha256": "d9a1c3bbd3f559796e10f6cb63b07b0f893014d8b4d99789a04bffd72ce6f70d"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v8--interleaved-vigenere--manual-20260924T123904/interleaved-vigenere__MoPZqbY/agent/episode/artifacts/microluna-1.json",
+          "sha256": "35a58ed1c34504f962338ad2916ae3ea5762717df225ac9030a5ff2fbd946361"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v8--interleaved-vigenere--manual-20260924T123904/interleaved-vigenere__MoPZqbY/agent/episode/artifacts/microluna-2-1.atif.jsonl",
+          "sha256": "4148b60f445a5259f3fa886562e29c26f625a2612eaff0c4827e61216c1a4a28"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v8--interleaved-vigenere--manual-20260924T123904/interleaved-vigenere__MoPZqbY/agent/episode/artifacts/microluna-2.json",
+          "sha256": "9e5c0a0dbbb8882f29e9cb7814c9da8a8c082841dd5f8107463266042d3dfbb2"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v8--interleaved-vigenere--manual-20260924T123904/interleaved-vigenere__MoPZqbY/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "interleaved-vigenere__P9nawsY",
+      "task": "interleaved-vigenere",
+      "partition": "calibration",
+      "passed": false,
+      "sessions": 2,
+      "turns": 67,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v17--interleaved-vigenere--manual-20260924T180706/interleaved-vigenere__P9nawsY/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "0adf6552e98ec10eb44f0c70b676d1baa2f5c4c0d01521732467b5fe9d6f571c"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v17--interleaved-vigenere--manual-20260924T180706/interleaved-vigenere__P9nawsY/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "6fae3daf865aa1d243e6ebbe756a0510adbbac96bb6fbd7a2a394e13ba05306b"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v17--interleaved-vigenere--manual-20260924T180706/interleaved-vigenere__P9nawsY/agent/episode/artifacts/microluna-1.json",
+          "sha256": "43a0341b97d2e0143e0dd53a1cba7045cc76b7bf8dc29927d81d547c7670d9e0"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v17--interleaved-vigenere--manual-20260924T180706/interleaved-vigenere__P9nawsY/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "interleaved-vigenere__WXSZXNq",
+      "task": "interleaved-vigenere",
+      "partition": "calibration",
+      "passed": false,
+      "sessions": 3,
+      "turns": 61,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v12--interleaved-vigenere--manual-20260924T153948/interleaved-vigenere__WXSZXNq/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "7f429f82f8eafb626bfa943dd74652af9089a8fee57e7923675a3f3d2951b1d9"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v12--interleaved-vigenere--manual-20260924T153948/interleaved-vigenere__WXSZXNq/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "b79cfd67071b80b078f30fd67cc07411c348029e81c8faded22b47aeee15d59c"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v12--interleaved-vigenere--manual-20260924T153948/interleaved-vigenere__WXSZXNq/agent/episode/artifacts/microluna-1-3.atif.jsonl",
+          "sha256": "325737dcbae21c47c631ad13d9e82a211b0c7bad158316d52997114d567f346d"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v12--interleaved-vigenere--manual-20260924T153948/interleaved-vigenere__WXSZXNq/agent/episode/artifacts/microluna-1.json",
+          "sha256": "ba61a71a8a7f8f97591cb515b4378057b68a92f8f7b034c05548e16854ac34a2"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v12--interleaved-vigenere--manual-20260924T153948/interleaved-vigenere__WXSZXNq/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "interleaved-vigenere__aV3x4ba",
+      "task": "interleaved-vigenere",
+      "partition": "calibration",
+      "passed": false,
+      "sessions": 2,
+      "turns": 64,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13--interleaved-vigenere--manual-20260924T160541/interleaved-vigenere__aV3x4ba/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "1414fb183eb033e755bc0507d0e2508d66bc2dd1ca8431f1cfc973c8ff7acac5"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13--interleaved-vigenere--manual-20260924T160541/interleaved-vigenere__aV3x4ba/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "a3153d8e327fb0f77657df847946f11f7d9d93e255584db6dc215bd7d8cde473"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13--interleaved-vigenere--manual-20260924T160541/interleaved-vigenere__aV3x4ba/agent/episode/artifacts/microluna-1.json",
+          "sha256": "8163507c393d1dd8bfdeb6cce8f43d32a73ff7e45e8f0cfac85c98b7115e0ff5"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13--interleaved-vigenere--manual-20260924T160541/interleaved-vigenere__aV3x4ba/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "interleaved-vigenere__gUswV9Y",
+      "task": "interleaved-vigenere",
+      "partition": "calibration",
+      "passed": false,
+      "sessions": 4,
+      "turns": 125,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v9--interleaved-vigenere--manual-20260924T140542/interleaved-vigenere__gUswV9Y/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "2326390d6ffce62759a7a256caa46487b1669a12c5ba0d7d0193eeeb2ad88b3d"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v9--interleaved-vigenere--manual-20260924T140542/interleaved-vigenere__gUswV9Y/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "5ef6cff338b1e49255085a3f65f57a6c2b1937c2797255887f27adc93e3e79bf"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v9--interleaved-vigenere--manual-20260924T140542/interleaved-vigenere__gUswV9Y/agent/episode/artifacts/microluna-1-3.atif.jsonl",
+          "sha256": "53e70b91b1dad6f1d6c80594399e0f9d21526e7268cf852058e1a14f044794fc"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v9--interleaved-vigenere--manual-20260924T140542/interleaved-vigenere__gUswV9Y/agent/episode/artifacts/microluna-1-4.atif.jsonl",
+          "sha256": "9c4157012e925025b85d7cbc83eb7dc6731d80747345ce61eae354c3706def3f"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v9--interleaved-vigenere--manual-20260924T140542/interleaved-vigenere__gUswV9Y/agent/episode/artifacts/microluna-1.json",
+          "sha256": "c38a16199cd07610ffa5a3856c58c47d6a507419ceb3d82c5837e49dd042c1bf"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v9--interleaved-vigenere--manual-20260924T140542/interleaved-vigenere__gUswV9Y/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "interleaved-vigenere__sbNeZhK",
+      "task": "interleaved-vigenere",
+      "partition": "calibration",
+      "passed": false,
+      "sessions": 2,
+      "turns": 54,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v11--interleaved-vigenere--manual-20260924T151338/interleaved-vigenere__sbNeZhK/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "21d7ca4acdb6207c39757f389c9646bd30db2e4e1ee6e84a5b46451b0859b825"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v11--interleaved-vigenere--manual-20260924T151338/interleaved-vigenere__sbNeZhK/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "eb8a247c1fc5ef59b6b6a63d9169803761f73284bd3b50e15b60d587b878219a"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v11--interleaved-vigenere--manual-20260924T151338/interleaved-vigenere__sbNeZhK/agent/episode/artifacts/microluna-1.json",
+          "sha256": "de03af937f5b3a95e4a561bb5d5a925bc4913b65152867cc106f67142bca3f16"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v11--interleaved-vigenere--manual-20260924T151338/interleaved-vigenere__sbNeZhK/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "interleaved-vigenere__u2w5Zb7",
+      "task": "interleaved-vigenere",
+      "partition": "calibration",
+      "passed": false,
+      "sessions": 2,
+      "turns": 77,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v15--interleaved-vigenere--manual-20260924T165834/interleaved-vigenere__u2w5Zb7/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "28728d0cbed72cba07218591b28497e3367b6cc9efed3517e054a04f6351353b"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v15--interleaved-vigenere--manual-20260924T165834/interleaved-vigenere__u2w5Zb7/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "e45499e3a57b31244cef22897ad324ac9ee5787da0a61b91a98369edc56ff9b7"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v15--interleaved-vigenere--manual-20260924T165834/interleaved-vigenere__u2w5Zb7/agent/episode/artifacts/microluna-1.json",
+          "sha256": "80f192939f69af98ad9be2d4d5a91befe6c186794c52899e57d28ccd3fe120c1"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v15--interleaved-vigenere--manual-20260924T165834/interleaved-vigenere__u2w5Zb7/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "interleaved-vigenere__zj5bwBL",
+      "task": "interleaved-vigenere",
+      "partition": "calibration",
+      "passed": false,
+      "sessions": 5,
+      "turns": 117,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v14--interleaved-vigenere--manual-20260924T163335/interleaved-vigenere__zj5bwBL/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "1961f88bc708540989e1153792c817d50117242b6210f88cdce3bc49bd0fdfda"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v14--interleaved-vigenere--manual-20260924T163335/interleaved-vigenere__zj5bwBL/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "d4dccf82c9cd17687ccd83bdcb7ec0ef7cdf597bb5edf0d7a68f8b32642f3aae"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v14--interleaved-vigenere--manual-20260924T163335/interleaved-vigenere__zj5bwBL/agent/episode/artifacts/microluna-1-3.atif.jsonl",
+          "sha256": "5210edec5631cc8814b9c424dad55791d2bad886b7db3a8a0887787e97877f7d"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v14--interleaved-vigenere--manual-20260924T163335/interleaved-vigenere__zj5bwBL/agent/episode/artifacts/microluna-1-4.atif.jsonl",
+          "sha256": "64feb8b50858edf82a15e880f34dbebcfd643dee64433199e24ab81d35ebd846"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v14--interleaved-vigenere--manual-20260924T163335/interleaved-vigenere__zj5bwBL/agent/episode/artifacts/microluna-1-5.atif.jsonl",
+          "sha256": "993f74dc489d88deaf723f9ff10a37f193e94a676c2ac2b3fff2bf6536e4f94a"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v14--interleaved-vigenere--manual-20260924T163335/interleaved-vigenere__zj5bwBL/agent/episode/artifacts/microluna-1.json",
+          "sha256": "e1cd7d519c9309ce3dc3f44dec85bfd935ea7797694673d38021a96b5f75607b"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v14--interleaved-vigenere--manual-20260924T163335/interleaved-vigenere__zj5bwBL/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "mvcc-lsm-compaction__HqVnu5N",
+      "task": "mvcc-lsm-compaction",
+      "partition": "excluded",
+      "passed": true,
+      "sessions": 13,
+      "turns": 114,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--mvcc-lsm-compaction--suite-9587-r1/mvcc-lsm-compaction__HqVnu5N/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "7de8f84ba36c244340b4a549551358195b95c1e468aed7359c0003bd30b73bef"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--mvcc-lsm-compaction--suite-9587-r1/mvcc-lsm-compaction__HqVnu5N/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "55820a87084343336118e018369433d105394546c4ac6131aa351456fed40efa"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--mvcc-lsm-compaction--suite-9587-r1/mvcc-lsm-compaction__HqVnu5N/agent/episode/artifacts/microluna-1-3.atif.jsonl",
+          "sha256": "ec221b57d05b96d3c6a49b9fc894f5064f92f7b2c5dffced4e7b27f25387005c"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--mvcc-lsm-compaction--suite-9587-r1/mvcc-lsm-compaction__HqVnu5N/agent/episode/artifacts/microluna-1-4.atif.jsonl",
+          "sha256": "56c0bc857dab8e89a95c52f2f8b47cca998975634ca6766876287cb94ddb6861"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--mvcc-lsm-compaction--suite-9587-r1/mvcc-lsm-compaction__HqVnu5N/agent/episode/artifacts/microluna-1.json",
+          "sha256": "90815da48ce44d40adcf8a42e2c02d74b5468cb4eb3694a80c47ec4569a615f6"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--mvcc-lsm-compaction--suite-9587-r1/mvcc-lsm-compaction__HqVnu5N/agent/episode/artifacts/microluna-2-1.atif.jsonl",
+          "sha256": "d550699ba1bfce5759f26bdbc9189b450d7787945b0f79e8152d26cadd1ff0c6"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--mvcc-lsm-compaction--suite-9587-r1/mvcc-lsm-compaction__HqVnu5N/agent/episode/artifacts/microluna-2-2.atif.jsonl",
+          "sha256": "59f8a420de87f479c4afbd2f037cdcd6c4bec4a6a8ee4ac995f28a359e4778fa"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--mvcc-lsm-compaction--suite-9587-r1/mvcc-lsm-compaction__HqVnu5N/agent/episode/artifacts/microluna-2-3.atif.jsonl",
+          "sha256": "ba6b836b7c9c5223a11dad3ff0a9dd2f037596be6cb54071b66627b4d9bb5d4f"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--mvcc-lsm-compaction--suite-9587-r1/mvcc-lsm-compaction__HqVnu5N/agent/episode/artifacts/microluna-2-4.atif.jsonl",
+          "sha256": "8f435534c4881f9cdfe11feebbce997378d8c4ccdd168d946ea50455a96cccb7"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--mvcc-lsm-compaction--suite-9587-r1/mvcc-lsm-compaction__HqVnu5N/agent/episode/artifacts/microluna-2.json",
+          "sha256": "53c9b7e52e80ca13b83f72ba1625302680410e717496495a57c762bb9cf94fb5"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--mvcc-lsm-compaction--suite-9587-r1/mvcc-lsm-compaction__HqVnu5N/agent/episode/artifacts/microluna-3-1.atif.jsonl",
+          "sha256": "6582ff5b18dfc426651bbe0d89f01c17a2e9b006bd255bb307e452963fd584a6"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--mvcc-lsm-compaction--suite-9587-r1/mvcc-lsm-compaction__HqVnu5N/agent/episode/artifacts/microluna-3-2.atif.jsonl",
+          "sha256": "910d144154f3e7c98f2d7301f1544078e051bc5701d0a7109483b3a7d394d48c"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--mvcc-lsm-compaction--suite-9587-r1/mvcc-lsm-compaction__HqVnu5N/agent/episode/artifacts/microluna-3-3.atif.jsonl",
+          "sha256": "eb7c1cda7e3f9f2d7cbb785142e02f03843181034b94b02b308ab197c9710c2a"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--mvcc-lsm-compaction--suite-9587-r1/mvcc-lsm-compaction__HqVnu5N/agent/episode/artifacts/microluna-3-4.atif.jsonl",
+          "sha256": "609bda47acd4d08af8788164ed505c106ce19edda0e5f4b213d8f3b0bb2cbe14"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--mvcc-lsm-compaction--suite-9587-r1/mvcc-lsm-compaction__HqVnu5N/agent/episode/artifacts/microluna-3-5.atif.jsonl",
+          "sha256": "3e3526e8568c09be7f7bf8f76109f8a7f158005a076afbbae44e217c83403fbc"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--mvcc-lsm-compaction--suite-9587-r1/mvcc-lsm-compaction__HqVnu5N/agent/episode/artifacts/microluna-3.json",
+          "sha256": "3ab824feb70115f95a52657b03d2bbaab409bedeb40f68b5d29d601173e8af2e"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--mvcc-lsm-compaction--suite-9587-r1/mvcc-lsm-compaction__HqVnu5N/verifier/reward.txt",
+          "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+        }
+      ]
+    },
+    {
+      "trial": "mvcc-lsm-compaction__HtDYPFq",
+      "task": "mvcc-lsm-compaction",
+      "partition": "excluded",
+      "passed": false,
+      "sessions": 8,
+      "turns": 55,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3--mvcc-lsm-compaction--best-of-9587-r1/mvcc-lsm-compaction__HtDYPFq/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "6fcb031507cb458d54b57507dc9d75eedaf8f4a2f44aaf004582fbfc297773f7"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3--mvcc-lsm-compaction--best-of-9587-r1/mvcc-lsm-compaction__HtDYPFq/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "0cb43f7e3344a4ce5911008f1764f187604462cff1daa55afcf8009f89221f62"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3--mvcc-lsm-compaction--best-of-9587-r1/mvcc-lsm-compaction__HtDYPFq/agent/episode/artifacts/microluna-1-3.atif.jsonl",
+          "sha256": "98f4087e62e9beb9bb487b02277a75b49fd1d2c4f2fd872d134d1357257d0160"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3--mvcc-lsm-compaction--best-of-9587-r1/mvcc-lsm-compaction__HtDYPFq/agent/episode/artifacts/microluna-1.json",
+          "sha256": "53a3cc8d665498fc571b128906c6f6f6dffcf90566113d2566c663df6722aede"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3--mvcc-lsm-compaction--best-of-9587-r1/mvcc-lsm-compaction__HtDYPFq/agent/episode/artifacts/microluna-2-1.atif.jsonl",
+          "sha256": "c7f95781a012e6820266cdf420175f5f9f7a648771c28c66c6a11008a9e13bfe"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3--mvcc-lsm-compaction--best-of-9587-r1/mvcc-lsm-compaction__HtDYPFq/agent/episode/artifacts/microluna-2-2.atif.jsonl",
+          "sha256": "f0c3c5fb6b41c204e78b21ad5f60c2a0cf0d294efc11e5feb66d14273ebbefb7"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3--mvcc-lsm-compaction--best-of-9587-r1/mvcc-lsm-compaction__HtDYPFq/agent/episode/artifacts/microluna-2.json",
+          "sha256": "55fdf273b199c53d9f6128bef5eec3970ca125a398ff591746ae4d676ec83001"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3--mvcc-lsm-compaction--best-of-9587-r1/mvcc-lsm-compaction__HtDYPFq/agent/episode/artifacts/microluna-3-1.atif.jsonl",
+          "sha256": "3bae6efb9a5ffec021b18af1114171ab0ad143f0ce475f895e9ab69272d5daec"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3--mvcc-lsm-compaction--best-of-9587-r1/mvcc-lsm-compaction__HtDYPFq/agent/episode/artifacts/microluna-3-2.atif.jsonl",
+          "sha256": "a17af06425c052c1a90c4f24b4e980d6795081df220571c71cbee02432fd2574"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3--mvcc-lsm-compaction--best-of-9587-r1/mvcc-lsm-compaction__HtDYPFq/agent/episode/artifacts/microluna-3-3.atif.jsonl",
+          "sha256": "b62199d57de53547169f38e3d1321f63b0e296d3f851bcdc49e664310d3c5cad"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3--mvcc-lsm-compaction--best-of-9587-r1/mvcc-lsm-compaction__HtDYPFq/agent/episode/artifacts/microluna-3.json",
+          "sha256": "e05883cd07e953b3d98bb8c41dd769f9c9fd47c542a897f7185b439833328e00"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3--mvcc-lsm-compaction--best-of-9587-r1/mvcc-lsm-compaction__HtDYPFq/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "mvcc-lsm-compaction__QnXxhmp",
+      "task": "mvcc-lsm-compaction",
+      "partition": "excluded",
+      "passed": false,
+      "sessions": 12,
+      "turns": 104,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3a--mvcc-lsm-compaction--suite-9587-smoke/mvcc-lsm-compaction__QnXxhmp/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "364b15b9896d9d08c1ae085f01b54ea8ec22d51ae5798c8ec266215fcb49e61b"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3a--mvcc-lsm-compaction--suite-9587-smoke/mvcc-lsm-compaction__QnXxhmp/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "1d6496a43a917dc9db75e9d99d8a0a23a0ad8a196c580bd97b7e8ae5cff30d22"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3a--mvcc-lsm-compaction--suite-9587-smoke/mvcc-lsm-compaction__QnXxhmp/agent/episode/artifacts/microluna-1-3.atif.jsonl",
+          "sha256": "1fa4dd1a39447fad659a699a5d80a8ef25184a45ffa05004d9e3511162f8cbfb"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3a--mvcc-lsm-compaction--suite-9587-smoke/mvcc-lsm-compaction__QnXxhmp/agent/episode/artifacts/microluna-1-4.atif.jsonl",
+          "sha256": "d5aacd2816d216104425071bbca80079aa72dbd12edb04ed2820c05b70b9a139"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3a--mvcc-lsm-compaction--suite-9587-smoke/mvcc-lsm-compaction__QnXxhmp/agent/episode/artifacts/microluna-1.json",
+          "sha256": "bba770ee66546150745052ea2443b16929dbb92f28e97bf0fa56bd42589a5ca1"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3a--mvcc-lsm-compaction--suite-9587-smoke/mvcc-lsm-compaction__QnXxhmp/agent/episode/artifacts/microluna-2-1.atif.jsonl",
+          "sha256": "769ded92e266d9d1e04f9125fb9578a419bc85c4520a8b27f29c62cc8e401b54"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3a--mvcc-lsm-compaction--suite-9587-smoke/mvcc-lsm-compaction__QnXxhmp/agent/episode/artifacts/microluna-2-2.atif.jsonl",
+          "sha256": "1a319c8b792c1550b048230e3fa2a666f6166c6d8c3ee3be00e38420ec8cdc8a"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3a--mvcc-lsm-compaction--suite-9587-smoke/mvcc-lsm-compaction__QnXxhmp/agent/episode/artifacts/microluna-2-3.atif.jsonl",
+          "sha256": "6b0852e6cf1fbd88d30136528104a2d7d99f04378e4f210a870707ef3cbbc539"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3a--mvcc-lsm-compaction--suite-9587-smoke/mvcc-lsm-compaction__QnXxhmp/agent/episode/artifacts/microluna-2-4.atif.jsonl",
+          "sha256": "d95813775d77591c849cdb19628d527883146eff85aab8f3f4aba77b42826c07"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3a--mvcc-lsm-compaction--suite-9587-smoke/mvcc-lsm-compaction__QnXxhmp/agent/episode/artifacts/microluna-2.json",
+          "sha256": "38dc82b26763f1ea1bc5b2c1f7925601f438b9e0e5115e6d5a5590ad721489dc"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3a--mvcc-lsm-compaction--suite-9587-smoke/mvcc-lsm-compaction__QnXxhmp/agent/episode/artifacts/microluna-3-1.atif.jsonl",
+          "sha256": "49cb0bbfc099350f9d752656baa1568198effdeb321a39a50f2bedb0d300af1a"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3a--mvcc-lsm-compaction--suite-9587-smoke/mvcc-lsm-compaction__QnXxhmp/agent/episode/artifacts/microluna-3-2.atif.jsonl",
+          "sha256": "efd78bf44ebfdfdd60bae54b031d7c8de6c7cd1fe8f2abcf31322fe3ae7d1eda"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3a--mvcc-lsm-compaction--suite-9587-smoke/mvcc-lsm-compaction__QnXxhmp/agent/episode/artifacts/microluna-3-3.atif.jsonl",
+          "sha256": "ba3cb34f724899a1613d01b9e4994881f0f4a98310cc4f5635e4c83df9160d81"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3a--mvcc-lsm-compaction--suite-9587-smoke/mvcc-lsm-compaction__QnXxhmp/agent/episode/artifacts/microluna-3-4.atif.jsonl",
+          "sha256": "6d6f08ac218d5a877da14bb6a5374bd931f6dcf970f70f701cf77eeeb38dba70"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3a--mvcc-lsm-compaction--suite-9587-smoke/mvcc-lsm-compaction__QnXxhmp/agent/episode/artifacts/microluna-3.json",
+          "sha256": "818cf2a6e2250c5c7d83421c82095066bf0c138055a4af39ca22535354e56130"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3a--mvcc-lsm-compaction--suite-9587-smoke/mvcc-lsm-compaction__QnXxhmp/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "mvcc-lsm-compaction__d3kZswA",
+      "task": "mvcc-lsm-compaction",
+      "partition": "excluded",
+      "passed": false,
+      "sessions": 14,
+      "turns": 120,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--mvcc-lsm-compaction--suite-9587-smoke/mvcc-lsm-compaction__d3kZswA/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "3ab60d395a300b3254e875bf5ea39b4578b19cf1a641ce92e4c66c20b1a93036"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--mvcc-lsm-compaction--suite-9587-smoke/mvcc-lsm-compaction__d3kZswA/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "f76c484a1f08a41a74b4732a9a138bf31778fa5204582e0054052e2c10b7cee4"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--mvcc-lsm-compaction--suite-9587-smoke/mvcc-lsm-compaction__d3kZswA/agent/episode/artifacts/microluna-1-3.atif.jsonl",
+          "sha256": "e5d168dc9415f3cb11af4d6a7872e25a980335cd15259d3efde83b3530e77810"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--mvcc-lsm-compaction--suite-9587-smoke/mvcc-lsm-compaction__d3kZswA/agent/episode/artifacts/microluna-1-4.atif.jsonl",
+          "sha256": "abaf693f7d404cce1969483def5dd332d56e75d0ec0567f446bba216b20c577a"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--mvcc-lsm-compaction--suite-9587-smoke/mvcc-lsm-compaction__d3kZswA/agent/episode/artifacts/microluna-1-5.atif.jsonl",
+          "sha256": "29981ee7966a60f6779114b5f1bd9b0af2e5dcb543eb72c538efd44f47163305"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--mvcc-lsm-compaction--suite-9587-smoke/mvcc-lsm-compaction__d3kZswA/agent/episode/artifacts/microluna-1.json",
+          "sha256": "02c1521dbe4faccfaa32a5ee2aee31595d55def38c49aa0cbec147a0a38abcf7"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--mvcc-lsm-compaction--suite-9587-smoke/mvcc-lsm-compaction__d3kZswA/agent/episode/artifacts/microluna-2-1.atif.jsonl",
+          "sha256": "b06d9aa96a215e12a1a2e115aaa995a1f152235ca0b4082ec607dfb121a12939"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--mvcc-lsm-compaction--suite-9587-smoke/mvcc-lsm-compaction__d3kZswA/agent/episode/artifacts/microluna-2-2.atif.jsonl",
+          "sha256": "5d7a6123e4b85e5675aa8a954bab477029288a20874acc3465652f3b095d4a5e"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--mvcc-lsm-compaction--suite-9587-smoke/mvcc-lsm-compaction__d3kZswA/agent/episode/artifacts/microluna-2-3.atif.jsonl",
+          "sha256": "e4dde2cba42ff435938e03306d51fdd5f0bad96f270ffd1079f1abab21323842"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--mvcc-lsm-compaction--suite-9587-smoke/mvcc-lsm-compaction__d3kZswA/agent/episode/artifacts/microluna-2-4.atif.jsonl",
+          "sha256": "bbd4c083ee2114bf9416b9958448cd371cc0bbadfe74ba09247931cecec16195"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--mvcc-lsm-compaction--suite-9587-smoke/mvcc-lsm-compaction__d3kZswA/agent/episode/artifacts/microluna-2.json",
+          "sha256": "986ab0f211bc4cf4c5229d0afc69d1bd1867866c49a731583bfe6c599a08b14b"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--mvcc-lsm-compaction--suite-9587-smoke/mvcc-lsm-compaction__d3kZswA/agent/episode/artifacts/microluna-3-1.atif.jsonl",
+          "sha256": "c6547f19993b6e0a45e38b8359ff29853aae0ad72c535bf93a4e9a3a325c9ea6"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--mvcc-lsm-compaction--suite-9587-smoke/mvcc-lsm-compaction__d3kZswA/agent/episode/artifacts/microluna-3-2.atif.jsonl",
+          "sha256": "d9539deddb7845fc7724da26799b078e2203d77ce58d92e0d3d52e567009ad5d"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--mvcc-lsm-compaction--suite-9587-smoke/mvcc-lsm-compaction__d3kZswA/agent/episode/artifacts/microluna-3-3.atif.jsonl",
+          "sha256": "f0ed65597de890af2a907c898b50f382fc35cc0c4cab077eba8d2cbc7a08d239"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--mvcc-lsm-compaction--suite-9587-smoke/mvcc-lsm-compaction__d3kZswA/agent/episode/artifacts/microluna-3-4.atif.jsonl",
+          "sha256": "0501c8ac526a061bf9e93940af4465ea07faa000a6028d054958cdb042b577a7"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--mvcc-lsm-compaction--suite-9587-smoke/mvcc-lsm-compaction__d3kZswA/agent/episode/artifacts/microluna-3-5.atif.jsonl",
+          "sha256": "738ed663b1dc744542ba6933c2c5071f4ca865b174ff01addb6fe35448a4a8da"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--mvcc-lsm-compaction--suite-9587-smoke/mvcc-lsm-compaction__d3kZswA/agent/episode/artifacts/microluna-3.json",
+          "sha256": "262ba30bf619f075c614e9752c123fc664a4a413df0742afe9d2e2fd8486bc30"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3s--mvcc-lsm-compaction--suite-9587-smoke/mvcc-lsm-compaction__d3kZswA/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "mvcc-lsm-compaction__fby8phd",
+      "task": "mvcc-lsm-compaction",
+      "partition": "excluded",
+      "passed": false,
+      "sessions": 1,
+      "turns": 5,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo1--mvcc-lsm-compaction--best-of-9587-r1/mvcc-lsm-compaction__fby8phd/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "bd31993094bfb9323a99aeb6802dfbff056d11b6a66d9717edc1df9018de29dd"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo1--mvcc-lsm-compaction--best-of-9587-r1/mvcc-lsm-compaction__fby8phd/agent/episode/artifacts/microluna-1.json",
+          "sha256": "74e230fed069ed5d4d54ede7a105175e6147d4b2fd5cf505186a40eb3dfa71e9"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo1--mvcc-lsm-compaction--best-of-9587-r1/mvcc-lsm-compaction__fby8phd/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "mvcc-lsm-compaction__wVnSsuQ",
+      "task": "mvcc-lsm-compaction",
+      "partition": "excluded",
+      "passed": false,
+      "sessions": 4,
+      "turns": 16,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo1--mvcc-lsm-compaction--suite-9587-r1/mvcc-lsm-compaction__wVnSsuQ/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "82126307d03f570fb60e005849f9f21498d52402341d864558c9457326c0bdd4"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo1--mvcc-lsm-compaction--suite-9587-r1/mvcc-lsm-compaction__wVnSsuQ/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "eea087770db5cab09e209b6a898a7ce29a6f253175471b7b3e98044cc8c02501"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo1--mvcc-lsm-compaction--suite-9587-r1/mvcc-lsm-compaction__wVnSsuQ/agent/episode/artifacts/microluna-1-3.atif.jsonl",
+          "sha256": "28d9d390757de8f39843d9ae796d291ab925c55621272b469ae4c184a6f16917"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo1--mvcc-lsm-compaction--suite-9587-r1/mvcc-lsm-compaction__wVnSsuQ/agent/episode/artifacts/microluna-1-4.atif.jsonl",
+          "sha256": "5a344961707ee3ffd61d3b1c259f642ab72946ed33636012e45ad5f2817fc491"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo1--mvcc-lsm-compaction--suite-9587-r1/mvcc-lsm-compaction__wVnSsuQ/agent/episode/artifacts/microluna-1.json",
+          "sha256": "0191ce915082ae2769ee593fe6ce9c44bdc4650cfbe5e089c73749c3cdf10729"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo1--mvcc-lsm-compaction--suite-9587-r1/mvcc-lsm-compaction__wVnSsuQ/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "session-window-debug__3KVqBUz",
+      "task": "session-window-debug",
+      "partition": "evaluation",
+      "passed": false,
+      "sessions": 2,
+      "turns": 16,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--session-window-debug-3/session-window-debug__3KVqBUz/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "a34e0b7bd86893dfa8b4a3c87eed65a3bbcbf82cfd7c8614d6e806ae18a5c336"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--session-window-debug-3/session-window-debug__3KVqBUz/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "97f6282999a709252e5a2372c7717d0f0df728f8cf7feb8c2651b6ce6c9778b4"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--session-window-debug-3/session-window-debug__3KVqBUz/agent/episode/artifacts/microluna-1.json",
+          "sha256": "e59d36fbc905f60a18ce37b4610c5f630b6692e1278ef28c4cf5dffd59bbc080"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--session-window-debug-3/session-window-debug__3KVqBUz/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "session-window-debug__3v9FKP5",
+      "task": "session-window-debug",
+      "partition": "evaluation",
+      "passed": false,
+      "sessions": 2,
+      "turns": 21,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--session-window-debug-2/session-window-debug__3v9FKP5/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "84f065c9453f6dfac91df9586b4a4bf315a3227ea2d99bced4b139b623752955"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--session-window-debug-2/session-window-debug__3v9FKP5/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "6a8c7ff65f82321397ba8e4c2e3471d665e065151f49ea9720fdfa3342cdd934"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--session-window-debug-2/session-window-debug__3v9FKP5/agent/episode/artifacts/microluna-1.json",
+          "sha256": "f392c4f0bcffff843ba541b6034fab9a394861148b62543ad65d24bdc009f914"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--session-window-debug-2/session-window-debug__3v9FKP5/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "session-window-debug__FDQKEwD",
+      "task": "session-window-debug",
+      "partition": "evaluation",
+      "passed": false,
+      "sessions": 2,
+      "turns": 24,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1/session-window-debug__FDQKEwD/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "a12e1c6e52bad8a4945f412535bcf822bf76969c1848e813f21e4b01ebdf3d0a"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1/session-window-debug__FDQKEwD/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "61b42da593daa6a6229b782705149d2acc0310a1bb5f2b7efd5f5b2eb2949f62"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1/session-window-debug__FDQKEwD/agent/episode/artifacts/microluna-1.json",
+          "sha256": "45319660ce05769cc738a02b6441f09059153ea7083bb053638bf442cacaa185"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r1/session-window-debug__FDQKEwD/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "session-window-debug__PacT86C",
+      "task": "session-window-debug",
+      "partition": "evaluation",
+      "passed": false,
+      "sessions": 2,
+      "turns": 27,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--session-window-debug/session-window-debug__PacT86C/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "10b7ff426f07dcbeb983990684d5dd9607407c7adcfe376dde6ecf2604cae312"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--session-window-debug/session-window-debug__PacT86C/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "45ba8d9a1ed1471852b32ffe64292f2154a2ad4d8c533b426072cd954d8d971e"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--session-window-debug/session-window-debug__PacT86C/agent/episode/artifacts/microluna-1.json",
+          "sha256": "b7d88bf8c5ce0f1f099ef9caf06fed996403d09199dac8a01fae8f1c954ce945"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13-retained--session-window-debug/session-window-debug__PacT86C/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "session-window-debug__a7stmvT",
+      "task": "session-window-debug",
+      "partition": "evaluation",
+      "passed": false,
+      "sessions": 2,
+      "turns": 17,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r3/session-window-debug__a7stmvT/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "9f41f5891ac62f7c107816d16a6f66cd18f0292e516b20e104a8c7d1d0a2a56b"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r3/session-window-debug__a7stmvT/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "114ae342a5a52ef155df54b72514922b3420d3e8db71cf7d1e4156b5ba36c805"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r3/session-window-debug__a7stmvT/agent/episode/artifacts/microluna-1.json",
+          "sha256": "39f0de39603cc443cb422a95f55a3df2efd6f72a6659e88cf17be980c5d21283"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r3/session-window-debug__a7stmvT/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "session-window-debug__arofNZN",
+      "task": "session-window-debug",
+      "partition": "evaluation",
+      "passed": false,
+      "sessions": 2,
+      "turns": 14,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r1/session-window-debug__arofNZN/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "9230d6584a133bf4f3220e294d110de17ad56c0e8205fea9a576226603e701cd"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r1/session-window-debug__arofNZN/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "186977c7311d305329fbbf77342a77a792d1939233e0b95bc89998445d284373"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r1/session-window-debug__arofNZN/agent/episode/artifacts/microluna-1.json",
+          "sha256": "00838ac0133ba07cb1121252e9b355a6ead7c87c70699992bb80c61ee91d1a16"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r1/session-window-debug__arofNZN/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "session-window-debug__az9j93b",
+      "task": "session-window-debug",
+      "partition": "evaluation",
+      "passed": false,
+      "sessions": 2,
+      "turns": 18,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r3/session-window-debug__az9j93b/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "48e390233d27d2bcfb42784830e7db7718e8ead05e4229b0d9d285cd666a126a"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r3/session-window-debug__az9j93b/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "c88c678df32199f2e6937b88ab00fd0d3db1b2298529ea1044d037e896b9b0f9"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r3/session-window-debug__az9j93b/agent/episode/artifacts/microluna-1.json",
+          "sha256": "a42643d7f8af51cfa9cc19f974ab7465d5d771373818513dde44aac0a1cdcb67"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r3/session-window-debug__az9j93b/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "session-window-debug__mAK56Nn",
+      "task": "session-window-debug",
+      "partition": "evaluation",
+      "passed": false,
+      "sessions": 2,
+      "turns": 26,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r2/session-window-debug__mAK56Nn/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "084b2b3b47f14fbdb102e87ae44dda3a4139df10d08c9a025bb0b79bfc800f48"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r2/session-window-debug__mAK56Nn/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "01d5aaab668e07f26d572595440c8ca18373d440f9fe7384b93eab432c29cfe5"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r2/session-window-debug__mAK56Nn/agent/episode/artifacts/microluna-1.json",
+          "sha256": "c7206439213c96da58ba742268b5a54bbf1cc42bcb1f00feab3045b5a89f65a9"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v12--session-window-debug--candidate-evidence-9607-r2/session-window-debug__mAK56Nn/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "session-window-debug__vbWCjBZ",
+      "task": "session-window-debug",
+      "partition": "evaluation",
+      "passed": false,
+      "sessions": 2,
+      "turns": 29,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r2/session-window-debug__vbWCjBZ/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "174a28b87e7aa7d4e9c81d41b4409afe6ad67c2bcc1e6866deecbf24c30394a0"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r2/session-window-debug__vbWCjBZ/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "1edf514639efe63c277bdb886dae2af456a5a1763923bcf8c74361ae83c8b78e"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r2/session-window-debug__vbWCjBZ/agent/episode/artifacts/microluna-1.json",
+          "sha256": "8ba1bc675ab6693873ce63c1088a05d5fbbe83305905862cc12c71ef0ade6f26"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-evidence-v1--session-window-debug--candidate-evidence-9607-r2/session-window-debug__vbWCjBZ/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "shadow-relay__GsRrdHR",
+      "task": "shadow-relay",
+      "partition": "evaluation",
+      "passed": false,
+      "sessions": 7,
+      "turns": 80,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--microluna-v1--shadow-relay--9585-r1/shadow-relay__GsRrdHR/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "b7e5e7c4765380bcaf4563c177ac68622b4d21999388f9fd2a519d2f5a9198b4"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--microluna-v1--shadow-relay--9585-r1/shadow-relay__GsRrdHR/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "234b1da55d34fb375fdfae11224898b3599691ce3985d21f1496c9e717db72ca"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--microluna-v1--shadow-relay--9585-r1/shadow-relay__GsRrdHR/agent/episode/artifacts/microluna-1-3.atif.jsonl",
+          "sha256": "09fdff35c81224e07974aea1681355cca01176967110c31f446b0b5c396c85f2"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--microluna-v1--shadow-relay--9585-r1/shadow-relay__GsRrdHR/agent/episode/artifacts/microluna-1-4.atif.jsonl",
+          "sha256": "5cfb727264cded0d4e7cf231ccfdfa85e732024fada659e6f00809cfdaf4fb84"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--microluna-v1--shadow-relay--9585-r1/shadow-relay__GsRrdHR/agent/episode/artifacts/microluna-1-5.atif.jsonl",
+          "sha256": "66a7b0b1385e77bb12fe2acb6b1eb300d0296305e4367415e6986caa4da34f2e"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--microluna-v1--shadow-relay--9585-r1/shadow-relay__GsRrdHR/agent/episode/artifacts/microluna-1-6.atif.jsonl",
+          "sha256": "9b2551444a3f89a811e1e3e595f40961906057d736ce6c08920ab1b2ec283c29"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--microluna-v1--shadow-relay--9585-r1/shadow-relay__GsRrdHR/agent/episode/artifacts/microluna-1.json",
+          "sha256": "7e9e707f7d74c7009fbc8413e4212d9a0c6f0af8c192989e156809c5191b1544"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--microluna-v1--shadow-relay--9585-r1/shadow-relay__GsRrdHR/agent/episode/artifacts/microluna-2-1.atif.jsonl",
+          "sha256": "c254867cf9879df827bf4be417468615983333cfc544522f4d840f0cc1bf34cf"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--microluna-v1--shadow-relay--9585-r1/shadow-relay__GsRrdHR/agent/episode/artifacts/microluna-2.json",
+          "sha256": "0e494ebeb7bc4b081679d6c1ed2fbcbfc1442b64d8310d5fef0636377e32191f"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--microluna-v1--shadow-relay--9585-r1/shadow-relay__GsRrdHR/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "shadow-relay__fdHf7Fy",
+      "task": "shadow-relay",
+      "partition": "evaluation",
+      "passed": false,
+      "sessions": 2,
+      "turns": 66,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v15--shadow-relay--manual-20260924T201922/shadow-relay__fdHf7Fy/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "8d224e3f19c48427ba1bd55b1d41c06a275fc47b3480c7d76fd2969de5e2dfcf"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v15--shadow-relay--manual-20260924T201922/shadow-relay__fdHf7Fy/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "d96f3e5933f1e5bf57b0b92ba4fc2dc12633ff0b3c5dea5ce1590ce0b5addab1"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v15--shadow-relay--manual-20260924T201922/shadow-relay__fdHf7Fy/agent/episode/artifacts/microluna-1.json",
+          "sha256": "8e4ddde9488f497f3e21ad2d20989c0e2978a927fb0c0e99402ca1dc536b1372"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v15--shadow-relay--manual-20260924T201922/shadow-relay__fdHf7Fy/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "sound-change-cascade__HRb77dt",
+      "task": "sound-change-cascade",
+      "partition": "calibration",
+      "passed": false,
+      "sessions": 2,
+      "turns": 34,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v16--sound-change-cascade--manual-20260924T172610/sound-change-cascade__HRb77dt/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "b4d33224125de9c1007eb07c10040c78a4606a04ab75facf158324483a72b74d"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v16--sound-change-cascade--manual-20260924T172610/sound-change-cascade__HRb77dt/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "a9058d38e0e08cb21f84bc238045afa38938f6b1eca39bb6d03ae86fdad7bdc8"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v16--sound-change-cascade--manual-20260924T172610/sound-change-cascade__HRb77dt/agent/episode/artifacts/microluna-1.json",
+          "sha256": "a2b6da1457a9ef221a96b8052fcf4ae93eed2af158bc6c06a115f676e36d4713"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v16--sound-change-cascade--manual-20260924T172610/sound-change-cascade__HRb77dt/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "sound-change-cascade__JdK4E2N",
+      "task": "sound-change-cascade",
+      "partition": "calibration",
+      "passed": false,
+      "sessions": 2,
+      "turns": 59,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v12--sound-change-cascade--manual-20260924T153948/sound-change-cascade__JdK4E2N/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "242504e7636cbfc9205fe3493f709ae3b09f61fa3e4bd597074562a9b79f6f9c"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v12--sound-change-cascade--manual-20260924T153948/sound-change-cascade__JdK4E2N/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "bb1c2a9a5c06e41f305b4b3ed49b4a83e1de01cff1e980198ad9e5f5cad539c6"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v12--sound-change-cascade--manual-20260924T153948/sound-change-cascade__JdK4E2N/agent/episode/artifacts/microluna-1.json",
+          "sha256": "544837776a8a04b3b80525fac971c9c885dd4bcdf4143fef73e2df54ff64f3e7"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v12--sound-change-cascade--manual-20260924T153948/sound-change-cascade__JdK4E2N/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "sound-change-cascade__JyWbEai",
+      "task": "sound-change-cascade",
+      "partition": "calibration",
+      "passed": false,
+      "sessions": 2,
+      "turns": 17,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-solo--sound-change-cascade--manual-20260924T135148/sound-change-cascade__JyWbEai/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "2ef889d696e5e340c3e0e8c4ea3e9c83fc7a9e33f8077331fa54e69f5678cc3a"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-solo--sound-change-cascade--manual-20260924T135148/sound-change-cascade__JyWbEai/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "6c04458314de940c2a87318d73dc916b8dec4cc8aa472076013436502d81fd2f"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-solo--sound-change-cascade--manual-20260924T135148/sound-change-cascade__JyWbEai/agent/episode/artifacts/microluna-1.json",
+          "sha256": "843989397acb871d306a0578388ca04ede667fbde25d2972900a94792205cc07"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-solo--sound-change-cascade--manual-20260924T135148/sound-change-cascade__JyWbEai/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "sound-change-cascade__LjmbDpd",
+      "task": "sound-change-cascade",
+      "partition": "calibration",
+      "passed": false,
+      "sessions": 2,
+      "turns": 50,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13--sound-change-cascade--manual-20260924T160541/sound-change-cascade__LjmbDpd/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "175c8f3c94d8b83b6c5f1c5a9ef21c129cfd39546eaca47e67b9a0886805196d"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13--sound-change-cascade--manual-20260924T160541/sound-change-cascade__LjmbDpd/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "88f7770e43ebda6d5ef457a22a30675e146790a241eb19127dc8fbc74c575279"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13--sound-change-cascade--manual-20260924T160541/sound-change-cascade__LjmbDpd/agent/episode/artifacts/microluna-1.json",
+          "sha256": "6fafecb20de901954383a757d3503fb9c4b3f4f5f6006b688c6e45f7792fb83d"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v13--sound-change-cascade--manual-20260924T160541/sound-change-cascade__LjmbDpd/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "sound-change-cascade__PLWMRFW",
+      "task": "sound-change-cascade",
+      "partition": "calibration",
+      "passed": false,
+      "sessions": 3,
+      "turns": 176,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v9--sound-change-cascade--manual-20260924T140540/sound-change-cascade__PLWMRFW/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "748e0a75f82a2e779a63a9668ec421f041b0447107d77600c1cf5a9bba417827"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v9--sound-change-cascade--manual-20260924T140540/sound-change-cascade__PLWMRFW/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "94f99a9855bccde2b79c03f7a12fb63bf56d4657502e8053860a66ff2f05f6c0"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v9--sound-change-cascade--manual-20260924T140540/sound-change-cascade__PLWMRFW/agent/episode/artifacts/microluna-1-3.atif.jsonl",
+          "sha256": "251d545e273fa14b26b4c5209f507a4799e9e9ce67deef5497838cde4314ab21"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v9--sound-change-cascade--manual-20260924T140540/sound-change-cascade__PLWMRFW/agent/episode/artifacts/microluna-1.json",
+          "sha256": "e6f45a675081501b1861ce29fea07769932462098abb1c70b4ea3d1cfd73a898"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v9--sound-change-cascade--manual-20260924T140540/sound-change-cascade__PLWMRFW/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "sound-change-cascade__TJtdCHK",
+      "task": "sound-change-cascade",
+      "partition": "calibration",
+      "passed": false,
+      "sessions": 2,
+      "turns": 64,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v17--sound-change-cascade--manual-20260924T180814/sound-change-cascade__TJtdCHK/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "01dee2d1f205aea7052347dc102e8c32896c54afe6e8e5bf3355fccc26d5b1a0"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v17--sound-change-cascade--manual-20260924T180814/sound-change-cascade__TJtdCHK/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "1c7f4a2a76976bc489358c33558c24e069810c2a979e8ff3d17762ac8cb6337d"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v17--sound-change-cascade--manual-20260924T180814/sound-change-cascade__TJtdCHK/agent/episode/artifacts/microluna-1.json",
+          "sha256": "d5b6abb9c3927ef6596053edfeb200ba41fcc32ca37f6374335268e37cddfb68"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v17--sound-change-cascade--manual-20260924T180814/sound-change-cascade__TJtdCHK/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "sound-change-cascade__VeXHcfB",
+      "task": "sound-change-cascade",
+      "partition": "calibration",
+      "passed": false,
+      "sessions": 1,
+      "turns": 6,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v10--sound-change-cascade--manual-20260924T145804/sound-change-cascade__VeXHcfB/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "1c69277ae9a9a1ccfc98b1cf34496af3fb0a15c3e774b4148d9f82bc2577607d"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v10--sound-change-cascade--manual-20260924T145804/sound-change-cascade__VeXHcfB/agent/episode/artifacts/microluna-1.json",
+          "sha256": "40b26c1c4487eec14ce17a09fc1c33d0e49c62e83db6b9b11daa5572fa6f916c"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v10--sound-change-cascade--manual-20260924T145804/sound-change-cascade__VeXHcfB/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "sound-change-cascade__YwnnSDc",
+      "task": "sound-change-cascade",
+      "partition": "calibration",
+      "passed": false,
+      "sessions": 5,
+      "turns": 73,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v14--sound-change-cascade--manual-20260924T163335/sound-change-cascade__YwnnSDc/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "194f778d20e9b6bed56d3a04bd31807aa9af0020176b8bf6abb8d5e2bf31b46a"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v14--sound-change-cascade--manual-20260924T163335/sound-change-cascade__YwnnSDc/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "03b8356a0370ca809413bc3c6fa79a3ecb88f2c14eab28cd82b16f41e73e747b"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v14--sound-change-cascade--manual-20260924T163335/sound-change-cascade__YwnnSDc/agent/episode/artifacts/microluna-1-3.atif.jsonl",
+          "sha256": "e2d7238b831910238d5a76dc808c6aa30c7b8668d8c97fd51f907efe12a1f81f"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v14--sound-change-cascade--manual-20260924T163335/sound-change-cascade__YwnnSDc/agent/episode/artifacts/microluna-1-4.atif.jsonl",
+          "sha256": "174abd7276a498990143cbef49be5ed0090172d092228a3b71f0a5ebd7277031"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v14--sound-change-cascade--manual-20260924T163335/sound-change-cascade__YwnnSDc/agent/episode/artifacts/microluna-1-5.atif.jsonl",
+          "sha256": "e88bc980dd2ad8c07ec9732b058ab052dd5c8ee0c07acbb392b6031d61b56456"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v14--sound-change-cascade--manual-20260924T163335/sound-change-cascade__YwnnSDc/agent/episode/artifacts/microluna-1.json",
+          "sha256": "1da8af4acf0c0538e2258a911565bbfbd51dc7fa55d92c0a2e48c304397fddd1"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v14--sound-change-cascade--manual-20260924T163335/sound-change-cascade__YwnnSDc/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "sound-change-cascade__qAxKAFg",
+      "task": "sound-change-cascade",
+      "partition": "calibration",
+      "passed": false,
+      "sessions": 2,
+      "turns": 45,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v15--sound-change-cascade--manual-20260924T165834/sound-change-cascade__qAxKAFg/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "3ef307e7471b8b210a00bedd54c1735ee9f17c43490a39edc321ced4600a20a9"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v15--sound-change-cascade--manual-20260924T165834/sound-change-cascade__qAxKAFg/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "ee9ee195dc5b32c0e138632f3df65ea9128c781c4974932e68b243ce72890181"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v15--sound-change-cascade--manual-20260924T165834/sound-change-cascade__qAxKAFg/agent/episode/artifacts/microluna-1.json",
+          "sha256": "c97f3487d7935c3aca98b93b5c63fd00ab11d9d3f2b54e9f73a6e74b51619ca5"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v15--sound-change-cascade--manual-20260924T165834/sound-change-cascade__qAxKAFg/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "sound-change-cascade__subesUU",
+      "task": "sound-change-cascade",
+      "partition": "calibration",
+      "passed": false,
+      "sessions": 6,
+      "turns": 43,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo1--sound-change-cascade--suite-9587-r1/sound-change-cascade__subesUU/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "0dbeed9deb70703644409e860076e63493da5cbcb10dd87aca15ac5b944b6701"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo1--sound-change-cascade--suite-9587-r1/sound-change-cascade__subesUU/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "5b56a554210d25f73945292a473b42c946005a5424944340a7403c30bbf98638"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo1--sound-change-cascade--suite-9587-r1/sound-change-cascade__subesUU/agent/episode/artifacts/microluna-1-3.atif.jsonl",
+          "sha256": "0f7cbac16a20f26da5e68ab112fcb093b50de67276172970f268d149646bbc4d"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo1--sound-change-cascade--suite-9587-r1/sound-change-cascade__subesUU/agent/episode/artifacts/microluna-1-4.atif.jsonl",
+          "sha256": "b51f6df3eeb1df514394bb5acd7c932386274f8725530cb3e7ffc8b776b5bf48"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo1--sound-change-cascade--suite-9587-r1/sound-change-cascade__subesUU/agent/episode/artifacts/microluna-1-5.atif.jsonl",
+          "sha256": "0dcd5f328954cffb4ea877281cae11fb896e3227cee4b68da417fda571ebd6f8"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo1--sound-change-cascade--suite-9587-r1/sound-change-cascade__subesUU/agent/episode/artifacts/microluna-1-6.atif.jsonl",
+          "sha256": "ed0539ea70549b068880824009d4321f9d8e478f389aeb99095090c7e89e3ca4"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo1--sound-change-cascade--suite-9587-r1/sound-change-cascade__subesUU/agent/episode/artifacts/microluna-1.json",
+          "sha256": "1a310579b6d156e6751d4abf5d7581c3a245316a1d7f98c2933bb1d11f25ce9e"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo1--sound-change-cascade--suite-9587-r1/sound-change-cascade__subesUU/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "sound-change-cascade__uQscUgB",
+      "task": "sound-change-cascade",
+      "partition": "calibration",
+      "passed": false,
+      "sessions": 2,
+      "turns": 31,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v11--sound-change-cascade--manual-20260924T151338/sound-change-cascade__uQscUgB/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "dfa9f7bb8971358dd706f859b926a57955decb72e5386516983e3571ac24b1e8"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v11--sound-change-cascade--manual-20260924T151338/sound-change-cascade__uQscUgB/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "c0b7a25b0f629ac883414236d390e0347d5a5933721f826a1c1dab5a67d2caa7"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v11--sound-change-cascade--manual-20260924T151338/sound-change-cascade__uQscUgB/agent/episode/artifacts/microluna-1.json",
+          "sha256": "0224f1a7b471feb3e593342d6353632089fceb6881f074c3308d072146bd735a"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v11--sound-change-cascade--manual-20260924T151338/sound-change-cascade__uQscUgB/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "sound-change-cascade__zVHhMHC",
+      "task": "sound-change-cascade",
+      "partition": "calibration",
+      "passed": false,
+      "sessions": 3,
+      "turns": 31,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v8--sound-change-cascade--manual-20260924T123903/sound-change-cascade__zVHhMHC/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "cd036cb8ab5fe6296f9b3d5007c6e650ee251c60c053648c200e4c2f5d83fb1c"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v8--sound-change-cascade--manual-20260924T123903/sound-change-cascade__zVHhMHC/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "55a585a1f3683b2c7f2b0691a976b1a2a8c05ce22401d71155d2e32e8021bb56"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v8--sound-change-cascade--manual-20260924T123903/sound-change-cascade__zVHhMHC/agent/episode/artifacts/microluna-1-3.atif.jsonl",
+          "sha256": "d30766732c79a6ee09eaac52a1975a76c3926cda92cc34c6d8353d95eb579645"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v8--sound-change-cascade--manual-20260924T123903/sound-change-cascade__zVHhMHC/agent/episode/artifacts/microluna-1.json",
+          "sha256": "60d7bd633e0074b90a76523bd76eec76a9954a574a17ce08b489bcda99652f7e"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v8--sound-change-cascade--manual-20260924T123903/sound-change-cascade__zVHhMHC/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "uefi-bootkit__TKiKnQj",
+      "task": "uefi-bootkit",
+      "partition": "evaluation",
+      "passed": false,
+      "sessions": 6,
+      "turns": 125,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--microluna-v1--uefi-bootkit--9585-r1/uefi-bootkit__TKiKnQj/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "f1f612a91d39d4c7e4e3bf94131604738a21b4e4e3cf5d319d7b83d3b581db62"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--microluna-v1--uefi-bootkit--9585-r1/uefi-bootkit__TKiKnQj/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "290d3e01e1dcde5a25eda0815af523e886239bbd7721232c592a0d33fd21c3e7"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--microluna-v1--uefi-bootkit--9585-r1/uefi-bootkit__TKiKnQj/agent/episode/artifacts/microluna-1-3.atif.jsonl",
+          "sha256": "f3417256a90354771e3a013a118dc43aa5746603fc6aba827b41550748917c12"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--microluna-v1--uefi-bootkit--9585-r1/uefi-bootkit__TKiKnQj/agent/episode/artifacts/microluna-1-4.atif.jsonl",
+          "sha256": "503cd67f4ae3b10222c4f6ee580c30398cafedc0dc77334d5072421b99af2041"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--microluna-v1--uefi-bootkit--9585-r1/uefi-bootkit__TKiKnQj/agent/episode/artifacts/microluna-1-5.atif.jsonl",
+          "sha256": "a3c8b5da808fbb9e19e3ce20a07f6a21a510a5f766691fb9d273e7453c35bc65"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--microluna-v1--uefi-bootkit--9585-r1/uefi-bootkit__TKiKnQj/agent/episode/artifacts/microluna-1-6.atif.jsonl",
+          "sha256": "af67f0aa3e956e0eb7e82fa36d6cce1ef292e9221b3e862586d0359a6f58a686"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--microluna-v1--uefi-bootkit--9585-r1/uefi-bootkit__TKiKnQj/agent/episode/artifacts/microluna-1.json",
+          "sha256": "cafb639c74c7481d7f30fb55dcec21c64020e9be1310d2a4263009c679ec1917"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--microluna-v1--uefi-bootkit--9585-r1/uefi-bootkit__TKiKnQj/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    },
+    {
+      "trial": "wal-recovery-ordering__387vPxY",
+      "task": "wal-recovery-ordering",
+      "partition": "excluded",
+      "passed": null,
+      "sessions": 14,
+      "turns": 121,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3--wal-recovery-ordering--best-of-9587-r1/wal-recovery-ordering__387vPxY/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "395efdd4c4ec3f0c24379e09972ed1eac99b6dfbf55004d73c8fc43d790272a0"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3--wal-recovery-ordering--best-of-9587-r1/wal-recovery-ordering__387vPxY/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "d57f5636660e65f090ce9bdf9aa7fc51a177e855c088b733f0ef2569f6445c27"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3--wal-recovery-ordering--best-of-9587-r1/wal-recovery-ordering__387vPxY/agent/episode/artifacts/microluna-1-3.atif.jsonl",
+          "sha256": "82596316bec74cce3f698239317ca2fa439b8a96189403dae36639047e7e47d6"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3--wal-recovery-ordering--best-of-9587-r1/wal-recovery-ordering__387vPxY/agent/episode/artifacts/microluna-1-4.atif.jsonl",
+          "sha256": "62120293494ce892d0a9ed82089211e066ea4a30cfa45ec3d552414c48c17d9b"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3--wal-recovery-ordering--best-of-9587-r1/wal-recovery-ordering__387vPxY/agent/episode/artifacts/microluna-1.json",
+          "sha256": "d3646f18ff6d4de4a9a1ffd7ff300a0efdb92ffa56a1a263cafd0e0895554aef"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3--wal-recovery-ordering--best-of-9587-r1/wal-recovery-ordering__387vPxY/agent/episode/artifacts/microluna-2-1.atif.jsonl",
+          "sha256": "3035725c31cd600ca60a5a44d48a22eedc5ad245092a55a8097857cc9a1bf06d"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3--wal-recovery-ordering--best-of-9587-r1/wal-recovery-ordering__387vPxY/agent/episode/artifacts/microluna-2-2.atif.jsonl",
+          "sha256": "57b69acceb1b2435d045cb540f98c931f30a0217b748070315957c57e9442321"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3--wal-recovery-ordering--best-of-9587-r1/wal-recovery-ordering__387vPxY/agent/episode/artifacts/microluna-2-3.atif.jsonl",
+          "sha256": "85047bf76a8a318fea84ea4a71399603aebcb068656b8a620b8e41cee5704a29"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3--wal-recovery-ordering--best-of-9587-r1/wal-recovery-ordering__387vPxY/agent/episode/artifacts/microluna-2-4.atif.jsonl",
+          "sha256": "6f87fe4b238a993ba68f92ee504b4fbc36e9fb9ee1bc7e00fa07cc339ec536d9"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3--wal-recovery-ordering--best-of-9587-r1/wal-recovery-ordering__387vPxY/agent/episode/artifacts/microluna-2.json",
+          "sha256": "5e223d861e470835fa6ca77f5ae888c9ff811b15454c8db89c6386219f807d99"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3--wal-recovery-ordering--best-of-9587-r1/wal-recovery-ordering__387vPxY/agent/episode/artifacts/microluna-3-1.atif.jsonl",
+          "sha256": "6e99f34a7aa24dd7e6453de45b05628c33ed7f6e19c9fd83023fda5a87d06069"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3--wal-recovery-ordering--best-of-9587-r1/wal-recovery-ordering__387vPxY/agent/episode/artifacts/microluna-3-2.atif.jsonl",
+          "sha256": "b326375ea42e0a0b75b97b7563fea4897e60f98421effd02a13d7eecbe1030eb"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3--wal-recovery-ordering--best-of-9587-r1/wal-recovery-ordering__387vPxY/agent/episode/artifacts/microluna-3-3.atif.jsonl",
+          "sha256": "7912913fa04dc3bb45a888c496297bcb8462c93c76fe50356f1127d6e8a87447"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3--wal-recovery-ordering--best-of-9587-r1/wal-recovery-ordering__387vPxY/agent/episode/artifacts/microluna-3-4.atif.jsonl",
+          "sha256": "d5f0a4be3f3b8ce52a82225f6405e4d71928eeaf889b54c50ac278119a7919e8"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3--wal-recovery-ordering--best-of-9587-r1/wal-recovery-ordering__387vPxY/agent/episode/artifacts/microluna-3-5.atif.jsonl",
+          "sha256": "a3ed95b98994cffd3d0c6705b1d4fbdf561fca74a1ecf91ff83ab7612cd938d3"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo3--wal-recovery-ordering--best-of-9587-r1/wal-recovery-ordering__387vPxY/agent/episode/artifacts/microluna-3-6.atif.jsonl",
+          "sha256": "09f269d3345e23284e29e543dcc76f49b113b92a4b8ea30eddb93c68c728a8b0"
+        }
+      ]
+    },
+    {
+      "trial": "wal-recovery-ordering__vWMdUMJ",
+      "task": "wal-recovery-ordering",
+      "partition": "excluded",
+      "passed": false,
+      "sessions": 4,
+      "turns": 45,
+      "files": [
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo1--wal-recovery-ordering--best-of-9587-r1/wal-recovery-ordering__vWMdUMJ/agent/episode/artifacts/microluna-1-1.atif.jsonl",
+          "sha256": "bfbf79ee38b014fe962f3194f83baddc242e6b1043f7e0608957a817505211c6"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo1--wal-recovery-ordering--best-of-9587-r1/wal-recovery-ordering__vWMdUMJ/agent/episode/artifacts/microluna-1-2.atif.jsonl",
+          "sha256": "5fff174312d605e41ed84905b05f1b71e5063f75358786001fe6ac77d774a5c3"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo1--wal-recovery-ordering--best-of-9587-r1/wal-recovery-ordering__vWMdUMJ/agent/episode/artifacts/microluna-1-3.atif.jsonl",
+          "sha256": "fbeb1ca2224f44ea2308a0a7cdae4db7502cd3b7376aebccd054f6e6b399454d"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo1--wal-recovery-ordering--best-of-9587-r1/wal-recovery-ordering__vWMdUMJ/agent/episode/artifacts/microluna-1-4.atif.jsonl",
+          "sha256": "76954a42e0170f4dc20ed3fe82cc2182fdcb84940cbdf8694640769cc3d02742"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo1--wal-recovery-ordering--best-of-9587-r1/wal-recovery-ordering__vWMdUMJ/agent/episode/artifacts/microluna-1.json",
+          "sha256": "5746c3978189e05b44d4dd9afc01983fa7b30718efedf5df8ca99080cb0654c7"
+        },
+        {
+          "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--micro-bo1--wal-recovery-ordering--best-of-9587-r1/wal-recovery-ordering__vWMdUMJ/verifier/reward.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ]
+    }
+  ]
+}

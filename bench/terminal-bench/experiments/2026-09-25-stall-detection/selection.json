@@ -1,0 +1,626 @@
+{
+  "rule": "highest recall with precision >= 0.8",
+  "chosen": {
+    "params": {
+      "progress_below": 0.5,
+      "repeating_at": 0.5
+    },
+    "calls": 88,
+    "correct_calls": 80,
+    "stalls": 216,
+    "checkpoints": 327,
+    "precision": 0.9091,
+    "precision_wilson": [
+      0.8307,
+      0.9532
+    ],
+    "recall": 0.3704,
+    "recall_wilson": [
+      0.3088,
+      0.4365
+    ]
+  },
+  "grid": [
+    {
+      "params": {
+        "progress_below": 0.1,
+        "repeating_at": 0.5
+      },
+      "calls": 13,
+      "correct_calls": 11,
+      "stalls": 216,
+      "checkpoints": 327,
+      "precision": 0.8462,
+      "precision_wilson": [
+        0.5777,
+        0.9567
+      ],
+      "recall": 0.0509,
+      "recall_wilson": [
+        0.0287,
+        0.0889
+      ]
+    },
+    {
+      "params": {
+        "progress_below": 0.1,
+        "repeating_at": 0.6
+      },
+      "calls": 3,
+      "correct_calls": 2,
+      "stalls": 216,
+      "checkpoints": 327,
+      "precision": 0.6667,
+      "precision_wilson": [
+        0.2077,
+        0.9385
+      ],
+      "recall": 0.0093,
+      "recall_wilson": [
+        0.0025,
+        0.0331
+      ]
+    },
+    {
+      "params": {
+        "progress_below": 0.1,
+        "repeating_at": 0.7
+      },
+      "calls": 1,
+      "correct_calls": 0,
+      "stalls": 216,
+      "checkpoints": 327,
+      "precision": 0.0,
+      "precision_wilson": [
+        0.0,
+        0.7935
+      ],
+      "recall": 0.0,
+      "recall_wilson": [
+        0.0,
+        0.0175
+      ]
+    },
+    {
+      "params": {
+        "progress_below": 0.1,
+        "repeating_at": 0.8
+      },
+      "calls": 1,
+      "correct_calls": 0,
+      "stalls": 216,
+      "checkpoints": 327,
+      "precision": 0.0,
+      "precision_wilson": [
+        0.0,
+        0.7935
+      ],
+      "recall": 0.0,
+      "recall_wilson": [
+        0.0,
+        0.0175
+      ]
+    },
+    {
+      "params": {
+        "progress_below": 0.1,
+        "repeating_at": 0.9
+      },
+      "calls": 1,
+      "correct_calls": 0,
+      "stalls": 216,
+      "checkpoints": 327,
+      "precision": 0.0,
+      "precision_wilson": [
+        0.0,
+        0.7935
+      ],
+      "recall": 0.0,
+      "recall_wilson": [
+        0.0,
+        0.0175
+      ]
+    },
+    {
+      "params": {
+        "progress_below": 0.1,
+        "repeating_at": 1.01
+      },
+      "calls": 1,
+      "correct_calls": 0,
+      "stalls": 216,
+      "checkpoints": 327,
+      "precision": 0.0,
+      "precision_wilson": [
+        0.0,
+        0.7935
+      ],
+      "recall": 0.0,
+      "recall_wilson": [
+        0.0,
+        0.0175
+      ]
+    },
+    {
+      "params": {
+        "progress_below": 0.2,
+        "repeating_at": 0.5
+      },
+      "calls": 35,
+      "correct_calls": 33,
+      "stalls": 216,
+      "checkpoints": 327,
+      "precision": 0.9429,
+      "precision_wilson": [
+        0.8139,
+        0.9842
+      ],
+      "recall": 0.1528,
+      "recall_wilson": [
+        0.1109,
+        0.2068
+      ]
+    },
+    {
+      "params": {
+        "progress_below": 0.2,
+        "repeating_at": 0.6
+      },
+      "calls": 25,
+      "correct_calls": 24,
+      "stalls": 216,
+      "checkpoints": 327,
+      "precision": 0.96,
+      "precision_wilson": [
+        0.8046,
+        0.9929
+      ],
+      "recall": 0.1111,
+      "recall_wilson": [
+        0.0758,
+        0.16
+      ]
+    },
+    {
+      "params": {
+        "progress_below": 0.2,
+        "repeating_at": 0.7
+      },
+      "calls": 23,
+      "correct_calls": 22,
+      "stalls": 216,
+      "checkpoints": 327,
+      "precision": 0.9565,
+      "precision_wilson": [
+        0.7901,
+        0.9923
+      ],
+      "recall": 0.1019,
+      "recall_wilson": [
+        0.0682,
+        0.1494
+      ]
+    },
+    {
+      "params": {
+        "progress_below": 0.2,
+        "repeating_at": 0.8
+      },
+      "calls": 23,
+      "correct_calls": 22,
+      "stalls": 216,
+      "checkpoints": 327,
+      "precision": 0.9565,
+      "precision_wilson": [
+        0.7901,
+        0.9923
+      ],
+      "recall": 0.1019,
+      "recall_wilson": [
+        0.0682,
+        0.1494
+      ]
+    },
+    {
+      "params": {
+        "progress_below": 0.2,
+        "repeating_at": 0.9
+      },
+      "calls": 23,
+      "correct_calls": 22,
+      "stalls": 216,
+      "checkpoints": 327,
+      "precision": 0.9565,
+      "precision_wilson": [
+        0.7901,
+        0.9923
+      ],
+      "recall": 0.1019,
+      "recall_wilson": [
+        0.0682,
+        0.1494
+      ]
+    },
+    {
+      "params": {
+        "progress_below": 0.2,
+        "repeating_at": 1.01
+      },
+      "calls": 23,
+      "correct_calls": 22,
+      "stalls": 216,
+      "checkpoints": 327,
+      "precision": 0.9565,
+      "precision_wilson": [
+        0.7901,
+        0.9923
+      ],
+      "recall": 0.1019,
+      "recall_wilson": [
+        0.0682,
+        0.1494
+      ]
+    },
+    {
+      "params": {
+        "progress_below": 0.3,
+        "repeating_at": 0.5
+      },
+      "calls": 49,
+      "correct_calls": 46,
+      "stalls": 216,
+      "checkpoints": 327,
+      "precision": 0.9388,
+      "precision_wilson": [
+        0.8348,
+        0.979
+      ],
+      "recall": 0.213,
+      "recall_wilson": [
+        0.1636,
+        0.2723
+      ]
+    },
+    {
+      "params": {
+        "progress_below": 0.3,
+        "repeating_at": 0.6
+      },
+      "calls": 43,
+      "correct_calls": 40,
+      "stalls": 216,
+      "checkpoints": 327,
+      "precision": 0.9302,
+      "precision_wilson": [
+        0.8139,
+        0.976
+      ],
+      "recall": 0.1852,
+      "recall_wilson": [
+        0.139,
+        0.2423
+      ]
+    },
+    {
+      "params": {
+        "progress_below": 0.3,
+        "repeating_at": 0.7
+      },
+      "calls": 41,
+      "correct_calls": 38,
+      "stalls": 216,
+      "checkpoints": 327,
+      "precision": 0.9268,
+      "precision_wilson": [
+        0.8057,
+        0.9748
+      ],
+      "recall": 0.1759,
+      "recall_wilson": [
+        0.1309,
+        0.2322
+      ]
+    },
+    {
+      "params": {
+        "progress_below": 0.3,
+        "repeating_at": 0.8
+      },
+      "calls": 41,
+      "correct_calls": 38,
+      "stalls": 216,
+      "checkpoints": 327,
+      "precision": 0.9268,
+      "precision_wilson": [
+        0.8057,
+        0.9748
+      ],
+      "recall": 0.1759,
+      "recall_wilson": [
+        0.1309,
+        0.2322
+      ]
+    },
+    {
+      "params": {
+        "progress_below": 0.3,
+        "repeating_at": 0.9
+      },
+      "calls": 41,
+      "correct_calls": 38,
+      "stalls": 216,
+      "checkpoints": 327,
+      "precision": 0.9268,
+      "precision_wilson": [
+        0.8057,
+        0.9748
+      ],
+      "recall": 0.1759,
+      "recall_wilson": [
+        0.1309,
+        0.2322
+      ]
+    },
+    {
+      "params": {
+        "progress_below": 0.3,
+        "repeating_at": 1.01
+      },
+      "calls": 41,
+      "correct_calls": 38,
+      "stalls": 216,
+      "checkpoints": 327,
+      "precision": 0.9268,
+      "precision_wilson": [
+        0.8057,
+        0.9748
+      ],
+      "recall": 0.1759,
+      "recall_wilson": [
+        0.1309,
+        0.2322
+      ]
+    },
+    {
+      "params": {
+        "progress_below": 0.4,
+        "repeating_at": 0.5
+      },
+      "calls": 65,
+      "correct_calls": 60,
+      "stalls": 216,
+      "checkpoints": 327,
+      "precision": 0.9231,
+      "precision_wilson": [
+        0.8322,
+        0.9667
+      ],
+      "recall": 0.2778,
+      "recall_wilson": [
+        0.2223,
+        0.341
+      ]
+    },
+    {
+      "params": {
+        "progress_below": 0.4,
+        "repeating_at": 0.6
+      },
+      "calls": 60,
+      "correct_calls": 55,
+      "stalls": 216,
+      "checkpoints": 327,
+      "precision": 0.9167,
+      "precision_wilson": [
+        0.8193,
+        0.9639
+      ],
+      "recall": 0.2546,
+      "recall_wilson": [
+        0.2012,
+        0.3167
+      ]
+    },
+    {
+      "params": {
+        "progress_below": 0.4,
+        "repeating_at": 0.7
+      },
+      "calls": 58,
+      "correct_calls": 53,
+      "stalls": 216,
+      "checkpoints": 327,
+      "precision": 0.9138,
+      "precision_wilson": [
+        0.8136,
+        0.9626
+      ],
+      "recall": 0.2454,
+      "recall_wilson": [
+        0.1928,
+        0.3069
+      ]
+    },
+    {
+      "params": {
+        "progress_below": 0.4,
+        "repeating_at": 0.8
+      },
+      "calls": 58,
+      "correct_calls": 53,
+      "stalls": 216,
+      "checkpoints": 327,
+      "precision": 0.9138,
+      "precision_wilson": [
+        0.8136,
+        0.9626
+      ],
+      "recall": 0.2454,
+      "recall_wilson": [
+        0.1928,
+        0.3069
+      ]
+    },
+    {
+      "params": {
+        "progress_below": 0.4,
+        "repeating_at": 0.9
+      },
+      "calls": 58,
+      "correct_calls": 53,
+      "stalls": 216,
+      "checkpoints": 327,
+      "precision": 0.9138,
+      "precision_wilson": [
+        0.8136,
+        0.9626
+      ],
+      "recall": 0.2454,
+      "recall_wilson": [
+        0.1928,
+        0.3069
+      ]
+    },
+    {
+      "params": {
+        "progress_below": 0.4,
+        "repeating_at": 1.01
+      },
+      "calls": 58,
+      "correct_calls": 53,
+      "stalls": 216,
+      "checkpoints": 327,
+      "precision": 0.9138,
+      "precision_wilson": [
+        0.8136,
+        0.9626
+      ],
+      "recall": 0.2454,
+      "recall_wilson": [
+        0.1928,
+        0.3069
+      ]
+    },
+    {
+      "params": {
+        "progress_below": 0.5,
+        "repeating_at": 0.5
+      },
+      "calls": 88,
+      "correct_calls": 80,
+      "stalls": 216,
+      "checkpoints": 327,
+      "precision": 0.9091,
+      "precision_wilson": [
+        0.8307,
+        0.9532
+      ],
+      "recall": 0.3704,
+      "recall_wilson": [
+        0.3088,
+        0.4365
+      ]
+    },
+    {
+      "params": {
+        "progress_below": 0.5,
+        "repeating_at": 0.6
+      },
+      "calls": 85,
+      "correct_calls": 77,
+      "stalls": 216,
+      "checkpoints": 327,
+      "precision": 0.9059,
+      "precision_wilson": [
+        0.8251,
+        0.9515
+      ],
+      "recall": 0.3565,
+      "recall_wilson": [
+        0.2956,
+        0.4224
+      ]
+    },
+    {
+      "params": {
+        "progress_below": 0.5,
+        "repeating_at": 0.7
+      },
+      "calls": 85,
+      "correct_calls": 77,
+      "stalls": 216,
+      "checkpoints": 327,
+      "precision": 0.9059,
+      "precision_wilson": [
+        0.8251,
+        0.9515
+      ],
+      "recall": 0.3565,
+      "recall_wilson": [
+        0.2956,
+        0.4224
+      ]
+    },
+    {
+      "params": {
+        "progress_below": 0.5,
+        "repeating_at": 0.8
+      },
+      "calls": 85,
+      "correct_calls": 77,
+      "stalls": 216,
+      "checkpoints": 327,
+      "precision": 0.9059,
+      "precision_wilson": [
+        0.8251,
+        0.9515
+      ],
+      "recall": 0.3565,
+      "recall_wilson": [
+        0.2956,
+        0.4224
+      ]
+    },
+    {
+      "params": {
+        "progress_below": 0.5,
+        "repeating_at": 0.9
+      },
+      "calls": 85,
+      "correct_calls": 77,
+      "stalls": 216,
+      "checkpoints": 327,
+      "precision": 0.9059,
+      "precision_wilson": [
+        0.8251,
+        0.9515
+      ],
+      "recall": 0.3565,
+      "recall_wilson": [
+        0.2956,
+        0.4224
+      ]
+    },
+    {
+      "params": {
+        "progress_below": 0.5,
+        "repeating_at": 1.01
+      },
+      "calls": 85,
+      "correct_calls": 77,
+      "stalls": 216,
+      "checkpoints": 327,
+      "precision": 0.9059,
+      "precision_wilson": [
+        0.8251,
+        0.9515
+      ],
+      "recall": 0.3565,
+      "recall_wilson": [
+        0.2956,
+        0.4224
+      ]
+    }
+  ],
+  "labeled_checkpoints": 327
+}
