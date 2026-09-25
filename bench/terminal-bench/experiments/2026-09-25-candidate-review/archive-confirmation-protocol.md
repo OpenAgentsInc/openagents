@@ -159,3 +159,13 @@ Copy the successful pre-candidate public plans byte-for-byte. Do not include the
 scheduled-attempt accounting. A later agent failure is not eligible for this
 restart. The launcher now takes an explicit `--run-id r2`; it still refuses any
 job directory that already exists.
+
+The check pipeline may inspect a completed attempt while later attempts run.
+Completion is the existence of its `result.json`; the file's contents remain
+unopened. This overlaps independent work without changing a check, retrying a
+review, or stopping from outcomes. Each completed check is immutable on rerun.
+`seal_archive.py` refuses a cohort that lacks any of the 72 scheduled attempts,
+including unavailable candidates. `join_archive.py` verifies that exact seal is
+in a commit on `origin/main` and that all candidate, check, and baseline records
+still match before it opens an official result. The measurement preserves every
+failed candidate in recall and reports within-task comparisons separately.

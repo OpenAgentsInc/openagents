@@ -150,6 +150,8 @@ def main():
     for name in ['cohort', 'preflight', 'jobs', 'out', 'binary', 'runtime']:
         p.add_argument('--' + name, type=Path, required=True)
     p.add_argument('--plans-only', action='store_true')
+    p.add_argument('--completed-only', action='store_true',
+                   help='Check only finished attempts; never read result contents.')
     a = p.parse_args()
     runtime = json.loads((a.runtime / 'manifest.json').read_text())
     if any(sha(a.runtime / f['name']) != f['sha256'] for f in runtime):
@@ -166,6 +168,8 @@ def main():
         config = json.loads((a.cohort / (arm + '-job.json')).read_text())
         job = a.jobs / config['job_name']
         for trial_config in sorted(job.glob('*/config.json')):
+            if a.completed_only and not (trial_config.parent / 'result.json').exists():
+                continue
             task = Path(json.loads(trial_config.read_text())['task']['path']).name
             if task not in TASKS:
                 raise ValueError('Unexpected task in the frozen job')
