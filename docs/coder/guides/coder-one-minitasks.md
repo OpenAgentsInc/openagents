@@ -6,6 +6,17 @@ in about a second and with no model or container. Run the same task with
 Claude Code or Codex to see whether a real executor uses what the
 components give it.
 
+Mini-tasks are small, local reproductions of a failure family, each with its
+own task-specific grader. They are a fast local screen for component behavior,
+not Terminal-Bench 4.0 tasks or benchmark results. The grader runs after the
+episode, checks the resulting workspace or behavior against that task's
+criteria, and does not guide the episode. For example, `log-severity` checks
+the CSV counts against each log line's severity field; `cancel-cleanup` checks
+that both tasks finish cleanup after an interrupt. A scripted run takes about
+a second and costs $0 in model usage. The comparison below models an Opus run
+at about 22 seconds and $0.054 per run (22 seconds × $0.00244 per second); this is
+an estimate, not a measured live run's bill.
+
 This is rung 2 and rung 3 of the ladder in
 [Coder as a tunable system](../../optimization/coder-components.md#test-each-component-in-isolation):
 components alone come first, in the
