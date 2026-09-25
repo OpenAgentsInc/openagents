@@ -31,6 +31,7 @@
 //! beside them. Each move between sessions is a Jev decision and a
 //! `handoff` step, which the Gym shows as a hand-off.
 
+pub mod candidate;
 mod detect;
 pub mod lean;
 pub mod parallel;

@@ -144,8 +144,10 @@ pub struct Lean {
     /// an earlier tie, and validate the submitted workspace again.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub protect_candidates: bool,
-    /// Retain sequential candidates and the evaluator without changing
-    /// selection, review permissions, or stopping. Records observation only.
+    /// Retain every candidate, each sequential session's and each lane's,
+    /// and the evaluator without changing selection, review permissions,
+    /// or stopping. Records observation only, except that a retained lane
+    /// is scored by a fresh copy of the frozen scorer.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub retain_candidates: bool,
     /// The final review reads files and host-recorded evidence only. It
@@ -341,10 +343,6 @@ impl Lean {
         }
         if self.score_sec == 0 {
             problems.push("executor.microluna.lean.score_sec must be at least 1".to_string());
-        }
-        if (self.protect_candidates || self.retain_candidates) && self.lanes > 1 {
-            problems
-                .push("candidate evidence currently supports one first-attempt lane".to_string());
         }
         if self.protect_candidates && !self.keep_best {
             problems.push("protect_candidates requires keep_best".to_string());
@@ -730,20 +728,59 @@ impl Micro {
     }
 }
 
-/// A lane's outcome: its session, its copy, score, and flag.
+/// A candidate identity: each file's SHA-256 by relative path.
+type Identity = BTreeMap<String, String>;
+
+/// A lane's outcome: its session, its copy, score, flag, and, when
+/// candidates are retained, its snapshot.
 struct LaneRun {
     ran: Ran,
     dir: PathBuf,
     score: Option<(u64, u64)>,
+    tail: String,
     flagged: bool,
+    /// The retained snapshot's path, its identity or why it couldn't be
+    /// kept, and the copy's milliseconds.
+    snapshot: Option<(PathBuf, Result<Identity, String>, u128)>,
 }
+
+/// What `retain_candidates` or `protect_candidates` keeps of each lane.
+struct LaneKeep<'a> {
+    /// The directory candidates are retained in.
+    retained: &'a Path,
+    /// Only a lane with a retained snapshot can be kept.
+    protect: bool,
+    /// The frozen evaluator's identity.
+    evaluator: Option<&'a BTreeMap<String, String>>,
+}
+
+/// The lane the host put in the workspace.
+struct KeptLane {
+    lane: usize,
+    session: u32,
+    score: Option<(u64, u64)>,
+    dir: PathBuf,
+    /// Whether `dir` is the retained candidate, which the loop keeps.
+    retained: bool,
+}
+
+/// Why the lean loop keeps the lane it keeps.
+pub const LANE_SELECTION: &str = "the highest frozen score among lanes that aren't flagged as \
+hard-coded; a tie goes to a done finish, then to the lower lane";
+
+/// Why protected lanes keep the lane they keep.
+pub const PROTECTED_LANE_SELECTION: &str = "the highest frozen score among lanes that aren't \
+flagged as hard-coded and have a retained snapshot; a tie goes to a done finish, then to the \
+lower lane";
 
 impl Micro {
     /// Runs `lanes` first attempts at once, each in a copy of the
     /// workspace with a different approach, scores each copy with the
     /// frozen scorer rebased to it, and puts the best one in the workspace.
-    /// Returns the sessions, the record, and the kept lane with its score
-    /// and a snapshot of it.
+    /// With `keep`, each lane is also retained as a candidate with its own
+    /// identity, score, and lane number, and scored with a fresh copy of
+    /// the frozen scorer. Returns the sessions, the records (each retained
+    /// lane's, then the lanes' summary), and the kept lane.
     #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
     async fn lean_lanes(
         &self,
@@ -759,17 +796,16 @@ impl Micro {
         start_tree: &BTreeMap<String, String>,
         wall_left: &dyn Fn() -> Option<Duration>,
         spent: f64,
-    ) -> (
-        Vec<Ran>,
-        Value,
-        Option<(usize, Option<(u64, u64)>, PathBuf)>,
-    ) {
+        scope: &candidate::Scope,
+        keep: Option<&LaneKeep<'_>>,
+        score_total: &mut Option<u64>,
+    ) -> (Vec<Ran>, Vec<Value>, Option<KeptLane>) {
         let real_before = parallel::tree(&self.workdir);
         let mut dirs = Vec::new();
         for _ in 0..lanes {
             let dir = scratch("lean-lane");
             let scorer = scratch("lean-lane-score");
-            if crate::handoff::copy_tree(&self.workdir, &dir).is_err()
+            if scope.snapshot(&self.workdir, &dir).is_err()
                 || rebase_scorer(frozen, &scorer, &self.workdir, &dir).is_err()
             {
                 let _ = std::fs::remove_dir_all(&dir);
@@ -841,24 +877,81 @@ impl Micro {
             .await;
         let mut outcomes = Vec::new();
         for (ran, (dir, scorer)) in runs.into_iter().zip(dirs.iter()) {
-            let (score, _) = self
-                .lean_score_in(scorer, lean, dir, wall_left().unwrap_or(Duration::MAX))
-                .await;
+            let remaining = wall_left().unwrap_or(Duration::MAX);
+            let (mut score, mut tail) = if let Some(keep) = keep {
+                // A lane session can edit its own scorer copy, so a retained
+                // lane is scored by a fresh copy of the intact frozen one.
+                let intact = keep
+                    .evaluator
+                    .is_some_and(|d| evidence_tree(frozen).as_ref() == Ok(d));
+                let fresh = scratch("lean-lane-score");
+                let scored = if intact && rebase_scorer(frozen, &fresh, &self.workdir, dir).is_ok()
+                {
+                    self.lean_score_in(&fresh, lean, dir, remaining).await
+                } else {
+                    (
+                        None,
+                        "The evaluator is missing or changed; its result is unknown.".to_string(),
+                    )
+                };
+                let _ = std::fs::remove_dir_all(&fresh);
+                scored
+            } else {
+                self.lean_score_in(scorer, lean, dir, remaining).await
+            };
+            if keep.is_some()
+                && let Some((_, total)) = score
+            {
+                if score_total.is_some_and(|expected| expected != total) {
+                    score = None;
+                    tail.push_str("\nThe score total changed; candidates are not comparable.");
+                } else {
+                    *score_total = Some(total);
+                }
+            }
             let flagged = !literal_examples(dir, start_tree, fields).is_empty();
             let _ = std::fs::remove_dir_all(scorer);
+            let snapshot = keep.map(|keep| {
+                let candidate = keep.retained.join(format!("session-{}", ran.number));
+                let started = Instant::now();
+                let identity = scope
+                    .bound(dir)
+                    .and_then(|()| scope.identity(dir))
+                    .and_then(|before| {
+                        scope.snapshot(dir, &candidate)?;
+                        if evidence_tree(&candidate)? != before {
+                            return Err("candidate copy differs from the lane".to_string());
+                        }
+                        Ok(before)
+                    });
+                (candidate, identity, started.elapsed().as_millis())
+            });
             outcomes.push(LaneRun {
                 ran,
                 dir: dir.clone(),
                 score,
+                tail,
                 flagged,
+                snapshot,
             });
         }
         let leaked = parallel::tree(&self.workdir) != real_before;
-        // The best lane: not flagged, then the score, then a done finish.
+        let protect = keep.is_some_and(|k| k.protect);
+        let excluded = |o: &LaneRun| -> Option<&'static str> {
+            if o.flagged {
+                Some("the workspace looks hard-coded")
+            } else if protect && !matches!(o.snapshot, Some((_, Ok(_), _))) {
+                Some("its snapshot could not be retained")
+            } else {
+                None
+            }
+        };
+        // The best lane: eligible, then the score, then a done finish, then
+        // the lower lane.
         let chosen = outcomes
             .iter()
             .enumerate()
-            .filter(|(_, o)| !o.flagged)
+            .filter(|(_, o)| excluded(o).is_none())
             .max_by(|(ia, a), (ib, b)| {
                 fraction(a.score)
                     .total_cmp(&fraction(b.score))
@@ -867,15 +960,66 @@ impl Micro {
             })
             .map(|(k, _)| k);
         let mut kept = None;
-        if let Some(k) = chosen
-            && crate::compose::replace_contents(&self.workdir, &outcomes[k].dir).is_ok()
-        {
-            let snapshot = scratch("lean-best");
-            if crate::handoff::copy_tree(&self.workdir, &snapshot).is_ok() {
-                kept = Some((k + 1, outcomes[k].score, snapshot));
+        let mut place_error = None;
+        if let Some(k) = chosen {
+            let o = &outcomes[k];
+            // A protected workspace becomes the retained candidate itself,
+            // so the submitted identity can be checked against it.
+            let from = match (&o.snapshot, protect) {
+                (Some((candidate, _, _)), true) => candidate.clone(),
+                _ => o.dir.clone(),
+            };
+            let placed = scope.restore(&self.workdir, &from).and_then(|()| {
+                if protect {
+                    return Ok(from.clone());
+                }
+                let snapshot = scratch("lean-best");
+                scope.snapshot(&self.workdir, &snapshot).map(|()| snapshot)
+            });
+            match placed {
+                Ok(dir) => {
+                    kept = Some(KeptLane {
+                        lane: k + 1,
+                        session: o.ran.number,
+                        score: o.score,
+                        dir,
+                        retained: protect,
+                    });
+                }
+                Err(error) => place_error = Some(error),
             }
         }
-        let record = json!({
+        let matches = kept.as_ref().filter(|k| k.retained).map(|k| {
+            let submitted = scope.identity(&self.workdir);
+            submitted.is_ok() && submitted == evidence_tree(&k.dir)
+        });
+        let mut records = Vec::new();
+        if let Some(keep) = keep {
+            for (k, o) in outcomes.iter().enumerate() {
+                let Some((candidate, identity, ms)) = &o.snapshot else {
+                    continue;
+                };
+                records.push(json!({
+                    "kind": "lean",
+                    "after_session": o.ran.number,
+                    "lane": k + 1,
+                    "batch": "lanes",
+                    "self_check": false,
+                    "status": o.ran.status(),
+                    "score": o.score.map(|(p, t)| json!({"passed": p, "total": t})),
+                    "score_tail": o.tail,
+                    "hardcoded": {"flagged": o.flagged},
+                    "kept": kept.as_ref().is_some_and(|kl| kl.lane == k + 1),
+                    "cost_usd": o.ran.cost_usd,
+                    "candidate": candidate.display().to_string(),
+                    "snapshot_error": identity.as_ref().err(),
+                    "snapshot_ms": ms,
+                    "workspace_files": identity.as_ref().ok(),
+                    "evaluator_files": keep.evaluator,
+                }));
+            }
+        }
+        records.push(json!({
             "kind": "lean.lanes",
             "lanes": outcomes.iter().enumerate().map(|(k, o)| json!({
                 "lane": k + 1,
@@ -884,12 +1028,30 @@ impl Micro {
                 "score": o.score.map(|(p, t)| json!({"passed": p, "total": t})),
                 "flagged": o.flagged,
                 "cost_usd": o.ran.cost_usd,
+                "excluded": excluded(o),
             })).collect::<Vec<_>>(),
-            "kept": chosen.map(|k| k + 1),
+            "kept": kept.as_ref().map(|k| k.lane),
             "leaked": leaked,
-        });
+            "selected": chosen.map(|k| json!({
+                "lane": k + 1,
+                "session": outcomes[k].ran.number,
+                "score": outcomes[k].score.map(|(p, t)| json!({"passed": p, "total": t})),
+                "status": outcomes[k].ran.status(),
+                "reason": if protect { PROTECTED_LANE_SELECTION } else { LANE_SELECTION },
+            })),
+            "place_error": place_error,
+            "selection_matches_workspace": matches,
+            "retained": keep.is_some(),
+        }));
+        let failed_snapshots = outcomes
+            .iter()
+            .filter_map(|o| match &o.snapshot {
+                Some((_, Err(error), _)) => Some(format!("attempt {}: {error}", o.ran.number - 1)),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
         crate::say::line(&format!(
-            "  microluna ▸ lean: {n} attempts scored {}; kept {}",
+            "  microluna ▸ lean: {n} attempts scored {}; kept {}{}{}",
             outcomes
                 .iter()
                 .map(|o| o
@@ -897,14 +1059,26 @@ impl Micro {
                     .map_or("none".to_string(), |(p, t)| format!("{p}/{t}")))
                 .collect::<Vec<_>>()
                 .join(", "),
-            chosen.map_or("none".to_string(), |k| format!("attempt {}", k + 1))
+            kept.as_ref()
+                .map_or("none".to_string(), |k| format!("attempt {}", k.lane)),
+            place_error.as_ref().map_or(String::new(), |e| format!(
+                "; the chosen attempt couldn't be put in the workspace: {e}"
+            )),
+            if failed_snapshots.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    "; the host couldn't keep a snapshot of {}",
+                    failed_snapshots.join("; ")
+                )
+            }
         ));
         let mut ran = Vec::new();
         for o in outcomes {
             let _ = std::fs::remove_dir_all(&o.dir);
             ran.push(o.ran);
         }
-        (ran, record, kept)
+        (ran, records, kept)
     }
 }
 
@@ -1162,6 +1336,9 @@ impl Micro {
             BTreeMap::new()
         };
         let start_tree = parallel::tree(&self.workdir);
+        // What a candidate is: the whole workspace, or in a Git work tree
+        // the files Git doesn't ignore.
+        let scope = candidate::Scope::of(&self.workdir);
         // A copy of the untouched workspace, for a real diff.
         let base = parallel::copyable(&self.workdir).then(|| scratch("lean-base"));
         let base = base.filter(|dir| crate::handoff::copy_tree(&self.workdir, dir).is_ok());
@@ -1200,11 +1377,21 @@ impl Micro {
         let mut detect_notes: Vec<String> = Vec::new();
         let mut rebriefed = false;
         let mut stopped = String::new();
-        let lanes = if lean.keep_best && lean.lanes > 1 && parallel::copyable(&self.workdir) {
+        let mut halted = false;
+        let lane_bound = (lean.keep_best && lean.lanes > 1).then(|| scope.bound(&self.workdir));
+        let lanes = if matches!(lane_bound, Some(Ok(()))) {
             lean.lanes as usize
         } else {
             1
         };
+        if let Some(Err(error)) = &lane_bound {
+            crate::say::line(&format!(
+                "  microluna ▸ lean: the {} attempts can't have copies of the workspace, so one \
+                 first attempt runs: {error}",
+                lean.lanes
+            ));
+            moves.push(json!({"kind": "lean.lanes_refused", "lanes": lean.lanes, "error": error}));
+        }
         let mut offset = 0u32;
         if lanes > 1 {
             // The scorer session: the evaluation script only.
@@ -1273,6 +1460,15 @@ impl Micro {
                         &start_tree,
                         &|| Some(time_left().min(wall_left().unwrap_or(Duration::MAX))),
                         spent,
+                        &scope,
+                        keep_evidence
+                            .then_some(LaneKeep {
+                                retained: &retained,
+                                protect: lean.protect_candidates,
+                                evaluator: evaluator_digest.as_ref(),
+                            })
+                            .as_ref(),
+                        &mut score_total,
                     )
                     .await;
                 for ran in &ran_lanes {
@@ -1280,26 +1476,47 @@ impl Micro {
                 }
                 offset += u32::try_from(ran_lanes.len()).unwrap_or(0);
                 sessions.extend(ran_lanes);
-                if let Some((lane, score, dir)) = kept {
+                if let Some(kept) = kept {
                     history.push(format!(
-                        "{lanes} attempts ran at once; the host kept attempt {lane}'s workspace, \
+                        "{lanes} attempts ran at once; the host kept attempt {}'s workspace, \
                          which scored {}.",
-                        score.map_or("nothing".to_string(), |(p, t)| format!("{p} of {t}"))
+                        kept.lane,
+                        kept.score
+                            .map_or("nothing".to_string(), |(p, t)| format!("{p} of {t}"))
                     ));
-                    best_cleanup.push(dir.clone());
+                    if !kept.retained {
+                        best_cleanup.push(kept.dir.clone());
+                    }
                     best = Some(Best {
-                        session: offset,
-                        score,
-                        dir,
+                        // Recording modes name the kept lane's own session;
+                        // v14 keeps naming the last lane's.
+                        session: if keep_evidence { kept.session } else { offset },
+                        score: kept.score,
+                        dir: kept.dir,
                     });
                 }
-                moves.push(record);
+                moves.extend(record);
+                if keep_evidence {
+                    let evidence = serde_json::to_vec_pretty(&moves).unwrap_or_default();
+                    if let Err(error) =
+                        crate::record::write_atomic(&retained.join("selection.json"), &evidence)
+                    {
+                        moves.push(json!({"kind": "lean.evidence_error", "error": error}));
+                        if lean.protect_candidates {
+                            stopped = format!("could not retain candidate evidence: {error}");
+                            halted = true;
+                        }
+                    }
+                }
             }
         }
         let total = offset + lean.sessions + u32::from(lean.self_check);
         let mut number = offset;
         let mut checking = false;
         loop {
+            if halted {
+                break;
+            }
             number += 1;
             if !checking && number > offset + lean.sessions {
                 stopped = format!("the lean loop used its {} sessions", lean.sessions);
@@ -1322,8 +1539,7 @@ impl Micro {
                 && lean.protect_candidates
                 && let Some(candidate) = &best
             {
-                if let Err(error) = crate::compose::replace_contents(&self.workdir, &candidate.dir)
-                {
+                if let Err(error) = scope.restore(&self.workdir, &candidate.dir) {
                     stopped =
                         format!("could not prepare the selected candidate for review: {error}");
                     break;
@@ -1536,18 +1752,20 @@ impl Micro {
             }
             let candidate = retained.join(format!("session-{number}"));
             let snapshot_started = Instant::now();
+            let bound = if keep_evidence || lean.keep_best {
+                scope.bound(&self.workdir)
+            } else {
+                Ok(())
+            };
             let snapshot = if keep_evidence {
-                if !parallel::copyable(&self.workdir) {
-                    Err("workspace exceeds the snapshot bound".to_string())
-                } else {
-                    evidence_tree(&self.workdir).and_then(|before| {
-                        crate::handoff::copy_tree(&self.workdir, &candidate)?;
-                        if evidence_tree(&candidate)? != before {
-                            return Err("candidate copy differs from the workspace".to_string());
-                        }
-                        Ok(())
-                    })
-                }
+                bound.clone().and_then(|()| {
+                    let before = scope.identity(&self.workdir)?;
+                    scope.snapshot(&self.workdir, &candidate)?;
+                    if evidence_tree(&candidate)? != before {
+                        return Err("candidate copy differs from the workspace".to_string());
+                    }
+                    Ok(())
+                })
             } else {
                 Ok(())
             };
@@ -1555,6 +1773,7 @@ impl Micro {
             // Protected selection keeps the earliest tied candidate. The
             // scalar score cannot establish that a later edit is better.
             let mut kept = false;
+            let mut keep_error = None;
             if lean.keep_best && !flagged && (!lean.protect_candidates || snapshot.is_ok()) {
                 let better = best.as_ref().is_none_or(|b| {
                     if lean.protect_candidates {
@@ -1563,29 +1782,47 @@ impl Micro {
                         fraction(score) >= fraction(b.score)
                     }
                 });
-                if better && parallel::copyable(&self.workdir) {
+                if better {
                     let dir = if lean.protect_candidates {
                         candidate.clone()
                     } else {
                         scratch("lean-best")
                     };
-                    if lean.protect_candidates
-                        || crate::handoff::copy_tree(&self.workdir, &dir).is_ok()
-                    {
-                        if !lean.protect_candidates {
-                            best_cleanup.push(dir.clone());
+                    let copied = if lean.protect_candidates {
+                        Ok(())
+                    } else {
+                        bound
+                            .clone()
+                            .and_then(|()| scope.snapshot(&self.workdir, &dir))
+                    };
+                    match copied {
+                        Ok(()) => {
+                            if !lean.protect_candidates {
+                                best_cleanup.push(dir.clone());
+                            }
+                            best = Some(Best {
+                                session: number,
+                                score,
+                                dir,
+                            });
+                            kept = true;
                         }
-                        best = Some(Best {
-                            session: number,
-                            score,
-                            dir,
-                        });
-                        kept = true;
+                        Err(error) => {
+                            let _ = std::fs::remove_dir_all(&dir);
+                            keep_error = Some(error);
+                        }
                     }
                 }
             }
+            let not_kept = match (&snapshot, &keep_error) {
+                (Err(error), _) => format!("; the host couldn't keep a snapshot: {error}"),
+                (Ok(()), Some(error)) => {
+                    format!("; the best so far, but the host couldn't keep a snapshot: {error}")
+                }
+                _ => String::new(),
+            };
             crate::say::line(&format!(
-                "  microluna ▸ session {number} {status}; {}; {}{}",
+                "  microluna ▸ session {number} {status}; {}; {}{}{}",
                 score.map_or("no tests ran".to_string(), |(p, t)| format!(
                     "{p} of {t} tests pass"
                 )),
@@ -1598,7 +1835,8 @@ impl Micro {
                     "; kept as the best so far"
                 } else {
                     ""
-                }
+                },
+                not_kept
             ));
             moves.push(json!({
                 "kind": "lean",
@@ -1612,8 +1850,9 @@ impl Micro {
                 "spent_usd": spent,
                 "candidate": keep_evidence.then(|| candidate.display().to_string()),
                 "snapshot_error": snapshot.err(),
+                "keep_error": keep_error,
                 "snapshot_ms": keep_evidence.then_some(snapshot_ms),
-                "workspace_files": keep_evidence.then(|| evidence_tree(&self.workdir).ok()),
+                "workspace_files": keep_evidence.then(|| scope.identity(&self.workdir).ok()),
                 "evaluator_files": evaluator_digest,
             }));
             if keep_evidence {
@@ -1683,7 +1922,7 @@ impl Micro {
                     || last_flagged
                     || fraction(b.score) > fraction(last_score))
             {
-                match crate::compose::replace_contents(&self.workdir, &b.dir) {
+                match scope.restore(&self.workdir, &b.dir) {
                     Ok(()) => {
                         stopped.push_str(&format!(
                             "; the host restored session {}'s workspace, the best by score",
@@ -1702,7 +1941,7 @@ impl Micro {
             let _ = std::fs::remove_dir_all(dir);
         }
         if lean.retain_candidates && !lean.protect_candidates {
-            let submitted = evidence_tree(&self.workdir);
+            let submitted = scope.identity(&self.workdir);
             let selected = moves.iter().rev().find(|item| {
                 let Some(path) = item["candidate"].as_str() else {
                     return false;
@@ -1713,9 +1952,12 @@ impl Micro {
             });
             let selected_session = selected.map(|item| item["after_session"].clone());
             let score = selected.map(|item| item["score"].clone());
+            let selected_lane = selected.map(|item| item["lane"].clone());
             moves.push(json!({
                 "kind": "lean.submitted",
                 "selected_session": selected_session,
+                "selected_lane": selected_lane,
+                "candidate_scope": scope.name(),
                 "selection_matches_workspace": selected_session.is_some(),
                 "result": "observed_without_revalidation",
                 "score": score,
@@ -1723,7 +1965,7 @@ impl Micro {
                 "review_status": moves.iter().rev().find(|item| item["self_check"] == true).map(|item| item["status"].clone()),
                 "workspace_files": submitted.as_ref().ok(),
                 "workspace_error": submitted.as_ref().err(),
-                "identity_scope": "file contents and link targets, excluding Git metadata, Python bytecode, and named caches",
+                "identity_scope": scope.describe(),
                 "benchmark_outcome": Value::Null,
             }));
             if let Ok(bytes) = serde_json::to_vec_pretty(&moves)
@@ -1759,10 +2001,14 @@ impl Micro {
             if score.is_some_and(|(_, total)| score_total != Some(total)) {
                 score = None;
             }
-            let submitted_files = evidence_tree(&self.workdir);
+            let submitted_files = scope.identity(&self.workdir);
             let selection_available = best.as_ref().is_some_and(|b| {
                 submitted_files.is_ok() && submitted_files == evidence_tree(&b.dir)
             });
+            let selected_session = best
+                .as_ref()
+                .filter(|_| selection_available)
+                .map(|b| b.session);
             let result = if !selection_available || score.is_none() {
                 "unknown"
             } else if score.is_some_and(|(p, t)| p == t) {
@@ -1775,7 +2021,11 @@ impl Micro {
             ));
             moves.push(json!({
                 "kind": "lean.submitted",
-                "selected_session": best.as_ref().filter(|_| selection_available).map(|b| b.session),
+                "selected_session": selected_session,
+                "selected_lane": selected_session.and_then(|n| moves.iter().find(|m| {
+                    m["kind"] == "lean" && m["after_session"].as_u64() == Some(u64::from(n))
+                }).map(|m| m["lane"].clone())),
+                "candidate_scope": scope.name(),
                 "selection_matches_workspace": selection_available,
                 "result": result,
                 "score": score.map(|(p, t)| json!({"passed": p, "total": t})),
@@ -1783,7 +2033,7 @@ impl Micro {
                 "review_status": sessions.last().filter(|r| r.read_only).map(Ran::status),
                 "workspace_files": submitted_files.as_ref().ok(),
                 "workspace_error": submitted_files.as_ref().err(),
-                "identity_scope": "file contents and link targets, excluding Git metadata, Python bytecode, and named caches",
+                "identity_scope": scope.describe(),
                 "benchmark_outcome": Value::Null,
             }));
             if let Ok(bytes) = serde_json::to_vec_pretty(&moves)
