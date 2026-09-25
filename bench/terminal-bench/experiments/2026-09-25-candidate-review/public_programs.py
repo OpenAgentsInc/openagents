@@ -80,6 +80,24 @@ def run(row):
     spec = json.loads((task / 'spec.json').read_text())
     data = {'candidate': candidate['files'], 'provided': spec['provided']}
     payload = json.dumps(data).encode()
+    earlier = source.parent / 'public-program/observation.json'
+    if a.record != 'generated' and earlier.exists():
+        record = json.loads(earlier.read_text())
+        original_path = task / 'generated/program.json'
+        original = json.loads(original_path.read_text())
+        if (record.get('input_sha256') != hashlib.sha256(payload).hexdigest()
+            or record.get('program_sha256') != hashlib.sha256(original_path.read_bytes()).hexdigest()
+            or original['program'] != program['program']):
+            raise ValueError('Cannot reuse execution of a different program or candidate')
+        admissions = {r['id']:r for r in program['admissions']}
+        scores = [admissions[o['id']]['score'] for o in record.get('observations', [])
+                  if o['verdict'] == 'failed' and o['id'] in admissions
+                  and admissions[o['id']]['grounded'] and admissions[o['id']]['score'] is not None]
+        record['score'] = max(scores) if scores and record['error'] is None else None
+        record['program_sha256'] = hashlib.sha256(program_path.read_bytes()).hexdigest()
+        record['execution_source'] = {'mode':'recorded', 'path':str(earlier), 'executions':0}
+        output.write_text(json.dumps(record, indent=2)+'\n')
+        return row['trial'], 'execution reused; admission rescored'
     name = 'truth9584-' + uuid.uuid4().hex[:20]
     began = time.monotonic()
     with tempfile.TemporaryDirectory(prefix='truth-public-') as scratch:
