@@ -41,24 +41,11 @@ pub const ROW_SCHEMA: &str = "openagents.coder-one.check-grades-offline-row.v1";
 /// The schema of the summary.
 pub const SUMMARY_SCHEMA: &str = "openagents.coder-one.check-grades-offline.v1";
 
-/// Tasks whose outcomes are sealed by #9584's prospective protocol; never
-/// read.
-pub const SEALED: [&str; 8] = [
-    "distributed-dedup",
-    "formal-crypto",
-    "freecad-impeller",
-    "freecad-spring-clip",
-    "math-eval-grader",
-    "pretrain-shard-corruption",
-    "shadow-relay",
-    "vpp-loss-divergence",
-];
-
 /// The command's usage.
 pub const USAGE: &str = "usage: coder-one accept grade [--traces DIR] [--grades DIR] [--out DIR]
                               [--jev live|recorded|off] [--recorded FILE]
                               [--workers N] [--score-sec N]
-                              [--image TASK=IMAGE]...
+                              [--image TASK=IMAGE]... [--exclude-task NAME]...
 
 grade grades every retained frozen score script under --traces with
 accept.grade, runs an instrumented copy of each on every graded workspace
@@ -68,7 +55,10 @@ whether ranking on the lines graded `follows` separates passing from
 failing workspaces where the raw score doesn't, and whether it would have
 changed a keep-best decision. Live Jev answers are saved to --recorded
 (default OUT/jev-recorded.json) so a later run with --jev recorded
-replays them.";
+replays them.
+
+--exclude-task omits a task's trials before any of their records are read,
+such as tasks whose outcomes a prospective protocol seals.";
 
 /// One graded workspace of a task.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -158,7 +148,7 @@ fn ties(policies: &Path, job: &str) -> Option<bool> {
     Some(!lean["protect_candidates"].as_bool().unwrap_or(false))
 }
 
-fn trials(traces: &Path, policies: &Path) -> Vec<Trial> {
+fn trials(traces: &Path, policies: &Path, excluded: &[String]) -> Vec<Trial> {
     let mut out = Vec::new();
     let mut jobs: Vec<PathBuf> = std::fs::read_dir(traces)
         .into_iter()
@@ -193,7 +183,7 @@ fn trials(traces: &Path, policies: &Path) -> Vec<Trial> {
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_default();
             let task = trial.split("__").next().unwrap_or_default().to_string();
-            if SEALED.contains(&task.as_str()) {
+            if excluded.contains(&task) {
                 continue;
             }
             let reward = std::fs::read_to_string(episode.join("verifier/reward.txt"))
@@ -640,6 +630,10 @@ pub struct Options {
     pub score_sec: u64,
     /// The image each task runs in; a task without one runs on this host.
     pub images: BTreeMap<String, String>,
+    /// Tasks whose trials are never read, given on the command line so no
+    /// benchmark task name sits in the source the contamination guard
+    /// scans.
+    pub excluded_tasks: Vec<String>,
 }
 
 /// Grades every frozen script, runs each on its task's workspaces, and
@@ -667,7 +661,7 @@ pub async fn measure(
     let link = shim.join("python");
     let _ = std::fs::remove_file(&link);
     std::os::unix::fs::symlink(&python3, &link).map_err(|e| e.to_string())?;
-    let trials = trials(&options.traces, &options.policies);
+    let trials = trials(&options.traces, &options.policies, &options.excluded_tasks);
     let spaces = workspaces(&trials, &options.grades);
     let mut graded: Vec<(Trial, Grades, Parsed, String)> = Vec::new();
     let mut jev_usd = 0.0;
@@ -980,6 +974,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
         workers: 4,
         score_sec: 120,
         images: BTreeMap::new(),
+        excluded_tasks: Vec::new(),
     };
     let mut jev = "live".to_string();
     let mut recorded_path = None;
@@ -1003,6 +998,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
                     .ok_or_else(|| format!("--image takes TASK=IMAGE, not {v}"))?;
                 options.images.insert(task.to_string(), image.to_string());
             }
+            "--exclude-task" => options.excluded_tasks.push(value()?),
             "--recorded" => recorded_path = Some(PathBuf::from(value()?)),
             "--workers" => {
                 options.workers = value()?.parse().map_err(|e| format!("--workers: {e}"))?

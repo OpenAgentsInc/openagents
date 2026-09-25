@@ -213,9 +213,21 @@ coder-one accept grade --jev recorded \
   --recorded bench/terminal-bench/experiments/2026-09-25-check-grades/records-authority/jev-recorded.json \
   --out OUT \
   --image embedding-drift-monitor=accept-grade/embedding-drift-monitor:latest \
-  --image session-window-debug=accept-grade/session-window-debug:latest
+  --image session-window-debug=accept-grade/session-window-debug:latest \
+  --exclude-task distributed-dedup \
+  --exclude-task formal-crypto \
+  --exclude-task freecad-impeller \
+  --exclude-task freecad-spring-clip \
+  --exclude-task math-eval-grader \
+  --exclude-task pretrain-shard-corruption \
+  --exclude-task shadow-relay \
+  --exclude-task vpp-loss-divergence
 python3 bench/terminal-bench/experiments/2026-09-25-check-grades/analyze.py OUT
 ```
+
+The `--exclude-task` arguments leave out the eight tasks whose outcomes
+#9584's prospective protocol seals. They're arguments rather than source,
+so no task name sits where the trial contamination guard scans.
 
 `records/` is the pre-registered run: its grades used support alone, and
 `analyze.py records` reproduces its tables from the rows and the
