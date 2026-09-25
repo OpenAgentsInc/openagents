@@ -324,3 +324,16 @@ winners held back an identifier field as labels.
 
 Every task other than `embedding-drift-monitor` remains unsolved by Luna
 in the fire loop.
+
+## Round 5: time
+
+Runs on `sound-change-cascade` hit the lean loop's 20-minute wall with
+their own score still rising. `microluna-v19-long` gives the loop 60
+minutes. Its run climbed steadily (62, 228, 381, 517, 651, 706, 740, 762
+of 780 on its own check) and ended at the wall with 762 of 780 training
+pairs and 150 of 168 hidden pairs right, reward 0, for $0.15 of Luna and
+Jev. The hidden score says the rules generalize rather than memorize.
+Fable 5.1 low passes the task in a median of 17 minutes for $4.55.
+On `risk-scorer-replay` the same arm finished at 9 min 50 s, because
+Luna declared done and its own check passed, so the extra time went
+unused. `microluna-v19-xlong` gives the loop 120 minutes and $0.60.
