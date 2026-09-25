@@ -1,0 +1,1065 @@
+{
+  "schema": "openagents.retained-evidence-index.v1",
+  "files": [
+    {
+      "path": "records/README.md",
+      "bytes": 1919,
+      "sha256": "98fc0351a0117ff96bbb77f9071dd376cdf8d86e90b1f24837248f19f6df8617"
+    },
+    {
+      "path": "records/attempts/cumulative-layout-shift/a1/attempt.json",
+      "bytes": 6277,
+      "sha256": "7bf9d8059f5f1d269c6cf0e0d4d5354309fafc3a8c467d37a3e12a1d30e74cbb"
+    },
+    {
+      "path": "records/attempts/cumulative-layout-shift/a1/episode-doctor.txt",
+      "bytes": 595,
+      "sha256": "3667f2f8d72b1aa2abb31c2aa75f90b2023469cbfcdb909ee7a2db02e2663a05"
+    },
+    {
+      "path": "records/attempts/cumulative-layout-shift/a1/launch.json",
+      "bytes": 1159,
+      "sha256": "94b2ba0c84553dbafaed5c625e7b94a260fe1f1ffab463c70e61b53883b04fc3"
+    },
+    {
+      "path": "records/attempts/cumulative-layout-shift/a1/manifest.json",
+      "bytes": 4891,
+      "sha256": "7e3c2404b578b6231657690c0647c8c90ef97527ae355d7928378d6f23c0b48d"
+    },
+    {
+      "path": "records/attempts/cumulative-layout-shift/a1/outcome.json",
+      "bytes": 934,
+      "sha256": "838c4be6d671f96fce3248cb0dc26dd2e477d7055e35749311b8fcb6f310abe8"
+    },
+    {
+      "path": "records/attempts/cumulative-layout-shift/a1/test-counts.json",
+      "bytes": 3,
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "records/attempts/cumulative-layout-shift/a1/usage.json",
+      "bytes": 11373,
+      "sha256": "87df0d8ae667f95a6cb032f9fc87ffa35aefdc4a3181b08d28d0415538625f48"
+    },
+    {
+      "path": "records/attempts/cumulative-layout-shift/a2/attempt.json",
+      "bytes": 6174,
+      "sha256": "c425e5442ada3da22c68e34e30ca5b6be5642a88ee2f069e4175bd9bf4961e6c"
+    },
+    {
+      "path": "records/attempts/cumulative-layout-shift/a2/episode-doctor.txt",
+      "bytes": 595,
+      "sha256": "3667f2f8d72b1aa2abb31c2aa75f90b2023469cbfcdb909ee7a2db02e2663a05"
+    },
+    {
+      "path": "records/attempts/cumulative-layout-shift/a2/launch.json",
+      "bytes": 1159,
+      "sha256": "2130d9901c2cea915d6f8356843c9e4ba01319f9f6610d4b24f71a730ef13cb8"
+    },
+    {
+      "path": "records/attempts/cumulative-layout-shift/a2/manifest.json",
+      "bytes": 4895,
+      "sha256": "70db77d50d3ed2977311f190596616d5dd90b278e198e22eb0083a75f516a620"
+    },
+    {
+      "path": "records/attempts/cumulative-layout-shift/a2/outcome.json",
+      "bytes": 934,
+      "sha256": "422dc7075d6d8026e0a6a2d30cbd0f694b2f8124c49fc6ba479b490b924a7bdb"
+    },
+    {
+      "path": "records/attempts/cumulative-layout-shift/a2/test-counts.json",
+      "bytes": 3,
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "records/attempts/cumulative-layout-shift/a2/usage.json",
+      "bytes": 11453,
+      "sha256": "726f193b064ce2e178c9d8956161be5200b3c9429356b6ee1c3c6ac42e320a22"
+    },
+    {
+      "path": "records/attempts/cumulative-layout-shift/a3/attempt.json",
+      "bytes": 6168,
+      "sha256": "adc6dc066ce21b9173e30393e535b0c10eace8bef284819773c58e391be947fe"
+    },
+    {
+      "path": "records/attempts/cumulative-layout-shift/a3/episode-doctor.txt",
+      "bytes": 595,
+      "sha256": "3667f2f8d72b1aa2abb31c2aa75f90b2023469cbfcdb909ee7a2db02e2663a05"
+    },
+    {
+      "path": "records/attempts/cumulative-layout-shift/a3/launch.json",
+      "bytes": 1159,
+      "sha256": "fe4033d0fe6aebbc23c6974f308aae780b386e3b571b961f62e03702aadd518f"
+    },
+    {
+      "path": "records/attempts/cumulative-layout-shift/a3/manifest.json",
+      "bytes": 4887,
+      "sha256": "2747227e107903922f483f920b66cd3787402c5a8edf0fbb28c777179b76cabd"
+    },
+    {
+      "path": "records/attempts/cumulative-layout-shift/a3/outcome.json",
+      "bytes": 934,
+      "sha256": "9fdaf2f7cef32df5e2f4c0a25b062be165027aa22b69016d04bafa484decce6b"
+    },
+    {
+      "path": "records/attempts/cumulative-layout-shift/a3/test-counts.json",
+      "bytes": 3,
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "records/attempts/cumulative-layout-shift/a3/usage.json",
+      "bytes": 11375,
+      "sha256": "c630866bab66cfd4c66000ad5849d64be339e25e1d54b54b34499aad2310e11f"
+    },
+    {
+      "path": "records/attempts/live-database-cutover/a1/attempt.json",
+      "bytes": 6303,
+      "sha256": "8619c551f8896ab9528baa84fcf33944fed523910bdf4862866886a521cc5af1"
+    },
+    {
+      "path": "records/attempts/live-database-cutover/a1/episode-doctor.txt",
+      "bytes": 595,
+      "sha256": "3667f2f8d72b1aa2abb31c2aa75f90b2023469cbfcdb909ee7a2db02e2663a05"
+    },
+    {
+      "path": "records/attempts/live-database-cutover/a1/launch.json",
+      "bytes": 1155,
+      "sha256": "512204937933b8a49b9b8a3d4db7ad1f92e15fe02b50076f6c3b090d8a4bf446"
+    },
+    {
+      "path": "records/attempts/live-database-cutover/a1/manifest.json",
+      "bytes": 6282,
+      "sha256": "0299f0391373b7976d100a91c4f1e4f4fa145083d42eee64e3c259e9e441bc41"
+    },
+    {
+      "path": "records/attempts/live-database-cutover/a1/outcome.json",
+      "bytes": 930,
+      "sha256": "056a2808e334d2f9a29ff50bee590adcb0193cd629fcb0b0191396c87875a58d"
+    },
+    {
+      "path": "records/attempts/live-database-cutover/a1/test-counts.json",
+      "bytes": 204,
+      "sha256": "aadd729c19bec3feff07a1a2e89f404821caeafe0df2ac2bf4fe3a160e358983"
+    },
+    {
+      "path": "records/attempts/live-database-cutover/a1/usage.json",
+      "bytes": 8402,
+      "sha256": "7b1916640cb6bc222d175aeff5d3858e7551d7479bb5c16ebeb77490fa54abfc"
+    },
+    {
+      "path": "records/attempts/live-database-cutover/a2/attempt.json",
+      "bytes": 6193,
+      "sha256": "e441b18ea93dec0a543735c3c38b139481fbcfad0dd216904690183bb20caa94"
+    },
+    {
+      "path": "records/attempts/live-database-cutover/a2/episode-doctor.txt",
+      "bytes": 595,
+      "sha256": "3667f2f8d72b1aa2abb31c2aa75f90b2023469cbfcdb909ee7a2db02e2663a05"
+    },
+    {
+      "path": "records/attempts/live-database-cutover/a2/launch.json",
+      "bytes": 1155,
+      "sha256": "af13fde481b850e89272ab4e3199b643118f9fa24c5cc8a8da8430659d8981fb"
+    },
+    {
+      "path": "records/attempts/live-database-cutover/a2/manifest.json",
+      "bytes": 6278,
+      "sha256": "119aa7d086a0bd3ae5051bcce292f2e44ed311de9552abdb4f060c0f9bc0fca9"
+    },
+    {
+      "path": "records/attempts/live-database-cutover/a2/outcome.json",
+      "bytes": 930,
+      "sha256": "a96f7b5b68f48477b030b99b2ca52eab1085a758123af90c6f2a405f20047230"
+    },
+    {
+      "path": "records/attempts/live-database-cutover/a2/test-counts.json",
+      "bytes": 204,
+      "sha256": "26f316f7ded4f4bd4c21bfc768b5e6a33832b8d456f2deed7f4bc7f46a2f75f8"
+    },
+    {
+      "path": "records/attempts/live-database-cutover/a2/usage.json",
+      "bytes": 8770,
+      "sha256": "5aeacfb8710436c5a40741a263c26657c8f2741d51486f1a9394e3645a33c5da"
+    },
+    {
+      "path": "records/attempts/live-database-cutover/a3/attempt.json",
+      "bytes": 6203,
+      "sha256": "91d3ea13bc52e009d7f60a72693836f9bf5d60614007107dcb59306ae18931cc"
+    },
+    {
+      "path": "records/attempts/live-database-cutover/a3/episode-doctor.txt",
+      "bytes": 595,
+      "sha256": "3667f2f8d72b1aa2abb31c2aa75f90b2023469cbfcdb909ee7a2db02e2663a05"
+    },
+    {
+      "path": "records/attempts/live-database-cutover/a3/launch.json",
+      "bytes": 1155,
+      "sha256": "9fd14131154bfe97dcc345d70f0f736b1cb15dd6d56bbdc12db3cffb5ad32f1e"
+    },
+    {
+      "path": "records/attempts/live-database-cutover/a3/manifest.json",
+      "bytes": 6287,
+      "sha256": "32426751c960275239d25773a53dd78afae39023e19c65ac6a7bc4ce6e558fc1"
+    },
+    {
+      "path": "records/attempts/live-database-cutover/a3/outcome.json",
+      "bytes": 930,
+      "sha256": "85eac78b66a964b99f061a9a4d4621563da6cc8134742496ec8aa822e4bf63c4"
+    },
+    {
+      "path": "records/attempts/live-database-cutover/a3/test-counts.json",
+      "bytes": 204,
+      "sha256": "4e11c242c4a686790697e2836f23b61a60e24ad83d63e61a45de288cfeec37b9"
+    },
+    {
+      "path": "records/attempts/live-database-cutover/a3/usage.json",
+      "bytes": 8438,
+      "sha256": "c5ed296bc812346e10c4f7b80764a989cf9557ed9a4184d64262182be64156fb"
+    },
+    {
+      "path": "records/attempts/mp-checkpoint-consolidation/a1/attempt.json",
+      "bytes": 6126,
+      "sha256": "496867e66ac6cbcc935e3f9ef8e7cd3bf047604304b7fa40e36197cf2306427e"
+    },
+    {
+      "path": "records/attempts/mp-checkpoint-consolidation/a1/episode-doctor.txt",
+      "bytes": 595,
+      "sha256": "3667f2f8d72b1aa2abb31c2aa75f90b2023469cbfcdb909ee7a2db02e2663a05"
+    },
+    {
+      "path": "records/attempts/mp-checkpoint-consolidation/a1/launch.json",
+      "bytes": 1167,
+      "sha256": "b976672e10fa7e1271c24227364092853cc5c23b1493a5cdb8c20bd9730dbef0"
+    },
+    {
+      "path": "records/attempts/mp-checkpoint-consolidation/a1/manifest.json",
+      "bytes": 5239,
+      "sha256": "bc8417aa5b1a37216fbf4d377eb9be23c6908b0d87f793e323c493a078a7892c"
+    },
+    {
+      "path": "records/attempts/mp-checkpoint-consolidation/a1/outcome.json",
+      "bytes": 942,
+      "sha256": "3efef6650347d5f2e25b47f1dccfac063490d6e91d590eea5887a64d334f15eb"
+    },
+    {
+      "path": "records/attempts/mp-checkpoint-consolidation/a1/test-counts.json",
+      "bytes": 202,
+      "sha256": "5da56d9de4a0360cc4a50a84d160ae0145981778e0839bde473ccdc17ff04a55"
+    },
+    {
+      "path": "records/attempts/mp-checkpoint-consolidation/a1/usage.json",
+      "bytes": 10264,
+      "sha256": "efe8b3f8e6f4d58abcd0ecf1ab01031364f7314fbcf2f798ba8e54aec31560f4"
+    },
+    {
+      "path": "records/attempts/mp-checkpoint-consolidation/a2/attempt.json",
+      "bytes": 6075,
+      "sha256": "eca7d24991c42ef767f4c964375e2c70f01a3f2de988ba579b28937ac62fc8f2"
+    },
+    {
+      "path": "records/attempts/mp-checkpoint-consolidation/a2/episode-doctor.txt",
+      "bytes": 595,
+      "sha256": "3667f2f8d72b1aa2abb31c2aa75f90b2023469cbfcdb909ee7a2db02e2663a05"
+    },
+    {
+      "path": "records/attempts/mp-checkpoint-consolidation/a2/launch.json",
+      "bytes": 1167,
+      "sha256": "7e95bf1a17ce9548236b98bf888a26cad6ea2f24d464617aff91b5ea77f53c0a"
+    },
+    {
+      "path": "records/attempts/mp-checkpoint-consolidation/a2/manifest.json",
+      "bytes": 5237,
+      "sha256": "70bb81c3c7bc86d6164c6185926e9fe3b08817899f23c2652ea9b1f1e7f9f631"
+    },
+    {
+      "path": "records/attempts/mp-checkpoint-consolidation/a2/outcome.json",
+      "bytes": 942,
+      "sha256": "1c0e1b5baf3dfff7ebbbbbfa941986986e347502d5305bdc8b0ca1458e55568e"
+    },
+    {
+      "path": "records/attempts/mp-checkpoint-consolidation/a2/test-counts.json",
+      "bytes": 202,
+      "sha256": "b48f119b8e0bdd14ea22f32de4625093161767d6f5480b07b11f04207a5b5988"
+    },
+    {
+      "path": "records/attempts/mp-checkpoint-consolidation/a2/usage.json",
+      "bytes": 10312,
+      "sha256": "313409fcda3f48e9cd6882f53ccf72b55eff920b5d77b1ca4bbb826e494c2421"
+    },
+    {
+      "path": "records/attempts/mp-checkpoint-consolidation/a3/attempt.json",
+      "bytes": 6075,
+      "sha256": "1cba83f0a52f95fa06d089f40e4f292c7f9ee540cd60e7dce81dbb737d4bf5af"
+    },
+    {
+      "path": "records/attempts/mp-checkpoint-consolidation/a3/episode-doctor.txt",
+      "bytes": 595,
+      "sha256": "3667f2f8d72b1aa2abb31c2aa75f90b2023469cbfcdb909ee7a2db02e2663a05"
+    },
+    {
+      "path": "records/attempts/mp-checkpoint-consolidation/a3/launch.json",
+      "bytes": 1167,
+      "sha256": "149b2ec5000e7384f4bc99c34492be08a7628e5241f83e9ef30fa0d8f06fdc7d"
+    },
+    {
+      "path": "records/attempts/mp-checkpoint-consolidation/a3/manifest.json",
+      "bytes": 5237,
+      "sha256": "7e511be49c34faa07235cd1d6c938809f10ec28bd5fe73f315228068c5880a53"
+    },
+    {
+      "path": "records/attempts/mp-checkpoint-consolidation/a3/outcome.json",
+      "bytes": 942,
+      "sha256": "eab30d3819ac445fa327e369dcc5c986ff245eb289967948c83f3a2310491b90"
+    },
+    {
+      "path": "records/attempts/mp-checkpoint-consolidation/a3/test-counts.json",
+      "bytes": 202,
+      "sha256": "8b984c11cf9cbf9c31c0eecffd5d4c9191235af7d45059d8933e6660daaf90e5"
+    },
+    {
+      "path": "records/attempts/mp-checkpoint-consolidation/a3/usage.json",
+      "bytes": 10302,
+      "sha256": "c7bd227f70cc4b37614cb79ea5efbdf1b251aec006981acf94dbabbf53e5ac52"
+    },
+    {
+      "path": "records/attempts/payments-pipeline-fix/a1/attempt.json",
+      "bytes": 6168,
+      "sha256": "885e25734aa094a0b5f2557228db93d4aa0f1bf781a26ac346a1cf8d64676213"
+    },
+    {
+      "path": "records/attempts/payments-pipeline-fix/a1/episode-doctor.txt",
+      "bytes": 595,
+      "sha256": "3667f2f8d72b1aa2abb31c2aa75f90b2023469cbfcdb909ee7a2db02e2663a05"
+    },
+    {
+      "path": "records/attempts/payments-pipeline-fix/a1/launch.json",
+      "bytes": 1155,
+      "sha256": "5e4b566bc0dc2ef91296adce7ede2cc77be405969e74d5492273e92a9e8aa593"
+    },
+    {
+      "path": "records/attempts/payments-pipeline-fix/a1/manifest.json",
+      "bytes": 7997,
+      "sha256": "7053e4619f7f9536157424b831fd7a1f9ab944271cdf66103722975f97ef85b7"
+    },
+    {
+      "path": "records/attempts/payments-pipeline-fix/a1/outcome.json",
+      "bytes": 930,
+      "sha256": "736171df98066849df2d39ee8811a54dcb9b5bc45c5e88b7339505178d845609"
+    },
+    {
+      "path": "records/attempts/payments-pipeline-fix/a1/test-counts.json",
+      "bytes": 202,
+      "sha256": "e27ade77ecf583c259bbec3843ce6da23186cb1229b13a5e6f0b511d8a7b1d61"
+    },
+    {
+      "path": "records/attempts/payments-pipeline-fix/a1/usage.json",
+      "bytes": 9168,
+      "sha256": "a59f51ea30f598578d32781948b721ab878e3f33c02d9648c37d8929039ba6b3"
+    },
+    {
+      "path": "records/attempts/payments-pipeline-fix/a2/attempt.json",
+      "bytes": 6181,
+      "sha256": "c995b4da669e4cf5bd18f4493ec3826bac9bb3596a09de28c99cb79bbe1105c6"
+    },
+    {
+      "path": "records/attempts/payments-pipeline-fix/a2/episode-doctor.txt",
+      "bytes": 595,
+      "sha256": "3667f2f8d72b1aa2abb31c2aa75f90b2023469cbfcdb909ee7a2db02e2663a05"
+    },
+    {
+      "path": "records/attempts/payments-pipeline-fix/a2/launch.json",
+      "bytes": 1155,
+      "sha256": "e25f657371d3a5da55b25427d093547b41bc31782c2caab22796e365442e9ab5"
+    },
+    {
+      "path": "records/attempts/payments-pipeline-fix/a2/manifest.json",
+      "bytes": 8008,
+      "sha256": "4a62256adf272ca8c110e1f8d638a48e3cf045b285d7e7e1c26b725bfad0f5ed"
+    },
+    {
+      "path": "records/attempts/payments-pipeline-fix/a2/outcome.json",
+      "bytes": 930,
+      "sha256": "28e319605635d802075278a6e16dd141376f6c293180c3f43673b52dd156c5da"
+    },
+    {
+      "path": "records/attempts/payments-pipeline-fix/a2/test-counts.json",
+      "bytes": 202,
+      "sha256": "d4b9d8060c6691bfff997ea11ff511d535666ff8e366cf3cfed0bea3ee10b5fe"
+    },
+    {
+      "path": "records/attempts/payments-pipeline-fix/a2/usage.json",
+      "bytes": 9595,
+      "sha256": "eb1db26d27223d62ec697182b2a129947d1221204378b23a063fef0d45738925"
+    },
+    {
+      "path": "records/attempts/payments-pipeline-fix/a3/attempt.json",
+      "bytes": 6175,
+      "sha256": "799b3a790bafb437ed8ff16f32c63f1c40e0656d157f22cfd47b92d2b25f7898"
+    },
+    {
+      "path": "records/attempts/payments-pipeline-fix/a3/episode-doctor.txt",
+      "bytes": 595,
+      "sha256": "3667f2f8d72b1aa2abb31c2aa75f90b2023469cbfcdb909ee7a2db02e2663a05"
+    },
+    {
+      "path": "records/attempts/payments-pipeline-fix/a3/launch.json",
+      "bytes": 1155,
+      "sha256": "7c7f1ac90304c3aa679110001484a264463f87db2e904a9b3c64b117ec4bf425"
+    },
+    {
+      "path": "records/attempts/payments-pipeline-fix/a3/manifest.json",
+      "bytes": 8002,
+      "sha256": "70271cd1a20a8975b13e66822ae681c23604560102c01af50af3a936c02e0a49"
+    },
+    {
+      "path": "records/attempts/payments-pipeline-fix/a3/outcome.json",
+      "bytes": 930,
+      "sha256": "616371c4b054138b8c4771c53dc2f630e2aa3231cda03f1722a1ce0e579f7abf"
+    },
+    {
+      "path": "records/attempts/payments-pipeline-fix/a3/test-counts.json",
+      "bytes": 202,
+      "sha256": "e7512c6bdab5bdf73cb2095f840b82b9e653ffc8c92a77712b40dea248ebccbb"
+    },
+    {
+      "path": "records/attempts/payments-pipeline-fix/a3/usage.json",
+      "bytes": 9194,
+      "sha256": "5306f607fc601ffca8882c48ac0a4b9dc160dd8fba1ab8e280a9ec212d761287"
+    },
+    {
+      "path": "records/attempts/photonic-waveguide-routing/a1/attempt.json",
+      "bytes": 6170,
+      "sha256": "eef123f3439533619e40056700209a4e82470d19f56a1129a32ac8f94879f100"
+    },
+    {
+      "path": "records/attempts/photonic-waveguide-routing/a1/episode-doctor.txt",
+      "bytes": 595,
+      "sha256": "3667f2f8d72b1aa2abb31c2aa75f90b2023469cbfcdb909ee7a2db02e2663a05"
+    },
+    {
+      "path": "records/attempts/photonic-waveguide-routing/a1/launch.json",
+      "bytes": 1165,
+      "sha256": "d6efd4ab384cd807104f188a6e32746d5feee25ae65c48e017779a70f5678075"
+    },
+    {
+      "path": "records/attempts/photonic-waveguide-routing/a1/manifest.json",
+      "bytes": 5215,
+      "sha256": "2cc226fd9177899f9880e4bbbd44d8c00670c7092e84bac7b2d9cb43932cbd5b"
+    },
+    {
+      "path": "records/attempts/photonic-waveguide-routing/a1/outcome.json",
+      "bytes": 940,
+      "sha256": "b018212d58cd6d7f998942fb72c24f0ed09d3c2082b3634e83226d2e314a4ede"
+    },
+    {
+      "path": "records/attempts/photonic-waveguide-routing/a1/test-counts.json",
+      "bytes": 204,
+      "sha256": "0b89e1856b0c087e7f33440aa74206448ad1a27f4d5cf6b579f3fb173cb18ebd"
+    },
+    {
+      "path": "records/attempts/photonic-waveguide-routing/a1/usage.json",
+      "bytes": 8029,
+      "sha256": "67252678819811ad7e04050d3199a8755770130893e0a15ef6dc0808217f764a"
+    },
+    {
+      "path": "records/attempts/photonic-waveguide-routing/a2/attempt.json",
+      "bytes": 6065,
+      "sha256": "6d97b111a3014ed35b0e5b09ff2723268b941a481305e534f461e83682649c9f"
+    },
+    {
+      "path": "records/attempts/photonic-waveguide-routing/a2/episode-doctor.txt",
+      "bytes": 595,
+      "sha256": "3667f2f8d72b1aa2abb31c2aa75f90b2023469cbfcdb909ee7a2db02e2663a05"
+    },
+    {
+      "path": "records/attempts/photonic-waveguide-routing/a2/launch.json",
+      "bytes": 1165,
+      "sha256": "ac5a2eb8a0881637fffdb877f48a4426afe73e94c56cc4805a8f9058778d9ced"
+    },
+    {
+      "path": "records/attempts/photonic-waveguide-routing/a2/manifest.json",
+      "bytes": 5210,
+      "sha256": "56b7184ea7b85a63f56bca1f5ae2ecf0aa3c8d7f578ab42496a68bea68a6278c"
+    },
+    {
+      "path": "records/attempts/photonic-waveguide-routing/a2/outcome.json",
+      "bytes": 940,
+      "sha256": "87afb731343813a53869fb378a9553c00eea417f901613f52d1c7ce645c0b7d1"
+    },
+    {
+      "path": "records/attempts/photonic-waveguide-routing/a2/test-counts.json",
+      "bytes": 204,
+      "sha256": "18e99a82d50fa86756b48f011839494f1dcd8ef6592b7f9650cd0061c262404c"
+    },
+    {
+      "path": "records/attempts/photonic-waveguide-routing/a2/usage.json",
+      "bytes": 8030,
+      "sha256": "b8a4bc3de3e2a574996e26c8716b0f2af702912b2f33450692baeb8e6e78b9e7"
+    },
+    {
+      "path": "records/attempts/photonic-waveguide-routing/a3/attempt.json",
+      "bytes": 6065,
+      "sha256": "8ca5ec5bc1a54f495e4f85760eeaba392cbf25116a3928adddd109e4f04f74ae"
+    },
+    {
+      "path": "records/attempts/photonic-waveguide-routing/a3/episode-doctor.txt",
+      "bytes": 595,
+      "sha256": "3667f2f8d72b1aa2abb31c2aa75f90b2023469cbfcdb909ee7a2db02e2663a05"
+    },
+    {
+      "path": "records/attempts/photonic-waveguide-routing/a3/launch.json",
+      "bytes": 1165,
+      "sha256": "aef46a9bd8a4dba03dbfd75ea4fcc278d49b869a54a3bbf39e556509ebdbf8a9"
+    },
+    {
+      "path": "records/attempts/photonic-waveguide-routing/a3/manifest.json",
+      "bytes": 5213,
+      "sha256": "328c3d45db2b058b0f73ee4ad642fbc3e599c289f85c2ee2bff0b9825835c7e2"
+    },
+    {
+      "path": "records/attempts/photonic-waveguide-routing/a3/outcome.json",
+      "bytes": 940,
+      "sha256": "a0b69c5aaf7112031c1d5af3e79f5c75b60224285ef68b9defe0ccd110179609"
+    },
+    {
+      "path": "records/attempts/photonic-waveguide-routing/a3/test-counts.json",
+      "bytes": 204,
+      "sha256": "8d268efbf8fd5a7a140242783516d31065221367e3e4a96a470a69bdf261f6d2"
+    },
+    {
+      "path": "records/attempts/photonic-waveguide-routing/a3/usage.json",
+      "bytes": 8037,
+      "sha256": "ac7fdda608ef40573bbc9ea463e6239d87169485ab6dca03ec52d5b31a291175"
+    },
+    {
+      "path": "records/attempts/telecom-entity-resolution/a1/attempt.json",
+      "bytes": 6176,
+      "sha256": "1d545917f3c01d740f49488d9fada7bdf6d431033c647fc24dd40765b23729b6"
+    },
+    {
+      "path": "records/attempts/telecom-entity-resolution/a1/episode-doctor.txt",
+      "bytes": 595,
+      "sha256": "3667f2f8d72b1aa2abb31c2aa75f90b2023469cbfcdb909ee7a2db02e2663a05"
+    },
+    {
+      "path": "records/attempts/telecom-entity-resolution/a1/launch.json",
+      "bytes": 1163,
+      "sha256": "c41aa0cd66cd6c685ef8e83e5aa5b5726c6337250980b00ca2825ae3089ee562"
+    },
+    {
+      "path": "records/attempts/telecom-entity-resolution/a1/manifest.json",
+      "bytes": 5219,
+      "sha256": "50cc34c721dd875afee251c907a0452e070344483c5396d85b3dd34b92ab7990"
+    },
+    {
+      "path": "records/attempts/telecom-entity-resolution/a1/outcome.json",
+      "bytes": 938,
+      "sha256": "b02db4d28f48f2be7893aab182978797a8d23fcae601e816b9687c2aa87b7106"
+    },
+    {
+      "path": "records/attempts/telecom-entity-resolution/a1/test-counts.json",
+      "bytes": 203,
+      "sha256": "a22b7c44bbba2acfc5dde2281ede337ef009842092d3ac89afd7836a2903b27e"
+    },
+    {
+      "path": "records/attempts/telecom-entity-resolution/a1/usage.json",
+      "bytes": 6229,
+      "sha256": "b223aaa0beecc2954fe67fa1231d460db29da4efa48eb301d02652c0a9814bea"
+    },
+    {
+      "path": "records/attempts/telecom-entity-resolution/a2/attempt.json",
+      "bytes": 6056,
+      "sha256": "c2962d6fd7c3dc8f2d118cd809535f1a11cc3660d2bbf2dc97c6a7cdbf01156d"
+    },
+    {
+      "path": "records/attempts/telecom-entity-resolution/a2/episode-doctor.txt",
+      "bytes": 595,
+      "sha256": "3667f2f8d72b1aa2abb31c2aa75f90b2023469cbfcdb909ee7a2db02e2663a05"
+    },
+    {
+      "path": "records/attempts/telecom-entity-resolution/a2/launch.json",
+      "bytes": 1163,
+      "sha256": "7b9da4eb6892ddf5115ad8dabbe8df8bbf5342ae70ea5366da2acb5c447ee3cc"
+    },
+    {
+      "path": "records/attempts/telecom-entity-resolution/a2/manifest.json",
+      "bytes": 5206,
+      "sha256": "73650853bd10578f98b4e3cae7ed7fc17fa2590af8753dc2955206f2b74ad927"
+    },
+    {
+      "path": "records/attempts/telecom-entity-resolution/a2/outcome.json",
+      "bytes": 938,
+      "sha256": "cfbaa20c1d9fd1e8535e05aa64998e5c2f2a3d601b08a39157cf4ec5f2e0b670"
+    },
+    {
+      "path": "records/attempts/telecom-entity-resolution/a2/test-counts.json",
+      "bytes": 203,
+      "sha256": "f108cea1f6c9c4b52b3e14884f20c7e27cd0ceeac88645135c11b5b5fba7c02a"
+    },
+    {
+      "path": "records/attempts/telecom-entity-resolution/a2/usage.json",
+      "bytes": 6150,
+      "sha256": "b3f52425edaa4474e6f17d09ef0e608ac0fac64e901d0eafdb91a99df719a83b"
+    },
+    {
+      "path": "records/attempts/telecom-entity-resolution/a3/attempt.json",
+      "bytes": 6065,
+      "sha256": "8912711ed70cc644f6cb286b65bef09c184e68c49d1b4726c5e8087d59cadcb9"
+    },
+    {
+      "path": "records/attempts/telecom-entity-resolution/a3/episode-doctor.txt",
+      "bytes": 595,
+      "sha256": "3667f2f8d72b1aa2abb31c2aa75f90b2023469cbfcdb909ee7a2db02e2663a05"
+    },
+    {
+      "path": "records/attempts/telecom-entity-resolution/a3/launch.json",
+      "bytes": 1163,
+      "sha256": "3c9607d6e1fdb78dd91619c79ad2908db7daf0d4c8bdb3a02efe1cc322f21d19"
+    },
+    {
+      "path": "records/attempts/telecom-entity-resolution/a3/manifest.json",
+      "bytes": 5215,
+      "sha256": "38e8d5a7bc3aa4839f48009d4b4ea610b13027b769d53d45841be5189f0f160f"
+    },
+    {
+      "path": "records/attempts/telecom-entity-resolution/a3/outcome.json",
+      "bytes": 938,
+      "sha256": "0e0ba4b8f31a00540a2a75a8b6535b9d7663271b072b9c8253ece082a3283355"
+    },
+    {
+      "path": "records/attempts/telecom-entity-resolution/a3/test-counts.json",
+      "bytes": 203,
+      "sha256": "809fcc140b7decb225d5f975836ff95f976099bc8c9a3b854ba12805dc9f8b2b"
+    },
+    {
+      "path": "records/attempts/telecom-entity-resolution/a3/usage.json",
+      "bytes": 6229,
+      "sha256": "74ac7630a1624cfc38a696f7c2d9801bdd75912622ca40297a2005eeb02559a8"
+    },
+    {
+      "path": "records/audit.json",
+      "bytes": 7265,
+      "sha256": "1cc6866fa8a581e9e209eee86e40fee89386e07002af2d3890f46d5f034e39f7"
+    },
+    {
+      "path": "records/candidates/batch.json",
+      "bytes": 319324,
+      "sha256": "3546cb421b7b70acef5846c6c2e3f81b73ea14308380d8e5f0d655671adb3a4b"
+    },
+    {
+      "path": "records/cards/tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a1-20260925T033723--cumulative-layout-shift__gZBT3gZ.card.json",
+      "bytes": 104448,
+      "sha256": "577e29ac777ae9119dbcfe6fb527dc1bcc68956667ea29c5652133995361c51b"
+    },
+    {
+      "path": "records/cards/tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a1-20260925T033723--cumulative-layout-shift__gZBT3gZ.card.md",
+      "bytes": 27211,
+      "sha256": "226c9c72799fe3e41f12ef066ab3abe02910525d0b133c2a9f33fb8c79adf521"
+    },
+    {
+      "path": "records/cards/tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a2-20260925T044223--cumulative-layout-shift__V2vyUx3.card.json",
+      "bytes": 116046,
+      "sha256": "7923ed591bb3c7fabb2e83fed61bd6f4247d49209a4d6b003ee8c3fca185cfc9"
+    },
+    {
+      "path": "records/cards/tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a2-20260925T044223--cumulative-layout-shift__V2vyUx3.card.md",
+      "bytes": 33521,
+      "sha256": "0b3dd4999916558c54fd7c2687cab863662d2eefb4c1ea26fffe5ad37094a356"
+    },
+    {
+      "path": "records/cards/tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a3-20260925T053453--cumulative-layout-shift__ucFSsb2.card.json",
+      "bytes": 105978,
+      "sha256": "7beaedaaede6bb1035f476ca607dc759de36b61f8c9a38c0b557166851370aab"
+    },
+    {
+      "path": "records/cards/tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a3-20260925T053453--cumulative-layout-shift__ucFSsb2.card.md",
+      "bytes": 27428,
+      "sha256": "9d797eb0f3fee2b1ca6dc73c1be56704b4c6775972df35f1835eb74abae2496f"
+    },
+    {
+      "path": "records/cards/tb4--coder-one-microluna-v18--live-database-cutover--family-a1-20260925T040033--live-database-cutover__WTNo7fG.card.json",
+      "bytes": 36682,
+      "sha256": "b4a48bd3a781d250609b441cce0aeb8f44aad6b8b4b87000c4f47eb0d05f8eeb"
+    },
+    {
+      "path": "records/cards/tb4--coder-one-microluna-v18--live-database-cutover--family-a1-20260925T040033--live-database-cutover__WTNo7fG.card.md",
+      "bytes": 6285,
+      "sha256": "522c3b1acd1e741428d6309554805ccef6155ed0dab52857da38cd8c47ce1bd9"
+    },
+    {
+      "path": "records/cards/tb4--coder-one-microluna-v18--live-database-cutover--family-a2-20260925T050233--live-database-cutover__KZ6YnS9.card.json",
+      "bytes": 48936,
+      "sha256": "211369bfcb72dfb51689f80a6d57ac85882a6560044d0db82e98c38a5a96266d"
+    },
+    {
+      "path": "records/cards/tb4--coder-one-microluna-v18--live-database-cutover--family-a2-20260925T050233--live-database-cutover__KZ6YnS9.card.md",
+      "bytes": 7276,
+      "sha256": "06f1777c35cd92df6b7ea14487fc22aadfba2897e85e23a1d0ea933a0bc1f1c4"
+    },
+    {
+      "path": "records/cards/tb4--coder-one-microluna-v18--live-database-cutover--family-a3-20260925T055503--live-database-cutover__4AVYKpU.card.json",
+      "bytes": 37825,
+      "sha256": "464f52992bdc1f26330a1f4ba0b279f1f2e0570657ee57c967fc83949ab7cfc0"
+    },
+    {
+      "path": "records/cards/tb4--coder-one-microluna-v18--live-database-cutover--family-a3-20260925T055503--live-database-cutover__4AVYKpU.card.md",
+      "bytes": 6068,
+      "sha256": "7f454fa8549e0f1c14045ef77e902d2a435704ab27fed404ec5a68ef915cfe63"
+    },
+    {
+      "path": "records/cards/tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a1-20260925T032843--mp-checkpoint-consolidation__tQT74ja.card.json",
+      "bytes": 48382,
+      "sha256": "8bd452b75082c105548ae37df9f7961e059cc1da794ae65ad755e144e3f1f177"
+    },
+    {
+      "path": "records/cards/tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a1-20260925T032843--mp-checkpoint-consolidation__tQT74ja.card.md",
+      "bytes": 6374,
+      "sha256": "8d2c785a2c471b80bd524ccc0db709c5f97c226cbfdf7ee0445b4395bd9e49cc"
+    },
+    {
+      "path": "records/cards/tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a2-20260925T043313--mp-checkpoint-consolidation__zWRwtDd.card.json",
+      "bytes": 52570,
+      "sha256": "3d79f142c68043bd9edfcae5c88d4e51ba53ce729f103d903d71e274230be96e"
+    },
+    {
+      "path": "records/cards/tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a2-20260925T043313--mp-checkpoint-consolidation__zWRwtDd.card.md",
+      "bytes": 6509,
+      "sha256": "0f103e3969227e0ebc6e8d82486cfc122f1ffa2f568f52fa9492ac7ac61e9438"
+    },
+    {
+      "path": "records/cards/tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a3-20260925T052613--mp-checkpoint-consolidation__rpcuKgN.card.json",
+      "bytes": 45204,
+      "sha256": "aef03d81c1e9814977158472a37c2f6594989c4cfaef7410a40d738c139d9d01"
+    },
+    {
+      "path": "records/cards/tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a3-20260925T052613--mp-checkpoint-consolidation__rpcuKgN.card.md",
+      "bytes": 6465,
+      "sha256": "755c02acdfd2eb1f081a6b968d426ac1c8803cb7c9c16bfdccc269bd5bb4a7e3"
+    },
+    {
+      "path": "records/cards/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a1-20260925T032803--payments-pipeline-fix__xSC7ngE.card.json",
+      "bytes": 36962,
+      "sha256": "168285837f65a275ad1b5405cde1fcf974ed1bd92759541f5710f51846dde138"
+    },
+    {
+      "path": "records/cards/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a1-20260925T032803--payments-pipeline-fix__xSC7ngE.card.md",
+      "bytes": 6088,
+      "sha256": "bff8b7b61816ff192449483d24a548c0a626828125cdc82c14fa67de8b7d5bac"
+    },
+    {
+      "path": "records/cards/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a2-20260925T042233--payments-pipeline-fix__hEYMz2a.card.json",
+      "bytes": 49152,
+      "sha256": "fad4374ca47cb3dc4427d0f7b7298fa687ffa9ec3173a326178a47d52578db6e"
+    },
+    {
+      "path": "records/cards/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a2-20260925T042233--payments-pipeline-fix__hEYMz2a.card.md",
+      "bytes": 6949,
+      "sha256": "087e30f2eef395114f32bc009ca1f1672771559926f9d254e2af0d439bb6d160"
+    },
+    {
+      "path": "records/cards/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a3-20260925T051933--payments-pipeline-fix__Wcy8BbS.card.json",
+      "bytes": 33817,
+      "sha256": "7a2e78a9f311ba1af9d246ce39d20fdb4e5899816f6a744af592251babdb1ff0"
+    },
+    {
+      "path": "records/cards/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a3-20260925T051933--payments-pipeline-fix__Wcy8BbS.card.md",
+      "bytes": 6008,
+      "sha256": "ec2d6456fbd7a6d9303b17ba77f925b8d50275a6484b8a873259d487f3d1ae06"
+    },
+    {
+      "path": "records/cards/tb4--coder-one-microluna-v18--photonic-waveguide-routing--family-a1-20260925T041053--photonic-waveguide-routing__HnP7Nmn.card.json",
+      "bytes": 36051,
+      "sha256": "ef345943146f856e0a37b11f1caed44d33a79f9c0c06d03fe847c4c3bba42b41"
+    },
+    {
+      "path": "records/cards/tb4--coder-one-microluna-v18--photonic-waveguide-routing--family-a1-20260925T041053--photonic-waveguide-routing__HnP7Nmn.card.md",
+      "bytes": 5890,
+      "sha256": "de7579210402269e4d3cafb1ef6077641af70711f3866489d23ec95e67736994"
+    },
+    {
+      "path": "records/cards/tb4--coder-one-microluna-v18--photonic-waveguide-routing--family-a2-20260925T051353--photonic-waveguide-routing__RbDGpkz.card.json",
+      "bytes": 40416,
+      "sha256": "84b5d45bb54bb0fadb9c99e509653f66fed0175eef65a2b86fe91abefaaf8eac"
+    },
+    {
+      "path": "records/cards/tb4--coder-one-microluna-v18--photonic-waveguide-routing--family-a2-20260925T051353--photonic-waveguide-routing__RbDGpkz.card.md",
+      "bytes": 5994,
+      "sha256": "9637b2ce34adca0dbe12e620f0fdaf0908aacb9de7125f08b7403f4f0da7ee31"
+    },
+    {
+      "path": "records/cards/tb4--coder-one-microluna-v18--photonic-waveguide-routing--family-a3-20260925T060323--photonic-waveguide-routing__mEjzdB4.card.json",
+      "bytes": 37131,
+      "sha256": "a1cf4bd17cb2adb24018aa4efad9cfde8cdf56e4bfe73fdf02c43aede0557cee"
+    },
+    {
+      "path": "records/cards/tb4--coder-one-microluna-v18--photonic-waveguide-routing--family-a3-20260925T060323--photonic-waveguide-routing__mEjzdB4.card.md",
+      "bytes": 6085,
+      "sha256": "1f9a9a5ee102fd450584d4abc6087a9dfafaeb8da7056e8762b21824c89cce85"
+    },
+    {
+      "path": "records/cards/tb4--coder-one-microluna-v18--telecom-entity-resolution--family-a1-20260925T041013--telecom-entity-resolution__wB2fijb.card.json",
+      "bytes": 38165,
+      "sha256": "ba7bc9e22ec86ceff5f7311f5b9f60028b2cc02fd48096639e21e3d402c71702"
+    },
+    {
+      "path": "records/cards/tb4--coder-one-microluna-v18--telecom-entity-resolution--family-a1-20260925T041013--telecom-entity-resolution__wB2fijb.card.md",
+      "bytes": 5878,
+      "sha256": "2a4aa3f7f629cc3de2d16a0b5d3aa71c59ac8b3bf8eb50f609963d6053f65341"
+    },
+    {
+      "path": "records/cards/tb4--coder-one-microluna-v18--telecom-entity-resolution--family-a2-20260925T051313--telecom-entity-resolution__MKCp2Yg.card.json",
+      "bytes": 38445,
+      "sha256": "ad3b76a9c3457f49c4b32c480cf8ce50a6fa8a8f78aa5cd5439b47d42c55d735"
+    },
+    {
+      "path": "records/cards/tb4--coder-one-microluna-v18--telecom-entity-resolution--family-a2-20260925T051313--telecom-entity-resolution__MKCp2Yg.card.md",
+      "bytes": 5942,
+      "sha256": "954c60c7aa37cdfaa80bb3d3060e56f1f02d0d52a78179da270db10f6c3b9aa9"
+    },
+    {
+      "path": "records/cards/tb4--coder-one-microluna-v18--telecom-entity-resolution--family-a3-20260925T060243--telecom-entity-resolution__gRETFg7.card.json",
+      "bytes": 39902,
+      "sha256": "650f69f78d5b7b8e6974dd00613cdb95e2c29ce5d5554b852dd72fa9ee4f2db2"
+    },
+    {
+      "path": "records/cards/tb4--coder-one-microluna-v18--telecom-entity-resolution--family-a3-20260925T060243--telecom-entity-resolution__gRETFg7.card.md",
+      "bytes": 5872,
+      "sha256": "f8a97195e1a3ae7063585277d99c702f20d35547160f6b805358ed2ce0098bbf"
+    },
+    {
+      "path": "records/evidence-verification.json",
+      "bytes": 60343,
+      "sha256": "99707f3c74bbf45701f3d2ddace0658382996378a1e89498757c23cf466182d3"
+    },
+    {
+      "path": "records/launch-logs/tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a1-20260925T032441.log",
+      "bytes": 886,
+      "sha256": "ca2462f1bb306de98607a49b5b9f4a9d8135197c5cfae4c70428966285990412"
+    },
+    {
+      "path": "records/launch-logs/tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a1-20260925T033723.log",
+      "bytes": 1394,
+      "sha256": "5bbfb0ae4d954c072a86fe9a4b2ffeb0e45b45643a0135d75453d2a270655db5"
+    },
+    {
+      "path": "records/launch-logs/tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a2-20260925T044223.log",
+      "bytes": 1394,
+      "sha256": "a9d97fe1d3dacc979cdcf39c83f61079febb6d59d4fad40a042e5a29a2bd1442"
+    },
+    {
+      "path": "records/launch-logs/tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a3-20260925T053453.log",
+      "bytes": 1394,
+      "sha256": "9306b1f0fae5dc1354869ae8e3173ae0e2b42616eb4f876e5b5a5631cb8fecdd"
+    },
+    {
+      "path": "records/launch-logs/tb4--coder-one-microluna-v18--live-database-cutover--family-a1-20260925T040033.log",
+      "bytes": 1387,
+      "sha256": "ab3011d841a10052aa2c1098e56aff2ca4e524a0c80e04a070036d5598ab8956"
+    },
+    {
+      "path": "records/launch-logs/tb4--coder-one-microluna-v18--live-database-cutover--family-a2-20260925T050233.log",
+      "bytes": 1388,
+      "sha256": "0fbec4971032de17aa333b282b6c17764b38286f24dde7dad742125147211671"
+    },
+    {
+      "path": "records/launch-logs/tb4--coder-one-microluna-v18--live-database-cutover--family-a3-20260925T055503.log",
+      "bytes": 1386,
+      "sha256": "516d3549909657bc095f0fc617474d83c3df2ee537048097b37c2d63947cda39"
+    },
+    {
+      "path": "records/launch-logs/tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a1-20260925T032241.log",
+      "bytes": 1533,
+      "sha256": "f1307d308b16033169734cb67caa19745c2a2141764987980c72eed1d687ab12"
+    },
+    {
+      "path": "records/launch-logs/tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a1-20260925T032843.log",
+      "bytes": 1406,
+      "sha256": "5308fa35411f8ec7c5266de3e3b146a221ff44addcd1806d3e62e6e33564086a"
+    },
+    {
+      "path": "records/launch-logs/tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a1r-20260925T032321.log",
+      "bytes": 1536,
+      "sha256": "5f490052635c35d3786b1861e2400426df9cd7bfdd5342e5811429342c6aefbe"
+    },
+    {
+      "path": "records/launch-logs/tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a2-20260925T043313.log",
+      "bytes": 1406,
+      "sha256": "a8e8f29bee27d0d3892d70323eeca93712ee69b8e14cf5d1b23c7a2762dd62d9"
+    },
+    {
+      "path": "records/launch-logs/tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a3-20260925T052613.log",
+      "bytes": 1406,
+      "sha256": "4c2f94555f55636435ece4431745889d167c79adb66b00ab428e4276522efa69"
+    },
+    {
+      "path": "records/launch-logs/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a1-20260925T032201.log",
+      "bytes": 1516,
+      "sha256": "22c74d05de255a824e08aa2168c7c2d0e400fac31ea303da3a6935db956e61fd"
+    },
+    {
+      "path": "records/launch-logs/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a1-20260925T032803.log",
+      "bytes": 1387,
+      "sha256": "6e6b557e9df491ce14e35c1ea3d376c39f6c0f8f11d5f03cd2ca81abe2c75bf6"
+    },
+    {
+      "path": "records/launch-logs/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a1r-20260925T032401.log",
+      "bytes": 1519,
+      "sha256": "d2fd8352dfc9028548a6cbab8202bbe2b4ab44821a83e2c252272a9d52974e13"
+    },
+    {
+      "path": "records/launch-logs/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a2-20260925T042233.log",
+      "bytes": 1388,
+      "sha256": "447802a98013ed05e28d2ba110d429af5673379612013fedf70df42d3075e8da"
+    },
+    {
+      "path": "records/launch-logs/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a3-20260925T051933.log",
+      "bytes": 1387,
+      "sha256": "15d327d9dc2d177b9ad17c556bf110357dbb4cd2789f3da1adfd09ecc99cafe2"
+    },
+    {
+      "path": "records/launch-logs/tb4--coder-one-microluna-v18--photonic-waveguide-routing--family-a1-20260925T041053.log",
+      "bytes": 1402,
+      "sha256": "06f9ac5d0ae3465034de7cec6b2e9a7b6d3355bb68a37f0f87f2d40e8fe66f9e"
+    },
+    {
+      "path": "records/launch-logs/tb4--coder-one-microluna-v18--photonic-waveguide-routing--family-a2-20260925T051353.log",
+      "bytes": 1403,
+      "sha256": "339a6b2c064280aae43826fb6801df7abfde6d304f787a836bb529537e114e27"
+    },
+    {
+      "path": "records/launch-logs/tb4--coder-one-microluna-v18--photonic-waveguide-routing--family-a3-20260925T060323.log",
+      "bytes": 1403,
+      "sha256": "f83c237e281c45cada855469b1309ebe2f906bd0c71c5fb71fe4b4924aa751b2"
+    },
+    {
+      "path": "records/launch-logs/tb4--coder-one-microluna-v18--telecom-entity-resolution--family-a1-20260925T041013.log",
+      "bytes": 1400,
+      "sha256": "47d27f0af963c1d8b643e9443a08da893929525857e670b55e5e7daccea42a56"
+    },
+    {
+      "path": "records/launch-logs/tb4--coder-one-microluna-v18--telecom-entity-resolution--family-a2-20260925T051313.log",
+      "bytes": 1398,
+      "sha256": "3bb29db1a479d5390e038fbe49d0b4db8fd7fc499b4c2b3cf78f8474abf7bb04"
+    },
+    {
+      "path": "records/launch-logs/tb4--coder-one-microluna-v18--telecom-entity-resolution--family-a3-20260925T060243.log",
+      "bytes": 1399,
+      "sha256": "c46619e86c9b2f86aef188e237e820e8da9ba4a8d18fe46fa6baf778f582084c"
+    },
+    {
+      "path": "records/loop-counts.json",
+      "bytes": 18706,
+      "sha256": "90f34627774e50186b77291505761244f7d42cd8b5da68ac4f07694c4ff1076c"
+    },
+    {
+      "path": "records/original/candidates.log",
+      "bytes": 7644,
+      "sha256": "f38e7fa9c403598bfdf300272c1583ff0d90116078a4363ec0eb3fc80af351fc"
+    },
+    {
+      "path": "records/original/driver-void-contamination.log",
+      "bytes": 1636,
+      "sha256": "c5b19ea1a5404ece746ed3d8bf95c1b7945fdaf376b8fa6428f47294f259c851"
+    },
+    {
+      "path": "records/original/driver.log",
+      "bytes": 5503,
+      "sha256": "93c7812b1144baa2e23636c3983dc598f84e84639fc8316e3815be04bb43eead"
+    },
+    {
+      "path": "records/original/driver.py",
+      "bytes": 6987,
+      "sha256": "9351c73bd1b10735539605f0ff1d5e2e3c8ea13b320ad91aa484d6f302b441f6"
+    },
+    {
+      "path": "records/original/pieces.py",
+      "bytes": 3476,
+      "sha256": "a468065786b3ede4da4a99c84b7831170c2f9cbdf4b38c2affb505792e71cd4d"
+    },
+    {
+      "path": "records/original/state-void-contamination.json",
+      "bytes": 2388,
+      "sha256": "7b1568ce2954863caff123dbce371457c7fccc2c1543171628488490078d7da7"
+    },
+    {
+      "path": "records/original/state.json",
+      "bytes": 10584,
+      "sha256": "93c6748a7c775af55153a3ac59aa148f30c7a0d8f941277301557b8ef8687667"
+    },
+    {
+      "path": "records/original/tally.json",
+      "bytes": 11238,
+      "sha256": "3c229e31f4e5c724e2b510303b9bd079dcec3e0316c6edc6971edf80a9ec67fe"
+    },
+    {
+      "path": "records/original/tally.py",
+      "bytes": 2327,
+      "sha256": "4a58970fc9f9434e2ed7ad2d129661d6c583027b5321a07efbecc08805c0051a"
+    },
+    {
+      "path": "records/setup-refusals/inventory.json",
+      "bytes": 21784,
+      "sha256": "f00021a30d94289109ae13ce82d65693dfb87b8495afbffbb693a717164c18a6"
+    },
+    {
+      "path": "records/setup-refusals/tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a1-20260925T032441-contamination-void/attempt.json",
+      "bytes": 10745,
+      "sha256": "b0abf060267516b757acc73cefb832be22d06ccfb062e0d2feab8395fa74903f"
+    },
+    {
+      "path": "records/setup-refusals/tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a1-20260925T032441-contamination-void/outcomes.json",
+      "bytes": 5339,
+      "sha256": "a0801c107b7d203af1dcb14ec4483ead3032729f773388f795d3b719b5595adb"
+    },
+    {
+      "path": "records/setup-refusals/tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a1-20260925T032241-contamination-void/attempt.json",
+      "bytes": 9102,
+      "sha256": "fb4a031957aacb0cf0fe18782bc8331e2b4cd157917567dede35007548cf0188"
+    },
+    {
+      "path": "records/setup-refusals/tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a1-20260925T032241-contamination-void/outcomes.json",
+      "bytes": 3411,
+      "sha256": "f0b35916676774adb3019e48f10b829d60eb7754dc9bdf43b6e8e97bab49f6b4"
+    },
+    {
+      "path": "records/setup-refusals/tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a1r-20260925T032321-contamination-void/attempt.json",
+      "bytes": 9054,
+      "sha256": "02fb34eb7eaab7ae39c3a1e11afb20703e5f80efcc4ec9a442af5495fb782b8c"
+    },
+    {
+      "path": "records/setup-refusals/tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a1r-20260925T032321-contamination-void/outcomes.json",
+      "bytes": 3413,
+      "sha256": "e2e3a68bbba22e48f99ddad96ac3d4696069ba9fac1ad429de2470c99368d947"
+    },
+    {
+      "path": "records/setup-refusals/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a1-20260925T032201-contamination-void/attempt.json",
+      "bytes": 9113,
+      "sha256": "30b6c49698fa28385c8b8a2659e84e7963c25c18185a5545eeb65cd652bc4015"
+    },
+    {
+      "path": "records/setup-refusals/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a1-20260925T032201-contamination-void/outcomes.json",
+      "bytes": 3381,
+      "sha256": "7873b0ae026ffd985c8d397e72bc13693f8a3775a3f93145fe66bd2ad492da6b"
+    },
+    {
+      "path": "records/setup-refusals/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a1r-20260925T032401-contamination-void/attempt.json",
+      "bytes": 9120,
+      "sha256": "8ae209ef9b22ba5339b1f7eb714912d7411502c1c048b882d54caf610d3eb7ae"
+    },
+    {
+      "path": "records/setup-refusals/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a1r-20260925T032401-contamination-void/outcomes.json",
+      "bytes": 3383,
+      "sha256": "c794b5d6c06c480b5a7a2129249d2d8d80eda64581e97462f7548461d36c8b08"
+    },
+    {
+      "path": "records/timing-counts.json",
+      "bytes": 10672,
+      "sha256": "deadea559a63f566b32d67b60d3ef3117b0693e932b0f53f1973f1411a31d99d"
+    },
+    {
+      "path": "records/trace-inventory.json",
+      "bytes": 230890,
+      "sha256": "80468aef944c7527b9913720b0ec9a3a8ee26a6765877fd800f0e031f9623e80"
+    }
+  ]
+}

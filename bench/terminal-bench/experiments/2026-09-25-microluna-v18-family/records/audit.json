@@ -1,0 +1,261 @@
+{
+  "harness_commit": "0f2d7e6bf443c3292e70a3c5f658f27abe88a700",
+  "harness_status": "",
+  "reflog": "0f2d7e6bf4 HEAD@{2026-09-25 03:27:58 -0500}: checkout: moving from 3a25a0ff1f6ac1c90cc356e848ac7b4d2f37e570 to 0f2d7e6bf4\n3a25a0ff1f HEAD@{2026-09-25 03:16:09 -0500}: \n",
+  "artifact_sha256": "cdbf781be1c00814ba61bfddb6d69a581f6e3c345215b97afa4bba42b656bcd7",
+  "manifest_sha256": "4da78507d84a67bbc18886ba9e6975d1f8b0bd15962dde8901f4186f9b1ba912",
+  "evidence_shapes": [
+    {
+      "job": "tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a1-20260925T032803",
+      "evidence_shape": "dict",
+      "evidence_keys": [
+        "trial_result",
+        "trajectory",
+        "native_traces",
+        "collection_failure",
+        "verifier_reward",
+        "verifier_report",
+        "artifacts",
+        "attempt_record"
+      ]
+    },
+    {
+      "job": "tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a1-20260925T032843",
+      "evidence_shape": "dict",
+      "evidence_keys": [
+        "trial_result",
+        "trajectory",
+        "native_traces",
+        "collection_failure",
+        "verifier_reward",
+        "verifier_report",
+        "artifacts",
+        "attempt_record"
+      ]
+    },
+    {
+      "job": "tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a1-20260925T033723",
+      "evidence_shape": "dict",
+      "evidence_keys": [
+        "trial_result",
+        "trajectory",
+        "native_traces",
+        "collection_failure",
+        "verifier_reward",
+        "verifier_report",
+        "artifacts",
+        "attempt_record"
+      ]
+    },
+    {
+      "job": "tb4--coder-one-microluna-v18--live-database-cutover--family-a1-20260925T040033",
+      "evidence_shape": "dict",
+      "evidence_keys": [
+        "trial_result",
+        "trajectory",
+        "native_traces",
+        "collection_failure",
+        "verifier_reward",
+        "verifier_report",
+        "artifacts",
+        "attempt_record"
+      ]
+    },
+    {
+      "job": "tb4--coder-one-microluna-v18--telecom-entity-resolution--family-a1-20260925T041013",
+      "evidence_shape": "dict",
+      "evidence_keys": [
+        "trial_result",
+        "trajectory",
+        "native_traces",
+        "collection_failure",
+        "verifier_reward",
+        "verifier_report",
+        "artifacts",
+        "attempt_record"
+      ]
+    },
+    {
+      "job": "tb4--coder-one-microluna-v18--photonic-waveguide-routing--family-a1-20260925T041053",
+      "evidence_shape": "dict",
+      "evidence_keys": [
+        "trial_result",
+        "trajectory",
+        "native_traces",
+        "collection_failure",
+        "verifier_reward",
+        "verifier_report",
+        "artifacts",
+        "attempt_record"
+      ]
+    },
+    {
+      "job": "tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a2-20260925T042233",
+      "evidence_shape": "dict",
+      "evidence_keys": [
+        "trial_result",
+        "trajectory",
+        "native_traces",
+        "collection_failure",
+        "verifier_reward",
+        "verifier_report",
+        "artifacts",
+        "attempt_record"
+      ]
+    },
+    {
+      "job": "tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a2-20260925T043313",
+      "evidence_shape": "dict",
+      "evidence_keys": [
+        "trial_result",
+        "trajectory",
+        "native_traces",
+        "collection_failure",
+        "verifier_reward",
+        "verifier_report",
+        "artifacts",
+        "attempt_record"
+      ]
+    },
+    {
+      "job": "tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a2-20260925T044223",
+      "evidence_shape": "dict",
+      "evidence_keys": [
+        "trial_result",
+        "trajectory",
+        "native_traces",
+        "collection_failure",
+        "verifier_reward",
+        "verifier_report",
+        "artifacts",
+        "attempt_record"
+      ]
+    },
+    {
+      "job": "tb4--coder-one-microluna-v18--live-database-cutover--family-a2-20260925T050233",
+      "evidence_shape": "dict",
+      "evidence_keys": [
+        "trial_result",
+        "trajectory",
+        "native_traces",
+        "collection_failure",
+        "verifier_reward",
+        "verifier_report",
+        "artifacts",
+        "attempt_record"
+      ]
+    },
+    {
+      "job": "tb4--coder-one-microluna-v18--telecom-entity-resolution--family-a2-20260925T051313",
+      "evidence_shape": "dict",
+      "evidence_keys": [
+        "trial_result",
+        "trajectory",
+        "native_traces",
+        "collection_failure",
+        "verifier_reward",
+        "verifier_report",
+        "artifacts",
+        "attempt_record"
+      ]
+    },
+    {
+      "job": "tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a3-20260925T051933",
+      "evidence_shape": "dict",
+      "evidence_keys": [
+        "trial_result",
+        "trajectory",
+        "native_traces",
+        "collection_failure",
+        "verifier_reward",
+        "verifier_report",
+        "artifacts",
+        "attempt_record"
+      ]
+    },
+    {
+      "job": "tb4--coder-one-microluna-v18--photonic-waveguide-routing--family-a2-20260925T051353",
+      "evidence_shape": "dict",
+      "evidence_keys": [
+        "trial_result",
+        "trajectory",
+        "native_traces",
+        "collection_failure",
+        "verifier_reward",
+        "verifier_report",
+        "artifacts",
+        "attempt_record"
+      ]
+    },
+    {
+      "job": "tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a3-20260925T052613",
+      "evidence_shape": "dict",
+      "evidence_keys": [
+        "trial_result",
+        "trajectory",
+        "native_traces",
+        "collection_failure",
+        "verifier_reward",
+        "verifier_report",
+        "artifacts",
+        "attempt_record"
+      ]
+    },
+    {
+      "job": "tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a3-20260925T053453",
+      "evidence_shape": "dict",
+      "evidence_keys": [
+        "trial_result",
+        "trajectory",
+        "native_traces",
+        "collection_failure",
+        "verifier_reward",
+        "verifier_report",
+        "artifacts",
+        "attempt_record"
+      ]
+    },
+    {
+      "job": "tb4--coder-one-microluna-v18--live-database-cutover--family-a3-20260925T055503",
+      "evidence_shape": "dict",
+      "evidence_keys": [
+        "trial_result",
+        "trajectory",
+        "native_traces",
+        "collection_failure",
+        "verifier_reward",
+        "verifier_report",
+        "artifacts",
+        "attempt_record"
+      ]
+    },
+    {
+      "job": "tb4--coder-one-microluna-v18--telecom-entity-resolution--family-a3-20260925T060243",
+      "evidence_shape": "dict",
+      "evidence_keys": [
+        "trial_result",
+        "trajectory",
+        "native_traces",
+        "collection_failure",
+        "verifier_reward",
+        "verifier_report",
+        "artifacts",
+        "attempt_record"
+      ]
+    },
+    {
+      "job": "tb4--coder-one-microluna-v18--photonic-waveguide-routing--family-a3-20260925T060323",
+      "evidence_shape": "dict",
+      "evidence_keys": [
+        "trial_result",
+        "trajectory",
+        "native_traces",
+        "collection_failure",
+        "verifier_reward",
+        "verifier_report",
+        "artifacts",
+        "attempt_record"
+      ]
+    }
+  ]
+}

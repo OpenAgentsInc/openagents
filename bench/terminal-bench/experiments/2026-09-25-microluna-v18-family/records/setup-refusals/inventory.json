@@ -1,0 +1,577 @@
+[
+  {
+    "remote_path": "/home/christopherdavid/.openagents/terminal-bench/failed/tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a1-20260925T032441-contamination-void",
+    "files": [
+      {
+        "path": "lock.json",
+        "sha256": "8dfe3507d78e8f0225629a86b8427e6338842f643a5fbf452af7ab3ea343485b",
+        "bytes": 2826
+      },
+      {
+        "path": "config.json",
+        "sha256": "1e3c11c4bb577e11eded54c94c10ea375e56234b0762f00bf60a3ffe8c7d1934",
+        "bytes": 1326
+      },
+      {
+        "path": "job.log",
+        "sha256": "3279a25119f35a816200220aa6c95c6cba9d43ad784a9e92dc42f5f351c02faf",
+        "bytes": 9009
+      },
+      {
+        "path": "result.json",
+        "sha256": "e5b266abc8e07850a5db1a5747c18f2702f691d72caded4ca4bb72ad75837577",
+        "bytes": 1053
+      },
+      {
+        "path": "tbench/context.json",
+        "sha256": "82466ec02fd0b0e2ff177ec6a6c421cc811d9424c87d0337f16b6378c260cd4b",
+        "bytes": 95
+      },
+      {
+        "path": "tbench/job-config.json",
+        "sha256": "56be37f0c302ef52e6b04daa48e520e8f2281e26fb38d935043154c6ec0ad5d7",
+        "bytes": 1466
+      },
+      {
+        "path": "cumulative-layout-shift__VTj47u6/exception.txt",
+        "sha256": "60ba28fc21f6aee520c06b2f569aa4e119022ea87f16bcbc9ca6cc0d6ffe751b",
+        "bytes": 4790
+      },
+      {
+        "path": "cumulative-layout-shift__VTj47u6/lock.json",
+        "sha256": "c3607c8eadfdd6a610f43bb04c617b86b37ff2c254495beba903f740616a3e47",
+        "bytes": 1704
+      },
+      {
+        "path": "cumulative-layout-shift__VTj47u6/network-policy.json",
+        "sha256": "03ccab8ff1c897e181ac8ccf812d8730b08a8e426f6c3607c89754ad45938ec7",
+        "bytes": 885
+      },
+      {
+        "path": "cumulative-layout-shift__VTj47u6/config.json",
+        "sha256": "4c427c538ad15023aa2d7aea5cc85fe002212daa8146db023e4adbf6d96bf29e",
+        "bytes": 1273
+      },
+      {
+        "path": "cumulative-layout-shift__VTj47u6/analysis.json",
+        "sha256": "5eec9b60167102909eaa409221462b23db8237b59a960e4f4c908aac8c176a58",
+        "bytes": 1690
+      },
+      {
+        "path": "cumulative-layout-shift__VTj47u6/analysis.md",
+        "sha256": "a1af916d70dd25e1718eb7f69d234d0c86889fdb0b8eb4baa7e2d4d47d21dfbd",
+        "bytes": 1606
+      },
+      {
+        "path": "cumulative-layout-shift__VTj47u6/trial.log",
+        "sha256": "3279a25119f35a816200220aa6c95c6cba9d43ad784a9e92dc42f5f351c02faf",
+        "bytes": 9009
+      },
+      {
+        "path": "cumulative-layout-shift__VTj47u6/tbench-environment.jsonl",
+        "sha256": "66145cdac8059ed2212ac49dc626d592ae0df1c55eea726ce5b6962e193da779",
+        "bytes": 634
+      },
+      {
+        "path": "cumulative-layout-shift__VTj47u6/result.json",
+        "sha256": "0b830ec55acdf14ba5bdbb78c68b4c7548cdb747442473441d4a635054fcd68f",
+        "bytes": 9361
+      },
+      {
+        "path": "cumulative-layout-shift__VTj47u6/artifacts/manifest.json",
+        "sha256": "36727f4e9f5b6d80bbdb30d8beda7a842f8e578ebe87509db56f1e1e34cb6927",
+        "bytes": 314
+      },
+      {
+        "path": "tbench/manifests/cumulative-layout-shift__VTj47u6.json",
+        "sha256": "1ed9a19a989430eec3de9a449fd00a67b0077a02881247f78d29f7b258ce773a",
+        "bytes": 8983
+      },
+      {
+        "path": "tbench/attempts/cumulative-layout-shift__VTj47u6.json",
+        "sha256": "b0abf060267516b757acc73cefb832be22d06ccfb062e0d2feab8395fa74903f",
+        "bytes": 10745
+      }
+    ]
+  },
+  {
+    "remote_path": "/home/christopherdavid/.openagents/terminal-bench/failed/tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a1-20260925T032241-contamination-void",
+    "files": [
+      {
+        "path": "lock.json",
+        "sha256": "e920a2c1c0cf3e704ced2733afdc59b17a6b0f7b341c4f24babeab53e2e08964",
+        "bytes": 2834
+      },
+      {
+        "path": "config.json",
+        "sha256": "04eef2aacf3feeb1561cec227a20165d87aae3c10b9e29a8b356f4afe7958b58",
+        "bytes": 1334
+      },
+      {
+        "path": "job.log",
+        "sha256": "6971841e61ae522268dd7cc25a9d2ce806e7b06ab03b5d0f3e009be3b85bacad",
+        "bytes": 6821
+      },
+      {
+        "path": "result.json",
+        "sha256": "ad988c0c53d701f97260c067739076731773f5d7a7828ad681e997e7ef41cc75",
+        "bytes": 1084
+      },
+      {
+        "path": "tbench/context.json",
+        "sha256": "82466ec02fd0b0e2ff177ec6a6c421cc811d9424c87d0337f16b6378c260cd4b",
+        "bytes": 95
+      },
+      {
+        "path": "tbench/job-config.json",
+        "sha256": "a10649a568484e239058587627e66b93b6fdd6a8665f475f5039dd789c1a47f6",
+        "bytes": 1474
+      },
+      {
+        "path": "mp-checkpoint-consolidation__nQtq8xq/exception.txt",
+        "sha256": "be88a455bd0a7b310c4f916885d8055f6420529d731cacab6c273ed344935cf1",
+        "bytes": 2286
+      },
+      {
+        "path": "mp-checkpoint-consolidation__nQtq8xq/lock.json",
+        "sha256": "aac613868a4b99915e6fa95b1c85dd3d6c9d5e0cc94ac4a53a088eaf988faa4b",
+        "bytes": 1712
+      },
+      {
+        "path": "mp-checkpoint-consolidation__nQtq8xq/network-policy.json",
+        "sha256": "8f4102534380abc401924d98fd7899c6ae1bd8b1ae11b44e4d9d287bc1e22aeb",
+        "bytes": 772
+      },
+      {
+        "path": "mp-checkpoint-consolidation__nQtq8xq/config.json",
+        "sha256": "d849c041d5d981d4b15c0c887b604bb0d8c50bf23897065cb7b9d801866aa01d",
+        "bytes": 1285
+      },
+      {
+        "path": "mp-checkpoint-consolidation__nQtq8xq/analysis.json",
+        "sha256": "f9c18c4131b62f4814e5fe1dbd6a02e93872c5b11113b9c547fe49afee20ef74",
+        "bytes": 1897
+      },
+      {
+        "path": "mp-checkpoint-consolidation__nQtq8xq/analysis.md",
+        "sha256": "132aa9d646e2d750dda28adf982f92f4b1f9bc5976c6fced6739e6abd82e6771",
+        "bytes": 1839
+      },
+      {
+        "path": "mp-checkpoint-consolidation__nQtq8xq/trial.log",
+        "sha256": "badae7a7cf3bee0b1f3eaa0d05822096fce93a8d9c1b2fb04bb87888b8841fca",
+        "bytes": 6747
+      },
+      {
+        "path": "mp-checkpoint-consolidation__nQtq8xq/tbench-environment.jsonl",
+        "sha256": "121f672abf2f0fe32e6b03397b042b7e5aaa99b9a6cd226bfe167b10721a343e",
+        "bytes": 756
+      },
+      {
+        "path": "mp-checkpoint-consolidation__nQtq8xq/result.json",
+        "sha256": "48e999f8d70aa7a5e8a5bedc76ba0aa4b7ab61328966f0e46c5e7de7527ec964",
+        "bytes": 7570
+      },
+      {
+        "path": "mp-checkpoint-consolidation__nQtq8xq/artifacts/manifest.json",
+        "sha256": "78a9212402c632e6e1bebd08ac697acc77966221ebab6e94f1d63645fae77dc8",
+        "bytes": 340
+      },
+      {
+        "path": "mp-checkpoint-consolidation__nQtq8xq/agent/contamination-static.json",
+        "sha256": "f8ebbf55827e5e98db18c3be7f01afed26bdb5e42046222d61a59ef7470aac6a",
+        "bytes": 2135
+      },
+      {
+        "path": "tbench/manifests/mp-checkpoint-consolidation__nQtq8xq.json",
+        "sha256": "9655b005d713d0656eb5657568c07a45d47e049571231440152165a80410d239",
+        "bytes": 7378
+      },
+      {
+        "path": "tbench/attempts/mp-checkpoint-consolidation__nQtq8xq.json",
+        "sha256": "fb4a031957aacb0cf0fe18782bc8331e2b4cd157917567dede35007548cf0188",
+        "bytes": 9102
+      }
+    ]
+  },
+  {
+    "remote_path": "/home/christopherdavid/.openagents/terminal-bench/failed/tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a1r-20260925T032321-contamination-void",
+    "files": [
+      {
+        "path": "lock.json",
+        "sha256": "7902d75fb12abfb09c37b1166a9a503cd15f9bf42540decc23d35a102856c823",
+        "bytes": 2834
+      },
+      {
+        "path": "config.json",
+        "sha256": "289343c2caeb8bd1ef7c8a9973e49737f47169971275a30df294a3a9bfd257c1",
+        "bytes": 1335
+      },
+      {
+        "path": "job.log",
+        "sha256": "f92e3e0f5a26472400a0702407e8db0aaca855982098de7941ee2f7eece03c7e",
+        "bytes": 6785
+      },
+      {
+        "path": "result.json",
+        "sha256": "efc87116f9e013c25aaa09d592d20cabac49a01dc7e6660bceb7ae902203467d",
+        "bytes": 1084
+      },
+      {
+        "path": "tbench/context.json",
+        "sha256": "82466ec02fd0b0e2ff177ec6a6c421cc811d9424c87d0337f16b6378c260cd4b",
+        "bytes": 95
+      },
+      {
+        "path": "tbench/job-config.json",
+        "sha256": "491b58f8e5febe8d7262e1ff0b722a5dc53ec700123e5d315e4c7bb4f2e65eee",
+        "bytes": 1475
+      },
+      {
+        "path": "mp-checkpoint-consolidation__pYUk7zB/exception.txt",
+        "sha256": "f48b2333b10d774b377b4de28d3e801f0a5b8b307b252d39c00d2afba91af9f1",
+        "bytes": 2287
+      },
+      {
+        "path": "mp-checkpoint-consolidation__pYUk7zB/lock.json",
+        "sha256": "aac613868a4b99915e6fa95b1c85dd3d6c9d5e0cc94ac4a53a088eaf988faa4b",
+        "bytes": 1712
+      },
+      {
+        "path": "mp-checkpoint-consolidation__pYUk7zB/network-policy.json",
+        "sha256": "8f4102534380abc401924d98fd7899c6ae1bd8b1ae11b44e4d9d287bc1e22aeb",
+        "bytes": 772
+      },
+      {
+        "path": "mp-checkpoint-consolidation__pYUk7zB/config.json",
+        "sha256": "3d8a75a2cb01263126a20147869b9adb6d8ac83610ba5d0e30c34c535e027b54",
+        "bytes": 1286
+      },
+      {
+        "path": "mp-checkpoint-consolidation__pYUk7zB/analysis.json",
+        "sha256": "832b3a2b8d42a686f22dd8f500d68ecfe44c6d41e21f6f0e21c50121c2d24a8e",
+        "bytes": 1899
+      },
+      {
+        "path": "mp-checkpoint-consolidation__pYUk7zB/analysis.md",
+        "sha256": "eebee4c0af3b6b48d6844f5912c16b20cb8b85c61e6c1db8c687c351626c5e47",
+        "bytes": 1841
+      },
+      {
+        "path": "mp-checkpoint-consolidation__pYUk7zB/trial.log",
+        "sha256": "c943e52ada918501b0373fc49e39c7063abb1b70d61bf8fa6da9e2d11d6a56c5",
+        "bytes": 6711
+      },
+      {
+        "path": "mp-checkpoint-consolidation__pYUk7zB/tbench-environment.jsonl",
+        "sha256": "25dcb15837c59b5ac5597b6dbc696afa7f03650c41e1b50eb2d8f51164d9d503",
+        "bytes": 655
+      },
+      {
+        "path": "mp-checkpoint-consolidation__pYUk7zB/result.json",
+        "sha256": "0300b6286f1594539b7aed4a38b01e142e0914ad8b06296545ecbfecad4203ca",
+        "bytes": 7574
+      },
+      {
+        "path": "mp-checkpoint-consolidation__pYUk7zB/artifacts/manifest.json",
+        "sha256": "78a9212402c632e6e1bebd08ac697acc77966221ebab6e94f1d63645fae77dc8",
+        "bytes": 340
+      },
+      {
+        "path": "mp-checkpoint-consolidation__pYUk7zB/agent/contamination-static.json",
+        "sha256": "f8ebbf55827e5e98db18c3be7f01afed26bdb5e42046222d61a59ef7470aac6a",
+        "bytes": 2135
+      },
+      {
+        "path": "tbench/manifests/mp-checkpoint-consolidation__pYUk7zB.json",
+        "sha256": "0d04c8a5cd6ca4c079b00a31c55d89adf9e9f6a27d24beb12635bcc88d2fb3ba",
+        "bytes": 7385
+      },
+      {
+        "path": "tbench/attempts/mp-checkpoint-consolidation__pYUk7zB.json",
+        "sha256": "02fb34eb7eaab7ae39c3a1e11afb20703e5f80efcc4ec9a442af5495fb782b8c",
+        "bytes": 9054
+      }
+    ]
+  },
+  {
+    "remote_path": "/home/christopherdavid/.openagents/terminal-bench/failed/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a1-20260925T032201-contamination-void",
+    "files": [
+      {
+        "path": "lock.json",
+        "sha256": "d3fed52659817c46ec319c2a25f87d8dca73c022c37a5974a39963b3ec5b609a",
+        "bytes": 2822
+      },
+      {
+        "path": "config.json",
+        "sha256": "aa64797a1efa8a8bc8e5ed7d4dc707fb680eb0bdec0d9ec6cd7525c490760f46",
+        "bytes": 1322
+      },
+      {
+        "path": "job.log",
+        "sha256": "76a667673c6e22a25718eaa11e7111444aafd7b8a2cfdcc9d33b93482baf6a8e",
+        "bytes": 1132
+      },
+      {
+        "path": "result.json",
+        "sha256": "20e713a0aace2c366b1e26922a7271efa775f1fb873ccf59ffde8e73f7e335ba",
+        "bytes": 1078
+      },
+      {
+        "path": "tbench/context.json",
+        "sha256": "82466ec02fd0b0e2ff177ec6a6c421cc811d9424c87d0337f16b6378c260cd4b",
+        "bytes": 95
+      },
+      {
+        "path": "tbench/job-config.json",
+        "sha256": "55cbb0fa4d3df336c57e389b7fd322464943f987cc4eb51170747b0083a5aeca",
+        "bytes": 1462
+      },
+      {
+        "path": "payments-pipeline-fix__H4dpcLP/exception.txt",
+        "sha256": "329210053bf41674dacfb10b1119410b4bbefa0b790c109a03bf02f913922521",
+        "bytes": 2274
+      },
+      {
+        "path": "payments-pipeline-fix__H4dpcLP/lock.json",
+        "sha256": "c04775615ed24e4d813eea39c61189c05553f459f4cee36cde11a6dffea878e0",
+        "bytes": 1700
+      },
+      {
+        "path": "payments-pipeline-fix__H4dpcLP/network-policy.json",
+        "sha256": "257e24de64db1209faf5dfeb61b24f8b7ffddbc6da44b9cb4b4e8acae081b672",
+        "bytes": 900
+      },
+      {
+        "path": "payments-pipeline-fix__H4dpcLP/config.json",
+        "sha256": "e48c83f06354995fa17261c53701b7a3ce3077c7c02ff7d3ab5eee2bc8f5c9b8",
+        "bytes": 1267
+      },
+      {
+        "path": "payments-pipeline-fix__H4dpcLP/analysis.json",
+        "sha256": "5fae02001a4a0fb7d5b3ff6a382a280d1921159cfb3dfa1dab0ed188868a5554",
+        "bytes": 1879
+      },
+      {
+        "path": "payments-pipeline-fix__H4dpcLP/analysis.md",
+        "sha256": "6582adcafcb2244aafdde324a29668a337d1ae50cbc312c8caa56e1a4b1dffef",
+        "bytes": 1813
+      },
+      {
+        "path": "payments-pipeline-fix__H4dpcLP/trial.log",
+        "sha256": "1e9fe0c67e92f777f90ee486eba5f757eb3ae72d4b9d46998efce245274901b5",
+        "bytes": 1058
+      },
+      {
+        "path": "payments-pipeline-fix__H4dpcLP/tbench-environment.jsonl",
+        "sha256": "f61d3ef2fc15ea89320442b9442abcc580edefc1d00b4170d5e83d31b7ec26fb",
+        "bytes": 639
+      },
+      {
+        "path": "payments-pipeline-fix__H4dpcLP/result.json",
+        "sha256": "062fa8c9916c5cc97687f3a7a890794950c6c1936027a0eed63d7747f616c492",
+        "bytes": 7498
+      },
+      {
+        "path": "payments-pipeline-fix__H4dpcLP/artifacts/manifest.json",
+        "sha256": "71b9f2a22092fa08dfb8220c22154e2b25759602a54394cabbf0cf643ac3b000",
+        "bytes": 468
+      },
+      {
+        "path": "payments-pipeline-fix__H4dpcLP/agent/contamination-static.json",
+        "sha256": "f8ebbf55827e5e98db18c3be7f01afed26bdb5e42046222d61a59ef7470aac6a",
+        "bytes": 2135
+      },
+      {
+        "path": "payments-pipeline-fix__H4dpcLP/artifacts/tmp/kafka-snapshot.tgz",
+        "sha256": "c9d1c9990dd7def441f888db86ffde169db1bf77715692868cd5fcf14471eaa6",
+        "bytes": 71894790
+      },
+      {
+        "path": "payments-pipeline-fix__H4dpcLP/artifacts/app/src/worker/worker.py",
+        "sha256": "5b365a5a8fa66a970860e26ad42547f0f5723b958e2886088f2c70e03d0a97f4",
+        "bytes": 8554
+      },
+      {
+        "path": "payments-pipeline-fix__H4dpcLP/artifacts/app/src/worker/__init__.py",
+        "sha256": "63b800abbf1b909111eb7bd75d9c117c981a068f28156699752ad5f896521e0f",
+        "bytes": 58
+      },
+      {
+        "path": "payments-pipeline-fix__H4dpcLP/artifacts/app/src/worker/config.py",
+        "sha256": "f3d12cbd9875819e42a2dae1c4fee49dd0064fbec01afc41c83d350e34e98840",
+        "bytes": 350
+      },
+      {
+        "path": "payments-pipeline-fix__H4dpcLP/artifacts/app/src/worker/requirements.txt",
+        "sha256": "b5c784f34d35b8e47f92a6208e6e9fa7a0c46fbf8733d5d78b424b09bb37b1a1",
+        "bytes": 95
+      },
+      {
+        "path": "payments-pipeline-fix__H4dpcLP/artifacts/app/src/worker/__pycache__/config.cpython-312.pyc",
+        "sha256": "801008cc12b7853ba306bdfb87e3d969446faa49611715ddf8f7a1ddce60d469",
+        "bytes": 617
+      },
+      {
+        "path": "payments-pipeline-fix__H4dpcLP/artifacts/app/src/worker/__pycache__/__init__.cpython-312.pyc",
+        "sha256": "e57de7aa2d99c9ab5e52a5924525ea9dd5fe2c6bb04305e44c899a5b6c2de3a6",
+        "bytes": 124
+      },
+      {
+        "path": "payments-pipeline-fix__H4dpcLP/artifacts/app/src/worker/__pycache__/worker.cpython-312.pyc",
+        "sha256": "55bc5a698364eca3dc01999cdabfd92b11a49c29e6caf063e36c9a03a462b6e9",
+        "bytes": 12675
+      },
+      {
+        "path": "tbench/manifests/payments-pipeline-fix__H4dpcLP.json",
+        "sha256": "93a020a622deb15efab425d6f0e5f06644dd3d1206647ccb42593a2a68a90021",
+        "bytes": 10551
+      },
+      {
+        "path": "tbench/attempts/payments-pipeline-fix__H4dpcLP.json",
+        "sha256": "30b6c49698fa28385c8b8a2659e84e7963c25c18185a5545eeb65cd652bc4015",
+        "bytes": 9113
+      }
+    ]
+  },
+  {
+    "remote_path": "/home/christopherdavid/.openagents/terminal-bench/failed/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a1r-20260925T032401-contamination-void",
+    "files": [
+      {
+        "path": "lock.json",
+        "sha256": "eb0cda9dbaa651bd8a87a05072a86be18a98c4500bc509f9750cb4afa18a88f5",
+        "bytes": 2822
+      },
+      {
+        "path": "config.json",
+        "sha256": "3a9460b3300d8c34a37ba05f55c6a60f583bb2454469a41ac7f786d25816902c",
+        "bytes": 1323
+      },
+      {
+        "path": "job.log",
+        "sha256": "8113c47cc7a70360917fcb0a9606ca6cb306a980d8ed85d8a35799ae0a1e7250",
+        "bytes": 1133
+      },
+      {
+        "path": "result.json",
+        "sha256": "2e3e362959b19b006804f3b60817018bba82c3306aea7202dbc7924fcca2d535",
+        "bytes": 1078
+      },
+      {
+        "path": "payments-pipeline-fix__WydZru3/exception.txt",
+        "sha256": "356beb839d8af6af7f4b1951f0a3e3cfbe4c6b9ffef63ff546fc0ceb3aadbe54",
+        "bytes": 2275
+      },
+      {
+        "path": "payments-pipeline-fix__WydZru3/lock.json",
+        "sha256": "c04775615ed24e4d813eea39c61189c05553f459f4cee36cde11a6dffea878e0",
+        "bytes": 1700
+      },
+      {
+        "path": "payments-pipeline-fix__WydZru3/network-policy.json",
+        "sha256": "257e24de64db1209faf5dfeb61b24f8b7ffddbc6da44b9cb4b4e8acae081b672",
+        "bytes": 900
+      },
+      {
+        "path": "payments-pipeline-fix__WydZru3/config.json",
+        "sha256": "b56d2b05405f21809e8a63bf52cfa0fc6950cb76435315c7ce475c4457faea55",
+        "bytes": 1268
+      },
+      {
+        "path": "payments-pipeline-fix__WydZru3/analysis.json",
+        "sha256": "6da28122dec404d2464b2f6131c470b9f39536f0229f5461bfddf7bbe2d94c3d",
+        "bytes": 1881
+      },
+      {
+        "path": "payments-pipeline-fix__WydZru3/analysis.md",
+        "sha256": "d36f25c86c9b75a9cfc803cf4afdb03a43bc383f391e47ab798a80cf5346e030",
+        "bytes": 1815
+      },
+      {
+        "path": "payments-pipeline-fix__WydZru3/trial.log",
+        "sha256": "58c92939cb23c89fc49c40d56cce933880ac35bcdc536f6db53a6901e47b19a2",
+        "bytes": 1059
+      },
+      {
+        "path": "payments-pipeline-fix__WydZru3/tbench-environment.jsonl",
+        "sha256": "e33bdca811360e3eca7152429825c8c1bb8cde8dedaacbed9f41c85771bdb581",
+        "bytes": 640
+      },
+      {
+        "path": "payments-pipeline-fix__WydZru3/result.json",
+        "sha256": "30c1f2003cd288d22a7be0666cecc8d4dd811e269b737d3462ffef18c92aa898",
+        "bytes": 7502
+      },
+      {
+        "path": "tbench/context.json",
+        "sha256": "82466ec02fd0b0e2ff177ec6a6c421cc811d9424c87d0337f16b6378c260cd4b",
+        "bytes": 95
+      },
+      {
+        "path": "tbench/job-config.json",
+        "sha256": "64839ee9fbb0b48c3bfc100353ddcad133b18490e66f7f74aad44f55961b081b",
+        "bytes": 1463
+      },
+      {
+        "path": "tbench/manifests/payments-pipeline-fix__WydZru3.json",
+        "sha256": "11a26536c0f0256fea826221463ac9503bdd3704c5eaf6515b591854d6a21194",
+        "bytes": 10566
+      },
+      {
+        "path": "tbench/attempts/payments-pipeline-fix__WydZru3.json",
+        "sha256": "8ae209ef9b22ba5339b1f7eb714912d7411502c1c048b882d54caf610d3eb7ae",
+        "bytes": 9120
+      },
+      {
+        "path": "payments-pipeline-fix__WydZru3/artifacts/manifest.json",
+        "sha256": "71b9f2a22092fa08dfb8220c22154e2b25759602a54394cabbf0cf643ac3b000",
+        "bytes": 468
+      },
+      {
+        "path": "payments-pipeline-fix__WydZru3/agent/contamination-static.json",
+        "sha256": "f8ebbf55827e5e98db18c3be7f01afed26bdb5e42046222d61a59ef7470aac6a",
+        "bytes": 2135
+      },
+      {
+        "path": "payments-pipeline-fix__WydZru3/artifacts/tmp/kafka-snapshot.tgz",
+        "sha256": "8d4770f6a2fec69869dfd3838e576da1ce4fbeb382a108c0064c2fdca58a2b3a",
+        "bytes": 71896250
+      },
+      {
+        "path": "payments-pipeline-fix__WydZru3/artifacts/app/src/worker/worker.py",
+        "sha256": "5b365a5a8fa66a970860e26ad42547f0f5723b958e2886088f2c70e03d0a97f4",
+        "bytes": 8554
+      },
+      {
+        "path": "payments-pipeline-fix__WydZru3/artifacts/app/src/worker/__init__.py",
+        "sha256": "63b800abbf1b909111eb7bd75d9c117c981a068f28156699752ad5f896521e0f",
+        "bytes": 58
+      },
+      {
+        "path": "payments-pipeline-fix__WydZru3/artifacts/app/src/worker/config.py",
+        "sha256": "f3d12cbd9875819e42a2dae1c4fee49dd0064fbec01afc41c83d350e34e98840",
+        "bytes": 350
+      },
+      {
+        "path": "payments-pipeline-fix__WydZru3/artifacts/app/src/worker/requirements.txt",
+        "sha256": "b5c784f34d35b8e47f92a6208e6e9fa7a0c46fbf8733d5d78b424b09bb37b1a1",
+        "bytes": 95
+      },
+      {
+        "path": "payments-pipeline-fix__WydZru3/artifacts/app/src/worker/__pycache__/config.cpython-312.pyc",
+        "sha256": "801008cc12b7853ba306bdfb87e3d969446faa49611715ddf8f7a1ddce60d469",
+        "bytes": 617
+      },
+      {
+        "path": "payments-pipeline-fix__WydZru3/artifacts/app/src/worker/__pycache__/__init__.cpython-312.pyc",
+        "sha256": "e57de7aa2d99c9ab5e52a5924525ea9dd5fe2c6bb04305e44c899a5b6c2de3a6",
+        "bytes": 124
+      },
+      {
+        "path": "payments-pipeline-fix__WydZru3/artifacts/app/src/worker/__pycache__/worker.cpython-312.pyc",
+        "sha256": "55bc5a698364eca3dc01999cdabfd92b11a49c29e6caf063e36c9a03a462b6e9",
+        "bytes": 12675
+      }
+    ]
+  }
+]

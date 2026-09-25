@@ -1,8 +1,19 @@
 # Terminal-Bench status
 
-Updated on 2026-09-25 with the completed archive confirmation. This page summarizes retained evidence, not the host's live queue.
+Updated on 2026-09-25 with the completed v18 family assessment. This page summarizes retained evidence, not the host's live queue.
 
 ## Latest status
+
+**Microluna v18: 0/9 confirmation and 0/9 development.** The
+[full family report](2026-09-25-microluna-v18-family.md) publishes all 18 completed
+attempts and five setup-only starts. The completed cohort meets the loss condition;
+the strict protocol result is inconclusive because the harness changed after
+setup failures and the driver restarted. Counted spend is $0.9636; no successful
+output means no cost/pass or time/pass comparison. Candidate oracle coverage is
+complete for only 6/18 trials. #9640 is complete as a measurement;
+[#9649](https://github.com/OpenAgentsInc/openagents/issues/9649) and
+[#9650](https://github.com/OpenAgentsInc/openagents/issues/9650) track retention
+and orchestration repairs. No policy is promoted.
 
 **Executed-contract measurement is complete (#9628).** The
 [sixteen-candidate supplement](2026-09-25-executed-contract-supplement.md)

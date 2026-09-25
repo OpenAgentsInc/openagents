@@ -1,0 +1,926 @@
+[
+  {
+    "task": "cumulative-layout-shift",
+    "label": "a1",
+    "trial": "cumulative-layout-shift__gZBT3gZ",
+    "loop_record": true,
+    "stopped": "session 2 ended done; the self-check ended done",
+    "stopped_by": null,
+    "scores": [
+      [
+        1,
+        3,
+        9
+      ],
+      [
+        2,
+        9,
+        9
+      ],
+      [
+        3,
+        9,
+        9
+      ]
+    ],
+    "submitted_score": [
+      null,
+      null
+    ],
+    "submitted_session": null,
+    "sessions": [
+      {
+        "status": "turn_limit",
+        "cause": null,
+        "finish_refusals": 0,
+        "unverified": false,
+        "turns": 60
+      },
+      {
+        "status": "done",
+        "cause": "none",
+        "finish_refusals": 0,
+        "unverified": false,
+        "turns": 27
+      },
+      {
+        "status": "done",
+        "cause": "none",
+        "finish_refusals": 0,
+        "unverified": false,
+        "turns": 13
+      }
+    ],
+    "not_found_turns": "3",
+    "self_score_agrees": "unknown",
+    "frozen_score": "unknown",
+    "untouched_score": "unknown",
+    "baseline_commands_count": 0,
+    "baseline_runs_count": 0,
+    "baseline_no_entry_point": true
+  },
+  {
+    "task": "cumulative-layout-shift",
+    "label": "a2",
+    "trial": "cumulative-layout-shift__V2vyUx3",
+    "loop_record": true,
+    "stopped": "session 2 ended done; the self-check ended done",
+    "stopped_by": null,
+    "scores": [
+      [
+        1,
+        0,
+        6
+      ],
+      [
+        2,
+        6,
+        6
+      ],
+      [
+        3,
+        6,
+        6
+      ]
+    ],
+    "submitted_score": [
+      null,
+      null
+    ],
+    "submitted_session": null,
+    "sessions": [
+      {
+        "status": "turn_limit",
+        "cause": null,
+        "finish_refusals": 0,
+        "unverified": false,
+        "turns": 60
+      },
+      {
+        "status": "done",
+        "cause": "none",
+        "finish_refusals": 0,
+        "unverified": false,
+        "turns": 18
+      },
+      {
+        "status": "done",
+        "cause": "none",
+        "finish_refusals": 1,
+        "unverified": false,
+        "turns": 24
+      }
+    ],
+    "not_found_turns": "6",
+    "self_score_agrees": "unknown",
+    "frozen_score": "unknown",
+    "untouched_score": "0 of 6",
+    "baseline_commands_count": 0,
+    "baseline_runs_count": 0,
+    "baseline_no_entry_point": true
+  },
+  {
+    "task": "cumulative-layout-shift",
+    "label": "a3",
+    "trial": "cumulative-layout-shift__ucFSsb2",
+    "loop_record": true,
+    "stopped": "session 2 ended done; the self-check ended done",
+    "stopped_by": null,
+    "scores": [
+      [
+        1,
+        8,
+        8
+      ],
+      [
+        2,
+        8,
+        8
+      ],
+      [
+        3,
+        8,
+        8
+      ]
+    ],
+    "submitted_score": [
+      null,
+      null
+    ],
+    "submitted_session": null,
+    "sessions": [
+      {
+        "status": "turn_limit",
+        "cause": null,
+        "finish_refusals": 0,
+        "unverified": false,
+        "turns": 60
+      },
+      {
+        "status": "done",
+        "cause": "none",
+        "finish_refusals": 0,
+        "unverified": false,
+        "turns": 13
+      },
+      {
+        "status": "done",
+        "cause": "none",
+        "finish_refusals": 0,
+        "unverified": false,
+        "turns": 14
+      }
+    ],
+    "not_found_turns": "1",
+    "self_score_agrees": "unknown",
+    "frozen_score": "unknown",
+    "untouched_score": "0 of 6",
+    "baseline_commands_count": 0,
+    "baseline_runs_count": 0,
+    "baseline_no_entry_point": true
+  },
+  {
+    "task": "live-database-cutover",
+    "label": "a1",
+    "trial": "live-database-cutover__WTNo7fG",
+    "loop_record": true,
+    "stopped": "session 1 ended done; the self-check ended done",
+    "stopped_by": null,
+    "scores": [
+      [
+        1,
+        6,
+        6
+      ],
+      [
+        2,
+        6,
+        6
+      ]
+    ],
+    "submitted_score": [
+      6,
+      6
+    ],
+    "submitted_session": 2,
+    "sessions": [
+      {
+        "status": "done",
+        "cause": "none",
+        "finish_refusals": 0,
+        "unverified": false,
+        "turns": 24
+      },
+      {
+        "status": "done",
+        "cause": "none",
+        "finish_refusals": 0,
+        "unverified": false,
+        "turns": 5
+      }
+    ],
+    "not_found_turns": "0",
+    "self_score_agrees": "no",
+    "frozen_score": "6 of 6",
+    "untouched_score": "0 of 6",
+    "baseline_commands_count": 0,
+    "baseline_runs_count": 0,
+    "baseline_no_entry_point": true
+  },
+  {
+    "task": "live-database-cutover",
+    "label": "a2",
+    "trial": "live-database-cutover__KZ6YnS9",
+    "loop_record": true,
+    "stopped": "session 2 ended done; the self-check ended blocked",
+    "stopped_by": null,
+    "scores": [
+      [
+        1,
+        5,
+        5
+      ],
+      [
+        2,
+        5,
+        5
+      ],
+      [
+        3,
+        5,
+        5
+      ]
+    ],
+    "submitted_score": [
+      5,
+      5
+    ],
+    "submitted_session": 3,
+    "sessions": [
+      {
+        "status": "blocked",
+        "cause": "missing_tool",
+        "finish_refusals": 0,
+        "unverified": false,
+        "turns": 28
+      },
+      {
+        "status": "done",
+        "cause": "none",
+        "finish_refusals": 0,
+        "unverified": false,
+        "turns": 10
+      },
+      {
+        "status": "blocked",
+        "cause": "needs_information",
+        "finish_refusals": 0,
+        "unverified": false,
+        "turns": 4
+      }
+    ],
+    "not_found_turns": "1",
+    "self_score_agrees": "no",
+    "frozen_score": "5 of 5",
+    "untouched_score": "0 of 5",
+    "baseline_commands_count": 0,
+    "baseline_runs_count": 0,
+    "baseline_no_entry_point": true
+  },
+  {
+    "task": "live-database-cutover",
+    "label": "a3",
+    "trial": "live-database-cutover__4AVYKpU",
+    "loop_record": true,
+    "stopped": "session 1 ended done; the self-check ended blocked",
+    "stopped_by": null,
+    "scores": [
+      [
+        1,
+        6,
+        6
+      ],
+      [
+        2,
+        6,
+        6
+      ]
+    ],
+    "submitted_score": [
+      6,
+      6
+    ],
+    "submitted_session": 2,
+    "sessions": [
+      {
+        "status": "done",
+        "cause": "none",
+        "finish_refusals": 0,
+        "unverified": false,
+        "turns": 28
+      },
+      {
+        "status": "blocked",
+        "cause": "needs_information",
+        "finish_refusals": 0,
+        "unverified": false,
+        "turns": 6
+      }
+    ],
+    "not_found_turns": "0",
+    "self_score_agrees": "no",
+    "frozen_score": "6 of 6",
+    "untouched_score": "0 of 6",
+    "baseline_commands_count": 0,
+    "baseline_runs_count": 0,
+    "baseline_no_entry_point": true
+  },
+  {
+    "task": "mp-checkpoint-consolidation",
+    "label": "a1",
+    "trial": "mp-checkpoint-consolidation__tQT74ja",
+    "loop_record": true,
+    "stopped": "the dispatch's time ran out",
+    "stopped_by": null,
+    "scores": [
+      [
+        1,
+        1,
+        2
+      ],
+      [
+        2,
+        null,
+        null
+      ]
+    ],
+    "submitted_score": [
+      null,
+      null
+    ],
+    "submitted_session": null,
+    "sessions": [
+      {
+        "status": "deadline",
+        "cause": null,
+        "finish_refusals": 0,
+        "unverified": false,
+        "turns": 45
+      },
+      {
+        "status": "deadline",
+        "cause": null,
+        "finish_refusals": 0,
+        "unverified": false,
+        "turns": 23
+      }
+    ],
+    "not_found_turns": "1",
+    "self_score_agrees": "unknown",
+    "frozen_score": "unknown",
+    "untouched_score": "unknown",
+    "baseline_commands_count": 0,
+    "baseline_runs_count": 0,
+    "baseline_no_entry_point": true
+  },
+  {
+    "task": "mp-checkpoint-consolidation",
+    "label": "a2",
+    "trial": "mp-checkpoint-consolidation__zWRwtDd",
+    "loop_record": true,
+    "stopped": "the dispatch's time ran out",
+    "stopped_by": null,
+    "scores": [
+      [
+        1,
+        1,
+        2
+      ],
+      [
+        2,
+        null,
+        null
+      ]
+    ],
+    "submitted_score": [
+      null,
+      null
+    ],
+    "submitted_session": null,
+    "sessions": [
+      {
+        "status": "failed",
+        "cause": "other",
+        "finish_refusals": 0,
+        "unverified": false,
+        "turns": 50
+      },
+      {
+        "status": "deadline",
+        "cause": null,
+        "finish_refusals": 0,
+        "unverified": false,
+        "turns": 17
+      }
+    ],
+    "not_found_turns": "0",
+    "self_score_agrees": "unknown",
+    "frozen_score": "unknown",
+    "untouched_score": "0 of 2",
+    "baseline_commands_count": 0,
+    "baseline_runs_count": 0,
+    "baseline_no_entry_point": true
+  },
+  {
+    "task": "mp-checkpoint-consolidation",
+    "label": "a3",
+    "trial": "mp-checkpoint-consolidation__rpcuKgN",
+    "loop_record": true,
+    "stopped": "the dispatch's time ran out",
+    "stopped_by": null,
+    "scores": [
+      [
+        1,
+        1,
+        3
+      ],
+      [
+        2,
+        null,
+        null
+      ]
+    ],
+    "submitted_score": [
+      null,
+      null
+    ],
+    "submitted_session": null,
+    "sessions": [
+      {
+        "status": "deadline",
+        "cause": null,
+        "finish_refusals": 0,
+        "unverified": false,
+        "turns": 37
+      },
+      {
+        "status": "deadline",
+        "cause": null,
+        "finish_refusals": 0,
+        "unverified": false,
+        "turns": 8
+      }
+    ],
+    "not_found_turns": "1",
+    "self_score_agrees": "unknown",
+    "frozen_score": "unknown",
+    "untouched_score": "0 of 3",
+    "baseline_commands_count": 0,
+    "baseline_runs_count": 0,
+    "baseline_no_entry_point": true
+  },
+  {
+    "task": "payments-pipeline-fix",
+    "label": "a1",
+    "trial": "payments-pipeline-fix__xSC7ngE",
+    "loop_record": true,
+    "stopped": "session 1 ended done; the self-check ended done",
+    "stopped_by": null,
+    "scores": [
+      [
+        1,
+        5,
+        5
+      ],
+      [
+        2,
+        5,
+        5
+      ]
+    ],
+    "submitted_score": [
+      5,
+      5
+    ],
+    "submitted_session": 2,
+    "sessions": [
+      {
+        "status": "done",
+        "cause": "none",
+        "finish_refusals": 0,
+        "unverified": false,
+        "turns": 18
+      },
+      {
+        "status": "done",
+        "cause": "none",
+        "finish_refusals": 0,
+        "unverified": false,
+        "turns": 5
+      }
+    ],
+    "not_found_turns": "0",
+    "self_score_agrees": "no",
+    "frozen_score": "5 of 5",
+    "untouched_score": "2 of 5",
+    "baseline_commands_count": 0,
+    "baseline_runs_count": 0,
+    "baseline_no_entry_point": true
+  },
+  {
+    "task": "payments-pipeline-fix",
+    "label": "a2",
+    "trial": "payments-pipeline-fix__hEYMz2a",
+    "loop_record": true,
+    "stopped": "session 2 ended done; the self-check ended done",
+    "stopped_by": null,
+    "scores": [
+      [
+        1,
+        6,
+        6
+      ],
+      [
+        2,
+        6,
+        6
+      ],
+      [
+        3,
+        6,
+        6
+      ]
+    ],
+    "submitted_score": [
+      6,
+      6
+    ],
+    "submitted_session": 3,
+    "sessions": [
+      {
+        "status": "deadline",
+        "cause": null,
+        "finish_refusals": 0,
+        "unverified": false,
+        "turns": 43
+      },
+      {
+        "status": "done",
+        "cause": "none",
+        "finish_refusals": 0,
+        "unverified": false,
+        "turns": 4
+      },
+      {
+        "status": "done",
+        "cause": "none",
+        "finish_refusals": 0,
+        "unverified": false,
+        "turns": 3
+      }
+    ],
+    "not_found_turns": "0",
+    "self_score_agrees": "no",
+    "frozen_score": "6 of 6",
+    "untouched_score": "2 of 4",
+    "baseline_commands_count": 0,
+    "baseline_runs_count": 0,
+    "baseline_no_entry_point": true
+  },
+  {
+    "task": "payments-pipeline-fix",
+    "label": "a3",
+    "trial": "payments-pipeline-fix__Wcy8BbS",
+    "loop_record": true,
+    "stopped": "session 1 ended done; the self-check ended done",
+    "stopped_by": null,
+    "scores": [
+      [
+        1,
+        4,
+        4
+      ],
+      [
+        2,
+        4,
+        4
+      ]
+    ],
+    "submitted_score": [
+      4,
+      4
+    ],
+    "submitted_session": 2,
+    "sessions": [
+      {
+        "status": "done",
+        "cause": "none",
+        "finish_refusals": 0,
+        "unverified": false,
+        "turns": 8
+      },
+      {
+        "status": "done",
+        "cause": "none",
+        "finish_refusals": 0,
+        "unverified": false,
+        "turns": 4
+      }
+    ],
+    "not_found_turns": "0",
+    "self_score_agrees": "no",
+    "frozen_score": "4 of 4",
+    "untouched_score": "1 of 1",
+    "baseline_commands_count": 0,
+    "baseline_runs_count": 0,
+    "baseline_no_entry_point": true
+  },
+  {
+    "task": "photonic-waveguide-routing",
+    "label": "a1",
+    "trial": "photonic-waveguide-routing__HnP7Nmn",
+    "loop_record": true,
+    "stopped": "the dispatch's time ran out; the host restored session 1's workspace, the best by score",
+    "stopped_by": null,
+    "scores": [
+      [
+        1,
+        0,
+        1
+      ],
+      [
+        2,
+        null,
+        null
+      ]
+    ],
+    "submitted_score": [
+      0,
+      1
+    ],
+    "submitted_session": 1,
+    "sessions": [
+      {
+        "status": "deadline",
+        "cause": null,
+        "finish_refusals": 0,
+        "unverified": false,
+        "turns": 29
+      },
+      {
+        "status": "deadline",
+        "cause": null,
+        "finish_refusals": 0,
+        "unverified": false,
+        "turns": 4
+      }
+    ],
+    "not_found_turns": "0",
+    "self_score_agrees": "yes",
+    "frozen_score": "0 of 1",
+    "untouched_score": "0 of 1",
+    "baseline_commands_count": 0,
+    "baseline_runs_count": 0,
+    "baseline_no_entry_point": true
+  },
+  {
+    "task": "photonic-waveguide-routing",
+    "label": "a2",
+    "trial": "photonic-waveguide-routing__RbDGpkz",
+    "loop_record": true,
+    "stopped": "the dispatch's time ran out; the host restored session 1's workspace, the best by score",
+    "stopped_by": null,
+    "scores": [
+      [
+        1,
+        0,
+        1
+      ],
+      [
+        2,
+        null,
+        null
+      ]
+    ],
+    "submitted_score": [
+      0,
+      1
+    ],
+    "submitted_session": 1,
+    "sessions": [
+      {
+        "status": "deadline",
+        "cause": null,
+        "finish_refusals": 0,
+        "unverified": false,
+        "turns": 47
+      },
+      {
+        "status": "deadline",
+        "cause": null,
+        "finish_refusals": 0,
+        "unverified": false,
+        "turns": 6
+      }
+    ],
+    "not_found_turns": "0",
+    "self_score_agrees": "yes",
+    "frozen_score": "0 of 1",
+    "untouched_score": "0 of 1",
+    "baseline_commands_count": 0,
+    "baseline_runs_count": 0,
+    "baseline_no_entry_point": true
+  },
+  {
+    "task": "photonic-waveguide-routing",
+    "label": "a3",
+    "trial": "photonic-waveguide-routing__mEjzdB4",
+    "loop_record": true,
+    "stopped": "the dispatch's time ran out; the host restored session 1's workspace, the best by score",
+    "stopped_by": null,
+    "scores": [
+      [
+        1,
+        0,
+        1
+      ],
+      [
+        2,
+        null,
+        null
+      ]
+    ],
+    "submitted_score": [
+      0,
+      1
+    ],
+    "submitted_session": 1,
+    "sessions": [
+      {
+        "status": "failed",
+        "cause": "other",
+        "finish_refusals": 0,
+        "unverified": false,
+        "turns": 17
+      },
+      {
+        "status": "deadline",
+        "cause": null,
+        "finish_refusals": 0,
+        "unverified": false,
+        "turns": 10
+      }
+    ],
+    "not_found_turns": "0",
+    "self_score_agrees": "yes",
+    "frozen_score": "0 of 1",
+    "untouched_score": "0 of 1",
+    "baseline_commands_count": 0,
+    "baseline_runs_count": 0,
+    "baseline_no_entry_point": true
+  },
+  {
+    "task": "telecom-entity-resolution",
+    "label": "a1",
+    "trial": "telecom-entity-resolution__wB2fijb",
+    "loop_record": true,
+    "stopped": "session 1 ended done; the self-check ended done",
+    "stopped_by": null,
+    "scores": [
+      [
+        1,
+        5,
+        5
+      ],
+      [
+        2,
+        5,
+        5
+      ]
+    ],
+    "submitted_score": [
+      5,
+      5
+    ],
+    "submitted_session": 2,
+    "sessions": [
+      {
+        "status": "done",
+        "cause": "none",
+        "finish_refusals": 0,
+        "unverified": false,
+        "turns": 27
+      },
+      {
+        "status": "done",
+        "cause": "none",
+        "finish_refusals": 0,
+        "unverified": false,
+        "turns": 4
+      }
+    ],
+    "not_found_turns": "1",
+    "self_score_agrees": "no",
+    "frozen_score": "5 of 5",
+    "untouched_score": "unknown",
+    "baseline_commands_count": 0,
+    "baseline_runs_count": 0,
+    "baseline_no_entry_point": true
+  },
+  {
+    "task": "telecom-entity-resolution",
+    "label": "a2",
+    "trial": "telecom-entity-resolution__MKCp2Yg",
+    "loop_record": true,
+    "stopped": "session 1 ended done; the self-check ended done",
+    "stopped_by": null,
+    "scores": [
+      [
+        1,
+        2,
+        2
+      ],
+      [
+        2,
+        2,
+        2
+      ]
+    ],
+    "submitted_score": [
+      2,
+      2
+    ],
+    "submitted_session": 2,
+    "sessions": [
+      {
+        "status": "done",
+        "cause": "none",
+        "finish_refusals": 0,
+        "unverified": false,
+        "turns": 17
+      },
+      {
+        "status": "done",
+        "cause": "none",
+        "finish_refusals": 0,
+        "unverified": false,
+        "turns": 12
+      }
+    ],
+    "not_found_turns": "0",
+    "self_score_agrees": "no",
+    "frozen_score": "2 of 2",
+    "untouched_score": "0 of 2",
+    "baseline_commands_count": 0,
+    "baseline_runs_count": 0,
+    "baseline_no_entry_point": true
+  },
+  {
+    "task": "telecom-entity-resolution",
+    "label": "a3",
+    "trial": "telecom-entity-resolution__gRETFg7",
+    "loop_record": true,
+    "stopped": "session 1 ended done; the self-check ended done",
+    "stopped_by": null,
+    "scores": [
+      [
+        1,
+        1,
+        1
+      ],
+      [
+        2,
+        1,
+        1
+      ]
+    ],
+    "submitted_score": [
+      1,
+      1
+    ],
+    "submitted_session": 2,
+    "sessions": [
+      {
+        "status": "done",
+        "cause": "none",
+        "finish_refusals": 0,
+        "unverified": false,
+        "turns": 28
+      },
+      {
+        "status": "done",
+        "cause": "none",
+        "finish_refusals": 0,
+        "unverified": false,
+        "turns": 6
+      }
+    ],
+    "not_found_turns": "0",
+    "self_score_agrees": "no",
+    "frozen_score": "1 of 1",
+    "untouched_score": "unknown",
+    "baseline_commands_count": 0,
+    "baseline_runs_count": 0,
+    "baseline_no_entry_point": true
+  }
+]

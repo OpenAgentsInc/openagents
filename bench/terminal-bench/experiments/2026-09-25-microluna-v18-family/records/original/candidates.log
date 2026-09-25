@@ -1,0 +1,160 @@
+{
+  "wall_seconds": 112.33907389105298,
+  "verifier_executions": 26,
+  "reused_grades": 0,
+  "invalid_candidates": 14,
+  "errors": [
+    {
+      "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a1-20260925T033723/cumulative-layout-shift__gZBT3gZ",
+      "error": "cumulative-layout-shift__gZBT3gZ/session-1: snapshot unavailable or inconsistent"
+    },
+    {
+      "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a2-20260925T044223/cumulative-layout-shift__V2vyUx3",
+      "error": "cumulative-layout-shift__V2vyUx3/session-1: snapshot unavailable or inconsistent"
+    },
+    {
+      "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a3-20260925T053453/cumulative-layout-shift__ucFSsb2",
+      "error": "cumulative-layout-shift__ucFSsb2/session-1: snapshot unavailable or inconsistent"
+    },
+    {
+      "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a1-20260925T032843/mp-checkpoint-consolidation__tQT74ja",
+      "error": "mp-checkpoint-consolidation__tQT74ja/session-1: snapshot unavailable or inconsistent"
+    },
+    {
+      "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a2-20260925T043313/mp-checkpoint-consolidation__zWRwtDd",
+      "error": "mp-checkpoint-consolidation__zWRwtDd/session-1: snapshot unavailable or inconsistent"
+    },
+    {
+      "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a3-20260925T052613/mp-checkpoint-consolidation__rpcuKgN",
+      "error": "mp-checkpoint-consolidation__rpcuKgN/session-1: snapshot unavailable or inconsistent"
+    }
+  ],
+  "oracle": [
+    {
+      "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a1-20260925T033723/cumulative-layout-shift__gZBT3gZ",
+      "original_reward": 0.0,
+      "candidates": 0,
+      "complete": false,
+      "any_candidate_passes": null
+    },
+    {
+      "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a2-20260925T044223/cumulative-layout-shift__V2vyUx3",
+      "original_reward": 0.0,
+      "candidates": 0,
+      "complete": false,
+      "any_candidate_passes": null
+    },
+    {
+      "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a3-20260925T053453/cumulative-layout-shift__ucFSsb2",
+      "original_reward": 0.0,
+      "candidates": 0,
+      "complete": false,
+      "any_candidate_passes": null
+    },
+    {
+      "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--live-database-cutover--family-a1-20260925T040033/live-database-cutover__WTNo7fG",
+      "original_reward": 0.0,
+      "candidates": 2,
+      "complete": false,
+      "any_candidate_passes": null
+    },
+    {
+      "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--live-database-cutover--family-a2-20260925T050233/live-database-cutover__KZ6YnS9",
+      "original_reward": 0.0,
+      "candidates": 3,
+      "complete": false,
+      "any_candidate_passes": null
+    },
+    {
+      "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--live-database-cutover--family-a3-20260925T055503/live-database-cutover__4AVYKpU",
+      "original_reward": 0.0,
+      "candidates": 2,
+      "complete": false,
+      "any_candidate_passes": null
+    },
+    {
+      "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a1-20260925T032843/mp-checkpoint-consolidation__tQT74ja",
+      "original_reward": 0.0,
+      "candidates": 0,
+      "complete": false,
+      "any_candidate_passes": null
+    },
+    {
+      "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a2-20260925T043313/mp-checkpoint-consolidation__zWRwtDd",
+      "original_reward": 0.0,
+      "candidates": 0,
+      "complete": false,
+      "any_candidate_passes": null
+    },
+    {
+      "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a3-20260925T052613/mp-checkpoint-consolidation__rpcuKgN",
+      "original_reward": 0.0,
+      "candidates": 0,
+      "complete": false,
+      "any_candidate_passes": null
+    },
+    {
+      "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a1-20260925T032803/payments-pipeline-fix__xSC7ngE",
+      "original_reward": 0.0,
+      "candidates": 2,
+      "complete": false,
+      "any_candidate_passes": null
+    },
+    {
+      "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a2-20260925T042233/payments-pipeline-fix__hEYMz2a",
+      "original_reward": 0.0,
+      "candidates": 3,
+      "complete": false,
+      "any_candidate_passes": null
+    },
+    {
+      "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a3-20260925T051933/payments-pipeline-fix__Wcy8BbS",
+      "original_reward": 0.0,
+      "candidates": 2,
+      "complete": false,
+      "any_candidate_passes": null
+    },
+    {
+      "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--photonic-waveguide-routing--family-a1-20260925T041053/photonic-waveguide-routing__HnP7Nmn",
+      "original_reward": 0.0,
+      "candidates": 2,
+      "complete": true,
+      "any_candidate_passes": false
+    },
+    {
+      "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--photonic-waveguide-routing--family-a2-20260925T051353/photonic-waveguide-routing__RbDGpkz",
+      "original_reward": 0.0,
+      "candidates": 2,
+      "complete": true,
+      "any_candidate_passes": false
+    },
+    {
+      "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--photonic-waveguide-routing--family-a3-20260925T060323/photonic-waveguide-routing__mEjzdB4",
+      "original_reward": 0.0,
+      "candidates": 2,
+      "complete": true,
+      "any_candidate_passes": false
+    },
+    {
+      "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--telecom-entity-resolution--family-a1-20260925T041013/telecom-entity-resolution__wB2fijb",
+      "original_reward": 0.0,
+      "candidates": 2,
+      "complete": true,
+      "any_candidate_passes": false
+    },
+    {
+      "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--telecom-entity-resolution--family-a2-20260925T051313/telecom-entity-resolution__MKCp2Yg",
+      "original_reward": 0.0,
+      "candidates": 2,
+      "complete": true,
+      "any_candidate_passes": false
+    },
+    {
+      "trial": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--telecom-entity-resolution--family-a3-20260925T060243/telecom-entity-resolution__gRETFg7",
+      "original_reward": 0.0,
+      "candidates": 2,
+      "complete": true,
+      "any_candidate_passes": false
+    }
+  ]
+}

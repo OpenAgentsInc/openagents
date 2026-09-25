@@ -1,0 +1,771 @@
+{
+  "checked": 153,
+  "mismatches": [],
+  "files": [
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a1-20260925T032803/payments-pipeline-fix__xSC7ngE/result.json",
+      "expected": "2c86d71cd33c7135be1753ab61072624d8d0cd239a067dcd0daced8c1ff22417",
+      "actual": "2c86d71cd33c7135be1753ab61072624d8d0cd239a067dcd0daced8c1ff22417"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a1-20260925T032803/payments-pipeline-fix__xSC7ngE/agent/trajectory.json",
+      "expected": "2d337a3cc2f79f3bec76f4b182c0564dc3758ce09fd531d875cf1cc91cd2ef60",
+      "actual": "2d337a3cc2f79f3bec76f4b182c0564dc3758ce09fd531d875cf1cc91cd2ef60"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a1-20260925T032803/payments-pipeline-fix__xSC7ngE/verifier/reward.txt",
+      "expected": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "actual": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a1-20260925T032803/payments-pipeline-fix__xSC7ngE/verifier/ctrf.json",
+      "expected": "252aebad706fd00b19c40b7bbf6613d5306d5ab34ca4946e0b4d87deca9bf5c2",
+      "actual": "252aebad706fd00b19c40b7bbf6613d5306d5ab34ca4946e0b4d87deca9bf5c2"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a1-20260925T032803/payments-pipeline-fix__xSC7ngE/artifacts/app/src/worker/__init__.py",
+      "expected": "63b800abbf1b909111eb7bd75d9c117c981a068f28156699752ad5f896521e0f",
+      "actual": "63b800abbf1b909111eb7bd75d9c117c981a068f28156699752ad5f896521e0f"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a1-20260925T032803/payments-pipeline-fix__xSC7ngE/artifacts/app/src/worker/__pycache__/__init__.cpython-312.pyc",
+      "expected": "4080772aac70833e02fcc4578c9a6ee16c01362909506081bf9bd281113d74c1",
+      "actual": "4080772aac70833e02fcc4578c9a6ee16c01362909506081bf9bd281113d74c1"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a1-20260925T032803/payments-pipeline-fix__xSC7ngE/artifacts/app/src/worker/__pycache__/config.cpython-312.pyc",
+      "expected": "3e785ba02ebafa7979c07487e26f8c4ec6963011ff1c28424c8b08453b5a76de",
+      "actual": "3e785ba02ebafa7979c07487e26f8c4ec6963011ff1c28424c8b08453b5a76de"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a1-20260925T032803/payments-pipeline-fix__xSC7ngE/artifacts/app/src/worker/__pycache__/worker.cpython-312.pyc",
+      "expected": "f59d4508797f585b76be8a985f8731e35e2b34c1652e2991a7d7c71a19173704",
+      "actual": "f59d4508797f585b76be8a985f8731e35e2b34c1652e2991a7d7c71a19173704"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a1-20260925T032803/payments-pipeline-fix__xSC7ngE/artifacts/app/src/worker/config.py",
+      "expected": "f3d12cbd9875819e42a2dae1c4fee49dd0064fbec01afc41c83d350e34e98840",
+      "actual": "f3d12cbd9875819e42a2dae1c4fee49dd0064fbec01afc41c83d350e34e98840"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a1-20260925T032803/payments-pipeline-fix__xSC7ngE/artifacts/app/src/worker/requirements.txt",
+      "expected": "b5c784f34d35b8e47f92a6208e6e9fa7a0c46fbf8733d5d78b424b09bb37b1a1",
+      "actual": "b5c784f34d35b8e47f92a6208e6e9fa7a0c46fbf8733d5d78b424b09bb37b1a1"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a1-20260925T032803/payments-pipeline-fix__xSC7ngE/artifacts/app/src/worker/worker.py",
+      "expected": "d089551c3d11746036ea7bd3b51995de82be4432e099c7d73ba2355198c7c5f0",
+      "actual": "d089551c3d11746036ea7bd3b51995de82be4432e099c7d73ba2355198c7c5f0"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a1-20260925T032803/payments-pipeline-fix__xSC7ngE/artifacts/manifest.json",
+      "expected": "71b9f2a22092fa08dfb8220c22154e2b25759602a54394cabbf0cf643ac3b000",
+      "actual": "71b9f2a22092fa08dfb8220c22154e2b25759602a54394cabbf0cf643ac3b000"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a1-20260925T032803/payments-pipeline-fix__xSC7ngE/artifacts/tmp/kafka-snapshot.tgz",
+      "expected": "a414604a86c8f18dc6f745708e7df24de5a5ab8ec6a6623ba615ad550b9b28ea",
+      "actual": "a414604a86c8f18dc6f745708e7df24de5a5ab8ec6a6623ba615ad550b9b28ea"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a1-20260925T032803/tbench/attempts/payments-pipeline-fix__xSC7ngE.json",
+      "expected": "885e25734aa094a0b5f2557228db93d4aa0f1bf781a26ac346a1cf8d64676213",
+      "actual": "885e25734aa094a0b5f2557228db93d4aa0f1bf781a26ac346a1cf8d64676213"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a1-20260925T032843/mp-checkpoint-consolidation__tQT74ja/result.json",
+      "expected": "bd5bc66026643ecd967f10b20535b4d199f990bb1259e99ac1f1df0684f04ffd",
+      "actual": "bd5bc66026643ecd967f10b20535b4d199f990bb1259e99ac1f1df0684f04ffd"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a1-20260925T032843/mp-checkpoint-consolidation__tQT74ja/agent/trajectory.json",
+      "expected": "a31ce01aa2c307159c38719d9092babc6f239107bac90a439523dc4c73b11e0e",
+      "actual": "a31ce01aa2c307159c38719d9092babc6f239107bac90a439523dc4c73b11e0e"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a1-20260925T032843/mp-checkpoint-consolidation__tQT74ja/verifier/reward.txt",
+      "expected": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "actual": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a1-20260925T032843/mp-checkpoint-consolidation__tQT74ja/verifier/ctrf.json",
+      "expected": "8a807dfb2c5a04092ee3caccb4ec895a6d5a16facd29a7a4019ffb0058ffc827",
+      "actual": "8a807dfb2c5a04092ee3caccb4ec895a6d5a16facd29a7a4019ffb0058ffc827"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a1-20260925T032843/mp-checkpoint-consolidation__tQT74ja/artifacts/app/output/model.safetensors",
+      "expected": "efaf0445eb2a2cd2acb10cbc4ff6b31431546f2a1e0f263f33c726f9fb63e513",
+      "actual": "efaf0445eb2a2cd2acb10cbc4ff6b31431546f2a1e0f263f33c726f9fb63e513"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a1-20260925T032843/mp-checkpoint-consolidation__tQT74ja/artifacts/manifest.json",
+      "expected": "08d916c34e40db514620c9bf5a3a3da23b4007098c6b15c872a6f20ebe499ab5",
+      "actual": "08d916c34e40db514620c9bf5a3a3da23b4007098c6b15c872a6f20ebe499ab5"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a1-20260925T032843/tbench/attempts/mp-checkpoint-consolidation__tQT74ja.json",
+      "expected": "496867e66ac6cbcc935e3f9ef8e7cd3bf047604304b7fa40e36197cf2306427e",
+      "actual": "496867e66ac6cbcc935e3f9ef8e7cd3bf047604304b7fa40e36197cf2306427e"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a1-20260925T033723/cumulative-layout-shift__gZBT3gZ/result.json",
+      "expected": "a45a86cd7efaf851d11ff7bba325c9c78d16c0c8c2337496b02e04acb8529d2e",
+      "actual": "a45a86cd7efaf851d11ff7bba325c9c78d16c0c8c2337496b02e04acb8529d2e"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a1-20260925T033723/cumulative-layout-shift__gZBT3gZ/agent/trajectory.json",
+      "expected": "90fbab520d7944d79b9378826e9688e177c2f1f29557146b1dd04b726ab036e3",
+      "actual": "90fbab520d7944d79b9378826e9688e177c2f1f29557146b1dd04b726ab036e3"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a1-20260925T033723/cumulative-layout-shift__gZBT3gZ/verifier/reward.txt",
+      "expected": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "actual": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a1-20260925T033723/cumulative-layout-shift__gZBT3gZ/artifacts/manifest.json",
+      "expected": "0b4b1e87d5c66f975f15b7dc1784eb2001eef78845600e9664ca5dd549daf029",
+      "actual": "0b4b1e87d5c66f975f15b7dc1784eb2001eef78845600e9664ca5dd549daf029"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a1-20260925T033723/cumulative-layout-shift__gZBT3gZ/artifacts/tmp/agent.patch",
+      "expected": "25274420c176724851ee88ef41ff0ff9fd5f908c8a144bbacb8f8fdcb4eb4bd5",
+      "actual": "25274420c176724851ee88ef41ff0ff9fd5f908c8a144bbacb8f8fdcb4eb4bd5"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a1-20260925T033723/tbench/attempts/cumulative-layout-shift__gZBT3gZ.json",
+      "expected": "7bf9d8059f5f1d269c6cf0e0d4d5354309fafc3a8c467d37a3e12a1d30e74cbb",
+      "actual": "7bf9d8059f5f1d269c6cf0e0d4d5354309fafc3a8c467d37a3e12a1d30e74cbb"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--live-database-cutover--family-a1-20260925T040033/live-database-cutover__WTNo7fG/result.json",
+      "expected": "ac07f1996d65996b3adef0c99671f96ebe1fcab8e546d6964ec3cd0975832a87",
+      "actual": "ac07f1996d65996b3adef0c99671f96ebe1fcab8e546d6964ec3cd0975832a87"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--live-database-cutover--family-a1-20260925T040033/live-database-cutover__WTNo7fG/agent/trajectory.json",
+      "expected": "d2eaad306c2cc3748a0cf7046cb182a123c09ed922fd31dd343b6d48c4fad5e8",
+      "actual": "d2eaad306c2cc3748a0cf7046cb182a123c09ed922fd31dd343b6d48c4fad5e8"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--live-database-cutover--family-a1-20260925T040033/live-database-cutover__WTNo7fG/verifier/reward.txt",
+      "expected": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "actual": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--live-database-cutover--family-a1-20260925T040033/live-database-cutover__WTNo7fG/verifier/ctrf.json",
+      "expected": "3eaa354f00bb105e45929c331280328e586a9291383f5a42636060227c3bcb29",
+      "actual": "3eaa354f00bb105e45929c331280328e586a9291383f5a42636060227c3bcb29"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--live-database-cutover--family-a1-20260925T040033/live-database-cutover__WTNo7fG/artifacts/manifest.json",
+      "expected": "9e8e9c600401b3aa97ae3442eb1be93c8d73c36f794cb920e259fac26a93baa0",
+      "actual": "9e8e9c600401b3aa97ae3442eb1be93c8d73c36f794cb920e259fac26a93baa0"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--live-database-cutover--family-a1-20260925T040033/live-database-cutover__WTNo7fG/artifacts/tmp/agent.patch",
+      "expected": "3dd30a7de837ad78da52e6a9e0dca134e93f2bb424e1337181fa5578a679ade4",
+      "actual": "3dd30a7de837ad78da52e6a9e0dca134e93f2bb424e1337181fa5578a679ade4"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--live-database-cutover--family-a1-20260925T040033/live-database-cutover__WTNo7fG/artifacts/tmp/pg.dump",
+      "expected": "4623124bf8e500c83ab26c2b995f1a31356a11dad44b9ec4077cef4b50fd3b3a",
+      "actual": "4623124bf8e500c83ab26c2b995f1a31356a11dad44b9ec4077cef4b50fd3b3a"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--live-database-cutover--family-a1-20260925T040033/live-database-cutover__WTNo7fG/artifacts/tmp/redis.rdb",
+      "expected": "0200d613f2977f7aa39362137206323f31f1723f04ede3db46dd5870469fedc0",
+      "actual": "0200d613f2977f7aa39362137206323f31f1723f04ede3db46dd5870469fedc0"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--live-database-cutover--family-a1-20260925T040033/live-database-cutover__WTNo7fG/artifacts/tmp/results.json",
+      "expected": "607a4e66dcb2bf15f75b5461db2482235d7039225183eb1df723e3b529a77b79",
+      "actual": "607a4e66dcb2bf15f75b5461db2482235d7039225183eb1df723e3b529a77b79"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--live-database-cutover--family-a1-20260925T040033/tbench/attempts/live-database-cutover__WTNo7fG.json",
+      "expected": "8619c551f8896ab9528baa84fcf33944fed523910bdf4862866886a521cc5af1",
+      "actual": "8619c551f8896ab9528baa84fcf33944fed523910bdf4862866886a521cc5af1"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--telecom-entity-resolution--family-a1-20260925T041013/telecom-entity-resolution__wB2fijb/result.json",
+      "expected": "de93ccc5aa753696c368507647f273e2abacbe8d67aa2269f935efc7aa2e8880",
+      "actual": "de93ccc5aa753696c368507647f273e2abacbe8d67aa2269f935efc7aa2e8880"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--telecom-entity-resolution--family-a1-20260925T041013/telecom-entity-resolution__wB2fijb/agent/trajectory.json",
+      "expected": "2cecd674fe99def3f4d10547beb79afd66f87a8d658cc146498f9e4a1dfd2bf3",
+      "actual": "2cecd674fe99def3f4d10547beb79afd66f87a8d658cc146498f9e4a1dfd2bf3"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--telecom-entity-resolution--family-a1-20260925T041013/telecom-entity-resolution__wB2fijb/verifier/reward.txt",
+      "expected": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "actual": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--telecom-entity-resolution--family-a1-20260925T041013/telecom-entity-resolution__wB2fijb/verifier/ctrf.json",
+      "expected": "0d1ca32e36ceb6177e6400085dc2761b318e1e6fdab0f44fff05cd7988b627ed",
+      "actual": "0d1ca32e36ceb6177e6400085dc2761b318e1e6fdab0f44fff05cd7988b627ed"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--telecom-entity-resolution--family-a1-20260925T041013/telecom-entity-resolution__wB2fijb/artifacts/app/output/customer_clusters.json",
+      "expected": "11707a284e65634be1b8e203680bd03e5ed3408541733f4c45fb3d9f4ab1d5f9",
+      "actual": "11707a284e65634be1b8e203680bd03e5ed3408541733f4c45fb3d9f4ab1d5f9"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--telecom-entity-resolution--family-a1-20260925T041013/telecom-entity-resolution__wB2fijb/artifacts/manifest.json",
+      "expected": "14fbf9171129d1051885825b48099cd3506691dff7b8dc9b3e97810bb90a064a",
+      "actual": "14fbf9171129d1051885825b48099cd3506691dff7b8dc9b3e97810bb90a064a"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--telecom-entity-resolution--family-a1-20260925T041013/tbench/attempts/telecom-entity-resolution__wB2fijb.json",
+      "expected": "1d545917f3c01d740f49488d9fada7bdf6d431033c647fc24dd40765b23729b6",
+      "actual": "1d545917f3c01d740f49488d9fada7bdf6d431033c647fc24dd40765b23729b6"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--photonic-waveguide-routing--family-a1-20260925T041053/photonic-waveguide-routing__HnP7Nmn/result.json",
+      "expected": "98fcc373b8f4c9460be1978fcbecd4ecc5ead5821f67dfebdfd7ef3b0c95f803",
+      "actual": "98fcc373b8f4c9460be1978fcbecd4ecc5ead5821f67dfebdfd7ef3b0c95f803"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--photonic-waveguide-routing--family-a1-20260925T041053/photonic-waveguide-routing__HnP7Nmn/agent/trajectory.json",
+      "expected": "6de6c5291e47d8e4f26f643cb50dc85a0ffc7e737df3045cba5d2315bbe8f7ea",
+      "actual": "6de6c5291e47d8e4f26f643cb50dc85a0ffc7e737df3045cba5d2315bbe8f7ea"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--photonic-waveguide-routing--family-a1-20260925T041053/photonic-waveguide-routing__HnP7Nmn/verifier/reward.txt",
+      "expected": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "actual": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--photonic-waveguide-routing--family-a1-20260925T041053/photonic-waveguide-routing__HnP7Nmn/verifier/ctrf.json",
+      "expected": "6e28377505f6187eab35b30e410070109a1ff3419352181223e80a22a00b22f6",
+      "actual": "6e28377505f6187eab35b30e410070109a1ff3419352181223e80a22a00b22f6"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--photonic-waveguide-routing--family-a1-20260925T041053/photonic-waveguide-routing__HnP7Nmn/artifacts/app/routing_result_1.json",
+      "expected": "f03dc3e30b33659279df630fad9adad73a229a3d05d7f31ccd413126b8021b02",
+      "actual": "f03dc3e30b33659279df630fad9adad73a229a3d05d7f31ccd413126b8021b02"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--photonic-waveguide-routing--family-a1-20260925T041053/photonic-waveguide-routing__HnP7Nmn/artifacts/manifest.json",
+      "expected": "ee96c5c291359c8de41c5ef8920340b637ad1fda295ba01ee3c1164de14e769f",
+      "actual": "ee96c5c291359c8de41c5ef8920340b637ad1fda295ba01ee3c1164de14e769f"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--photonic-waveguide-routing--family-a1-20260925T041053/tbench/attempts/photonic-waveguide-routing__HnP7Nmn.json",
+      "expected": "eef123f3439533619e40056700209a4e82470d19f56a1129a32ac8f94879f100",
+      "actual": "eef123f3439533619e40056700209a4e82470d19f56a1129a32ac8f94879f100"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a2-20260925T042233/payments-pipeline-fix__hEYMz2a/result.json",
+      "expected": "8791c085c2826e458d3f9a7b5e0cd5a020a3bb00f6565cd7a8f207c4cdbd9f54",
+      "actual": "8791c085c2826e458d3f9a7b5e0cd5a020a3bb00f6565cd7a8f207c4cdbd9f54"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a2-20260925T042233/payments-pipeline-fix__hEYMz2a/agent/trajectory.json",
+      "expected": "038a61ebe554c7742d2744f07b8c8567bc0979cc97de46f52946549f1fdf0d9f",
+      "actual": "038a61ebe554c7742d2744f07b8c8567bc0979cc97de46f52946549f1fdf0d9f"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a2-20260925T042233/payments-pipeline-fix__hEYMz2a/verifier/reward.txt",
+      "expected": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "actual": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a2-20260925T042233/payments-pipeline-fix__hEYMz2a/verifier/ctrf.json",
+      "expected": "8977afe8704a714ff5dcaf74ae701968d614ca3e2d0693b4d16caa760cb19045",
+      "actual": "8977afe8704a714ff5dcaf74ae701968d614ca3e2d0693b4d16caa760cb19045"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a2-20260925T042233/payments-pipeline-fix__hEYMz2a/artifacts/app/src/worker/__init__.py",
+      "expected": "63b800abbf1b909111eb7bd75d9c117c981a068f28156699752ad5f896521e0f",
+      "actual": "63b800abbf1b909111eb7bd75d9c117c981a068f28156699752ad5f896521e0f"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a2-20260925T042233/payments-pipeline-fix__hEYMz2a/artifacts/app/src/worker/__pycache__/__init__.cpython-312.pyc",
+      "expected": "e57de7aa2d99c9ab5e52a5924525ea9dd5fe2c6bb04305e44c899a5b6c2de3a6",
+      "actual": "e57de7aa2d99c9ab5e52a5924525ea9dd5fe2c6bb04305e44c899a5b6c2de3a6"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a2-20260925T042233/payments-pipeline-fix__hEYMz2a/artifacts/app/src/worker/__pycache__/config.cpython-312.pyc",
+      "expected": "801008cc12b7853ba306bdfb87e3d969446faa49611715ddf8f7a1ddce60d469",
+      "actual": "801008cc12b7853ba306bdfb87e3d969446faa49611715ddf8f7a1ddce60d469"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a2-20260925T042233/payments-pipeline-fix__hEYMz2a/artifacts/app/src/worker/__pycache__/worker.cpython-312.pyc",
+      "expected": "603da30f7b16a475d119a7af2a2c53fdebee58fdb8789d68a14c7de01f66a9e3",
+      "actual": "603da30f7b16a475d119a7af2a2c53fdebee58fdb8789d68a14c7de01f66a9e3"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a2-20260925T042233/payments-pipeline-fix__hEYMz2a/artifacts/app/src/worker/config.py",
+      "expected": "f3d12cbd9875819e42a2dae1c4fee49dd0064fbec01afc41c83d350e34e98840",
+      "actual": "f3d12cbd9875819e42a2dae1c4fee49dd0064fbec01afc41c83d350e34e98840"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a2-20260925T042233/payments-pipeline-fix__hEYMz2a/artifacts/app/src/worker/requirements.txt",
+      "expected": "b5c784f34d35b8e47f92a6208e6e9fa7a0c46fbf8733d5d78b424b09bb37b1a1",
+      "actual": "b5c784f34d35b8e47f92a6208e6e9fa7a0c46fbf8733d5d78b424b09bb37b1a1"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a2-20260925T042233/payments-pipeline-fix__hEYMz2a/artifacts/app/src/worker/worker.py",
+      "expected": "81f30067d8de28d14eb6520fe7408515fac2080604f9a1645d689c972bb1fb5d",
+      "actual": "81f30067d8de28d14eb6520fe7408515fac2080604f9a1645d689c972bb1fb5d"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a2-20260925T042233/payments-pipeline-fix__hEYMz2a/artifacts/manifest.json",
+      "expected": "71b9f2a22092fa08dfb8220c22154e2b25759602a54394cabbf0cf643ac3b000",
+      "actual": "71b9f2a22092fa08dfb8220c22154e2b25759602a54394cabbf0cf643ac3b000"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a2-20260925T042233/payments-pipeline-fix__hEYMz2a/artifacts/tmp/kafka-snapshot.tgz",
+      "expected": "7b920b30d061e5f7ff8652861348faae4b79e1e8321e2bf3712918e56136781b",
+      "actual": "7b920b30d061e5f7ff8652861348faae4b79e1e8321e2bf3712918e56136781b"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a2-20260925T042233/tbench/attempts/payments-pipeline-fix__hEYMz2a.json",
+      "expected": "c995b4da669e4cf5bd18f4493ec3826bac9bb3596a09de28c99cb79bbe1105c6",
+      "actual": "c995b4da669e4cf5bd18f4493ec3826bac9bb3596a09de28c99cb79bbe1105c6"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a2-20260925T043313/mp-checkpoint-consolidation__zWRwtDd/result.json",
+      "expected": "a71988f0f78f596a96f7d4fc55aa657bc18d24eb3ffc4bf641ac361d00a06878",
+      "actual": "a71988f0f78f596a96f7d4fc55aa657bc18d24eb3ffc4bf641ac361d00a06878"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a2-20260925T043313/mp-checkpoint-consolidation__zWRwtDd/agent/trajectory.json",
+      "expected": "344d5bcb0b84b99ebacfe960626d5958d257db519e6930236fab513cfb27caf5",
+      "actual": "344d5bcb0b84b99ebacfe960626d5958d257db519e6930236fab513cfb27caf5"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a2-20260925T043313/mp-checkpoint-consolidation__zWRwtDd/verifier/reward.txt",
+      "expected": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "actual": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a2-20260925T043313/mp-checkpoint-consolidation__zWRwtDd/verifier/ctrf.json",
+      "expected": "590a267e45ddde9b4ec47521a3e4de3e99196676b7edf262a2489ad38007bee2",
+      "actual": "590a267e45ddde9b4ec47521a3e4de3e99196676b7edf262a2489ad38007bee2"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a2-20260925T043313/mp-checkpoint-consolidation__zWRwtDd/artifacts/app/output/model.safetensors",
+      "expected": "efaf0445eb2a2cd2acb10cbc4ff6b31431546f2a1e0f263f33c726f9fb63e513",
+      "actual": "efaf0445eb2a2cd2acb10cbc4ff6b31431546f2a1e0f263f33c726f9fb63e513"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a2-20260925T043313/mp-checkpoint-consolidation__zWRwtDd/artifacts/manifest.json",
+      "expected": "08d916c34e40db514620c9bf5a3a3da23b4007098c6b15c872a6f20ebe499ab5",
+      "actual": "08d916c34e40db514620c9bf5a3a3da23b4007098c6b15c872a6f20ebe499ab5"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a2-20260925T043313/tbench/attempts/mp-checkpoint-consolidation__zWRwtDd.json",
+      "expected": "eca7d24991c42ef767f4c964375e2c70f01a3f2de988ba579b28937ac62fc8f2",
+      "actual": "eca7d24991c42ef767f4c964375e2c70f01a3f2de988ba579b28937ac62fc8f2"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a2-20260925T044223/cumulative-layout-shift__V2vyUx3/result.json",
+      "expected": "629f18f7049ad16e914da86dd12eca760e6e794a6437af760be20c60c1a04116",
+      "actual": "629f18f7049ad16e914da86dd12eca760e6e794a6437af760be20c60c1a04116"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a2-20260925T044223/cumulative-layout-shift__V2vyUx3/agent/trajectory.json",
+      "expected": "671f3a0753c06bc7b13c2de67064d23005f0172b00dc039ba2e17e8b6d7f975f",
+      "actual": "671f3a0753c06bc7b13c2de67064d23005f0172b00dc039ba2e17e8b6d7f975f"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a2-20260925T044223/cumulative-layout-shift__V2vyUx3/verifier/reward.txt",
+      "expected": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "actual": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a2-20260925T044223/cumulative-layout-shift__V2vyUx3/artifacts/manifest.json",
+      "expected": "0b4b1e87d5c66f975f15b7dc1784eb2001eef78845600e9664ca5dd549daf029",
+      "actual": "0b4b1e87d5c66f975f15b7dc1784eb2001eef78845600e9664ca5dd549daf029"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a2-20260925T044223/cumulative-layout-shift__V2vyUx3/artifacts/tmp/agent.patch",
+      "expected": "0e53c386fa9a6ea782ab92c4714953759b7103f01a6ef53f2cf2fee5bcd51132",
+      "actual": "0e53c386fa9a6ea782ab92c4714953759b7103f01a6ef53f2cf2fee5bcd51132"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a2-20260925T044223/tbench/attempts/cumulative-layout-shift__V2vyUx3.json",
+      "expected": "c425e5442ada3da22c68e34e30ca5b6be5642a88ee2f069e4175bd9bf4961e6c",
+      "actual": "c425e5442ada3da22c68e34e30ca5b6be5642a88ee2f069e4175bd9bf4961e6c"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--live-database-cutover--family-a2-20260925T050233/live-database-cutover__KZ6YnS9/result.json",
+      "expected": "038853681084ad8ae984a1f5f246f28b3d80ecacd688f69ae0e132bcf55c49a4",
+      "actual": "038853681084ad8ae984a1f5f246f28b3d80ecacd688f69ae0e132bcf55c49a4"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--live-database-cutover--family-a2-20260925T050233/live-database-cutover__KZ6YnS9/agent/trajectory.json",
+      "expected": "14a123d4cfc0972f877cdce8ea0d3351d91ab0f3181a077fea279c5f02bc2b30",
+      "actual": "14a123d4cfc0972f877cdce8ea0d3351d91ab0f3181a077fea279c5f02bc2b30"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--live-database-cutover--family-a2-20260925T050233/live-database-cutover__KZ6YnS9/verifier/reward.txt",
+      "expected": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "actual": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--live-database-cutover--family-a2-20260925T050233/live-database-cutover__KZ6YnS9/verifier/ctrf.json",
+      "expected": "436f82b34e70bcea4c687d0b927ce7e114ab9cc594cb26418345bdf52c5a0373",
+      "actual": "436f82b34e70bcea4c687d0b927ce7e114ab9cc594cb26418345bdf52c5a0373"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--live-database-cutover--family-a2-20260925T050233/live-database-cutover__KZ6YnS9/artifacts/manifest.json",
+      "expected": "9e8e9c600401b3aa97ae3442eb1be93c8d73c36f794cb920e259fac26a93baa0",
+      "actual": "9e8e9c600401b3aa97ae3442eb1be93c8d73c36f794cb920e259fac26a93baa0"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--live-database-cutover--family-a2-20260925T050233/live-database-cutover__KZ6YnS9/artifacts/tmp/agent.patch",
+      "expected": "0e2c737d8e916e93815cc24fb17a236649322759fda2ae6dd8a206d95bc6001a",
+      "actual": "0e2c737d8e916e93815cc24fb17a236649322759fda2ae6dd8a206d95bc6001a"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--live-database-cutover--family-a2-20260925T050233/live-database-cutover__KZ6YnS9/artifacts/tmp/pg.dump",
+      "expected": "28c36e49a2601442d72f673bae65968a0ba0f543edf9e24c605a0d5ed707feec",
+      "actual": "28c36e49a2601442d72f673bae65968a0ba0f543edf9e24c605a0d5ed707feec"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--live-database-cutover--family-a2-20260925T050233/live-database-cutover__KZ6YnS9/artifacts/tmp/redis.rdb",
+      "expected": "25b4f66df8e32c6934c020c033c7bf7d76564a9086053352da6e22b59f296b47",
+      "actual": "25b4f66df8e32c6934c020c033c7bf7d76564a9086053352da6e22b59f296b47"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--live-database-cutover--family-a2-20260925T050233/live-database-cutover__KZ6YnS9/artifacts/tmp/results.json",
+      "expected": "727d9cec2d96397fc3d4099c2e1c507e005554002ad1f1386a45435aa900705f",
+      "actual": "727d9cec2d96397fc3d4099c2e1c507e005554002ad1f1386a45435aa900705f"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--live-database-cutover--family-a2-20260925T050233/tbench/attempts/live-database-cutover__KZ6YnS9.json",
+      "expected": "e441b18ea93dec0a543735c3c38b139481fbcfad0dd216904690183bb20caa94",
+      "actual": "e441b18ea93dec0a543735c3c38b139481fbcfad0dd216904690183bb20caa94"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--telecom-entity-resolution--family-a2-20260925T051313/telecom-entity-resolution__MKCp2Yg/result.json",
+      "expected": "2066c03574f72826ab1b802038f324388b77a659a6da48c80882fb245ff0d5bc",
+      "actual": "2066c03574f72826ab1b802038f324388b77a659a6da48c80882fb245ff0d5bc"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--telecom-entity-resolution--family-a2-20260925T051313/telecom-entity-resolution__MKCp2Yg/agent/trajectory.json",
+      "expected": "fd1ed7cef43ac09d526bc1417edb375f27651534ab07dd932b9351bc031e108b",
+      "actual": "fd1ed7cef43ac09d526bc1417edb375f27651534ab07dd932b9351bc031e108b"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--telecom-entity-resolution--family-a2-20260925T051313/telecom-entity-resolution__MKCp2Yg/verifier/reward.txt",
+      "expected": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "actual": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--telecom-entity-resolution--family-a2-20260925T051313/telecom-entity-resolution__MKCp2Yg/verifier/ctrf.json",
+      "expected": "4339b0202f2a0473b0ecc341a8cb8def7ae0739d9e33b9a78773931408f5f8b9",
+      "actual": "4339b0202f2a0473b0ecc341a8cb8def7ae0739d9e33b9a78773931408f5f8b9"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--telecom-entity-resolution--family-a2-20260925T051313/telecom-entity-resolution__MKCp2Yg/artifacts/app/output/customer_clusters.json",
+      "expected": "9cede387138038e02ee3bf72b6f9be654fb78c7f6bb7264b2a9abc53a142d40a",
+      "actual": "9cede387138038e02ee3bf72b6f9be654fb78c7f6bb7264b2a9abc53a142d40a"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--telecom-entity-resolution--family-a2-20260925T051313/telecom-entity-resolution__MKCp2Yg/artifacts/manifest.json",
+      "expected": "14fbf9171129d1051885825b48099cd3506691dff7b8dc9b3e97810bb90a064a",
+      "actual": "14fbf9171129d1051885825b48099cd3506691dff7b8dc9b3e97810bb90a064a"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--telecom-entity-resolution--family-a2-20260925T051313/tbench/attempts/telecom-entity-resolution__MKCp2Yg.json",
+      "expected": "c2962d6fd7c3dc8f2d118cd809535f1a11cc3660d2bbf2dc97c6a7cdbf01156d",
+      "actual": "c2962d6fd7c3dc8f2d118cd809535f1a11cc3660d2bbf2dc97c6a7cdbf01156d"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a3-20260925T051933/payments-pipeline-fix__Wcy8BbS/result.json",
+      "expected": "a3ef1d7015a4adcf94a80a7e9bdf419cd723b5049e7168315f6cd885aeeb54dd",
+      "actual": "a3ef1d7015a4adcf94a80a7e9bdf419cd723b5049e7168315f6cd885aeeb54dd"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a3-20260925T051933/payments-pipeline-fix__Wcy8BbS/agent/trajectory.json",
+      "expected": "d631d5873a3e88e6ce62445efceda5a5145f951c3d65a85ed32af6182f097dbd",
+      "actual": "d631d5873a3e88e6ce62445efceda5a5145f951c3d65a85ed32af6182f097dbd"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a3-20260925T051933/payments-pipeline-fix__Wcy8BbS/verifier/reward.txt",
+      "expected": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "actual": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a3-20260925T051933/payments-pipeline-fix__Wcy8BbS/verifier/ctrf.json",
+      "expected": "72243ef771f0e9aa65d2d89f83e796197e52ca49d8837461224ef67fa1a8f61e",
+      "actual": "72243ef771f0e9aa65d2d89f83e796197e52ca49d8837461224ef67fa1a8f61e"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a3-20260925T051933/payments-pipeline-fix__Wcy8BbS/artifacts/app/src/worker/__init__.py",
+      "expected": "63b800abbf1b909111eb7bd75d9c117c981a068f28156699752ad5f896521e0f",
+      "actual": "63b800abbf1b909111eb7bd75d9c117c981a068f28156699752ad5f896521e0f"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a3-20260925T051933/payments-pipeline-fix__Wcy8BbS/artifacts/app/src/worker/__pycache__/__init__.cpython-312.pyc",
+      "expected": "e57de7aa2d99c9ab5e52a5924525ea9dd5fe2c6bb04305e44c899a5b6c2de3a6",
+      "actual": "e57de7aa2d99c9ab5e52a5924525ea9dd5fe2c6bb04305e44c899a5b6c2de3a6"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a3-20260925T051933/payments-pipeline-fix__Wcy8BbS/artifacts/app/src/worker/__pycache__/config.cpython-312.pyc",
+      "expected": "801008cc12b7853ba306bdfb87e3d969446faa49611715ddf8f7a1ddce60d469",
+      "actual": "801008cc12b7853ba306bdfb87e3d969446faa49611715ddf8f7a1ddce60d469"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a3-20260925T051933/payments-pipeline-fix__Wcy8BbS/artifacts/app/src/worker/__pycache__/worker.cpython-312.pyc",
+      "expected": "395e73068e11315ce25f0a2fb07ff1c43343620e8ec387b232593e429fb86b20",
+      "actual": "395e73068e11315ce25f0a2fb07ff1c43343620e8ec387b232593e429fb86b20"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a3-20260925T051933/payments-pipeline-fix__Wcy8BbS/artifacts/app/src/worker/config.py",
+      "expected": "f3d12cbd9875819e42a2dae1c4fee49dd0064fbec01afc41c83d350e34e98840",
+      "actual": "f3d12cbd9875819e42a2dae1c4fee49dd0064fbec01afc41c83d350e34e98840"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a3-20260925T051933/payments-pipeline-fix__Wcy8BbS/artifacts/app/src/worker/requirements.txt",
+      "expected": "b5c784f34d35b8e47f92a6208e6e9fa7a0c46fbf8733d5d78b424b09bb37b1a1",
+      "actual": "b5c784f34d35b8e47f92a6208e6e9fa7a0c46fbf8733d5d78b424b09bb37b1a1"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a3-20260925T051933/payments-pipeline-fix__Wcy8BbS/artifacts/app/src/worker/worker.py",
+      "expected": "c399ed2b1cc0689cb49865f9702c675f36ea42bcd14b0b3b7d37bb9bdb755489",
+      "actual": "c399ed2b1cc0689cb49865f9702c675f36ea42bcd14b0b3b7d37bb9bdb755489"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a3-20260925T051933/payments-pipeline-fix__Wcy8BbS/artifacts/manifest.json",
+      "expected": "71b9f2a22092fa08dfb8220c22154e2b25759602a54394cabbf0cf643ac3b000",
+      "actual": "71b9f2a22092fa08dfb8220c22154e2b25759602a54394cabbf0cf643ac3b000"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a3-20260925T051933/payments-pipeline-fix__Wcy8BbS/artifacts/tmp/kafka-snapshot.tgz",
+      "expected": "04699f123756a52cc0f8f16f1447c308e9d39d26cab0026d994f9e8188823114",
+      "actual": "04699f123756a52cc0f8f16f1447c308e9d39d26cab0026d994f9e8188823114"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--payments-pipeline-fix--family-a3-20260925T051933/tbench/attempts/payments-pipeline-fix__Wcy8BbS.json",
+      "expected": "799b3a790bafb437ed8ff16f32c63f1c40e0656d157f22cfd47b92d2b25f7898",
+      "actual": "799b3a790bafb437ed8ff16f32c63f1c40e0656d157f22cfd47b92d2b25f7898"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--photonic-waveguide-routing--family-a2-20260925T051353/photonic-waveguide-routing__RbDGpkz/result.json",
+      "expected": "3eed8133ebcaffb6d5f999ddcfdfc1ae70f84e000e26eaf3210f25e12c0d3331",
+      "actual": "3eed8133ebcaffb6d5f999ddcfdfc1ae70f84e000e26eaf3210f25e12c0d3331"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--photonic-waveguide-routing--family-a2-20260925T051353/photonic-waveguide-routing__RbDGpkz/agent/trajectory.json",
+      "expected": "2b283a73b93cbdca5550f01808e23794f330de3602f066f8b45e51eb1b9ab57d",
+      "actual": "2b283a73b93cbdca5550f01808e23794f330de3602f066f8b45e51eb1b9ab57d"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--photonic-waveguide-routing--family-a2-20260925T051353/photonic-waveguide-routing__RbDGpkz/verifier/reward.txt",
+      "expected": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "actual": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--photonic-waveguide-routing--family-a2-20260925T051353/photonic-waveguide-routing__RbDGpkz/verifier/ctrf.json",
+      "expected": "8c92927182e9f564b19bf90d4b44738167efb59051fbe4edb747db9174e91861",
+      "actual": "8c92927182e9f564b19bf90d4b44738167efb59051fbe4edb747db9174e91861"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--photonic-waveguide-routing--family-a2-20260925T051353/photonic-waveguide-routing__RbDGpkz/artifacts/app/routing_result_1.json",
+      "expected": "c65cc02c668c11747a1380a79e929c0b1b9edc5f4cf8c3196d40535a991fd73e",
+      "actual": "c65cc02c668c11747a1380a79e929c0b1b9edc5f4cf8c3196d40535a991fd73e"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--photonic-waveguide-routing--family-a2-20260925T051353/photonic-waveguide-routing__RbDGpkz/artifacts/manifest.json",
+      "expected": "ee96c5c291359c8de41c5ef8920340b637ad1fda295ba01ee3c1164de14e769f",
+      "actual": "ee96c5c291359c8de41c5ef8920340b637ad1fda295ba01ee3c1164de14e769f"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--photonic-waveguide-routing--family-a2-20260925T051353/tbench/attempts/photonic-waveguide-routing__RbDGpkz.json",
+      "expected": "6d97b111a3014ed35b0e5b09ff2723268b941a481305e534f461e83682649c9f",
+      "actual": "6d97b111a3014ed35b0e5b09ff2723268b941a481305e534f461e83682649c9f"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a3-20260925T052613/mp-checkpoint-consolidation__rpcuKgN/result.json",
+      "expected": "af9bc339b34f03857b73cb7c865e965b2d961b35f2a43a2553a083f1683d4b11",
+      "actual": "af9bc339b34f03857b73cb7c865e965b2d961b35f2a43a2553a083f1683d4b11"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a3-20260925T052613/mp-checkpoint-consolidation__rpcuKgN/agent/trajectory.json",
+      "expected": "e7e3198f3815267e9214fef85ed407f7b7594fe784590e65b80ab6c1b59a12f3",
+      "actual": "e7e3198f3815267e9214fef85ed407f7b7594fe784590e65b80ab6c1b59a12f3"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a3-20260925T052613/mp-checkpoint-consolidation__rpcuKgN/verifier/reward.txt",
+      "expected": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "actual": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a3-20260925T052613/mp-checkpoint-consolidation__rpcuKgN/verifier/ctrf.json",
+      "expected": "25a7286596059e36c61d734af02b66016bbb63a1ddd85c7f414bd712222feb15",
+      "actual": "25a7286596059e36c61d734af02b66016bbb63a1ddd85c7f414bd712222feb15"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a3-20260925T052613/mp-checkpoint-consolidation__rpcuKgN/artifacts/app/output/model.safetensors",
+      "expected": "efaf0445eb2a2cd2acb10cbc4ff6b31431546f2a1e0f263f33c726f9fb63e513",
+      "actual": "efaf0445eb2a2cd2acb10cbc4ff6b31431546f2a1e0f263f33c726f9fb63e513"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a3-20260925T052613/mp-checkpoint-consolidation__rpcuKgN/artifacts/manifest.json",
+      "expected": "08d916c34e40db514620c9bf5a3a3da23b4007098c6b15c872a6f20ebe499ab5",
+      "actual": "08d916c34e40db514620c9bf5a3a3da23b4007098c6b15c872a6f20ebe499ab5"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--mp-checkpoint-consolidation--family-a3-20260925T052613/tbench/attempts/mp-checkpoint-consolidation__rpcuKgN.json",
+      "expected": "1cba83f0a52f95fa06d089f40e4f292c7f9ee540cd60e7dce81dbb737d4bf5af",
+      "actual": "1cba83f0a52f95fa06d089f40e4f292c7f9ee540cd60e7dce81dbb737d4bf5af"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a3-20260925T053453/cumulative-layout-shift__ucFSsb2/result.json",
+      "expected": "2f06cd4d17704d08176351b7db9ffbdf826534548a0c94eaa6dd6c8aa07e7303",
+      "actual": "2f06cd4d17704d08176351b7db9ffbdf826534548a0c94eaa6dd6c8aa07e7303"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a3-20260925T053453/cumulative-layout-shift__ucFSsb2/agent/trajectory.json",
+      "expected": "c8cc5a7644de554150bc5265d306e35cc3a0f035cceedeac5e4ea7b7f8403185",
+      "actual": "c8cc5a7644de554150bc5265d306e35cc3a0f035cceedeac5e4ea7b7f8403185"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a3-20260925T053453/cumulative-layout-shift__ucFSsb2/verifier/reward.txt",
+      "expected": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "actual": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a3-20260925T053453/cumulative-layout-shift__ucFSsb2/artifacts/manifest.json",
+      "expected": "0b4b1e87d5c66f975f15b7dc1784eb2001eef78845600e9664ca5dd549daf029",
+      "actual": "0b4b1e87d5c66f975f15b7dc1784eb2001eef78845600e9664ca5dd549daf029"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a3-20260925T053453/cumulative-layout-shift__ucFSsb2/artifacts/tmp/agent.patch",
+      "expected": "cd6051d7d37b2a44597ba071ca4db7fa5252791e9a7563db496355c79d70496d",
+      "actual": "cd6051d7d37b2a44597ba071ca4db7fa5252791e9a7563db496355c79d70496d"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--cumulative-layout-shift--family-a3-20260925T053453/tbench/attempts/cumulative-layout-shift__ucFSsb2.json",
+      "expected": "adc6dc066ce21b9173e30393e535b0c10eace8bef284819773c58e391be947fe",
+      "actual": "adc6dc066ce21b9173e30393e535b0c10eace8bef284819773c58e391be947fe"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--live-database-cutover--family-a3-20260925T055503/live-database-cutover__4AVYKpU/result.json",
+      "expected": "42daa626ee0bf87aaf89327c1b5168f11eaede2e5818ac6f7fe5a69640dddedd",
+      "actual": "42daa626ee0bf87aaf89327c1b5168f11eaede2e5818ac6f7fe5a69640dddedd"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--live-database-cutover--family-a3-20260925T055503/live-database-cutover__4AVYKpU/agent/trajectory.json",
+      "expected": "d299a1e92f1804707ee64b8ab554006153b1a4f6fa3de88c873b82ed9c76cd5c",
+      "actual": "d299a1e92f1804707ee64b8ab554006153b1a4f6fa3de88c873b82ed9c76cd5c"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--live-database-cutover--family-a3-20260925T055503/live-database-cutover__4AVYKpU/verifier/reward.txt",
+      "expected": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "actual": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--live-database-cutover--family-a3-20260925T055503/live-database-cutover__4AVYKpU/verifier/ctrf.json",
+      "expected": "95facd971053058f6c126f2bfd9b0980e0ef4a56f5a8c83f0cb5a8883f56c422",
+      "actual": "95facd971053058f6c126f2bfd9b0980e0ef4a56f5a8c83f0cb5a8883f56c422"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--live-database-cutover--family-a3-20260925T055503/live-database-cutover__4AVYKpU/artifacts/manifest.json",
+      "expected": "9e8e9c600401b3aa97ae3442eb1be93c8d73c36f794cb920e259fac26a93baa0",
+      "actual": "9e8e9c600401b3aa97ae3442eb1be93c8d73c36f794cb920e259fac26a93baa0"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--live-database-cutover--family-a3-20260925T055503/live-database-cutover__4AVYKpU/artifacts/tmp/agent.patch",
+      "expected": "11f62394f60ed2f58b5a030f601b85c8409af32e6795bdf9e37e81f7d1e6461e",
+      "actual": "11f62394f60ed2f58b5a030f601b85c8409af32e6795bdf9e37e81f7d1e6461e"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--live-database-cutover--family-a3-20260925T055503/live-database-cutover__4AVYKpU/artifacts/tmp/pg.dump",
+      "expected": "98d50c2d0294c4aeeda7b5e9967ac794546de3e3cee654ee9446c2597708067b",
+      "actual": "98d50c2d0294c4aeeda7b5e9967ac794546de3e3cee654ee9446c2597708067b"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--live-database-cutover--family-a3-20260925T055503/live-database-cutover__4AVYKpU/artifacts/tmp/redis.rdb",
+      "expected": "2652ef070693fbf99f32c3df6866d7877844cd2b6b66d99b965da76e84bbe16b",
+      "actual": "2652ef070693fbf99f32c3df6866d7877844cd2b6b66d99b965da76e84bbe16b"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--live-database-cutover--family-a3-20260925T055503/live-database-cutover__4AVYKpU/artifacts/tmp/results.json",
+      "expected": "9890125b5fe5d06c8c664d4c7258896f6ea02cb76ad56fd12695b0ccd420312c",
+      "actual": "9890125b5fe5d06c8c664d4c7258896f6ea02cb76ad56fd12695b0ccd420312c"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--live-database-cutover--family-a3-20260925T055503/tbench/attempts/live-database-cutover__4AVYKpU.json",
+      "expected": "91d3ea13bc52e009d7f60a72693836f9bf5d60614007107dcb59306ae18931cc",
+      "actual": "91d3ea13bc52e009d7f60a72693836f9bf5d60614007107dcb59306ae18931cc"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--telecom-entity-resolution--family-a3-20260925T060243/telecom-entity-resolution__gRETFg7/result.json",
+      "expected": "52be8b70fd3d4c5852e65653d49debfff0f91aeb6c2cf7c18a7231960c776907",
+      "actual": "52be8b70fd3d4c5852e65653d49debfff0f91aeb6c2cf7c18a7231960c776907"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--telecom-entity-resolution--family-a3-20260925T060243/telecom-entity-resolution__gRETFg7/agent/trajectory.json",
+      "expected": "662108d037c8750f8ac6c8bca2534d985ae8384d881d46d58696a7d347d37afc",
+      "actual": "662108d037c8750f8ac6c8bca2534d985ae8384d881d46d58696a7d347d37afc"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--telecom-entity-resolution--family-a3-20260925T060243/telecom-entity-resolution__gRETFg7/verifier/reward.txt",
+      "expected": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "actual": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--telecom-entity-resolution--family-a3-20260925T060243/telecom-entity-resolution__gRETFg7/verifier/ctrf.json",
+      "expected": "b0cfcecc54dabe6bf543e10114aaffd0cb63944f55ec07b62613aff21c5e6f9a",
+      "actual": "b0cfcecc54dabe6bf543e10114aaffd0cb63944f55ec07b62613aff21c5e6f9a"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--telecom-entity-resolution--family-a3-20260925T060243/telecom-entity-resolution__gRETFg7/artifacts/app/output/customer_clusters.json",
+      "expected": "b3c9d0121ade379b3b95d54d27d041b122a8385930ba77caa70bf1046c616860",
+      "actual": "b3c9d0121ade379b3b95d54d27d041b122a8385930ba77caa70bf1046c616860"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--telecom-entity-resolution--family-a3-20260925T060243/telecom-entity-resolution__gRETFg7/artifacts/manifest.json",
+      "expected": "14fbf9171129d1051885825b48099cd3506691dff7b8dc9b3e97810bb90a064a",
+      "actual": "14fbf9171129d1051885825b48099cd3506691dff7b8dc9b3e97810bb90a064a"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--telecom-entity-resolution--family-a3-20260925T060243/tbench/attempts/telecom-entity-resolution__gRETFg7.json",
+      "expected": "8912711ed70cc644f6cb286b65bef09c184e68c49d1b4726c5e8087d59cadcb9",
+      "actual": "8912711ed70cc644f6cb286b65bef09c184e68c49d1b4726c5e8087d59cadcb9"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--photonic-waveguide-routing--family-a3-20260925T060323/photonic-waveguide-routing__mEjzdB4/result.json",
+      "expected": "c0c3714498eb550efdb6bc346b3eafd6bd6f0abece85e6e3032f4eea28c7e2fc",
+      "actual": "c0c3714498eb550efdb6bc346b3eafd6bd6f0abece85e6e3032f4eea28c7e2fc"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--photonic-waveguide-routing--family-a3-20260925T060323/photonic-waveguide-routing__mEjzdB4/agent/trajectory.json",
+      "expected": "3ada85fb45e5fe41ff3075209bda29797a76e276c1db2458d7c5cd85f66ce950",
+      "actual": "3ada85fb45e5fe41ff3075209bda29797a76e276c1db2458d7c5cd85f66ce950"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--photonic-waveguide-routing--family-a3-20260925T060323/photonic-waveguide-routing__mEjzdB4/verifier/reward.txt",
+      "expected": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "actual": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--photonic-waveguide-routing--family-a3-20260925T060323/photonic-waveguide-routing__mEjzdB4/verifier/ctrf.json",
+      "expected": "debd8c788fac87f0e90f41065f8e661052fbc69f8a799257b272feef6c2fcfd9",
+      "actual": "debd8c788fac87f0e90f41065f8e661052fbc69f8a799257b272feef6c2fcfd9"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--photonic-waveguide-routing--family-a3-20260925T060323/photonic-waveguide-routing__mEjzdB4/artifacts/app/routing_result_1.json",
+      "expected": "8068d9620e427acf21587707421f2c89b3cf9cd65844d205b8cfe84be3c51808",
+      "actual": "8068d9620e427acf21587707421f2c89b3cf9cd65844d205b8cfe84be3c51808"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--photonic-waveguide-routing--family-a3-20260925T060323/photonic-waveguide-routing__mEjzdB4/artifacts/manifest.json",
+      "expected": "ee96c5c291359c8de41c5ef8920340b637ad1fda295ba01ee3c1164de14e769f",
+      "actual": "ee96c5c291359c8de41c5ef8920340b637ad1fda295ba01ee3c1164de14e769f"
+    },
+    {
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/tb4--coder-one-microluna-v18--photonic-waveguide-routing--family-a3-20260925T060323/tbench/attempts/photonic-waveguide-routing__mEjzdB4.json",
+      "expected": "8ca5ec5bc1a54f495e4f85760eeaba392cbf25116a3928adddd109e4f04f74ae",
+      "actual": "8ca5ec5bc1a54f495e4f85760eeaba392cbf25116a3928adddd109e4f04f74ae"
+    }
+  ]
+}

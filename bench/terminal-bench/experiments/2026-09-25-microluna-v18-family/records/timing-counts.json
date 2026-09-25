@@ -1,0 +1,469 @@
+[
+  {
+    "task": "payments-pipeline-fix",
+    "label": "a1",
+    "first_edit_ms": 141462,
+    "missing_program_turns": 0,
+    "missing_program_turns_before_first_edit": 0,
+    "missing_program_turns_without_edit": null,
+    "sessions": [
+      {
+        "session": 1,
+        "turns": 18,
+        "model_ms": 273576,
+        "command_ms": 784,
+        "cost_usd": 0.00997584
+      },
+      {
+        "session": 2,
+        "turns": 5,
+        "model_ms": 93211,
+        "command_ms": 300,
+        "cost_usd": 0.00340832
+      }
+    ]
+  },
+  {
+    "task": "mp-checkpoint-consolidation",
+    "label": "a1",
+    "first_edit_ms": 195883,
+    "missing_program_turns": 1,
+    "missing_program_turns_before_first_edit": 0,
+    "missing_program_turns_without_edit": null,
+    "sessions": [
+      {
+        "session": 1,
+        "turns": 45,
+        "model_ms": 794482,
+        "command_ms": 91961,
+        "cost_usd": 0.04382316
+      },
+      {
+        "session": 2,
+        "turns": 23,
+        "model_ms": 216887,
+        "command_ms": 54531,
+        "cost_usd": 0.0161984
+      }
+    ]
+  },
+  {
+    "task": "cumulative-layout-shift",
+    "label": "a1",
+    "first_edit_ms": 50083,
+    "missing_program_turns": 3,
+    "missing_program_turns_before_first_edit": 0,
+    "missing_program_turns_without_edit": null,
+    "sessions": [
+      {
+        "session": 1,
+        "turns": 60,
+        "model_ms": 504512,
+        "command_ms": 44267,
+        "cost_usd": 0.04191646
+      },
+      {
+        "session": 2,
+        "turns": 27,
+        "model_ms": 260942,
+        "command_ms": 6063,
+        "cost_usd": 0.020902900000000006
+      },
+      {
+        "session": 3,
+        "turns": 13,
+        "model_ms": 136332,
+        "command_ms": 9440,
+        "cost_usd": 0.01215376
+      }
+    ]
+  },
+  {
+    "task": "live-database-cutover",
+    "label": "a1",
+    "first_edit_ms": 150504,
+    "missing_program_turns": 0,
+    "missing_program_turns_before_first_edit": 0,
+    "missing_program_turns_without_edit": null,
+    "sessions": [
+      {
+        "session": 1,
+        "turns": 24,
+        "model_ms": 305450,
+        "command_ms": 8549,
+        "cost_usd": 0.014817559999999999
+      },
+      {
+        "session": 2,
+        "turns": 5,
+        "model_ms": 54231,
+        "command_ms": 75,
+        "cost_usd": 0.0036443000000000005
+      }
+    ]
+  },
+  {
+    "task": "telecom-entity-resolution",
+    "label": "a1",
+    "first_edit_ms": 107324,
+    "missing_program_turns": 1,
+    "missing_program_turns_before_first_edit": 0,
+    "missing_program_turns_without_edit": null,
+    "sessions": [
+      {
+        "session": 1,
+        "turns": 27,
+        "model_ms": 508300,
+        "command_ms": 26831,
+        "cost_usd": 0.016452179999999997
+      },
+      {
+        "session": 2,
+        "turns": 4,
+        "model_ms": 52136,
+        "command_ms": 6099,
+        "cost_usd": 0.00254898
+      }
+    ]
+  },
+  {
+    "task": "photonic-waveguide-routing",
+    "label": "a1",
+    "first_edit_ms": 130341,
+    "missing_program_turns": 0,
+    "missing_program_turns_before_first_edit": 0,
+    "missing_program_turns_without_edit": null,
+    "sessions": [
+      {
+        "session": 1,
+        "turns": 29,
+        "model_ms": 501043,
+        "command_ms": 343081,
+        "cost_usd": 0.02024724
+      },
+      {
+        "session": 2,
+        "turns": 4,
+        "model_ms": 72084,
+        "command_ms": 229152,
+        "cost_usd": 0.00481172
+      }
+    ]
+  },
+  {
+    "task": "payments-pipeline-fix",
+    "label": "a2",
+    "first_edit_ms": 134516,
+    "missing_program_turns": 0,
+    "missing_program_turns_before_first_edit": 0,
+    "missing_program_turns_without_edit": null,
+    "sessions": [
+      {
+        "session": 1,
+        "turns": 43,
+        "model_ms": 858183,
+        "command_ms": 30056,
+        "cost_usd": 0.03725632
+      },
+      {
+        "session": 2,
+        "turns": 4,
+        "model_ms": 36829,
+        "command_ms": 75,
+        "cost_usd": 0.00234348
+      },
+      {
+        "session": 3,
+        "turns": 3,
+        "model_ms": 37118,
+        "command_ms": 44,
+        "cost_usd": 0.0021284800000000003
+      }
+    ]
+  },
+  {
+    "task": "mp-checkpoint-consolidation",
+    "label": "a2",
+    "first_edit_ms": 160291,
+    "missing_program_turns": 0,
+    "missing_program_turns_before_first_edit": 0,
+    "missing_program_turns_without_edit": null,
+    "sessions": [
+      {
+        "session": 1,
+        "turns": 50,
+        "model_ms": 765264,
+        "command_ms": 122024,
+        "cost_usd": 0.04215887999999999
+      },
+      {
+        "session": 2,
+        "turns": 17,
+        "model_ms": 215855,
+        "command_ms": 53641,
+        "cost_usd": 0.012854499999999998
+      }
+    ]
+  },
+  {
+    "task": "cumulative-layout-shift",
+    "label": "a2",
+    "first_edit_ms": 190598,
+    "missing_program_turns": 6,
+    "missing_program_turns_before_first_edit": 1,
+    "missing_program_turns_without_edit": null,
+    "sessions": [
+      {
+        "session": 1,
+        "turns": 60,
+        "model_ms": 516944,
+        "command_ms": 30049,
+        "cost_usd": 0.04014452000000001
+      },
+      {
+        "session": 2,
+        "turns": 18,
+        "model_ms": 184881,
+        "command_ms": 12442,
+        "cost_usd": 0.01803142
+      },
+      {
+        "session": 3,
+        "turns": 24,
+        "model_ms": 166884,
+        "command_ms": 5792,
+        "cost_usd": 0.01790434
+      }
+    ]
+  },
+  {
+    "task": "live-database-cutover",
+    "label": "a2",
+    "first_edit_ms": 100724,
+    "missing_program_turns": 1,
+    "missing_program_turns_before_first_edit": 0,
+    "missing_program_turns_without_edit": null,
+    "sessions": [
+      {
+        "session": 1,
+        "turns": 28,
+        "model_ms": 308944,
+        "command_ms": 12378,
+        "cost_usd": 0.013485520000000003
+      },
+      {
+        "session": 2,
+        "turns": 10,
+        "model_ms": 117754,
+        "command_ms": 8988,
+        "cost_usd": 0.006063219999999999
+      },
+      {
+        "session": 3,
+        "turns": 4,
+        "model_ms": 114349,
+        "command_ms": 74,
+        "cost_usd": 0.003853
+      }
+    ]
+  },
+  {
+    "task": "telecom-entity-resolution",
+    "label": "a2",
+    "first_edit_ms": 114595,
+    "missing_program_turns": 0,
+    "missing_program_turns_before_first_edit": 0,
+    "missing_program_turns_without_edit": null,
+    "sessions": [
+      {
+        "session": 1,
+        "turns": 17,
+        "model_ms": 203942,
+        "command_ms": 19876,
+        "cost_usd": 0.00791412
+      },
+      {
+        "session": 2,
+        "turns": 12,
+        "model_ms": 78253,
+        "command_ms": 6750,
+        "cost_usd": 0.004954
+      }
+    ]
+  },
+  {
+    "task": "payments-pipeline-fix",
+    "label": "a3",
+    "first_edit_ms": 156339,
+    "missing_program_turns": 0,
+    "missing_program_turns_before_first_edit": 0,
+    "missing_program_turns_without_edit": null,
+    "sessions": [
+      {
+        "session": 1,
+        "turns": 8,
+        "model_ms": 185926,
+        "command_ms": 321,
+        "cost_usd": 0.00567096
+      },
+      {
+        "session": 2,
+        "turns": 4,
+        "model_ms": 44439,
+        "command_ms": 73,
+        "cost_usd": 0.0023842
+      }
+    ]
+  },
+  {
+    "task": "photonic-waveguide-routing",
+    "label": "a2",
+    "first_edit_ms": 124135,
+    "missing_program_turns": 0,
+    "missing_program_turns_before_first_edit": 0,
+    "missing_program_turns_without_edit": null,
+    "sessions": [
+      {
+        "session": 1,
+        "turns": 47,
+        "model_ms": 506788,
+        "command_ms": 371794,
+        "cost_usd": 0.028318219999999998
+      },
+      {
+        "session": 2,
+        "turns": 6,
+        "model_ms": 79993,
+        "command_ms": 247627,
+        "cost_usd": 0.0047152800000000005
+      }
+    ]
+  },
+  {
+    "task": "mp-checkpoint-consolidation",
+    "label": "a3",
+    "first_edit_ms": 195248,
+    "missing_program_turns": 1,
+    "missing_program_turns_before_first_edit": 0,
+    "missing_program_turns_without_edit": null,
+    "sessions": [
+      {
+        "session": 1,
+        "turns": 37,
+        "model_ms": 804004,
+        "command_ms": 86617,
+        "cost_usd": 0.03919998
+      },
+      {
+        "session": 2,
+        "turns": 8,
+        "model_ms": 168340,
+        "command_ms": 82896,
+        "cost_usd": 0.00888264
+      }
+    ]
+  },
+  {
+    "task": "cumulative-layout-shift",
+    "label": "a3",
+    "first_edit_ms": 270482,
+    "missing_program_turns": 1,
+    "missing_program_turns_before_first_edit": 1,
+    "missing_program_turns_without_edit": null,
+    "sessions": [
+      {
+        "session": 1,
+        "turns": 60,
+        "model_ms": 714264,
+        "command_ms": 15757,
+        "cost_usd": 0.05819232
+      },
+      {
+        "session": 2,
+        "turns": 13,
+        "model_ms": 84912,
+        "command_ms": 8897,
+        "cost_usd": 0.0107466
+      },
+      {
+        "session": 3,
+        "turns": 14,
+        "model_ms": 104635,
+        "command_ms": 10481,
+        "cost_usd": 0.00939694
+      }
+    ]
+  },
+  {
+    "task": "live-database-cutover",
+    "label": "a3",
+    "first_edit_ms": 117851,
+    "missing_program_turns": 0,
+    "missing_program_turns_before_first_edit": 0,
+    "missing_program_turns_without_edit": null,
+    "sessions": [
+      {
+        "session": 1,
+        "turns": 28,
+        "model_ms": 254474,
+        "command_ms": 12956,
+        "cost_usd": 0.01353932
+      },
+      {
+        "session": 2,
+        "turns": 6,
+        "model_ms": 89995,
+        "command_ms": 8182,
+        "cost_usd": 0.004390440000000001
+      }
+    ]
+  },
+  {
+    "task": "telecom-entity-resolution",
+    "label": "a3",
+    "first_edit_ms": 188198,
+    "missing_program_turns": 0,
+    "missing_program_turns_before_first_edit": 0,
+    "missing_program_turns_without_edit": null,
+    "sessions": [
+      {
+        "session": 1,
+        "turns": 28,
+        "model_ms": 514413,
+        "command_ms": 45925,
+        "cost_usd": 0.017857039999999998
+      },
+      {
+        "session": 2,
+        "turns": 6,
+        "model_ms": 62609,
+        "command_ms": 23425,
+        "cost_usd": 0.00302932
+      }
+    ]
+  },
+  {
+    "task": "photonic-waveguide-routing",
+    "label": "a3",
+    "first_edit_ms": 80485,
+    "missing_program_turns": 0,
+    "missing_program_turns_before_first_edit": 0,
+    "missing_program_turns_without_edit": null,
+    "sessions": [
+      {
+        "session": 1,
+        "turns": 17,
+        "model_ms": 709442,
+        "command_ms": 160223,
+        "cost_usd": 0.029928359999999998
+      },
+      {
+        "session": 2,
+        "turns": 10,
+        "model_ms": 104684,
+        "command_ms": 104913,
+        "cost_usd": 0.007280839999999999
+      }
+    ]
+  }
+]

@@ -1,6 +1,13 @@
 # Microluna v18: the executed briefing, and what characterizes a run
 
-Status: design, 2026-09-25. Not built, not measured. Tracked in
+**Measured on 2026-09-25:** the [completed family report](../../terminal-bench/2026-09-25-microluna-v18-family.md)
+records 0/18 passes. The completed cohort meets the numerical loss condition;
+setup-only failures, a harness change, and a driver restart make the strict
+protocol result inconclusive. No policy promotion follows. The design below
+is retained as written; the report documents which pieces were admitted.
+
+Original design status (before implementation): 2026-09-25, not built or
+measured. Tracked in
 [#9640](https://github.com/OpenAgentsInc/openagents/issues/9640), with one
 issue per change: #9632 to #9638, and #9639 for the run card. It follows from
 [the step-by-step account](../../terminal-bench/2026-09-25-microluna-v13-embedding-trials.md)
