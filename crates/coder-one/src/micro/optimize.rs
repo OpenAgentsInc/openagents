@@ -526,6 +526,14 @@ impl Micro {
                 component: "microluna.lean",
                 id: format!("jev-metric-target-{}", self.dispatch()),
                 deadline: prepared.deadline.clone(),
+                // The episode's own deadline: a sentence that only
+                // restates it is the host's limit, not the task's goal.
+                host_limit: prepared
+                    .deadline
+                    .as_ref()
+                    .and_then(crate::deadline::Deadline::total)
+                    .or_else(|| self.episode.total()),
+                questions: None,
             },
             &prepared.instruction,
             Some(&self.workdir),

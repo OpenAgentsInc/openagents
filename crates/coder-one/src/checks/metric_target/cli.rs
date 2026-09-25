@@ -12,9 +12,12 @@ use crate::record::Recorder;
 /// The metric-target commands' usage.
 pub const USAGE: &str = "usage: coder-one checks metric-target extract --instruction FILE
                                             [--workspace DIR] [--jev off|recorded|live]
-                                            [--recorded FILE]
+                                            [--recorded FILE] [--questions FILE]
+                                            [--host-limit-sec N]
        coder-one checks metric-target offline --labels FILE --out DIR
                                             [--jev recorded|live] [--recorded FILE]
+                                            [--questions FILE] [--host-limit task|none]
+                                            [--host-margin-sec N]
        coder-one checks metric-target measure --workspace DIR --target FILE
                                             --harness COMMAND [--sided]
                                             [--reference-dir DIR] [--warmup N]
@@ -27,7 +30,15 @@ does the same for every task in a labels file (its instruction_path and
 instruction_sha256 must still match), writes <out>/extracted.json and
 <out>/summary.json, which compares the answers with the hand labels, and
 keeps every live answer in --recorded (default <out>/jev-recorded.json).
-It stops asking once the recorded input tokens reach $0.10. measure runs
+It stops asking once the recorded input tokens reach $0.10.
+
+--questions replaces the embedded question set with an earlier version,
+such as the one a measurement froze. --host-limit-sec is the host's own
+time limit for the task, in seconds: a sentence that only restates it isn't
+a goal. offline's --host-limit task reads each task's agent timeout from the
+task.toml beside its instruction and takes --host-margin-sec from it
+(default 120, the margin the Terminal-Bench adapter keeps before it sets
+the episode deadline); none, the default, gives no limit. measure runs
 --harness (a shell command, from --workspace) under the measurement
 protocol for the target in --target (a JSON target, as extract prints it)
 and prints the measurement; --sided passes candidate or reference as the
@@ -74,6 +85,15 @@ pub(super) fn keep_live(call: &Value, source: &str, recorded: &mut Recorded) -> 
     true
 }
 
+/// What an offline extraction knows besides the instruction.
+#[derive(Clone, Copy, Default)]
+pub(super) struct Known<'a> {
+    /// The host's own time limit for the task.
+    pub host_limit: Option<Duration>,
+    /// The question set's wording; `None` for the embedded one.
+    pub questions: Option<&'a super::QuestionSet>,
+}
+
 /// Extracts with the recorded answer when `replay` has the request, and
 /// with `jev` otherwise.
 pub(super) async fn extract_with(
@@ -82,34 +102,33 @@ pub(super) async fn extract_with(
     instruction: &str,
     workdir: Option<&Path>,
     id: &str,
+    known: Known<'_>,
 ) -> super::Extracted {
-    let numbers = super::candidates(instruction);
-    let references = super::references(instruction);
-    let scripts = workdir.map(super::scripts).unwrap_or_default();
-    let key = super::request_key(&super::request(
-        instruction,
-        &numbers,
-        &references,
-        &scripts,
-    ));
+    let context = super::Context {
+        component: "checks.metric_target",
+        id: id.to_string(),
+        deadline: None,
+        host_limit: known.host_limit,
+        questions: known.questions,
+    };
+    let key = super::request_key(&super::plan(&context, instruction, workdir).request);
     let mode = match replay {
         Some(JevMode::Recorded(recorded)) if recorded.entries.contains_key(&key) => {
             replay.unwrap_or(jev)
         }
         _ => jev,
     };
-    super::extract(
-        mode,
-        &Recorder::default(),
-        &super::Context {
-            component: "checks.metric_target",
-            id: id.to_string(),
-            deadline: None,
-        },
-        instruction,
-        workdir,
-    )
-    .await
+    super::extract(mode, &Recorder::default(), &context, instruction, workdir).await
+}
+
+/// The question set at `path`, when one is given.
+fn questions_from(path: Option<String>) -> Result<Option<super::QuestionSet>, String> {
+    path.map(|path| {
+        let text =
+            std::fs::read_to_string(&path).map_err(|e| format!("cannot read {path}: {e}"))?;
+        super::QuestionSet::parse(&text).map_err(|e| format!("{path}: {e}"))
+    })
+    .transpose()
 }
 
 /// Runs a harness command from a workspace, with no boundary: for
@@ -199,6 +218,10 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
         "--repeats",
         "--run-sec",
         "--budget-sec",
+        "--questions",
+        "--host-limit",
+        "--host-limit-sec",
+        "--host-margin-sec",
     ];
     if let Some((unknown, _)) = flags.iter().find(|(k, _)| !known.contains(&k.as_str())) {
         return Err(format!("unknown option {unknown}\n{USAGE}"));
@@ -226,12 +249,21 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
             let jev = one("--jev").unwrap_or_else(|| "recorded".to_string());
             let (mode, replay) = modes(&jev, &recorded)?;
             let workspace = one("--workspace").map(PathBuf::from);
+            let questions = questions_from(one("--questions"))?;
+            let host_limit = one("--host-limit-sec")
+                .map(|v| v.parse::<u64>().map(Duration::from_secs))
+                .transpose()
+                .map_err(|_| "--host-limit-sec takes a number of seconds".to_string())?;
             let extracted = extract_with(
                 &mode,
                 replay.as_ref(),
                 &instruction,
                 workspace.as_deref(),
                 "jev-metric-target",
+                Known {
+                    host_limit,
+                    questions: questions.as_ref(),
+                },
             )
             .await;
             if keep_live(&extracted.call, &path, &mut recorded) {
@@ -249,7 +281,23 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
             let recorded_path =
                 one("--recorded").map_or_else(|| out.join("jev-recorded.json"), PathBuf::from);
             let jev = one("--jev").unwrap_or_else(|| "recorded".to_string());
-            let summary = super::offline::run(&labels, &out, &recorded_path, &jev).await?;
+            let questions = questions_from(one("--questions"))?;
+            let host_margin = match one("--host-limit").as_deref() {
+                None | Some("none") => None,
+                Some("task") => Some(Duration::from_secs(number("--host-margin-sec", 120)?)),
+                Some(other) => return Err(format!("--host-limit is task or none, not {other}")),
+            };
+            let summary = super::offline::run(
+                &labels,
+                &out,
+                &recorded_path,
+                &jev,
+                &super::offline::Options {
+                    questions: questions.as_ref(),
+                    host_margin,
+                },
+            )
+            .await?;
             println!(
                 "{}",
                 serde_json::to_string_pretty(&summary["totals"]).map_err(|e| e.to_string())?

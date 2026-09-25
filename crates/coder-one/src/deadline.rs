@@ -103,6 +103,12 @@ impl Deadline {
         self.0.total.is_some()
     }
 
+    /// The whole episode's time limit, when it has one.
+    #[must_use]
+    pub fn total(&self) -> Option<Duration> {
+        self.0.total
+    }
+
     /// Time since the episode started.
     #[must_use]
     pub fn elapsed(&self) -> Duration {

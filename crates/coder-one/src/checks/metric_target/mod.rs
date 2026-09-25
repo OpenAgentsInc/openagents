@@ -8,12 +8,17 @@
 //! is that measurement, in four parts:
 //!
 //! 1. **Extract.** Code finds every number in the instruction with its
-//!    sentence ([`candidates`]) and the files the instruction names
-//!    ([`references`]). One Jev request asks, per number, whether it's the
-//!    threshold of a measured goal, which way the bound points, what
-//!    quantity it bounds, and what the measurement is relative to
-//!    (`crates/coder-one/questions/metric-target.json`). Code parses the threshold and its
-//!    unit from the number ([`parse_number`]); Jev never writes a value.
+//!    sentence ([`numbers`]): digits, powers of ten, ranges, and numbers
+//!    written as words. It leaves out a sentence that only restates the
+//!    host's own time limit, which the host passes in as a known fact. It
+//!    also finds the files the instruction names ([`references`]). One Jev
+//!    request asks, per number, whether it's the threshold of a measured
+//!    goal, which way the bound points, what quantity it bounds, and what
+//!    the measurement is relative to
+//!    (`crates/coder-one/questions/metric-target.json`). Code parses the
+//!    threshold and its unit from the number ([`parse_number`]); Jev never
+//!    writes a value. The targets are ordered by Jev's probability, most
+//!    likely first, not by where they appear.
 //! 2. **Harness.** A provided script that measures the goal, which Jev
 //!    picks from the workspace's scripts or none, or a harness a Luna
 //!    session writes from the stated goal and the workspace's file names
@@ -33,6 +38,7 @@
 //! prints no such line is read by its wall time, for a quantity of time.
 
 pub mod cli;
+pub mod numbers;
 pub mod offline;
 #[cfg(test)]
 mod tests;
@@ -48,11 +54,13 @@ use serde_json::{Value, json};
 use crate::component::jev::{self as jev_component, JevMode};
 use crate::record::Recorder;
 
+pub use numbers::{Numbers, candidates, numbers, parse_number, restates_host_limit, sentences};
+
 /// The Jev question set, embedded so its digest is the file's.
 pub const QUESTION_SET: &str = include_str!("../../../questions/metric-target.json");
 
 /// The most numbers one request asks about.
-pub const MAX_CANDIDATES: usize = 20;
+pub const MAX_CANDIDATES: usize = 40;
 
 /// The most references one request offers.
 pub const MAX_REFERENCES: usize = 10;
@@ -205,6 +213,10 @@ pub struct Candidate {
     pub value: f64,
     /// Its unit, normalized ([`parse_number`]); empty for none.
     pub unit: String,
+    /// Which end of a range it is, such as "the lower end of 5–10
+    /// seconds"; `None` for a number on its own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub range: Option<String>,
 }
 
 /// A goal the task states for its finished work.
@@ -276,20 +288,29 @@ pub struct QuestionSet {
 /// Panics when the embedded set isn't JSON, which a test rules out.
 pub fn question_set() -> &'static QuestionSet {
     static SET: OnceLock<QuestionSet> = OnceLock::new();
-    SET.get_or_init(|| {
-        let value: Value = serde_json::from_str(QUESTION_SET).expect("the metric set is JSON");
-        QuestionSet {
+    SET.get_or_init(|| QuestionSet::parse(QUESTION_SET).expect("the metric set is JSON"))
+}
+
+impl QuestionSet {
+    /// A question set from its file's text, such as an earlier version
+    /// kept to replay a measurement.
+    ///
+    /// # Errors
+    ///
+    /// A message when the text isn't JSON.
+    pub fn parse(text: &str) -> Result<QuestionSet, String> {
+        let value: Value =
+            serde_json::from_str(text).map_err(|e| format!("the question set isn't JSON: {e}"))?;
+        Ok(QuestionSet {
             id: value["id"].as_str().unwrap_or_default().to_string(),
             digest: atif::digest(&json!({
                 "per_number": value["per_number"],
                 "harness": value["harness"],
             })),
             value,
-        }
-    })
-}
+        })
+    }
 
-impl QuestionSet {
     fn text(&self, question: &str, field: &str) -> String {
         self.value["per_number"][question][field]
             .as_str()
@@ -311,132 +332,6 @@ impl QuestionSet {
             })
             .unwrap_or_default()
     }
-}
-
-/// The sentences of `text`: split at line breaks and at a `.`, `!`, or `?`
-/// followed by white space.
-#[must_use]
-pub fn sentences(text: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    let mut current = String::new();
-    let chars: Vec<char> = text.chars().collect();
-    for (i, &c) in chars.iter().enumerate() {
-        if c == '\n' {
-            if !current.trim().is_empty() {
-                out.push(current.trim().to_string());
-            }
-            current.clear();
-            continue;
-        }
-        current.push(c);
-        if matches!(c, '.' | '!' | '?') && chars.get(i + 1).is_none_or(|n| n.is_whitespace()) {
-            if !current.trim().is_empty() {
-                out.push(current.trim().to_string());
-            }
-            current.clear();
-        }
-    }
-    if !current.trim().is_empty() {
-        out.push(current.trim().to_string());
-    }
-    out
-}
-
-fn number_pattern() -> &'static regex::Regex {
-    static PATTERN: OnceLock<regex::Regex> = OnceLock::new();
-    PATTERN.get_or_init(|| {
-        regex::Regex::new(
-            r"(?P<cur>[$€£]\s?)?(?P<num>\d+(?:,\d{3})*(?:\.\d+)?(?:[eE][-+]?\d+)?)(?:\s*(?P<unit>[xX×%]|[A-Za-zµμ]+))?",
-        )
-        .expect("the number pattern compiles")
-    })
-}
-
-/// A number token's value and its normalized unit: `2.6x` is `(2.6,
-/// "x")`, `5 seconds` is `(5, "s")`, `$1,200` is `(1200, "USD")`.
-#[must_use]
-pub fn parse_number(token: &str) -> Option<(f64, String)> {
-    let found = number_pattern().captures(token.trim())?;
-    let value: f64 = found["num"].replace(',', "").parse().ok()?;
-    let unit = if found.name("cur").is_some() {
-        "USD".to_string()
-    } else {
-        found
-            .name("unit")
-            .map_or(String::new(), |u| normalize_unit(u.as_str()))
-    };
-    Some((value, unit))
-}
-
-fn normalize_unit(word: &str) -> String {
-    let lower = word.to_lowercase();
-    match lower.as_str() {
-        "x" | "×" | "times" | "fold" => "x".to_string(),
-        "%" | "percent" | "pct" => "%".to_string(),
-        "s" | "sec" | "secs" | "second" | "seconds" => "s".to_string(),
-        "ms" | "millisecond" | "milliseconds" => "ms".to_string(),
-        "us" | "µs" | "μs" | "microsecond" | "microseconds" => "us".to_string(),
-        "min" | "mins" | "minute" | "minutes" => "min".to_string(),
-        "h" | "hr" | "hrs" | "hour" | "hours" => "h".to_string(),
-        "usd" | "dollar" | "dollars" => "USD".to_string(),
-        _ => lower,
-    }
-}
-
-/// Every number in `instruction` with its sentence, in order, at most
-/// [`MAX_CANDIDATES`]. A digit that continues a word or a path, such as
-/// `python3` or `v2`, isn't a number.
-#[must_use]
-pub fn candidates(instruction: &str) -> Vec<Candidate> {
-    let mut out: Vec<Candidate> = Vec::new();
-    for sentence in sentences(instruction) {
-        for found in number_pattern().captures_iter(&sentence) {
-            let whole = found.get(0).expect("a match has a whole");
-            let num = found.name("num").expect("a match has a number");
-            let before = sentence[..whole.start()].chars().last();
-            if before.is_some_and(|c| c.is_alphanumeric() || "_./-:".contains(c)) {
-                continue;
-            }
-            // A number that ends a version or a path, such as `1.2.3` or
-            // `3.11/`, isn't a threshold.
-            let after = sentence[num.end()..].chars().next();
-            if after.is_some_and(|c| "._/".contains(c))
-                && sentence[num.end()..]
-                    .chars()
-                    .nth(1)
-                    .is_some_and(char::is_alphanumeric)
-            {
-                continue;
-            }
-            let mut token = whole.as_str().trim().to_string();
-            // A unit word longer than a unit is the next word, kept only
-            // when it reads as a unit.
-            if let Some(unit) = found.name("unit")
-                && unit.as_str().chars().count() > 12
-            {
-                token = sentence[whole.start()..unit.start()].trim().to_string();
-            }
-            let Some((value, unit)) = parse_number(&token) else {
-                continue;
-            };
-            let candidate = Candidate {
-                sentence: crate::judge::clip(&sentence, 500),
-                number: token,
-                value,
-                unit,
-            };
-            if !out
-                .iter()
-                .any(|c| c.sentence == candidate.sentence && c.number == candidate.number)
-            {
-                out.push(candidate);
-            }
-            if out.len() >= MAX_CANDIDATES {
-                return out;
-            }
-        }
-    }
-    out
 }
 
 fn reference_pattern() -> &'static regex::Regex {
@@ -548,7 +443,18 @@ pub fn request(
     references: &[String],
     scripts: &[Script],
 ) -> Request {
-    let set = question_set();
+    request_in(question_set(), instruction, numbers, references, scripts)
+}
+
+/// [`request`] with the wording of `set`.
+#[must_use]
+pub fn request_in(
+    set: &QuestionSet,
+    instruction: &str,
+    numbers: &[Candidate],
+    references: &[String],
+    scripts: &[Script],
+) -> Request {
     let mut questions = ::jev::Questions::new();
     for j in 0..numbers.len() {
         let finding = format!("numbers[{j}]");
@@ -605,7 +511,12 @@ pub fn request(
             "task": crate::judge::clip(instruction, 6_000),
             "numbers": numbers
                 .iter()
-                .map(|c| json!({"sentence": c.sentence, "number": c.number}))
+                .map(|c| match &c.range {
+                    None => json!({"sentence": c.sentence, "number": c.number}),
+                    Some(range) => {
+                        json!({"sentence": c.sentence, "number": c.number, "range": range})
+                    }
+                })
                 .collect::<Vec<_>>(),
             "references": references,
             "scripts": scripts
@@ -629,8 +540,13 @@ pub fn request_key(request: &Request) -> String {
 pub struct Extracted {
     /// The numbers code found.
     pub candidates: Vec<Candidate>,
+    /// The sentences left out because every number in them restates the
+    /// host's own time limit.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub host_limit: Vec<String>,
     pub references: Vec<String>,
-    /// The goals, in the instruction's order.
+    /// The goals, most likely first: by Jev's probability that the number
+    /// is a goal's threshold, and by the instruction's order on a tie.
     pub targets: Vec<Target>,
     /// The provided script Jev picked, relative to the workspace.
     pub harness: Option<String>,
@@ -643,7 +559,9 @@ pub struct Extracted {
     pub call: Value,
 }
 
-/// The targets `answers` name among `numbers`.
+/// The targets `answers` name among `numbers`, most likely first: the
+/// first is the one the loop holds, so a number that happens to come
+/// earlier doesn't hide a likelier one.
 #[must_use]
 pub fn targets_from(answers: &Value, numbers: &[Candidate], references: &[String]) -> Vec<Target> {
     let mut out = Vec::new();
@@ -683,6 +601,7 @@ pub fn targets_from(answers: &Value, numbers: &[Candidate], references: &[String
             p,
         });
     }
+    out.sort_by(|a, b| b.p.total_cmp(&a.p));
     out
 }
 
@@ -691,6 +610,41 @@ pub struct Context<'a> {
     pub component: &'a str,
     pub id: String,
     pub deadline: Option<crate::deadline::Deadline>,
+    /// The host's own time limit for the whole task, when it has one. A
+    /// sentence that only restates it isn't the task's goal.
+    pub host_limit: Option<Duration>,
+    /// The question set's wording; `None` for the embedded one.
+    pub questions: Option<&'a QuestionSet>,
+}
+
+/// The request [`extract`] makes, with what code found: the numbers, the
+/// sentences left out, the references, and the scripts.
+pub struct Planned {
+    pub numbers: Numbers,
+    pub references: Vec<String>,
+    pub scripts: Vec<Script>,
+    pub request: Request,
+}
+
+/// Plans the extraction request for `instruction` in `context`.
+#[must_use]
+pub fn plan(context: &Context<'_>, instruction: &str, workdir: Option<&Path>) -> Planned {
+    let numbers = numbers(instruction, context.host_limit);
+    let references = references(instruction);
+    let scripts = workdir.map(scripts).unwrap_or_default();
+    let request = request_in(
+        context.questions.unwrap_or_else(|| question_set()),
+        instruction,
+        &numbers.candidates,
+        &references,
+        &scripts,
+    );
+    Planned {
+        numbers,
+        references,
+        scripts,
+        request,
+    }
 }
 
 /// Extracts the targets `instruction` states, and in `workdir`, when there
@@ -702,11 +656,17 @@ pub async fn extract(
     instruction: &str,
     workdir: Option<&Path>,
 ) -> Extracted {
-    let numbers = candidates(instruction);
-    let references = references(instruction);
-    let scripts = workdir.map(scripts).unwrap_or_default();
+    let Planned {
+        numbers: found,
+        references,
+        scripts,
+        request: asked_for,
+    } = plan(context, instruction, workdir);
+    let numbers = found.candidates;
+    let set = context.questions.unwrap_or_else(|| question_set());
     let mut out = Extracted {
         candidates: numbers.clone(),
+        host_limit: found.host_limit,
         references: references.clone(),
         ..Extracted::default()
     };
@@ -715,7 +675,6 @@ pub async fn extract(
         out.call = json!({"how": "none", "reason": "the instruction holds no number"});
         return out;
     }
-    let asked_for = request(instruction, &numbers, &references, &scripts);
     let asked = jev_component::ask(
         jev,
         recorder,
@@ -741,8 +700,10 @@ pub async fn extract(
         "input_tokens": asked.input_tokens,
         "output_tokens": asked.output_tokens,
         "milliseconds": asked.milliseconds,
-        "questions": question_set().id,
-        "questions_digest": question_set().digest,
+        "questions": set.id,
+        "questions_digest": set.digest,
+        "host_limit_sec": context.host_limit.map(|d| d.as_secs_f64()),
+        "numbers_found": found.found,
     });
     if let Some(answers) = &asked.answers {
         out.answered = true;

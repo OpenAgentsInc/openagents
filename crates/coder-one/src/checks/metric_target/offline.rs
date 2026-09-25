@@ -14,11 +14,12 @@
 //! - A task both call negative is a correct negative.
 
 use std::path::Path;
+use std::time::Duration;
 
 use serde_json::{Value, json};
 
-use super::cli::{OFFLINE_USD, extract_with, keep_live, modes};
-use super::{Direction, Target};
+use super::cli::{Known, OFFLINE_USD, extract_with, keep_live, modes};
+use super::{Direction, QuestionSet, Target};
 use crate::component::jev::{self as jev_component, Recorded};
 
 /// The labels file's schema.
@@ -68,6 +69,46 @@ pub fn compare(target: &Target, label: &Value) -> Value {
     })
 }
 
+/// How an offline run differs from the defaults.
+#[derive(Default)]
+pub struct Options<'a> {
+    /// The question set's wording; `None` for the embedded one.
+    pub questions: Option<&'a QuestionSet>,
+    /// With a value, each task's host limit is its agent timeout, read from
+    /// the `task.toml` beside its instruction, less this margin; without
+    /// one, no host limit is known.
+    pub host_margin: Option<Duration>,
+}
+
+/// The `[agent]` table's `timeout_sec` in a `task.toml`'s text.
+#[must_use]
+pub fn agent_timeout(toml: &str) -> Option<f64> {
+    let mut table = "";
+    for line in toml.lines() {
+        let line = line.trim();
+        if line.starts_with('[') {
+            table = line;
+            continue;
+        }
+        if table == "[agent]"
+            && let Some((key, value)) = line.split_once('=')
+            && key.trim() == "timeout_sec"
+        {
+            return value.trim().parse().ok();
+        }
+    }
+    None
+}
+
+/// The host limit for the task whose instruction is at `path`.
+fn host_limit(path: &str, margin: Duration) -> Option<Duration> {
+    let toml = std::fs::read_to_string(Path::new(path).with_file_name("task.toml")).ok()?;
+    let seconds = agent_timeout(&toml)?;
+    Duration::try_from_secs_f64(seconds)
+        .ok()
+        .map(|d| d.saturating_sub(margin))
+}
+
 /// Runs the offline extraction and writes its records; returns the
 /// summary.
 ///
@@ -80,6 +121,7 @@ pub async fn run(
     out: &Path,
     recorded_path: &Path,
     jev: &str,
+    options: &Options<'_>,
 ) -> Result<Value, String> {
     let text = std::fs::read_to_string(labels)
         .map_err(|e| format!("cannot read {}: {e}", labels.display()))?;
@@ -111,12 +153,17 @@ pub async fn run(
             jev
         };
         let (mode, replay) = modes(word, &recorded)?;
+        let limit = options.host_margin.and_then(|m| host_limit(path, m));
         let extracted = extract_with(
             &mode,
             replay.as_ref(),
             &instruction,
             None,
             &format!("jev-metric-target-{name}"),
+            Known {
+                host_limit: limit,
+                questions: options.questions,
+            },
         )
         .await;
         if keep_live(&extracted.call, &name, &mut recorded) {
@@ -152,6 +199,10 @@ pub async fn run(
             "any_correct": any,
             "label": first_label,
             "targets": extracted.targets,
+            "numbers": extracted.candidates.len(),
+            "numbers_found": extracted.call["numbers_found"],
+            "host_limit_sec": limit.map(|d| d.as_secs_f64()),
+            "host_limit_sentences": extracted.host_limit,
             "how": extracted.call["how"],
         }));
         extracted_all.push(json!({"task": name, "extracted": extracted}));
@@ -172,10 +223,11 @@ pub async fn run(
         "jev_usd_recorded": recorded_usd(&recorded),
         "stopped": stopped,
     });
+    let set = options.questions.unwrap_or_else(|| super::question_set());
     let summary = json!({
         "schema": "openagents.metric-target-offline.v1",
-        "questions": super::question_set().id,
-        "questions_digest": super::question_set().digest,
+        "questions": set.id,
+        "questions_digest": set.digest,
         "totals": totals,
         "rows": rows,
     });
