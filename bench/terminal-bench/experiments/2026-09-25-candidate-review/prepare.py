@@ -85,6 +85,6 @@ if __name__ == '__main__':
         results.append(result)
     args.out.mkdir(parents=True, exist_ok=True)
     (args.out / 'manifest.json').write_text(json.dumps(results, indent=2) + '\n')
-    for part in ['calibration', 'held_out']:
+    for part in ['calibration', 'held-out']:
         group = [r for r in results if r['split'] == part]
         print(part, len(group), 'with final text files', sum(bool(r.get('file_count')) for r in group))

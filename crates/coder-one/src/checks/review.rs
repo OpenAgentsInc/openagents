@@ -82,7 +82,9 @@ pub fn request(input: &Input) -> Request {
 }
 
 fn quoted(source: &str, quote: &str) -> bool {
-    !quote.trim().is_empty() && source.contains(quote)
+    let quote = quote.trim().trim_matches(['“', '”', '"']);
+    let normalize = |text: &str| text.split_whitespace().collect::<Vec<_>>().join(" ");
+    quote.chars().count() >= 8 && normalize(source).contains(&normalize(quote))
 }
 
 /// A finding must cite the supplied task and the supplied candidate, verbatim.
@@ -179,6 +181,13 @@ pub async fn run<T: Transport>(
             Some("Review exceeded its 180-second deadline".to_string()),
         ),
     };
+    let reply_record = json!({"error":error,"reply":reply.as_ref().map(|r| json!({"id":r.id,"model":r.model,"items":r.items,
+        "usage":{"input":r.usage.input,"cached":r.usage.cached,"output":r.usage.output,"reasoning":r.usage.reasoning},
+        "cost_usd":microluna::price::cost(&r.model,r.usage)}))});
+    crate::record::write_atomic(
+        &out.join("reply.json"),
+        &serde_json::to_vec_pretty(&reply_record).map_err(|e| e.to_string())?,
+    )?;
     let parsed = reply.as_ref().and_then(|r| {
         let calls = r.calls();
         (calls.len() == 1 && calls[0].name == "submit_review")
@@ -240,12 +249,14 @@ pub async fn run<T: Transport>(
 pub async fn command(args: &[String]) -> Result<i32, String> {
     let mut input = None;
     let mut out = None;
+    let mut replay = None;
     let mut args = args.iter();
     while let Some(arg) = args.next() {
         let value = args.next().ok_or("review needs --input FILE --out DIR")?;
         match arg.as_str() {
             "--input" => input = Some(value),
             "--out" => out = Some(value),
+            "--replay" => replay = Some(value),
             _ => return Err(format!("Unknown review option {arg}")),
         }
     }
@@ -255,18 +266,61 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
     )
     .map_err(|e| e.to_string())?;
     let out = Path::new(out.ok_or("review needs --out DIR")?);
-    if out.join("review.json").exists() {
+    if out.join("request.json").exists() {
         return Err(
             "Review output already exists; preserve it and choose another directory".to_string(),
         );
     }
-    let transport = crate::micro::codex_wire(&format!("review-{}", atif::now_ms()))?;
+
     let dir = crate::credentials::openagents_dir().ok_or("HOME is not set")?;
     let key = crate::credentials::jev_key(|name| std::env::var(name).ok(), &dir)?;
     let jev = JevMode::Live(crate::credentials::jev_client(&key.secret)?);
-    let result = run(&input, &transport, &jev, out).await?;
+    let result = if let Some(path) = replay {
+        let original: Value =
+            serde_json::from_str(&std::fs::read_to_string(path).map_err(|e| e.to_string())?)
+                .map_err(|e| e.to_string())?;
+        if original["input_digest"] != atif::digest(&json!(input)) {
+            return Err("Recorded review belongs to different input".to_string());
+        }
+        let r = &original["reply"];
+        let usage = &r["usage"];
+        let transport = RecordedReply(microluna::Reply {
+            id: r["id"].as_str().map(str::to_string),
+            model: r["model"]
+                .as_str()
+                .ok_or("Recorded review has no model")?
+                .to_string(),
+            items: r["items"]
+                .as_array()
+                .ok_or("Recorded review has no items")?
+                .clone(),
+            usage: microluna::TokenUsage {
+                input: usage["input"].as_u64().unwrap_or(0),
+                cached: usage["cached"].as_u64().unwrap_or(0),
+                output: usage["output"].as_u64().unwrap_or(0),
+                reasoning: usage["reasoning"].as_u64().unwrap_or(0),
+            },
+        });
+        let mut result = run(&input, &transport, &jev, out).await?;
+        result["luna_source"] = json!({"mode":"recorded","source":path,"network_calls":0});
+        crate::record::write_atomic(
+            &out.join("review.json"),
+            &serde_json::to_vec_pretty(&result).map_err(|e| e.to_string())?,
+        )?;
+        result
+    } else {
+        let transport = crate::micro::codex_wire(&format!("review-{}", atif::now_ms()))?;
+        run(&input, &transport, &jev, out).await?
+    };
     println!("{}",serde_json::to_string(&json!({"output":out,"findings":result["findings"].as_array().map(Vec::len),"error":result["error"]})).map_err(|e|e.to_string())?);
     Ok(0)
+}
+
+struct RecordedReply(microluna::Reply);
+impl Transport for RecordedReply {
+    async fn respond(&self, _: &Request) -> Result<microluna::Reply, microluna::TransportError> {
+        Ok(self.0.clone())
+    }
 }
 
 #[cfg(test)]
@@ -280,7 +334,7 @@ mod tests {
             coverage: "complete file".into(),
         };
         let mut finding = Finding {
-            requirement: "twice x".into(),
+            requirement: "Return twice x".into(),
             path: "a.py".into(),
             quote: "return x".into(),
             example: "x=2".into(),

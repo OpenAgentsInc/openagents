@@ -59,3 +59,12 @@ unknown costs. Bound each Luna request to 180 seconds and each Jev request to it
 existing 60-second budget. Run at most four reviews concurrently. Preserve other
 coderos worktrees and running jobs. This first protocol is an experiment, not a
 new runtime default or grounds to close #9584 by itself.
+
+## Calibration adapter correction
+
+The first calibration batch often enclosed an otherwise exact requirement in
+curly quotation marks. Before looking at comparison reviews, allow surrounding
+quotation marks and whitespace normalization in citation matching, with a
+minimum eight-character quote. This changes no requirement text or finding.
+Replay the retained Luna replies through the corrected matcher and Jev; do not
+regenerate reviews. Keep both versions and account for the repeated Jev calls.
