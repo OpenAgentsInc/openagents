@@ -254,6 +254,12 @@ writes them, and `baseline::read_commands` reads its commands back.
 | `lines[].jev.how` | `live`, `recorded`, or `skipped` |
 | `lines[].results` | Optional: whether the line passed on each session's candidate, in order |
 
+`accept.grade` (`crates/coder-one/src/grade/`) also writes two fields the
+card doesn't read: `support`, Jev's probability for each basis, and
+`authority`, the line's #9629 class with its evidence, from which `grade`
+follows. `coder-one accept grade` writes the same record for retained
+trials offline.
+
 The card counts lines and advisory lines, and beside the reward it puts
 whether each line's last result agrees: a passing line agrees with reward 1
 and a failing line with reward below 1.

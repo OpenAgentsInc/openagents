@@ -39,6 +39,7 @@ pub mod effort;
 pub mod environment;
 pub mod episode;
 pub mod generate;
+pub mod grade;
 pub mod guests;
 pub mod handoff;
 pub mod issue_eval;

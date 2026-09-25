@@ -27,6 +27,9 @@ pub const USAGE: &str = "usage: coder-one accept minitask ID [--sessions N] [--r
        coder-one accept run RECORD WORKSPACE [--docker IMAGE --workdir DIR
                                   [--candidate DIR]] [--json]
        coder-one accept check RECORD
+       coder-one accept grade [--traces DIR] [--grades DIR] [--out DIR]
+                                  [--jev live|recorded|off] [--recorded FILE]
+                                  [--workers N] [--score-sec N]
 
 minitask sets a mini-task up, extracts its requirement map with Jev,
 writes and freezes an acceptance suite with Microluna (accept.define),
@@ -76,7 +79,12 @@ failures the classes were designed from.
 run runs a frozen suite, from its record, on a workspace on this host
 (inside a coder-boundary writing boundary) or in a Docker image. check
 reports whether the suite was edited since its freeze; the exit code is 1
-when it was.";
+when it was.
+
+grade grades every retained frozen score script with accept.grade, runs
+it on every graded workspace of its task, and reports whether ranking on
+the supported check lines separates passes from failures where the raw
+score doesn't (`coder-one accept grade --help`).";
 
 fn jev_mode(word: &str) -> Result<JevMode, String> {
     match word {
@@ -96,6 +104,9 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
     let Some((verb, rest)) = args.split_first() else {
         return Err(USAGE.to_string());
     };
+    if verb == "grade" {
+        return crate::grade::offline::command(rest).await;
+    }
     let mut positional = Vec::new();
     let mut sessions = 4u32;
     let mut rounds = None;
