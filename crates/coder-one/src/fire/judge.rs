@@ -127,6 +127,10 @@ pub struct Judgment {
     pub error: Option<String>,
     /// Whether this judgment voted to stop.
     pub vote: bool,
+    /// Whether the run had reached the point where the softer signals
+    /// count: past the winners' time to their first check, or after the
+    /// host turned back a finish ([`ripe`]).
+    pub ripe: bool,
 }
 
 /// Why a run stopped.
@@ -541,7 +545,9 @@ pub async fn judge(mode: &JevMode, run: &Run, card: &Card, rules: &Rules, now: u
         milliseconds: asked.milliseconds,
         error: asked.error.clone(),
         vote: false,
+        ripe: false,
     };
+    judgment.ripe = ripe(run, card, judgment.t);
     judgment.vote = votes(&judgment, rules);
     judgment
 }
@@ -553,9 +559,19 @@ pub fn votes(judgment: &Judgment, rules: &Rules) -> bool {
         .deviation
         .as_deref()
         .is_some_and(|deviation| BAD.contains(&deviation));
-    judgment.stop.is_some_and(|p| p >= rules.stop_p)
-        || (bad && judgment.on_track.is_some_and(|p| p <= rules.off_track_p))
-        || (judgment.pitfall.is_some() && judgment.stop.is_some_and(|p| p >= rules.pitfall_p))
+    let soft = judgment.ripe
+        && ((bad && judgment.on_track.is_some_and(|p| p <= rules.off_track_p))
+            || (judgment.pitfall.is_some() && judgment.stop.is_some_and(|p| p >= rules.pitfall_p)));
+    judgment.stop.is_some_and(|p| p >= rules.stop_p) || soft
+}
+
+/// Whether the softer stop signals count yet: the run is past the
+/// winners' time to their first check, or the host has turned back one of
+/// its finishes. Before that, a run that hasn't checked or run something
+/// yet is often only early, as the winners were.
+#[must_use]
+pub fn ripe(run: &Run, card: &Card, t: f64) -> bool {
+    run.turned_back.is_some() || t >= card.budget.first_check_s
 }
 
 /// Jev's stop: the last `rules.votes` judgments all voted to stop.
@@ -579,7 +595,7 @@ pub fn jev_stop(run: &Run, rules: &Rules) -> Option<Stop> {
     let steady = counted.len() >= rules.steady
         && counted[counted.len() - rules.steady..]
             .iter()
-            .all(|j| j.stop.is_some_and(|p| p >= rules.pitfall_p));
+            .all(|j| j.ripe && j.stop.is_some_and(|p| p >= rules.pitfall_p));
     let how = if newest.vote && voted >= rules.votes {
         format!(
             "{voted} of its last {} judgments voted to stop",

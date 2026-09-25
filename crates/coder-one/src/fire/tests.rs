@@ -217,6 +217,7 @@ fn five_minutes_without_an_action_stop_the_run() {
 fn a_named_pitfall_votes_at_a_lower_stop_answer() {
     let rules = Rules::default();
     let pitfall = Judgment {
+        ripe: true,
         on_track: Some(0.5),
         deviation: Some("none".to_string()),
         pitfall: Some("self_check".to_string()),
@@ -261,6 +262,7 @@ fn two_refused_finishes_stop_the_run() {
 fn jev_stops_only_after_votes_in_a_row() {
     let rules = Rules::default();
     let off = Judgment {
+        ripe: true,
         on_track: Some(0.1),
         deviation: Some("looping".to_string()),
         stop: Some(0.5),
@@ -348,6 +350,7 @@ fn two_votes_in_three_or_a_steady_stop_answer_stop_the_run() {
     // A stop answer of 0.7 or more four times in a row, with no votes.
     let high = Judgment {
         stop: Some(0.73),
+        ripe: true,
         ..quiet
     };
     run.judgments = (5..8)
@@ -521,4 +524,47 @@ fn the_fire_experiment_protocol_is_frozen_at_its_digest() {
             experiment.protocol
         );
     }
+}
+
+#[test]
+fn soft_signals_wait_for_the_winners_first_check_or_a_turned_back_finish() {
+    let rules = Rules::default();
+    let early = Judgment {
+        on_track: Some(0.1),
+        deviation: Some("skipped_phase".to_string()),
+        pitfall: Some("self_check".to_string()),
+        stop: Some(0.75),
+        ..Judgment::default()
+    };
+    assert!(
+        !judge::votes(&early, &rules),
+        "a soft signal before the run is ripe"
+    );
+    assert!(judge::votes(
+        &Judgment {
+            ripe: true,
+            ..early.clone()
+        },
+        &rules
+    ));
+    assert!(
+        judge::votes(
+            &Judgment {
+                stop: Some(0.9),
+                ..early
+            },
+            &rules
+        ),
+        "a high stop answer counts at once"
+    );
+    let card = card();
+    let mut run = run_with(&[(2_000, "run_command", json!({"command": "a"}), "1")]);
+    assert!(!judge::ripe(&run, &card, card.budget.first_check_s - 1.0));
+    assert!(judge::ripe(&run, &card, card.budget.first_check_s));
+    let note = line(
+        json!({"record": "step", "step": {"at": 3_000, "source": "System",
+        "message": "The host turned this finish back: keep working."}}),
+    );
+    run.see(&events::parse(&note, "microluna-1-1").unwrap());
+    assert!(judge::ripe(&run, &card, 1.0));
 }

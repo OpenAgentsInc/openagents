@@ -76,7 +76,12 @@ off track (0.15 or less) with a bad deviation, or when Jev names a known
 pitfall and its stop answer is 0.7 or more. Two votes among the last
 three judgments stop the run, and so do four judgments in a row with a
 stop answer of 0.7 or more. Only judgments from the fifth action on
-count. The host's briefing
+count. The two softer signals, a low on-track answer with a bad deviation
+and a named pitfall, count only once the run is past the winners' time to
+their first check or the host has turned back one of its finishes; a stop
+answer of 0.85 or more counts at once. Before that point a run that
+hasn't run or checked anything yet is usually just early, as the winners
+were. The host's briefing
 counts as work done, so a run that reads files from the briefing instead
 of with commands isn't penalized.
 
@@ -259,3 +264,33 @@ The round also fixed three more harness faults: launches that shared a
 build folder copied the trial binary mid-build, launches in the same
 second shared a job name, and the watcher read a task's placeholder
 reward before its verifier finished.
+
+## Round 3: looking for a second task
+
+Six more live runs, all failing:
+
+| Arm | Task | Result |
+| --- | --- | --- |
+| `microluna-v19-fire-oracle` | `telecom-entity-resolution` | recall 0.45, reward 0 |
+| `microluna-v19-fire-profile` | `telecom-entity-resolution` | recall 0.42, reward 0 |
+| `microluna-v19-fire-oracle` | `risk-scorer-replay` | 2 of 5 tests, reward 0 |
+| `microluna-v19` | `payments-pipeline-fix` | stopped at 3 min 51 s, a false stop |
+
+- The oracle writer sees the task's words, not its data or programs, so on
+  both tasks it wrote a check of the output's shape only, and said the
+  task supplies no ground truth. It needs the task's files before it can
+  write the kind of check the winners used.
+- The new shared-values pass lists the identifier columns the telecom
+  tables share. Luna still linked on them and never measured recall
+  without them.
+- `payments-pipeline-fix` first failed before inference: v19 retains
+  candidate workspaces, and the task's Kafka snapshot exceeds the capture
+  budget. `--agent-kwarg candidate_capture=false` gets past it.
+- The payments stop at 3 min 51 s came from soft signals, "never runs the
+  service", while the winners themselves don't run it until about 7
+  minutes. The soft signals now wait for the winners' first-check time.
+  Replayed under that rule, the three passing embedding runs still finish,
+  and the failing runs stop later than before: `coq-block-bound` at
+  5 min 34 s, `shadow-relay` at 14 min 22 s, `sound-change-cascade` at
+  15 min 41 s, and `photonic-waveguide-routing` at 15 min 46 s, each still
+  before the run's own end at 17 to 22 minutes.
