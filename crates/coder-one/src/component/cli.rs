@@ -21,7 +21,8 @@ pub const USAGE: &str = "usage: coder-one component list [--json]
                                   --out DIR [--partition calibration|evaluation|all]...
                                   [--jev recorded|live|off] [--recorded FILE] [--save-jev]
                                   [--live-limit N]
-       coder-one component replay control.finish [--traces DIR]... [--exclude-task NAME]... --out DIR
+       coder-one component replay control.finish [--traces DIR]... [--exclude-task NAME]...
+                                  [--baselines FILE] --out DIR
 
 --jev defaults to recorded: answers replay from each fixture's jev-recorded.json,
 and a changed state or question set misses. live calls Jev with TYPESAFE_API_KEY;
@@ -51,7 +52,9 @@ logs and Luna Codex streams under each --traces directory (bench/terminal-bench/
 by default) against the finish rule (issue #9638), and writes rows.jsonl and
 summary.json to --out. --exclude-task omits a task before reading its records;
 the measurement protocol supplies these names. Jobs containing truth-confirmation
-or truth-control are always omitted. It asks no model.";
+or truth-control are always omitted. It asks no model. --baselines reads a baseline
+measurement's records (tasks.<task>.commands) and holds each Microluna session on
+those tasks to its task's baseline commands, run from /app.";
 
 /// A live Jev client from `TYPESAFE_API_KEY` or `~/.openagents/jev.json`.
 ///
@@ -91,6 +94,7 @@ struct Flags {
     inputs: Option<PathBuf>,
     partitions: Vec<String>,
     excluded_tasks: Vec<String>,
+    baselines: Option<PathBuf>,
 }
 
 impl Flags {
@@ -115,6 +119,7 @@ impl Flags {
             inputs: None,
             partitions: Vec::new(),
             excluded_tasks: Vec::new(),
+            baselines: None,
         };
         let mut args = args.iter();
         while let Some(arg) = args.next() {
@@ -133,6 +138,7 @@ impl Flags {
                 }
                 "--split" => flags.split = Some(value("--split")?.into()),
                 "--inputs" => flags.inputs = Some(value("--inputs")?.into()),
+                "--baselines" => flags.baselines = Some(value("--baselines")?.into()),
                 "--partition" => flags.partitions.push(value("--partition")?),
                 "--exclude-task" => flags.excluded_tasks.push(value("--exclude-task")?),
                 "--arm" => flags.arm = Some(value("--arm")?),
@@ -428,7 +434,11 @@ fn replay_finish(flags: &Flags) -> Result<i32, String> {
     } else {
         flags.traces_all.clone()
     };
-    let (rows, sources) = super::finish::replay(&roots, &flags.excluded_tasks);
+    let baselines = match &flags.baselines {
+        Some(path) => super::finish::read_baselines(path)?,
+        None => std::collections::BTreeMap::new(),
+    };
+    let (rows, sources) = super::finish::replay(&roots, &flags.excluded_tasks, &baselines);
     std::fs::create_dir_all(&out).map_err(|error| error.to_string())?;
     let mut lines = String::new();
     for row in &rows {

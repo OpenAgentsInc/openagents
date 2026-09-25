@@ -32,7 +32,8 @@ This makes no live Terminal-Bench claim.
   only read, and records the changed files under `changed` in the
   command's step. A command that names `score.sh` other than as a
   redirection target, and doesn't only read, is a score run. A command
-  that contains a baseline command, spaces collapsed, is a baseline run. A
+  that contains a baseline command, spaces collapsed, is a baseline run
+  (replaced by an entry-point match; see [Baseline matching](#baseline-matching)). A
   score or baseline run's own file changes are its outputs, not edits.
 - **The verdict.** A `finish` with status `done` is refused unless the
   score and a baseline command both ran after the last edit. The refusal
@@ -196,3 +197,58 @@ target/debug/coder-one component replay control.finish \
   --out bench/terminal-bench/experiments/2026-09-25-finish-rule/records
 target/debug/coder-one component suite control.finish --no-record
 ```
+
+## Baseline matching
+
+Added after [#9633](https://github.com/OpenAgentsInc/openagents/issues/9633)
+found that no retained session command contained the baseline command,
+although 13 of them reran the same program on the same files. Luna
+reorders the file arguments, passes `/app/...` paths, and types `python`
+for `python3`, so the containment match would have refused finishes that
+did rerun the program.
+
+A command is now a baseline run when some piece of it has the same entry
+point and the same set of arguments as a baseline command
+(`microluna::finish::Invocation`). `python`, `python3`, and `python3.11`
+are one interpreter; the entry point is the `-m` module, the script path,
+or the program with its `make` targets; paths are compared relative to the
+workspace root, so `/app/data/x` equals `data/x`; order, options,
+redirections, and here-document bodies don't count. The session passes its
+workspace root. It's code, with no Jev call. The implementation is
+`finish-rule-v2` (digest `70c856a9…b53a`); without baseline commands it
+reproduces every row of the table above.
+
+- **The 13 same-run commands.** On the retained `embedding-drift-monitor`
+  logs, with root `/app`, the match finds 12 of the 13. The 13th passes
+  the stable window three times
+  (`reference current_stable current_stable current_stable`), a different
+  file set; #9633 counted it because a here-document earlier in the same
+  command names all four files. No other command before a first edit
+  matches (0 of 59), and containment matched 0 of the 72.
+- **The finish rule with baselines on.** With the task's baseline command
+  from the #9633 records, 12 of the 16 Microluna `done` finishes on
+  `embedding-drift-monitor` would have been refused (75%, 51–90%), each for
+  a missing baseline run after the last edit, against 0 of 16 with the
+  score alone. The refusals cover all 6 finishes on failing trials
+  (6 of 6, 61–100%) and 6 of the 10 on passing ones. The containment match
+  would have refused all 13 finishes that followed an edit. The better
+  match rescues one finish; most sessions checked their last edit with a
+  here-document or the score, not the program on the task's data. That
+  count is descriptive: it's measured on `embedding-drift-monitor`, which
+  the held-out rules keep out of tuning, and nothing was tuned on it.
+
+Fixtures: `finish--baseline-reordered` and `finish--baseline-app-paths`
+are allowed; `finish--baseline-other-files` and
+`finish--baseline-other-module` are refused.
+
+```sh
+cargo test -p microluna finish
+cargo test -p coder-one the_retained_same_run_commands_match_the_baseline
+target/debug/coder-one component suite control.finish --no-record
+target/debug/coder-one component replay control.finish \
+  --baselines bench/terminal-bench/experiments/2026-09-25-baseline/records/measure.json \
+  --out DIR
+```
+
+Pass the same `--exclude-task` names as the reproduction above; none of
+them is `embedding-drift-monitor`, so they don't change these counts.

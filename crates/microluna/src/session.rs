@@ -482,7 +482,7 @@ pub async fn run_watched<T: Transport, W: Watch>(
         refusals: 0,
         unverified: false,
     };
-    let mut ledger = crate::finish::Ledger::default();
+    let mut ledger = crate::finish::Ledger::rooted(workspace.root());
     let mut nudged = false;
     let mut edited = false;
     let mut returned = 0u32;

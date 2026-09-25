@@ -1,0 +1,45 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "control.finish",
+  "source": {
+    "kind": "synthetic",
+    "issue": 9638,
+    "case": "A rerun of the baseline with its file arguments in another order is a baseline run, so the finish is allowed."
+  },
+  "input": {
+    "rule": {
+      "score": [
+        "score.sh"
+      ],
+      "baseline": [
+        "python3 -m drift_monitor data/reference_embeddings.npy data/current_clear_drift.npy data/current_stable.npy data/current_with_zeros.npy"
+      ],
+      "max_refusals": 3
+    },
+    "marks": [
+      {
+        "edit": {
+          "path": "drift_monitor/normalize.py"
+        }
+      },
+      {
+        "ran": {
+          "command": "sh .microluna-eval/score.sh | tail -3",
+          "changed": []
+        }
+      },
+      {
+        "ran": {
+          "command": "python3 -m drift_monitor data/reference_embeddings.npy data/current_stable.npy data/current_with_zeros.npy data/current_clear_drift.npy; echo exit=$?",
+          "changed": []
+        }
+      }
+    ],
+    "status": "done",
+    "refusals": 0,
+    "root": "/app"
+  },
+  "retained": {
+    "verdict": "allowed"
+  }
+}
