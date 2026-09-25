@@ -1,0 +1,60 @@
+{
+  "v": 1,
+  "id": "openagents.method.l2-normalize.v1",
+  "slug": "l2-normalize",
+  "name": "L2 normalization",
+  "definition": "Divide a vector by its Euclidean (L2) norm, giving a unit vector in the same direction. The norm of the zero vector is 0, so the division is undefined there; the common library convention leaves a zero vector as the zero vector rather than producing NaN or infinity.",
+  "citations": ["Roger A. Horn and Charles R. Johnson, Matrix Analysis, 2nd edition, Cambridge University Press, 2013, section 5.1.", "scikit-learn reference, sklearn.preprocessing.normalize, which leaves zero rows unchanged; PyTorch reference, torch.nn.functional.normalize, which divides by max(||x||₂, eps)."],
+  "call": {
+    "language": "python",
+    "inputs": "one vector",
+    "result": "vector",
+    "forms": ["numpy", "plain", "rows"],
+    "fill": []
+  },
+  "tolerance": 1e-06,
+  "properties": [
+    {
+      "id": "pythagorean",
+      "says": "[3, 4] has norm 5, so it normalizes to [0.6, 0.8].",
+      "args": [[3, 4]],
+      "expect": [0.6, 0.8]
+    },
+    {
+      "id": "axis",
+      "says": "[0, 0, 5] normalizes to [0, 0, 1].",
+      "args": [[0, 0, 5]],
+      "expect": [0.0, 0.0, 1.0]
+    },
+    {
+      "id": "direction_kept",
+      "says": "[-2, 0] normalizes to [-1, 0]; the sign is kept.",
+      "args": [[-2, 0]],
+      "expect": [-1.0, 0.0]
+    },
+    {
+      "id": "idempotent",
+      "says": "A unit vector is unchanged.",
+      "args": [[0.6, 0.8]],
+      "expect": [0.6, 0.8]
+    },
+    {
+      "id": "zero_vector",
+      "says": "The zero vector stays the zero vector, with no NaN or infinity.",
+      "args": [[0, 0, 0]],
+      "expect": [0.0, 0.0, 0.0]
+    }
+  ],
+  "provenance": {
+    "added": "2026-09-25",
+    "issue": "#9653",
+    "why": "Fable 5.1's passing runs confirmed this method with checks derived from its definition. Issue #9653 names it as a starting entry.",
+    "pattern": "Check a well-known method against properties its standard definition implies (docs/coder/design/pattern-components.md, Fable step 6).",
+    "source_tasks": ["embedding-drift-monitor"]
+  },
+  "admission": {
+    "status": "not admitted",
+    "policies": [],
+    "evidence": ["docs/terminal-bench/2026-09-25-method-conformance.md"]
+  }
+}

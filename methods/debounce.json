@@ -1,0 +1,60 @@
+{
+  "v": 1,
+  "id": "openagents.method.debounce.v1",
+  "slug": "debounce",
+  "name": "Debouncer (consecutive-sample hysteresis)",
+  "definition": "A debouncer changes its output state only after its input has held the new value for a fixed number N of consecutive samples, with N at least 2, and the same rule applies to entering and to leaving a state. A single-sample glitch never changes the output, and a sustained change always does.",
+  "citations": ["Jack G. Ganssle, A Guide to Debouncing, The Ganssle Group, 2008, section on software debouncers (counting consecutive stable samples).", "Paul Horowitz and Winfield Hill, The Art of Electronics, 3rd edition, Cambridge University Press, 2015, chapter 4 (Schmitt triggers and hysteresis)."],
+  "call": {
+    "language": "python",
+    "inputs": "a sequence of boolean samples; or an object whose one public method takes one sample and returns the current state",
+    "result": "sequence",
+    "forms": ["plain", "numpy", "stepwise"],
+    "fill": [3]
+  },
+  "tolerance": 1e-06,
+  "properties": [
+    {
+      "id": "sustained_on",
+      "says": "Off for 5 samples, then on for 30: the output changes exactly once.",
+      "args": [[false, false, false, false, false, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true]],
+      "changes": 1
+    },
+    {
+      "id": "quiet",
+      "says": "Off for 20 samples: the output never changes.",
+      "args": [[false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false]],
+      "changes": 0
+    },
+    {
+      "id": "single_glitch",
+      "says": "One on sample among off samples doesn't change the output.",
+      "args": [[false, false, false, false, false, false, false, false, false, false, true, false, false, false, false, false, false, false, false, false, false]],
+      "changes": 0
+    },
+    {
+      "id": "glitch_while_on",
+      "says": "After the output turns on, one off sample doesn't turn it off.",
+      "args": [[false, false, false, false, false, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, false, true, true, true, true, true, true, true, true, true, true]],
+      "changes": 1
+    },
+    {
+      "id": "release",
+      "says": "After the output turns on, 30 off samples turn it off again: exactly two changes.",
+      "args": [[false, false, false, false, false, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false]],
+      "changes": 2
+    }
+  ],
+  "provenance": {
+    "added": "2026-09-25",
+    "issue": "#9653",
+    "why": "Fable 5.1's passing runs confirmed this method with checks derived from its definition. Issue #9653 names it as a starting entry.",
+    "pattern": "Check a well-known method against properties its standard definition implies (docs/coder/design/pattern-components.md, Fable step 6).",
+    "source_tasks": ["embedding-drift-monitor"]
+  },
+  "admission": {
+    "status": "not admitted",
+    "policies": [],
+    "evidence": ["docs/terminal-bench/2026-09-25-method-conformance.md"]
+  }
+}

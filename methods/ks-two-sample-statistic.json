@@ -1,0 +1,66 @@
+{
+  "v": 1,
+  "id": "openagents.method.ks-two-sample-statistic.v1",
+  "slug": "ks-two-sample-statistic",
+  "name": "Two-sample Kolmogorov-Smirnov statistic",
+  "definition": "The largest absolute difference between the empirical cumulative distribution functions of two samples, taken over every value either sample holds. It lies between 0 and 1, is 0 for samples with the same values, is 1 for samples that don't overlap, and counts tied values once in each sample's function.",
+  "citations": ["W. J. Conover, Practical Nonparametric Statistics, 3rd edition, Wiley, 1999, section 6.3 (the Smirnov test).", "Myles Hollander, Douglas A. Wolfe, and Eric Chicken, Nonparametric Statistical Methods, 3rd edition, Wiley, 2014, chapter 5."],
+  "call": {
+    "language": "python",
+    "inputs": "two one-dimensional samples",
+    "result": "scalar",
+    "forms": ["numpy", "plain"],
+    "fill": []
+  },
+  "tolerance": 1e-06,
+  "properties": [
+    {
+      "id": "half_overlap",
+      "says": "[1, 2, 3, 4] against [3, 4, 5, 6] gives 0.5.",
+      "args": [[1, 2, 3, 4], [3, 4, 5, 6]],
+      "expect": 0.5
+    },
+    {
+      "id": "identical",
+      "says": "A sample against itself gives 0.",
+      "args": [[1, 2, 3], [1, 2, 3]],
+      "expect": 0.0
+    },
+    {
+      "id": "disjoint",
+      "says": "Samples that don't overlap give 1.",
+      "args": [[1, 2, 3], [4, 5, 6]],
+      "expect": 1.0
+    },
+    {
+      "id": "ties",
+      "says": "[1, 1, 2] against [1, 2, 2] gives 1/3: ties step both functions at once.",
+      "args": [[1, 1, 2], [1, 2, 2]],
+      "expect": 0.3333333333333333
+    },
+    {
+      "id": "unequal_sizes",
+      "says": "[1, ..., 8] against [2.5, 6.5] gives 0.25.",
+      "args": [[1, 2, 3, 4, 5, 6, 7, 8], [2.5, 6.5]],
+      "expect": 0.25
+    },
+    {
+      "id": "symmetric",
+      "says": "Swapping the samples doesn't change the statistic.",
+      "args": [[1, 2, 3, 4, 5, 6, 7, 8], [2.5, 6.5]],
+      "same_as": [[2.5, 6.5], [1, 2, 3, 4, 5, 6, 7, 8]]
+    }
+  ],
+  "provenance": {
+    "added": "2026-09-25",
+    "issue": "#9653",
+    "why": "Issue #9653 names it in the starting list of distance primitives and two-sample statistics. The issue was written after reading one task's winning runs, so that task counts as a source.",
+    "pattern": "Check a well-known method against properties its standard definition implies (docs/coder/design/pattern-components.md, Fable step 6).",
+    "source_tasks": ["embedding-drift-monitor"]
+  },
+  "admission": {
+    "status": "not admitted",
+    "policies": [],
+    "evidence": ["docs/terminal-bench/2026-09-25-method-conformance.md"]
+  }
+}

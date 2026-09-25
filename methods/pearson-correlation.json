@@ -1,0 +1,60 @@
+{
+  "v": 1,
+  "id": "openagents.method.pearson-correlation.v1",
+  "slug": "pearson-correlation",
+  "name": "Pearson correlation coefficient",
+  "definition": "The covariance of two paired samples divided by the product of their standard deviations: the sum of products of deviations from each sample's mean, over the square root of the product of the sums of squared deviations. It lies between -1 and 1, is symmetric, and doesn't change under a positive linear transformation of either sample.",
+  "citations": ["John A. Rice, Mathematical Statistics and Data Analysis, 3rd edition, Duxbury, 2007, section 4.3.", "Larry Wasserman, All of Statistics, Springer, 2004, section 3.3."],
+  "call": {
+    "language": "python",
+    "inputs": "two paired one-dimensional samples of equal length",
+    "result": "scalar",
+    "forms": ["numpy", "plain"],
+    "fill": []
+  },
+  "tolerance": 1e-06,
+  "properties": [
+    {
+      "id": "known",
+      "says": "[1, 2, 3, 4, 5] against [2, 1, 4, 3, 5] gives 0.8.",
+      "args": [[1, 2, 3, 4, 5], [2, 1, 4, 3, 5]],
+      "expect": 0.8
+    },
+    {
+      "id": "perfect_positive",
+      "says": "A sample against twice itself gives 1.",
+      "args": [[1, 2, 3, 4], [2, 4, 6, 8]],
+      "expect": 1.0
+    },
+    {
+      "id": "perfect_negative",
+      "says": "A sample against a reversed linear copy gives -1.",
+      "args": [[1, 2, 3, 4], [8, 6, 4, 2]],
+      "expect": -1.0
+    },
+    {
+      "id": "affine_invariant",
+      "says": "Scaling and shifting a sample doesn't change the coefficient.",
+      "args": [[1, 2, 3, 4, 5], [2, 1, 4, 3, 5]],
+      "same_as": [[10, 20, 30, 40, 50], [7, 5, 11, 9, 13]]
+    },
+    {
+      "id": "symmetric",
+      "says": "Swapping the samples doesn't change the coefficient.",
+      "args": [[1, 2, 3, 4, 5], [2, 1, 4, 3, 5]],
+      "same_as": [[2, 1, 4, 3, 5], [1, 2, 3, 4, 5]]
+    }
+  ],
+  "provenance": {
+    "added": "2026-09-25",
+    "issue": "#9653",
+    "why": "Chosen as a common numeric or text method from general knowledge, before any retained workspace was surveyed for candidates.",
+    "pattern": "Check a well-known method against properties its standard definition implies (docs/coder/design/pattern-components.md, Fable step 6).",
+    "source_tasks": []
+  },
+  "admission": {
+    "status": "not admitted",
+    "policies": [],
+    "evidence": ["docs/terminal-bench/2026-09-25-method-conformance.md"]
+  }
+}

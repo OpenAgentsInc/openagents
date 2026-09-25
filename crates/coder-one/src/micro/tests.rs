@@ -1500,6 +1500,7 @@ fn lean_shape() -> lean::Lean {
         tiered: None,
         review_rule: None,
         grade: false,
+        method_conformance: false,
     }
 }
 
@@ -3102,6 +3103,28 @@ async fn a_tiered_lean_loop_names_a_red_guard_as_a_suspect_and_still_stops() {
     let stopped = record["stopped"].as_str().unwrap();
     assert!(stopped.contains("session 1 ended done"), "{stopped}");
     assert!(!work.join("keep.txt").exists());
+}
+
+#[test]
+fn method_conformance_is_off_by_default_and_refused_until_admitted() {
+    let off: lean::Lean =
+        serde_json::from_value(json!({ "sessions": 1, "source_chars": 1000 })).unwrap();
+    assert!(!off.method_conformance);
+    assert!(
+        !serde_json::to_string(&off)
+            .unwrap()
+            .contains("method_conformance")
+    );
+    let on = lean::Lean {
+        method_conformance: true,
+        ..lean_shape()
+    };
+    assert_eq!(
+        on.validate()
+            .iter()
+            .any(|p| p.contains("method_conformance isn't admitted")),
+        !crate::checks::conformance::ADMITTED
+    );
 }
 
 #[test]

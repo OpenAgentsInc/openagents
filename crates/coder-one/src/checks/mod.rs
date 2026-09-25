@@ -35,6 +35,7 @@
 pub mod behavior;
 pub mod cancel;
 pub mod cli;
+pub mod conformance;
 pub mod contract;
 pub mod data;
 pub mod execution_audit;

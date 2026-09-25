@@ -257,6 +257,15 @@ pub struct Lean {
     /// every manifest before it, keep-best ranks on the full score.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub grade: bool,
+    /// `verify.method_conformance` (issue #9653): before session 1, find
+    /// the functions that implement a method in the `methods/` registry,
+    /// have Jev identify each, run the entries' property checks on a
+    /// scratch copy, and put the failures in every brief
+    /// ([`crate::checks::conformance`]). Accepted only once the offline
+    /// measurement admits it ([`crate::checks::conformance::ADMITTED`]);
+    /// absent, as in every manifest before it, nothing runs.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub method_conformance: bool,
 }
 
 /// `executor.microluna.lean.executed`: the bounds of the commands the host
@@ -615,6 +624,14 @@ impl Lean {
         if self.grade && self.lanes > 1 {
             problems.push(
                 "executor.microluna.lean.grade ranks sequential sessions only, not lanes"
+                    .to_string(),
+            );
+        }
+        if self.method_conformance && !crate::checks::conformance::ADMITTED {
+            problems.push(
+                "executor.microluna.lean.method_conformance isn't admitted: the offline \
+                 measurement didn't admit verify.method_conformance \
+                 (docs/terminal-bench/2026-09-25-method-conformance.md)"
                     .to_string(),
             );
         }
@@ -2134,6 +2151,28 @@ impl Micro {
             baseline_record = record;
             baseline = commands;
         }
+        let mut conformance_record = Value::Null;
+        if lean.method_conformance {
+            let (evidence, record, usd) = crate::checks::conformance::lean_step(
+                &prepared.jev,
+                &self.recorder,
+                &crate::checks::conformance::Context {
+                    component: "microluna.lean",
+                    id: format!("jev-conformance-{}", self.dispatch()),
+                    deadline: prepared.deadline.clone(),
+                },
+                &self.workdir,
+                self.isolation == Isolation::TaskContainer,
+            )
+            .await;
+            if let Some(evidence) = evidence {
+                // After the suspects and the baseline, when there are any.
+                let at = usize::from(suspects_listed) + usize::from(baseline_text.is_some());
+                samples.insert(at.min(samples.len()), evidence);
+            }
+            conformance_record = record;
+            spent_before += usd;
+        }
         let wall = (lean.wall_sec > 0).then(|| Duration::from_secs(lean.wall_sec));
         let wall_left = || wall.map(|w| w.saturating_sub(started.elapsed()));
         let fields = if lean.hardcode_check && lean.records {
@@ -2181,6 +2220,9 @@ impl Micro {
         }
         if !baseline_record.is_null() {
             moves.push(baseline_record);
+        }
+        if !conformance_record.is_null() {
+            moves.push(conformance_record);
         }
         // `verify.executed` (issue #9636): the commands to rerun after every
         // session, each with its outcome on the untouched workspace. The

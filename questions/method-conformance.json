@@ -1,0 +1,20 @@
+{
+  "v": 1,
+  "id": "openagents.method-conformance.v1",
+  "name": "Which well-known method a function implements",
+  "summary": "Asks, once per candidate function code found, which entry of the methods registry (methods/) the function implements, or none. The options are the registry's entries; their definitions are in the state. It never asks whether the function is correct: code runs the entry's property checks for that.",
+  "per_finding": {
+    "type": "choice",
+    "instructions": "Which well-known method does the function in `{finding}` implement? Each entry of `methods` gives a method's `option` name and its standard `definition`. Pick a method when the function's purpose is to compute that method's result for its inputs, whatever the function is named and whether or not it computes it correctly. Pick none when the function computes something else, or when it only uses the method as one step of a larger computation.",
+    "options": "supplied",
+    "criteria": {
+      "none": "The function implements none of the listed methods: it computes something else, or it uses one only as a step of a larger computation."
+    }
+  },
+  "policy": {
+    "v": 1,
+    "evidence": [
+      "docs/terminal-bench/2026-09-25-method-conformance.md"
+    ]
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "v": 1,
+  "id": "openagents.method.population-stability-index.v1",
+  "slug": "population-stability-index",
+  "name": "Population stability index (PSI)",
+  "definition": "For the proportions eᵢ of an expected distribution and aᵢ of an actual one over the same bins, PSI is the sum over bins of (aᵢ - eᵢ) × ln(aᵢ / eᵢ). It is 0 when the proportions match, never negative, and symmetric in the two distributions.",
+  "citations": ["Naeem Siddiqi, Credit Risk Scorecards, Wiley, 2006, chapter 8 (the system stability report).", "Bilal Yurdakul and Joshua Naranjo, Statistical properties of the population stability index, Journal of Risk Model Validation 14(4), 2020."],
+  "call": {
+    "language": "python",
+    "inputs": "two arrays of bin proportions, expected first",
+    "result": "scalar",
+    "forms": ["numpy", "plain"],
+    "fill": []
+  },
+  "tolerance": 1e-06,
+  "properties": [
+    {
+      "id": "known_two_bins",
+      "says": "Expected [0.5, 0.5] against actual [0.25, 0.75] gives 0.2747.",
+      "args": [[0.5, 0.5], [0.25, 0.75]],
+      "expect": 0.2746530721670274
+    },
+    {
+      "id": "known_three_bins",
+      "says": "Expected [0.2, 0.3, 0.5] against actual [0.3, 0.3, 0.4] gives 0.0629.",
+      "args": [[0.2, 0.3, 0.5], [0.3, 0.3, 0.4]],
+      "expect": 0.06286086594223741
+    },
+    {
+      "id": "identical",
+      "says": "Matching proportions give 0.",
+      "args": [[0.25, 0.25, 0.25, 0.25], [0.25, 0.25, 0.25, 0.25]],
+      "expect": 0.0
+    },
+    {
+      "id": "symmetric",
+      "says": "Swapping expected and actual doesn't change the index.",
+      "args": [[0.2, 0.3, 0.5], [0.3, 0.3, 0.4]],
+      "same_as": [[0.3, 0.3, 0.4], [0.2, 0.3, 0.5]]
+    }
+  ],
+  "provenance": {
+    "added": "2026-09-25",
+    "issue": "#9653",
+    "why": "Issue #9653 names it in the starting list of distance primitives and two-sample statistics. The issue was written after reading one task's winning runs, so that task counts as a source.",
+    "pattern": "Check a well-known method against properties its standard definition implies (docs/coder/design/pattern-components.md, Fable step 6).",
+    "source_tasks": ["embedding-drift-monitor"]
+  },
+  "admission": {
+    "status": "not admitted",
+    "policies": [],
+    "evidence": ["docs/terminal-bench/2026-09-25-method-conformance.md"]
+  }
+}

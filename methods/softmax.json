@@ -1,0 +1,61 @@
+{
+  "v": 1,
+  "id": "openagents.method.softmax.v1",
+  "slug": "softmax",
+  "name": "Softmax",
+  "definition": "Map a vector of real scores z to probabilities exp(zᵢ) / Σⱼ exp(zⱼ). The result sums to 1, keeps the scores' order, doesn't change when the same constant is added to every score, and is computed stably by subtracting the largest score first, so large scores don't overflow.",
+  "citations": ["Ian Goodfellow, Yoshua Bengio, and Aaron Courville, Deep Learning, MIT Press, 2016, sections 4.1 (overflow in softmax) and 6.2.2.3 (softmax units)."],
+  "call": {
+    "language": "python",
+    "inputs": "one vector of scores",
+    "result": "vector",
+    "forms": ["numpy", "plain", "rows"],
+    "fill": []
+  },
+  "tolerance": 1e-06,
+  "properties": [
+    {
+      "id": "known",
+      "says": "[1, 2, 3] gives [0.0900, 0.2447, 0.6652].",
+      "args": [[1, 2, 3]],
+      "expect": [0.09003057317038046, 0.24472847105479767, 0.6652409557748219]
+    },
+    {
+      "id": "uniform",
+      "says": "Equal scores give equal probabilities.",
+      "args": [[0, 0]],
+      "expect": [0.5, 0.5]
+    },
+    {
+      "id": "large_scores",
+      "says": "Scores of 1000 give [0.5, 0.5], with no overflow to NaN.",
+      "args": [[1000, 1000]],
+      "expect": [0.5, 0.5]
+    },
+    {
+      "id": "shift_invariant",
+      "says": "Adding 100 to every score doesn't change the result.",
+      "args": [[1, 2, 3]],
+      "same_as": [[101, 102, 103]]
+    },
+    {
+      "id": "sums_to_one",
+      "says": "The probabilities sum to 1.",
+      "args": [[-1, 0.5, 2, 7]],
+      "expect": 1.0,
+      "reduce": "sum"
+    }
+  ],
+  "provenance": {
+    "added": "2026-09-25",
+    "issue": "#9653",
+    "why": "Chosen as a common numeric or text method from general knowledge, before any retained workspace was surveyed for candidates.",
+    "pattern": "Check a well-known method against properties its standard definition implies (docs/coder/design/pattern-components.md, Fable step 6).",
+    "source_tasks": []
+  },
+  "admission": {
+    "status": "not admitted",
+    "policies": [],
+    "evidence": ["docs/terminal-bench/2026-09-25-method-conformance.md"]
+  }
+}

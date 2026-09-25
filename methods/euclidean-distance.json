@@ -1,0 +1,60 @@
+{
+  "v": 1,
+  "id": "openagents.method.euclidean-distance.v1",
+  "slug": "euclidean-distance",
+  "name": "Euclidean distance",
+  "definition": "The square root of the sum of squared differences between two vectors' coordinates: the straight-line distance between two points. It is 0 only for identical points, symmetric, and not squared.",
+  "citations": ["Michel Marie Deza and Elena Deza, Encyclopedia of Distances, 4th edition, Springer, 2016, section 5.1 (Euclidean metric).", "Roger A. Horn and Charles R. Johnson, Matrix Analysis, 2nd edition, Cambridge University Press, 2013, section 5.2."],
+  "call": {
+    "language": "python",
+    "inputs": "two vectors of equal length",
+    "result": "scalar",
+    "forms": ["numpy", "plain", "rows"],
+    "fill": []
+  },
+  "tolerance": 1e-06,
+  "properties": [
+    {
+      "id": "three_four_five",
+      "says": "The distance from [0, 0] to [3, 4] is 5.",
+      "args": [[0, 0], [3, 4]],
+      "expect": 5.0
+    },
+    {
+      "id": "not_squared",
+      "says": "The distance from [0, 0] to [1, 1] is √2, not 2.",
+      "args": [[0, 0], [1, 1]],
+      "expect": 1.4142135623730951
+    },
+    {
+      "id": "identical",
+      "says": "A point is at distance 0 from itself.",
+      "args": [[1, 2, 3], [1, 2, 3]],
+      "expect": 0.0
+    },
+    {
+      "id": "offset",
+      "says": "The distance from [1, 1] to [4, 5] is 5.",
+      "args": [[1, 1], [4, 5]],
+      "expect": 5.0
+    },
+    {
+      "id": "symmetric",
+      "says": "Swapping the arguments doesn't change the result.",
+      "args": [[1, 2, 3], [4, 0, -1]],
+      "same_as": [[4, 0, -1], [1, 2, 3]]
+    }
+  ],
+  "provenance": {
+    "added": "2026-09-25",
+    "issue": "#9653",
+    "why": "Issue #9653 names it in the starting list of distance primitives and two-sample statistics. The issue was written after reading one task's winning runs, so that task counts as a source.",
+    "pattern": "Check a well-known method against properties its standard definition implies (docs/coder/design/pattern-components.md, Fable step 6).",
+    "source_tasks": ["embedding-drift-monitor"]
+  },
+  "admission": {
+    "status": "not admitted",
+    "policies": [],
+    "evidence": ["docs/terminal-bench/2026-09-25-method-conformance.md"]
+  }
+}

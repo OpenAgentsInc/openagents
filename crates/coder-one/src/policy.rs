@@ -1887,6 +1887,7 @@ mod tests {
         assert!(lean.review_rule.is_none());
         assert!(!lean.grade);
         assert!(lean.departures.is_empty());
+        assert!(!lean.method_conformance);
         assert!(lean.tiered.is_none());
         assert_eq!(lean.lanes, 0);
 

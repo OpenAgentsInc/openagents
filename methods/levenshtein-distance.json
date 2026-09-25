@@ -1,0 +1,66 @@
+{
+  "v": 1,
+  "id": "openagents.method.levenshtein-distance.v1",
+  "slug": "levenshtein-distance",
+  "name": "Levenshtein edit distance",
+  "definition": "The smallest number of single-character insertions, deletions, and substitutions that turn one string into the other, each costing 1. It is 0 only for equal strings, symmetric, and equal to the other string's length when one string is empty.",
+  "citations": ["Vladimir I. Levenshtein, Binary codes capable of correcting deletions, insertions, and reversals, Soviet Physics Doklady 10(8), 1966.", "Gonzalo Navarro, A guided tour to approximate string matching, ACM Computing Surveys 33(1), 2001, section 2."],
+  "call": {
+    "language": "python",
+    "inputs": "two strings",
+    "result": "scalar",
+    "forms": ["plain"],
+    "fill": []
+  },
+  "tolerance": 1e-06,
+  "properties": [
+    {
+      "id": "kitten_sitting",
+      "says": "kitten to sitting takes 3 edits.",
+      "args": ["kitten", "sitting"],
+      "expect": 3.0
+    },
+    {
+      "id": "empty",
+      "says": "The empty string to abc takes 3 insertions.",
+      "args": ["", "abc"],
+      "expect": 3.0
+    },
+    {
+      "id": "flaw_lawn",
+      "says": "flaw to lawn takes 2 edits.",
+      "args": ["flaw", "lawn"],
+      "expect": 2.0
+    },
+    {
+      "id": "substitution_costs_one",
+      "says": "a to b is one substitution, costing 1.",
+      "args": ["a", "b"],
+      "expect": 1.0
+    },
+    {
+      "id": "identical",
+      "says": "A string is at distance 0 from itself.",
+      "args": ["abc", "abc"],
+      "expect": 0.0
+    },
+    {
+      "id": "symmetric",
+      "says": "Swapping the strings doesn't change the distance.",
+      "args": ["intention", "execution"],
+      "same_as": ["execution", "intention"]
+    }
+  ],
+  "provenance": {
+    "added": "2026-09-25",
+    "issue": "#9653",
+    "why": "Chosen as a common numeric or text method from general knowledge, before any retained workspace was surveyed for candidates.",
+    "pattern": "Check a well-known method against properties its standard definition implies (docs/coder/design/pattern-components.md, Fable step 6).",
+    "source_tasks": []
+  },
+  "admission": {
+    "status": "not admitted",
+    "policies": [],
+    "evidence": ["docs/terminal-bench/2026-09-25-method-conformance.md"]
+  }
+}

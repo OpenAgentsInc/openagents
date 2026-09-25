@@ -1,0 +1,60 @@
+{
+  "v": 1,
+  "id": "openagents.method.cosine-distance.v1",
+  "slug": "cosine-distance",
+  "name": "Cosine distance",
+  "definition": "One minus the cosine similarity of two nonzero vectors. It is 0 for vectors that point the same way, 1 for orthogonal vectors, and 2 for opposite vectors.",
+  "citations": ["Pang-Ning Tan, Michael Steinbach, and Vipin Kumar, Introduction to Data Mining, Addison-Wesley, 2006, section 2.4.5.", "SciPy reference, scipy.spatial.distance.cosine: 1 - u·v / (||u||₂ ||v||₂)."],
+  "call": {
+    "language": "python",
+    "inputs": "two vectors of equal length",
+    "result": "scalar",
+    "forms": ["numpy", "plain", "rows"],
+    "fill": []
+  },
+  "tolerance": 1e-06,
+  "properties": [
+    {
+      "id": "known_angle",
+      "says": "Vectors 45 degrees apart have distance 1 - cos(45°) = 0.2929.",
+      "args": [[1, 0], [1, 1]],
+      "expect": 0.2928932188134524
+    },
+    {
+      "id": "orthogonal",
+      "says": "Orthogonal vectors have distance 1.",
+      "args": [[1, 0], [0, 1]],
+      "expect": 1.0
+    },
+    {
+      "id": "parallel",
+      "says": "A vector and a positive multiple of it have distance 0.",
+      "args": [[1, 2, 3], [2, 4, 6]],
+      "expect": 0.0
+    },
+    {
+      "id": "opposite",
+      "says": "A vector and its negation have distance 2.",
+      "args": [[1, 2], [-1, -2]],
+      "expect": 2.0
+    },
+    {
+      "id": "symmetric",
+      "says": "Swapping the arguments doesn't change the result.",
+      "args": [[1, 2, 3], [4, 5, -6]],
+      "same_as": [[4, 5, -6], [1, 2, 3]]
+    }
+  ],
+  "provenance": {
+    "added": "2026-09-25",
+    "issue": "#9653",
+    "why": "Fable 5.1's passing runs confirmed this method with checks derived from its definition. Issue #9653 names it as a starting entry.",
+    "pattern": "Check a well-known method against properties its standard definition implies (docs/coder/design/pattern-components.md, Fable step 6).",
+    "source_tasks": ["embedding-drift-monitor"]
+  },
+  "admission": {
+    "status": "not admitted",
+    "policies": [],
+    "evidence": ["docs/terminal-bench/2026-09-25-method-conformance.md"]
+  }
+}
