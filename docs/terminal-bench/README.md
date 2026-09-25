@@ -16,6 +16,11 @@ See the [full outcomes, uncertainty, costs, transcripts, and revised plan](2026-
 the [earlier report-evidence repair](2026-09-25-truthful-checks-microluna.md)
 remains useful independently of these rejected rules.
 
+The [mini controls](2026-09-25-candidate-review-validation.md#mini-controls-useful-findings-and-two-grader-blind-spots)
+now detect all four deliberately broken candidates. They also exposed two real
+cancellation bugs in a passing fixture; the fixture and grader are fixed, with
+all original labels and transcripts retained. This remains development evidence.
+
 **Microluna v13: 3/3 embedding passes at $0.01599 per accepted output**, including
 Jev, against Fable low's 5/5 at $0.8691. Microluna was slower. It passed **0/3
 session-window-debug** attempts, where Fable passed 0/25. These are selected

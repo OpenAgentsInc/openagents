@@ -1,0 +1,399 @@
+{
+  "schema": "openagents.mini-review-measurement.v1",
+  "groups": {
+    "cancel-v3": {
+      "trials": 2,
+      "tasks": 1,
+      "signals": {
+        "strict": {
+          "fail_precision": {
+            "correct": 1,
+            "total": 1,
+            "value": 1.0,
+            "wilson_95": [
+              0.20654329147389294,
+              1
+            ]
+          },
+          "failure_recall": {
+            "correct": 1,
+            "total": 1,
+            "value": 1.0,
+            "wilson_95": [
+              0.20654329147389294,
+              1
+            ]
+          },
+          "pass_precision": {
+            "correct": 0,
+            "total": 0,
+            "value": null,
+            "wilson_95": null
+          },
+          "unknown": 1
+        }
+      },
+      "false_alarms_against_original_labels": {
+        "strict": []
+      },
+      "known_native_cost_usd": 0.2601,
+      "rows": [
+        {
+          "task": "cancel-cleanup",
+          "variant": "bad",
+          "reward": 0.0,
+          "calls": {
+            "strict": "fail"
+          },
+          "candidate_identity": "98668f3c370526bc997193801ace13369b508b59462cb024b2a7a6e17b5ed34f",
+          "score": 0.84,
+          "native_cost_usd": 0.11677000000000001,
+          "seconds": 47.75284194701817,
+          "source": "cancel-v3/cancel-cleanup-bad/result.json"
+        },
+        {
+          "task": "cancel-cleanup",
+          "variant": "good",
+          "reward": 1.0,
+          "calls": {
+            "strict": null
+          },
+          "candidate_identity": "cc5fc6c2fc045dd0ad08a190b506f06db8e50fc11d13654cab4de5426dc3b346",
+          "score": null,
+          "native_cost_usd": 0.14333,
+          "seconds": 61.27508820698131,
+          "source": "cancel-v3/cancel-cleanup-good/result.json"
+        }
+      ]
+    },
+    "literal-v2": {
+      "trials": 8,
+      "tasks": 4,
+      "signals": {
+        "strict": {
+          "fail_precision": {
+            "correct": 4,
+            "total": 5,
+            "value": 0.8,
+            "wilson_95": [
+              0.3755282641185388,
+              0.9637768390302125
+            ]
+          },
+          "failure_recall": {
+            "correct": 4,
+            "total": 4,
+            "value": 1.0,
+            "wilson_95": [
+              0.5100999795960008,
+              1
+            ]
+          },
+          "pass_precision": {
+            "correct": 0,
+            "total": 0,
+            "value": null,
+            "wilson_95": null
+          },
+          "unknown": 3
+        }
+      },
+      "false_alarms_against_original_labels": {
+        "strict": [
+          "literal-v2/cancel-cleanup-good/result.json"
+        ]
+      },
+      "known_native_cost_usd": 0.9029819999999998,
+      "rows": [
+        {
+          "task": "cancel-cleanup",
+          "variant": "bad",
+          "reward": 0.0,
+          "calls": {
+            "strict": "fail"
+          },
+          "candidate_identity": "98668f3c370526bc997193801ace13369b508b59462cb024b2a7a6e17b5ed34f",
+          "score": 0.84,
+          "native_cost_usd": 0.101896,
+          "seconds": 45.25257891003275,
+          "source": "literal-v2/cancel-cleanup-bad/result.json"
+        },
+        {
+          "task": "cancel-cleanup",
+          "variant": "good",
+          "reward": 1.0,
+          "calls": {
+            "strict": "fail"
+          },
+          "candidate_identity": "6e40debdb1cc9c11676055a4cf92dba517ef23dfe7662da1ed3ac0395fad68fd",
+          "score": 0.81,
+          "native_cost_usd": 0.237034,
+          "seconds": 161.04289063200122,
+          "source": "literal-v2/cancel-cleanup-good/result.json"
+        },
+        {
+          "task": "git-recovery",
+          "variant": "bad",
+          "reward": 0.0,
+          "calls": {
+            "strict": "fail"
+          },
+          "candidate_identity": "eaf966630dd41e6a159fb779c7a9dd08cc5e5079d289c4f06fc129266dee0e3b",
+          "score": 0.82,
+          "native_cost_usd": 0.078458,
+          "seconds": 36.095866700983606,
+          "source": "literal-v2/git-recovery-bad/result.json"
+        },
+        {
+          "task": "git-recovery",
+          "variant": "good",
+          "reward": 1.0,
+          "calls": {
+            "strict": null
+          },
+          "candidate_identity": "4f57cd687da29fc14f3c000d2f19478fdf9fd6f0fe3ed6eb780b84470f8da059",
+          "score": null,
+          "native_cost_usd": 0.051764,
+          "seconds": 23.231552142009605,
+          "source": "literal-v2/git-recovery-good/result.json"
+        },
+        {
+          "task": "interactive-terminal",
+          "variant": "bad",
+          "reward": 0.0,
+          "calls": {
+            "strict": "fail"
+          },
+          "candidate_identity": "fbf7fd4dc9d8d917be2c9dbc6dada7a2c259279905c019b0d5613a8e0834ff02",
+          "score": 0.93,
+          "native_cost_usd": 0.191628,
+          "seconds": 70.83901043602964,
+          "source": "literal-v2/interactive-terminal-bad/result.json"
+        },
+        {
+          "task": "interactive-terminal",
+          "variant": "good",
+          "reward": 1.0,
+          "calls": {
+            "strict": null
+          },
+          "candidate_identity": "128224f11084e414ac2b715c38550fdab4c967eb89aea153add6035fffc45fbd",
+          "score": null,
+          "native_cost_usd": 0.08976200000000001,
+          "seconds": 47.94263150700135,
+          "source": "literal-v2/interactive-terminal-good/result.json"
+        },
+        {
+          "task": "log-severity",
+          "variant": "bad",
+          "reward": 0.0,
+          "calls": {
+            "strict": "fail"
+          },
+          "candidate_identity": "e31f29472706b2c60d624c9de028434b846e952bcd399c0b606c79596b556c56",
+          "score": 0.92,
+          "native_cost_usd": 0.09797600000000001,
+          "seconds": 47.60218754794914,
+          "source": "literal-v2/log-severity-bad/result.json"
+        },
+        {
+          "task": "log-severity",
+          "variant": "good",
+          "reward": 1.0,
+          "calls": {
+            "strict": null
+          },
+          "candidate_identity": "1f0d8bd4925d75f886e4a901826403e46bf74edb88403acea54279217abcd517",
+          "score": null,
+          "native_cost_usd": 0.054464,
+          "seconds": 24.483982638979796,
+          "source": "literal-v2/log-severity-good/result.json"
+        }
+      ]
+    },
+    "original": {
+      "trials": 8,
+      "tasks": 4,
+      "signals": {
+        "strict": {
+          "fail_precision": {
+            "correct": 0,
+            "total": 0,
+            "value": null,
+            "wilson_95": null
+          },
+          "failure_recall": {
+            "correct": 0,
+            "total": 4,
+            "value": 0.0,
+            "wilson_95": [
+              0,
+              0.48990002040399916
+            ]
+          },
+          "pass_precision": {
+            "correct": 0,
+            "total": 0,
+            "value": null,
+            "wilson_95": null
+          },
+          "unknown": 8
+        },
+        "recovered": {
+          "fail_precision": {
+            "correct": 3,
+            "total": 3,
+            "value": 1.0,
+            "wilson_95": [
+              0.43849391955098227,
+              1
+            ]
+          },
+          "failure_recall": {
+            "correct": 3,
+            "total": 4,
+            "value": 0.75,
+            "wilson_95": [
+              0.3006360524426366,
+              0.9544139373553637
+            ]
+          },
+          "pass_precision": {
+            "correct": 0,
+            "total": 0,
+            "value": null,
+            "wilson_95": null
+          },
+          "unknown": 5
+        }
+      },
+      "false_alarms_against_original_labels": {
+        "strict": [],
+        "recovered": []
+      },
+      "known_native_cost_usd": 0.772394,
+      "rows": [
+        {
+          "task": "cancel-cleanup",
+          "variant": "bad",
+          "reward": 0.0,
+          "calls": {
+            "strict": null,
+            "recovered": "fail"
+          },
+          "candidate_identity": "98668f3c370526bc997193801ace13369b508b59462cb024b2a7a6e17b5ed34f",
+          "score": null,
+          "native_cost_usd": 0.10666600000000001,
+          "seconds": 46.26955998199992,
+          "source": "original/cancel-cleanup-bad/result.json"
+        },
+        {
+          "task": "cancel-cleanup",
+          "variant": "good",
+          "reward": 1.0,
+          "calls": {
+            "strict": null,
+            "recovered": null
+          },
+          "candidate_identity": "7fa182b95037a4ebfd07ccd4a117230e1487d062e97bd43b59317fb0ce599717",
+          "score": null,
+          "native_cost_usd": 0.120144,
+          "seconds": 48.11997363198316,
+          "source": "original/cancel-cleanup-good/result.json"
+        },
+        {
+          "task": "git-recovery",
+          "variant": "bad",
+          "reward": 0.0,
+          "calls": {
+            "strict": null,
+            "recovered": "fail"
+          },
+          "candidate_identity": "ae45d7ea9d8be92e96613da715e8f5573ae1aeb91911d25882a27db7242ad1d3",
+          "score": null,
+          "native_cost_usd": 0.07185,
+          "seconds": 28.84912422200432,
+          "source": "original/git-recovery-bad/result.json"
+        },
+        {
+          "task": "git-recovery",
+          "variant": "good",
+          "reward": 1.0,
+          "calls": {
+            "strict": null,
+            "recovered": null
+          },
+          "candidate_identity": "2a7b706cc0e8abf76fa49a5c13c071ca43aa3a26ed7f5c16d448e8bdb7f010f0",
+          "score": null,
+          "native_cost_usd": 0.02946,
+          "seconds": 10.444027806981467,
+          "source": "original/git-recovery-good/result.json"
+        },
+        {
+          "task": "interactive-terminal",
+          "variant": "bad",
+          "reward": 0.0,
+          "calls": {
+            "strict": null,
+            "recovered": "fail"
+          },
+          "candidate_identity": "fbf7fd4dc9d8d917be2c9dbc6dada7a2c259279905c019b0d5613a8e0834ff02",
+          "score": null,
+          "native_cost_usd": 0.14150600000000002,
+          "seconds": 56.33573218801757,
+          "source": "original/interactive-terminal-bad/result.json"
+        },
+        {
+          "task": "interactive-terminal",
+          "variant": "good",
+          "reward": 1.0,
+          "calls": {
+            "strict": null,
+            "recovered": null
+          },
+          "candidate_identity": "128224f11084e414ac2b715c38550fdab4c967eb89aea153add6035fffc45fbd",
+          "score": null,
+          "native_cost_usd": 0.090062,
+          "seconds": 40.98106913501397,
+          "source": "original/interactive-terminal-good/result.json"
+        },
+        {
+          "task": "log-severity",
+          "variant": "bad",
+          "reward": 0.0,
+          "calls": {
+            "strict": null,
+            "recovered": null
+          },
+          "candidate_identity": "e31f29472706b2c60d624c9de028434b846e952bcd399c0b606c79596b556c56",
+          "score": null,
+          "native_cost_usd": 0.10258999999999999,
+          "seconds": 53.79000012704637,
+          "source": "original/log-severity-bad/result.json"
+        },
+        {
+          "task": "log-severity",
+          "variant": "good",
+          "reward": 1.0,
+          "calls": {
+            "strict": null,
+            "recovered": null
+          },
+          "candidate_identity": "1f0d8bd4925d75f886e4a901826403e46bf74edb88403acea54279217abcd517",
+          "score": null,
+          "native_cost_usd": 0.11011599999999999,
+          "seconds": 45.27041336102411,
+          "source": "original/log-severity-good/result.json"
+        }
+      ]
+    }
+  },
+  "notes": [
+    "Development controls, not held-out benchmark trials.",
+    "Labels are exactly those each original mini-grader recorded.",
+    "Do not pool repeated reviews as independent trials.",
+    "The original and shield-only cancellation good fixtures have reproduced defects that their graders missed.",
+    "The third pass changes the cancellation fixture and grader only; the review rule remains literal-v2 at 0.8.",
+    "Native list-price costs exclude Jev; see the deduplicated cost ledger."
+  ]
+}

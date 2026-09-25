@@ -444,6 +444,76 @@ The next [mini-task protocol](../../bench/terminal-bench/experiments/2026-09-25-
 uses all four existing good/bad mini-task pairs as development controls before
 another live benchmark cohort.
 
+### Mini controls: useful findings and two grader blind spots
+
+The [mini measurement](../../bench/terminal-bench/experiments/2026-09-25-candidate-review/records/mini-measurement.json)
+keeps all original labels, including two cancellation fixtures that were labeled
+passing despite reproduced defects. These are development controls, not held-out
+Terminal-Bench results. No clean review is counted as a pass.
+
+| Pass | Candidates | Correct failure calls / calls | Detected graded failures | Native list-price cost |
+| --- | ---: | ---: | ---: | ---: |
+| Original prompt, strict citations | 8 | 0/0 | 0/4 | $0.772394 |
+| Same replies, existing citation recovery | Same 8 | 3/3 | 3/4 | No new native calls |
+| Literal citation prompt, first cancellation fix | 8 | 4/5 | 4/4 | $0.902982 |
+| Cancellation follow-up, complete fix | 2 | 1/1 | 1/1 | $0.260100 |
+
+The first strict pass rejected the proposed findings because citation fields
+included quotation marks, explanatory text, or escaped representations. The
+opt-in `literal-v2` prompt asks for contiguous exact passages in those fields.
+It changes neither citation validation nor the two semantic questions and their
+0.8 cutoff. With that prompt, the reviewer detects the bad severity counts,
+noninteractive terminal, incomplete cancellation cleanup, and unrecovered Git
+commit. This is a usable interface correction, not a measured generalization gain.
+
+The cancellation findings are more consequential:
+
+1. **The original good fixture cancels workers twice after one interrupt.**
+   Cancelling its awaited gather starts worker cleanup. When the faster cleanup
+   finishes, gather raises and the handler cancels every worker again, interrupting
+   slower cleanup. The original grader gives both workers equal cleanup delays,
+   so it misses this. The retained reviewer sends one SIGINT, uses cleanup delays
+   of 0.01 and 0.1 seconds, and observes only the faster cleanup finish.
+2. **Shielding gather alone still fails during background shutdown.** The second
+   reviewer schedules the unchanged runner in the background, sends one SIGINT,
+   and observes event-loop shutdown cancel its workers before its own handler
+   does. The handler cancels them again: one worker's cancellation count rises
+   from one to two and its cleanup is interrupted. Jev scores the finding 0.81.
+   Against that run's recorded passing label this is a false alarm, so its table
+   remains 4/5 precision, Wilson 95% 38–96%, and 4/4 recall, 51–100%.
+3. **The final fixture cancels each worker at most once and waits for cleanup.**
+   It shields the original gather, skips workers whose cancellation has already
+   started, awaits every worker, and retrieves the gather's exception. The grader
+   now checks uneven cleanup and background shutdown after a single interrupt.
+   Its regression rejects the original implementation, the shield-only change,
+   and the early-return bad fixture. The final review makes no finding against
+   the corrected candidate and still detects the bad candidate at 0.84.
+
+[#9641](https://github.com/OpenAgentsInc/openagents/issues/9641) tracks the fixture
+and grader repair. The ordinary runtime cancellation checker is unchanged. The
+third pass repeats only the changed cancellation pair; pooling these reviewed
+fixtures as independent validation would be misleading. The findings demonstrate
+why an apparent reviewer false alarm needs an executed investigation rather than
+an automatic dismissal or a silent change to its label.
+
+The [complete bundle](../../bench/terminal-bench/experiments/2026-09-25-candidate-review/records/truth9584-mini-records.tar.gz)
+contains 750 files: candidates, original grades, requests, replies, commands,
+Jev answers, the failed disk preflight, and both manual gate logs. All files were
+restored and verified against the
+[manifest](../../bench/terminal-bench/experiments/2026-09-25-candidate-review/records/mini-files.json);
+archive SHA-256 is `0c4dc4ac19941cef9660f29d9c9861204eca774b1f01a8493be7d1e4d4e55e2d`.
+An exact scan against current local credential values found no matches. The
+[cost ledger](../../bench/terminal-bench/experiments/2026-09-25-candidate-review/records/mini-costs.json)
+deduplicates 68 native replies: $1.935476 native list-price cost and $0.001081332
+Jev, with no missing-usage records. These are subscription list-price estimates,
+not an invoice.
+
+The [final scoped manual gate](../../bench/terminal-bench/experiments/2026-09-25-candidate-review/records/verification-mini.json)
+at `ca3c91b581` passes formatting, default and feature Clippy, and default and
+feature tests for `coder-one`: 635 unit and two integration tests per
+configuration. Untracked Python caches mark the tree dirty; its tracked diff is
+empty. This is a scoped partial gate, not a full-workspace claim.
+
 ## Plan update after the 2026-09-25 design assessment
 
 The [new assessment](../coder/design/2026-09-25-assessment.md) changes the promotion

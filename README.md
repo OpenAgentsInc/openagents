@@ -213,6 +213,12 @@ costs, and uncertainty are retained. #9584 remains open. The earlier
 [Microluna evidence repair](docs/terminal-bench/2026-09-25-truthful-checks-microluna.md)
 recovers selected reports and reviews of unchanged submitted files.
 
+The subsequent [mini controls](docs/terminal-bench/2026-09-25-candidate-review-validation.md#mini-controls-useful-findings-and-two-grader-blind-spots)
+detect all four deliberately broken fixtures and expose two cancellation cases
+that the mini-grader missed. Both fixture defects and the grader are fixed;
+the original labels and full reviews remain retained. These development controls
+do not replace the required confirmation on new task groups.
+
 Fresh Microluna v13 runs passed **3/3 embedding-drift-monitor attempts for
 $0.01599 per accepted result**, including Jev—about 1/54 of Fable low's
 recorded cost. They were slower, and passed **0/3 session-window-debug**

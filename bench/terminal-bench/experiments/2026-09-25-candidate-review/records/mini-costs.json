@@ -1,0 +1,903 @@
+{
+  "schema": "openagents.truth-check-costs.v1",
+  "native_requests_with_usage": 68,
+  "known_native_list_price_usd": 1.9354760000000006,
+  "native_cost_unknown_records": [],
+  "known_jev_input_tokens": {
+    "reproduced": 15755,
+    "reproduced-citations-v2": 9991
+  },
+  "known_jev_list_price_usd": 0.0010813320000000002,
+  "notes": [
+    "List-price accounting is not an invoice for the logged-in subscription.",
+    "Native response IDs deduplicate replayed replies.",
+    "Provider failures without usage have unknown cost, not zero.",
+    "This ledger excludes the benchmark executor trials; those are reported separately."
+  ],
+  "native": {
+    "resp_03c3eac0d66d98a4016ab618b9614887d1b7ec77e4322c63c0": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 857,
+        "cached": 0,
+        "output": 26,
+        "reasoning": 0
+      },
+      "cost_usd": 0.00987,
+      "records": [
+        "cancel-v3/cancel-cleanup-bad/reproduced/reply-1.json"
+      ]
+    },
+    "resp_03c3eac0d66d98a4016ab618bd05d087d1a2f9f39cfeabcb4b": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1086,
+        "cached": 0,
+        "output": 370,
+        "reasoning": 127
+      },
+      "cost_usd": 0.02936,
+      "records": [
+        "cancel-v3/cancel-cleanup-bad/reproduced/reply-2.json"
+      ]
+    },
+    "resp_03c3eac0d66d98a4016ab618c9a85887d1b7848e49c492e240": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1749,
+        "cached": 0,
+        "output": 222,
+        "reasoning": 0
+      },
+      "cost_usd": 0.02859,
+      "records": [
+        "cancel-v3/cancel-cleanup-bad/reproduced/reply-3.json"
+      ]
+    },
+    "resp_03c3eac0d66d98a4016ab618d2932887d1a12158a36a6fcb9a": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2255,
+        "cached": 0,
+        "output": 528,
+        "reasoning": 52
+      },
+      "cost_usd": 0.04895,
+      "records": [
+        "cancel-v3/cancel-cleanup-bad/reproduced/reply-4.json"
+      ]
+    },
+    "resp_08d4b2cffdcea248016ab618b566c487d190d17d075616ccc2": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 972,
+        "cached": 0,
+        "output": 258,
+        "reasoning": 230
+      },
+      "cost_usd": 0.02262,
+      "records": [
+        "cancel-v3/cancel-cleanup-good/reproduced/reply-1.json"
+      ]
+    },
+    "resp_08d4b2cffdcea248016ab618c0c1d087d1a1ff75f01d1cc81f": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1546,
+        "cached": 0,
+        "output": 833,
+        "reasoning": 133
+      },
+      "cost_usd": 0.05711,
+      "records": [
+        "cancel-v3/cancel-cleanup-good/reproduced/reply-2.json"
+      ]
+    },
+    "resp_08d4b2cffdcea248016ab618dc20d887d18a2442c916c94680": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 3254,
+        "cached": 1408,
+        "output": 406,
+        "reasoning": 67
+      },
+      "cost_usd": 0.040168,
+      "records": [
+        "cancel-v3/cancel-cleanup-good/reproduced/reply-3.json"
+      ]
+    },
+    "resp_08d4b2cffdcea248016ab618eaab7087d1954086b10940072f": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 4093,
+        "cached": 3072,
+        "output": 203,
+        "reasoning": 19
+      },
+      "cost_usd": 0.023432,
+      "records": [
+        "cancel-v3/cancel-cleanup-good/reproduced/reply-4.json"
+      ]
+    },
+    "resp_08c410ac50c03d91016ab6172c295087d18f3f1e0af43c7bd1": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 857,
+        "cached": 0,
+        "output": 26,
+        "reasoning": 0
+      },
+      "cost_usd": 0.00987,
+      "records": [
+        "literal-v2/cancel-cleanup-bad/reproduced/reply-1.json"
+      ]
+    },
+    "resp_08c410ac50c03d91016ab617318d8887d185a45e686814fd03": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1086,
+        "cached": 0,
+        "output": 316,
+        "reasoning": 101
+      },
+      "cost_usd": 0.02666,
+      "records": [
+        "literal-v2/cancel-cleanup-bad/reproduced/reply-2.json"
+      ]
+    },
+    "resp_08c410ac50c03d91016ab6173ccc4087d1b096e57f095b061d": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1674,
+        "cached": 0,
+        "output": 242,
+        "reasoning": 0
+      },
+      "cost_usd": 0.02884,
+      "records": [
+        "literal-v2/cancel-cleanup-bad/reproduced/reply-3.json"
+      ]
+    },
+    "resp_08c410ac50c03d91016ab6174630b087d1ae0c478145a8a298": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2240,
+        "cached": 1536,
+        "output": 559,
+        "reasoning": 45
+      },
+      "cost_usd": 0.036526,
+      "records": [
+        "literal-v2/cancel-cleanup-bad/reproduced/reply-4.json"
+      ]
+    },
+    "resp_0b81d88f12310a3e016ab616fb419487d1a127b0ae425f9443": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 940,
+        "cached": 0,
+        "output": 296,
+        "reasoning": 268
+      },
+      "cost_usd": 0.0242,
+      "records": [
+        "literal-v2/cancel-cleanup-good/reproduced/reply-1.json"
+      ]
+    },
+    "resp_0b81d88f12310a3e016ab61708482087d1a449e52c3cc637f0": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1521,
+        "cached": 0,
+        "output": 678,
+        "reasoning": 14
+      },
+      "cost_usd": 0.04911,
+      "records": [
+        "literal-v2/cancel-cleanup-good/reproduced/reply-2.json"
+      ]
+    },
+    "resp_0b81d88f12310a3e016ab6175e641887d18bc797be3098700d": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 3235,
+        "cached": 1408,
+        "output": 612,
+        "reasoning": 306
+      },
+      "cost_usd": 0.050278,
+      "records": [
+        "literal-v2/cancel-cleanup-good/reproduced/reply-3.json"
+      ]
+    },
+    "resp_0b81d88f12310a3e016ab61773582487d18a0d68b71c4801a2": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 5691,
+        "cached": 3072,
+        "output": 657,
+        "reasoning": 254
+      },
+      "cost_usd": 0.062112,
+      "records": [
+        "literal-v2/cancel-cleanup-good/reproduced/reply-4.json"
+      ]
+    },
+    "resp_0b81d88f12310a3e016ab61788d41487d183c994e1be674f90": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 7327,
+        "cached": 5504,
+        "output": 552,
+        "reasoning": 37
+      },
+      "cost_usd": 0.051334,
+      "records": [
+        "literal-v2/cancel-cleanup-good/reproduced/reply-5.json"
+      ]
+    },
+    "resp_00d92845b32653b9016ab61771847487d18cc145428337612f": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 685,
+        "cached": 0,
+        "output": 105,
+        "reasoning": 0
+      },
+      "cost_usd": 0.0121,
+      "records": [
+        "literal-v2/git-recovery-bad/reproduced/reply-1.json"
+      ]
+    },
+    "resp_00d92845b32653b9016ab61777aef887d1be7d2794fdfc508d": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1273,
+        "cached": 0,
+        "output": 136,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01953,
+      "records": [
+        "literal-v2/git-recovery-bad/reproduced/reply-2.json"
+      ]
+    },
+    "resp_00d92845b32653b9016ab6177db78887d19f724f7ee6693e4a": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1743,
+        "cached": 1152,
+        "output": 182,
+        "reasoning": 73
+      },
+      "cost_usd": 0.016162,
+      "records": [
+        "literal-v2/git-recovery-bad/reproduced/reply-3.json"
+      ]
+    },
+    "resp_00d92845b32653b9016ab61784e3ac87d1bee21e57e78057d6": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2109,
+        "cached": 1536,
+        "output": 468,
+        "reasoning": 0
+      },
+      "cost_usd": 0.030666,
+      "records": [
+        "literal-v2/git-recovery-bad/reproduced/reply-4.json"
+      ]
+    },
+    "resp_099777831ee1f654016ab61759e62c87d18674f8a35300bd12": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 687,
+        "cached": 0,
+        "output": 86,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01117,
+      "records": [
+        "literal-v2/git-recovery-good/reproduced/reply-1.json"
+      ]
+    },
+    "resp_099777831ee1f654016ab6175de82c87d1ad6a62e0f0ffdbd7": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1217,
+        "cached": 0,
+        "output": 273,
+        "reasoning": 42
+      },
+      "cost_usd": 0.02582,
+      "records": [
+        "literal-v2/git-recovery-good/reproduced/reply-2.json"
+      ]
+    },
+    "resp_099777831ee1f654016ab61769b4c087d182eb7490ae3a34b1": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1809,
+        "cached": 1024,
+        "output": 118,
+        "reasoning": 0
+      },
+      "cost_usd": 0.014774,
+      "records": [
+        "literal-v2/git-recovery-good/reproduced/reply-3.json"
+      ]
+    },
+    "resp_0adbcf95f6302235016ab616e4303c87d183f312b1f176f3b6": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1099,
+        "cached": 0,
+        "output": 142,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01809,
+      "records": [
+        "literal-v2/interactive-terminal-bad/reproduced/reply-1.json"
+      ]
+    },
+    "resp_0adbcf95f6302235016ab616ea4b1487d1b24479c8836799c4": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1753,
+        "cached": 0,
+        "output": 330,
+        "reasoning": 159
+      },
+      "cost_usd": 0.03403,
+      "records": [
+        "literal-v2/interactive-terminal-bad/reproduced/reply-2.json"
+      ]
+    },
+    "resp_0adbcf95f6302235016ab616f5b7c087d1b4db46d2ec2e7152": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2474,
+        "cached": 1536,
+        "output": 201,
+        "reasoning": 39
+      },
+      "cost_usd": 0.020966,
+      "records": [
+        "literal-v2/interactive-terminal-bad/reproduced/reply-3.json"
+      ]
+    },
+    "resp_0adbcf95f6302235016ab616fe9b4887d189843c3a614223ad": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2896,
+        "cached": 0,
+        "output": 275,
+        "reasoning": 29
+      },
+      "cost_usd": 0.04271,
+      "records": [
+        "literal-v2/interactive-terminal-bad/reproduced/reply-4.json"
+      ]
+    },
+    "resp_0adbcf95f6302235016ab61706ecc887d19e6eef1b6ce23578": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 3471,
+        "cached": 2304,
+        "output": 349,
+        "reasoning": 74
+      },
+      "cost_usd": 0.031424,
+      "records": [
+        "literal-v2/interactive-terminal-bad/reproduced/reply-5.json"
+      ]
+    },
+    "resp_0adbcf95f6302235016ab61714969487d18719b51ec336bf7d": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 4146,
+        "cached": 3328,
+        "output": 658,
+        "reasoning": 0
+      },
+      "cost_usd": 0.044408,
+      "records": [
+        "literal-v2/interactive-terminal-bad/reproduced/reply-6.json"
+      ]
+    },
+    "resp_0c732656ec5f99cc016ab616d1380c87d1b7d9c985697a7fc7": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1213,
+        "cached": 0,
+        "output": 195,
+        "reasoning": 0
+      },
+      "cost_usd": 0.02188,
+      "records": [
+        "literal-v2/interactive-terminal-good/reproduced/reply-1.json"
+      ]
+    },
+    "resp_0c732656ec5f99cc016ab616da788487d18b97f952ff46eedb": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2276,
+        "cached": 1024,
+        "output": 621,
+        "reasoning": 381
+      },
+      "cost_usd": 0.044594,
+      "records": [
+        "literal-v2/interactive-terminal-good/reproduced/reply-2.json"
+      ]
+    },
+    "resp_0c732656ec5f99cc016ab616f20e9887d188176d0626fa53a1": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 3367,
+        "cached": 2048,
+        "output": 161,
+        "reasoning": 16
+      },
+      "cost_usd": 0.023288,
+      "records": [
+        "literal-v2/interactive-terminal-good/reproduced/reply-3.json"
+      ]
+    },
+    "resp_02e7c3ab69d5c666016ab616acc17c87d1980d0a518b76a2a5": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1295,
+        "cached": 0,
+        "output": 51,
+        "reasoning": 0
+      },
+      "cost_usd": 0.0155,
+      "records": [
+        "literal-v2/log-severity-bad/reproduced/reply-1.json"
+      ]
+    },
+    "resp_02e7c3ab69d5c666016ab616b1664c87d191bee67211626f97": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1964,
+        "cached": 1152,
+        "output": 100,
+        "reasoning": 0
+      },
+      "cost_usd": 0.014272,
+      "records": [
+        "literal-v2/log-severity-bad/reproduced/reply-2.json"
+      ]
+    },
+    "resp_02e7c3ab69d5c666016ab616b60ad087d1ae837781b2dfdbb2": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2653,
+        "cached": 1792,
+        "output": 392,
+        "reasoning": 78
+      },
+      "cost_usd": 0.030002,
+      "records": [
+        "literal-v2/log-severity-bad/reproduced/reply-3.json"
+      ]
+    },
+    "resp_02e7c3ab69d5c666016ab616c4c45087d1b4918257512633ac": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 3489,
+        "cached": 2432,
+        "output": 504,
+        "reasoning": 0
+      },
+      "cost_usd": 0.038202,
+      "records": [
+        "literal-v2/log-severity-bad/reproduced/reply-4.json"
+      ]
+    },
+    "resp_02542a3bedfc7422016ab616acd54487d1baa14bbdf072cdbd": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1318,
+        "cached": 0,
+        "output": 51,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01573,
+      "records": [
+        "literal-v2/log-severity-good/reproduced/reply-1.json"
+      ]
+    },
+    "resp_02542a3bedfc7422016ab616afec2c87d194b84b6e1ca1f8da": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2011,
+        "cached": 1152,
+        "output": 100,
+        "reasoning": 0
+      },
+      "cost_usd": 0.014742,
+      "records": [
+        "literal-v2/log-severity-good/reproduced/reply-2.json"
+      ]
+    },
+    "resp_02542a3bedfc7422016ab616b4584887d1b290413112d3b214": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2702,
+        "cached": 1792,
+        "output": 262,
+        "reasoning": 64
+      },
+      "cost_usd": 0.023992,
+      "records": [
+        "literal-v2/log-severity-good/reproduced/reply-3.json"
+      ]
+    },
+    "resp_0c709a796fdd690a016ab6138a208487d1b639337e2409929c": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 779,
+        "cached": 0,
+        "output": 26,
+        "reasoning": 0
+      },
+      "cost_usd": 0.00909,
+      "records": [
+        "original/cancel-cleanup-bad/reproduced/reply-1.json"
+      ]
+    },
+    "resp_0c709a796fdd690a016ab6138c9bf887d1923c6dd4cb0f3ff2": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1007,
+        "cached": 0,
+        "output": 394,
+        "reasoning": 132
+      },
+      "cost_usd": 0.02977,
+      "records": [
+        "original/cancel-cleanup-bad/reproduced/reply-2.json"
+      ]
+    },
+    "resp_0c709a796fdd690a016ab6139ab37887d19c297a29a0bcc599": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1719,
+        "cached": 0,
+        "output": 270,
+        "reasoning": 0
+      },
+      "cost_usd": 0.03069,
+      "records": [
+        "original/cancel-cleanup-bad/reproduced/reply-3.json"
+      ]
+    },
+    "resp_0c709a796fdd690a016ab613a5c49887d1a5091675a8f1b419": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2354,
+        "cached": 1536,
+        "output": 548,
+        "reasoning": 26
+      },
+      "cost_usd": 0.037116,
+      "records": [
+        "original/cancel-cleanup-bad/reproduced/reply-4.json"
+      ]
+    },
+    "resp_04f26cb06ed96d16016ab6136fadec87d1b4456a3f5d266647": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 824,
+        "cached": 0,
+        "output": 186,
+        "reasoning": 158
+      },
+      "cost_usd": 0.01754,
+      "records": [
+        "original/cancel-cleanup-good/reproduced/reply-1.json"
+      ]
+    },
+    "resp_04f26cb06ed96d16016ab6137974a487d198f9de39df1ff9fd": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1256,
+        "cached": 0,
+        "output": 358,
+        "reasoning": 0
+      },
+      "cost_usd": 0.03046,
+      "records": [
+        "original/cancel-cleanup-good/reproduced/reply-2.json"
+      ]
+    },
+    "resp_04f26cb06ed96d16016ab61386aa6c87d1a28ff8e53becf5ea": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2050,
+        "cached": 1024,
+        "output": 276,
+        "reasoning": 15
+      },
+      "cost_usd": 0.025084,
+      "records": [
+        "original/cancel-cleanup-good/reproduced/reply-3.json"
+      ]
+    },
+    "resp_04f26cb06ed96d16016ab61391dbd087d18bf6bedf411f9004": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2696,
+        "cached": 0,
+        "output": 402,
+        "reasoning": 0
+      },
+      "cost_usd": 0.04706,
+      "records": [
+        "original/cancel-cleanup-good/reproduced/reply-4.json"
+      ]
+    },
+    "resp_0ca0a0049e959d46016ab613aba91887d1ae4b3aec7bf215cd": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 608,
+        "cached": 0,
+        "output": 81,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01013,
+      "records": [
+        "original/git-recovery-bad/reproduced/reply-1.json"
+      ]
+    },
+    "resp_0ca0a0049e959d46016ab613af91a487d185d570b8abed6caa": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1083,
+        "cached": 0,
+        "output": 131,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01738,
+      "records": [
+        "original/git-recovery-bad/reproduced/reply-2.json"
+      ]
+    },
+    "resp_0ca0a0049e959d46016ab613b4fd1487d19e291508601dec88": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1574,
+        "cached": 0,
+        "output": 572,
+        "reasoning": 65
+      },
+      "cost_usd": 0.04434,
+      "records": [
+        "original/git-recovery-bad/reproduced/reply-3.json"
+      ]
+    },
+    "resp_00b59322a773b1e0016ab613a03ef487d18cc3d7742ebea2f8": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 614,
+        "cached": 0,
+        "output": 90,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01064,
+      "records": [
+        "original/git-recovery-good/reproduced/reply-1.json"
+      ]
+    },
+    "resp_00b59322a773b1e0016ab613a480e087d1aba8e11a69680d4c": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1147,
+        "cached": 0,
+        "output": 147,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01882,
+      "records": [
+        "original/git-recovery-good/reproduced/reply-2.json"
+      ]
+    },
+    "resp_07f22beb0deaef8e016ab61350c25c87d1bcea3c85ca271235": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1021,
+        "cached": 0,
+        "output": 148,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01761,
+      "records": [
+        "original/interactive-terminal-bad/reproduced/reply-1.json"
+      ]
+    },
+    "resp_07f22beb0deaef8e016ab61356b39887d196ab779ddb04477b": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1696,
+        "cached": 0,
+        "output": 420,
+        "reasoning": 260
+      },
+      "cost_usd": 0.03796,
+      "records": [
+        "original/interactive-terminal-bad/reproduced/reply-2.json"
+      ]
+    },
+    "resp_07f22beb0deaef8e016ab61365b16487d18fd37e8438357207": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2344,
+        "cached": 1536,
+        "output": 288,
+        "reasoning": 0
+      },
+      "cost_usd": 0.024016,
+      "records": [
+        "original/interactive-terminal-bad/reproduced/reply-3.json"
+      ]
+    },
+    "resp_07f22beb0deaef8e016ab61373034c87d1a1d25da538c2fce2": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2982,
+        "cached": 0,
+        "output": 642,
+        "reasoning": 0
+      },
+      "cost_usd": 0.06192,
+      "records": [
+        "original/interactive-terminal-bad/reproduced/reply-4.json"
+      ]
+    },
+    "resp_0020e21acd903eeb016ab61346427087d1af98e1f3347347de": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1135,
+        "cached": 0,
+        "output": 206,
+        "reasoning": 0
+      },
+      "cost_usd": 0.02165,
+      "records": [
+        "original/interactive-terminal-good/reproduced/reply-1.json"
+      ]
+    },
+    "resp_0020e21acd903eeb016ab61350eda887d1b26097b77152ca10": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2210,
+        "cached": 1024,
+        "output": 621,
+        "reasoning": 321
+      },
+      "cost_usd": 0.043934,
+      "records": [
+        "original/interactive-terminal-good/reproduced/reply-2.json"
+      ]
+    },
+    "resp_0020e21acd903eeb016ab61367760487d19a1c4ca1c3fe0f5c": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 3456,
+        "cached": 2048,
+        "output": 167,
+        "reasoning": 0
+      },
+      "cost_usd": 0.024478,
+      "records": [
+        "original/interactive-terminal-good/reproduced/reply-3.json"
+      ]
+    },
+    "resp_01c1354d1351c66c016ab6130edc4c87d1833a25d5f2c7eae3": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1217,
+        "cached": 0,
+        "output": 58,
+        "reasoning": 0
+      },
+      "cost_usd": 0.01507,
+      "records": [
+        "original/log-severity-bad/reproduced/reply-1.json"
+      ]
+    },
+    "resp_01c1354d1351c66c016ab61312646887d18b2deb397c471f59": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1899,
+        "cached": 1024,
+        "output": 114,
+        "reasoning": 0
+      },
+      "cost_usd": 0.015474,
+      "records": [
+        "original/log-severity-bad/reproduced/reply-2.json"
+      ]
+    },
+    "resp_01c1354d1351c66c016ab6131cfa1487d1b8aeeef16434cc91": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2634,
+        "cached": 1664,
+        "output": 415,
+        "reasoning": 92
+      },
+      "cost_usd": 0.032114,
+      "records": [
+        "original/log-severity-bad/reproduced/reply-3.json"
+      ]
+    },
+    "resp_01c1354d1351c66c016ab61331eac487d1902d11b71220bc26": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 3502,
+        "cached": 2432,
+        "output": 536,
+        "reasoning": 0
+      },
+      "cost_usd": 0.039932,
+      "records": [
+        "original/log-severity-bad/reproduced/reply-4.json"
+      ]
+    },
+    "resp_0838057b2b924bcc016ab6130ebac887d194cc1a7e286426c8": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 1240,
+        "cached": 0,
+        "output": 58,
+        "reasoning": 0
+      },
+      "cost_usd": 0.0153,
+      "records": [
+        "original/log-severity-good/reproduced/reply-1.json"
+      ]
+    },
+    "resp_0838057b2b924bcc016ab61313562c87d1ba8372b4407d3df5": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2021,
+        "cached": 1024,
+        "output": 88,
+        "reasoning": 0
+      },
+      "cost_usd": 0.015394,
+      "records": [
+        "original/log-severity-good/reproduced/reply-2.json"
+      ]
+    },
+    "resp_0838057b2b924bcc016ab6131cfb2887d1bc07889522883a70": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 2611,
+        "cached": 1792,
+        "output": 468,
+        "reasoning": 81
+      },
+      "cost_usd": 0.033382,
+      "records": [
+        "original/log-severity-good/reproduced/reply-3.json"
+      ]
+    },
+    "resp_0838057b2b924bcc016ab6133205e087d1b0d5dc0861add572": {
+      "model": "gpt-6-astra",
+      "usage": {
+        "input": 3584,
+        "cached": 0,
+        "output": 204,
+        "reasoning": 0
+      },
+      "cost_usd": 0.04604,
+      "records": [
+        "original/log-severity-good/reproduced/reply-4.json"
+      ]
+    }
+  }
+}

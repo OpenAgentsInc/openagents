@@ -141,3 +141,24 @@ Its inputs and image identities, native replies, commands, judgment answers,
 costs, and cleanup results remain under each trial's `reproduced/` directory.
 Run `python3 -m unittest test_reproduce test_fusion_bounds` for the evidence
 restoration and inference-bounds regression checks.
+
+## Mini controls and grader repairs
+
+`mini-review-protocol.md` preserves the original eight controls, the literal
+citation prompt's eight controls, and the two-candidate cancellation follow-up.
+The original labels remain unchanged even where the review exposed a real
+fixture defect. See the assessment's mini-control section for #9641.
+
+Extract `records/truth9584-mini-records.tar.gz` into a new directory, then verify
+and measure it without inference:
+
+```sh
+python3 archive_records.py verify --root "$MINI_RECORDS" \
+  --manifest records/mini-files.json --archive records/truth9584-mini-records.tar.gz
+python3 measure_mini.py --root "$MINI_RECORDS" --out /tmp/mini-measurement.json
+python3 costs.py "$MINI_RECORDS" /tmp/mini-costs.json
+```
+
+The retained measurement and deduplicated costs are `records/mini-measurement.json`
+and `records/mini-costs.json`. Re-running `mini_review.py` makes new paid model
+calls and new evidence; it is not how to reproduce this table.
