@@ -857,7 +857,9 @@ starts at hundreds of gibibytes
 ([#9651](https://github.com/OpenAgentsInc/openagents/issues/9651)). There an
 analysis command starts a watcher process that samples the command's
 physical footprint every 25 milliseconds and kills it with a message that
-names the cap and the override when it passes. Where a system refuses the
+names the cap and the override when it passes. A watcher that can't read
+the command's memory kills it too, with a message that says so, rather than
+leave it running without a cap. Where a system refuses the
 limit and no watch is available, the command stops with the same kind of
 message rather than running without a cap. Task containers
 belong to Docker's cgroup, so these caps don't touch a task's own `memory`

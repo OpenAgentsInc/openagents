@@ -15,7 +15,9 @@ it. Two bounds keep a runaway harness process to itself:
   process's mapped address space, which starts at hundreds of gibibytes, so
   there a watcher process samples the process's physical footprint instead
   and kills it with a message when it passes the cap, as a scope would. Where neither holds,
-  ``limit_self`` raises ``CapRefused`` rather than running uncapped.
+  ``limit_self`` raises ``CapRefused`` rather than running uncapped. A
+  watcher that can't read the process's memory kills it and says why,
+  rather than leave it running uncapped (#9651).
 
 Task containers are Docker's, under Docker's own cgroup, so neither bound
 touches what a task's own ``memory`` budget allows.
@@ -212,10 +214,19 @@ def _libproc() -> ctypes.CDLL | None:
 
 
 def footprint(pid: int | None = None) -> int | None:
-    """The physical footprint of ``pid``, this process by default, in bytes.
+    """The memory ``pid``, this process by default, has in use, in bytes.
 
-    macOS only; ``None`` elsewhere or when the process can't be read.
+    The physical footprint on macOS, and the resident set on Linux, where
+    only the tests watch a process. ``None`` elsewhere or when the process
+    can't be read.
     """
+    if sys.platform.startswith("linux"):
+        try:
+            with open(f"/proc/{os.getpid() if pid is None else pid}/statm") as handle:
+                resident = int(handle.read().split()[1])
+        except (OSError, ValueError, IndexError):
+            return None
+        return resident * os.sysconf("SC_PAGE_SIZE")
     libproc = _libproc()
     if libproc is None:
         return None
@@ -266,6 +277,25 @@ def _watch(pid: int, limit: int, variable: str) -> None:
     while os.getppid() == pid:
         used = footprint(pid)
         if used is None:
+            # A process that just exited can't be read either, and this
+            # watcher has a new parent once it has.
+            time.sleep(WATCH_EVERY)
+            if os.getppid() != pid:
+                return
+            used = footprint(pid)
+        if used is None:
+            # Nothing else holds the process's memory, so it doesn't run on
+            # without its cap.
+            os.kill(pid, signal.SIGKILL)
+            os.write(
+                2,
+                (
+                    f"the process was stopped because its memory couldn't be "
+                    f"read, and it would otherwise have run without its cap "
+                    f"of {limit} bytes. Set {variable} to none to run "
+                    "without a cap.\n"
+                ).encode(),
+            )
             return
         if used > limit:
             os.kill(pid, signal.SIGKILL)

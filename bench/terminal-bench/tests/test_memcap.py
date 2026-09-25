@@ -162,3 +162,54 @@ def test_a_refused_data_limit_raises_with_the_way_past_it(monkeypatch):
     assert "268435456 bytes" in message
     assert memcap.ANALYSIS_ENV in message
     assert "none" in message
+
+
+HARNESS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def test_the_watcher_stops_a_process_past_its_cap_and_says_why():
+    # The watcher macOS starts, started here directly so it runs on Linux.
+    script = (
+        "from tbench import memcap\n"
+        "memcap._watch_self(256 << 20, memcap.ANALYSIS_ENV)\n"
+        "held = [b'x' * (1 << 20) for _ in range(1024)]\n"
+        "print('held')\n"
+    )
+    done = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        cwd=HARNESS,
+        timeout=60,
+    )
+    assert "held" not in done.stdout
+    assert done.returncode == -signal.SIGKILL, done.stderr
+    assert "memory cap of 268435456 bytes" in done.stderr
+    assert memcap.ANALYSIS_ENV in done.stderr
+
+
+def test_a_process_the_watcher_cannot_read_is_stopped_not_left_uncapped():
+    # The watcher's reader fails while the process it watches still runs.
+    watcher = (
+        "import os\n"
+        "from tbench import memcap\n"
+        "memcap.footprint = lambda pid=None: None\n"
+        "memcap._watch(os.getppid(), 256 << 20, memcap.ANALYSIS_ENV)\n"
+    )
+    script = (
+        "import subprocess, sys, time\n"
+        f"subprocess.Popen([sys.executable, '-c', {watcher!r}])\n"
+        "time.sleep(30)\n"
+        "print('ran uncapped')\n"
+    )
+    done = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        cwd=HARNESS,
+        timeout=60,
+    )
+    assert "ran uncapped" not in done.stdout
+    assert done.returncode == -signal.SIGKILL, done.stderr
+    assert "its memory couldn't be read" in done.stderr
+    assert f"{memcap.ANALYSIS_ENV} to none" in done.stderr
