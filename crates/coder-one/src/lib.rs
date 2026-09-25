@@ -40,6 +40,7 @@ pub mod departures;
 pub mod effort;
 pub mod environment;
 pub mod episode;
+pub mod fire;
 pub mod generate;
 pub mod grade;
 pub mod guests;
