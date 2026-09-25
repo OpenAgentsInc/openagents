@@ -1,0 +1,39 @@
+{
+  "schema": "openagents.retained-files.v1",
+  "archive": "truth9584-gym-gate.tar.gz",
+  "archive_sha256": "377c5ceb557240e8244dc6ab929d9591b70e0c67b0dc1af1db9c8358936f4685",
+  "exclusions": [],
+  "credential_scan": "exact local values, zero matches",
+  "files": [
+    {
+      "path": "20260925T073553Z-f20056/clippy-features.log",
+      "bytes": 2967,
+      "sha256": "37884985dd5cf7274d0eb2813ffa38a4f4b433cfbbc5a12fc1bee827c4c47a5e"
+    },
+    {
+      "path": "20260925T073553Z-f20056/clippy.log",
+      "bytes": 4091,
+      "sha256": "6290dfda20bf8f5d068f1108bff1fbf11123e65477f4beae5ba9fab48f824c3d"
+    },
+    {
+      "path": "20260925T073553Z-f20056/fmt.log",
+      "bytes": 54,
+      "sha256": "94851e0a586e3b0a27a4283cde1f225f1ca166d7c0d7e3f2d71ba68c0486e7fb"
+    },
+    {
+      "path": "20260925T073553Z-f20056/run.json",
+      "bytes": 3838,
+      "sha256": "51d65c113a0c611be3d478c0e17affc6dcc993a8221af99b13a839449c1f057f"
+    },
+    {
+      "path": "20260925T073553Z-f20056/tests-features.log",
+      "bytes": 95586,
+      "sha256": "6912023469f21cde9c82f66a7e625d38273a8b56cef94d90b48d3ca425c76bb7"
+    },
+    {
+      "path": "20260925T073553Z-f20056/tests.log",
+      "bytes": 88146,
+      "sha256": "86693af5834fd6d60bb8115de4c877f2c48678de67930ea4e0c6b44d551b64cd"
+    }
+  ]
+}

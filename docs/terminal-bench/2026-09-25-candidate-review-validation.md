@@ -577,3 +577,17 @@ all files were restored and hash-verified, with zero exact credential matches.
 The protocol records a separate `r2` infrastructure restart before any candidate
 exists, with the same frozen experimental rule. Keep the 72 original unknown
 setup attempts in the accounting; they provide no candidate accuracy evidence.
+
+The completed report can be read with `gym coder truth --confirmation PATH`,
+optionally narrowed with `--executor luna` or `--executor astra`. The view shows
+signal rates, missing grades, task-cluster intervals, and dependent within-task
+comparisons. It validates report counts and bounds but does not claim to verify
+source artifacts or promote the rule. See the [CLI guide](../gym/terminal-bench-cli.md#read-a-frozen-check-confirmation).
+
+The [retained Gym gate](../../bench/terminal-bench/experiments/2026-09-25-candidate-review/records/truth9584-gym-gate.tar.gz)
+at `490dc45576` passes formatting, default and TUI Clippy, and both test
+configurations. Library tests pass 496 by default and 589 with TUI; binary and
+integration suites also pass. Explicitly ignored external-evidence tests remain
+ignored. The six files were restored and verified against the
+[manifest](../../bench/terminal-bench/experiments/2026-09-25-candidate-review/records/truth9584-gym-gate-files.json).
+This is a scoped Gym gate, not a full-workspace or live-inference claim.

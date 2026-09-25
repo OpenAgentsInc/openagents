@@ -1,8 +1,9 @@
 # A new task-group confirmation cohort
 
-Status: candidate selection and feasibility design. No executor runs have started
-and no promotion threshold is frozen here. The measurement protocol still needs
-an exact component freeze and must be committed before inference or outcome joins.
+Status: retained selection and feasibility record, written before generation.
+The subsequent [frozen protocol](archive-confirmation-protocol.md) specifies the
+72 attempts and exact component rule. It also preserves the initial setup
+refusals and declares the unchanged infrastructure restart.
 
 ## Why broaden the task source
 
