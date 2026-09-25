@@ -168,9 +168,10 @@ fairer column for the wording, because it was fixed before any answer was
 read. A held-out set of tasks is the next measurement before a policy uses
 the component; the switches stay off in every manifest.
 
-The measurement suggests returning the goal question to the frozen
-wording, since the host limit now does the clause's job. That's a wording
-change, measured here in-sample, and isn't part of this change.
+The goal question is now back to the frozen wording, the same text as
+`questions-v1.json`. The host limit does the clause's job, and the frozen
+wording was fixed before any answer was read. The "new code, frozen
+wording" column is the measurement of what ships.
 
 ## What was built
 

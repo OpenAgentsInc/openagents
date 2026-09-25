@@ -6,7 +6,7 @@
   "per_number": {
     "goal": {
       "type": "noul",
-      "instructions": "Is the number in `{finding}` the threshold of a goal the finished work must meet when it is measured: a bound on how fast, how long, how costly, how large, how accurate, or how close to a reference the result is? Answer no when the number only says what to build or how: a parameter, a format, a count of items to produce, a limit the code must enforce as behavior, a date, a version, the size of an input, or the time allowed for doing the task itself."
+      "instructions": "Is the number in `{finding}` the threshold of a goal the finished work must meet when it is measured: a bound on how fast, how long, how costly, how large, how accurate, or how close to a reference the result is? Answer no when the number only says what to build or how: a parameter, a format, a count of items to produce, a limit the code must enforce as behavior, a date, a version, or the size of an input."
     },
     "direction": {
       "type": "choice",
