@@ -101,7 +101,7 @@ pub fn setup_decide(commands: &[String], noul: impl Fn(&str) -> Option<f64>) -> 
             Gated {
                 command: command.clone(),
                 p,
-                approved: p.is_some_and(|p| p >= YES),
+                approved: p.is_some_and(|p| crate::decision::EVIDENCE_YES.yes(p)),
             }
         })
         .collect()
@@ -195,7 +195,7 @@ pub fn probe_keep(probes: &[Probe], noul: impl Fn(&str) -> Option<f64>) -> Vec<S
             let chars = probe.output.chars().count();
             let decision = match p {
                 None => "unknown",
-                Some(p) if p < YES => "below_threshold",
+                Some(p) if !crate::decision::EVIDENCE_YES.yes(p) => "below_threshold",
                 Some(_) if considered >= PROBE_KEEP => "over_keep",
                 Some(_) if total + chars > PROBE_TOTAL_CHARS => {
                     considered += 1;
@@ -307,7 +307,8 @@ pub fn survey_rank(scored: Vec<(String, Option<f64>, Option<f64>)>) -> Vec<Score
     scored
         .into_iter()
         .map(|(path, relevance, edit)| {
-            let selected = kept < SURVEY_KEEP && relevance.is_some_and(|p| p >= YES);
+            let selected = kept < SURVEY_KEEP
+                && relevance.is_some_and(|p| crate::decision::EVIDENCE_YES.yes(p));
             if selected {
                 kept += 1;
             }

@@ -865,7 +865,9 @@ pub async fn grade(
             routes: authority::reference_routes(&format!("{}\n{}", site.context, site.text)),
             ..authority::Evidence::default()
         };
-        if green_at_start == Some(false) && best.is_some_and(|(_, p)| p >= THRESHOLD) {
+        if green_at_start == Some(false)
+            && best.is_some_and(|(_, p)| crate::decision::GRADE_FAITHFUL.yes(p))
+        {
             let answer = crate::component::jev::ask(
                 jev,
                 recorder,

@@ -1008,7 +1008,7 @@ async fn gather_gym(
         let asked = gather::judge(jev, recorder, "ask_reasons", state, questions).await;
         if marks.is_some() {
             about_marks = match asked.noul("marks") {
-                Some(p) => p >= gather::YES,
+                Some(p) => crate::decision::ASK_GATHER_YES.yes(p),
                 None => gather::names_marks(&options.question),
             };
             progress.line(&format!(
@@ -1158,7 +1158,10 @@ async fn gather_gym(
         }
         progress.line(&format!(
             "jev ▸ {} of {} candidate runs are relevant to the question{}",
-            relevance.values().filter(|p| **p >= gather::YES).count(),
+            relevance
+                .values()
+                .filter(|p| crate::decision::ASK_GATHER_YES.yes(**p))
+                .count(),
             candidates.len(),
             if asked.answered() {
                 String::new()
@@ -1246,7 +1249,7 @@ async fn gather_gym(
                     .map(|(i, _)| (i, probabilities.get(&i).copied()))
                     .collect();
                 if asked.answered() {
-                    mine.retain(|(_, p)| p.is_some_and(|p| p >= gather::YES));
+                    mine.retain(|(_, p)| p.is_some_and(|p| crate::decision::ASK_GATHER_YES.yes(p)));
                     mine.sort_by(|a, b| b.1.unwrap_or(0.0).total_cmp(&a.1.unwrap_or(0.0)));
                     mine.truncate(gather::STEPS_PER_RUN);
                 } else {
@@ -1270,7 +1273,7 @@ async fn gather_gym(
                 "jev ▸ {} of {} transcript steps are relevant to the question",
                 probabilities
                     .values()
-                    .filter(|p| **p >= gather::YES)
+                    .filter(|p| crate::decision::ASK_GATHER_YES.yes(**p))
                     .count(),
                 steps.len()
             ));

@@ -595,7 +595,7 @@ impl BriefingInputs {
                             Some(file.relevance),
                             clip(
                                 &file.content,
-                                if file.edit >= 0.8 {
+                                if crate::decision::EVIDENCE_EDIT_TARGET.yes(file.edit) {
                                     EDIT_TARGET_FILE_CHARS
                                 } else {
                                     SURVEYED_FILE_CHARS

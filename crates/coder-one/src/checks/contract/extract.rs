@@ -1316,7 +1316,7 @@ pub fn finish(mut draft: Draft, answers: &BTreeMap<String, f64>) -> Vec<Item> {
             .max_by(|a, b| a.1.total_cmp(&b.1))
             .copied()
             .expect("at least one answer");
-        if best.1 < THRESHOLD {
+        if !crate::decision::CONTRACT_EXTRACT.yes(best.1) {
             item.not_executable = Some(match best.0.ask {
                 Asking::Succeeds { .. } => format!("not stated to succeed (Jev {:.2})", best.1),
                 Asking::Pairs { .. } => {

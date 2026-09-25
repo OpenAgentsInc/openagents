@@ -251,7 +251,7 @@ pub fn check(claims: &mut [Claim], facts: &BTreeMap<String, Option<RunFacts>>, r
                     None => Some(format!("{} has no Jev judgment", fact.id)),
                     Some(map) => match map.get(id) {
                         None => Some(format!("{id} isn't a judgment Jev made for {}", fact.id)),
-                        Some(p) if *p < REASON_AT => Some(format!(
+                        Some(p) if !crate::decision::ASK_CITE_REASON.yes(*p) => Some(format!(
                             "{id} is {p:.2} for {}, under {REASON_AT:.2}",
                             fact.id
                         )),

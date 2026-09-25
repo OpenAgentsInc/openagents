@@ -242,6 +242,29 @@ impl Asked {
         self.answers.as_ref()?.get(id)?.get("choice")?.as_str()
     }
 
+    /// The option a Choice answer to question `id` decides on under
+    /// `decision`: the model's pick when the block sets no weights, exactly
+    /// as [`Asked::choice`] reads it, and the weighted argmax of the
+    /// answer's probabilities when it does. `None` when unknown.
+    #[must_use]
+    pub fn decided_choice(&self, id: &str, decision: &jev::Decision) -> Option<&str> {
+        let pick = self.choice(id)?;
+        if decision.weights.is_none() {
+            return Some(pick);
+        }
+        let answer = self.answers.as_ref()?.get(id)?;
+        let Ok(read) = serde_json::from_value::<jev::ChoiceAnswer>(answer.clone()) else {
+            return Some(pick);
+        };
+        let decided = decision.choice(&read);
+        // Hand back the option as the answer spells it, borrowed from it.
+        answer
+            .get("probabilities")
+            .and_then(serde_json::Value::as_object)
+            .and_then(|options| options.get_key_value(decided))
+            .map_or(Some(pick), |(option, _)| Some(option.as_str()))
+    }
+
     /// Whether the request produced answers.
     #[must_use]
     pub fn answered(&self) -> bool {

@@ -34,6 +34,7 @@ pub mod contamination;
 pub mod credentials;
 pub mod data_profile;
 pub mod deadline;
+pub mod decision;
 pub mod delegate;
 pub mod departures;
 pub mod effort;

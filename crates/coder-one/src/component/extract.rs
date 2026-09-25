@@ -241,7 +241,7 @@ pub fn extract(trajectory: &Path, source: &Value, out: &Path) -> Result<Extracte
             .enumerate()
             .filter(|(i, _)| {
                 noul(answers.as_ref(), &format!("setup_{i}"))
-                    .is_some_and(|p| p >= super::evidence::YES)
+                    .is_some_and(|p| crate::decision::EVIDENCE_YES.yes(p))
             })
             .map(|(_, command)| command)
             .collect();

@@ -626,7 +626,10 @@ impl Component for Select {
                 json!(
                     ranked
                         .iter()
-                        .filter(|s| s.edit.is_some_and(|p| p >= evidence::EDIT_TARGET))
+                        .filter(|s| {
+                            s.edit
+                                .is_some_and(|p| crate::decision::EVIDENCE_EDIT_TARGET.yes(p))
+                        })
                         .count()
                 ),
             );
@@ -982,7 +985,7 @@ impl Component for Close {
             metrics.insert("done".to_string(), json!(done));
             metrics.insert(
                 "reads_done".to_string(),
-                done.map_or(Value::Null, |p| json!(p >= evidence::YES)),
+                done.map_or(Value::Null, |p| json!(crate::decision::EVIDENCE_YES.yes(p))),
             );
             metrics.insert(
                 "matches_retained".to_string(),

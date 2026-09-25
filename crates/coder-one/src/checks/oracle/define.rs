@@ -450,7 +450,7 @@ pub async fn spec(
     let picked = |kind: &'static str, count: usize, keep: usize| -> Vec<(usize, f64)> {
         let mut out: Vec<(usize, f64)> = (0..count)
             .filter_map(|i| nouls.get(&(kind, i)).map(|p| (i, *p)))
-            .filter(|(_, p)| *p >= THRESHOLD)
+            .filter(|(_, p)| crate::decision::ORACLE_DEFINE.yes(*p))
             .collect();
         out.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
         out.truncate(keep);

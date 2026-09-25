@@ -612,10 +612,9 @@ impl Variant {
             .filter_map(|id| section(self.agent, id).map(|s| (s, "manifest")))
             .collect();
         for id in OPTIONAL {
-            let chosen = self
-                .asked
-                .iter()
-                .any(|(asked, p)| asked == id && p.is_some_and(|p| p >= SELECT));
+            let chosen = self.asked.iter().any(|(asked, p)| {
+                asked == id && p.is_some_and(|p| crate::decision::SYSTEM_SELECT.yes(p))
+            });
             if chosen && let Some(section) = section(self.agent, id) {
                 out.push((section, "jev"));
             }

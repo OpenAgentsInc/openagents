@@ -95,16 +95,27 @@ impl Source {
         }
     }
 
-    /// The probability at or above which a row is listed. Every source
-    /// keeps v13's 0.5: the offline measurement's fit tasks held no
-    /// candidate to choose another on.
+    /// The probability at or above which a row is listed: the threshold
+    /// the source's question-set file writes in its `decision` block, and
+    /// [`Source::default_threshold`] when it writes none.
     #[must_use]
     pub fn threshold(self) -> f64 {
-        match self {
+        question_set(self)
+            .decision
+            .threshold_or(self.default_threshold())
+            .value()
+    }
+
+    /// The threshold a source lists at when its file sets none. Every
+    /// source keeps v13's 0.5: the offline measurement's fit tasks held no
+    /// candidate to choose another on.
+    #[must_use]
+    pub fn default_threshold(self) -> jev::Threshold {
+        jev::Threshold::at(match self {
             Source::Rationale => RATIONALE_P,
             Source::Docstring => DOCSTRING_P,
             Source::StandardMethod => STANDARD_METHOD_P,
-        }
+        })
     }
 
     /// The state field the candidates go under.
@@ -169,11 +180,15 @@ pub const STANDARD_METHOD_P: f64 = 0.5;
 pub struct QuestionSet {
     pub id: String,
     /// `atif::digest` of `{"per_finding": template}`, the digest the
-    /// question-set registry in `crates/coder` computes.
+    /// question-set registry in `crates/coder` computes. The template's
+    /// `decision` block is outside it.
     pub digest: String,
     /// The template's instructions, with `{finding}` where the
     /// candidate's state path goes.
     pub instructions: String,
+    /// The decision block the template carries; empty when it carries
+    /// none.
+    pub decision: jev::Decision,
 }
 
 /// What the template writes the candidate's state path into.
@@ -181,10 +196,13 @@ pub const FINDING: &str = "{finding}";
 
 fn parse_set(text: &str) -> QuestionSet {
     let value: Value = serde_json::from_str(text).expect("a departure question set is JSON");
-    let template = value
+    let mut template = value
         .get("per_finding")
         .cloned()
         .expect("a departure question set is a per_finding template");
+    let decision = jev::decision::split(&mut template)
+        .expect("a departure question set's decision block reads")
+        .unwrap_or_default();
     let instructions = template
         .get("instructions")
         .and_then(Value::as_str)
@@ -194,6 +212,7 @@ fn parse_set(text: &str) -> QuestionSet {
         id: value["id"].as_str().unwrap_or_default().to_string(),
         digest: atif::digest(&json!({ "per_finding": template })),
         instructions,
+        decision,
     }
 }
 

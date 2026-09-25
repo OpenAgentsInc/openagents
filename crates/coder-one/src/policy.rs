@@ -129,6 +129,13 @@ pub struct JevPolicy {
     pub model: String,
     /// The revision of the built-in question sets.
     pub question_sets: String,
+    /// The digest of the decision settings this build reads Jev's answers
+    /// under, where any differs from its default ([`crate::decision`]).
+    /// Absent while every setting is at its default, so a manifest written
+    /// before settings existed keeps its digest. Resolution fills it in,
+    /// and a manifest that names another digest is refused.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decision: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -549,6 +556,7 @@ impl Manifest {
                     mode: JevMode::Step,
                     model: JEV_MODEL.to_string(),
                     question_sets: QUESTION_SETS.to_string(),
+                    decision: crate::decision::digest(),
                 },
                 evidence: EvidencePolicy {
                     probes: Probes::Off,
@@ -607,6 +615,15 @@ impl Manifest {
         }
     }
 
+    /// The manifest with `policy.jev.decision` naming the decision
+    /// settings this build uses: unchanged while every setting is at its
+    /// default.
+    #[must_use]
+    pub fn with_decision(mut self) -> Self {
+        self.policy.jev.decision = crate::decision::digest();
+        self
+    }
+
     /// Reads a manifest from its JSON text.
     pub fn parse(text: &str) -> Result<Self, String> {
         serde_json::from_str(text)
@@ -637,6 +654,13 @@ impl Manifest {
             problems.push(format!(
                 "jev.question_sets must be {QUESTION_SETS}, not {}",
                 policy.jev.question_sets
+            ));
+        }
+        if policy.jev.decision.is_some() && policy.jev.decision != crate::decision::digest() {
+            problems.push(format!(
+                "jev.decision must be this build's decision settings digest ({}), not {}",
+                crate::decision::digest().as_deref().unwrap_or("absent"),
+                policy.jev.decision.as_deref().unwrap_or("absent")
             ));
         }
         if policy.evidence.probes != Probes::Off && policy.jev.mode != JevMode::Deep {
@@ -1093,6 +1117,7 @@ impl Resolution {
         if source != "builtin" {
             manifest.validate()?;
         }
+        let manifest = manifest.with_decision();
         let mut resolution = Resolution {
             manifest,
             source,
@@ -1107,6 +1132,7 @@ impl Resolution {
     /// Resolves one manifest with no environment at all.
     pub fn of(manifest: Manifest) -> Result<Self, String> {
         manifest.validate()?;
+        let manifest = manifest.with_decision();
         Ok(Resolution {
             manifest,
             source: "inline".to_string(),
@@ -2789,6 +2815,25 @@ echo '{"type":"result","subtype":"success","is_error":false,"num_turns":1,"resul
             context(&wide.stdin),
             context(&narrow.stdin)
         );
+    }
+
+    #[test]
+    fn the_decision_digest_is_absent_at_the_defaults_and_pinned_otherwise() {
+        let builtin = Manifest::builtin();
+        assert_eq!(builtin.policy.jev.decision, None);
+        let value = serde_json::to_value(&builtin).unwrap();
+        assert!(value["policy"]["jev"].get("decision").is_none());
+        let resolved = Resolution::of(builtin.clone()).unwrap();
+        assert_eq!(resolved.digest(), builtin.digest());
+
+        let mut stale = builtin.clone();
+        stale.policy.jev.decision = Some("0".repeat(64));
+        let error = stale.validate().unwrap_err();
+        assert!(error.contains("jev.decision must be"), "{error}");
+
+        let mut named = value.clone();
+        named["policy"]["jev"]["decision"] = json!("0".repeat(64));
+        assert!(Manifest::parse(&named.to_string()).is_ok());
     }
 
     #[test]

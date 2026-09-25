@@ -844,7 +844,7 @@ pub async fn verify<R: Runner>(
                 {
                     row["fails_on_current"] = json!(p);
                 }
-                if p.is_some_and(|p| p < 0.3) {
+                if p.is_some_and(|p| !crate::decision::VERIFY_FAILS_ON_CURRENT.yes(p)) {
                     let note = format!(
                         "Jev doubts any test fails on the current behavior of {module} ({:.2}): \
                          read that module for its defect.",

@@ -888,7 +888,9 @@ async fn asks_only(request: &Request, recorder: &Recorder) -> bool {
         },
     )
     .await;
-    asked.noul("asks_only").is_some_and(|p| p >= 0.6)
+    asked
+        .noul("asks_only")
+        .is_some_and(|p| crate::decision::TERMINAL_ASKS_ONLY.yes(p))
 }
 
 /// The session ID a host-loop record names.

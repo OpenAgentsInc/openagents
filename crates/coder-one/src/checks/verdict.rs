@@ -377,7 +377,7 @@ pub fn corroborated(evidence: &Evidence, params: &Params) -> Verdict {
                 .report_answers
                 .as_ref()
                 .and_then(|a| a.get("admits_unmet"))
-                .is_some_and(|p| *p >= ADMISSION_AT);
+                .is_some_and(|p| crate::decision::VERDICT_ADMISSION.yes(*p));
         if supported {
             verdict.precision = (params == &fitted()).then(|| ratio(CORROBORATED_FAIL));
             verdict

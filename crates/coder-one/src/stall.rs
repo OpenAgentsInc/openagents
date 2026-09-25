@@ -984,7 +984,10 @@ pub fn in_session_note(checkpoint: &Checkpoint) -> String {
 #[must_use]
 pub fn next_note(checkpoint: &Checkpoint, answers: &Answers) -> Option<String> {
     let pick = answers.next.as_deref()?;
-    if answers.next_p.is_none_or(|p| p < NEXT_P) {
+    if answers
+        .next_p
+        .is_none_or(|p| !crate::decision::STALL_NEXT.yes(p))
+    {
         return None;
     }
     let candidate = checkpoint.candidates.iter().find(|c| c.kind == pick)?;

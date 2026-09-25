@@ -149,7 +149,11 @@ pub(crate) fn restore(
             if omitted_paths.contains(&path.as_str()) {
                 // The briefing kept only an omitted item's name and size;
                 // the survey holds its relevance and text.
-                let cap = if *edit >= 0.8 { 16_000 } else { 4_000 };
+                let cap = if crate::decision::EVIDENCE_EDIT_TARGET.yes(*edit) {
+                    16_000
+                } else {
+                    4_000
+                };
                 first.files[index].1 = Some(*relevance);
                 first.files[index].2 = crate::judge::clip(content, cap);
                 whole.files[index].1 = Some(*relevance);

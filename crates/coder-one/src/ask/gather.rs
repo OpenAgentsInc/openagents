@@ -503,7 +503,7 @@ pub fn chosen(
     scored.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
     scored
         .into_iter()
-        .filter(|(_, p)| *p >= YES)
+        .filter(|(_, p)| crate::decision::ASK_GATHER_YES.yes(*p))
         .take(most)
         .map(|(i, p)| (i, Some(p)))
         .collect()

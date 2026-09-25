@@ -75,7 +75,7 @@ pub const PARTS_COMPONENT: &str = "microluna.parts";
 /// How sure Jev must be that a part is met for it to count. At 0.5,
 /// cost and time parts rated 0.64 passed on figures for the cheapest case
 /// alone, and the retry that would have fixed them never ran.
-const PART_MET: f64 = 0.75;
+pub(crate) const PART_MET: f64 = 0.75;
 
 /// The most parts of a focus the per-part check asks about.
 const PARTS_MAX: usize = 10;
@@ -3109,7 +3109,11 @@ impl Micro {
                     .as_array()
                     .into_iter()
                     .flatten()
-                    .filter(|r| r["p"].as_f64().is_some_and(|p| p < 0.5))
+                    .filter(|r| {
+                        r["p"]
+                            .as_f64()
+                            .is_some_and(|p| !crate::decision::MICRO_CLOSE_REQUIREMENT.yes(p))
+                    })
                     .map(|r| {
                         format!(
                             "{} ({:.2})",
@@ -3123,7 +3127,7 @@ impl Micro {
                 let doubtful = partial
                     || !missing.is_empty()
                     || !advisory_red.is_empty()
-                    || done.is_none_or(|p| p < CLOSE_MIN);
+                    || done.is_none_or(|p| !crate::decision::MICRO_CLOSE.yes(p));
                 crate::say::line(&format!(
                     "  microluna ▸ final check: chance the task is done {}{}",
                     done.map_or("unknown (Jev didn't answer)".to_string(), |p| format!(
@@ -4223,7 +4227,7 @@ impl Micro {
             for b in a + 1..units.len() {
                 let p = asked.noul(&parallel::pair_key(a, b));
                 let (yes, by) = match p {
-                    Some(p) => (p >= parallel::SHARED_MIN, "jev"),
+                    Some(p) => (crate::decision::MICRO_SHARED.yes(p), "jev"),
                     None => (parallel::code_shared(&units[a], &units[b]), "code"),
                 };
                 shared.insert((a, b), yes);
@@ -4615,7 +4619,7 @@ impl Micro {
             .filter(|(i, _)| {
                 asked
                     .noul(&format!("part_{}", i + 1))
-                    .is_some_and(|p| p < PART_MET)
+                    .is_some_and(|p| !crate::decision::MICRO_PART_MET.yes(p))
             })
             .map(|(_, part)| part)
             .collect();

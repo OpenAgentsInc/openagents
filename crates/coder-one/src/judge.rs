@@ -30,7 +30,7 @@ use crate::component::jev::{
 };
 use crate::component::{
     self,
-    evidence::{self, Probe, SURVEY_BATCH, YES, issue_state},
+    evidence::{self, Probe, SURVEY_BATCH, issue_state},
     jev::{Ask, Asked, JevMode},
 };
 use crate::credentials::{JEV_BASE_URL, JEV_MODEL};
@@ -918,7 +918,7 @@ impl JevJudge {
             };
             // Probe v2 hands likely edit targets on whole, so the delegate
             // edits instead of reading first.
-            let cap = if self.v2 && edit >= evidence::EDIT_TARGET {
+            let cap = if self.v2 && crate::decision::EVIDENCE_EDIT_TARGET.yes(edit) {
                 EDIT_TARGET_CHARS
             } else {
                 SURVEY_FILE_CHARS
@@ -1365,14 +1365,18 @@ impl JevJudge {
             .filter_map(|(i, c)| Some((response.noul(&format!("file_{i}")).ok()?.noul, c)))
             .collect();
         files.sort_by(|a, b| b.0.total_cmp(&a.0));
-        let confident: Vec<_> = files.iter().filter(|(p, _)| *p >= YES).take(6).collect();
+        let confident: Vec<_> = files
+            .iter()
+            .filter(|(p, _)| crate::decision::EVIDENCE_YES.yes(*p))
+            .take(6)
+            .collect();
         let shown: Vec<_> = if confident.is_empty() {
             files.iter().take(3).collect()
         } else {
             confident
         };
         for (p, candidate) in shown {
-            let label = if *p >= YES {
+            let label = if crate::decision::EVIDENCE_YES.yes(*p) {
                 "Relevant file"
             } else {
                 "Possibly relevant file (low)"
@@ -1408,7 +1412,7 @@ impl JevJudge {
         }
         let mut picked: Vec<(f64, usize)> = (0..chunks.len())
             .filter_map(|k| Some((response.noul(&format!("chunk_{k}")).ok()?.noul, k)))
-            .filter(|(p, _)| *p >= YES)
+            .filter(|(p, _)| crate::decision::EVIDENCE_YES.yes(*p))
             .collect();
         picked.sort_by(|a, b| b.0.total_cmp(&a.0));
         picked.truncate(3);
@@ -1433,7 +1437,7 @@ impl JevJudge {
                 "  jev ▸ chance the task is done and checked: {:.2}",
                 ready.noul
             );
-            if ready.noul >= 0.8 {
+            if crate::decision::JUDGE_READY.yes(ready.noul) {
                 hints.push(format!(
                     "The evidence suggests the task is complete and checked (Jev p={:.2}). If nothing is left to verify, call finished now.",
                     ready.noul

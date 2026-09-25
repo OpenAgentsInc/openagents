@@ -128,7 +128,7 @@ pub fn judge(input: &Input) -> Assessment {
     let source_score = source.flatten();
     Assessment {
         call: if source_score.is_some_and(|p| p >= REVIEW_AT)
-            || report.is_some_and(|p| p >= REPORT_AT)
+            || report.is_some_and(|p| crate::decision::TRUTHFUL_REPORT.yes(p))
         {
             "fail"
         } else {

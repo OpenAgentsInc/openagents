@@ -155,14 +155,14 @@ impl Component for Support {
             metrics.insert(
                 "done_false_accept".to_string(),
                 match (met, done) {
-                    (Some(m), Some(p)) => json!(!m && p >= evidence::YES),
+                    (Some(m), Some(p)) => json!(!m && crate::decision::EVIDENCE_YES.yes(p)),
                     _ => Value::Null,
                 },
             );
             metrics.insert(
                 "done_false_reject".to_string(),
                 match (met, done) {
-                    (Some(m), Some(p)) => json!(m && p < evidence::YES),
+                    (Some(m), Some(p)) => json!(m && !crate::decision::EVIDENCE_YES.yes(p)),
                     _ => Value::Null,
                 },
             );

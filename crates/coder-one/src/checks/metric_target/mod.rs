@@ -649,7 +649,7 @@ pub fn targets_from(answers: &Value, numbers: &[Candidate], references: &[String
     let mut out = Vec::new();
     for (j, number) in numbers.iter().enumerate() {
         let p = answers[format!("goal_{j}")]["noul"].as_f64().unwrap_or(0.0);
-        if p < GOAL_P {
+        if !crate::decision::METRIC_TARGET_GOAL.yes(p) {
             continue;
         }
         let direction = match answers[format!("direction_{j}")]["choice"].as_str() {

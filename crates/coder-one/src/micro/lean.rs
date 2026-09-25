@@ -1100,7 +1100,7 @@ impl Micro {
         ranked.sort_by(|a, b| b.0.total_cmp(&a.0));
         let likely: Vec<String> = ranked
             .iter()
-            .filter(|(p, _)| *p >= SUSPECT_P)
+            .filter(|(p, _)| crate::decision::MICRO_SUSPECT.yes(*p))
             .take(8)
             .map(|(p, c)| format!("{c} (p = {p:.2})"))
             .collect();
@@ -2292,7 +2292,8 @@ impl Micro {
         let usd = asked.input_tokens.map_or(0.0, |t| {
             t as f64 * jev_component::USD_PER_MILLION_INPUT / 1_000_000.0
         });
-        let flagged = !literal.is_empty() || p.is_some_and(|p| p >= HARDCODE_P);
+        let flagged =
+            !literal.is_empty() || p.is_some_and(|p| crate::decision::MICRO_HARDCODE.yes(p));
         (
             flagged,
             json!({

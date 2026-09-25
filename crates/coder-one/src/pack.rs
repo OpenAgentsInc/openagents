@@ -1038,7 +1038,10 @@ pub struct Measure {
 pub fn measure(briefing: &Briefing, delivered: &[(Item, Option<String>)]) -> Measure {
     let selected: Vec<&(Item, Option<String>)> = delivered
         .iter()
-        .filter(|(item, _)| item.p.is_some_and(|p| p >= 0.5))
+        .filter(|(item, _)| {
+            item.p
+                .is_some_and(|p| crate::decision::PACK_SELECTED.yes(p))
+        })
         .collect();
     let mut seen = BTreeSet::new();
     let mut duplicate_bytes = 0;

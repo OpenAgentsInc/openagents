@@ -410,6 +410,9 @@ pub struct QuestionSet {
     pub instructions: String,
     /// The `none` option's wording.
     pub none: String,
+    /// The template's decision block, outside the digest; empty when the
+    /// file carries none, and the model's pick stands.
+    pub decision: ::jev::Decision,
 }
 
 /// What the template writes the candidate's state path into.
@@ -422,7 +425,10 @@ pub fn question_set() -> &'static QuestionSet {
     SET.get_or_init(|| {
         let value: Value =
             serde_json::from_str(QUESTION_SET).expect("the method question set is JSON");
-        let template = value["per_finding"].clone();
+        let mut template = value["per_finding"].clone();
+        let decision = ::jev::decision::split(&mut template)
+            .expect("the method question set's decision block reads")
+            .unwrap_or_default();
         QuestionSet {
             id: value["id"].as_str().unwrap_or_default().to_string(),
             digest: atif::digest(&json!({ "per_finding": template })),
@@ -434,6 +440,7 @@ pub fn question_set() -> &'static QuestionSet {
                 .as_str()
                 .expect("the method question set words none")
                 .to_string(),
+            decision,
         }
     })
 }
@@ -791,9 +798,10 @@ pub async fn identify_with(
                 t as f64 * jev_component::USD_PER_MILLION_INPUT / 1_000_000.0
             });
         }
+        let decision = &question_set().decision;
         for (j, id) in request.ids.iter().enumerate() {
             let at = request.offset + j;
-            if let Some(choice) = asked.choice(id) {
+            if let Some(choice) = asked.decided_choice(id, decision) {
                 out.answered[at] = true;
                 if registry().get(choice).is_some() {
                     out.methods[at] = Some(choice.to_string());

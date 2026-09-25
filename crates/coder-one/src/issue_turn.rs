@@ -755,7 +755,7 @@ being updated to match?";
 /// it. The stale `2 + cursor` offset read between 0.55 and 0.68 across
 /// runs; the false alarms, 0.52 and 0.54, were on code the change had
 /// edited, which the check now skips.
-const DEPENDS_FLAG: f64 = 0.5;
+pub(crate) const DEPENDS_FLAG: f64 = 0.5;
 
 /// The new-side line numbers a zero-context diff adds or changes, by file.
 fn edited_lines(bare: &str) -> Vec<(String, usize)> {
@@ -866,7 +866,7 @@ async fn stale_dependents(
             // Jev alone missed a stale `2 + cursor` twice, rating it under
             // 0.5; a list that grew beside a fixed offset is flagged by code.
             let offset = grown.contains(&excerpt.name) && fixed_offset(&excerpt.text);
-            let jev = p.is_some_and(|p| p >= DEPENDS_FLAG);
+            let jev = p.is_some_and(|p| crate::decision::ISSUE_TURN_DEPENDS.yes(p));
             (offset || jev).then(|| {
                 let why = if offset {
                     "the change adds items to what it returns, and this code uses a fixed \
@@ -1181,7 +1181,7 @@ async fn unclear_text(diff: &str, jev: Option<&jev::Client>, recorder: &Recorder
         .enumerate()
         .filter_map(|(i, (file, text))| {
             let p = asked.noul(&format!("plain_{}", i + 1))?;
-            (p < PLAIN_FLAG).then(|| {
+            (!crate::decision::ISSUE_TURN_PLAIN.yes(p)).then(|| {
                 format!(
                     "{file}: \"{}\" reads as shorthand (Jev {p:.2}); say it in plain, complete \
                      words, and add a line rather than abbreviate",
@@ -1195,7 +1195,7 @@ async fn unclear_text(diff: &str, jev: Option<&jev::Client>, recorder: &Recorder
 /// How sure Jev must be that a newcomer understands a text for it to
 /// pass. Measured on 2026-09-24: shorthand view lines read 0.04 and 0.06,
 /// and a plain sentence with figures 0.38, so the line sits between.
-const PLAIN_FLAG: f64 = 0.2;
+pub(crate) const PLAIN_FLAG: f64 = 0.2;
 
 /// The request for a fix round: the problems, then the diff.
 fn fix_request(workdir: &Path, number: u64, problems: &[String]) -> String {

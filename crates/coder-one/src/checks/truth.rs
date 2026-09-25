@@ -675,7 +675,7 @@ pub fn catalog(rows: &[Row]) -> Vec<Signal> {
             format!("Jev on the final report, at 0.5: {meaning}"),
             move |r| {
                 let p = *r.report_answers.as_ref()?.get(&key)?;
-                let yes = p >= 0.5;
+                let yes = crate::decision::TRUTH_REPORT.yes(p);
                 Some(if yes == fail_when_true {
                     Says::Fail
                 } else {
