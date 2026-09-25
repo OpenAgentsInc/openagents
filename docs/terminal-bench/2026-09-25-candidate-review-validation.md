@@ -591,3 +591,40 @@ integration suites also pass. Explicitly ignored external-evidence tests remain
 ignored. The six files were restored and verified against the
 [manifest](../../bench/terminal-bench/experiments/2026-09-25-candidate-review/records/truth9584-gym-gate-files.json).
 This is a scoped Gym gate, not a full-workspace or live-inference claim.
+
+### Blinded inspection while the archive cohort runs
+
+These observations were written before opening any archive cohort grade. They
+explain the check's behavior, not its measured accuracy, and do not change its
+frozen rule or calls.
+
+- **A reproduced defect beyond the examples.** On
+  `circuit-fibsqrt__X9xhXrv`, both public examples work, but `/app/sim 16777216`
+  prints `0`. The task requires `fib(isqrt(N)) mod 2^32`. The reviewer computes
+  `isqrt(16777216) = 4096` and obtains `1501401659` by both a recurrence and fast
+  doubling. A separate local recurrence confirms that expected value. The
+  recorded command invokes the submitted simulator directly, exits successfully,
+  and prints the mismatch. The strict citations pass and the frozen support
+  score is 0.85. The complete review has SHA-256
+  `7b6cfc8163fb9417729a3fbb4119b83d0b2fd26a84e1e09229c1aad4f37703dd`.
+  This demonstrates the intended evidence route; only the later outcome join
+  measures agreement with the official verifier.
+- **Direct checks of numeric deliverables.** The first two distribution reviews
+  load the actual saved arrays and independently calculate both KL divergences
+  using `scipy.special.rel_entr`. They observe values within the public tolerance
+  and return unknown, not pass. The distinction matters: observed requirements
+  are coverage, not a whole-task correctness certificate.
+- **Execution coverage still limits recall.** Several public images lack Python
+  or a graph-query runtime. The regex and SPARQL reviewers report that their
+  proposed functional checks could not run and return unknown. The document
+  reviewers inspect PDF text and CSV totals but cannot validate JPEG contents
+  without an available image or OCR tool. The certificate reviewers inspect the
+  public certificate but cannot read owner-restricted key files inside the
+  capability-dropped container. They report that access limit instead of blaming
+  the candidate. These limitations were anticipated by the public-environment
+  preflight; their cost to detection remains in the frozen measurement.
+
+The numeric and circuit checks illustrate independent recomputation from an
+explicit public rule. The runtime and access gaps suggest future review-environment
+work, but installing tools, changing capabilities, or rerunning reviews here
+would produce a different experimental arm. The original calls remain unchanged.
