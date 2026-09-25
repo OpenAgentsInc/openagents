@@ -30,7 +30,7 @@ fn rate(value: &Value) -> Result<String, String> {
     let interval = interval(&value["wilson_95"], 0.0, 1.0)?;
     #[allow(clippy::cast_precision_loss)]
     let expected = k as f64 / n as f64;
-    if (p - expected).abs() > 1e-9 || p < interval.0 || p > interval.1 {
+    if (p - expected).abs() > 1e-9 || p + 1e-9 < interval.0 || p - 1e-9 > interval.1 {
         return Err("confirmation rate does not match its counts or interval".to_string());
     }
     Ok(format!(
@@ -309,6 +309,18 @@ mod tests {
             *report.pointer_mut(pointer).unwrap() = value;
             assert!(lines(&report, None).is_err(), "accepted {pointer}");
         }
+    }
+
+    #[test]
+    fn wilson_rounding_at_zero_and_one_is_not_a_corrupt_rate() {
+        // These are actual floating-point outputs from the retained Python
+        // measurement, where Wilson endpoints differ from 0 or 1 by one ULP.
+        let zero = json!({"correct": 0, "total": 11, "value": 0.0,
+                          "wilson_95": [2.7755575615628914e-17, 0.2588400172488141]});
+        let one = json!({"correct": 6, "total": 6, "value": 1.0,
+                         "wilson_95": [0.6096569663469354, 0.9999999999999999]});
+        assert!(rate(&zero).unwrap().contains("0/11 0.0%"));
+        assert!(rate(&one).unwrap().contains("6/6 100.0%"));
     }
 
     #[test]
