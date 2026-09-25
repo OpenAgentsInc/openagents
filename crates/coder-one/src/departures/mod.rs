@@ -57,7 +57,9 @@ pub const MAX_CALLERS: usize = 4;
 /// own switch. A source is admitted only when the offline measurement on
 /// the task anatomy's 18 tasks shows it raises recall without dropping
 /// precision below the comment miner's
-/// (`docs/terminal-bench/2026-09-25-departures-offline.md`).
+/// (`docs/terminal-bench/2026-09-25-departures-offline.md`). It admitted
+/// neither: `docstring` listed nothing at 0.5, and `standard-method`
+/// raised recall at a precision below the comment miner's.
 pub const ADMITTED: &[Source] = &[];
 
 /// Where a likely-defect row comes from.
@@ -86,9 +88,9 @@ impl Source {
         }
     }
 
-    /// The probability at or above which a row is listed. `rationale`
-    /// keeps v13's 0.5; the other two were chosen on the fit tasks of the
-    /// offline measurement.
+    /// The probability at or above which a row is listed. Every source
+    /// keeps v13's 0.5: the offline measurement's fit tasks held no
+    /// candidate to choose another on.
     #[must_use]
     pub fn threshold(self) -> f64 {
         match self {
@@ -148,11 +150,11 @@ impl Source {
 /// v13's listing threshold for justifying comments.
 pub const RATIONALE_P: f64 = 0.5;
 
-/// The docstring source's listing threshold, chosen on the fit tasks.
+/// The docstring source's listing threshold. The protocol's rule keeps
+/// v13's value when the fit tasks hold no labeled hit, as they don't.
 pub const DOCSTRING_P: f64 = 0.5;
 
-/// The standard-method source's listing threshold, chosen on the fit
-/// tasks.
+/// The standard-method source's listing threshold, by the same rule.
 pub const STANDARD_METHOD_P: f64 = 0.5;
 
 /// One source's question set, as the repository holds it.

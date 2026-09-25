@@ -289,6 +289,41 @@ fn nothing_is_admitted_that_the_measurement_did_not_admit() {
     assert!(!ADMITTED.contains(&Source::Rationale));
 }
 
+/// The manifest switch accepts only admitted sources, and only beside
+/// `rationale`; absent, a manifest reads and digests as before.
+#[test]
+fn the_manifest_switch_accepts_only_admitted_sources() {
+    let (_, text) = crate::policy::REFERENCE
+        .iter()
+        .find(|(name, _)| *name == "microluna-v17.json")
+        .unwrap();
+    let before = crate::policy::Manifest::parse(text).unwrap();
+    let mut raw: Value = serde_json::from_str(text).unwrap();
+    assert_eq!(
+        raw["policy"]["executor"]["microluna"]["lean"]["rationale"],
+        json!(true)
+    );
+    assert_eq!(
+        crate::policy::Manifest::parse(&raw.to_string())
+            .unwrap()
+            .digest(),
+        before.digest()
+    );
+    for source in Source::ALL {
+        raw["policy"]["executor"]["microluna"]["lean"]["departures"] = json!([source.word()]);
+        let manifest = crate::policy::Manifest::parse(&raw.to_string()).unwrap();
+        let checked = manifest.validate();
+        assert_eq!(
+            checked.is_ok(),
+            ADMITTED.contains(&source),
+            "{}: {checked:?}",
+            source.word()
+        );
+    }
+    raw["policy"]["executor"]["microluna"]["lean"]["departures"] = json!(["nonsense"]);
+    assert!(crate::policy::Manifest::parse(&raw.to_string()).is_err());
+}
+
 #[tokio::test]
 async fn ranking_with_jev_off_leaves_every_row_unknown() {
     let dir = workspace();

@@ -160,6 +160,13 @@ pub struct Lean {
     /// suspects each session must decide on.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub rationale: bool,
+    /// `evidence.departures`: more suspect sources beside `rationale`'s
+    /// comments ([`crate::departures`], issue #9634), each row showing its
+    /// kind. Only the sources the offline measurement admitted
+    /// ([`crate::departures::ADMITTED`]) are accepted. Empty, the
+    /// default, leaves the v13 suspects as they were.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub departures: Vec<crate::departures::Source>,
     /// Attempts at the first work session that run at once, each in its
     /// own copy of the workspace with a different approach, before the
     /// sequential sessions: the host keeps the best by the frozen score.
@@ -389,6 +396,18 @@ impl Lean {
         }
         if self.finish_rule.is_some() && !self.keep_best {
             problems.push("finish_rule requires keep_best".to_string());
+        }
+        for source in &self.departures {
+            if !crate::departures::ADMITTED.contains(source) {
+                problems.push(format!(
+                    "executor.microluna.lean.departures names {}, which the offline measurement \
+                     didn't admit",
+                    source.word()
+                ));
+            }
+        }
+        if !self.departures.is_empty() && !self.rationale {
+            problems.push("executor.microluna.lean.departures requires rationale".to_string());
         }
         problems
     }
@@ -768,6 +787,43 @@ impl Micro {
             text: format!("{SUSPECTS_NOTE}\n\n{}", likely.join("\n")),
         });
         (evidence, record, usd)
+    }
+
+    /// The v13 comments and the admitted departure sources, ranked by Jev
+    /// ([`crate::departures`]): the evidence for the listed rows, each
+    /// with its kind, the record, and Jev's cost.
+    async fn rank_departures(
+        &self,
+        prepared: &Prepared,
+        extra: &[crate::departures::Source],
+    ) -> (Option<Evidence>, Value, f64) {
+        use crate::departures::{self, Source};
+        let mut sources = vec![Source::Rationale];
+        sources.extend(extra.iter().copied().filter(|s| *s != Source::Rationale));
+        let ranked = departures::rank(
+            &prepared.jev,
+            &self.recorder,
+            &departures::Context {
+                component: "microluna.lean",
+                id: format!("jev-departures-{}", self.dispatch()),
+                deadline: prepared.deadline.clone(),
+            },
+            &prepared.instruction,
+            &self.workdir,
+            &sources,
+        )
+        .await;
+        let listed = departures::listed(&ranked.rows);
+        let record = json!({
+            "kind": "lean.suspects",
+            "sources": sources.iter().map(|s| s.word()).collect::<Vec<_>>(),
+            "implementation": departures::implementation(&sources),
+            "rows": ranked.rows,
+            "likely": listed.len(),
+            "jev": ranked.calls,
+            "jev_usd": ranked.usd,
+        });
+        (departures::evidence(&listed), record, ranked.usd)
     }
 }
 
@@ -1363,7 +1419,11 @@ impl Micro {
         }
         let mut suspects_record = Value::Null;
         if lean.rationale {
-            let (evidence, record, usd) = self.rank_suspects(prepared).await;
+            let (evidence, record, usd) = if lean.departures.is_empty() {
+                self.rank_suspects(prepared).await
+            } else {
+                self.rank_departures(prepared, &lean.departures).await
+            };
             if let Some(evidence) = evidence {
                 samples.insert(0, evidence);
             }

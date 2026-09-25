@@ -1441,6 +1441,7 @@ fn lean_shape() -> lean::Lean {
         example_first: false,
         standard_forms: false,
         rationale: false,
+        departures: Vec::new(),
         lanes: 0,
         lane_sec: 0,
         failures: false,
