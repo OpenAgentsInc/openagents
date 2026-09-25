@@ -216,7 +216,11 @@ The follow-up [literal artifact checker](docs/terminal-bench/2026-09-25-literal-
 catches three real failures with three calls, zero model tokens, and a 0.747-second
 median replay time. Its combined development result catches 7/11 failures at
 7/10 precision. The labels were already open, so this is not new confirmation;
-runtime policies remain unchanged.
+runtime policies remain unchanged. A subsequent
+[artifact lifecycle correction](docs/terminal-bench/2026-09-25-literal-lifecycle.md)
+removes synthetic temporary-file and deferred-write false alarms while preserving
+all 72 development calls. The [90-attempt confirmation protocol](bench/terminal-bench/experiments/2026-09-25-literal-confirmation/protocol.md)
+is amended before generation and awaits the separate v18 family run.
 
 The [earlier candidate-review study](docs/terminal-bench/2026-09-25-candidate-review-validation.md)
 retains the rejected opinion-based rules, the negative 16-candidate evaluation,

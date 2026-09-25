@@ -1,6 +1,6 @@
 # Literal artifact confirmation protocol
 
-Status: frozen before candidate generation. The
+Status: amended before candidate generation for [#9648](https://github.com/OpenAgentsInc/openagents/issues/9648). The
 [machine-readable protocol](protocol.json) binds the task list, public image
 preflight, executable digests, orchestration sources, and decision rule. This is
 another prospective study after earlier negative studies; it does not erase
@@ -29,7 +29,7 @@ as the only task-file change, and hash every staged file against upstream.
 Run at most two trials per executor concurrently, four total. Use the isolated
 truth-confirmation worktree and target directory. Do not update the previous
 cohort's frozen checkout or collide with the other agent's family run. The new
-jobs end in `9584-literal-artifact-v1`; no existing job can be reused or replaced.
+jobs end in `9584-literal-artifact-v2`; no existing job can be reused or replaced.
 Check for at least 20 GiB of free disk before launch.
 
 Retain every scheduled attempt, including setup, transport, snapshot, and grading
@@ -41,8 +41,8 @@ problem prevents execution, preserve it and report the incomplete study.
 
 ## Frozen rule
 
-The metadata checker comes from Rust source `68fd15388f`, SHA-256
-`2a797973b9931a186be69db1dee407cc129c02cdb52dc623167c6934015103bf`.
+The metadata checker comes from Rust source `24e7864537`, SHA-256
+`99f21894b2ed16343545d1eb4a0e76f8ddbcd9af6ff8caab2d8ab0654a4eb9aa`.
 The reproduced reviewer remains the original `ca3c91b581` artifact, SHA-256
 `68c86604d69910b36bcdd6246524530f2024f607e9fb003197bb06ff011edd53`.
 The four checker libraries have individually pinned digests in `protocol.json`.
@@ -138,3 +138,25 @@ This follows the assessment's ladder: controlled fixtures, retained replay, then
 new task groups. It measures the signal before giving it authority over a live
 Coder loop. Every negative study and unavailable result remains part of the
 published evidence.
+
+## Pre-generation amendment for artifact lifecycles
+
+The first freeze at `c36d0e4489` is superseded before generation. Its exact
+[machine-readable protocol](protocol-artifact-v1.json), original preparation,
+plans, and stopped-launcher record remain retained. Zero `artifact-v1` jobs or
+candidates were created. Synthetic controls exposed requirements for temporary
+files that should be deleted and for files that a requested program would only
+create later. These are extraction errors, independent of any reserved task
+outcome.
+
+The corrected checker abstains on those contexts and retires earlier output
+obligations after cleanup or relocation. It preserves separate final outputs
+when cleanup concerns an unrelated path. See the
+[correction, controls, replay, and evidence](../../../../docs/terminal-bench/2026-09-25-literal-lifecycle.md).
+
+Only the metadata checker artifact, protocol identity, and fresh job suffix
+change. The 15 tasks, 90 attempts, executor policies and artifact, reviewer and
+thresholds, review profile, budgets, orchestration hashes, and primary evaluation
+criterion remain fixed. The amended protocol and regenerated public plans must
+be published before launch. Wait for the separately owned v18 family run to
+finish, then use a new preparation directory; never reuse the superseded plans.

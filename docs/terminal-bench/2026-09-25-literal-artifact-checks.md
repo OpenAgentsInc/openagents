@@ -1,5 +1,10 @@
 # Literal artifact checks: development results
 
+The [artifact lifecycle correction](2026-09-25-literal-lifecycle.md) supersedes
+the original checker described below. Synthetic controls exposed temporary-file
+and deferred-write false alarms; the correction removes those while preserving
+all 72 development calls. Both versions remain retained.
+
 The new deterministic checker catches **three real failures with three failure
 calls**, using no model calls. Across all 72 opened archive candidates, its median
 end-to-end replay time is **0.747 seconds**, including snapshot restoration and
@@ -107,7 +112,7 @@ A future cheap-first rule can skip a review when a literal failure already
 decides the result. This replay realizes no retrospective savings: the original
 72 reviews had already run and cost $12.469 including Jev.
 
-The final checker is built from Rust source at `68fd15388f`, binary SHA-256
+The checker used for this original measurement is built from Rust source at `68fd15388f`, binary SHA-256
 `2a797973b9931a186be69db1dee407cc129c02cdb52dc623167c6934015103bf`.
 It uses the previously hashed four-library runtime. Validation includes:
 

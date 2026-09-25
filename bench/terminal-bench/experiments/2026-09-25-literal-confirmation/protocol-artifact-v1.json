@@ -1,6 +1,6 @@
 {
   "schema": "openagents.literal-confirmation-protocol.v1",
-  "run_id": "artifact-v2",
+  "run_id": "artifact-v1",
   "tasks": [
     "adaptive-rejection-sampler",
     "cobol-modernization",
@@ -20,7 +20,7 @@
   ],
   "upstream": "3b5caaa4863d64dda7f0957bf4fc2d4f019202d4",
   "executor_sha256": "7df7cde47d0f16c8f9200cbd21899254588c0b587f3bbe6f2272fd2eedfb0f5d",
-  "check_sha256": "99f21894b2ed16343545d1eb4a0e76f8ddbcd9af6ff8caab2d8ab0654a4eb9aa",
+  "check_sha256": "2a797973b9931a186be69db1dee407cc129c02cdb52dc623167c6934015103bf",
   "review_sha256": "68c86604d69910b36bcdd6246524530f2024f607e9fb003197bb06ff011edd53",
   "runtime": [
     {
@@ -81,14 +81,5 @@
   "unknown_is_not_pass": true,
   "bootstrap_seed": 9584,
   "bootstrap_resamples": 10000,
-  "source_commit": "29e6c1592cae36d7bb2598cdbb725cf2a04175b4",
-  "check_source_commit": "24e7864537e058c6740ece46c1dd585e12b882f3",
-  "amendment": {
-    "issue": 9648,
-    "superseded_protocol_sha256": "47aade69e8da550b0526c2b78606b3de85caf883c62239a9b9b02f77f2334fa8",
-    "superseded_freeze_commit": "c36d0e4489",
-    "superseded_run_id": "artifact-v1",
-    "candidates_generated_under_superseded_protocol": 0,
-    "reason": "Synthetic artifact lifecycle and deferred-write controls exposed false mandatory final outputs; correct before any candidate generation."
-  }
+  "source_commit": "29e6c1592cae36d7bb2598cdbb725cf2a04175b4"
 }

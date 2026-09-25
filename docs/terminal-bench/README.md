@@ -8,7 +8,11 @@ Updated on 2026-09-25 with the completed archive confirmation. This page summari
 tokens.** The median replay takes 0.747 seconds per candidate. Combining these
 checks with the earlier detector catches 7/11 failures at 7/10 precision on the
 already-opened 72 candidates. This is development evidence; runtime policies
-remain unchanged. See [implementation, controls, coverage, and retained records](2026-09-25-literal-artifact-checks.md).
+remain unchanged. A subsequent [lifecycle correction](2026-09-25-literal-lifecycle.md)
+removes synthetic false alarms without changing these 72 calls. The
+[90-attempt confirmation protocol](../../bench/terminal-bench/experiments/2026-09-25-literal-confirmation/protocol.md)
+is amended before generation and awaits the separate v18 family run. See
+[implementation, controls, coverage, and retained records](2026-09-25-literal-artifact-checks.md).
 
 **The 72-candidate archive confirmation is complete.** Luna passes 26/36 and
 Astra 35/36 across 12 unused archived task groups. Executed checks detect 6/11
