@@ -84,7 +84,7 @@ async fn run(args: &[String]) -> Result<u8, String> {
             match &search.lexical_only {
                 Some(why) => println!("ranked by words alone: {why}"),
                 None => println!(
-                    "ranked by words and embeddings (${:.6} for embeddings)",
+                    "ranked by words and embeddings (${:.8} for embeddings)",
                     search.usd
                 ),
             }

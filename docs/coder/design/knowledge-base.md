@@ -1,7 +1,9 @@
 # Shared knowledge base
 
-Status: specified 2026-09-25. The first version, in Microcoder, is in
-progress. Tracking issue:
+Status: specified 2026-09-25. The first version, in Microcoder, shipped
+2026-09-25: `crates/knowledge`, 14 seed entries in `knowledge/`, and
+retrieval in Microcoder. Harvesting, admission by measurement, and Nostr
+publishing aren't built. Tracking issue:
 [#9670](https://github.com/OpenAgentsInc/openagents/issues/9670).
 
 This document specifies a knowledge base that every OpenAgents agent can
@@ -149,8 +151,8 @@ didn't change doesn't search again.
 
 The action schema gains one field, `expand`: a list of entry IDs whose bodies
 the agent wants to read. The host shows each body, in full, in the next
-prompt's `# Knowledge base` section, and keeps it there while the entry stays
-relevant or until the agent drops it, the same way `view` keeps files. At
+prompt's `# Knowledge base` section, and keeps it there until the agent asks
+for other entries, the same way `view` keeps files. At
 most 3 bodies and 12,000 characters are shown at once. An ID that isn't in
 the base gets a note saying so.
 
@@ -254,6 +256,17 @@ Scope, in Microcoder:
   `# Knowledge base` section, the `expand` field, `--kb on|off|candidates`,
   and the run record's list of entries used.
 - Out of scope: harvesting, admission by measurement, and Nostr publishing.
+
+What the first version does, where the spec above leaves a choice:
+
+- The combined search score is the average of BM25 divided by the best
+  entry's BM25 and cosine similarity scaled by its range across the base.
+- When Jev can't answer, the step keeps no entries, and the retrieval event
+  says why.
+- The lint checks the installed Terminal-Bench 4 tasks by default, and other
+  corpora with `--corpus`. It skips test files over 2 MB, which hold data
+  rather than test code, and it requires every entry to cite a source.
+- `microcoder kb search`, `kb show`, and `kb lint` exist; `kb add` doesn't.
 
 Measurement:
 
