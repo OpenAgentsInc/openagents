@@ -8,7 +8,10 @@ Warcraft controls.
 Status: partial. One world exists, and players share it over Nostr with
 [NIP-MV](../../nips/openagents/NIP-MV.md): each player sees the others'
 avatars and agents move and turn, and the relay remembers where everyone
-left. Live OpenAgents state (Pylons, runs, sats) is not implemented.
+left. A quest board on the plaza lists live
+[NIP-XP](../../nips/openagents/NIP-XP.md) quests, and the HUD shows your XP,
+level, and titles. Other live OpenAgents state (Pylons, runs, sats) is not
+implemented.
 
 ## Run it
 
@@ -100,6 +103,85 @@ Chat follows Horse Isle 1:
 
 [`chat.md`](chat.md) has the reference, the NIP review, and the details.
 
+## Quests and XP
+
+Verse reads [NIP-XP](../../nips/openagents/NIP-XP.md) quests, awards,
+revocations, and achievement labels from a relay and shows them. It never
+publishes them: `microcoder xp` is the referee's tool
+([guide](../coder/guides/xp.md)).
+
+**See the live quests.** The OpenAgents referee publishes its quests to
+`wss://relay.openagents.com`. Point the board at that relay and trust the
+referee, either in `~/.openagents/knowledge/xp-trust.json` or with a flag:
+
+```sh
+cargo run -p verse --release -- \
+  --xp-relay wss://relay.openagents.com \
+  --xp-referee npub1v59z5gklyzc4v7c8klhqd8nuffl426d3s7zyluu5suxyyjn4khrsrusf6k
+```
+
+Without `--xp-relay` (or `VERSE_XP_RELAY`), the board reads the world's
+relay. With `--offline` and no `--xp-relay`, nothing is read and the HUD
+says Verse is offline.
+
+**The quest board.** The board stands 22 m west of the plaza center,
+facing it. Walk up to it and its tag
+says to press `B`; `B` opens and closes the panel from anywhere. The panel
+is read-only. For each quest version it shows:
+
+- the title, and whether the referee is one you trust (an untrusted
+  referee's quest is listed, but its awards count for nothing here);
+- the task and the bar: the pass rate and the cost per run to beat;
+- the reference run, such as Fable 5.1 low's cheapest winning run, with
+  its cost and time;
+- the award and how the roles split it, the season and how long it stays
+  open, and how many awards the relay holds and how many count for you;
+- the achievement titles on its counted awards.
+
+The mouse wheel over the panel, or Page Up and Page Down, scrolls it.
+
+**XP and levels.** A background thread reads the relay, fetches the
+entries and evidence the trusted referees' awards name, and derives your
+ledger with `knowledge::xp::derive`: the same checks `microcoder xp ledger`
+runs, so the frame never waits on the network or on signature checks. The
+top left of the screen shows your XP, level, titles, and how many quests
+and referees the board has. Your XP is the sum over your keys: this
+profile's Verse key, your knowledge key
+(`~/.openagents/nostr/knowledge-key`, which signs entries and evidence), and
+any key you pass with `--xp-key npub1...`.
+
+Levels are Verse's reading of the ledger, not part of the protocol. Level 1
+needs nothing, and level n + 1 needs 100 · n^1.5 cumulative XP: 100 XP for
+level 2, 283 for level 3, 520 for level 4, and 800 for level 5
+(`xp::level_of`). Other players' name tags show `lv n` when their Verse key
+has XP. XP is a record of accepted work: it can't be spent, traded, or
+converted, and a level unlocks nothing.
+
+**Achievements.** An `openagents.xp` NIP-32 label on an award shows as a
+title for its awardees, and on the quest's row, while the award counts and
+only when the award's own referee signed the label.
+
+**Try it locally.** `examples/xp_seed.rs` publishes a throwaway completion
+to a relay on this machine (it refuses any other): a knowledge entry, a
+runner's passing evidence, and, with `--all`, a quest, its award, and a
+`beat-reference` label, all signed with public fixture keys. Referee the
+entry and evidence yourself with `microcoder xp quest` and `xp award`,
+using a scratch `--key` rather than your real referee key:
+
+```sh
+scripts/kb-relay.sh
+cargo run -p verse --example xp_seed -- ws://127.0.0.1:7490
+microcoder xp quest quest.json --relay ws://127.0.0.1:7490 --key /tmp/referee-key
+microcoder xp award --relay ws://127.0.0.1:7490 --key /tmp/referee-key \
+  --quest tb4.fix-git.beat-fable-low@1 --evidence <evidence ID> --label beat-reference
+cargo run -p verse --release -- --xp-relay ws://127.0.0.1:7490 \
+  --xp-referee <the scratch referee npub> --xp-key <the author npub>
+```
+
+`VERSE_TEST_RELAY=ws://127.0.0.1:7490 cargo test -p verse --test xp_relay`
+publishes a fresh completion and checks the board derives its XP, title,
+and quest row.
+
 ## The agent
 
 The agent is a spade from a deck of cards, extruded into 3D and drawn like
@@ -146,8 +228,10 @@ The agent has no behavior yet beyond following and emoting. Its game design is i
 | `Tab` or click a pill | Change the chat channel: ALL, ADS, ZONE, NEAR, HERE, rooms, PM, AGENT. |
 | `T` | Talk to your agent, privately. Its reply appears over the spade. |
 | `N` | Switch the world chat window between WORLD and live NOSTR notes. |
+| `B` | Open or close the quest board. |
+| `Page Up` / `Page Down` | Scroll the open quest board. The mouse wheel over it does too. |
 | `/` | Open the chat line with a shortcut: `/a`, `/$`, `/z`, `/n`, `/h`, `/r room`, `/name`. |
-| `Esc` | Close the chat line, or quit when it is closed. |
+| `Esc` | Close the chat line or the quest board, or quit when both are closed. |
 
 While a mouse button is held, the cursor is hidden and locked. When the
 character moves and the left button is up, the camera swings back behind it.
@@ -170,6 +254,9 @@ cargo run -p verse --release -- \
 | `--pitch <degrees>` | Camera angle above the horizon. |
 | `--distance <meters>` | Camera distance from the character. |
 | `--size <width>x<height>` | Image size. Default `1600x1000`. |
+| `--board` | Open the quest board in the shot. |
+| `--xp-relay <url>` | Read quests and awards from this relay before the shot, for up to 12 s. Without it the HUD shows offline. |
+| `--xp-referee <npub>`, `--xp-key <npub>` | As in the game: trust a referee, count a key's XP as yours. |
 
 ## Design
 
@@ -236,6 +323,7 @@ The character collides with building footprints and the world edge.
 | [`src/chat.rs`](../../crates/verse/src/chat.rs) | Channels, shortcut parsing, limits, zones, and the two chat windows' history. |
 | [`src/hud.rs`](../../crates/verse/src/hud.rs) | Chat windows, input line, name tags, and speech bubbles. |
 | [`src/brain.rs`](../../crates/verse/src/brain.rs) | The agent's side of AGENT chat: door choice, instructions, streamed replies. |
+| [`src/xp.rs`](../../crates/verse/src/xp.rs) | NIP-XP reading: the reader thread, the snapshot of quests, XP, and titles, the level curve, and the board and HUD text. `src/xp/fixture.rs` holds throwaway signed fixtures. |
 | [`src/feed.rs`](../../crates/verse/src/feed.rs) | The NOSTR tab: public notes from damus and primal, filtering, pacing, and stand-ins. |
 | [`src/ui.rs`](../../crates/verse/src/ui.rs), [`src/ui.wgsl`](../../crates/verse/src/ui.wgsl) | Glyph atlas (Fira Mono, OFL) and screen-space quads. |
 | [`src/mesh.rs`](../../crates/verse/src/mesh.rs) | The shared vertex format and line, quad, cube, and ring builders. |

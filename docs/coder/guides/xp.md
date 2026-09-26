@@ -199,5 +199,29 @@ awards for one quest version, or published one quest version twice with
 different content; neither counts until the referee fixes it.
 
 Levels, titles, and stat points are a client's reading of these totals, not
-part of the ledger. The Verse display of quests, awards, and levels is
-planned in issue #9685.
+part of the ledger.
+
+## See quests and XP in Verse
+
+[Verse](../../verse/README.md#quests-and-xp) shows the same ledger in the
+world. It reads quests, awards, revocations, and `openagents.xp` labels
+from a relay, trusts the same referees as `xp ledger` (the trust file and
+your own referee key, plus any `--xp-referee`), and re-checks every award
+the same way:
+
+```sh
+cargo run -p verse --release -- \
+  --xp-relay wss://relay.openagents.com \
+  --xp-referee npub1v59z5gklyzc4v7c8klhqd8nuffl426d3s7zyluu5suxyyjn4khrsrusf6k
+```
+
+- A quest board on the plaza lists each quest version: its task and bar,
+  the reference run's cost and time, the award and its split, the season,
+  and how many awards exist and count. Press `B` to open it.
+- The top left of the screen shows your XP, level, and achievement titles,
+  summed over your Verse key, your knowledge key, and any `--xp-key`.
+- Other players' name tags show their level when their Verse key has XP.
+
+Verse's level curve is its own: level n + 1 needs 100 · n^1.5 cumulative
+XP. Verse only reads; it never publishes quests, awards, or labels, and
+nothing in it spends or converts XP.

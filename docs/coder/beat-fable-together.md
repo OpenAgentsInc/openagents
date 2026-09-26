@@ -267,8 +267,18 @@ The owner took all three recommendations, and
 [NIP-XP](../../nips/openagents/NIP-XP.md) now carries them: frozen quest
 versions, referee awards bound to KB entry versions and EVAL evidence,
 revocations, and per-reader ledgers, with `microcoder xp` as the referee
-and reader CLI ([guide](guides/xp.md)). Sats stay out of it. The Verse
-quest board, replays, and XP display remain open in issue #9685.
+and reader CLI ([guide](guides/xp.md)). Sats stay out of it.
+
+Status, 2026-09-26: Verse shows the first slice
+([how](../verse/README.md#quests-and-xp)). A quest board on the plaza
+lists the live NIP-XP quests from `relay.openagents.com`, with each quest's
+task, bar, Fable 5.1 low reference cost and time, award, season, and award
+count. The HUD shows the player's XP, level, and achievement titles,
+derived with `knowledge::xp` under the player's trust list, and name tags
+show other players' levels. Run replays and the Gym's own best cost and
+time on each quest are still to come, and linking a player's Verse key to
+the knowledge keys that earn XP needs a signed claim that doesn't exist
+yet (today a player passes `--xp-key`).
 
 ## Sequencing and ownership
 
